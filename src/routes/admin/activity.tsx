@@ -7,6 +7,14 @@ import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/e
 import { aidwar } from "@/integrations/aidwar/client";
 
 export const Route = createFileRoute("/admin/activity")({
+  head: () => ({
+    meta: [
+      { title: "Activity — AiDwar Admin" },
+      { name: "description", content: "Cross-organization audit trail of significant actions." },
+      { property: "og:title", content: "Activity — AiDwar Admin" },
+      { property: "og:description", content: "Cross-organization audit trail of significant actions." },
+    ],
+  }),
   component: AdminActivity,
 });
 

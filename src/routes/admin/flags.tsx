@@ -9,6 +9,14 @@ import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/e
 import { aidwar } from "@/integrations/aidwar/client";
 
 export const Route = createFileRoute("/admin/flags")({
+  head: () => ({
+    meta: [
+      { title: "Feature Flags — AiDwar Admin" },
+      { name: "description", content: "Global feature defaults and per-workspace overrides." },
+      { property: "og:title", content: "Feature Flags — AiDwar Admin" },
+      { property: "og:description", content: "Global feature defaults and per-workspace overrides." },
+    ],
+  }),
   component: AdminFlags,
 });
 

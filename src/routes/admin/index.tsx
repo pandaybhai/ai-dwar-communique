@@ -3,6 +3,14 @@ import { useEffect } from "react";
 import { PageSkeleton } from "@/components/empty-state";
 
 export const Route = createFileRoute("/admin/")({
+  head: () => ({
+    meta: [
+      { title: "Super Admin — AiDwar" },
+      { name: "description", content: "Platform control centre for AiDwar." },
+      { property: "og:title", content: "Super Admin — AiDwar" },
+      { property: "og:description", content: "Platform control centre for AiDwar." },
+    ],
+  }),
   component: AdminHome,
 });
 

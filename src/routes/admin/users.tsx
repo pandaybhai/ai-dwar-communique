@@ -6,6 +6,14 @@ import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/e
 import { aidwar } from "@/integrations/aidwar/client";
 
 export const Route = createFileRoute("/admin/users")({
+  head: () => ({
+    meta: [
+      { title: "Users — AiDwar Admin" },
+      { name: "description", content: "All AiDwar users and the workspaces they belong to." },
+      { property: "og:title", content: "Users — AiDwar Admin" },
+      { property: "og:description", content: "All AiDwar users and the workspaces they belong to." },
+    ],
+  }),
   component: AdminUsers,
 });
 

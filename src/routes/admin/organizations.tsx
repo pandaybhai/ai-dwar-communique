@@ -8,6 +8,14 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/organizations")({
+  head: () => ({
+    meta: [
+      { title: "Organizations — AiDwar Admin" },
+      { name: "description", content: "Every workspace on AiDwar with member counts and status controls." },
+      { property: "og:title", content: "Organizations — AiDwar Admin" },
+      { property: "og:description", content: "Every workspace on AiDwar with member counts and status controls." },
+    ],
+  }),
   component: AdminOrganizations,
 });
 
