@@ -60,13 +60,21 @@ export function CreateTemplateDialog({
   };
 
   const submit = async () => {
-    if (!slug) return toast.error("Give your template a name.");
-    if (!body.trim()) return toast.error("Add the body text of your message.");
+    if (!slug) {
+      toast.error("Give your template a name.");
+      return;
+    }
+    if (!body.trim()) {
+      toast.error("Add the body text of your message.");
+      return;
+    }
     if (variables.some((v, i) => v !== i + 1)) {
-      return toast.error("Number your variables in order, starting at {{1}}.");
+      toast.error("Number your variables in order, starting at {{1}}.");
+      return;
     }
     if (variables.some((v) => !examples[v]?.trim())) {
-      return toast.error("Meta requires an example value for every variable.");
+      toast.error("Meta requires an example value for every variable.");
+      return;
     }
 
     setSubmitting(true);
@@ -84,7 +92,10 @@ export function CreateTemplateDialog({
     });
     setSubmitting(false);
 
-    if (error) return toast.error(error);
+    if (error) {
+      toast.error(error);
+      return;
+    }
     toast.success("Template submitted to Meta for review.");
     reset();
     setOpen(false);
