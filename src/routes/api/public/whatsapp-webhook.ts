@@ -21,9 +21,12 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
       },
 
       POST: async ({ request }) => {
-        const { getServiceClient, verifyMetaSignature, processWebhookPayload } = await import(
-          "@/lib/whatsapp-webhook.server"
-        );
+        const {
+          getServiceClient,
+          verifyMetaSignature,
+          processWebhookPayload,
+          reprocessUnprocessedEvents,
+        } = await import("@/lib/whatsapp-webhook.server");
 
         const rawBody = await request.text();
         const signatureValid = await verifyMetaSignature(
@@ -46,9 +49,21 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           .select("id")
           .single();
 
-        // Always 200 fast; never process unverified payloads.
+        // Catch-up: background work is terminated after the response on this
+        // host, so anything stale is retried inline here.
+        try {
+          await reprocessUnprocessedEvents(supabase, { olderThanSeconds: 60 });
+        } catch {
+          // never block the 200
+        }
+
+        // Process synchronously; never process unverified payloads.
         if (signatureValid && event) {
-          void processWebhookPayload(supabase, event.id as string, payload);
+          try {
+            await processWebhookPayload(supabase, event.id as string, payload);
+          } catch {
+            // processWebhookPayload records its own errors
+          }
         }
 
         return new Response("ok", { status: 200 });
