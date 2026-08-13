@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { ShieldCheck, Users } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Search, ShieldCheck, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/empty-state";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
+import { NoResults, Pagination, TableSkeleton } from "@/components/data-pagination";
 import { aidwar } from "@/integrations/aidwar/client";
 
 export const Route = createFileRoute("/admin/users")({
@@ -17,6 +20,8 @@ export const Route = createFileRoute("/admin/users")({
   component: AdminUsers,
 });
 
+const PAGE_SIZE = 25;
+
 type Row = {
   id: string;
   full_name: string | null;
@@ -28,112 +33,166 @@ type Row = {
 
 function AdminUsers() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
   const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [superOnly, setSuperOnly] = useState(false);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
-    (async () => {
-      const [{ data: profiles, error: err }, { data: members }, { data: orgs }] = await Promise.all([
-        aidwar.from("profiles").select("id, full_name, email, is_super_admin, created_at"),
-        aidwar.from("organization_members").select("user_id, organization_id, role"),
-        aidwar.from("organizations").select("id, name"),
-      ]);
-      if (err) {
-        setError("We couldn't load users. Please refresh.");
-        setRows([]);
-        return;
-      }
-      const orgName = new Map(((orgs ?? []) as { id: string; name: string }[]).map((o) => [o.id, o.name]));
-      const byUser = new Map<string, { org: string; role: string }[]>();
-      for (const m of (members ?? []) as { user_id: string; organization_id: string; role: string }[]) {
-        const list = byUser.get(m.user_id) ?? [];
-        list.push({ org: orgName.get(m.organization_id) ?? "Unknown workspace", role: m.role });
-        byUser.set(m.user_id, list);
-      }
-      setRows(
-        ((profiles ?? []) as Omit<Row, "memberships">[]).map((p) => ({
-          ...p,
-          memberships: byUser.get(p.id) ?? [],
-        })),
-      );
-    })();
-  }, []);
+    const t = setTimeout(() => {
+      setSearch(query.trim());
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
-  if (!rows) return <PageSkeleton />;
+  const load = useCallback(async () => {
+    setError(null);
+    setRows(null);
 
-  const q = query.trim().toLowerCase();
-  const filtered = rows.filter(
-    (r) => !q || (r.email ?? "").toLowerCase().includes(q) || (r.full_name ?? "").toLowerCase().includes(q),
-  );
+    let q = aidwar
+      .from("profiles")
+      .select("id, full_name, email, is_super_admin, created_at", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+
+    if (search) q = q.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+    if (superOnly) q = q.eq("is_super_admin", true);
+
+    const { data: profiles, error: err, count } = await q;
+    if (err) {
+      setError("We couldn't load users. Please refresh.");
+      setRows([]);
+      setTotal(0);
+      return;
+    }
+
+    const list = (profiles ?? []) as Omit<Row, "memberships">[];
+    const byUser = new Map<string, { org: string; role: string }[]>();
+
+    if (list.length > 0) {
+      const { data: members } = await aidwar
+        .from("organization_members")
+        .select("user_id, organization_id, role")
+        .in("user_id", list.map((p) => p.id));
+      const memberRows = (members ?? []) as { user_id: string; organization_id: string; role: string }[];
+      const orgIds = Array.from(new Set(memberRows.map((m) => m.organization_id)));
+      const orgName = new Map<string, string>();
+      if (orgIds.length > 0) {
+        const { data: orgs } = await aidwar.from("organizations").select("id, name").in("id", orgIds);
+        for (const o of (orgs ?? []) as { id: string; name: string }[]) orgName.set(o.id, o.name);
+      }
+      for (const m of memberRows) {
+        const entries = byUser.get(m.user_id) ?? [];
+        entries.push({ org: orgName.get(m.organization_id) ?? "Unknown workspace", role: m.role });
+        byUser.set(m.user_id, entries);
+      }
+    }
+
+    setRows(list.map((p) => ({ ...p, memberships: byUser.get(p.id) ?? [] })));
+    setTotal(count ?? list.length);
+  }, [page, search, superOnly]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const filtersActive = Boolean(search || superOnly);
 
   return (
     <>
       <PageHeader title="Users" description="Everyone with an AiDwar account and the workspaces they belong to." />
       {error ? <div className="mb-6"><ErrorState message={error} /></div> : null}
 
-      {rows.length === 0 ? (
+      <div className="mb-6 grid gap-4 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:grid-cols-[1fr_auto] sm:items-end">
+        <div className="space-y-2">
+          <Label htmlFor="user_q">Search</Label>
+          <div className="relative max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="user_q"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Name or email…"
+              className="pl-9"
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2 pb-2">
+          <Switch
+            id="super_only"
+            checked={superOnly}
+            onCheckedChange={(v) => {
+              setSuperOnly(v);
+              setPage(0);
+            }}
+          />
+          <Label htmlFor="super_only" className="text-sm">Super admins only</Label>
+        </div>
+      </div>
+
+      {!rows ? (
+        <TableSkeleton />
+      ) : total === 0 && !filtersActive ? (
         <EmptyState icon={Users} title="No users yet" description="Accounts will show up here after the first signup." />
       ) : (
-        <div className="space-y-4">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name or email…"
-            className="max-w-sm"
-          />
-          <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">User</th>
-                    <th className="px-4 py-3 font-semibold">Email</th>
-                    <th className="px-4 py-3 font-semibold">Workspaces</th>
-                    <th className="px-4 py-3 font-semibold">Joined</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/70">
-                  {filtered.map((r) => (
-                    <tr key={r.id} className="transition-colors duration-200 hover:bg-muted/30">
-                      <td className="px-4 py-3">
-                        <span className="flex items-center gap-2 font-medium text-foreground">
-                          {r.full_name || "—"}
-                          {r.is_super_admin ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                              <ShieldCheck className="h-3 w-3" /> Super admin
-                            </span>
-                          ) : null}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{r.email || "—"}</td>
-                      <td className="px-4 py-3">
-                        {r.memberships.length === 0 ? (
-                          <span className="text-muted-foreground">No workspace</span>
-                        ) : (
-                          <span className="flex flex-wrap gap-1.5">
-                            {r.memberships.map((m) => (
-                              <span
-                                key={`${r.id}-${m.org}-${m.role}`}
-                                className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground"
-                              >
-                                {m.org} · <span className="capitalize">{m.role}</span>
-                              </span>
-                            ))}
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">User</th>
+                  <th className="px-4 py-3 font-semibold">Email</th>
+                  <th className="px-4 py-3 font-semibold">Workspaces</th>
+                  <th className="px-4 py-3 font-semibold">Joined</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {rows.map((r) => (
+                  <tr key={r.id} className="transition-colors duration-200 hover:bg-muted/30">
+                    <td className="px-4 py-3">
+                      <span className="flex items-center gap-2 font-medium text-foreground">
+                        {r.full_name || "—"}
+                        {r.is_super_admin ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                            <ShieldCheck className="h-3 w-3" /> Super admin
                           </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {filtered.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">No users match “{query}”.</p>
-            ) : null}
+                        ) : null}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{r.email || "—"}</td>
+                    <td className="px-4 py-3">
+                      {r.memberships.length === 0 ? (
+                        <span className="text-muted-foreground">No workspace</span>
+                      ) : (
+                        <span className="flex flex-wrap gap-1.5">
+                          {r.memberships.map((m) => (
+                            <span
+                              key={`${r.id}-${m.org}-${m.role}`}
+                              className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground"
+                            >
+                              {m.org} · <span className="capitalize">{m.role}</span>
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+          {rows.length === 0 ? (
+            <NoResults message="No users match your filters." />
+          ) : (
+            <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+          )}
         </div>
       )}
     </>
