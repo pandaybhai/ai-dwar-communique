@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { joinWaitlist } from "@/lib/waitlist.functions";
 
 const waitlistSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100, "Name is too long"),
@@ -29,13 +29,7 @@ const waitlistSchema = z.object({
 type Errors = Partial<Record<keyof z.infer<typeof waitlistSchema>, string>>;
 
 async function submitWaitlist(values: z.infer<typeof waitlistSchema>) {
-  const { error } = await supabase.from("waitlist_signups").insert({
-    name: values.name,
-    business_name: values.business,
-    email: values.email,
-    phone: values.phone,
-  });
-  if (error) throw error;
+  await joinWaitlist({ data: values });
 }
 
 export function WaitlistDialog({ trigger }: { trigger: ReactNode }) {
