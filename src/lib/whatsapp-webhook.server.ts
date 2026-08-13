@@ -102,6 +102,53 @@ export async function processWebhookPayload(
     for (const entry of entries) {
       for (const change of (entry["changes"] as AnyRecord[] | undefined) ?? []) {
         const value = (change["value"] as AnyRecord | undefined) ?? {};
+
+        // ---- template status updates (routed by WABA id, not phone number) ----
+        if (String(change["field"] ?? "") === "message_template_status_update") {
+          const wabaId = String(entry["id"] ?? "");
+          const { data: wabaAccount } = await supabase
+            .from("whatsapp_accounts")
+            .select("organization_id")
+            .eq("waba_id", wabaId)
+            .maybeSingle();
+          if (!wabaAccount) continue;
+          routedAny = true;
+
+          const templateName = value["message_template_name"] as string | undefined;
+          const templateLanguage = value["message_template_language"] as string | undefined;
+          const metaTemplateId = value["message_template_id"];
+          const event = String(value["event"] ?? "").toUpperCase();
+          const allowed = ["PENDING", "APPROVED", "REJECTED", "PAUSED"];
+          const nextStatus = allowed.includes(event)
+            ? event
+            : event === "FLAGGED" || event === "PENDING_DELETION"
+              ? "PAUSED"
+              : null;
+          if (!nextStatus) continue;
+
+          const reason = (value["reason"] as string | undefined) ?? null;
+          let update = supabase
+            .from("message_templates")
+            .update({
+              status: nextStatus,
+              rejection_reason:
+                nextStatus === "REJECTED" ? (reason && reason !== "NONE" ? reason : "Rejected by review") : null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("organization_id", wabaAccount.organization_id as string);
+
+          if (metaTemplateId !== undefined && metaTemplateId !== null) {
+            update = update.eq("meta_template_id", String(metaTemplateId));
+          } else if (templateName) {
+            update = update.eq("name", templateName);
+            if (templateLanguage) update = update.eq("language", templateLanguage);
+          } else {
+            continue;
+          }
+          await update;
+          continue;
+        }
+
         const metadata = (value["metadata"] as AnyRecord | undefined) ?? {};
         const phoneNumberId = metadata["phone_number_id"] as string | undefined;
         if (!phoneNumberId) continue;
