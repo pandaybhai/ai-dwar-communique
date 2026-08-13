@@ -34,6 +34,9 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
         const body = String(payload["body"] ?? "").trim();
         const templateName = String(payload["template_name"] ?? "").trim();
         const templateLanguage = String(payload["template_language"] ?? "en_US").trim();
+        const templateComponents = Array.isArray(payload["template_components"])
+          ? (payload["template_components"] as Array<Record<string, unknown>>)
+          : [];
 
         if (messageType !== "text" && messageType !== "template") {
           return jsonError("Unsupported message type.");
@@ -158,7 +161,11 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
                 messaging_product: "whatsapp",
                 to: toPhone,
                 type: "template",
-                template: { name: templateName, language: { code: templateLanguage } },
+                template: {
+                  name: templateName,
+                  language: { code: templateLanguage },
+                  ...(templateComponents.length ? { components: templateComponents } : {}),
+                },
               }
             : {
                 messaging_product: "whatsapp",

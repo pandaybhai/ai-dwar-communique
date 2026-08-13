@@ -7,7 +7,9 @@ export type ActivityAction =
   | "member.invited"
   | "invitation.accepted"
   | "conversation_assigned"
-  | "conversation_closed";
+  | "conversation_closed"
+  | "template_created"
+  | "template_synced";
 
 /**
  * Append-only activity logging. Never pass message contents or credentials —

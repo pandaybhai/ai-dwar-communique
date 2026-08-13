@@ -209,6 +209,34 @@ export function InboxView() {
     return true;
   };
 
+  const handleSendTemplate = async (payload: {
+    template_name: string;
+    template_language: string;
+    template_components: Array<Record<string, unknown>>;
+  }): Promise<boolean> => {
+    if (!orgId || !activeConversation) return false;
+    setSending(true);
+    const { error: sendError } = await callApi<{ message_id: string }>(
+      "/api/whatsapp/send-message",
+      {
+        body: {
+          organization_id: orgId,
+          conversation_id: activeConversation.id,
+          message_type: "template",
+          ...payload,
+        },
+      },
+    );
+    setSending(false);
+    if (sendError) {
+      toast.error(sendError);
+      return false;
+    }
+    toast.success("Template sent.");
+    await Promise.all([openRefresh(activeConversation.id), loadConversations()]);
+    return true;
+  };
+
   const openRefresh = async (id: string) => {
     const { data } = await aidwar
       .from("messages")
@@ -393,6 +421,8 @@ export function InboxView() {
               loading={threadLoading}
               sending={sending}
               onSend={handleSend}
+              onSendTemplate={handleSendTemplate}
+              organizationId={orgId}
               onBack={() => setActiveId(null)}
               onAssign={(id) => void handleAssign(id)}
               onToggleStatus={() => void handleToggleStatus()}

@@ -27,6 +27,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  TemplatePickerDialog,
+  type TemplateSendPayload,
+} from "@/components/templates/template-picker-dialog";
+import {
   clockTime,
   contactLabel,
   dayLabel,
@@ -95,6 +99,8 @@ export function ChatThread({
   loading,
   sending,
   onSend,
+  onSendTemplate,
+  organizationId,
   onBack,
   onAssign,
   onToggleStatus,
@@ -105,11 +111,14 @@ export function ChatThread({
   loading: boolean;
   sending: boolean;
   onSend: (text: string) => Promise<boolean>;
+  onSendTemplate: (payload: TemplateSendPayload) => Promise<boolean>;
+  organizationId: string | null;
   onBack: () => void;
   onAssign: (userId: string | null) => void;
   onToggleStatus: () => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const open = withinWindow(conversation.last_customer_message_at);
   const label = contactLabel(conversation.contact);
@@ -240,12 +249,30 @@ export function ChatThread({
             </Button>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>Outside the 24-hour window — send a template instead.</p>
+          <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 sm:flex-row sm:items-center sm:justify-between dark:text-amber-400">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>Outside the 24-hour window — send a template instead.</p>
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0 rounded-full"
+              onClick={() => setPickerOpen(true)}
+            >
+              <MessageSquareText className="mr-2 h-4 w-4" />
+              Send a template
+            </Button>
           </div>
         )}
       </div>
+
+      <TemplatePickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        organizationId={organizationId}
+        sending={sending}
+        onSend={onSendTemplate}
+      />
     </div>
   );
 }
