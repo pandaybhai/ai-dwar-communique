@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { supabase } from "@/integrations/supabase/client";
 
 const waitlistSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100, "Name is too long"),
@@ -27,14 +28,14 @@ const waitlistSchema = z.object({
 
 type Errors = Partial<Record<keyof z.infer<typeof waitlistSchema>, string>>;
 
-// NOTE: submissions are stored locally for now. Wire this up to a waitlist
-// table on the backend when one is connected.
 async function submitWaitlist(values: z.infer<typeof waitlistSchema>) {
-  if (typeof window === "undefined") return;
-  const key = "aidwar_waitlist";
-  const existing = JSON.parse(window.localStorage.getItem(key) ?? "[]");
-  existing.push({ ...values, submittedAt: new Date().toISOString() });
-  window.localStorage.setItem(key, JSON.stringify(existing));
+  const { error } = await supabase.from("waitlist_signups").insert({
+    name: values.name,
+    business_name: values.business,
+    email: values.email,
+    phone: values.phone,
+  });
+  if (error) throw error;
 }
 
 export function WaitlistDialog({ trigger }: { trigger: ReactNode }) {
