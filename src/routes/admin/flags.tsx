@@ -34,27 +34,47 @@ function AdminFlags() {
   const [newName, setNewName] = useState("");
   const [newDefault, setNewDefault] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [orgQuery, setOrgQuery] = useState("");
+  const [orgSearch, setOrgSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setOrgSearch(orgQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [orgQuery]);
 
   const load = useCallback(async () => {
     setError(null);
-    const [{ data: f, error: err }, { data: o }, { data: ov }] = await Promise.all([
+    let orgQ = aidwar.from("organizations").select("id, name").order("name").limit(50);
+    if (orgSearch) orgQ = orgQ.or(`name.ilike.%${orgSearch}%,slug.ilike.%${orgSearch}%`);
+
+    const [{ data: f, error: err }, { data: o }] = await Promise.all([
       aidwar.from("feature_flags").select("id, key, name, description, default_enabled").order("key"),
-      aidwar.from("organizations").select("id, name").order("name"),
-      aidwar.from("organization_feature_overrides").select("organization_id, flag_key, enabled"),
+      orgQ,
     ]);
     if (err) {
       setError("We couldn't load feature flags. Please refresh.");
       setFlags([]);
       return;
     }
+    const orgRows = (o ?? []) as OrgRow[];
     setFlags((f ?? []) as FlagRow[]);
-    setOrgs((o ?? []) as OrgRow[]);
-    setOverrides((ov ?? []) as Override[]);
-  }, []);
+    setOrgs(orgRows);
+
+    if (orgRows.length > 0) {
+      const { data: ov } = await aidwar
+        .from("organization_feature_overrides")
+        .select("organization_id, flag_key, enabled")
+        .in("organization_id", orgRows.map((r) => r.id));
+      setOverrides((ov ?? []) as Override[]);
+    } else {
+      setOverrides([]);
+    }
+  }, [orgSearch]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
 
   async function createFlag(e: React.FormEvent) {
     e.preventDefault();
