@@ -30,10 +30,10 @@ CREATE POLICY "org members read templates"
 DROP POLICY IF EXISTS "org admins insert templates" ON public.message_templates;
 CREATE POLICY "org admins insert templates"
   ON public.message_templates FOR INSERT TO authenticated
-  WITH CHECK (public.has_org_role(organization_id, 'admin'));
+  WITH CHECK ((public.has_org_role(organization_id, 'owner') OR public.has_org_role(organization_id, 'admin')));
 
 DROP POLICY IF EXISTS "org admins update templates" ON public.message_templates;
 CREATE POLICY "org admins update templates"
   ON public.message_templates FOR UPDATE TO authenticated
-  USING (public.has_org_role(organization_id, 'admin'))
-  WITH CHECK (public.has_org_role(organization_id, 'admin'));
+  USING ((public.has_org_role(organization_id, 'owner') OR public.has_org_role(organization_id, 'admin')))
+  WITH CHECK ((public.has_org_role(organization_id, 'owner') OR public.has_org_role(organization_id, 'admin')));
