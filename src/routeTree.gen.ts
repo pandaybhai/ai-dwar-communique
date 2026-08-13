@@ -16,6 +16,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppContactsRouteImport } from './routes/app/contacts'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
 
 const IndexRoute = IndexRouteImport.update({
@@ -53,6 +54,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppContactsRoute = AppContactsRouteImport.update({
+  id: '/contacts',
+  path: '/contacts',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppInboxRoute = AppInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
@@ -66,6 +72,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/': typeof AppIndexRoute
 }
@@ -75,6 +82,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
   '/app': typeof AppIndexRoute
 }
@@ -86,6 +94,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/': typeof AppIndexRoute
 }
@@ -98,10 +107,19 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/app/contacts'
     | '/app/inbox'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/privacy' | '/signup' | '/terms' | '/app/inbox' | '/app'
+  to:
+    | '/'
+    | '/login'
+    | '/privacy'
+    | '/signup'
+    | '/terms'
+    | '/app/contacts'
+    | '/app/inbox'
+    | '/app'
   id:
     | '__root__'
     | '/'
@@ -110,6 +128,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/app/contacts'
     | '/app/inbox'
     | '/app/'
   fileRoutesById: FileRoutesById
@@ -174,6 +193,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/contacts': {
+      id: '/app/contacts'
+      path: '/contacts'
+      fullPath: '/app/contacts'
+      preLoaderRoute: typeof AppContactsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/inbox': {
       id: '/app/inbox'
       path: '/inbox'
@@ -185,11 +211,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteRouteChildren {
+  AppContactsRoute: typeof AppContactsRoute
   AppInboxRoute: typeof AppInboxRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppContactsRoute: AppContactsRoute,
   AppInboxRoute: AppInboxRoute,
   AppIndexRoute: AppIndexRoute,
 }
