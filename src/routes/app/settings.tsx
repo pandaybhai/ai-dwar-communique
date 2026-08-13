@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Loader2, MessageCircle, UserPlus, Users } from "lucide-react";
+import { Check, Copy, Loader2, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { ErrorState, PageHeader } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import { useOrg, type OrgRole } from "@/lib/org-context";
+import { WhatsAppTab } from "@/components/whatsapp-settings";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
@@ -337,21 +338,3 @@ function TeamTab() {
   );
 }
 
-function WhatsAppTab() {
-  return (
-    <Card>
-      <div className="flex items-start gap-4">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <MessageCircle className="h-5 w-5" />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Connect WhatsApp — coming soon</h2>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            You'll connect your WhatsApp Business account through the official Meta signup flow, right here. We'll
-            let you know the moment it's ready.
-          </p>
-        </div>
-      </div>
-    </Card>
-  );
-}
