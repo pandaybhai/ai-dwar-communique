@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ErrorState } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
+import { normalizePhone } from "@/lib/phone";
 import { callApi } from "@/lib/whatsapp-client";
 import { useOrg } from "@/lib/org-context";
 
@@ -320,7 +321,7 @@ function TestConsole({ orgId }: { orgId: string }) {
     const { data, error } = await callApi<SendResult>("/api/whatsapp/send-message", {
       body: {
         organization_id: orgId,
-        phone: phone.trim(),
+        phone: normalizePhone(phone),
         message_type: mode,
         ...(mode === "template"
           ? { template_name: "hello_world", template_language: "en_US" }
