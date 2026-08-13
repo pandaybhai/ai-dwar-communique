@@ -65,8 +65,7 @@ export function WaitlistDialog({ trigger }: { trigger: ReactNode }) {
       toast.success("You're on the list", {
         description: "We'll reach out at " + parsed.data.email + " with your early access invite.",
       });
-    } catch (err) {
-      console.error("waitlist error", err);
+    } catch {
       toast.error("Something went wrong. Please try again.");
     } finally {
       setPending(false);
