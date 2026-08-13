@@ -14,6 +14,7 @@ import {
   Workflow,
   Building2,
   Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -30,20 +31,22 @@ import { useOrg } from "@/lib/org-context";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { to: "/app/inbox", label: "Inbox", icon: Inbox },
-  { to: "/app/contacts", label: "Contacts", icon: Contact },
-  { to: "/app/campaigns", label: "Campaigns", icon: Megaphone },
-  { to: "/app/templates", label: "Templates", icon: MessageSquareText },
-  { to: "/app/automations", label: "Automations", icon: Workflow },
-  { to: "/app/analytics", label: "Analytics", icon: BarChart3 },
-  { to: "/app/settings", label: "Settings", icon: Settings },
+  { to: "/app/inbox", label: "Inbox", icon: Inbox, flag: "inbox" },
+  { to: "/app/contacts", label: "Contacts", icon: Contact, flag: null },
+  { to: "/app/campaigns", label: "Campaigns", icon: Megaphone, flag: "campaigns" },
+  { to: "/app/templates", label: "Templates", icon: MessageSquareText, flag: "templates" },
+  { to: "/app/automations", label: "Automations", icon: Workflow, flag: "automations" },
+  { to: "/app/analytics", label: "Analytics", icon: BarChart3, flag: "analytics" },
+  { to: "/app/settings", label: "Settings", icon: Settings, flag: null },
 ] as const;
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { isFeatureEnabled, flagsLoading } = useOrg();
+  const items = NAV.filter((item) => !item.flag || flagsLoading || isFeatureEnabled(item.flag));
   return (
     <nav className="space-y-1">
-      {NAV.map((item) => {
+      {items.map((item) => {
         const activeItem = pathname === item.to || pathname.startsWith(`${item.to}/`);
         return (
           <Link
@@ -109,7 +112,7 @@ function OrgSwitcher() {
 }
 
 function UserMenu() {
-  const { profile, active } = useOrg();
+  const { profile, active, isSuperAdmin } = useOrg();
   const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
   const name = profile?.full_name?.trim() || profile?.email || "Your account";
@@ -152,6 +155,13 @@ function UserMenu() {
         <DropdownMenuItem asChild>
           <Link to="/app/settings">Settings</Link>
         </DropdownMenuItem>
+        {isSuperAdmin ? (
+          <DropdownMenuItem asChild>
+            <Link to="/admin/organizations">
+              <ShieldCheck className="mr-2 h-4 w-4" /> Super Admin
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onSelect={signOut} disabled={signingOut}>
           {signingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
           Log out
