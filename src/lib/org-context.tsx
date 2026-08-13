@@ -1,0 +1,109 @@
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { aidwar } from "@/integrations/aidwar/client";
+
+export type OrgRole = "owner" | "admin" | "agent";
+
+export type Organization = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  timezone: string;
+};
+
+export type Membership = { role: OrgRole; organization: Organization };
+
+export type Profile = { id: string; full_name: string | null; email: string | null };
+
+type OrgContextValue = {
+  loading: boolean;
+  error: string | null;
+  memberships: Membership[];
+  active: Membership | null;
+  profile: Profile | null;
+  setActiveOrg: (organizationId: string) => void;
+  reload: () => Promise<void>;
+  canManage: boolean;
+};
+
+const OrgContext = createContext<OrgContextValue | null>(null);
+const STORAGE_KEY = "aidwar.active_org";
+
+export function OrgProvider({ children }: { children: ReactNode }) {
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    const { data: userData } = await aidwar.auth.getUser();
+    const uid = userData.user?.id;
+    if (!uid) {
+      setLoading(false);
+      return;
+    }
+
+    const [{ data: rows, error: memberErr }, { data: prof }] = await Promise.all([
+      aidwar
+        .from("organization_members")
+        .select("role, organizations(id, name, slug, status, timezone)")
+        .eq("user_id", uid)
+        .order("created_at", { ascending: true }),
+      aidwar.from("profiles").select("id, full_name, email").eq("id", uid).maybeSingle(),
+    ]);
+
+    if (memberErr) {
+      setError("We couldn't load your workspaces. Please refresh.");
+      setLoading(false);
+      return;
+    }
+
+    const list: Membership[] = ((rows ?? []) as { role: OrgRole; organizations: Organization | null }[])
+      .filter((r) => r.organizations)
+      .map((r) => ({ role: r.role, organization: r.organizations as Organization }));
+
+    setMemberships(list);
+    setProfile((prof as Profile) ?? { id: uid, full_name: null, email: userData.user?.email ?? null });
+
+    const stored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
+    const next = list.find((m) => m.organization.id === stored) ?? list[0] ?? null;
+    setActiveId(next?.organization.id ?? null);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const setActiveOrg = useCallback((organizationId: string) => {
+    setActiveId(organizationId);
+    if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, organizationId);
+  }, []);
+
+  const active = memberships.find((m) => m.organization.id === activeId) ?? null;
+
+  return (
+    <OrgContext.Provider
+      value={{
+        loading,
+        error,
+        memberships,
+        active,
+        profile,
+        setActiveOrg,
+        reload: load,
+        canManage: active?.role === "owner" || active?.role === "admin",
+      }}
+    >
+      {children}
+    </OrgContext.Provider>
+  );
+}
+
+export function useOrg() {
+  const ctx = useContext(OrgContext);
+  if (!ctx) throw new Error("useOrg must be used inside OrgProvider");
+  return ctx;
+}
