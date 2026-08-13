@@ -12,8 +12,10 @@ const schema = z.object({
 export const joinWaitlist = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => schema.parse(data))
   .handler(async ({ data }) => {
+    const raw = process.env["AIDWAR_SUPABASE_URL"]!;
+    const baseUrl = new URL(raw).origin;
     const supabase = createClient(
-      process.env["AIDWAR_SUPABASE_URL"]!,
+      baseUrl,
       process.env["AIDWAR_SUPABASE_ANON_KEY"]!,
       { auth: { storage: undefined, persistSession: false, autoRefreshToken: false } },
     );
