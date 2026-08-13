@@ -60,9 +60,16 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const list: Membership[] = ((rows ?? []) as { role: OrgRole; organizations: Organization | null }[])
-      .filter((r) => r.organizations)
-      .map((r) => ({ role: r.role, organization: r.organizations as Organization }));
+    const list: Membership[] = ((rows ?? []) as unknown as {
+      role: OrgRole;
+      organizations: Organization | Organization[] | null;
+    }[])
+      .map((r) => ({
+        role: r.role,
+        organization: (Array.isArray(r.organizations) ? r.organizations[0] : r.organizations) ?? null,
+      }))
+      .filter((m): m is Membership => m.organization !== null);
+
 
     setMemberships(list);
     setProfile((prof as Profile) ?? { id: uid, full_name: null, email: userData.user?.email ?? null });
