@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { aidwar } from "@/integrations/aidwar/client";
+import { logActivity } from "@/lib/activity";
 
 const PERKS = [
   { icon: Sparkles, title: "AI campaigns", copy: "Draft and launch campaigns with AI in minutes." },
@@ -24,12 +25,13 @@ export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
     }
     setPending(true);
     setError(null);
-    const { error: err } = await aidwar.rpc("create_organization", { org_name: name.trim() });
+    const { data: newOrgId, error: err } = await aidwar.rpc("create_organization", { org_name: name.trim() });
     setPending(false);
     if (err) {
       setError("We couldn't create your workspace. Please try again.");
       return;
     }
+    await logActivity("organization.created", (newOrgId as string) ?? null, { name: name.trim() });
     onCreated();
   }
 
