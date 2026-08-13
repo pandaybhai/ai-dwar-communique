@@ -123,7 +123,7 @@ function Field({
   label,
   error,
   ...props
-}: React.ComponentProps<typeof Input> & { id: string; label: string; error?: string }) {
+}: React.ComponentProps<typeof Input> & { id: string; label: string; error?: string | undefined }) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
