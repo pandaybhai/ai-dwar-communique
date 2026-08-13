@@ -12,6 +12,10 @@ const DESCRIPTION = "Log in to your AiDwar workspace to manage campaigns, contac
 
 export const Route = createFileRoute("/login")({
   ssr: false,
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+    const r = search["redirect"];
+    return typeof r === "string" && r.startsWith("/") ? { redirect: r } : {};
+  },
   head: () => ({
     meta: [
       { title: TITLE },
@@ -25,14 +29,17 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { redirect } = Route.useSearch();
+  const goNext = () =>
+    redirect ? navigate({ href: redirect, replace: true }) : navigate({ to: "/app", replace: true });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     aidwar.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/app", replace: true });
+      if (data.session) void goNext();
     });
-  }, [navigate]);
+  }, [redirect]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -48,7 +55,7 @@ function LoginPage() {
       setError(err.message);
       return;
     }
-    navigate({ to: "/app", replace: true });
+    void goNext();
   }
 
   return (

@@ -16,6 +16,14 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
+import { Route as AppAutomationsRouteImport } from './routes/app/automations'
+import { Route as AppCampaignsRouteImport } from './routes/app/campaigns'
+import { Route as AppContactsRouteImport } from './routes/app/contacts'
+import { Route as AppInboxRouteImport } from './routes/app/inbox'
+import { Route as AppSettingsRouteImport } from './routes/app/settings'
+import { Route as AppTemplatesRouteImport } from './routes/app/templates'
+import { Route as JoinTokenRouteImport } from './routes/join.$token'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,6 +60,46 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAutomationsRoute = AppAutomationsRouteImport.update({
+  id: '/automations',
+  path: '/automations',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppCampaignsRoute = AppCampaignsRouteImport.update({
+  id: '/campaigns',
+  path: '/campaigns',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppContactsRoute = AppContactsRouteImport.update({
+  id: '/contacts',
+  path: '/contacts',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppInboxRoute = AppInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppTemplatesRoute = AppTemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const JoinTokenRoute = JoinTokenRouteImport.update({
+  id: '/join/$token',
+  path: '/join/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -60,6 +108,14 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/app/analytics': typeof AppAnalyticsRoute
+  '/app/automations': typeof AppAutomationsRoute
+  '/app/campaigns': typeof AppCampaignsRoute
+  '/app/contacts': typeof AppContactsRoute
+  '/app/inbox': typeof AppInboxRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/templates': typeof AppTemplatesRoute
+  '/join/$token': typeof JoinTokenRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
@@ -68,6 +124,14 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/app/analytics': typeof AppAnalyticsRoute
+  '/app/automations': typeof AppAutomationsRoute
+  '/app/campaigns': typeof AppCampaignsRoute
+  '/app/contacts': typeof AppContactsRoute
+  '/app/inbox': typeof AppInboxRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/templates': typeof AppTemplatesRoute
+  '/join/$token': typeof JoinTokenRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -78,14 +142,50 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/app/analytics': typeof AppAnalyticsRoute
+  '/app/automations': typeof AppAutomationsRoute
+  '/app/campaigns': typeof AppCampaignsRoute
+  '/app/contacts': typeof AppContactsRoute
+  '/app/inbox': typeof AppInboxRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/templates': typeof AppTemplatesRoute
+  '/join/$token': typeof JoinTokenRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/app' | '/login' | '/privacy' | '/signup' | '/terms' | '/app/'
+    | '/'
+    | '/app'
+    | '/login'
+    | '/privacy'
+    | '/signup'
+    | '/terms'
+    | '/app/analytics'
+    | '/app/automations'
+    | '/app/campaigns'
+    | '/app/contacts'
+    | '/app/inbox'
+    | '/app/settings'
+    | '/app/templates'
+    | '/join/$token'
+    | '/app/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/privacy' | '/signup' | '/terms' | '/app'
+  to:
+    | '/'
+    | '/login'
+    | '/privacy'
+    | '/signup'
+    | '/terms'
+    | '/app/analytics'
+    | '/app/automations'
+    | '/app/campaigns'
+    | '/app/contacts'
+    | '/app/inbox'
+    | '/app/settings'
+    | '/app/templates'
+    | '/join/$token'
+    | '/app'
   id:
     | '__root__'
     | '/'
@@ -94,6 +194,14 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/app/analytics'
+    | '/app/automations'
+    | '/app/campaigns'
+    | '/app/contacts'
+    | '/app/inbox'
+    | '/app/settings'
+    | '/app/templates'
+    | '/join/$token'
     | '/app/'
   fileRoutesById: FileRoutesById
 }
@@ -104,6 +212,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   SignupRoute: typeof SignupRoute
   TermsRoute: typeof TermsRoute
+  JoinTokenRoute: typeof JoinTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -157,14 +266,84 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/analytics': {
+      id: '/app/analytics'
+      path: '/analytics'
+      fullPath: '/app/analytics'
+      preLoaderRoute: typeof AppAnalyticsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/automations': {
+      id: '/app/automations'
+      path: '/automations'
+      fullPath: '/app/automations'
+      preLoaderRoute: typeof AppAutomationsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/campaigns': {
+      id: '/app/campaigns'
+      path: '/campaigns'
+      fullPath: '/app/campaigns'
+      preLoaderRoute: typeof AppCampaignsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/contacts': {
+      id: '/app/contacts'
+      path: '/contacts'
+      fullPath: '/app/contacts'
+      preLoaderRoute: typeof AppContactsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/inbox': {
+      id: '/app/inbox'
+      path: '/inbox'
+      fullPath: '/app/inbox'
+      preLoaderRoute: typeof AppInboxRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/templates': {
+      id: '/app/templates'
+      path: '/templates'
+      fullPath: '/app/templates'
+      preLoaderRoute: typeof AppTemplatesRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/join/$token': {
+      id: '/join/$token'
+      path: '/join/$token'
+      fullPath: '/join/$token'
+      preLoaderRoute: typeof JoinTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 interface AppRouteRouteChildren {
+  AppAnalyticsRoute: typeof AppAnalyticsRoute
+  AppAutomationsRoute: typeof AppAutomationsRoute
+  AppCampaignsRoute: typeof AppCampaignsRoute
+  AppContactsRoute: typeof AppContactsRoute
+  AppInboxRoute: typeof AppInboxRoute
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppTemplatesRoute: typeof AppTemplatesRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAnalyticsRoute: AppAnalyticsRoute,
+  AppAutomationsRoute: AppAutomationsRoute,
+  AppCampaignsRoute: AppCampaignsRoute,
+  AppContactsRoute: AppContactsRoute,
+  AppInboxRoute: AppInboxRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppTemplatesRoute: AppTemplatesRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
@@ -179,6 +358,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   SignupRoute: SignupRoute,
   TermsRoute: TermsRoute,
+  JoinTokenRoute: JoinTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
