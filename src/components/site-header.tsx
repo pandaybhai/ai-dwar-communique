@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { WaitlistDialog } from "@/components/waitlist-dialog";
+import { useSession } from "@/hooks/use-session";
 
 export function SiteHeader() {
   return (
