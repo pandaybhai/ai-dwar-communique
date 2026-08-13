@@ -5,6 +5,7 @@ import { AuthShell } from "@/components/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { aidwar } from "@/integrations/aidwar/client";
+import { logActivity } from "@/lib/activity";
 
 const TITLE = "Join a workspace — AiDwar";
 const DESCRIPTION = "Accept your AiDwar team invitation and join your organization's workspace.";
@@ -52,12 +53,13 @@ function JoinPage() {
   async function join() {
     setJoining(true);
     setError(null);
-    const { error: err } = await aidwar.rpc("accept_invitation", { invite_token: token });
+    const { data: joinedOrgId, error: err } = await aidwar.rpc("accept_invitation", { invite_token: token });
     setJoining(false);
     if (err) {
       setError(err.message || "We couldn't accept this invite.");
       return;
     }
+    await logActivity("invitation.accepted", (joinedOrgId as string) ?? null, { role: preview?.role ?? null });
     navigate({ to: "/app/inbox", replace: true });
   }
 

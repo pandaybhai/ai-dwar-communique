@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AdminActivityRouteImport } from './routes/admin/activity'
+import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
+import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
+import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAutomationsRouteImport } from './routes/app/automations'
@@ -28,6 +34,11 @@ import { Route as JoinTokenRouteImport } from './routes/join.$token'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRouteRoute = AdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRouteRoute = AppRouteRouteImport.update({
@@ -54,6 +65,31 @@ const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminActivityRoute = AdminActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminFlagsRoute = AdminFlagsRouteImport.update({
+  id: '/flags',
+  path: '/flags',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminOrganizationsRoute = AdminOrganizationsRouteImport.update({
+  id: '/organizations',
+  path: '/organizations',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
@@ -103,11 +139,16 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/admin/activity': typeof AdminActivityRoute
+  '/admin/flags': typeof AdminFlagsRoute
+  '/admin/organizations': typeof AdminOrganizationsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/campaigns': typeof AppCampaignsRoute
@@ -116,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
+  '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
@@ -124,6 +166,10 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/admin/activity': typeof AdminActivityRoute
+  '/admin/flags': typeof AdminFlagsRoute
+  '/admin/organizations': typeof AdminOrganizationsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/campaigns': typeof AppCampaignsRoute
@@ -132,16 +178,22 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
+  '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/admin/activity': typeof AdminActivityRoute
+  '/admin/flags': typeof AdminFlagsRoute
+  '/admin/organizations': typeof AdminOrganizationsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/campaigns': typeof AppCampaignsRoute
@@ -150,17 +202,23 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
+  '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/app'
     | '/login'
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/admin/activity'
+    | '/admin/flags'
+    | '/admin/organizations'
+    | '/admin/users'
     | '/app/analytics'
     | '/app/automations'
     | '/app/campaigns'
@@ -169,6 +227,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
+    | '/admin/'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -177,6 +236,10 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/admin/activity'
+    | '/admin/flags'
+    | '/admin/organizations'
+    | '/admin/users'
     | '/app/analytics'
     | '/app/automations'
     | '/app/campaigns'
@@ -185,15 +248,21 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
+    | '/admin'
     | '/app'
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/app'
     | '/login'
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/admin/activity'
+    | '/admin/flags'
+    | '/admin/organizations'
+    | '/admin/users'
     | '/app/analytics'
     | '/app/automations'
     | '/app/campaigns'
@@ -202,11 +271,13 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
+    | '/admin/'
     | '/app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AppRouteRoute: typeof AppRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -222,6 +293,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -258,6 +336,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/activity': {
+      id: '/admin/activity'
+      path: '/activity'
+      fullPath: '/admin/activity'
+      preLoaderRoute: typeof AdminActivityRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/flags': {
+      id: '/admin/flags'
+      path: '/flags'
+      fullPath: '/admin/flags'
+      preLoaderRoute: typeof AdminFlagsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/organizations': {
+      id: '/admin/organizations'
+      path: '/organizations'
+      fullPath: '/admin/organizations'
+      preLoaderRoute: typeof AdminOrganizationsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     '/app/': {
       id: '/app/'
@@ -325,6 +438,26 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AdminRouteRouteChildren {
+  AdminActivityRoute: typeof AdminActivityRoute
+  AdminFlagsRoute: typeof AdminFlagsRoute
+  AdminOrganizationsRoute: typeof AdminOrganizationsRoute
+  AdminUsersRoute: typeof AdminUsersRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteRouteChildren: AdminRouteRouteChildren = {
+  AdminActivityRoute: AdminActivityRoute,
+  AdminFlagsRoute: AdminFlagsRoute,
+  AdminOrganizationsRoute: AdminOrganizationsRoute,
+  AdminUsersRoute: AdminUsersRoute,
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
+  AdminRouteRouteChildren,
+)
+
 interface AppRouteRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomationsRoute: typeof AppAutomationsRoute
@@ -353,6 +486,7 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRouteRoute: AdminRouteRouteWithChildren,
   AppRouteRoute: AppRouteRouteWithChildren,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,

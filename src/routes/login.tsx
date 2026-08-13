@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { aidwar } from "@/integrations/aidwar/client";
+import { logActivity } from "@/lib/activity";
 
 const TITLE = "Log in — AiDwar";
 const DESCRIPTION = "Log in to your AiDwar workspace to manage campaigns, contacts and conversations.";
@@ -55,6 +56,7 @@ function LoginPage() {
       setError(err.message);
       return;
     }
+    await logActivity("user.logged_in", null, { method: "password" });
     void goNext();
   }
 

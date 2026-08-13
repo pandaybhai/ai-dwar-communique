@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ErrorState, PageHeader } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
+import { logActivity } from "@/lib/activity";
 import { useOrg, type OrgRole } from "@/lib/org-context";
 
 export const Route = createFileRoute("/app/settings")({
@@ -95,6 +96,7 @@ function GeneralTab() {
       toast.error("We couldn't save your changes. Please try again.");
       return;
     }
+    await logActivity("organization.updated", active.organization.id, { field: "name" });
     toast.success("Workspace updated");
     await reload();
   }
@@ -205,6 +207,7 @@ function TeamTab() {
       return;
     }
     setEmail("");
+    await logActivity("member.invited", orgId, { role });
     toast.success("Invite created — copy the link and share it.");
     await load();
   }
