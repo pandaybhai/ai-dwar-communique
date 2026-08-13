@@ -105,7 +105,6 @@ export function graphErrorMessage(body: Record<string, unknown>): string {
   return msg ?? "The messaging provider rejected the request.";
 }
 
-/** Normalises a phone number to digits only (Meta wants E.164 without '+'). */
-export function normalisePhone(input: string): string {
-  return input.replace(/[^\d]/g, "");
-}
+/** Re-exported from the shared helper so every write path agrees. */
+export { normalizePhone, toWaId } from "@/lib/phone";
+
