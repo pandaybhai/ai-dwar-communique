@@ -152,7 +152,7 @@ export function PhoneDemo() {
             className={cn(
               "absolute flex items-center gap-3 rounded-2xl border border-border bg-card/95 px-4 py-3 shadow-[var(--shadow-card)] backdrop-blur transition-all duration-700 ease-out motion-reduce:transition-none",
               floats > i ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
-              i === 0 && "-left-28 top-10 animate-[float_6s_ease-in-out_infinite]",
+              i === 0 && "-left-32 top-24 animate-[float_6s_ease-in-out_infinite]",
               i === 1 && "-right-24 top-40 animate-[float_7s_ease-in-out_infinite_0.6s]",
               i === 2 && "-left-24 bottom-12 animate-[float_6.5s_ease-in-out_infinite_1.2s]",
             )}
