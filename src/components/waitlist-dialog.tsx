@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { supabase } from "@/integrations/supabase/client";
 
 const waitlistSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100, "Name is too long"),
