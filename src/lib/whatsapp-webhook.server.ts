@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { normalizePhone, toWaId } from "@/lib/phone";
 
 /** Service-role client for the AiDwar (Mumbai) backend. Server-only. */
 export function getServiceClient(): SupabaseClient {
@@ -119,7 +120,7 @@ export async function processWebhookPayload(
         // ---- inbound messages ----
         const contactsMeta = (value["contacts"] as AnyRecord[] | undefined) ?? [];
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
-          const waId = String(msg["from"] ?? "");
+          const waId = toWaId(msg["from"] as string | undefined);
           if (!waId) continue;
           const profile = contactsMeta.find((c) => c["wa_id"] === waId);
           const profileName =
@@ -131,7 +132,7 @@ export async function processWebhookPayload(
             .upsert(
               {
                 organization_id: orgId,
-                phone: waId,
+                phone: normalizePhone(waId),
                 wa_id: waId,
                 ...(profileName ? { name: profileName } : {}),
                 updated_at: new Date().toISOString(),
