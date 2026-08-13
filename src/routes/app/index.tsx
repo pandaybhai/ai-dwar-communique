@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { aidwar } from "@/integrations/aidwar/client";
+import { useOrganization } from "@/hooks/use-organization";
+import { OrgOnboarding } from "@/components/org-onboarding";
 
 type Profile = { full_name: string | null; email: string | null };
 
@@ -24,6 +26,7 @@ function AppHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const { membership, loading: orgLoading, error: orgError, reload } = useOrganization();
 
   useEffect(() => {
     let active = true;
@@ -52,13 +55,23 @@ function AppHome() {
     navigate({ to: "/login", replace: true });
   }
 
+  const busy = loading || orgLoading;
+  const failed = error ?? orgError;
+
   return (
     <div className="min-h-screen bg-muted/30">
       <header className="border-b border-border/70 bg-background">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-          <span className="text-xl font-bold tracking-tight text-foreground">
-            Ai<span className="text-primary">Dwar</span>
-          </span>
+          <div className="flex items-baseline gap-3">
+            <span className="text-xl font-bold tracking-tight text-foreground">
+              Ai<span className="text-primary">Dwar</span>
+            </span>
+            {membership ? (
+              <span className="hidden text-sm text-muted-foreground sm:inline">
+                {membership.organization.name}
+              </span>
+            ) : null}
+          </div>
           <Button variant="outline" size="sm" className="rounded-full" onClick={signOut} disabled={signingOut}>
             {signingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
             Log out
@@ -67,22 +80,24 @@ function AppHome() {
       </header>
 
       <main className="mx-auto max-w-6xl px-5 py-12 sm:px-8">
-        {loading ? (
+        {busy ? (
           <div className="space-y-4">
             <div className="h-8 w-64 animate-pulse rounded-lg bg-muted" />
             <div className="h-32 w-full animate-pulse rounded-2xl bg-muted" />
           </div>
-        ) : error ? (
+        ) : failed ? (
           <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-sm text-destructive">
-            {error}
+            {failed}
           </div>
+        ) : !membership ? (
+          <OrgOnboarding onCreated={reload} />
         ) : (
           <>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               Welcome{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}
             </h1>
             <p className="mt-2 text-muted-foreground">
-              Your workspace is ready. Campaigns, contacts and the shared inbox arrive next.
+              {membership.organization.name} is ready. Campaigns, contacts and the shared inbox arrive next.
             </p>
             <div className="mt-8 rounded-2xl border border-border/70 bg-card p-8 text-center shadow-sm">
               <p className="text-base font-semibold text-foreground">Nothing here yet</p>
@@ -97,3 +112,4 @@ function AppHome() {
     </div>
   );
 }
+
