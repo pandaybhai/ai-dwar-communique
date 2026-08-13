@@ -198,10 +198,23 @@ function AdminFlags() {
               <p className="mt-1 text-xs text-muted-foreground">
                 Toggling sets an explicit override. Use Reset to fall back to the global default.
               </p>
+              <div className="relative mt-4 max-w-sm">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={orgQuery}
+                  onChange={(e) => setOrgQuery(e.target.value)}
+                  placeholder="Find an organization…"
+                  className="pl-9"
+                  aria-label="Search organizations"
+                />
+              </div>
             </header>
             {orgs.length === 0 ? (
-              <p className="px-5 py-8 text-center text-sm text-muted-foreground">No organizations to configure yet.</p>
+              <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+                {orgSearch ? `No organizations match “${orgSearch}”.` : "No organizations to configure yet."}
+              </p>
             ) : (
+
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
