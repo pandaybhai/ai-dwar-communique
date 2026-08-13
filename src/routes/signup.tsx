@@ -12,11 +12,10 @@ const DESCRIPTION = "Create an AiDwar account and start building AI-powered camp
 
 export const Route = createFileRoute("/signup")({
   ssr: false,
-  validateSearch: (search: Record<string, unknown>) => ({
-    redirect: typeof search["redirect"] === "string" && (search["redirect"] as string).startsWith("/")
-      ? (search["redirect"] as string)
-      : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+    const r = search["redirect"];
+    return typeof r === "string" && r.startsWith("/") ? { redirect: r } : {};
+  },
   head: () => ({
     meta: [
       { title: TITLE },
