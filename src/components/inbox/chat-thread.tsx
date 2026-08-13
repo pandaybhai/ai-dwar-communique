@@ -88,14 +88,6 @@ function Bubble({ message }: { message: MessageRow }) {
           {outbound ? <StatusTicks message={message} /> : null}
         </div>
       </div>
-
-      <TemplatePickerDialog
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        organizationId={organizationId}
-        sending={sending}
-        onSend={onSendTemplate}
-      />
     </div>
   );
 }
