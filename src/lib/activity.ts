@@ -5,7 +5,9 @@ export type ActivityAction =
   | "organization.created"
   | "organization.updated"
   | "member.invited"
-  | "invitation.accepted";
+  | "invitation.accepted"
+  | "conversation_assigned"
+  | "conversation_closed";
 
 /**
  * Append-only activity logging. Never pass message contents or credentials —
