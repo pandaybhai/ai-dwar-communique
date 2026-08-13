@@ -265,3 +265,37 @@ export async function processWebhookPayload(
       .eq("id", eventId);
   }
 }
+
+/**
+ * Catch-up processing: re-run processing for stored events that have a valid
+ * signature and were never processed. Used by each incoming webhook (for
+ * events older than `olderThanSeconds`) and after a WhatsApp account is
+ * connected (with `olderThanSeconds: 0`, so earlier messages get routed).
+ */
+export async function reprocessUnprocessedEvents(
+  supabase: SupabaseClient,
+  options: { olderThanSeconds?: number; limit?: number } = {},
+): Promise<number> {
+  const olderThanSeconds = options.olderThanSeconds ?? 60;
+  const limit = options.limit ?? 50;
+  const cutoff = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
+
+  const { data: events } = await supabase
+    .from("webhook_events")
+    .select("id, payload")
+    .is("processed_at", null)
+    .eq("signature_valid", true)
+    .lte("received_at", cutoff)
+    .order("received_at", { ascending: true })
+    .limit(limit);
+
+  if (!events?.length) return 0;
+  for (const event of events) {
+    await processWebhookPayload(
+      supabase,
+      event.id as string,
+      (event.payload ?? {}) as AnyRecord,
+    );
+  }
+  return events.length;
+}
