@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Loader2, MessageCircle, UserPlus, Users } from "lucide-react";
+import { Check, Copy, Loader2, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { ErrorState, PageHeader } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import { useOrg, type OrgRole } from "@/lib/org-context";
+import { WhatsAppTab } from "@/components/whatsapp-settings";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
