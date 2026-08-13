@@ -77,7 +77,7 @@ export function TemplatePickerDialog({
       ? [
           {
             type: "body",
-            parameters: variables.map((v) => ({ type: "text", text: values[v].trim() })),
+            parameters: variables.map((v) => ({ type: "text", text: (values[v] ?? "").trim() })),
           },
         ]
       : [];
