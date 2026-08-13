@@ -13,7 +13,8 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           graphFetch,
           graphErrorMessage,
           logServerActivity,
-          normalisePhone,
+          normalizePhone,
+          toWaId,
         } = await import("@/lib/whatsapp-api.server");
 
         let payload: Record<string, unknown>;
@@ -71,7 +72,7 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           last_customer_message_at: string | null;
         };
         let conversation: Conv | null = null;
-        let toPhone = normalisePhone(rawPhone);
+        let toPhone = toWaId(rawPhone);
 
         if (conversationId) {
           const { data: conv } = await supabase
@@ -88,7 +89,7 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
               .select("phone, wa_id")
               .eq("id", conv.contact_id)
               .maybeSingle();
-            toPhone = normalisePhone(contact?.wa_id || contact?.phone || toPhone);
+            toPhone = toWaId(contact?.wa_id || contact?.phone || toPhone);
           }
         }
 
@@ -99,7 +100,7 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
         // Contact upsert when sending to a raw number.
         let contactId = conversation?.contact_id ?? null;
         if (!contactId) {
-          const phoneE164 = `+${toPhone}`;
+          const phoneE164 = normalizePhone(toPhone);
           const { data: contact } = await supabase
             .from("contacts")
             .upsert(
