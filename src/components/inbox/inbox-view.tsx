@@ -227,7 +227,10 @@ export function InboxView() {
       .from("conversations")
       .update({ assigned_to: assignee })
       .eq("id", activeConversation.id);
-    if (err) return toast.error("We couldn't update the assignment. Please try again.");
+    if (err) {
+      toast.error("We couldn't update the assignment. Please try again.");
+      return;
+    }
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_to: assignee } : c)),
     );
@@ -245,7 +248,10 @@ export function InboxView() {
       .from("conversations")
       .update({ status: next })
       .eq("id", activeConversation.id);
-    if (err) return toast.error("We couldn't update this conversation. Please try again.");
+    if (err) {
+      toast.error("We couldn't update this conversation. Please try again.");
+      return;
+    }
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, status: next } : c)),
     );
