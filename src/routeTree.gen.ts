@@ -16,9 +16,12 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
+import { Route as AppAutomationsRouteImport } from './routes/app/automations'
 import { Route as AppCampaignsRouteImport } from './routes/app/campaigns'
 import { Route as AppContactsRouteImport } from './routes/app/contacts'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
+import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -55,6 +58,16 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAutomationsRoute = AppAutomationsRouteImport.update({
+  id: '/automations',
+  path: '/automations',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppCampaignsRoute = AppCampaignsRouteImport.update({
   id: '/campaigns',
   path: '/campaigns',
@@ -70,6 +83,11 @@ const AppInboxRoute = AppInboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppTemplatesRoute = AppTemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -78,9 +96,12 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/app/analytics': typeof AppAnalyticsRoute
+  '/app/automations': typeof AppAutomationsRoute
   '/app/campaigns': typeof AppCampaignsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
+  '/app/templates': typeof AppTemplatesRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
@@ -89,9 +110,12 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/app/analytics': typeof AppAnalyticsRoute
+  '/app/automations': typeof AppAutomationsRoute
   '/app/campaigns': typeof AppCampaignsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
+  '/app/templates': typeof AppTemplatesRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -102,9 +126,12 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/app/analytics': typeof AppAnalyticsRoute
+  '/app/automations': typeof AppAutomationsRoute
   '/app/campaigns': typeof AppCampaignsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
+  '/app/templates': typeof AppTemplatesRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
@@ -116,9 +143,12 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/app/analytics'
+    | '/app/automations'
     | '/app/campaigns'
     | '/app/contacts'
     | '/app/inbox'
+    | '/app/templates'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -127,9 +157,12 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/app/analytics'
+    | '/app/automations'
     | '/app/campaigns'
     | '/app/contacts'
     | '/app/inbox'
+    | '/app/templates'
     | '/app'
   id:
     | '__root__'
@@ -139,9 +172,12 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/app/analytics'
+    | '/app/automations'
     | '/app/campaigns'
     | '/app/contacts'
     | '/app/inbox'
+    | '/app/templates'
     | '/app/'
   fileRoutesById: FileRoutesById
 }
@@ -205,6 +241,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/analytics': {
+      id: '/app/analytics'
+      path: '/analytics'
+      fullPath: '/app/analytics'
+      preLoaderRoute: typeof AppAnalyticsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/automations': {
+      id: '/app/automations'
+      path: '/automations'
+      fullPath: '/app/automations'
+      preLoaderRoute: typeof AppAutomationsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/campaigns': {
       id: '/app/campaigns'
       path: '/campaigns'
@@ -226,20 +276,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInboxRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/templates': {
+      id: '/app/templates'
+      path: '/templates'
+      fullPath: '/app/templates'
+      preLoaderRoute: typeof AppTemplatesRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
   }
 }
 
 interface AppRouteRouteChildren {
+  AppAnalyticsRoute: typeof AppAnalyticsRoute
+  AppAutomationsRoute: typeof AppAutomationsRoute
   AppCampaignsRoute: typeof AppCampaignsRoute
   AppContactsRoute: typeof AppContactsRoute
   AppInboxRoute: typeof AppInboxRoute
+  AppTemplatesRoute: typeof AppTemplatesRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAnalyticsRoute: AppAnalyticsRoute,
+  AppAutomationsRoute: AppAutomationsRoute,
   AppCampaignsRoute: AppCampaignsRoute,
   AppContactsRoute: AppContactsRoute,
   AppInboxRoute: AppInboxRoute,
+  AppTemplatesRoute: AppTemplatesRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
