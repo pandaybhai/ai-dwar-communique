@@ -109,14 +109,54 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
         }
 
         const { supabase, organizationId, userId } = auth;
+
+        // Best effort with Meta first: stop webhooks and revoke the token so a
+        // later re-connect starts from a clean slate. Local cleanup happens
+        // regardless — a stale token must never survive a disconnect here.
+        const { data: creds } = await supabase
+          .from("whatsapp_credentials")
+          .select("access_token")
+          .eq("organization_id", organizationId)
+          .maybeSingle();
+        const { data: accounts } = await supabase
+          .from("whatsapp_accounts")
+          .select("waba_id")
+          .eq("organization_id", organizationId)
+          .eq("status", "active");
+
+        const token = (creds?.access_token as string | undefined) ?? "";
+        let unsubscribed = false;
+        let revoked = false;
+        if (token) {
+          for (const row of accounts ?? []) {
+            const wabaId = (row as { waba_id: string | null }).waba_id;
+            if (!wabaId) continue;
+            try {
+              const res = await graphFetch(`${wabaId}/subscribed_apps`, token, { method: "DELETE" });
+              unsubscribed = unsubscribed || res.ok;
+            } catch {
+              // Meta being unreachable must not block the disconnect.
+            }
+          }
+          try {
+            const res = await graphFetch("me/permissions", token, { method: "DELETE" });
+            revoked = res.ok;
+          } catch {
+            // ignore — the token is deleted locally either way
+          }
+        }
+
         await supabase
           .from("whatsapp_accounts")
           .update({ status: "disconnected" })
           .eq("organization_id", organizationId);
         await supabase.from("whatsapp_credentials").delete().eq("organization_id", organizationId);
 
-        await logServerActivity(supabase, organizationId, userId, "whatsapp_disconnected", {});
-        return Response.json({ ok: true });
+        await logServerActivity(supabase, organizationId, userId, "whatsapp_disconnected", {
+          unsubscribed,
+          token_revoked: revoked,
+        });
+        return Response.json({ ok: true, unsubscribed, token_revoked: revoked });
       },
     },
   },
