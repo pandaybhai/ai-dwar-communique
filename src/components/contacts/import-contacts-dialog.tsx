@@ -334,31 +334,39 @@ export function ImportContactsDialog({
             <FormatTips />
 
             <div className="space-y-3">
-              {headers.map((h, i) => (
-                <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div className="w-full truncate text-sm font-medium text-foreground sm:w-48">
-                    {h || `Column ${i + 1}`}
+              {headers.map((h, i) => {
+                const key = attrKey(h, i);
+                const value = mapping[String(i)] ?? "ignore";
+                return (
+                  <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="w-full truncate text-sm font-medium text-foreground sm:w-48">
+                      {h || `Column ${i + 1}`}
+                    </div>
+                    <div className="flex flex-1 flex-col gap-1">
+                      <Select
+                        value={value}
+                        onValueChange={(v) => setMapping((prev) => ({ ...prev, [String(i)]: v }))}
+                      >
+                        <SelectTrigger className="sm:max-w-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={`attr:${key}`}>Custom attribute</SelectItem>
+                          <SelectItem value="phone">Phone (required)</SelectItem>
+                          <SelectItem value="name">Name</SelectItem>
+                          <SelectItem value="tags">Tags (comma separated)</SelectItem>
+                          <SelectItem value="ignore">Exclude this column</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {value.startsWith("attr:") ? (
+                        <p className="text-xs text-primary">→ custom attribute “{key}”</p>
+                      ) : null}
+                    </div>
                   </div>
-                  <Select
-                    value={mapping[String(i)] ?? "ignore"}
-                    onValueChange={(v) => setMapping((prev) => ({ ...prev, [String(i)]: v }))}
-                  >
-                    <SelectTrigger className="sm:max-w-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ignore">Ignore</SelectItem>
-                      <SelectItem value="phone">Phone (required)</SelectItem>
-                      <SelectItem value="name">Name</SelectItem>
-                      <SelectItem value="tags">Tags (comma separated)</SelectItem>
-                      <SelectItem value={`attr:${(h || `column_${i + 1}`).trim()}`}>
-                        Custom attribute “{(h || `column_${i + 1}`).trim()}”
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
 
             <div className="overflow-x-auto rounded-xl border border-border/70">
               <table className="w-full text-xs">
