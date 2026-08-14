@@ -42,9 +42,11 @@ const PAGE_SIZE = 25;
 export function ContactsView({
   organizationId,
   role,
+  showHeader = true,
 }: {
   organizationId: string;
   role: string | null;
+  showHeader?: boolean;
 }) {
   const isAdmin = role === "owner" || role === "admin";
 
@@ -225,10 +227,16 @@ export function ContactsView({
   return (
     <>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <PageHeader
-          title="Contacts"
-          description="Your customer list with tags and smart segments, so every campaign reaches exactly the right people."
-        />
+        {showHeader ? (
+          <PageHeader
+            title="Contacts"
+            description="Your customer list with tags and smart segments, so every campaign reaches exactly the right people."
+          />
+        ) : (
+          <p className="mb-8 text-sm text-muted-foreground">
+            Search, filter and tag every customer — or narrow the list down to a saved segment.
+          </p>
+        )}
         <div className="mb-8 flex flex-wrap items-center gap-2">
           {isAdmin ? (
             <>
