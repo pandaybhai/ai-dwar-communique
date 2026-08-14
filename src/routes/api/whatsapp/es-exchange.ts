@@ -24,6 +24,10 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
         } = await import("@/lib/whatsapp-api.server");
         const { reprocessUnprocessedEvents } = await import("@/lib/whatsapp-webhook.server");
 
+        /** Errors carry the stage that failed so the UI can point at it. */
+        const stepError = (message: string, step: string, status = 400) =>
+          Response.json({ error: message, step }, { status });
+
         let payload: Record<string, unknown>;
         try {
           payload = (await request.json()) as Record<string, unknown>;
@@ -42,18 +46,23 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
         const phoneNumberId = String(payload["phone_number_id"] ?? "").trim();
 
         if (!code || !wabaId || !phoneNumberId) {
-          return jsonError(
+          return stepError(
             "Meta didn't return the details we need. Please run the connect flow again.",
+            "code_received",
           );
         }
         if (!/^\d{5,25}$/.test(wabaId) || !/^\d{5,25}$/.test(phoneNumberId)) {
-          return jsonError("Meta returned an unexpected account id. Please try again.");
+          return stepError("Meta returned an unexpected account id. Please try again.", "code_received");
         }
 
         const appId = process.env["META_APP_ID"];
         const appSecret = process.env["META_APP_SECRET"];
         if (!appId || !appSecret) {
-          return jsonError("WhatsApp sign-up isn't configured yet. Please contact support.", 500);
+          return stepError(
+            "WhatsApp sign-up isn't configured yet. Please contact support.",
+            "token_exchanged",
+            500,
+          );
         }
 
         // 1. Exchange the one-time code for the client's business token.
@@ -67,18 +76,27 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           const res = await fetch(tokenUrl.toString());
           tokenBody = (await res.json()) as Record<string, unknown>;
           if (!res.ok) {
-            return jsonError(
+            return stepError(
               `We couldn't finish the sign-up with Meta: ${graphErrorMessage(tokenBody)}`,
+              "token_exchanged",
               400,
             );
           }
         } catch {
-          return jsonError("We couldn't reach Meta to finish the sign-up. Please try again.", 502);
+          return stepError(
+            "We couldn't reach Meta to finish the sign-up. Please try again.",
+            "token_exchanged",
+            502,
+          );
         }
 
         const accessToken = String(tokenBody["access_token"] ?? "");
         if (!accessToken) {
-          return jsonError("Meta didn't return an access token. Please run the flow again.", 400);
+          return stepError(
+            "Meta didn't return an access token. Please run the flow again.",
+            "token_exchanged",
+            400,
+          );
         }
 
         // 2. Verify the number before anything is written.
@@ -86,7 +104,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           query: { fields: "id,display_phone_number,verified_name,quality_rating" },
         });
         if (!check.ok) {
-          return jsonError(graphErrorMessage(check.body), 400);
+          return stepError(graphErrorMessage(check.body), "token_exchanged", 400);
         }
 
         const { supabase, organizationId, userId } = auth;
@@ -99,8 +117,9 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           .neq("organization_id", organizationId)
           .limit(1);
         if (clash && clash.length) {
-          return jsonError(
+          return stepError(
             "This number is already connected to another AiDwar workspace. Disconnect it there first.",
+            "token_exchanged",
             409,
           );
         }
@@ -119,7 +138,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           { onConflict: "organization_id" },
         );
         if (credErr) {
-          return jsonError("We couldn't store your connection. Please try again.", 500);
+          return stepError("We couldn't store your connection. Please try again.", "token_exchanged", 500);
         }
 
         const { data: saved, error: accErr } = await supabase
@@ -141,15 +160,18 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           .single();
         if (accErr) {
           await supabase.from("whatsapp_credentials").delete().eq("organization_id", organizationId);
-          return jsonError("We couldn't save this number. Please try again.", 500);
+          return stepError("We couldn't save this number. Please try again.", "token_exchanged", 500);
         }
 
         // 4. Subscribe our app to the client's WABA so webhooks start flowing.
         const warnings: string[] = [];
+        let subscribeError: string | null = null;
+        let registerError: string | null = null;
         const subscribe = await graphFetch(`${wabaId}/subscribed_apps`, accessToken, {
           method: "POST",
         });
         if (!subscribe.ok) {
+          subscribeError = graphErrorMessage(subscribe.body);
           warnings.push(
             `We connected the number but couldn't turn on incoming messages yet: ${graphErrorMessage(subscribe.body)}`,
           );
@@ -166,6 +188,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           if (/already/i.test(msg) && /register/i.test(msg)) {
             registered = true;
           } else {
+            registerError = msg;
             warnings.push(`Meta couldn't finish activating this number: ${msg}`);
           }
         }
@@ -190,6 +213,8 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           registered,
           subscribed: subscribe.ok,
           warnings,
+          subscribe_error: subscribeError,
+          register_error: registerError,
           reprocessed_events: reprocessed,
         });
       },

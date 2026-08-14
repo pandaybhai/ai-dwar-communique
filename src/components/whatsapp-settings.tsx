@@ -17,6 +17,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { ErrorState } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
 import { normalizePhone } from "@/lib/phone";
@@ -56,8 +67,7 @@ export function WhatsAppTab() {
         "id, display_phone_number, verified_name, quality_rating, status, connected_at, phone_number_id, waba_id",
       )
       .eq("organization_id", orgId)
-      .eq("status", "active")
-      .order("connected_at", { ascending: false })
+      .order("connected_at", { ascending: false, nullsFirst: false })
       .limit(1);
     setLoading(false);
     if (err) {
@@ -84,12 +94,19 @@ export function WhatsAppTab() {
 
   return (
     <div className="space-y-6">
-      {account ? (
-        <ConnectedCard account={account} canManage={canManage} onChanged={load} orgId={orgId!} />
+      {account && account.status === "active" ? (
+        <>
+          <ConnectedCard account={account} canManage={canManage} onChanged={load} orgId={orgId!} />
+          {canManage ? <TestConsole orgId={orgId!} /> : null}
+        </>
       ) : (
-        <ConnectCard canManage={canManage} onConnected={load} orgId={orgId!} />
+        <ConnectCard
+          canManage={canManage}
+          onConnected={load}
+          orgId={orgId!}
+          previous={account}
+        />
       )}
-      {account && canManage ? <TestConsole orgId={orgId!} /> : null}
     </div>
   );
 }
@@ -98,10 +115,12 @@ function ConnectCard({
   canManage,
   onConnected,
   orgId,
+  previous,
 }: {
   canManage: boolean;
   onConnected: () => Promise<void>;
   orgId: string;
+  previous?: Account | null;
 }) {
   const [waba, setWaba] = useState("");
   const [phoneId, setPhoneId] = useState("");
@@ -118,7 +137,9 @@ function ConnectCard({
             <MessageCircle className="h-5 w-5" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-foreground">No number connected yet</h2>
+            <h2 className="text-base font-semibold text-foreground">
+              {previous ? "Number disconnected" : "No number connected yet"}
+            </h2>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
               An owner or admin needs to connect your business number before your team can send messages.
             </p>
@@ -158,10 +179,13 @@ function ConnectCard({
             <PlugZap className="h-5 w-5" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Connect your business number</h2>
+            <h2 className="text-base font-semibold text-foreground">
+              {previous ? "Reconnect your business number" : "Connect your business number"}
+            </h2>
             <p className="mt-1 max-w-lg text-sm text-muted-foreground">
-              Sign in with Facebook and pick the business number you want to message from. It takes
-              about two minutes — we handle the setup for you.
+              {previous
+                ? `${previous.display_phone_number ?? "Your number"} was disconnected and its access token revoked. Run sign-up again to start sending.`
+                : "Sign in with Facebook and pick the business number you want to message from. It takes about two minutes — we handle the setup for you."}
             </p>
           </div>
         </div>
@@ -249,19 +273,26 @@ function ConnectedCard({
   orgId: string;
 }) {
   const [working, setWorking] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
   async function disconnect() {
     setWorking(true);
-    const { error } = await callApi("/api/whatsapp/connect", {
+    setFailure(null);
+    const { data, error } = await callApi<{ token_revoked?: boolean }>("/api/whatsapp/connect", {
       method: "DELETE",
       body: { organization_id: orgId },
     });
     setWorking(false);
     if (error) {
+      setFailure(error);
       toast.error(error);
       return;
     }
-    toast.success("Number disconnected");
+    toast.success(
+      data?.token_revoked
+        ? "Number disconnected and access revoked"
+        : "Number disconnected — you can reconnect anytime",
+    );
     await onChanged();
   }
 
@@ -298,12 +329,42 @@ function ConnectedCard({
           </div>
         </div>
         {canManage ? (
-          <Button variant="outline" className="rounded-full" onClick={disconnect} disabled={working}>
-            {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Unplug className="mr-2 h-4 w-4" />}
-            Disconnect
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="rounded-full" disabled={working}>
+                {working ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Unplug className="mr-2 h-4 w-4" />
+                )}
+                Disconnect
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Disconnect this number?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  We'll stop incoming messages, revoke the stored access token and remove it from our
+                  servers. Your contacts and conversations stay exactly as they are, and you can run
+                  sign-up again whenever you're ready.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-full">Keep connected</AlertDialogCancel>
+                <AlertDialogAction className="rounded-full" onClick={() => void disconnect()}>
+                  Disconnect
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         ) : null}
       </div>
+
+      {failure ? (
+        <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          {failure}
+        </div>
+      ) : null}
     </Card>
   );
 }
