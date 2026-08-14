@@ -9,6 +9,8 @@ import {
   TAG_COLORS,
   contactInitials,
   formatDate,
+  sourceClass,
+  sourceLabel,
   type ContactRow,
   type OptInStatus,
   type TagRow,
@@ -200,6 +202,8 @@ export function ContactDrawer({
             </SheetHeader>
 
             <div className="mt-6 space-y-6">
+              <SourcePanel contact={contact} />
+
               <div className="space-y-2">
                 <Label htmlFor="drawer-name">Name</Label>
                 <Input id="drawer-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -390,5 +394,62 @@ export function ContactDrawer({
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function SourcePanel({ contact }: { contact: ContactRow }) {
+  const detail = (contact.source_detail ?? {}) as Record<string, unknown>;
+  const str = (k: string) => {
+    const v = detail[k];
+    return typeof v === "string" && v.trim() ? v : null;
+  };
+  const headline = str("headline") ?? str("body");
+  const adId = str("source_id");
+  const adUrl = str("source_url") ?? str("ctwa_clid");
+  const marker = str("marker");
+
+  return (
+    <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs text-muted-foreground">Lead source</Label>
+        <span
+          className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${sourceClass(contact.source)}`}
+        >
+          {sourceLabel(contact.source)}
+        </span>
+      </div>
+      {headline || adId || adUrl || marker ? (
+        <dl className="mt-3 space-y-1.5 text-xs">
+          {headline ? (
+            <div>
+              <dt className="text-muted-foreground">Ad message</dt>
+              <dd className="text-foreground">{headline}</dd>
+            </div>
+          ) : null}
+          {adId ? (
+            <div>
+              <dt className="text-muted-foreground">Ad ID</dt>
+              <dd className="break-all font-mono text-[11px] text-foreground">{adId}</dd>
+            </div>
+          ) : null}
+          {adUrl ? (
+            <div>
+              <dt className="text-muted-foreground">Link</dt>
+              <dd className="break-all text-foreground">{adUrl}</dd>
+            </div>
+          ) : null}
+          {marker ? (
+            <div>
+              <dt className="text-muted-foreground">Tracking marker</dt>
+              <dd className="text-foreground">{marker}</dd>
+            </div>
+          ) : null}
+        </dl>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Captured when this contact was first created.
+        </p>
+      )}
+    </div>
   );
 }
