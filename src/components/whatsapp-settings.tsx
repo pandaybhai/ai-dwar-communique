@@ -7,6 +7,7 @@ import {
   Send,
   ShieldCheck,
   Unplug,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { normalizePhone } from "@/lib/phone";
 import { callApi } from "@/lib/whatsapp-client";
 import { useOrg } from "@/lib/org-context";
+import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
 
 type Account = {
   id: string;
@@ -106,6 +108,7 @@ function ConnectCard({
   const [display, setDisplay] = useState("");
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showManual, setShowManual] = useState(false);
 
   if (!canManage) {
     return (
@@ -148,21 +151,48 @@ function ConnectCard({
   }
 
   return (
-    <Card>
-      <div className="flex items-start gap-4">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <PlugZap className="h-5 w-5" />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Connect WhatsApp (developer mode)</h2>
-          <p className="mt-1 max-w-lg text-sm text-muted-foreground">
-            Paste the details from your Meta app to connect a test or production business number. Your access token
-            is stored securely on our servers and is never exposed to the browser.
-          </p>
+    <>
+      <Card>
+        <div className="flex items-start gap-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <PlugZap className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Connect your business number</h2>
+            <p className="mt-1 max-w-lg text-sm text-muted-foreground">
+              Sign in with Facebook and pick the business number you want to message from. It takes
+              about two minutes — we handle the setup for you.
+            </p>
+          </div>
         </div>
-      </div>
 
-      <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2">
+        <div className="mt-6">
+          <EmbeddedSignupButton orgId={orgId} onConnected={onConnected} />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowManual((v) => !v)}
+          className="mt-6 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-200 hover:text-foreground"
+        >
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform duration-200 ${showManual ? "rotate-180" : ""}`}
+          />
+          Advanced: connect manually
+        </button>
+      </Card>
+
+      {showManual ? (
+        <Card>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Connect manually (developer mode)</h2>
+            <p className="mt-1 max-w-lg text-sm text-muted-foreground">
+              Paste the details from your Meta app to connect a test or production business number. Your access token
+              is stored securely on our servers and is never exposed to the browser.
+            </p>
+          </div>
+
+          <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="waba_id">WABA ID</Label>
           <Input id="waba_id" value={waba} onChange={(e) => setWaba(e.target.value)} required />
@@ -191,17 +221,19 @@ function ConnectCard({
             required
           />
         </div>
-        <div className="sm:col-span-2 flex items-center gap-3 pt-1">
-          <Button type="submit" className="rounded-full" disabled={saving}>
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Connect number
-          </Button>
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5 text-primary" /> Verified with Meta before saving
-          </span>
-        </div>
-      </form>
-    </Card>
+            <div className="sm:col-span-2 flex items-center gap-3 pt-1">
+              <Button type="submit" className="rounded-full" disabled={saving}>
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Connect number
+              </Button>
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5 text-primary" /> Verified with Meta before saving
+              </span>
+            </div>
+          </form>
+        </Card>
+      ) : null}
+    </>
   );
 }
 
