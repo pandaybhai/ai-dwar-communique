@@ -24,18 +24,23 @@ import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAutomationsRouteImport } from './routes/app/automations'
-import { Route as AppCampaignsRouteImport } from './routes/app/campaigns'
 import { Route as AppContactsRouteImport } from './routes/app/contacts'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
+import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
+import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
+import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
 import { Route as ApiWhatsappSendMessageRouteImport } from './routes/api/whatsapp/send-message'
 import { Route as ApiWhatsappTemplatesRouteImport } from './routes/api/whatsapp/templates'
+import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
+import { Route as AppCampaignsIdRouteImport } from './routes/app/campaigns.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -112,11 +117,6 @@ const AppAutomationsRoute = AppAutomationsRouteImport.update({
   path: '/automations',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppCampaignsRoute = AppCampaignsRouteImport.update({
-  id: '/campaigns',
-  path: '/campaigns',
-  getParentRoute: () => AppRouteRoute,
-} as any)
 const AppContactsRoute = AppContactsRouteImport.update({
   id: '/contacts',
   path: '/contacts',
@@ -142,6 +142,21 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
   path: '/join/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCampaignsAudienceRoute = ApiCampaignsAudienceRouteImport.update({
+  id: '/api/campaigns/audience',
+  path: '/api/campaigns/audience',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCampaignsControlRoute = ApiCampaignsControlRouteImport.update({
+  id: '/api/campaigns/control',
+  path: '/api/campaigns/control',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCampaignsLaunchRoute = ApiCampaignsLaunchRouteImport.update({
+  id: '/api/campaigns/launch',
+  path: '/api/campaigns/launch',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiContactsEvaluateSegmentRoute =
   ApiContactsEvaluateSegmentRouteImport.update({
     id: '/api/contacts/evaluate-segment',
@@ -153,6 +168,12 @@ const ApiContactsImportRoute = ApiContactsImportRouteImport.update({
   path: '/api/contacts/import',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalCampaignWorkerRoute =
+  ApiInternalCampaignWorkerRouteImport.update({
+    id: '/api/internal/campaign-worker',
+    path: '/api/internal/campaign-worker',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp-webhook',
@@ -174,6 +195,16 @@ const ApiWhatsappTemplatesRoute = ApiWhatsappTemplatesRouteImport.update({
   path: '/api/whatsapp/templates',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppCampaignsIndexRoute = AppCampaignsIndexRouteImport.update({
+  id: '/campaigns/',
+  path: '/campaigns/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppCampaignsIdRoute = AppCampaignsIdRouteImport.update({
+  id: '/campaigns/$id',
+  path: '/campaigns/$id',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -189,7 +220,6 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AdminUsersRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
-  '/app/campaigns': typeof AppCampaignsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/settings': typeof AppSettingsRoute
@@ -197,12 +227,18 @@ export interface FileRoutesByFullPath {
   '/join/$token': typeof JoinTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
+  '/api/campaigns/control': typeof ApiCampaignsControlRoute
+  '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
+  '/app/campaigns/$id': typeof AppCampaignsIdRoute
+  '/app/campaigns/': typeof AppCampaignsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -216,7 +252,6 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AdminUsersRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
-  '/app/campaigns': typeof AppCampaignsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/settings': typeof AppSettingsRoute
@@ -224,12 +259,18 @@ export interface FileRoutesByTo {
   '/join/$token': typeof JoinTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
+  '/api/campaigns/control': typeof ApiCampaignsControlRoute
+  '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
+  '/app/campaigns/$id': typeof AppCampaignsIdRoute
+  '/app/campaigns': typeof AppCampaignsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -246,7 +287,6 @@ export interface FileRoutesById {
   '/admin/users': typeof AdminUsersRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
-  '/app/campaigns': typeof AppCampaignsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/settings': typeof AppSettingsRoute
@@ -254,12 +294,18 @@ export interface FileRoutesById {
   '/join/$token': typeof JoinTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
+  '/api/campaigns/control': typeof ApiCampaignsControlRoute
+  '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
+  '/app/campaigns/$id': typeof AppCampaignsIdRoute
+  '/app/campaigns/': typeof AppCampaignsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -277,7 +323,6 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/app/analytics'
     | '/app/automations'
-    | '/app/campaigns'
     | '/app/contacts'
     | '/app/inbox'
     | '/app/settings'
@@ -285,12 +330,18 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin/'
     | '/app/'
+    | '/api/campaigns/audience'
+    | '/api/campaigns/control'
+    | '/api/campaigns/launch'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/internal/campaign-worker'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
+    | '/app/campaigns/$id'
+    | '/app/campaigns/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -304,7 +355,6 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/app/analytics'
     | '/app/automations'
-    | '/app/campaigns'
     | '/app/contacts'
     | '/app/inbox'
     | '/app/settings'
@@ -312,12 +362,18 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin'
     | '/app'
+    | '/api/campaigns/audience'
+    | '/api/campaigns/control'
+    | '/api/campaigns/launch'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/internal/campaign-worker'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
+    | '/app/campaigns/$id'
+    | '/app/campaigns'
   id:
     | '__root__'
     | '/'
@@ -333,7 +389,6 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/app/analytics'
     | '/app/automations'
-    | '/app/campaigns'
     | '/app/contacts'
     | '/app/inbox'
     | '/app/settings'
@@ -341,12 +396,18 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin/'
     | '/app/'
+    | '/api/campaigns/audience'
+    | '/api/campaigns/control'
+    | '/api/campaigns/launch'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/internal/campaign-worker'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
+    | '/app/campaigns/$id'
+    | '/app/campaigns/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -358,8 +419,12 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   TermsRoute: typeof TermsRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
+  ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
+  ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
+  ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
   ApiWhatsappSendMessageRoute: typeof ApiWhatsappSendMessageRoute
@@ -473,13 +538,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAutomationsRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/campaigns': {
-      id: '/app/campaigns'
-      path: '/campaigns'
-      fullPath: '/app/campaigns'
-      preLoaderRoute: typeof AppCampaignsRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
     '/app/contacts': {
       id: '/app/contacts'
       path: '/contacts'
@@ -515,6 +573,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JoinTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/campaigns/audience': {
+      id: '/api/campaigns/audience'
+      path: '/api/campaigns/audience'
+      fullPath: '/api/campaigns/audience'
+      preLoaderRoute: typeof ApiCampaignsAudienceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/campaigns/control': {
+      id: '/api/campaigns/control'
+      path: '/api/campaigns/control'
+      fullPath: '/api/campaigns/control'
+      preLoaderRoute: typeof ApiCampaignsControlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/campaigns/launch': {
+      id: '/api/campaigns/launch'
+      path: '/api/campaigns/launch'
+      fullPath: '/api/campaigns/launch'
+      preLoaderRoute: typeof ApiCampaignsLaunchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/contacts/evaluate-segment': {
       id: '/api/contacts/evaluate-segment'
       path: '/api/contacts/evaluate-segment'
@@ -527,6 +606,13 @@ declare module '@tanstack/react-router' {
       path: '/api/contacts/import'
       fullPath: '/api/contacts/import'
       preLoaderRoute: typeof ApiContactsImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/campaign-worker': {
+      id: '/api/internal/campaign-worker'
+      path: '/api/internal/campaign-worker'
+      fullPath: '/api/internal/campaign-worker'
+      preLoaderRoute: typeof ApiInternalCampaignWorkerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/whatsapp-webhook': {
@@ -557,6 +643,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappTemplatesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/campaigns/': {
+      id: '/app/campaigns/'
+      path: '/campaigns'
+      fullPath: '/app/campaigns/'
+      preLoaderRoute: typeof AppCampaignsIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/campaigns/$id': {
+      id: '/app/campaigns/$id'
+      path: '/campaigns/$id'
+      fullPath: '/app/campaigns/$id'
+      preLoaderRoute: typeof AppCampaignsIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
   }
 }
 
@@ -583,23 +683,25 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
 interface AppRouteRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomationsRoute: typeof AppAutomationsRoute
-  AppCampaignsRoute: typeof AppCampaignsRoute
   AppContactsRoute: typeof AppContactsRoute
   AppInboxRoute: typeof AppInboxRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTemplatesRoute: typeof AppTemplatesRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppCampaignsIdRoute: typeof AppCampaignsIdRoute
+  AppCampaignsIndexRoute: typeof AppCampaignsIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAutomationsRoute: AppAutomationsRoute,
-  AppCampaignsRoute: AppCampaignsRoute,
   AppContactsRoute: AppContactsRoute,
   AppInboxRoute: AppInboxRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTemplatesRoute: AppTemplatesRoute,
   AppIndexRoute: AppIndexRoute,
+  AppCampaignsIdRoute: AppCampaignsIdRoute,
+  AppCampaignsIndexRoute: AppCampaignsIndexRoute,
 }
 
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
@@ -615,8 +717,12 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   TermsRoute: TermsRoute,
   JoinTokenRoute: JoinTokenRoute,
+  ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
+  ApiCampaignsControlRoute: ApiCampaignsControlRoute,
+  ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
+  ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,
   ApiWhatsappSendMessageRoute: ApiWhatsappSendMessageRoute,
