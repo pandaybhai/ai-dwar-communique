@@ -14,6 +14,7 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import { useOrg, type OrgRole } from "@/lib/org-context";
 import { WhatsAppTab } from "@/components/whatsapp-settings";
+import { LeadSourcesTab } from "@/components/contacts/lead-sources-settings";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
@@ -51,6 +52,7 @@ function SettingsPage() {
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="team">Team</TabsTrigger>
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+            <TabsTrigger value="sources">Lead sources</TabsTrigger>
           </TabsList>
           <TabsContent value="general" className="mt-6">
             <GeneralTab />
@@ -60,6 +62,9 @@ function SettingsPage() {
           </TabsContent>
           <TabsContent value="whatsapp" className="mt-6">
             <WhatsAppTab />
+          </TabsContent>
+          <TabsContent value="sources" className="mt-6">
+            <LeadSourcesTab />
           </TabsContent>
         </Tabs>
       )}

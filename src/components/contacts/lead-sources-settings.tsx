@@ -29,9 +29,9 @@ const SOURCE_CHOICES = Object.keys(SOURCE_LABELS).filter(
 );
 
 export function LeadSourcesTab() {
-  const { active, role } = useOrg();
-  const organizationId = active?.organization_id ?? null;
-  const canEdit = role === "owner" || role === "admin";
+  const { active, canManage } = useOrg();
+  const organizationId = active?.organization.id ?? null;
+  const canEdit = canManage;
 
   const [rows, setRows] = useState<MarkerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
