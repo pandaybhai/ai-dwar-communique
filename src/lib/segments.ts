@@ -6,6 +6,7 @@ export type SegmentField =
   | "name"
   | "phone"
   | "created_at"
+  | "source"
   | "attribute";
 
 export type SegmentCondition = {
@@ -36,6 +37,7 @@ export const FIELD_LABELS: Record<SegmentField, string> = {
   name: "Name",
   phone: "Phone",
   created_at: "Added date",
+  source: "Lead source",
   attribute: "Custom attribute",
 };
 
@@ -54,6 +56,10 @@ export const FIELD_OPERATORS: Record<SegmentField, { value: string; label: strin
     { value: "before", label: "before" },
     { value: "after", label: "after" },
     { value: "between", label: "between" },
+  ],
+  source: [
+    { value: "is", label: "is" },
+    { value: "is_not", label: "is not" },
   ],
   attribute: [
     { value: "equals", label: "equals" },

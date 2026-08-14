@@ -106,6 +106,10 @@ async function exprForCondition(
       if (!v) return null;
       return c.operator === "before" ? `created_at.lt.${v}` : `created_at.gt.${v} 23:59:59`;
     }
+    case "source": {
+      if (!/^[a-z0-9_]+$/.test(v)) return null;
+      return c.operator === "is_not" ? `source.neq.${v}` : `source.eq.${v}`;
+    }
     case "attribute":
       return exprForAttribute(c);
     default:
