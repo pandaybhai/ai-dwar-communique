@@ -136,8 +136,9 @@ export function SegmentBuilderDialog({
       filters: { match: filters.match, conditions: usableConditions(filters) },
     };
     const { data: userData } = await aidwar.auth.getUser();
-    const res = segment
-      ? await aidwar.from("segments").update(payload).eq("id", segment.id)
+    const isEdit = Boolean(segment?.id);
+    const res = isEdit
+      ? await aidwar.from("segments").update(payload).eq("id", segment!.id)
       : await aidwar.from("segments").insert({ ...payload, created_by: userData.user?.id ?? null });
     setSaving(false);
     if (res.error) {
@@ -148,14 +149,14 @@ export function SegmentBuilderDialog({
       );
       return;
     }
-    if (!segment) {
+    if (!isEdit) {
       void logActivity("segment_created", organizationId, {
         name: payload.name,
         conditions: payload.filters.conditions.length,
         match: payload.filters.match,
       });
     }
-    toast.success(segment ? "Segment updated." : "Segment created.");
+    toast.success(isEdit ? "Segment updated." : "Segment created.");
     onOpenChange(false);
     onSaved();
   }
@@ -164,7 +165,7 @@ export function SegmentBuilderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{segment ? "Edit segment" : "New segment"}</DialogTitle>
+          <DialogTitle>{segment?.id ? "Edit segment" : "New segment"}</DialogTitle>
           <DialogDescription>
             Segments stay live — contacts move in and out automatically as they match.
           </DialogDescription>
@@ -366,7 +367,7 @@ export function SegmentBuilderDialog({
             Cancel
           </Button>
           <Button className="rounded-full" onClick={() => void save()} disabled={saving}>
-            {saving ? "Saving…" : segment ? "Save changes" : "Create segment"}
+            {saving ? "Saving…" : segment?.id ? "Save changes" : "Create segment"}
           </Button>
         </DialogFooter>
       </DialogContent>

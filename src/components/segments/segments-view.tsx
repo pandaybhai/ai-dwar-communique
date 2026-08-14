@@ -228,7 +228,7 @@ export function SegmentsView({
         attributeKeys={attributeKeys}
         open={builderOpen}
         onOpenChange={setBuilderOpen}
-        segment={editing && editing.id ? editing : editing ? { ...editing } : null}
+        segment={editing}
         {...(duplicateName ? { initialName: duplicateName } : {})}
         onSaved={load}
       />
