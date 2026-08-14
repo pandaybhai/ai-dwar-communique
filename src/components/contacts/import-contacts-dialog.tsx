@@ -31,6 +31,32 @@ type Results = { created: number; updated: number; skipped: number; errors: Erro
 const MAX_ROWS = 10000;
 const CHUNK = 200;
 
+const SAMPLE_CSV = toCsv([
+  ["phone", "name", "tags", "city", "last_purchase"],
+  ["+919876543210", "Priya Sharma", "vip,repeat-buyer", "Hyderabad", "2026-07-15"],
+  ["+919812345678", "Rahul Verma", "new-customer", "Mumbai", ""],
+  ["+919898765432", "Anjali Patel", "vip", "Delhi", "2026-08-01"],
+]);
+
+const FORMAT_TIPS = [
+  "Phone must include the country code (+91…).",
+  "Tags are comma-separated inside quotes, e.g. \"vip,repeat-buyer\".",
+  "Extra columns become custom attributes automatically.",
+];
+
+function FormatTips({ className = "" }: { className?: string }) {
+  return (
+    <ul className={`space-y-1 text-xs text-muted-foreground ${className}`}>
+      {FORMAT_TIPS.map((tip) => (
+        <li key={tip} className="flex items-start gap-2">
+          <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary" />
+          <span>{tip}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ImportContactsDialog({
   organizationId,
   onImported,
