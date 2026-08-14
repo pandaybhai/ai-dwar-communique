@@ -362,7 +362,7 @@ export function ContactDrawer({
                   <Skeleton className="h-9 w-full rounded-full" />
                 ) : conversationId ? (
                   <Button asChild variant="outline" className="w-full rounded-full">
-                    <Link to="/app/inbox" search={{ c: conversationId }}>
+                    <Link to="/app/inbox">
                       <MessageSquare className="mr-2 h-4 w-4" /> View conversation
                     </Link>
                   </Button>
