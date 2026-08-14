@@ -271,6 +271,21 @@ export function ImportContactsDialog({
             >
               Choose a file
             </Button>
+
+            <div className="mt-6 border-t border-border/60 pt-5">
+              <p className="text-xs text-muted-foreground">
+                Not sure about the format? Start with our template.
+              </p>
+              <Button
+                variant="link"
+                className="mt-1 h-auto p-0 text-sm font-medium text-primary"
+                onClick={() => downloadCsv("sample_contacts.csv", SAMPLE_CSV)}
+              >
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Download sample CSV
+              </Button>
+              <FormatTips className="mt-4 text-left" />
+            </div>
           </div>
         ) : null}
 
@@ -279,6 +294,8 @@ export function ImportContactsDialog({
             <p className="text-sm text-muted-foreground">
               {filename} · {rows.length.toLocaleString()} rows
             </p>
+            <FormatTips />
+
             <div className="space-y-3">
               {headers.map((h, i) => (
                 <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
