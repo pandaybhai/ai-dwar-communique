@@ -136,6 +136,7 @@ export const Route = createFileRoute("/api/contacts/import")({
                 .update({
                   name: name || (existing?.name as string | null) || null,
                   attributes: merged,
+                  ...(consent ? { opt_in_status: "opted_in" } : {}),
                 })
                 .eq("id", contactId);
               if (updErr) {
@@ -152,6 +153,7 @@ export const Route = createFileRoute("/api/contacts/import")({
                   wa_id: digits,
                   name: name || null,
                   attributes,
+                  opt_in_status: consent ? "opted_in" : "unknown",
                 })
                 .select("id")
                 .single();
