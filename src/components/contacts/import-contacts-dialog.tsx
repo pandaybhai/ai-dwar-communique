@@ -31,6 +31,32 @@ type Results = { created: number; updated: number; skipped: number; errors: Erro
 const MAX_ROWS = 10000;
 const CHUNK = 200;
 
+const SAMPLE_CSV = toCsv([
+  ["phone", "name", "tags", "city", "last_purchase"],
+  ["+919876543210", "Priya Sharma", "vip,repeat-buyer", "Hyderabad", "2026-07-15"],
+  ["+919812345678", "Rahul Verma", "new-customer", "Mumbai", ""],
+  ["+919898765432", "Anjali Patel", "vip", "Delhi", "2026-08-01"],
+]);
+
+const FORMAT_TIPS = [
+  "Phone must include the country code (+91…).",
+  "Tags are comma-separated inside quotes, e.g. \"vip,repeat-buyer\".",
+  "Extra columns become custom attributes automatically.",
+];
+
+function FormatTips({ className = "" }: { className?: string }) {
+  return (
+    <ul className={`space-y-1 text-xs text-muted-foreground ${className}`}>
+      {FORMAT_TIPS.map((tip) => (
+        <li key={tip} className="flex items-start gap-2">
+          <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary" />
+          <span>{tip}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ImportContactsDialog({
   organizationId,
   onImported,
@@ -271,6 +297,21 @@ export function ImportContactsDialog({
             >
               Choose a file
             </Button>
+
+            <div className="mt-6 border-t border-border/60 pt-5">
+              <p className="text-xs text-muted-foreground">
+                Not sure about the format? Start with our template.
+              </p>
+              <Button
+                variant="link"
+                className="mt-1 h-auto p-0 text-sm font-medium text-primary"
+                onClick={() => downloadCsv("sample_contacts.csv", SAMPLE_CSV)}
+              >
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Download sample CSV
+              </Button>
+              <FormatTips className="mt-4 text-left" />
+            </div>
           </div>
         ) : null}
 
@@ -279,6 +320,8 @@ export function ImportContactsDialog({
             <p className="text-sm text-muted-foreground">
               {filename} · {rows.length.toLocaleString()} rows
             </p>
+            <FormatTips />
+
             <div className="space-y-3">
               {headers.map((h, i) => (
                 <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
