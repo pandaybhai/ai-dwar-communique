@@ -55,6 +55,7 @@ export function AddContactDialog({
       phone: normalized,
       wa_id: digits,
       name: name.trim() || null,
+      source: "manual",
     });
     setSaving(false);
     if (insErr) {

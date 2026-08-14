@@ -68,6 +68,7 @@ export const Route = createFileRoute("/api/contacts/import")({
         if (action === "chunk") {
           const rows = (payload["rows"] as IncomingRow[] | undefined) ?? [];
           const consent = payload["consent"] === true;
+          const importId = (payload["import_id"] as string | undefined) ?? null;
           if (rows.length > 1000) return jsonError("Chunk too large.");
 
           let created = 0;
@@ -154,6 +155,8 @@ export const Route = createFileRoute("/api/contacts/import")({
                   name: name || null,
                   attributes,
                   opt_in_status: consent ? "opted_in" : "unknown",
+                  source: "import",
+                  source_detail: importId ? { import_id: importId } : null,
                 })
                 .select("id")
                 .single();
