@@ -14,6 +14,8 @@ import {
 } from "@/lib/contacts";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { NoResults, Pagination, TableSkeleton } from "@/components/data-pagination";
+import { callApi } from "@/lib/whatsapp-client";
+import type { SegmentRow } from "@/lib/segments";
 import { AddContactDialog } from "@/components/contacts/add-contact-dialog";
 import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
 import { ContactDrawer } from "@/components/contacts/contact-drawer";
@@ -50,6 +52,8 @@ export function ContactsView({
   const [debounced, setDebounced] = useState("");
   const [tagFilter, setTagFilter] = useState("all");
   const [optInFilter, setOptInFilter] = useState("all");
+  const [segmentFilter, setSegmentFilter] = useState("all");
+  const [segments, setSegments] = useState<SegmentRow[]>([]);
   const [page, setPage] = useState(0);
 
   const [contacts, setContacts] = useState<ContactRow[]>([]);
@@ -77,9 +81,33 @@ export function ContactsView({
     setAllTags((data as TagRow[]) ?? []);
   }, [organizationId]);
 
+  const loadSegments = useCallback(async () => {
+    const { data } = await aidwar
+      .from("segments")
+      .select("id, name, description, filters, created_by, created_at")
+      .eq("organization_id", organizationId)
+      .order("name");
+    setSegments((data as SegmentRow[]) ?? []);
+  }, [organizationId]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    let contactIdsForSegment: string[] | null = null;
+    if (segmentFilter !== "all") {
+      const segment = segments.find((s) => s.id === segmentFilter);
+      const { data: res } = await callApi<{ ids: string[] }>("/api/contacts/evaluate-segment", {
+        body: { organization_id: organizationId, mode: "ids", filters: segment?.filters ?? {} },
+      });
+      contactIdsForSegment = res?.ids ?? [];
+      if (contactIdsForSegment.length === 0) {
+        setContacts([]);
+        setTotal(0);
+        setLoading(false);
+        return;
+      }
+    }
 
     let contactIdsForTag: string[] | null = null;
     if (tagFilter !== "all") {
@@ -107,6 +135,7 @@ export function ContactsView({
     if (debounced) query = query.or(`name.ilike.%${debounced}%,phone.ilike.%${debounced}%`);
     if (optInFilter !== "all") query = query.eq("opt_in_status", optInFilter);
     if (contactIdsForTag) query = query.in("id", contactIdsForTag);
+    if (contactIdsForSegment) query = query.in("id", contactIdsForSegment.slice(0, 5000));
 
     const { data, count, error: qErr } = await query;
     if (qErr) {
@@ -139,11 +168,12 @@ export function ContactsView({
     setContacts(withTags);
     setTotal(count ?? 0);
     setLoading(false);
-  }, [organizationId, page, debounced, optInFilter, tagFilter]);
+  }, [organizationId, page, debounced, optInFilter, tagFilter, segmentFilter, segments]);
 
   useEffect(() => {
     void loadTags();
-  }, [loadTags]);
+    void loadSegments();
+  }, [loadTags, loadSegments]);
 
   useEffect(() => {
     void load();
@@ -156,8 +186,9 @@ export function ContactsView({
   }, [contacts, selected]);
 
   const hasFilters = useMemo(
-    () => Boolean(debounced) || tagFilter !== "all" || optInFilter !== "all",
-    [debounced, tagFilter, optInFilter],
+    () =>
+      Boolean(debounced) || tagFilter !== "all" || optInFilter !== "all" || segmentFilter !== "all",
+    [debounced, tagFilter, optInFilter, segmentFilter],
   );
 
   async function exportCsv() {
@@ -272,6 +303,27 @@ export function ContactsView({
             ))}
           </SelectContent>
         </Select>
+        {segments.length ? (
+          <Select
+            value={segmentFilter}
+            onValueChange={(v) => {
+              setSegmentFilter(v);
+              setPage(0);
+            }}
+          >
+            <SelectTrigger className="sm:w-52">
+              <SelectValue placeholder="All contacts" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All contacts</SelectItem>
+              {segments.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
       </div>
 
       {error ? (
