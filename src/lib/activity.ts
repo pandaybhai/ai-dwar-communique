@@ -9,7 +9,11 @@ export type ActivityAction =
   | "conversation_assigned"
   | "conversation_closed"
   | "template_created"
-  | "template_synced";
+  | "template_synced"
+  | "contact_created"
+  | "contacts_imported"
+  | "tag_created"
+  | "optin_changed";
 
 /**
  * Append-only activity logging. Never pass message contents or credentials —
