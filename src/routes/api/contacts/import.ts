@@ -67,6 +67,7 @@ export const Route = createFileRoute("/api/contacts/import")({
         // ---------------- chunk ----------------
         if (action === "chunk") {
           const rows = (payload["rows"] as IncomingRow[] | undefined) ?? [];
+          const consent = payload["consent"] === true;
           if (rows.length > 1000) return jsonError("Chunk too large.");
 
           let created = 0;
