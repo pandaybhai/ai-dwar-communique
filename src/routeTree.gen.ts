@@ -30,6 +30,7 @@ import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
 import { Route as ApiWhatsappSendMessageRouteImport } from './routes/api/whatsapp/send-message'
@@ -140,6 +141,11 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
   path: '/join/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiContactsImportRoute = ApiContactsImportRouteImport.update({
+  id: '/api/contacts/import',
+  path: '/api/contacts/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp-webhook',
@@ -184,6 +190,7 @@ export interface FileRoutesByFullPath {
   '/join/$token': typeof JoinTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
@@ -209,6 +216,7 @@ export interface FileRoutesByTo {
   '/join/$token': typeof JoinTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
@@ -237,6 +245,7 @@ export interface FileRoutesById {
   '/join/$token': typeof JoinTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
@@ -266,6 +275,7 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin/'
     | '/app/'
+    | '/api/contacts/import'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/send-message'
@@ -291,6 +301,7 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin'
     | '/app'
+    | '/api/contacts/import'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/send-message'
@@ -318,6 +329,7 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin/'
     | '/app/'
+    | '/api/contacts/import'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/send-message'
@@ -333,6 +345,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   TermsRoute: typeof TermsRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
   ApiWhatsappSendMessageRoute: typeof ApiWhatsappSendMessageRoute
@@ -488,6 +501,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JoinTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/contacts/import': {
+      id: '/api/contacts/import'
+      path: '/api/contacts/import'
+      fullPath: '/api/contacts/import'
+      preLoaderRoute: typeof ApiContactsImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp-webhook': {
       id: '/api/public/whatsapp-webhook'
       path: '/api/public/whatsapp-webhook'
@@ -574,6 +594,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   TermsRoute: TermsRoute,
   JoinTokenRoute: JoinTokenRoute,
+  ApiContactsImportRoute: ApiContactsImportRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,
   ApiWhatsappSendMessageRoute: ApiWhatsappSendMessageRoute,

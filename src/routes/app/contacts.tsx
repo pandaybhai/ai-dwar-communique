@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Contact, Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { EmptyState, PageHeader } from "@/components/empty-state";
+import { Lock } from "lucide-react";
+import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
+import { useOrg } from "@/lib/org-context";
+import { ContactsView } from "@/components/contacts/contacts-view";
 
 export const Route = createFileRoute("/app/contacts")({
   head: () => ({
@@ -16,23 +18,26 @@ export const Route = createFileRoute("/app/contacts")({
 });
 
 function ContactsPage() {
-  return (
-    <>
-      <PageHeader
-        title="Contacts"
-        description="Your customer list with tags and smart segments, so every campaign reaches exactly the right people."
-      />
-      <EmptyState
-        icon={Contact}
-        title="No contacts yet"
-        description="Import your customer list from a CSV or let contacts flow in automatically from conversations."
-        action={
-          <Button className="rounded-full" disabled>
-            <Upload className="mr-2 h-4 w-4" />
-            Import contacts — coming soon
-          </Button>
-        }
-      />
-    </>
-  );
+  const { enabled, loading } = useFeatureFlag("contacts");
+  const { active } = useOrg();
+
+  if (loading || !active) return <PageSkeleton />;
+
+  if (!enabled) {
+    return (
+      <>
+        <PageHeader
+          title="Contacts"
+          description="Your customer list with tags and smart segments."
+        />
+        <EmptyState
+          icon={Lock}
+          title="Contacts are turned off"
+          description="This feature isn't enabled for your workspace yet. Reach out to your administrator to switch it on."
+        />
+      </>
+    );
+  }
+
+  return <ContactsView organizationId={active.organization.id} role={active.role} />;
 }
