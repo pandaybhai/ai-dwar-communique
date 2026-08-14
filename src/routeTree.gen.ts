@@ -40,6 +40,7 @@ import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/publi
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
 import { Route as ApiWhatsappSendMessageRouteImport } from './routes/api/whatsapp/send-message'
 import { Route as ApiWhatsappTemplatesRouteImport } from './routes/api/whatsapp/templates'
+import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -199,6 +200,11 @@ const ApiWhatsappTemplatesRoute = ApiWhatsappTemplatesRouteImport.update({
   path: '/api/whatsapp/templates',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppCampaignsIndexRoute = AppCampaignsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppCampaignsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -214,7 +220,7 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AdminUsersRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
-  '/app/campaigns': typeof AppCampaignsRoute
+  '/app/campaigns': typeof AppCampaignsRouteWithChildren
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/settings': typeof AppSettingsRoute
@@ -232,6 +238,7 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
+  '/app/campaigns/': typeof AppCampaignsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -245,7 +252,6 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AdminUsersRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
-  '/app/campaigns': typeof AppCampaignsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/settings': typeof AppSettingsRoute
@@ -263,6 +269,7 @@ export interface FileRoutesByTo {
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
+  '/app/campaigns': typeof AppCampaignsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -279,7 +286,7 @@ export interface FileRoutesById {
   '/admin/users': typeof AdminUsersRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
-  '/app/campaigns': typeof AppCampaignsRoute
+  '/app/campaigns': typeof AppCampaignsRouteWithChildren
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/settings': typeof AppSettingsRoute
@@ -297,6 +304,7 @@ export interface FileRoutesById {
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
+  '/app/campaigns/': typeof AppCampaignsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -332,6 +340,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/connect'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
+    | '/app/campaigns/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -345,7 +354,6 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/app/analytics'
     | '/app/automations'
-    | '/app/campaigns'
     | '/app/contacts'
     | '/app/inbox'
     | '/app/settings'
@@ -363,6 +371,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/connect'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
+    | '/app/campaigns'
   id:
     | '__root__'
     | '/'
@@ -396,6 +405,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/connect'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
+    | '/app/campaigns/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -638,6 +648,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappTemplatesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/campaigns/': {
+      id: '/app/campaigns/'
+      path: '/'
+      fullPath: '/app/campaigns/'
+      preLoaderRoute: typeof AppCampaignsIndexRouteImport
+      parentRoute: typeof AppCampaignsRoute
+    }
   }
 }
 
@@ -661,10 +678,22 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
   AdminRouteRouteChildren,
 )
 
+interface AppCampaignsRouteChildren {
+  AppCampaignsIndexRoute: typeof AppCampaignsIndexRoute
+}
+
+const AppCampaignsRouteChildren: AppCampaignsRouteChildren = {
+  AppCampaignsIndexRoute: AppCampaignsIndexRoute,
+}
+
+const AppCampaignsRouteWithChildren = AppCampaignsRoute._addFileChildren(
+  AppCampaignsRouteChildren,
+)
+
 interface AppRouteRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomationsRoute: typeof AppAutomationsRoute
-  AppCampaignsRoute: typeof AppCampaignsRoute
+  AppCampaignsRoute: typeof AppCampaignsRouteWithChildren
   AppContactsRoute: typeof AppContactsRoute
   AppInboxRoute: typeof AppInboxRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -675,7 +704,7 @@ interface AppRouteRouteChildren {
 const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAutomationsRoute: AppAutomationsRoute,
-  AppCampaignsRoute: AppCampaignsRoute,
+  AppCampaignsRoute: AppCampaignsRouteWithChildren,
   AppContactsRoute: AppContactsRoute,
   AppInboxRoute: AppInboxRoute,
   AppSettingsRoute: AppSettingsRoute,
