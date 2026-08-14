@@ -24,6 +24,10 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
         } = await import("@/lib/whatsapp-api.server");
         const { reprocessUnprocessedEvents } = await import("@/lib/whatsapp-webhook.server");
 
+        /** Errors carry the stage that failed so the UI can point at it. */
+        const stepError = (message: string, step: string, status = 400) =>
+          Response.json({ error: message, step }, { status });
+
         let payload: Record<string, unknown>;
         try {
           payload = (await request.json()) as Record<string, unknown>;
