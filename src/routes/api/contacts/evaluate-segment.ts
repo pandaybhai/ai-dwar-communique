@@ -7,7 +7,9 @@ export const Route = createFileRoute("/api/contacts/evaluate-segment")({
         const { requireOrgMember, isResponse, jsonError } = await import(
           "@/lib/whatsapp-api.server"
         );
-        const { evaluateSegment } = await import("@/lib/segments.server");
+        const { evaluateSegment, resolveSegmentContactIds } = await import(
+          "@/lib/segments.server"
+        );
 
         let payload: Record<string, unknown>;
         try {
@@ -20,6 +22,14 @@ export const Route = createFileRoute("/api/contacts/evaluate-segment")({
         if (isResponse(auth)) return auth;
 
         try {
+          if (payload["mode"] === "ids") {
+            const ids = await resolveSegmentContactIds(
+              auth.supabase,
+              auth.organizationId,
+              payload["filters"],
+            );
+            return Response.json({ ids });
+          }
           const result = await evaluateSegment(
             auth.supabase,
             auth.organizationId,
