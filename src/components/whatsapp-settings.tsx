@@ -17,6 +17,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { ErrorState } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
 import { normalizePhone } from "@/lib/phone";
@@ -262,19 +273,26 @@ function ConnectedCard({
   orgId: string;
 }) {
   const [working, setWorking] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
   async function disconnect() {
     setWorking(true);
-    const { error } = await callApi("/api/whatsapp/connect", {
+    setFailure(null);
+    const { data, error } = await callApi<{ token_revoked?: boolean }>("/api/whatsapp/connect", {
       method: "DELETE",
       body: { organization_id: orgId },
     });
     setWorking(false);
     if (error) {
+      setFailure(error);
       toast.error(error);
       return;
     }
-    toast.success("Number disconnected");
+    toast.success(
+      data?.token_revoked
+        ? "Number disconnected and access revoked"
+        : "Number disconnected — you can reconnect anytime",
+    );
     await onChanged();
   }
 
@@ -311,12 +329,42 @@ function ConnectedCard({
           </div>
         </div>
         {canManage ? (
-          <Button variant="outline" className="rounded-full" onClick={disconnect} disabled={working}>
-            {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Unplug className="mr-2 h-4 w-4" />}
-            Disconnect
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="rounded-full" disabled={working}>
+                {working ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Unplug className="mr-2 h-4 w-4" />
+                )}
+                Disconnect
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Disconnect this number?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  We'll stop incoming messages, revoke the stored access token and remove it from our
+                  servers. Your contacts and conversations stay exactly as they are, and you can run
+                  sign-up again whenever you're ready.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-full">Keep connected</AlertDialogCancel>
+                <AlertDialogAction className="rounded-full" onClick={() => void disconnect()}>
+                  Disconnect
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         ) : null}
       </div>
+
+      {failure ? (
+        <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          {failure}
+        </div>
+      ) : null}
     </Card>
   );
 }
