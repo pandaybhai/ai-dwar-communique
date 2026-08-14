@@ -92,9 +92,8 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
       },
 
       DELETE: async ({ request }) => {
-        const { requireOrgMember, isResponse, jsonError, logServerActivity } = await import(
-          "@/lib/whatsapp-api.server"
-        );
+        const { requireOrgMember, isResponse, jsonError, logServerActivity, graphFetch } =
+          await import("@/lib/whatsapp-api.server");
 
         let payload: Record<string, unknown> = {};
         try {
