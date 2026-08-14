@@ -38,6 +38,16 @@ const SAMPLE_CSV = toCsv([
   ["+919898765432", "Anjali Patel", "vip", "Delhi", "2026-08-01"],
 ]);
 
+/** Column header → attributes jsonb key (lowercased, underscored). */
+function attrKey(header: string, index: number): string {
+  const slug = header
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return slug || `column_${index + 1}`;
+}
+
 const FORMAT_TIPS = [
   "Phone must include the country code (+91…).",
   "Tags are comma-separated inside quotes, e.g. \"vip,repeat-buyer\".",
