@@ -37,6 +37,8 @@ import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/imp
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
+import { Route as ApiWhatsappEsConfigRouteImport } from './routes/api/whatsapp/es-config'
+import { Route as ApiWhatsappEsExchangeRouteImport } from './routes/api/whatsapp/es-exchange'
 import { Route as ApiWhatsappSendMessageRouteImport } from './routes/api/whatsapp/send-message'
 import { Route as ApiWhatsappTemplatesRouteImport } from './routes/api/whatsapp/templates'
 import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
@@ -185,6 +187,16 @@ const ApiWhatsappConnectRoute = ApiWhatsappConnectRouteImport.update({
   path: '/api/whatsapp/connect',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappEsConfigRoute = ApiWhatsappEsConfigRouteImport.update({
+  id: '/api/whatsapp/es-config',
+  path: '/api/whatsapp/es-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappEsExchangeRoute = ApiWhatsappEsExchangeRouteImport.update({
+  id: '/api/whatsapp/es-exchange',
+  path: '/api/whatsapp/es-exchange',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWhatsappSendMessageRoute = ApiWhatsappSendMessageRouteImport.update({
   id: '/api/whatsapp/send-message',
   path: '/api/whatsapp/send-message',
@@ -235,6 +247,8 @@ export interface FileRoutesByFullPath {
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
+  '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
+  '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
@@ -267,6 +281,8 @@ export interface FileRoutesByTo {
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
+  '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
+  '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
@@ -302,6 +318,8 @@ export interface FileRoutesById {
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
+  '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
+  '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
@@ -338,6 +356,8 @@ export interface FileRouteTypes {
     | '/api/internal/campaign-worker'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
+    | '/api/whatsapp/es-config'
+    | '/api/whatsapp/es-exchange'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
     | '/app/campaigns/$id'
@@ -370,6 +390,8 @@ export interface FileRouteTypes {
     | '/api/internal/campaign-worker'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
+    | '/api/whatsapp/es-config'
+    | '/api/whatsapp/es-exchange'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
     | '/app/campaigns/$id'
@@ -404,6 +426,8 @@ export interface FileRouteTypes {
     | '/api/internal/campaign-worker'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
+    | '/api/whatsapp/es-config'
+    | '/api/whatsapp/es-exchange'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
     | '/app/campaigns/$id'
@@ -427,6 +451,8 @@ export interface RootRouteChildren {
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
+  ApiWhatsappEsConfigRoute: typeof ApiWhatsappEsConfigRoute
+  ApiWhatsappEsExchangeRoute: typeof ApiWhatsappEsExchangeRoute
   ApiWhatsappSendMessageRoute: typeof ApiWhatsappSendMessageRoute
   ApiWhatsappTemplatesRoute: typeof ApiWhatsappTemplatesRoute
 }
@@ -629,6 +655,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/es-config': {
+      id: '/api/whatsapp/es-config'
+      path: '/api/whatsapp/es-config'
+      fullPath: '/api/whatsapp/es-config'
+      preLoaderRoute: typeof ApiWhatsappEsConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/es-exchange': {
+      id: '/api/whatsapp/es-exchange'
+      path: '/api/whatsapp/es-exchange'
+      fullPath: '/api/whatsapp/es-exchange'
+      preLoaderRoute: typeof ApiWhatsappEsExchangeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/send-message': {
       id: '/api/whatsapp/send-message'
       path: '/api/whatsapp/send-message'
@@ -725,6 +765,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,
+  ApiWhatsappEsConfigRoute: ApiWhatsappEsConfigRoute,
+  ApiWhatsappEsExchangeRoute: ApiWhatsappEsExchangeRoute,
   ApiWhatsappSendMessageRoute: ApiWhatsappSendMessageRoute,
   ApiWhatsappTemplatesRoute: ApiWhatsappTemplatesRoute,
 }
