@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
 import { logActivity } from "@/lib/activity";
-import { contactInitials, type TagRow } from "@/lib/contacts";
+import { SOURCE_LABELS, contactInitials, sourceLabel, type TagRow } from "@/lib/contacts";
 import {
   FIELD_LABELS,
   FIELD_OPERATORS,
@@ -413,6 +413,23 @@ function ValueInput({
           <SelectItem value="opted_in">Opted in</SelectItem>
           <SelectItem value="opted_out">Opted out</SelectItem>
           <SelectItem value="unknown">Unknown</SelectItem>
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  if (condition.field === "source") {
+    return (
+      <Select value={condition.value ?? ""} onValueChange={(v) => onChange({ value: v })}>
+        <SelectTrigger className="w-full sm:w-44">
+          <SelectValue placeholder="Choose a source" />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.keys(SOURCE_LABELS).map((key) => (
+            <SelectItem key={key} value={key}>
+              {sourceLabel(key)}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     );

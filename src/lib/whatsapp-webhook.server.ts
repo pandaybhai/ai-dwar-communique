@@ -137,6 +137,57 @@ async function applyCampaignReply(
 
 type AnyRecord = Record<string, unknown>;
 
+/** Click-to-WhatsApp ads: map Meta's referral payload onto a lead source. */
+function ctwaSource(referral: AnyRecord): string {
+  const hay = `${String(referral["source_type"] ?? "")} ${String(referral["source_url"] ?? "")}`.toLowerCase();
+  return hay.includes("instagram") || hay.includes("ig.me") ? "ctwa_instagram" : "ctwa_facebook";
+}
+
+type MarkerRow = { marker: string; source: string };
+
+/**
+ * First-touch lead source for an inbound message: a click-to-WhatsApp referral
+ * wins, otherwise the org's configured tracking markers are matched against the
+ * message text. Applied only when the contact row is created.
+ */
+function inboundSource(
+  msg: AnyRecord,
+  bodyText: string | null,
+  markers: MarkerRow[],
+): { source: string; source_detail: AnyRecord | null } {
+  const referral = msg["referral"] as AnyRecord | undefined;
+  if (referral && typeof referral === "object") {
+    return { source: ctwaSource(referral), source_detail: referral };
+  }
+  const text = (bodyText ?? "").toLowerCase();
+  if (text) {
+    for (const m of markers) {
+      const marker = m.marker.trim().toLowerCase();
+      if (marker && text.includes(marker)) {
+        return { source: m.source, source_detail: { marker: m.marker, matched_text: (bodyText ?? "").slice(0, 300) } };
+      }
+    }
+  }
+  return { source: "direct", source_detail: null };
+}
+
+async function loadMarkers(
+  supabase: SupabaseClient,
+  organizationId: string,
+  cache: Map<string, MarkerRow[]>,
+): Promise<MarkerRow[]> {
+  const cached = cache.get(organizationId);
+  if (cached) return cached;
+  const { data } = await supabase
+    .from("lead_source_markers")
+    .select("marker, source")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: true });
+  const rows = ((data as MarkerRow[]) ?? []).filter((r) => r.marker && r.source);
+  cache.set(organizationId, rows);
+  return rows;
+}
+
 
 function messageBody(msg: AnyRecord): { type: string; body: string | null } {
   const type = String(msg["type"] ?? "text");
@@ -187,6 +238,7 @@ export async function processWebhookPayload(
 ): Promise<void> {
   try {
     const entries = (payload["entry"] as AnyRecord[] | undefined) ?? [];
+    const markerCache = new Map<string, MarkerRow[]>();
     let routedAny = false;
 
     for (const entry of entries) {
@@ -264,6 +316,15 @@ export async function processWebhookPayload(
             ((profile?.["profile"] as AnyRecord | undefined)?.["name"] as string | undefined) ??
             null;
 
+          const parsed = messageBody(msg);
+          const attribution = inboundSource(
+            msg,
+            parsed.body,
+            await loadMarkers(supabase, orgId, markerCache),
+          );
+
+          // source / source_detail are frozen after insert by a DB trigger,
+          // so this only ever applies to brand-new contacts (first touch).
           const { data: contact } = await supabase
             .from("contacts")
             .upsert(
@@ -272,6 +333,8 @@ export async function processWebhookPayload(
                 phone: normalizePhone(waId),
                 wa_id: waId,
                 ...(profileName ? { name: profileName } : {}),
+                source: attribution.source,
+                source_detail: attribution.source_detail,
                 updated_at: new Date().toISOString(),
               },
               { onConflict: "organization_id,phone" },
@@ -304,7 +367,7 @@ export async function processWebhookPayload(
           }
           if (!conversation) continue;
 
-          const { type, body } = messageBody(msg);
+          const { type, body } = parsed;
           const media = mediaOf(msg);
           const tsSeconds = Number(msg["timestamp"] ?? 0);
           const occurredAt = tsSeconds

@@ -8,6 +8,8 @@ import {
   OPT_IN_LABELS,
   contactInitials,
   formatDate,
+  sourceClass,
+  sourceLabel,
   type ContactRow,
   type OptInStatus,
   type TagRow,
@@ -65,6 +67,7 @@ export function ContactsView({
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<ContactRow | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [breakdown, setBreakdown] = useState<{ source: string; contacts: number }[] | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -81,6 +84,13 @@ export function ContactsView({
       .eq("organization_id", organizationId)
       .order("name");
     setAllTags((data as TagRow[]) ?? []);
+  }, [organizationId]);
+
+  const loadBreakdown = useCallback(async () => {
+    const { data } = await aidwar.rpc("contacts_source_breakdown", {
+      p_organization_id: organizationId,
+    });
+    setBreakdown((data as { source: string; contacts: number }[]) ?? []);
   }, [organizationId]);
 
   const loadSegments = useCallback(async () => {
@@ -129,7 +139,7 @@ export function ContactsView({
 
     let query = aidwar
       .from("contacts")
-      .select("id, name, phone, wa_id, opt_in_status, attributes, created_at", { count: "exact" })
+      .select("id, name, phone, wa_id, opt_in_status, attributes, source, source_detail, created_at", { count: "exact" })
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false })
       .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
@@ -175,7 +185,8 @@ export function ContactsView({
   useEffect(() => {
     void loadTags();
     void loadSegments();
-  }, [loadTags, loadSegments]);
+    void loadBreakdown();
+  }, [loadTags, loadSegments, loadBreakdown]);
 
   useEffect(() => {
     void load();
@@ -261,6 +272,8 @@ export function ContactsView({
           />
         </div>
       </div>
+
+      <SourceBreakdownCard rows={breakdown} />
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
@@ -365,6 +378,7 @@ export function ContactsView({
                     <TableHead>Name</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Tags</TableHead>
+                    <TableHead>Source</TableHead>
                     <TableHead>Opt-in</TableHead>
                     <TableHead className="text-right">Added</TableHead>
                   </TableRow>
@@ -412,6 +426,13 @@ export function ContactsView({
                       </TableCell>
                       <TableCell>
                         <span
+                          className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${sourceClass(c.source)}`}
+                        >
+                          {sourceLabel(c.source)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span
                           className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${OPT_IN_CLASSES[c.opt_in_status]}`}
                         >
                           {OPT_IN_LABELS[c.opt_in_status]}
@@ -438,9 +459,47 @@ export function ContactsView({
         onClose={() => setSelected(null)}
         onChanged={() => {
           void loadTags();
+          void loadBreakdown();
           void load();
         }}
       />
     </>
+  );
+}
+
+function SourceBreakdownCard({ rows }: { rows: { source: string; contacts: number }[] | null }) {
+  if (rows === null) {
+    return <div className="mb-4 h-24 animate-pulse rounded-2xl border border-border/70 bg-muted/40" />;
+  }
+  if (!rows.length) return null;
+  const total = rows.reduce((sum, r) => sum + Number(r.contacts), 0) || 1;
+  return (
+    <div className="mb-4 rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+      <p className="text-sm font-semibold text-foreground">Where your contacts come from</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {rows.map((r) => {
+          const pct = Math.round((Number(r.contacts) / total) * 100);
+          return (
+            <div key={r.source} className="rounded-xl border border-border/60 bg-background/60 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${sourceClass(r.source)}`}
+                >
+                  {sourceLabel(r.source)}
+                </span>
+                <span className="text-lg font-semibold text-foreground">{r.contacts}</span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">{pct}% of contacts</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
