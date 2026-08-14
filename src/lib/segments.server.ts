@@ -135,14 +135,14 @@ export async function segmentExpressions(
   return { match: filters.match, expressions };
 }
 
-type ContactsQuery = ReturnType<ReturnType<SupabaseClient["from"]>["select"]>;
+type OrFilterable<T> = { or: (filters: string) => T };
 
 /** Applies segment filters to a contacts query builder. */
-export function applySegment(
-  query: ContactsQuery,
+export function applySegment<T extends OrFilterable<T>>(
+  query: T,
   match: "all" | "any",
   expressions: string[],
-): ContactsQuery {
+): T {
   let q2 = query;
   if (!expressions.length) return q2;
   if (match === "any") return q2.or(expressions.join(","));
