@@ -119,7 +119,7 @@ export function SegmentBuilderDialog({
       operator: FIELD_OPERATORS[field][0]!.value,
       value: "",
       value2: "",
-      key: field === "attribute" ? (attributeKeys[0] ?? "") : undefined,
+      key: field === "attribute" ? (attributeKeys[0] ?? "") : "",
     });
   }
 
