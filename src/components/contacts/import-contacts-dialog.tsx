@@ -109,8 +109,9 @@ export function ImportContactsDialog({
       if (/phone|mobile|number|whatsapp/.test(key)) guess[String(i)] = "phone";
       else if (/name/.test(key)) guess[String(i)] = "name";
       else if (/tag/.test(key)) guess[String(i)] = "tags";
-      else guess[String(i)] = "ignore";
+      else guess[String(i)] = `attr:${attrKey(h, i)}`;
     });
+
     setFilename(file.name);
     setHeaders(head);
     setRows(body);
