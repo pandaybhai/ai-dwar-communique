@@ -15,7 +15,9 @@ export type ActivityAction =
   | "tag_created"
   | "optin_changed"
   | "segment_created"
-  | "segment_deleted";
+  | "segment_deleted"
+  | "lead_source_marker_created"
+  | "lead_source_marker_deleted";
 
 /**
  * Append-only activity logging. Never pass message contents or credentials —

@@ -81,7 +81,7 @@ export function LeadSourcesTab() {
       );
       return;
     }
-    await logActivity(organizationId, "lead_source_marker.created", { marker: value, source });
+    await logActivity("lead_source_marker_created", organizationId, { marker: value, source });
     setMarker("");
     setLabel("");
     toast.success("Tracking marker added.");
@@ -95,7 +95,7 @@ export function LeadSourcesTab() {
       toast.error("Couldn't remove this marker.");
       return;
     }
-    await logActivity(organizationId, "lead_source_marker.deleted", { marker: row.marker });
+    await logActivity("lead_source_marker_deleted", organizationId, { marker: row.marker });
     void load();
   }
 
