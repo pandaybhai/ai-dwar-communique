@@ -46,7 +46,97 @@ const STATUS_RANK: Record<string, number> = {
   read: 3,
 };
 
+const RECIPIENT_RANK: Record<string, number> = {
+  queued: 0,
+  sending: 1,
+  sent: 2,
+  delivered: 3,
+  read: 4,
+};
+
+const REPLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Mirrors a message status onto its campaign recipient (monotonic) and bumps
+ * the campaign's delivered/read counters exactly once per transition.
+ */
+async function applyCampaignStatus(
+  supabase: SupabaseClient,
+  messageId: string,
+  nextStatus: string,
+  errorDetail: string | null,
+): Promise<void> {
+  const { data: recipient } = await supabase
+    .from("campaign_recipients")
+    .select("id, campaign_id, status")
+    .eq("message_id", messageId)
+    .maybeSingle();
+  if (!recipient) return;
+
+  if (nextStatus === "failed") {
+    if (recipient.status === "failed") return;
+    await supabase
+      .from("campaign_recipients")
+      .update({ status: "failed", error: (errorDetail ?? "Delivery failed").slice(0, 300) })
+      .eq("id", recipient.id);
+    await supabase.rpc("bump_campaign_counters", {
+      p_campaign_id: recipient.campaign_id,
+      p_failed: 1,
+    });
+    return;
+  }
+
+  const current = RECIPIENT_RANK[String(recipient.status)] ?? -1;
+  const incoming = RECIPIENT_RANK[nextStatus];
+  if (incoming === undefined || incoming <= current) return;
+
+  await supabase
+    .from("campaign_recipients")
+    .update({ status: nextStatus })
+    .eq("id", recipient.id);
+
+  await supabase.rpc("bump_campaign_counters", {
+
+    p_campaign_id: recipient.campaign_id,
+    ...(nextStatus === "delivered" ? { p_delivered: 1 } : {}),
+    ...(nextStatus === "read"
+      ? { p_read: 1, ...(current < RECIPIENT_RANK["delivered"]! ? { p_delivered: 1 } : {}) }
+      : {}),
+  });
+}
+
+/** Counts one reply per contact per campaign for campaigns sent in the last 7 days. */
+async function applyCampaignReply(
+  supabase: SupabaseClient,
+  organizationId: string,
+  contactId: string,
+): Promise<void> {
+  const since = new Date(Date.now() - REPLY_WINDOW_MS).toISOString();
+  const { data: recipients } = await supabase
+    .from("campaign_recipients")
+    .select("id, campaign_id, replied_at, created_at")
+    .eq("organization_id", organizationId)
+    .eq("contact_id", contactId)
+    .gte("created_at", since)
+    .in("status", ["sent", "delivered", "read"])
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  for (const r of (recipients ?? []) as Array<Record<string, unknown>>) {
+    if (r["replied_at"]) continue;
+    await supabase
+      .from("campaign_recipients")
+      .update({ replied_at: new Date().toISOString() })
+      .eq("id", r["id"] as string);
+    await supabase.rpc("bump_campaign_counters", {
+      p_campaign_id: r["campaign_id"] as string,
+      p_replied: 1,
+    });
+  }
+}
+
 type AnyRecord = Record<string, unknown>;
+
 
 function messageBody(msg: AnyRecord): { type: string; body: string | null } {
   const type = String(msg["type"] ?? "text");
@@ -251,7 +341,9 @@ export async function processWebhookPayload(
                 unread_count: (conversation.unread_count ?? 0) + 1,
               })
               .eq("id", conversation.id);
+            await applyCampaignReply(supabase, orgId, contact.id);
           }
+
         }
 
         // ---- status updates ----
@@ -280,6 +372,7 @@ export async function processWebhookPayload(
               .from("messages")
               .update({ status: "failed", status_updated_at: at, error_detail: detail })
               .eq("id", existing.id);
+            await applyCampaignStatus(supabase, existing.id, "failed", detail);
             continue;
           }
 
@@ -292,7 +385,9 @@ export async function processWebhookPayload(
             .from("messages")
             .update({ status: nextStatus, status_updated_at: at })
             .eq("id", existing.id);
+          await applyCampaignStatus(supabase, existing.id, nextStatus, null);
         }
+
       }
     }
 
