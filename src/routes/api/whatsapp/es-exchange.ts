@@ -165,10 +165,13 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
 
         // 4. Subscribe our app to the client's WABA so webhooks start flowing.
         const warnings: string[] = [];
+        let subscribeError: string | null = null;
+        let registerError: string | null = null;
         const subscribe = await graphFetch(`${wabaId}/subscribed_apps`, accessToken, {
           method: "POST",
         });
         if (!subscribe.ok) {
+          subscribeError = graphErrorMessage(subscribe.body);
           warnings.push(
             `We connected the number but couldn't turn on incoming messages yet: ${graphErrorMessage(subscribe.body)}`,
           );
@@ -185,6 +188,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           if (/already/i.test(msg) && /register/i.test(msg)) {
             registered = true;
           } else {
+            registerError = msg;
             warnings.push(`Meta couldn't finish activating this number: ${msg}`);
           }
         }
@@ -209,6 +213,8 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           registered,
           subscribed: subscribe.ok,
           warnings,
+          subscribe_error: subscribeError,
+          register_error: registerError,
           reprocessed_events: reprocessed,
         });
       },
