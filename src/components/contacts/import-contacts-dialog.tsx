@@ -208,7 +208,7 @@ export function ImportContactsDialog({
       const chunk = payloadRows.slice(i, i + CHUNK);
       const res = await callApi<{ created: number; updated: number; errors: ErrorRow[] }>(
         "/api/contacts/import",
-        { body: { action: "chunk", organization_id: organizationId, rows: chunk } },
+        { body: { action: "chunk", organization_id: organizationId, consent: true, rows: chunk } },
       );
       if (res.error || !res.data) {
         for (const row of chunk) {
