@@ -13,7 +13,9 @@ export type ActivityAction =
   | "contact_created"
   | "contacts_imported"
   | "tag_created"
-  | "optin_changed";
+  | "optin_changed"
+  | "segment_created"
+  | "segment_deleted";
 
 /**
  * Append-only activity logging. Never pass message contents or credentials —

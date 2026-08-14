@@ -30,6 +30,7 @@ import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
@@ -141,6 +142,12 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
   path: '/join/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiContactsEvaluateSegmentRoute =
+  ApiContactsEvaluateSegmentRouteImport.update({
+    id: '/api/contacts/evaluate-segment',
+    path: '/api/contacts/evaluate-segment',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiContactsImportRoute = ApiContactsImportRouteImport.update({
   id: '/api/contacts/import',
   path: '/api/contacts/import',
@@ -190,6 +197,7 @@ export interface FileRoutesByFullPath {
   '/join/$token': typeof JoinTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
@@ -216,6 +224,7 @@ export interface FileRoutesByTo {
   '/join/$token': typeof JoinTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
@@ -245,6 +254,7 @@ export interface FileRoutesById {
   '/join/$token': typeof JoinTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
@@ -275,6 +285,7 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin/'
     | '/app/'
+    | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
@@ -301,6 +312,7 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin'
     | '/app'
+    | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
@@ -329,6 +341,7 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin/'
     | '/app/'
+    | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
@@ -345,6 +358,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   TermsRoute: typeof TermsRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
@@ -501,6 +515,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JoinTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/contacts/evaluate-segment': {
+      id: '/api/contacts/evaluate-segment'
+      path: '/api/contacts/evaluate-segment'
+      fullPath: '/api/contacts/evaluate-segment'
+      preLoaderRoute: typeof ApiContactsEvaluateSegmentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/contacts/import': {
       id: '/api/contacts/import'
       path: '/api/contacts/import'
@@ -594,6 +615,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   TermsRoute: TermsRoute,
   JoinTokenRoute: JoinTokenRoute,
+  ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,

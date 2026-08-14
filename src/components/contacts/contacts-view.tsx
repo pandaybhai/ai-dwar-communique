@@ -14,6 +14,8 @@ import {
 } from "@/lib/contacts";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { NoResults, Pagination, TableSkeleton } from "@/components/data-pagination";
+import { callApi } from "@/lib/whatsapp-client";
+import type { SegmentRow } from "@/lib/segments";
 import { AddContactDialog } from "@/components/contacts/add-contact-dialog";
 import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
 import { ContactDrawer } from "@/components/contacts/contact-drawer";
@@ -40,9 +42,11 @@ const PAGE_SIZE = 25;
 export function ContactsView({
   organizationId,
   role,
+  showHeader = true,
 }: {
   organizationId: string;
   role: string | null;
+  showHeader?: boolean;
 }) {
   const isAdmin = role === "owner" || role === "admin";
 
@@ -50,6 +54,8 @@ export function ContactsView({
   const [debounced, setDebounced] = useState("");
   const [tagFilter, setTagFilter] = useState("all");
   const [optInFilter, setOptInFilter] = useState("all");
+  const [segmentFilter, setSegmentFilter] = useState("all");
+  const [segments, setSegments] = useState<SegmentRow[]>([]);
   const [page, setPage] = useState(0);
 
   const [contacts, setContacts] = useState<ContactRow[]>([]);
@@ -77,9 +83,33 @@ export function ContactsView({
     setAllTags((data as TagRow[]) ?? []);
   }, [organizationId]);
 
+  const loadSegments = useCallback(async () => {
+    const { data } = await aidwar
+      .from("segments")
+      .select("id, name, description, filters, created_by, created_at")
+      .eq("organization_id", organizationId)
+      .order("name");
+    setSegments((data as SegmentRow[]) ?? []);
+  }, [organizationId]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    let contactIdsForSegment: string[] | null = null;
+    if (segmentFilter !== "all") {
+      const segment = segments.find((s) => s.id === segmentFilter);
+      const { data: res } = await callApi<{ ids: string[] }>("/api/contacts/evaluate-segment", {
+        body: { organization_id: organizationId, mode: "ids", filters: segment?.filters ?? {} },
+      });
+      contactIdsForSegment = res?.ids ?? [];
+      if (contactIdsForSegment.length === 0) {
+        setContacts([]);
+        setTotal(0);
+        setLoading(false);
+        return;
+      }
+    }
 
     let contactIdsForTag: string[] | null = null;
     if (tagFilter !== "all") {
@@ -107,6 +137,7 @@ export function ContactsView({
     if (debounced) query = query.or(`name.ilike.%${debounced}%,phone.ilike.%${debounced}%`);
     if (optInFilter !== "all") query = query.eq("opt_in_status", optInFilter);
     if (contactIdsForTag) query = query.in("id", contactIdsForTag);
+    if (contactIdsForSegment) query = query.in("id", contactIdsForSegment.slice(0, 5000));
 
     const { data, count, error: qErr } = await query;
     if (qErr) {
@@ -139,11 +170,12 @@ export function ContactsView({
     setContacts(withTags);
     setTotal(count ?? 0);
     setLoading(false);
-  }, [organizationId, page, debounced, optInFilter, tagFilter]);
+  }, [organizationId, page, debounced, optInFilter, tagFilter, segmentFilter, segments]);
 
   useEffect(() => {
     void loadTags();
-  }, [loadTags]);
+    void loadSegments();
+  }, [loadTags, loadSegments]);
 
   useEffect(() => {
     void load();
@@ -156,8 +188,9 @@ export function ContactsView({
   }, [contacts, selected]);
 
   const hasFilters = useMemo(
-    () => Boolean(debounced) || tagFilter !== "all" || optInFilter !== "all",
-    [debounced, tagFilter, optInFilter],
+    () =>
+      Boolean(debounced) || tagFilter !== "all" || optInFilter !== "all" || segmentFilter !== "all",
+    [debounced, tagFilter, optInFilter, segmentFilter],
   );
 
   async function exportCsv() {
@@ -194,10 +227,16 @@ export function ContactsView({
   return (
     <>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <PageHeader
-          title="Contacts"
-          description="Your customer list with tags and smart segments, so every campaign reaches exactly the right people."
-        />
+        {showHeader ? (
+          <PageHeader
+            title="Contacts"
+            description="Your customer list with tags and smart segments, so every campaign reaches exactly the right people."
+          />
+        ) : (
+          <p className="mb-8 text-sm text-muted-foreground">
+            Search, filter and tag every customer — or narrow the list down to a saved segment.
+          </p>
+        )}
         <div className="mb-8 flex flex-wrap items-center gap-2">
           {isAdmin ? (
             <>
@@ -272,6 +311,27 @@ export function ContactsView({
             ))}
           </SelectContent>
         </Select>
+        {segments.length ? (
+          <Select
+            value={segmentFilter}
+            onValueChange={(v) => {
+              setSegmentFilter(v);
+              setPage(0);
+            }}
+          >
+            <SelectTrigger className="sm:w-52">
+              <SelectValue placeholder="All contacts" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All contacts</SelectItem>
+              {segments.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
       </div>
 
       {error ? (
