@@ -56,8 +56,7 @@ export function WhatsAppTab() {
         "id, display_phone_number, verified_name, quality_rating, status, connected_at, phone_number_id, waba_id",
       )
       .eq("organization_id", orgId)
-      .eq("status", "active")
-      .order("connected_at", { ascending: false })
+      .order("connected_at", { ascending: false, nullsFirst: false })
       .limit(1);
     setLoading(false);
     if (err) {
@@ -84,12 +83,19 @@ export function WhatsAppTab() {
 
   return (
     <div className="space-y-6">
-      {account ? (
-        <ConnectedCard account={account} canManage={canManage} onChanged={load} orgId={orgId!} />
+      {account && account.status === "active" ? (
+        <>
+          <ConnectedCard account={account} canManage={canManage} onChanged={load} orgId={orgId!} />
+          {canManage ? <TestConsole orgId={orgId!} /> : null}
+        </>
       ) : (
-        <ConnectCard canManage={canManage} onConnected={load} orgId={orgId!} />
+        <ConnectCard
+          canManage={canManage}
+          onConnected={load}
+          orgId={orgId!}
+          previous={account}
+        />
       )}
-      {account && canManage ? <TestConsole orgId={orgId!} /> : null}
     </div>
   );
 }
@@ -98,10 +104,12 @@ function ConnectCard({
   canManage,
   onConnected,
   orgId,
+  previous,
 }: {
   canManage: boolean;
   onConnected: () => Promise<void>;
   orgId: string;
+  previous?: Account | null;
 }) {
   const [waba, setWaba] = useState("");
   const [phoneId, setPhoneId] = useState("");
@@ -118,7 +126,9 @@ function ConnectCard({
             <MessageCircle className="h-5 w-5" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-foreground">No number connected yet</h2>
+            <h2 className="text-base font-semibold text-foreground">
+              {previous ? "Number disconnected" : "No number connected yet"}
+            </h2>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
               An owner or admin needs to connect your business number before your team can send messages.
             </p>
@@ -158,10 +168,13 @@ function ConnectCard({
             <PlugZap className="h-5 w-5" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Connect your business number</h2>
+            <h2 className="text-base font-semibold text-foreground">
+              {previous ? "Reconnect your business number" : "Connect your business number"}
+            </h2>
             <p className="mt-1 max-w-lg text-sm text-muted-foreground">
-              Sign in with Facebook and pick the business number you want to message from. It takes
-              about two minutes — we handle the setup for you.
+              {previous
+                ? `${previous.display_phone_number ?? "Your number"} was disconnected and its access token revoked. Run sign-up again to start sending.`
+                : "Sign in with Facebook and pick the business number you want to message from. It takes about two minutes — we handle the setup for you."}
             </p>
           </div>
         </div>
