@@ -507,7 +507,7 @@ export async function processWebhookPayload(
               },
               { onConflict: "organization_id,phone" },
             )
-            .select("id")
+            .select("id, opt_in_status")
             .single();
           if (!contact) continue;
 
