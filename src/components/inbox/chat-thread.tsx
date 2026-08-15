@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  Ban,
   ArrowLeft,
   Check,
   CheckCheck,
@@ -183,6 +184,18 @@ export function ChatThread({
           {conversation.status === "closed" ? "Reopen" : "Close"}
         </Button>
       </header>
+
+      {conversation.contact?.opt_in_status === "opted_out" ? (
+        <div className="flex items-start gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2.5 text-xs text-destructive">
+          <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            This contact opted out — only service replies within the 24-hour window are
+            appropriate. Please don’t send marketing or templates.
+          </p>
+        </div>
+      ) : null}
+
+
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30 px-4 py-5">
         {loading ? (

@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { NoResults, Pagination, TableSkeleton } from "@/components/data-pagination";
 import { aidwar } from "@/integrations/aidwar/client";
 import { cn } from "@/lib/utils";
+import { qualityClass, qualityLabel } from "@/lib/opt-out";
 
 export const Route = createFileRoute("/admin/organizations")({
   head: () => ({
@@ -23,7 +24,15 @@ export const Route = createFileRoute("/admin/organizations")({
 
 const PAGE_SIZE = 25;
 
-type Org = { id: string; name: string; slug: string; status: string; created_at: string; members: number };
+type Org = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  created_at: string;
+  members: number;
+  quality: string | null;
+};
 
 function SelectBox({
   id,
@@ -89,21 +98,41 @@ function AdminOrganizations() {
       return;
     }
 
-    const rows = (data ?? []) as Omit<Org, "members">[];
+    const rows = (data ?? []) as Omit<Org, "members" | "quality">[];
     const counts = new Map<string, number>();
+    const quality = new Map<string, string | null>();
     if (rows.length > 0) {
+      const ids = rows.map((r) => r.id);
       const { data: members } = await aidwar
         .from("organization_members")
         .select("organization_id")
-        .in("organization_id", rows.map((r) => r.id));
+        .in("organization_id", ids);
       for (const m of (members ?? []) as { organization_id: string }[]) {
         counts.set(m.organization_id, (counts.get(m.organization_id) ?? 0) + 1);
       }
+      const { data: accounts } = await aidwar
+        .from("whatsapp_accounts")
+        .select("organization_id, quality_rating, status, connected_at")
+        .in("organization_id", ids)
+        .order("connected_at", { ascending: false, nullsFirst: false });
+      for (const a of (accounts ?? []) as {
+        organization_id: string;
+        quality_rating: string | null;
+        status: string;
+      }[]) {
+        if (quality.has(a.organization_id)) continue;
+        quality.set(a.organization_id, a.status === "active" ? a.quality_rating : null);
+      }
     }
 
-    let withCounts = rows.map((o) => ({ ...o, members: counts.get(o.id) ?? 0 }));
+    let withCounts = rows.map((o) => ({
+      ...o,
+      members: counts.get(o.id) ?? 0,
+      quality: quality.get(o.id) ?? null,
+    }));
     if (sort === "members_desc") withCounts = [...withCounts].sort((a, b) => b.members - a.members);
     if (sort === "members_asc") withCounts = [...withCounts].sort((a, b) => a.members - b.members);
+
 
     setOrgs(withCounts);
     setTotal(count ?? withCounts.length);
@@ -181,6 +210,7 @@ function AdminOrganizations() {
                 <tr>
                   <th className="px-4 py-3 font-semibold">Organization</th>
                   <th className="px-4 py-3 font-semibold">Members</th>
+                  <th className="px-4 py-3 font-semibold">Number quality</th>
                   <th className="px-4 py-3 font-semibold">Created</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3" />
@@ -194,6 +224,20 @@ function AdminOrganizations() {
                       <span className="block text-xs text-muted-foreground">/{o.slug}</span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{o.members}</td>
+                    <td className="px-4 py-3">
+                      {o.quality ? (
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                            qualityClass(o.quality),
+                          )}
+                        >
+                          {qualityLabel(o.quality)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No number</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {new Date(o.created_at).toLocaleDateString()}
                     </td>

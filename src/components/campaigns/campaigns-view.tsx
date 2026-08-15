@@ -12,6 +12,7 @@ import { formatDate } from "@/lib/contacts";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
 import { CampaignWizard } from "@/components/campaigns/campaign-wizard";
+import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +54,7 @@ export function CampaignsView({
 
   return (
     <>
+      <QualityBanner organizationId={organizationId} className="mb-4" />
       <div className="mb-4 flex justify-end">
         {isAdmin && (
           <Button className="rounded-full" onClick={() => setWizardOpen(true)}>

@@ -34,6 +34,7 @@ import { normalizePhone } from "@/lib/phone";
 import { callApi } from "@/lib/whatsapp-client";
 import { useOrg } from "@/lib/org-context";
 import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
+import { QualityBanner } from "@/components/whatsapp-quality-banner";
 
 type Account = {
   id: string;
@@ -94,6 +95,7 @@ export function WhatsAppTab() {
 
   return (
     <div className="space-y-6">
+      <QualityBanner organizationId={orgId} />
       {account && account.status === "active" ? (
         <>
           <ConnectedCard account={account} canManage={canManage} onChanged={load} orgId={orgId!} />
