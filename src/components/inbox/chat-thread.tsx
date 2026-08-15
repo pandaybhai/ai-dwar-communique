@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  Ban,
   ArrowLeft,
   Check,
   CheckCheck,
