@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { NoResults, Pagination, TableSkeleton } from "@/components/data-pagination";
 import { aidwar } from "@/integrations/aidwar/client";
 import { cn } from "@/lib/utils";
+import { qualityClass, qualityLabel } from "@/lib/opt-out";
 
 export const Route = createFileRoute("/admin/organizations")({
   head: () => ({
