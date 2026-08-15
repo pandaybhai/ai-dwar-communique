@@ -15,6 +15,7 @@ import { logActivity } from "@/lib/activity";
 import { useOrg, type OrgRole } from "@/lib/org-context";
 import { WhatsAppTab } from "@/components/whatsapp-settings";
 import { LeadSourcesTab } from "@/components/contacts/lead-sources-settings";
+import { OptOutKeywordsCard } from "@/components/contacts/opt-out-keywords-settings";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
