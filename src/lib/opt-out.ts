@@ -26,9 +26,9 @@ function normalize(text: string): string {
 }
 
 /**
- * Matches an inbound message against opt-out / opt-in keywords. Case-insensitive
- * and trimmed; a keyword matches when the whole message is the keyword, or the
- * message starts with it (so "STOP please" still opts the contact out).
+ * Matches an inbound message against opt-out / opt-in keywords. Case-insensitive,
+ * trimmed and whitespace-collapsed, and the WHOLE message must equal the keyword —
+ * "please don't stop sending" never opts anyone out.
  */
 export function matchKeyword(
   body: string | null | undefined,
@@ -39,10 +39,11 @@ export function matchKeyword(
   for (const raw of keywords) {
     const k = normalize(raw);
     if (!k) continue;
-    if (text === k || text.startsWith(`${k} `)) return raw;
+    if (text === k) return raw;
   }
   return null;
 }
+
 
 /** Quality ratings we treat as healthy. */
 export function qualityIsHealthy(rating: string | null | undefined): boolean {
