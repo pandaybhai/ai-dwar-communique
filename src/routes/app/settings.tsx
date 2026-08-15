@@ -63,8 +63,9 @@ function SettingsPage() {
           <TabsContent value="whatsapp" className="mt-6">
             <WhatsAppTab />
           </TabsContent>
-          <TabsContent value="sources" className="mt-6">
+          <TabsContent value="sources" className="mt-6 space-y-6">
             <LeadSourcesTab />
+            <OptOutKeywordsCard />
           </TabsContent>
         </Tabs>
       )}
