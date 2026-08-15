@@ -1,5 +1,13 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone, toWaId } from "@/lib/phone";
+import {
+  DEFAULT_OPT_IN_KEYWORDS,
+  DEFAULT_OPT_OUT_KEYWORDS,
+  OPT_IN_CONFIRMATION,
+  OPT_OUT_CONFIRMATION,
+  matchKeyword,
+  qualityLabel,
+} from "@/lib/opt-out";
 
 /** Service-role client for the AiDwar (Mumbai) backend. Server-only. */
 export function getServiceClient(): SupabaseClient {
