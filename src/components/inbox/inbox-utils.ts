@@ -7,7 +7,12 @@ export type ConversationRow = {
   last_message_at: string | null;
   last_customer_message_at: string | null;
   unread_count: number | null;
-  contact: { id: string; name: string | null; phone: string } | null;
+  contact: {
+    id: string;
+    name: string | null;
+    phone: string;
+    opt_in_status?: string | null;
+  } | null;
   preview: { body: string | null; type: string; direction: string } | null;
 };
 
