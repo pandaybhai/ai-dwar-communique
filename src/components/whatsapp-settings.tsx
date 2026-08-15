@@ -94,6 +94,7 @@ export function WhatsAppTab() {
 
   return (
     <div className="space-y-6">
+      <QualityBanner organizationId={orgId} />
       {account && account.status === "active" ? (
         <>
           <ConnectedCard account={account} canManage={canManage} onChanged={load} orgId={orgId!} />
