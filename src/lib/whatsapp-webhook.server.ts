@@ -311,18 +311,48 @@ async function applyOptKeywords(
     keywords: KeywordSets;
   },
 ): Promise<void> {
+  const log = (stage: string, extra: Record<string, unknown> = {}) =>
+    console.log(
+      JSON.stringify({
+        scope: "optkeywords",
+        stage,
+        organization_id: args.organizationId,
+        contact_id: args.contactId,
+        previous_status: args.currentStatus,
+        ...extra,
+      }),
+    );
+
   const optOut = matchKeyword(args.body, args.keywords.optOut);
   const optIn = optOut ? null : matchKeyword(args.body, args.keywords.optIn);
-  if (!optOut && !optIn) return;
+  if (!optOut && !optIn) {
+    log("no_match", {
+      keyword_counts: {
+        opt_out: args.keywords.optOut.length,
+        opt_in: args.keywords.optIn.length,
+      },
+    });
+    return;
+  }
 
   const nextStatus = optOut ? "opted_out" : "opted_in";
-  if (args.currentStatus === nextStatus) return;
+  const action = optOut ? "opt_out" : "opt_in";
+  log("matched", { keyword: optOut ?? optIn, action, next_status: nextStatus });
+
+  if (args.currentStatus === nextStatus) {
+    log("skipped_already_in_status", { action, next_status: nextStatus });
+    return;
+  }
 
   const { error } = await supabase
     .from("contacts")
     .update({ opt_in_status: nextStatus, updated_at: new Date().toISOString() })
     .eq("id", args.contactId);
-  if (error) return;
+  if (error) {
+    log("status_update_failed", { action, next_status: nextStatus, error: error.message });
+    return;
+  }
+  log("status_updated", { action, next_status: nextStatus });
 
   await supabase.from("activity_log").insert({
     organization_id: args.organizationId,
@@ -331,9 +361,12 @@ async function applyOptKeywords(
       contact_id: args.contactId,
       keyword: optOut ?? optIn,
       previous_status: args.currentStatus,
+      new_status: nextStatus,
     },
   });
 
+  // Plain session text, sent directly through the Graph API — it deliberately
+  // bypasses the campaign audience guard (the contact is already opted_out).
   await sendServiceText(supabase, {
     organizationId: args.organizationId,
     accountId: args.accountId,
@@ -342,7 +375,9 @@ async function applyOptKeywords(
     to: args.waId,
     body: optOut ? OPT_OUT_CONFIRMATION : OPT_IN_CONFIRMATION,
   });
+  log("confirmation_sent", { action, next_status: nextStatus });
 }
+
 
 /** Normalises Meta's quality signals onto GREEN / YELLOW / RED / UNKNOWN. */
 function readQuality(value: AnyRecord): string | null {
