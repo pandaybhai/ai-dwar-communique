@@ -23,7 +23,15 @@ export const Route = createFileRoute("/admin/organizations")({
 
 const PAGE_SIZE = 25;
 
-type Org = { id: string; name: string; slug: string; status: string; created_at: string; members: number };
+type Org = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  created_at: string;
+  members: number;
+  quality: string | null;
+};
 
 function SelectBox({
   id,
