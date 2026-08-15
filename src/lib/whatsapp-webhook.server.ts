@@ -188,6 +188,166 @@ async function loadMarkers(
   return rows;
 }
 
+type KeywordSets = { optOut: string[]; optIn: string[] };
+
+/** Built-in keywords plus the organization's own configured list. */
+async function loadOptKeywords(
+  supabase: SupabaseClient,
+  organizationId: string,
+  cache: Map<string, KeywordSets>,
+): Promise<KeywordSets> {
+  const cached = cache.get(organizationId);
+  if (cached) return cached;
+  const { data } = await supabase
+    .from("opt_out_keywords")
+    .select("keyword, action")
+    .eq("organization_id", organizationId);
+  const rows = (data as Array<{ keyword: string; action: string }> | null) ?? [];
+  const sets: KeywordSets = {
+    optOut: [
+      ...DEFAULT_OPT_OUT_KEYWORDS,
+      ...rows.filter((r) => r.action === "opt_out").map((r) => r.keyword),
+    ],
+    optIn: [
+      ...DEFAULT_OPT_IN_KEYWORDS,
+      ...rows.filter((r) => r.action === "opt_in").map((r) => r.keyword),
+    ],
+  };
+  cache.set(organizationId, sets);
+  return sets;
+}
+
+/**
+ * Sends a single plain-text message through the organization's connected
+ * number. Used only for opt-out / opt-in confirmations, which are service
+ * replies inside the 24-hour window.
+ */
+async function sendServiceText(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    accountId: string;
+    phoneNumberId: string;
+    conversationId: string;
+    to: string;
+    body: string;
+  },
+): Promise<void> {
+  const { data: cred } = await supabase
+    .from("whatsapp_credentials")
+    .select("access_token")
+    .eq("organization_id", args.organizationId)
+    .maybeSingle();
+  if (!cred?.access_token) return;
+
+  const res = await fetch(
+    `https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cred.access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: args.to,
+        type: "text",
+        text: { body: args.body },
+      }),
+    },
+  );
+
+  let json: AnyRecord = {};
+  try {
+    json = (await res.json()) as AnyRecord;
+  } catch {
+    json = {};
+  }
+  const metaMessageId =
+    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
+  const nowIso = new Date().toISOString();
+
+  await supabase.from("messages").insert({
+    organization_id: args.organizationId,
+    conversation_id: args.conversationId,
+    meta_message_id: metaMessageId,
+    direction: "outbound",
+    type: "text",
+    body: args.body,
+    status: res.ok ? "pending" : "failed",
+    status_updated_at: nowIso,
+    ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
+  });
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: nowIso })
+    .eq("id", args.conversationId);
+}
+
+/**
+ * Applies opt-out / opt-in keyword handling for one inbound message. The
+ * confirmation is sent only when the status actually changes, so a repeated
+ * "STOP" never triggers a second reply.
+ */
+async function applyOptKeywords(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    accountId: string;
+    phoneNumberId: string;
+    conversationId: string;
+    contactId: string;
+    currentStatus: string | null;
+    waId: string;
+    body: string | null;
+    keywords: KeywordSets;
+  },
+): Promise<void> {
+  const optOut = matchKeyword(args.body, args.keywords.optOut);
+  const optIn = optOut ? null : matchKeyword(args.body, args.keywords.optIn);
+  if (!optOut && !optIn) return;
+
+  const nextStatus = optOut ? "opted_out" : "opted_in";
+  if (args.currentStatus === nextStatus) return;
+
+  const { error } = await supabase
+    .from("contacts")
+    .update({ opt_in_status: nextStatus, updated_at: new Date().toISOString() })
+    .eq("id", args.contactId);
+  if (error) return;
+
+  await supabase.from("activity_log").insert({
+    organization_id: args.organizationId,
+    action: optOut ? "contact_opted_out" : "contact_opted_in",
+    details: {
+      contact_id: args.contactId,
+      keyword: optOut ?? optIn,
+      previous_status: args.currentStatus,
+    },
+  });
+
+  await sendServiceText(supabase, {
+    organizationId: args.organizationId,
+    accountId: args.accountId,
+    phoneNumberId: args.phoneNumberId,
+    conversationId: args.conversationId,
+    to: args.waId,
+    body: optOut ? OPT_OUT_CONFIRMATION : OPT_IN_CONFIRMATION,
+  });
+}
+
+/** Normalises Meta's quality signals onto GREEN / YELLOW / RED / UNKNOWN. */
+function readQuality(value: AnyRecord): string | null {
+  const direct = value["quality_rating"] ?? value["current_quality_rating"];
+  if (typeof direct === "string" && direct) return qualityLabel(direct);
+  const event = String(value["event"] ?? "").toUpperCase();
+  if (event === "FLAGGED") return "RED";
+  if (event === "UNFLAGGED") return "GREEN";
+  return null;
+}
+
+
+
 
 function messageBody(msg: AnyRecord): { type: string; body: string | null } {
   const type = String(msg["type"] ?? "text");
