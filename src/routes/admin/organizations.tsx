@@ -223,6 +223,20 @@ function AdminOrganizations() {
                       <span className="block text-xs text-muted-foreground">/{o.slug}</span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{o.members}</td>
+                    <td className="px-4 py-3">
+                      {o.quality ? (
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                            qualityClass(o.quality),
+                          )}
+                        >
+                          {qualityLabel(o.quality)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No number</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {new Date(o.created_at).toLocaleDateString()}
                     </td>
