@@ -97,21 +97,41 @@ function AdminOrganizations() {
       return;
     }
 
-    const rows = (data ?? []) as Omit<Org, "members">[];
+    const rows = (data ?? []) as Omit<Org, "members" | "quality">[];
     const counts = new Map<string, number>();
+    const quality = new Map<string, string | null>();
     if (rows.length > 0) {
+      const ids = rows.map((r) => r.id);
       const { data: members } = await aidwar
         .from("organization_members")
         .select("organization_id")
-        .in("organization_id", rows.map((r) => r.id));
+        .in("organization_id", ids);
       for (const m of (members ?? []) as { organization_id: string }[]) {
         counts.set(m.organization_id, (counts.get(m.organization_id) ?? 0) + 1);
       }
+      const { data: accounts } = await aidwar
+        .from("whatsapp_accounts")
+        .select("organization_id, quality_rating, status, connected_at")
+        .in("organization_id", ids)
+        .order("connected_at", { ascending: false, nullsFirst: false });
+      for (const a of (accounts ?? []) as {
+        organization_id: string;
+        quality_rating: string | null;
+        status: string;
+      }[]) {
+        if (quality.has(a.organization_id)) continue;
+        quality.set(a.organization_id, a.status === "active" ? a.quality_rating : null);
+      }
     }
 
-    let withCounts = rows.map((o) => ({ ...o, members: counts.get(o.id) ?? 0 }));
+    let withCounts = rows.map((o) => ({
+      ...o,
+      members: counts.get(o.id) ?? 0,
+      quality: quality.get(o.id) ?? null,
+    }));
     if (sort === "members_desc") withCounts = [...withCounts].sort((a, b) => b.members - a.members);
     if (sort === "members_asc") withCounts = [...withCounts].sort((a, b) => a.members - b.members);
+
 
     setOrgs(withCounts);
     setTotal(count ?? withCounts.length);
