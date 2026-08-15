@@ -53,6 +53,7 @@ export function CampaignsView({
 
   return (
     <>
+      <QualityBanner organizationId={organizationId} className="mb-4" />
       <div className="mb-4 flex justify-end">
         {isAdmin && (
           <Button className="rounded-full" onClick={() => setWizardOpen(true)}>
