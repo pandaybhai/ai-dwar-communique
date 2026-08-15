@@ -407,11 +407,69 @@ export async function processWebhookPayload(
   try {
     const entries = (payload["entry"] as AnyRecord[] | undefined) ?? [];
     const markerCache = new Map<string, MarkerRow[]>();
+    const keywordCache = new Map<string, KeywordSets>();
     let routedAny = false;
 
     for (const entry of entries) {
       for (const change of (entry["changes"] as AnyRecord[] | undefined) ?? []) {
         const value = (change["value"] as AnyRecord | undefined) ?? {};
+        const field = String(change["field"] ?? "");
+
+        // ---- account health: quality + account status updates ----
+        if (field === "phone_number_quality_update" || field === "account_update") {
+          const wabaId = String(entry["id"] ?? "");
+          const displayNumber = String(
+            value["display_phone_number"] ?? value["phone_number"] ?? "",
+          );
+          let lookup = supabase
+            .from("whatsapp_accounts")
+            .select("id, organization_id, quality_rating, status")
+            .order("connected_at", { ascending: false, nullsFirst: false })
+            .limit(1);
+          if (displayNumber) lookup = lookup.eq("display_phone_number", displayNumber);
+          else lookup = lookup.eq("waba_id", wabaId);
+
+          const { data: healthRows } = await lookup;
+          const healthAccount = healthRows?.[0];
+          if (!healthAccount) continue;
+          routedAny = true;
+
+          const nowIso = new Date().toISOString();
+          const event = String(value["event"] ?? "").toUpperCase();
+          const nextQuality = readQuality(value);
+          const patch: AnyRecord = {};
+
+          if (nextQuality && nextQuality !== healthAccount.quality_rating) {
+            patch["quality_rating"] = nextQuality;
+            patch["quality_updated_at"] = nowIso;
+          }
+          if (field === "account_update") {
+            if (["DISABLED_UPDATE", "ACCOUNT_DELETED", "ACCOUNT_VIOLATION"].includes(event)) {
+              patch["status"] = "disconnected";
+            } else if (["VERIFIED_ACCOUNT", "ACCOUNT_RESTORED"].includes(event)) {
+              patch["status"] = "active";
+            }
+          }
+
+          if (Object.keys(patch).length > 0) {
+            await supabase.from("whatsapp_accounts").update(patch).eq("id", healthAccount.id);
+          }
+
+          await supabase.from("activity_log").insert({
+            organization_id: healthAccount.organization_id as string,
+            action: nextQuality ? "quality_changed" : "account_health_update",
+            details: {
+              field,
+              event: event || null,
+              ...(nextQuality
+                ? { old_rating: healthAccount.quality_rating ?? null, new_rating: nextQuality }
+                : {}),
+              ...(patch["status"] ? { new_status: patch["status"] } : {}),
+            },
+          });
+          continue;
+        }
+
 
         // ---- template status updates (routed by WABA id, not phone number) ----
         if (String(change["field"] ?? "") === "message_template_status_update") {
