@@ -209,6 +209,7 @@ function AdminOrganizations() {
                 <tr>
                   <th className="px-4 py-3 font-semibold">Organization</th>
                   <th className="px-4 py-3 font-semibold">Members</th>
+                  <th className="px-4 py-3 font-semibold">Number quality</th>
                   <th className="px-4 py-3 font-semibold">Created</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3" />
