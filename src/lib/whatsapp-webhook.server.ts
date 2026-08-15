@@ -631,18 +631,23 @@ export async function processWebhookPayload(
               })
               .eq("id", conversation.id);
             await applyCampaignReply(supabase, orgId, contact.id);
-            await applyOptKeywords(supabase, {
-              organizationId: orgId,
-              accountId,
-              phoneNumberId,
-              conversationId: conversation.id as string,
-              contactId: contact.id as string,
-              currentStatus: (contact as { opt_in_status?: string }).opt_in_status ?? null,
-              waId,
-              body,
-              keywords: await loadOptKeywords(supabase, orgId, keywordCache),
-            });
           }
+
+          // Opt-out / opt-in runs on EVERY inbound text, independent of whether
+          // the message row was new — it is idempotent (no-op when the status
+          // already matches), so duplicate deliveries cannot swallow a "STOP".
+          await applyOptKeywords(supabase, {
+            organizationId: orgId,
+            accountId,
+            phoneNumberId,
+            conversationId: conversation.id as string,
+            contactId: contact.id as string,
+            currentStatus: (contact as { opt_in_status?: string }).opt_in_status ?? null,
+            waId,
+            body,
+            keywords: await loadOptKeywords(supabase, orgId, keywordCache),
+          });
+
 
 
 
