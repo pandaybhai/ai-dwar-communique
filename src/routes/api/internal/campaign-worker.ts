@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { buildInfo } from "@/lib/build-info";
 
 const CLAIM_LIMIT = 30;
 
@@ -137,7 +138,11 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
           report.push({ campaign_id: campaignId, sent, failed, remaining: remaining ?? 0 });
         }
 
-        return Response.json({ processed: report.length, campaigns: report });
+        return Response.json({
+          processed: report.length,
+          campaigns: report,
+          commit: buildInfo().commit,
+        });
       },
     },
   },
