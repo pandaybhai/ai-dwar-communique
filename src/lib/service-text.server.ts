@@ -34,7 +34,7 @@ export async function sendServiceText(
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${cred.access_token}`,
+        Authorization: `Bearer ${args.accessToken}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
