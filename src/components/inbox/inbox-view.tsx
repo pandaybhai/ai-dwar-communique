@@ -427,6 +427,11 @@ export function InboxView() {
                             </Badge>
                           ) : null}
                         </div>
+                        {numbers.length > 1 && c.whatsapp_account_id ? (
+                          <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
+                            via {numberLabel(numberById.get(c.whatsapp_account_id))}
+                          </p>
+                        ) : null}
                         {assignee ? (
                           <div className="mt-1.5 flex items-center gap-1.5">
                             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[8px] font-semibold text-muted-foreground">
@@ -437,6 +442,7 @@ export function InboxView() {
                             </span>
                           </div>
                         ) : null}
+
                       </div>
                     </button>
                   </li>
