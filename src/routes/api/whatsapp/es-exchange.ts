@@ -129,7 +129,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
         // Introspect the token so we store its real expiry, not null.
         const { debugToken } = await import("@/lib/whatsapp-api.server");
         const info = await debugToken(accessToken);
-        if (!info.expires_at) {
+        if (!info.expires_at && !info.expires_never) {
           console.error(
             JSON.stringify({
               scope: "whatsapp_token",
@@ -150,9 +150,10 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
             // so credentials are stored per WABA, not per workspace.
             waba_id: wabaId,
             access_token: accessToken,
-            token_type: "business",
+            token_type: info.token_type ?? "business",
             two_step_pin: pin,
             expires_at: info.expires_at,
+            expires_never: info.expires_never,
             granted_scopes: info.granted_scopes,
             updated_at: new Date().toISOString(),
           },
@@ -249,7 +250,8 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           registered,
           subscribed: subscribe.ok,
           token_expires_at: info.expires_at,
-          token_expiry_missing: !info.expires_at,
+          token_never_expires: info.expires_never,
+          token_expiry_missing: !info.expires_at && !info.expires_never,
         });
 
         return Response.json({

@@ -54,7 +54,7 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
         const { supabase, organizationId, userId } = auth;
 
         const info = await debugToken(accessToken);
-        if (!info.expires_at) {
+        if (!info.expires_at && !info.expires_never) {
           console.error(
             JSON.stringify({
               scope: "whatsapp_token",
@@ -73,8 +73,9 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
             organization_id: organizationId,
             waba_id: wabaId,
             access_token: accessToken,
-            token_type: "business",
+            token_type: info.token_type ?? "business",
             expires_at: info.expires_at,
+            expires_never: info.expires_never,
             granted_scopes: info.granted_scopes,
             updated_at: new Date().toISOString(),
           },

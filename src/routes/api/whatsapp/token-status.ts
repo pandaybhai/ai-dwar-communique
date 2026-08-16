@@ -48,7 +48,7 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
 
         const { data: creds, error } = await supabase
           .from("whatsapp_credentials")
-          .select("waba_id, expires_at, granted_scopes")
+          .select("waba_id, expires_at, expires_never, token_type, granted_scopes")
           .eq("organization_id", organizationId)
           .in("waba_id", wabaIds.length > 0 ? wabaIds : ["__none__"]);
         if (error) return jsonError("We couldn't check your connection health.", 500);
@@ -57,13 +57,15 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
           ((creds ?? []) as Array<{
             waba_id: string;
             expires_at: string | null;
+            expires_never: boolean | null;
+            token_type: string | null;
             granted_scopes: string[] | null;
           }>).map((c) => [c.waba_id, c]),
         );
 
         const numbers = rows.map((row) => {
           const cred = row.waba_id ? byWaba.get(row.waba_id) : undefined;
-          const expiry = classifyTokenExpiry(cred?.expires_at);
+          const expiry = classifyTokenExpiry(cred?.expires_at, cred?.expires_never === true);
           if (cred && expiry.expiry_unknown) {
             console.error(
               JSON.stringify({
@@ -82,6 +84,7 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
             is_default: row.is_default,
             credentials_missing: !cred,
             scopes: cred?.granted_scopes ?? null,
+            token_type: cred?.token_type ?? null,
             ...expiry,
           };
         });
