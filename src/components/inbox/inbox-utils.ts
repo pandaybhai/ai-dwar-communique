@@ -4,6 +4,8 @@ export type ConversationRow = {
   id: string;
   status: "open" | "closed" | "pending";
   assigned_to: string | null;
+  /** Which connected number this thread belongs to — a workspace may run several. */
+  whatsapp_account_id: string | null;
   last_message_at: string | null;
   last_customer_message_at: string | null;
   unread_count: number | null;
@@ -15,6 +17,7 @@ export type ConversationRow = {
   } | null;
   preview: { body: string | null; type: string; direction: string } | null;
 };
+
 
 export type MessageRow = {
   id: string;
