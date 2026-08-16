@@ -105,6 +105,8 @@ export const SKIP_LABELS: Record<string, string> = {
   duplicate_delivery: "Duplicate webhook delivery",
   no_credentials: "No connected number available",
   empty_message: "Automation has no message body",
+  in_progress: "Send did not complete",
+  system_echo: "Message was sent by our own system",
 };
 
 export function skipLabel(reason: string | null): string {
