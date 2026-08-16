@@ -135,11 +135,29 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
             .in("status", ["queued", "sending"]);
 
           if (!remaining) {
-            await supabase
+            const { data: finished } = await supabase
               .from("campaigns")
               .update({ status: "completed", completed_at: new Date().toISOString() })
               .eq("id", campaignId)
-              .eq("status", "sending");
+              .eq("status", "sending")
+              .select("id, sent_count, failed_count");
+            // Only the run that actually flipped the row emits, so a retry of
+            // the worker can't double-count a completion.
+            if (finished && finished.length > 0) {
+              const { emitEvent } = await import("@/lib/events.server");
+              emitEvent(supabase, "campaign.completed", {
+                organizationId: campaign["organization_id"] as string,
+                whatsappAccountId: (campaign["whatsapp_account_id"] as string | null) ?? null,
+                entityType: "campaign",
+                entityId: campaignId,
+                properties: {
+                  campaign_id: campaignId,
+                  template_name: (campaign["template_name"] as string | null) ?? null,
+                  sent_count: finished[0]!.sent_count ?? null,
+                  failed_count: finished[0]!.failed_count ?? null,
+                },
+              });
+            }
           }
 
           report.push({ campaign_id: campaignId, sent, failed, remaining: remaining ?? 0 });
