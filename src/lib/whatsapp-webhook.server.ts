@@ -632,7 +632,7 @@ export async function processWebhookPayload(
 
         const { data: account } = await supabase
           .from("whatsapp_accounts")
-          .select("id, organization_id")
+          .select("id, organization_id, waba_id")
           .eq("phone_number_id", phoneNumberId)
           .maybeSingle();
 
@@ -643,6 +643,7 @@ export async function processWebhookPayload(
         routedAny = true;
         const orgId = account.organization_id as string;
         const accountId = account.id as string;
+        const accountWabaId = (account.waba_id as string | null) ?? null;
 
         // Token for THIS number's WABA — replies always go back out on the
         // number the customer wrote to.
@@ -843,7 +844,7 @@ export async function processWebhookPayload(
           if (!existing) continue;
 
           // Every per-message event carries the same dimensions as the send.
-          const statusProps = await messageEventDimensions(supabase, orgId, wabaId, existing);
+          const statusProps = await messageEventDimensions(supabase, orgId, accountWabaId, existing);
 
           const tsSeconds = Number(st["timestamp"] ?? 0);
           const at = tsSeconds
