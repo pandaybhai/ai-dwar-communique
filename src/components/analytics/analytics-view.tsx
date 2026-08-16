@@ -19,6 +19,7 @@ import {
   fetchSourceBreakdown,
   fetchTeamPerformance,
   fetchTimeseries,
+  makeFilters,
   periodForDays,
   type AutomationRow,
   type CampaignPerformance,
@@ -32,9 +33,19 @@ import {
   type TeamRow,
 } from "@/lib/analytics";
 import { analyticsSections } from "@/lib/feature-registry";
+import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
+import { numberLabel } from "@/lib/whatsapp-numbers";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 /** One tab per feature that declares an analytics dashboard section. */
 const SECTIONS = analyticsSections();
+
 
 const RANGES = [
   { days: 7, label: "Last 7 days" },
