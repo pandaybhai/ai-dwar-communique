@@ -57,6 +57,8 @@ type NumberToken = {
   token_expiring?: boolean;
   token_expired?: boolean;
   expiry_unknown?: boolean;
+  never_expires?: boolean;
+  token_type?: string | null;
 };
 
 type TokenStatus = {
@@ -67,6 +69,8 @@ type TokenStatus = {
 /** Plain-language health line for one number's stored access token. */
 function tokenMessage(token: NumberToken | undefined): { text: string; tone: "warn" | "error" } | null {
   if (!token) return null;
+  // A permanent system-user token is a healthy state, never a warning.
+  if (token.never_expires) return null;
   if (token.credentials_missing) {
     return {
       text: "We can't find a stored access token for this number. Reconnect it to restore sending.",
@@ -520,7 +524,11 @@ function NumberCard({
               <div className="flex gap-2">
                 <dt className="text-muted-foreground">Token expires</dt>
                 <dd className="font-medium text-foreground">
-                  {token?.expires_at ? new Date(token.expires_at).toLocaleDateString() : "—"}
+                  {token?.never_expires
+                    ? "Never"
+                    : token?.expires_at
+                      ? new Date(token.expires_at).toLocaleDateString()
+                      : "—"}
                 </dd>
               </div>
             </dl>
