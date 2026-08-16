@@ -261,7 +261,7 @@ export function CampaignWizard({
 
   const canNext = () => {
     if (step === 0) return name.trim().length >= 2;
-    if (step === 1) return (audience?.eligible ?? 0) > 0;
+    if (step === 1) return Boolean(accountId) && (audience?.eligible ?? 0) > 0;
     if (step === 2)
       return Boolean(template) && variables.every((n) => mappingIsComplete(mappings[String(n)]));
     if (step === 3) return sendNow || Boolean(scheduledAt);
@@ -278,8 +278,10 @@ export function CampaignWizard({
         segment_id: segmentId === "all" ? null : segmentId,
         variable_mappings: mappings,
         scheduled_at: scheduledAt,
+        whatsapp_account_id: accountId || null,
       },
     });
+
     setLaunching(false);
     if (error || !data) {
       toast.error(error ?? "We couldn't launch this campaign.");
