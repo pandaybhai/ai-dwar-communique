@@ -329,7 +329,7 @@ export async function sendCampaignTemplate(
     whatsappAccountId: sender.accountId,
     entityType: "message",
     entityId: messageId,
-    properties: baseProperties,
+    properties: { ...baseProperties, message_id: messageId },
   });
   // Meta bills per template category, so the meter is recorded on the same path.
   recordUsage(supabase, meterForMessageCategory(context.category), {
