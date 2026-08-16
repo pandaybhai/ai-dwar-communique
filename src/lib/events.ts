@@ -12,9 +12,15 @@ import { FEATURES } from "./feature-registry";
 
 /** Dimensions that belong in `properties`, never in their own column. */
 export type EventProperties = {
+  message_id?: string | null;
+  conversation_id?: string | null;
+  contact_id?: string | null;
   campaign_id?: string | null;
   template_name?: string | null;
+  /** Meta's billing bucket: marketing | utility | authentication | service. */
+  billing_category?: string | null;
   waba_id?: string | null;
+  whatsapp_account_id?: string | null;
   segment_id?: string | null;
   automation_id?: string | null;
   contact_source?: string | null;
