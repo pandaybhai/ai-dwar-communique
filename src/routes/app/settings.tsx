@@ -8,7 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ErrorState, PageHeader } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
@@ -23,9 +29,15 @@ export const Route = createFileRoute("/app/settings")({
   head: () => ({
     meta: [
       { title: "Settings — AiDwar" },
-      { name: "description", content: "Manage your AiDwar workspace, team members and connections." },
+      {
+        name: "description",
+        content: "Manage your AiDwar workspace, team members and connections.",
+      },
       { property: "og:title", content: "Settings — AiDwar" },
-      { property: "og:description", content: "Manage your AiDwar workspace, team members and connections." },
+      {
+        property: "og:description",
+        content: "Manage your AiDwar workspace, team members and connections.",
+      },
     ],
   }),
   component: SettingsPage,
@@ -77,7 +89,11 @@ function SettingsPage() {
 }
 
 function Card({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">{children}</div>;
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">
+      {children}
+    </div>
+  );
 }
 
 function GeneralTab() {

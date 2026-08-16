@@ -84,18 +84,23 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const list: Membership[] = ((rows ?? []) as unknown as {
-      role: OrgRole;
-      organizations: Organization | Organization[] | null;
-    }[])
+    const list: Membership[] = (
+      (rows ?? []) as unknown as {
+        role: OrgRole;
+        organizations: Organization | Organization[] | null;
+      }[]
+    )
       .map((r) => ({
         role: r.role,
-        organization: (Array.isArray(r.organizations) ? r.organizations[0] : r.organizations) ?? null,
+        organization:
+          (Array.isArray(r.organizations) ? r.organizations[0] : r.organizations) ?? null,
       }))
       .filter((m): m is Membership => m.organization !== null);
 
     setMemberships(list);
-    setProfile((prof as Profile) ?? { id: uid, full_name: null, email: userData.user?.email ?? null });
+    setProfile(
+      (prof as Profile) ?? { id: uid, full_name: null, email: userData.user?.email ?? null },
+    );
 
     const stored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
     const next = list.find((m) => m.organization.id === stored) ?? list[0] ?? null;

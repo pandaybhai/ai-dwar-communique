@@ -34,10 +34,34 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { to: "/app/inbox", label: "Inbox", icon: Inbox, flag: "inbox", perm: "inbox.view" },
   { to: "/app/contacts", label: "Contacts", icon: Contact, flag: null, perm: "contacts.view" },
-  { to: "/app/campaigns", label: "Campaigns", icon: Megaphone, flag: "campaigns", perm: "campaigns.view" },
-  { to: "/app/templates", label: "Templates", icon: MessageSquareText, flag: "templates", perm: "templates.manage" },
-  { to: "/app/automations", label: "Automations", icon: Workflow, flag: "automations", perm: "automations.manage" },
-  { to: "/app/analytics", label: "Analytics", icon: BarChart3, flag: "analytics", perm: "analytics.view" },
+  {
+    to: "/app/campaigns",
+    label: "Campaigns",
+    icon: Megaphone,
+    flag: "campaigns",
+    perm: "campaigns.view",
+  },
+  {
+    to: "/app/templates",
+    label: "Templates",
+    icon: MessageSquareText,
+    flag: "templates",
+    perm: "templates.manage",
+  },
+  {
+    to: "/app/automations",
+    label: "Automations",
+    icon: Workflow,
+    flag: "automations",
+    perm: "automations.manage",
+  },
+  {
+    to: "/app/analytics",
+    label: "Analytics",
+    icon: BarChart3,
+    flag: "analytics",
+    perm: "analytics.view",
+  },
   { to: "/app/settings", label: "Settings", icon: Settings, flag: null, perm: null },
 ] as const;
 
@@ -107,9 +131,14 @@ function OrgSwitcher() {
         <DropdownMenuLabel>Your workspaces</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {memberships.map((m) => (
-          <DropdownMenuItem key={m.organization.id} onSelect={() => setActiveOrg(m.organization.id)}>
+          <DropdownMenuItem
+            key={m.organization.id}
+            onSelect={() => setActiveOrg(m.organization.id)}
+          >
             <span className="flex-1 truncate">{m.organization.name}</span>
-            {m.organization.id === active.organization.id ? <Check className="h-4 w-4 text-primary" /> : null}
+            {m.organization.id === active.organization.id ? (
+              <Check className="h-4 w-4 text-primary" />
+            ) : null}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -149,7 +178,9 @@ function UserMenu() {
         <DropdownMenuLabel>
           <span className="block truncate text-sm font-semibold text-foreground">{name}</span>
           {profile?.email ? (
-            <span className="block truncate text-xs font-normal text-muted-foreground">{profile.email}</span>
+            <span className="block truncate text-xs font-normal text-muted-foreground">
+              {profile.email}
+            </span>
           ) : null}
           {active ? (
             <span className="mt-1 block text-xs font-normal capitalize text-muted-foreground">
@@ -169,7 +200,11 @@ function UserMenu() {
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem onSelect={signOut} disabled={signingOut}>
-          {signingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
+          {signingOut ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <LogOut className="mr-2 h-4 w-4" />
+          )}
           Log out
         </DropdownMenuItem>
       </DropdownMenuContent>

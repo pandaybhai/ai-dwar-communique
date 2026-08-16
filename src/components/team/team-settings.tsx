@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Copy, Loader2, ShieldCheck, SlidersHorizontal, Trash2, UserPlus, Users } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Loader2,
+  ShieldCheck,
+  SlidersHorizontal,
+  Trash2,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,8 +16,20 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ErrorState } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -37,10 +58,22 @@ type Member = MemberRow & {
 type Invite = { id: string; email: string; role: OrgRole; token: string; expires_at: string };
 
 function Card({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">{children}</div>;
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">
+      {children}
+    </div>
+  );
 }
 
-function Hint({ show, reason, children }: { show: boolean; reason: string; children: React.ReactNode }) {
+function Hint({
+  show,
+  reason,
+  children,
+}: {
+  show: boolean;
+  reason: string;
+  children: React.ReactNode;
+}) {
   if (!show) return <>{children}</>;
   return (
     <TooltipProvider delayDuration={150}>
@@ -78,7 +111,10 @@ export function TeamSettings() {
   const myRank = isSuperAdmin ? 99 : ROLE_RANK[(active?.role as OrgRole) ?? "agent"];
 
   const assignableRoles = useMemo(
-    () => (Object.keys(ROLE_RANK) as OrgRole[]).filter((r) => ROLE_RANK[r] < myRank).sort((a, b) => ROLE_RANK[b] - ROLE_RANK[a]),
+    () =>
+      (Object.keys(ROLE_RANK) as OrgRole[])
+        .filter((r) => ROLE_RANK[r] < myRank)
+        .sort((a, b) => ROLE_RANK[b] - ROLE_RANK[a]),
     [myRank],
   );
 
@@ -116,7 +152,9 @@ export function TeamSettings() {
     const [{ data: profs }, { data: overrides }, { data: activity }] = await Promise.all([
       ids.length
         ? aidwar.from("profiles").select("id, full_name, email").in("id", ids)
-        : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string | null }[] }),
+        : Promise.resolve({
+            data: [] as { id: string; full_name: string | null; email: string | null }[],
+          }),
       aidwar
         .from("member_permissions")
         .select("user_id, permission_key, granted")
@@ -129,7 +167,11 @@ export function TeamSettings() {
         .limit(400),
     ]);
 
-    const byId = new Map(((profs ?? []) as { id: string; full_name: string | null; email: string | null }[]).map((p) => [p.id, p]));
+    const byId = new Map(
+      ((profs ?? []) as { id: string; full_name: string | null; email: string | null }[]).map(
+        (p) => [p.id, p],
+      ),
+    );
     const overrideCount = new Map<string, number>();
     for (const o of (overrides ?? []) as { user_id: string }[]) {
       overrideCount.set(o.user_id, (overrideCount.get(o.user_id) ?? 0) + 1);
@@ -201,7 +243,10 @@ export function TeamSettings() {
       toast.error(databaseMessage(err, "We couldn't remove that member."));
       return;
     }
-    await logActivity("member.removed", orgId, { member_user_id: member.user_id, role: member.role });
+    await logActivity("member.removed", orgId, {
+      member_user_id: member.user_id,
+      role: member.role,
+    });
     toast.success("Member removed");
     await load();
   }
@@ -244,7 +289,8 @@ export function TeamSettings() {
     setTimeout(() => setCopied(null), 2000);
   }
 
-  if (!orgId) return <ErrorState message="We couldn't find your workspace. Please refresh the page." />;
+  if (!orgId)
+    return <ErrorState message="We couldn't find your workspace. Please refresh the page." />;
   if (error) return <ErrorState message={error} />;
 
   return (
@@ -270,11 +316,12 @@ export function TeamSettings() {
           <ul className="mt-6 divide-y divide-border/70">
             {members.map((m) => {
               const isSelf = m.user_id === profile?.id;
-              const canEditThis = canManageTeam && !isSelf && (isSuperAdmin || ROLE_RANK[m.role] < myRank);
+              const canEditThis =
+                canManageTeam && !isSelf && (isSuperAdmin || ROLE_RANK[m.role] < myRank);
               const reason = isSelf
                 ? "You can't change your own role or remove yourself."
                 : !canManageTeam
-                  ? "You need the \"Manage team\" permission."
+                  ? 'You need the "Manage team" permission.'
                   : "You can only manage members whose role is below your own.";
               return (
                 <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -291,7 +338,9 @@ export function TeamSettings() {
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       {m.email ?? "—"} · last active{" "}
-                      {m.last_active ? new Date(m.last_active).toLocaleDateString("en-IN") : "not yet"}
+                      {m.last_active
+                        ? new Date(m.last_active).toLocaleDateString("en-IN")
+                        : "not yet"}
                     </p>
                   </div>
 
@@ -306,13 +355,14 @@ export function TeamSettings() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(assignableRoles.includes(m.role) ? assignableRoles : [m.role, ...assignableRoles]).map(
-                            (r) => (
-                              <SelectItem key={r} value={r}>
-                                {ROLE_LABELS[r]}
-                              </SelectItem>
-                            ),
-                          )}
+                          {(assignableRoles.includes(m.role)
+                            ? assignableRoles
+                            : [m.role, ...assignableRoles]
+                          ).map((r) => (
+                            <SelectItem key={r} value={r}>
+                              {ROLE_LABELS[r]}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     ) : (
@@ -365,7 +415,7 @@ export function TeamSettings() {
         <p className="mt-1 text-sm text-muted-foreground">
           {canManageTeam
             ? `You can invite people as ${assignableRoles.map((r) => ROLE_LABELS[r]).join(", ") || "no role"} — never at or above your own role.`
-            : "You need the \"Manage team\" permission to invite people."}
+            : 'You need the "Manage team" permission to invite people.'}
         </p>
         {canManageTeam && assignableRoles.length > 0 ? (
           <>
@@ -408,7 +458,12 @@ export function TeamSettings() {
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="rounded-full" onClick={() => copyLink(i.token)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full"
+                        onClick={() => copyLink(i.token)}
+                      >
                         {copied === i.token ? (
                           <Check className="mr-2 h-3.5 w-3.5" />
                         ) : (
@@ -416,7 +471,12 @@ export function TeamSettings() {
                         )}
                         Copy link
                       </Button>
-                      <Button variant="ghost" size="sm" className="rounded-full" onClick={() => void revoke(i.id)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="rounded-full"
+                        onClick={() => void revoke(i.id)}
+                      >
                         Revoke
                       </Button>
                     </div>
@@ -494,10 +554,12 @@ function PermissionEditor({
   async function setOverride(key: string, granted: boolean) {
     if (!member) return;
     setBusy(key);
-    const { error } = await aidwar.from("member_permissions").upsert(
-      { organization_id: organizationId, user_id: member.user_id, permission_key: key, granted },
-      { onConflict: "organization_id,user_id,permission_key" },
-    );
+    const { error } = await aidwar
+      .from("member_permissions")
+      .upsert(
+        { organization_id: organizationId, user_id: member.user_id, permission_key: key, granted },
+        { onConflict: "organization_id,user_id,permission_key" },
+      );
     setBusy(null);
     if (error) {
       toast.error(databaseMessage(error, "We couldn't save that permission."));
@@ -544,15 +606,15 @@ function PermissionEditor({
         <SheetHeader>
           <SheetTitle>{member.full_name || member.email || "Teammate"}</SheetTitle>
           <SheetDescription>
-            {ROLE_LABELS[member.role]} preset. Toggling a permission creates an override; reset returns it to the
-            role default.
+            {ROLE_LABELS[member.role]} preset. Toggling a permission creates an override; reset
+            returns it to the role default.
           </SheetDescription>
         </SheetHeader>
 
         {targetIsOwner ? (
           <p className="mt-6 rounded-xl border border-border/70 bg-muted/40 p-4 text-sm text-muted-foreground">
-            Owners always hold every permission — that can't be overridden, so nobody can lock an owner out of their
-            own workspace.
+            Owners always hold every permission — that can't be overridden, so nobody can lock an
+            owner out of their own workspace.
           </p>
         ) : null}
 
