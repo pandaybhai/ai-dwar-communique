@@ -78,6 +78,7 @@ function AdminOrganizations() {
     return () => clearTimeout(t);
   }, [query]);
 
+  const scope = useAdminScope();
   const load = useCallback(async () => {
     setError(null);
     setOrgs(null);
@@ -141,7 +142,7 @@ function AdminOrganizations() {
 
     setOrgs(withCounts);
     setTotal(count ?? withCounts.length);
-  }, [page, search, status, sort]);
+  }, [page, search, status, sort, scope]);
 
   useEffect(() => {
     void load();

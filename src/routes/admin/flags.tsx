@@ -43,6 +43,7 @@ function AdminFlags() {
     return () => clearTimeout(t);
   }, [orgQuery]);
 
+  const scope = useAdminScope();
   const load = useCallback(async () => {
     setError(null);
     let orgQ = applyScope(
@@ -74,7 +75,7 @@ function AdminFlags() {
     } else {
       setOverrides([]);
     }
-  }, [orgSearch]);
+  }, [orgSearch, scope]);
 
   useEffect(() => {
     void load();

@@ -95,6 +95,7 @@ function AdminActivity() {
     })();
   }, []);
 
+  const scope = useAdminScope();
   const load = useCallback(async () => {
     setError(null);
     setRows(null);
@@ -126,7 +127,7 @@ function AdminActivity() {
     setRows(list);
     setTotal(count ?? list.length);
     setActions((prev) => Array.from(new Set([...prev, ...list.map((r) => r.action)])).sort());
-  }, [orgId, userId, action, search, from, to, page]);
+  }, [orgId, userId, action, search, from, to, page, scope]);
 
   useEffect(() => {
     void load();
