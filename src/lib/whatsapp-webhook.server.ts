@@ -225,72 +225,9 @@ async function loadOptKeywords(
   return sets;
 }
 
-/**
- * Sends a single plain-text message through the organization's connected
- * number. Used only for opt-out / opt-in confirmations, which are service
- * replies inside the 24-hour window.
- */
-async function sendServiceText(
-  supabase: SupabaseClient,
-  args: {
-    organizationId: string;
-    accountId: string;
-    phoneNumberId: string;
-    conversationId: string;
-    to: string;
-    body: string;
-  },
-): Promise<void> {
-  const { data: cred } = await supabase
-    .from("whatsapp_credentials")
-    .select("access_token")
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!cred?.access_token) return;
+// Plain session sends live in service-text.server.ts so the automations
+// engine can reuse the exact same path (never a template).
 
-  const res = await fetch(
-    `https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cred.access_token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: args.to,
-        type: "text",
-        text: { body: args.body },
-      }),
-    },
-  );
-
-  let json: AnyRecord = {};
-  try {
-    json = (await res.json()) as AnyRecord;
-  } catch {
-    json = {};
-  }
-  const metaMessageId =
-    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
-  const nowIso = new Date().toISOString();
-
-  await supabase.from("messages").insert({
-    organization_id: args.organizationId,
-    conversation_id: args.conversationId,
-    meta_message_id: metaMessageId,
-    direction: "outbound",
-    type: "text",
-    body: args.body,
-    status: res.ok ? "pending" : "failed",
-    status_updated_at: nowIso,
-    ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
-  });
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: nowIso })
-    .eq("id", args.conversationId);
-}
 
 /**
  * Applies opt-out / opt-in keyword handling for one inbound message. The
