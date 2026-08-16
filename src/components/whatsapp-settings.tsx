@@ -4,11 +4,12 @@ import {
   CheckCircle2,
   Loader2,
   MessageCircle,
+  Plus,
   PlugZap,
   RefreshCw,
-
   Send,
   ShieldCheck,
+  Star,
   Unplug,
   ChevronDown,
 } from "lucide-react";
@@ -39,24 +40,17 @@ import { useOrg } from "@/lib/org-context";
 import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { usePermissions } from "@/hooks/use-permissions";
+import { NUMBER_COLUMNS, numberLabel, sortNumbers, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
 
-type Account = {
-  id: string;
-  display_phone_number: string | null;
-  verified_name: string | null;
-  quality_rating: string | null;
-  status: string;
-  connected_at: string | null;
-  phone_number_id: string;
-  waba_id: string | null;
-};
+type Account = WhatsAppNumber & { phone_number_id: string };
 
 function Card({ children }: { children: React.ReactNode }) {
   return <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">{children}</div>;
 }
 
-type TokenStatus = {
-  connected: boolean;
+type NumberToken = {
+  whatsapp_account_id: string;
+  display_phone_number: string | null;
   credentials_missing?: boolean;
   expires_at?: string | null;
   days_left?: number | null;
@@ -65,41 +59,55 @@ type TokenStatus = {
   expiry_unknown?: boolean;
 };
 
-function TokenExpiryBanner({ status }: { status: TokenStatus | null }) {
-  if (!status?.connected) return null;
+type TokenStatus = {
+  connected: boolean;
+  numbers?: NumberToken[];
+};
 
-  let message: string | null = null;
-  let tone: "warn" | "error" = "warn";
-
-  if (status.credentials_missing) {
-    message =
-      "We can't find a stored access token for this number. Reconnect with Facebook to restore sending.";
-    tone = "error";
-  } else if (status.token_expired) {
-    message =
-      "Your access token has expired. Campaigns and replies will fail until you reconnect with Facebook.";
-    tone = "error";
-  } else if (status.token_expiring) {
-    const days = status.days_left ?? 0;
-    message = `Your access token expires in ${days <= 0 ? "less than a day" : `${days} day${days === 1 ? "" : "s"}`}. Reconnect with Facebook to avoid sending failures.`;
-  } else if (status.expiry_unknown) {
-    message =
-      "We couldn't read an expiry date for this connection. Reconnect with Facebook so we can monitor it for you.";
-    tone = "error";
+/** Plain-language health line for one number's stored access token. */
+function tokenMessage(token: NumberToken | undefined): { text: string; tone: "warn" | "error" } | null {
+  if (!token) return null;
+  if (token.credentials_missing) {
+    return {
+      text: "We can't find a stored access token for this number. Reconnect it to restore sending.",
+      tone: "error",
+    };
   }
+  if (token.token_expired) {
+    return {
+      text: "The access token for this number has expired. Campaigns and replies will fail until you reconnect it.",
+      tone: "error",
+    };
+  }
+  if (token.token_expiring) {
+    const days = token.days_left ?? 0;
+    return {
+      text: `The access token for this number expires in ${days <= 0 ? "less than a day" : `${days} day${days === 1 ? "" : "s"}`}. Reconnect it to avoid sending failures.`,
+      tone: "warn",
+    };
+  }
+  if (token.expiry_unknown) {
+    return {
+      text: "We couldn't read an expiry date for this connection. Reconnect it so we can monitor it for you.",
+      tone: "error",
+    };
+  }
+  return null;
+}
 
+function HealthNote({ token }: { token: NumberToken | undefined }) {
+  const message = tokenMessage(token);
   if (!message) return null;
-
   return (
     <div
-      className={`flex items-start gap-3 rounded-2xl border p-4 text-sm ${
-        tone === "error"
+      className={`mt-4 flex items-start gap-2.5 rounded-xl border p-3 text-sm ${
+        message.tone === "error"
           ? "border-destructive/30 bg-destructive/5 text-destructive"
           : "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400"
       }`}
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-      <p>{message}</p>
+      <p>{message.text}</p>
     </div>
   );
 }
@@ -109,10 +117,10 @@ export function WhatsAppTab() {
   const { can } = usePermissions();
   const canManage = can("settings.whatsapp");
   const orgId = active?.organization.id;
-  const [account, setAccount] = useState<Account | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tokenStatus, setTokenStatus] = useState<TokenStatus | null>(null);
+  const [tokens, setTokens] = useState<Record<string, NumberToken>>({});
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -120,27 +128,25 @@ export function WhatsAppTab() {
     setError(null);
     const { data, error: err } = await aidwar
       .from("whatsapp_accounts")
-      .select(
-        "id, display_phone_number, verified_name, quality_rating, status, connected_at, phone_number_id, waba_id",
-      )
-      .eq("organization_id", orgId)
-      .order("connected_at", { ascending: false, nullsFirst: false })
-      .limit(1);
+      .select(`${NUMBER_COLUMNS}, phone_number_id`)
+      .eq("organization_id", orgId);
     setLoading(false);
     if (err) {
-      setError("We couldn't load your connection. Please refresh.");
+      setError("We couldn't load your connections. Please refresh.");
       return;
     }
-    const first = ((data ?? [])[0] as Account) ?? null;
-    setAccount(first);
+    const rows = sortNumbers((data ?? []) as Account[]) as Account[];
+    setAccounts(rows);
 
-    if (first?.status === "active") {
+    if (rows.some((r) => r.status === "active")) {
       const { data: status } = await callApi<TokenStatus>("/api/whatsapp/token-status", {
         body: { organization_id: orgId },
       });
-      setTokenStatus(status);
+      const map: Record<string, NumberToken> = {};
+      for (const n of status?.numbers ?? []) map[n.whatsapp_account_id] = n;
+      setTokens(map);
     } else {
-      setTokenStatus(null);
+      setTokens({});
     }
   }, [orgId]);
 
@@ -159,14 +165,33 @@ export function WhatsAppTab() {
 
   if (error) return <ErrorState message={error} />;
 
+  const live = accounts.filter((a) => a.status === "active");
+  const past = accounts.filter((a) => a.status !== "active");
+
   return (
     <div className="space-y-6">
       <QualityBanner organizationId={orgId} />
-      <TokenExpiryBanner status={tokenStatus} />
-      {account && account.status === "active" ? (
+
+      {live.length > 0 ? (
         <>
-          <ConnectedCard account={account} canManage={canManage} onChanged={load} orgId={orgId!} />
-          {canManage ? <TestConsole orgId={orgId!} /> : null}
+          <div className="space-y-4">
+            {live.map((account) => (
+              <NumberCard
+                key={account.id}
+                account={account}
+                token={tokens[account.id]}
+                canManage={canManage}
+                canDisconnect={live.length > 0}
+                onChanged={load}
+                orgId={orgId!}
+              />
+            ))}
+          </div>
+
+          {canManage ? (
+            <AddNumberCard orgId={orgId!} onConnected={load} count={live.length} />
+          ) : null}
+          {canManage ? <TestConsole orgId={orgId!} numbers={live} /> : null}
         </>
       ) : (
         <ConnectCard
@@ -174,10 +199,57 @@ export function WhatsAppTab() {
           allowManual={isSuperAdmin}
           onConnected={load}
           orgId={orgId!}
-          previous={account}
+          previous={past[0] ?? null}
         />
       )}
+
+      {live.length > 0 && past.length > 0 ? (
+        <Card>
+          <h2 className="text-base font-semibold text-foreground">Previously connected</h2>
+          <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+            {past.map((a) => (
+              <li key={a.id} className="flex items-center justify-between gap-3">
+                <span>{numberLabel(a)}</span>
+                <Badge variant="outline" className="rounded-full">
+                  {a.status}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
     </div>
+  );
+}
+
+/** Adding a second, third… number reruns the same sign-up flow. */
+function AddNumberCard({
+  orgId,
+  onConnected,
+  count,
+}: {
+  orgId: string;
+  onConnected: () => Promise<void>;
+  count: number;
+}) {
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Plus className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Add another number</h2>
+            <p className="mt-1 max-w-lg text-sm text-muted-foreground">
+              Run separate numbers for different brands, or keep sales and support apart. You have{" "}
+              {count} number{count === 1 ? "" : "s"} connected today.
+            </p>
+          </div>
+        </div>
+        <EmbeddedSignupButton orgId={orgId} onConnected={onConnected} />
+      </div>
+    </Card>
   );
 }
 
@@ -257,7 +329,7 @@ function ConnectCard({
             <p className="mt-1 max-w-lg text-sm text-muted-foreground">
               {previous
                 ? `${previous.display_phone_number ?? "Your number"} was disconnected and its access token revoked. Run sign-up again to start sending.`
-                : "Sign in with Facebook and pick the business number you want to message from. It takes about two minutes — we handle the setup for you."}
+                : "Sign in with Facebook and pick the business number you want to message from. It takes about two minutes — we handle the setup for you. You can add more numbers later."}
             </p>
           </div>
         </div>
@@ -267,16 +339,16 @@ function ConnectCard({
         </div>
 
         {allowManual ? (
-        <button
-          type="button"
-          onClick={() => setShowManual((v) => !v)}
-          className="mt-6 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-200 hover:text-foreground"
-        >
-          <ChevronDown
-            className={`h-3.5 w-3.5 transition-transform duration-200 ${showManual ? "rotate-180" : ""}`}
-          />
-          Advanced: connect manually
-        </button>
+          <button
+            type="button"
+            onClick={() => setShowManual((v) => !v)}
+            className="mt-6 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-200 hover:text-foreground"
+          >
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform duration-200 ${showManual ? "rotate-180" : ""}`}
+            />
+            Advanced: connect manually
+          </button>
         ) : null}
       </Card>
 
@@ -291,34 +363,34 @@ function ConnectCard({
           </div>
 
           <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="waba_id">WABA ID</Label>
-          <Input id="waba_id" value={waba} onChange={(e) => setWaba(e.target.value)} required />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="phone_number_id">Phone Number ID</Label>
-          <Input id="phone_number_id" value={phoneId} onChange={(e) => setPhoneId(e.target.value)} required />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="display_phone">Display phone number</Label>
-          <Input
-            id="display_phone"
-            placeholder="+91 90000 00000"
-            value={display}
-            onChange={(e) => setDisplay(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="access_token">Access token</Label>
-          <Input
-            id="access_token"
-            type="password"
-            autoComplete="off"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            required
-          />
-        </div>
+            <div className="space-y-2">
+              <Label htmlFor="waba_id">WABA ID</Label>
+              <Input id="waba_id" value={waba} onChange={(e) => setWaba(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone_number_id">Phone Number ID</Label>
+              <Input id="phone_number_id" value={phoneId} onChange={(e) => setPhoneId(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="display_phone">Display phone number</Label>
+              <Input
+                id="display_phone"
+                placeholder="+91 90000 00000"
+                value={display}
+                onChange={(e) => setDisplay(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="access_token">Access token</Label>
+              <Input
+                id="access_token"
+                type="password"
+                autoComplete="off"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                required
+              />
+            </div>
             <div className="sm:col-span-2 flex items-center gap-3 pt-1">
               <Button type="submit" className="rounded-full" disabled={saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -335,19 +407,23 @@ function ConnectCard({
   );
 }
 
-function ConnectedCard({
+function NumberCard({
   account,
+  token,
   canManage,
   onChanged,
   orgId,
 }: {
   account: Account;
+  token: NumberToken | undefined;
   canManage: boolean;
+  canDisconnect: boolean;
   onChanged: () => Promise<void>;
   orgId: string;
 }) {
   const [working, setWorking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [makingDefault, setMakingDefault] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
   async function refreshQuality() {
@@ -355,7 +431,7 @@ function ConnectedCard({
     setFailure(null);
     const { data, error } = await callApi<{ quality_rating: string; changed: boolean }>(
       "/api/whatsapp/refresh-quality",
-      { body: { organization_id: orgId } },
+      { body: { organization_id: orgId, whatsapp_account_id: account.id } },
     );
     setRefreshing(false);
     if (error) {
@@ -371,13 +447,29 @@ function ConnectedCard({
     await onChanged();
   }
 
+  async function makeDefault() {
+    setMakingDefault(true);
+    setFailure(null);
+    const { error } = await callApi("/api/whatsapp/connect", {
+      method: "PATCH",
+      body: { organization_id: orgId, whatsapp_account_id: account.id },
+    });
+    setMakingDefault(false);
+    if (error) {
+      setFailure(error);
+      toast.error(error);
+      return;
+    }
+    toast.success(`${numberLabel(account)} is now your default number`);
+    await onChanged();
+  }
 
   async function disconnect() {
     setWorking(true);
     setFailure(null);
     const { data, error } = await callApi<{ token_revoked?: boolean }>("/api/whatsapp/connect", {
       method: "DELETE",
-      body: { organization_id: orgId },
+      body: { organization_id: orgId, whatsapp_account_id: account.id },
     });
     setWorking(false);
     if (error) {
@@ -402,10 +494,13 @@ function ConnectedCard({
           </span>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold text-foreground">
-                {account.display_phone_number ?? "Connected number"}
-              </h2>
+              <h2 className="text-base font-semibold text-foreground">{numberLabel(account)}</h2>
               <Badge className="rounded-full bg-primary/10 text-primary hover:bg-primary/10">Active</Badge>
+              {account.is_default ? (
+                <Badge variant="outline" className="rounded-full gap-1">
+                  <Star className="h-3 w-3 fill-current" /> Default
+                </Badge>
+              ) : null}
             </div>
             <dl className="mt-3 grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2">
               <div className="flex gap-2">
@@ -422,11 +517,32 @@ function ConnectedCard({
                   {account.connected_at ? new Date(account.connected_at).toLocaleDateString() : "—"}
                 </dd>
               </div>
+              <div className="flex gap-2">
+                <dt className="text-muted-foreground">Token expires</dt>
+                <dd className="font-medium text-foreground">
+                  {token?.expires_at ? new Date(token.expires_at).toLocaleDateString() : "—"}
+                </dd>
+              </div>
             </dl>
           </div>
         </div>
         {canManage ? (
           <div className="flex flex-wrap items-center gap-2">
+            {!account.is_default ? (
+              <Button
+                variant="ghost"
+                className="rounded-full"
+                disabled={makingDefault}
+                onClick={() => void makeDefault()}
+              >
+                {makingDefault ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Star className="mr-2 h-4 w-4" />
+                )}
+                Make default
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               className="rounded-full"
@@ -453,11 +569,11 @@ function ConnectedCard({
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Disconnect this number?</AlertDialogTitle>
+                  <AlertDialogTitle>Disconnect {numberLabel(account)}?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    We'll stop incoming messages, revoke the stored access token and remove it from
-                    our servers. Your contacts and conversations stay exactly as they are, and you
-                    can run sign-up again whenever you're ready.
+                    We'll stop incoming messages on this number and remove its stored access token.
+                    Your other connected numbers keep working, and your contacts and conversations
+                    stay exactly as they are.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -470,8 +586,9 @@ function ConnectedCard({
             </AlertDialog>
           </div>
         ) : null}
-
       </div>
+
+      <HealthNote token={token} />
 
       {failure ? (
         <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
@@ -488,10 +605,13 @@ type SendResult = {
   provider_response: unknown;
 };
 
-function TestConsole({ orgId }: { orgId: string }) {
+function TestConsole({ orgId, numbers }: { orgId: string; numbers: Account[] }) {
   const [phone, setPhone] = useState("");
   const [mode, setMode] = useState<"template" | "text">("template");
   const [body, setBody] = useState("");
+  const [fromId, setFromId] = useState<string>(
+    (numbers.find((n) => n.is_default) ?? numbers[0])?.id ?? "",
+  );
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<SendResult | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -527,6 +647,7 @@ function TestConsole({ orgId }: { orgId: string }) {
     const { data, error } = await callApi<SendResult>("/api/whatsapp/send-message", {
       body: {
         organization_id: orgId,
+        whatsapp_account_id: fromId || null,
         phone: normalizePhone(phone),
         message_type: mode,
         ...(mode === "template"
@@ -558,13 +679,31 @@ function TestConsole({ orgId }: { orgId: string }) {
         <div>
           <h2 className="text-base font-semibold text-foreground">Send test message</h2>
           <p className="mt-1 max-w-lg text-sm text-muted-foreground">
-            Send a live message to verify your connection end to end. Free-form text only works within 24 hours of
+            Send a live message to verify a connection end to end. Free-form text only works within 24 hours of
             the contact's last message — otherwise use the template.
           </p>
         </div>
       </div>
 
       <form onSubmit={send} className="mt-6 grid gap-4 sm:grid-cols-2">
+        {numbers.length > 1 ? (
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="test_from">Send from</Label>
+            <Select value={fromId} onValueChange={setFromId}>
+              <SelectTrigger id="test_from">
+                <SelectValue placeholder="Choose a number" />
+              </SelectTrigger>
+              <SelectContent>
+                {numbers.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {numberLabel(n)}
+                    {n.is_default ? " · Default" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <div className="space-y-2">
           <Label htmlFor="test_phone">Recipient phone (E.164)</Label>
           <Input
