@@ -331,9 +331,32 @@ export function CampaignWizard({
 
             {step === 1 && (
               <div className="space-y-4">
+                {multiple ? (
+                  <div className="space-y-2">
+                    <Label>Send from</Label>
+                    <Select value={accountId} onValueChange={setAccountId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pick a number" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {numbers.map((n) => (
+                          <SelectItem key={n.id} value={n.id}>
+                            {numberLabel(n)}
+                            {numberSubtitle(n) ? ` · ${numberSubtitle(n)}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Templates and delivery are tied to this number. Opt-outs always apply across
+                      the whole workspace.
+                    </p>
+                  </div>
+                ) : null}
                 <div className="space-y-2">
                   <Label>Who should receive this?</Label>
                   <Select value={segmentId} onValueChange={setSegmentId}>
+
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
