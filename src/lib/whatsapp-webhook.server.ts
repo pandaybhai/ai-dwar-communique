@@ -247,6 +247,7 @@ async function applyOptKeywords(
     organizationId: string;
     accountId: string;
     phoneNumberId: string;
+    accessToken: string;
     conversationId: string;
     contactId: string;
     currentStatus: string | null;
@@ -255,6 +256,7 @@ async function applyOptKeywords(
     keywords: KeywordSets;
   },
 ): Promise<boolean> {
+
   const log = (stage: string, extra: Record<string, unknown> = {}) =>
     console.log(
       JSON.stringify({
