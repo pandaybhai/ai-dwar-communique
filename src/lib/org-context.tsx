@@ -29,10 +29,16 @@ type OrgContextValue = {
   profile: Profile | null;
   setActiveOrg: (organizationId: string) => void;
   reload: () => Promise<void>;
+  /** @deprecated gate on a permission key via usePermissions() instead. */
   canManage: boolean;
   isSuperAdmin: boolean;
   flagsLoading: boolean;
   isFeatureEnabled: (key: string) => boolean;
+  permissions: string[];
+  permissionOverrides: Record<string, boolean>;
+  permissionsLoading: boolean;
+  can: (key: string) => boolean;
+  reloadPermissions: () => Promise<void>;
 };
 
 const OrgContext = createContext<OrgContextValue | null>(null);
