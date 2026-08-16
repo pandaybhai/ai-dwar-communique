@@ -4,6 +4,8 @@
  * these are the client-side mirrors used for typing and presentation only.
  */
 
+import { FEATURES, allPermissionKeys } from "@/lib/feature-registry";
+
 export type OrgRole = "owner" | "admin" | "marketer" | "agent";
 
 export const ROLE_RANK: Record<OrgRole, number> = {
