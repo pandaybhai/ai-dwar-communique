@@ -22,15 +22,15 @@ export function ChartCard({
   className,
 }: {
   title: string;
-  description?: string;
-  loading?: boolean;
-  isEmpty?: boolean;
+  description?: string | undefined;
+  loading?: boolean | undefined;
+  isEmpty?: boolean | undefined;
   emptyIcon: LucideIcon;
   emptyTitle: string;
   emptyDescription: string;
   action?: ReactNode;
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <Card className={cn("border-border/70 shadow-sm", className)}>
@@ -74,12 +74,12 @@ export function MetricCard({
 }: {
   label: string;
   value: number;
-  rateText?: string;
-  rateLabel?: string;
-  thin?: boolean;
-  deltaText?: string;
-  direction?: 0 | 1 | -1;
-  loading?: boolean;
+  rateText?: string | undefined;
+  rateLabel?: string | undefined;
+  thin?: boolean | undefined;
+  deltaText?: string | undefined;
+  direction?: 0 | 1 | -1 | undefined;
+  loading?: boolean | undefined;
 }) {
   if (loading) {
     return (

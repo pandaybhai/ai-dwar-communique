@@ -62,7 +62,6 @@ export function AnalyticsOverview({
           loading={loading}
           label="Messages sent"
           value={cur?.sent ?? 0}
-          {...(prev ? delta(cur?.sent ?? 0, prev.sent) : {})}
           deltaText={prev ? delta(cur?.sent ?? 0, prev.sent).text : undefined}
           direction={prev ? delta(cur?.sent ?? 0, prev.sent).direction : undefined}
         />
