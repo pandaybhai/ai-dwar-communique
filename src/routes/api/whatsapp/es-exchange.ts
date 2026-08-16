@@ -126,6 +126,22 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
 
         const pin = String(Math.floor(100000 + Math.random() * 900000));
 
+        // Introspect the token so we store its real expiry, not null.
+        const { debugToken } = await import("@/lib/whatsapp-api.server");
+        const info = await debugToken(accessToken);
+        if (!info.expires_at) {
+          console.error(
+            JSON.stringify({
+              scope: "whatsapp_token",
+              event: "expiry_missing",
+              method: "embedded_signup",
+              organization_id: organizationId,
+              phone_number_id: phoneNumberId,
+              debug_token_error: info.error,
+            }),
+          );
+        }
+
         // 3. Persist credentials — the exchange succeeded, so this is safe.
         const { error: credErr } = await supabase.from("whatsapp_credentials").upsert(
           {
@@ -133,6 +149,8 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
             access_token: accessToken,
             token_type: "business",
             two_step_pin: pin,
+            expires_at: info.expires_at,
+            granted_scopes: info.granted_scopes,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "organization_id" },
@@ -206,6 +224,8 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           waba_id: wabaId,
           registered,
           subscribed: subscribe.ok,
+          token_expires_at: info.expires_at,
+          token_expiry_missing: !info.expires_at,
         });
 
         return Response.json({

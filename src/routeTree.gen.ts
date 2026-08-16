@@ -43,6 +43,7 @@ import { Route as ApiWhatsappEsExchangeRouteImport } from './routes/api/whatsapp
 import { Route as ApiWhatsappRefreshQualityRouteImport } from './routes/api/whatsapp/refresh-quality'
 import { Route as ApiWhatsappSendMessageRouteImport } from './routes/api/whatsapp/send-message'
 import { Route as ApiWhatsappTemplatesRouteImport } from './routes/api/whatsapp/templates'
+import { Route as ApiWhatsappTokenStatusRouteImport } from './routes/api/whatsapp/token-status'
 import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
 import { Route as AppCampaignsIdRouteImport } from './routes/app/campaigns.$id'
 
@@ -221,6 +222,11 @@ const ApiWhatsappTemplatesRoute = ApiWhatsappTemplatesRouteImport.update({
   path: '/api/whatsapp/templates',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappTokenStatusRoute = ApiWhatsappTokenStatusRouteImport.update({
+  id: '/api/whatsapp/token-status',
+  path: '/api/whatsapp/token-status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppCampaignsIndexRoute = AppCampaignsIndexRouteImport.update({
   id: '/campaigns/',
   path: '/campaigns/',
@@ -267,6 +273,7 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
+  '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
 }
@@ -303,6 +310,7 @@ export interface FileRoutesByTo {
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
+  '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/campaigns': typeof AppCampaignsIndexRoute
 }
@@ -342,6 +350,7 @@ export interface FileRoutesById {
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
+  '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
 }
@@ -382,6 +391,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
+    | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
     | '/app/campaigns/'
   fileRoutesByTo: FileRoutesByTo
@@ -418,6 +428,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
+    | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
     | '/app/campaigns'
   id:
@@ -456,6 +467,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/templates'
+    | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
     | '/app/campaigns/'
   fileRoutesById: FileRoutesById
@@ -483,6 +495,7 @@ export interface RootRouteChildren {
   ApiWhatsappRefreshQualityRoute: typeof ApiWhatsappRefreshQualityRoute
   ApiWhatsappSendMessageRoute: typeof ApiWhatsappSendMessageRoute
   ApiWhatsappTemplatesRoute: typeof ApiWhatsappTemplatesRoute
+  ApiWhatsappTokenStatusRoute: typeof ApiWhatsappTokenStatusRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -725,6 +738,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappTemplatesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/token-status': {
+      id: '/api/whatsapp/token-status'
+      path: '/api/whatsapp/token-status'
+      fullPath: '/api/whatsapp/token-status'
+      preLoaderRoute: typeof ApiWhatsappTokenStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app/campaigns/': {
       id: '/app/campaigns/'
       path: '/campaigns'
@@ -813,6 +833,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappRefreshQualityRoute: ApiWhatsappRefreshQualityRoute,
   ApiWhatsappSendMessageRoute: ApiWhatsappSendMessageRoute,
   ApiWhatsappTemplatesRoute: ApiWhatsappTemplatesRoute,
+  ApiWhatsappTokenStatusRoute: ApiWhatsappTokenStatusRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
