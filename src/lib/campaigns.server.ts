@@ -192,15 +192,6 @@ export async function sendCampaignTemplate(
   const { meterForMessageCategory } = await import("@/lib/events");
   const { providerErrorDetail, providerErrorCode } = await import("@/lib/whatsapp-api.server");
 
-  const baseProperties = {
-    campaign_id: context.campaignId,
-    template_name: template.name,
-    waba_id: sender.wabaId,
-    whatsapp_account_id: sender.accountId,
-    category: context.category,
-    message_type: "template",
-  };
-
   const to = toWaId(recipient.phone);
 
   let contactId = recipient.contactId;
