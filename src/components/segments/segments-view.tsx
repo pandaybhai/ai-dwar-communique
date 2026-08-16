@@ -1,3 +1,4 @@
+import { usePermissions } from "@/hooks/use-permissions";
 import { useCallback, useEffect, useState } from "react";
 import { Copy, Filter, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -11,7 +12,6 @@ import { SegmentBuilderDialog } from "@/components/segments/segment-builder-dial
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-import { usePermissions } from "@/hooks/use-permissions";
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,

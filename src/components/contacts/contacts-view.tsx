@@ -1,3 +1,4 @@
+import { usePermissions } from "@/hooks/use-permissions";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Contact as ContactIcon, Download, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -31,7 +32,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-import { usePermissions } from "@/hooks/use-permissions";
   Table,
   TableBody,
   TableCell,
