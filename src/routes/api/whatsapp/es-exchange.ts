@@ -224,6 +224,8 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           waba_id: wabaId,
           registered,
           subscribed: subscribe.ok,
+          token_expires_at: info.expires_at,
+          token_expiry_missing: !info.expires_at,
         });
 
         return Response.json({
