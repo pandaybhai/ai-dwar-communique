@@ -20,6 +20,7 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import { useOrg } from "@/lib/org-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { TeamSettings } from "@/components/team/team-settings";
 import { WhatsAppTab } from "@/components/whatsapp-settings";
 import { LeadSourcesTab } from "@/components/contacts/lead-sources-settings";
@@ -80,12 +81,20 @@ function SettingsPage() {
           </TabsContent>
           <TabsContent value="sources" className="mt-6 space-y-6">
             <LeadSourcesTab />
-            <OptOutKeywordsCard />
+            <ComplianceSection />
           </TabsContent>
         </Tabs>
       )}
     </>
   );
+}
+
+/** Opt-out keywords live behind the compliance feature flag. */
+function ComplianceSection() {
+  const { enabled, loading } = useFeatureFlag("compliance");
+  if (loading) return <Skeleton className="h-48 w-full rounded-2xl" />;
+  if (!enabled) return null;
+  return <OptOutKeywordsCard />;
 }
 
 function Card({ children }: { children: React.ReactNode }) {

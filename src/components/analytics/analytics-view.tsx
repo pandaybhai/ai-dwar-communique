@@ -31,6 +31,10 @@ import {
   type SourceRow,
   type TeamRow,
 } from "@/lib/analytics";
+import { analyticsSections } from "@/lib/feature-registry";
+
+/** One tab per feature that declares an analytics dashboard section. */
+const SECTIONS = analyticsSections();
 
 const RANGES = [
   { days: 7, label: "Last 7 days" },
@@ -115,6 +119,39 @@ export function AnalyticsView({
     void load();
   }, [load]);
 
+  function renderSection(id: string) {
+    switch (id) {
+      case "overview":
+        return <AnalyticsOverview overview={overview} series={series} loading={loading} />;
+      case "campaigns":
+        return (
+          <AnalyticsCampaigns
+            organizationId={organizationId}
+            timezone={timezone}
+            rows={campaigns}
+            loading={loading}
+          />
+        );
+      case "contacts":
+        return (
+          <AnalyticsContacts
+            series={series}
+            summary={summary}
+            sources={sources}
+            loading={loading}
+          />
+        );
+      case "inbox":
+        return <AnalyticsInbox response={response} team={team} series={series} loading={loading} />;
+      case "automations":
+        return <AnalyticsAutomations rows={automations} loading={loading} />;
+      case "quality":
+        return <AnalyticsQuality points={quality} timezone={timezone} loading={loading} />;
+      default:
+        return null;
+    }
+  }
+
   if (error) return <ErrorState message={error} />;
 
   return (
@@ -147,44 +184,20 @@ export function AnalyticsView({
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs defaultValue={SECTIONS[0]?.analytics.section_id ?? "overview"} className="space-y-6">
         <TabsList className="flex w-full flex-wrap justify-start">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
-          <TabsTrigger value="contacts">Contacts</TabsTrigger>
-          <TabsTrigger value="inbox">Inbox &amp; team</TabsTrigger>
-          <TabsTrigger value="automations">Automations</TabsTrigger>
-          <TabsTrigger value="quality">Number quality</TabsTrigger>
+          {SECTIONS.map((f) => (
+            <TabsTrigger key={f.key} value={f.analytics.section_id as string}>
+              {f.analytics.section_label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <TabsContent value="overview">
-          <AnalyticsOverview overview={overview} series={series} loading={loading} />
-        </TabsContent>
-        <TabsContent value="campaigns">
-          <AnalyticsCampaigns
-            organizationId={organizationId}
-            timezone={timezone}
-            rows={campaigns}
-            loading={loading}
-          />
-        </TabsContent>
-        <TabsContent value="contacts">
-          <AnalyticsContacts
-            series={series}
-            summary={summary}
-            sources={sources}
-            loading={loading}
-          />
-        </TabsContent>
-        <TabsContent value="inbox">
-          <AnalyticsInbox response={response} team={team} series={series} loading={loading} />
-        </TabsContent>
-        <TabsContent value="automations">
-          <AnalyticsAutomations rows={automations} loading={loading} />
-        </TabsContent>
-        <TabsContent value="quality">
-          <AnalyticsQuality points={quality} timezone={timezone} loading={loading} />
-        </TabsContent>
+        {SECTIONS.map((f) => (
+          <TabsContent key={f.key} value={f.analytics.section_id as string}>
+            {renderSection(f.analytics.section_id as string)}
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );

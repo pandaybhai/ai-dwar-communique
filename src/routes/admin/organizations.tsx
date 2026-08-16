@@ -1,7 +1,7 @@
 import { applyScope, useAdminScope } from "@/lib/admin-scope";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Building2, Loader2, PauseCircle, PlayCircle, Search } from "lucide-react";
+import { Building2, Loader2, PauseCircle, PlayCircle, Search, ToggleRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,7 @@ import { NoResults, Pagination, TableSkeleton } from "@/components/data-paginati
 import { aidwar } from "@/integrations/aidwar/client";
 import { cn } from "@/lib/utils";
 import { qualityClass, qualityLabel } from "@/lib/opt-out";
+import { OrgFeaturesSheet } from "@/components/admin/org-features-sheet";
 
 export const Route = createFileRoute("/admin/organizations")({
   head: () => ({
@@ -69,6 +70,7 @@ function AdminOrganizations() {
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [featuresFor, setFeaturesFor] = useState<Org | null>(null);
 
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
@@ -291,6 +293,15 @@ function AdminOrganizations() {
                     <td className="px-4 py-3 text-right">
                       <Button
                         size="sm"
+                        variant="ghost"
+                        className="mr-2 rounded-full"
+                        onClick={() => setFeaturesFor(o)}
+                      >
+                        <ToggleRight className="mr-2 h-3.5 w-3.5" />
+                        Features
+                      </Button>
+                      <Button
+                        size="sm"
                         variant="outline"
                         className="rounded-full"
                         disabled={busy === o.id}
@@ -318,6 +329,15 @@ function AdminOrganizations() {
           )}
         </div>
       )}
+
+      {featuresFor ? (
+        <OrgFeaturesSheet
+          organizationId={featuresFor.id}
+          organizationName={featuresFor.name}
+          open
+          onClose={() => setFeaturesFor(null)}
+        />
+      ) : null}
     </>
   );
 }
