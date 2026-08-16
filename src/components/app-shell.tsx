@@ -1,21 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-  BarChart3,
-  Check,
-  ChevronsUpDown,
-  Contact,
-  Inbox,
-  LogOut,
-  Megaphone,
-  Menu,
-  MessageSquareText,
-  Settings,
-  Workflow,
-  Building2,
-  Loader2,
-  ShieldCheck,
-} from "lucide-react";
+import { Check, ChevronsUpDown, LogOut, Menu, Building2, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -30,40 +15,20 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { useOrg } from "@/lib/org-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
+import { navFeatures } from "@/lib/feature-registry";
+import { FEATURE_ICONS } from "@/lib/feature-icons";
 
-const NAV = [
-  { to: "/app/inbox", label: "Inbox", icon: Inbox, flag: "inbox", perm: "inbox.view" },
-  { to: "/app/contacts", label: "Contacts", icon: Contact, flag: null, perm: "contacts.view" },
-  {
-    to: "/app/campaigns",
-    label: "Campaigns",
-    icon: Megaphone,
-    flag: "campaigns",
-    perm: "campaigns.view",
-  },
-  {
-    to: "/app/templates",
-    label: "Templates",
-    icon: MessageSquareText,
-    flag: "templates",
-    perm: "templates.manage",
-  },
-  {
-    to: "/app/automations",
-    label: "Automations",
-    icon: Workflow,
-    flag: "automations",
-    perm: "automations.manage",
-  },
-  {
-    to: "/app/analytics",
-    label: "Analytics",
-    icon: BarChart3,
-    flag: "analytics",
-    perm: "analytics.view",
-  },
-  { to: "/app/settings", label: "Settings", icon: Settings, flag: null, perm: null },
-] as const;
+/**
+ * Navigation renders from the feature registry: flag first, then permission.
+ * Never add a nav item here — declare it on the feature manifest.
+ */
+const NAV = navFeatures().map((f) => ({
+  to: f.nav_path as string,
+  label: f.name,
+  icon: FEATURE_ICONS[f.icon],
+  flag: f.flag_key,
+  perm: f.nav_permission ?? null,
+}));
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
