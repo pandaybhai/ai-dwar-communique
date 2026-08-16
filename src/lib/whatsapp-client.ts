@@ -9,10 +9,15 @@ export async function callApi<T>(
   const token = sessionData.session?.access_token;
   if (!token) return { data: null, error: "Your session expired. Please sign in again.", raw: null };
 
+  const method = init.method ?? "POST";
+  const sendsBody = method !== "GET" && method !== "HEAD";
   const res = await fetch(path, {
-    method: init.method ?? "POST",
-    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify(init.body ?? {}),
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(sendsBody ? { "content-type": "application/json" } : {}),
+    },
+    ...(sendsBody ? { body: JSON.stringify(init.body ?? {}) } : {}),
   });
 
   let json: unknown = null;
