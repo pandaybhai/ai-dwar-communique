@@ -8,6 +8,13 @@ import {
   matchKeyword,
   qualityLabel,
 } from "@/lib/opt-out";
+import { sendServiceText } from "@/lib/service-text.server";
+import {
+  evaluateAutomations,
+  loadAutomations,
+  loadOrgTimezone,
+} from "@/lib/automations.server";
+import type { AutomationRow } from "@/lib/automations";
 
 /** Service-role client for the AiDwar (Mumbai) backend. Server-only. */
 export function getServiceClient(): SupabaseClient {
@@ -247,7 +254,7 @@ async function applyOptKeywords(
     body: string | null;
     keywords: KeywordSets;
   },
-): Promise<void> {
+): Promise<boolean> {
   const log = (stage: string, extra: Record<string, unknown> = {}) =>
     console.log(
       JSON.stringify({
@@ -269,7 +276,7 @@ async function applyOptKeywords(
         opt_in: args.keywords.optIn.length,
       },
     });
-    return;
+    return false;
   }
 
   const nextStatus = optOut ? "opted_out" : "opted_in";
@@ -278,7 +285,7 @@ async function applyOptKeywords(
 
   if (args.currentStatus === nextStatus) {
     log("skipped_already_in_status", { action, next_status: nextStatus });
-    return;
+    return true;
   }
 
   const { error } = await supabase
@@ -287,7 +294,7 @@ async function applyOptKeywords(
     .eq("id", args.contactId);
   if (error) {
     log("status_update_failed", { action, next_status: nextStatus, error: error.message });
-    return;
+    return true;
   }
   log("status_updated", { action, next_status: nextStatus });
 
@@ -306,13 +313,13 @@ async function applyOptKeywords(
   // bypasses the campaign audience guard (the contact is already opted_out).
   await sendServiceText(supabase, {
     organizationId: args.organizationId,
-    accountId: args.accountId,
     phoneNumberId: args.phoneNumberId,
     conversationId: args.conversationId,
     to: args.waId,
     body: optOut ? OPT_OUT_CONFIRMATION : OPT_IN_CONFIRMATION,
   });
   log("confirmation_sent", { action, next_status: nextStatus });
+  return true;
 }
 
 
@@ -380,6 +387,8 @@ export async function processWebhookPayload(
     const entries = (payload["entry"] as AnyRecord[] | undefined) ?? [];
     const markerCache = new Map<string, MarkerRow[]>();
     const keywordCache = new Map<string, KeywordSets>();
+    const automationCache = new Map<string, AutomationRow[]>();
+    const timezoneCache = new Map<string, string>();
     let routedAny = false;
 
     for (const entry of entries) {
@@ -608,7 +617,7 @@ export async function processWebhookPayload(
           // Opt-out / opt-in runs on EVERY inbound text, independent of whether
           // the message row was new — it is idempotent (no-op when the status
           // already matches), so duplicate deliveries cannot swallow a "STOP".
-          await applyOptKeywords(supabase, {
+          const optKeywordMatched = await applyOptKeywords(supabase, {
             organizationId: orgId,
             accountId,
             phoneNumberId,
@@ -618,6 +627,22 @@ export async function processWebhookPayload(
             waId,
             body,
             keywords: await loadOptKeywords(supabase, orgId, keywordCache),
+          });
+
+          // Automations run last, and never for a message that was an opt-out /
+          // opt-in keyword. Inbound only — our own outbound sends (including
+          // opt-out confirmations and automation replies) never reach here.
+          await evaluateAutomations(supabase, {
+            organizationId: orgId,
+            phoneNumberId,
+            conversationId: conversation.id as string,
+            contactId: contact.id as string,
+            inboundMessageId: String(msg["id"] ?? ""),
+            waId,
+            body,
+            optKeywordMatched,
+            orgTimezone: await loadOrgTimezone(supabase, orgId, timezoneCache),
+            automations: await loadAutomations(supabase, orgId, automationCache),
           });
 
 
