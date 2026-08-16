@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { aidwar } from "@/integrations/aidwar/client";
+import { callApi } from "@/lib/whatsapp-client";
 
-export type OrgRole = "owner" | "admin" | "agent";
+export type OrgRole = "owner" | "admin" | "marketer" | "agent";
 
 export type Organization = {
   id: string;
