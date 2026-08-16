@@ -275,7 +275,30 @@ function ConnectedCard({
   orgId: string;
 }) {
   const [working, setWorking] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+
+  async function refreshQuality() {
+    setRefreshing(true);
+    setFailure(null);
+    const { data, error } = await callApi<{ quality_rating: string; changed: boolean }>(
+      "/api/whatsapp/refresh-quality",
+      { body: { organization_id: orgId } },
+    );
+    setRefreshing(false);
+    if (error) {
+      setFailure(error);
+      toast.error(error);
+      return;
+    }
+    toast.success(
+      data?.changed
+        ? `Quality updated to ${data.quality_rating}`
+        : `Quality is still ${data?.quality_rating ?? "UNKNOWN"}`,
+    );
+    await onChanged();
+  }
+
 
   async function disconnect() {
     setWorking(true);
