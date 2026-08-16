@@ -190,7 +190,23 @@ export function AnalyticsView({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {multiple ? (
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger className="h-9 w-[220px] rounded-xl text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All numbers</SelectItem>
+                {numbers.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {numberLabel(n)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+
           <span className="text-xs text-muted-foreground">
             Dates shown in {overview?.timezone ?? timezone}
           </span>
