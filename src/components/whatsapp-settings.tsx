@@ -109,6 +109,7 @@ export function WhatsAppTab() {
   const [account, setAccount] = useState<Account | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tokenStatus, setTokenStatus] = useState<TokenStatus | null>(null);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -127,7 +128,17 @@ export function WhatsAppTab() {
       setError("We couldn't load your connection. Please refresh.");
       return;
     }
-    setAccount(((data ?? [])[0] as Account) ?? null);
+    const first = ((data ?? [])[0] as Account) ?? null;
+    setAccount(first);
+
+    if (first?.status === "active") {
+      const { data: status } = await callApi<TokenStatus>("/api/whatsapp/token-status", {
+        body: { organization_id: orgId },
+      });
+      setTokenStatus(status);
+    } else {
+      setTokenStatus(null);
+    }
   }, [orgId]);
 
   useEffect(() => {
@@ -148,6 +159,7 @@ export function WhatsAppTab() {
   return (
     <div className="space-y-6">
       <QualityBanner organizationId={orgId} />
+      <TokenExpiryBanner status={tokenStatus} />
       {account && account.status === "active" ? (
         <>
           <ConnectedCard account={account} canManage={canManage} onChanged={load} orgId={orgId!} />
@@ -156,6 +168,7 @@ export function WhatsAppTab() {
       ) : (
         <ConnectCard
           canManage={canManage}
+          allowManual={isSuperAdmin}
           onConnected={load}
           orgId={orgId!}
           previous={account}
@@ -167,11 +180,13 @@ export function WhatsAppTab() {
 
 function ConnectCard({
   canManage,
+  allowManual,
   onConnected,
   orgId,
   previous,
 }: {
   canManage: boolean;
+  allowManual: boolean;
   onConnected: () => Promise<void>;
   orgId: string;
   previous?: Account | null;
@@ -248,6 +263,7 @@ function ConnectCard({
           <EmbeddedSignupButton orgId={orgId} onConnected={onConnected} />
         </div>
 
+        {allowManual ? (
         <button
           type="button"
           onClick={() => setShowManual((v) => !v)}
@@ -258,9 +274,10 @@ function ConnectCard({
           />
           Advanced: connect manually
         </button>
+        ) : null}
       </Card>
 
-      {showManual ? (
+      {allowManual && showManual ? (
         <Card>
           <div>
             <h2 className="text-base font-semibold text-foreground">Connect manually (developer mode)</h2>
