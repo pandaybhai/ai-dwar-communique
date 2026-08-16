@@ -115,6 +115,16 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
           // never block the connect flow
         }
 
+        const { emitEvent: emitConnect } = await import("@/lib/events.server");
+        emitConnect(supabase, "whatsapp.connected", {
+          organizationId,
+          actorUserId: userId,
+          whatsappAccountId: (saved as { id?: string } | null)?.id ?? null,
+          entityType: "whatsapp_account",
+          entityId: (saved as { id?: string } | null)?.id ?? null,
+          properties: { waba_id: wabaId, method: "manual" },
+        });
+
         await logServerActivity(supabase, organizationId, userId, "whatsapp_connected", {
           phone_number_id: phoneNumberId,
           waba_id: wabaId,
@@ -250,6 +260,16 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
 
         // Promote another live number so the workspace still has a default.
         await ensureDefaultAccount(supabase, organizationId);
+
+        const { emitEvent: emitDisconnect } = await import("@/lib/events.server");
+        emitDisconnect(supabase, "whatsapp.disconnected", {
+          organizationId,
+          actorUserId: userId,
+          whatsappAccountId: account.id as string,
+          entityType: "whatsapp_account",
+          entityId: account.id as string,
+          properties: { waba_id: account.waba_id ?? null, token_revoked: revoked },
+        });
 
         await logServerActivity(supabase, organizationId, userId, "whatsapp_disconnected", {
           whatsapp_account_id: account.id,

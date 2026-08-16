@@ -21,6 +21,7 @@ import { Route as AdminActivityRouteImport } from './routes/admin/activity'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as ApiEventsRouteImport } from './routes/api/events'
 import { Route as ApiPermissionsRouteImport } from './routes/api/permissions'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
@@ -30,6 +31,7 @@ import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
 import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
@@ -109,6 +111,11 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const ApiEventsRoute = ApiEventsRouteImport.update({
+  id: '/api/events',
+  path: '/api/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPermissionsRoute = ApiPermissionsRouteImport.update({
   id: '/api/permissions',
   path: '/api/permissions',
@@ -152,6 +159,11 @@ const AppTemplatesRoute = AppTemplatesRouteImport.update({
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiToolsRoute = ApiAiToolsRouteImport.update({
+  id: '/api/ai/tools',
+  path: '/api/ai/tools',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCampaignsAudienceRoute = ApiCampaignsAudienceRouteImport.update({
@@ -262,6 +274,7 @@ export interface FileRoutesByFullPath {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/events': typeof ApiEventsRoute
   '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
@@ -272,6 +285,7 @@ export interface FileRoutesByFullPath {
   '/join/$token': typeof JoinTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
@@ -301,6 +315,7 @@ export interface FileRoutesByTo {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/events': typeof ApiEventsRoute
   '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
@@ -311,6 +326,7 @@ export interface FileRoutesByTo {
   '/join/$token': typeof JoinTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
@@ -343,6 +359,7 @@ export interface FileRoutesById {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/events': typeof ApiEventsRoute
   '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
@@ -353,6 +370,7 @@ export interface FileRoutesById {
   '/join/$token': typeof JoinTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
@@ -386,6 +404,7 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
+    | '/api/events'
     | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
@@ -396,6 +415,7 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin/'
     | '/app/'
+    | '/api/ai/tools'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
@@ -425,6 +445,7 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
+    | '/api/events'
     | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
@@ -435,6 +456,7 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin'
     | '/app'
+    | '/api/ai/tools'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
@@ -466,6 +488,7 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
+    | '/api/events'
     | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
@@ -476,6 +499,7 @@ export interface FileRouteTypes {
     | '/join/$token'
     | '/admin/'
     | '/app/'
+    | '/api/ai/tools'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
@@ -504,8 +528,10 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   SignupRoute: typeof SignupRoute
   TermsRoute: typeof TermsRoute
+  ApiEventsRoute: typeof ApiEventsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  ApiAiToolsRoute: typeof ApiAiToolsRoute
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
@@ -610,6 +636,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/api/events': {
+      id: '/api/events'
+      path: '/api/events'
+      fullPath: '/api/events'
+      preLoaderRoute: typeof ApiEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/permissions': {
       id: '/api/permissions'
       path: '/api/permissions'
@@ -671,6 +704,13 @@ declare module '@tanstack/react-router' {
       path: '/join/$token'
       fullPath: '/join/$token'
       preLoaderRoute: typeof JoinTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/tools': {
+      id: '/api/ai/tools'
+      path: '/api/ai/tools'
+      fullPath: '/api/ai/tools'
+      preLoaderRoute: typeof ApiAiToolsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/campaigns/audience': {
@@ -858,8 +898,10 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   SignupRoute: SignupRoute,
   TermsRoute: TermsRoute,
+  ApiEventsRoute: ApiEventsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,
+  ApiAiToolsRoute: ApiAiToolsRoute,
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,

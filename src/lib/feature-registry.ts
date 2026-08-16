@@ -23,7 +23,8 @@ export type FeatureIcon =
   | "shield-check"
   | "settings"
   | "users"
-  | "credit-card";
+  | "credit-card"
+  | "sparkles";
 
 export type PermissionManifest = {
   key: string;
@@ -52,6 +53,28 @@ export type UsageMeter = {
   unit: string;
 };
 
+/**
+ * A capability exposed to an AI model. The description is written for a model
+ * to read, not for a person. The broker (src/lib/ai-tools.server.ts) binds the
+ * organization itself — organization_id is never a model-supplied parameter.
+ */
+export type AiTool = {
+  name: string;
+  description: string;
+  /** JSON Schema for the arguments the model may supply. */
+  parameters: {
+    type: "object";
+    properties: Record<string, Record<string, unknown>>;
+    required?: string[];
+    additionalProperties?: false;
+  };
+  required_permission: string;
+  access: "read" | "write";
+  requires_confirmation: boolean;
+  /** Key in AI_TOOL_HANDLERS. */
+  handler: string;
+};
+
 export type FeatureManifest = {
   key: string;
   name: string;
@@ -70,6 +93,8 @@ export type FeatureManifest = {
   activity_actions: string[];
   settings_path?: string;
   usage_meters?: UsageMeter[];
+  /** Capabilities this feature offers to the AI layer. */
+  ai_tools?: AiTool[];
   /** Tables holding this feature's data — used for offboarding and deletion. */
   data_tables: string[];
 };
@@ -114,7 +139,16 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: {
-      event_types: ["message.inbound", "message.outbound", "conversation.closed"],
+      event_types: [
+        "message.sent",
+        "message.delivered",
+        "message.read",
+        "message.failed",
+        "message.received",
+        "conversation.opened",
+        "conversation.assigned",
+        "conversation.closed",
+      ],
       metrics: ["first_response_median", "first_response_p90", "conversations_handled"],
       dashboard_section: true,
       section_id: "inbox",
@@ -122,6 +156,27 @@ export const FEATURES: readonly FeatureManifest[] = [
       section_order: 40,
     },
     activity_actions: ["conversation_assigned", "conversation_closed"],
+    ai_tools: [
+      {
+        name: "search_conversation_history",
+        description:
+          "Search the recent message history of one contact's conversations in this workspace. Returns messages newest first with direction, text and time. Use it to recall what was already discussed before answering.",
+        parameters: {
+          type: "object",
+          properties: {
+            phone: { type: "string", description: "Contact phone number in any format." },
+            query: { type: "string", description: "Optional text to search for within messages." },
+            limit: { type: "integer", description: "Maximum messages to return (1-50).", default: 20 },
+          },
+          required: ["phone"],
+          additionalProperties: false,
+        },
+        required_permission: "inbox.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "searchConversationHistory",
+      },
+    ],
     data_tables: ["conversations", "messages"],
   },
   {
@@ -173,7 +228,12 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: {
-      event_types: ["contact.created", "contact.imported", "contact.opt_changed"],
+      event_types: [
+        "contact.created",
+        "contact.imported",
+        "contact.opted_out",
+        "contact.opted_in",
+      ],
       metrics: ["new_contacts", "contacts_by_source", "opt_in_split", "opt_outs_over_time"],
       dashboard_section: true,
       section_id: "contacts",
@@ -192,6 +252,50 @@ export const FEATURES: readonly FeatureManifest[] = [
     ],
     settings_path: "/app/settings",
     usage_meters: [{ key: "contacts_stored", name: "Contacts stored", unit: "contacts" }],
+    ai_tools: [
+      {
+        name: "lookup_contact",
+        description:
+          "Look up one contact in this workspace by phone number. Returns their name, tags, lead source, opt-in status and custom attributes.",
+        parameters: {
+          type: "object",
+          properties: {
+            phone: { type: "string", description: "Phone number in any format; it is normalised." },
+          },
+          required: ["phone"],
+          additionalProperties: false,
+        },
+        required_permission: "contacts.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "lookupContact",
+      },
+      {
+        name: "check_opt_out_status",
+        description:
+          "Check whether a contact may be messaged. Opt-out applies to the whole workspace, not to a single number.",
+        parameters: {
+          type: "object",
+          properties: { phone: { type: "string", description: "Phone number in any format." } },
+          required: ["phone"],
+          additionalProperties: false,
+        },
+        required_permission: "contacts.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "checkOptOutStatus",
+      },
+      {
+        name: "list_segments",
+        description:
+          "List saved audience segments in this workspace together with how many contacts currently match each one.",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+        required_permission: "contacts.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "listSegments",
+      },
+    ],
     data_tables: [
       "contacts",
       "tags",
@@ -232,7 +336,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: {
-      event_types: ["campaign.launched", "campaign.recipient_status"],
+      event_types: ["campaign.launched", "campaign.completed"],
       metrics: ["recipients", "delivered_rate", "read_rate", "replied_rate", "failure_reasons"],
       dashboard_section: true,
       section_id: "campaigns",
@@ -241,6 +345,25 @@ export const FEATURES: readonly FeatureManifest[] = [
     },
     activity_actions: ["campaign_created", "campaign_launched", "campaign_controlled"],
     usage_meters: [{ key: "campaign_messages", name: "Campaign messages sent", unit: "messages" }],
+    ai_tools: [
+      {
+        name: "get_campaign_status",
+        description:
+          "Get one campaign's current status and delivery statistics: recipients, sent, delivered, read, replied and failed counts.",
+        parameters: {
+          type: "object",
+          properties: {
+            campaign_id: { type: "string", description: "The campaign's id." },
+            name: { type: "string", description: "Campaign name, used when no id is given." },
+          },
+          additionalProperties: false,
+        },
+        required_permission: "campaigns.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "getCampaignStatus",
+      },
+    ],
     data_tables: ["campaigns", "campaign_recipients"],
   },
   {
@@ -261,8 +384,35 @@ export const FEATURES: readonly FeatureManifest[] = [
         min_role: "marketer",
       },
     ],
-    analytics: none,
+    analytics: {
+      event_types: ["template.created", "template.approved", "template.rejected"],
+      metrics: [],
+      dashboard_section: false,
+    },
     activity_actions: ["template_created", "template_synced"],
+    ai_tools: [
+      {
+        name: "list_approved_templates",
+        description:
+          "List the approved message templates available on one specific connected number. Templates belong to a number's business account, so the number must be named explicitly.",
+        parameters: {
+          type: "object",
+          properties: {
+            whatsapp_account_id: {
+              type: "string",
+              description:
+                "Id of the connected number whose template library to read. Ask the user which number if the workspace has more than one.",
+            },
+          },
+          required: ["whatsapp_account_id"],
+          additionalProperties: false,
+        },
+        required_permission: "templates.manage",
+        access: "read",
+        requires_confirmation: false,
+        handler: "listApprovedTemplates",
+      },
+    ],
     data_tables: ["message_templates"],
   },
   {
@@ -284,7 +434,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: {
-      event_types: ["automation.run", "automation.skipped"],
+      event_types: ["automation.fired", "automation.skipped"],
       metrics: ["runs_sent", "runs_skipped", "skip_reasons"],
       dashboard_section: true,
       section_id: "automations",
@@ -296,6 +446,18 @@ export const FEATURES: readonly FeatureManifest[] = [
       "automation_updated",
       "automation_toggled",
       "automation_deleted",
+    ],
+    ai_tools: [
+      {
+        name: "list_active_automations",
+        description:
+          "List the automations currently switched on in this workspace, with their trigger type and priority.",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+        required_permission: "automations.manage",
+        access: "read",
+        requires_confirmation: false,
+        handler: "listActiveAutomations",
+      },
     ],
     data_tables: ["automations", "automation_runs"],
   },
@@ -344,7 +506,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: {
-      event_types: ["quality.updated", "contact.opted_out", "contact.opted_in"],
+      event_types: ["whatsapp.quality_changed", "contact.opted_out", "contact.opted_in"],
       metrics: ["quality_history", "opt_outs"],
       dashboard_section: true,
       section_id: "quality",
@@ -359,6 +521,28 @@ export const FEATURES: readonly FeatureManifest[] = [
       "opt_out_keyword_deleted",
     ],
     settings_path: "/app/settings",
+    ai_tools: [
+      {
+        name: "check_number_quality",
+        description:
+          "Check the current Meta quality rating and messaging status of one specific connected number. A workspace can hold several numbers, so the number must be named explicitly.",
+        parameters: {
+          type: "object",
+          properties: {
+            whatsapp_account_id: {
+              type: "string",
+              description: "Id of the connected number to check. Never assume the default number.",
+            },
+          },
+          required: ["whatsapp_account_id"],
+          additionalProperties: false,
+        },
+        required_permission: "settings.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "checkNumberQuality",
+      },
+    ],
     data_tables: ["opt_out_keywords", "whatsapp_quality_history"],
   },
   {
@@ -391,7 +575,15 @@ export const FEATURES: readonly FeatureManifest[] = [
         min_role: "owner",
       },
     ],
-    analytics: none,
+    analytics: {
+      event_types: [
+        "whatsapp.connected",
+        "whatsapp.disconnected",
+        "whatsapp.quality_changed",
+      ],
+      metrics: [],
+      dashboard_section: false,
+    },
     activity_actions: [
       "organization.created",
       "organization.updated",
@@ -401,6 +593,24 @@ export const FEATURES: readonly FeatureManifest[] = [
       "whatsapp_default_changed",
     ],
     settings_path: "/app/settings",
+    usage_meters: [
+      { key: "messages_marketing", name: "Marketing messages sent", unit: "messages" },
+      { key: "messages_utility", name: "Utility messages sent", unit: "messages" },
+      { key: "messages_authentication", name: "Authentication messages sent", unit: "messages" },
+      { key: "messages_service", name: "Service messages sent", unit: "messages" },
+    ],
+    ai_tools: [
+      {
+        name: "list_connected_numbers",
+        description:
+          "List the business numbers connected to this workspace, with their id, display number, label, status and whether each is the default. Call this first whenever another tool needs a whatsapp_account_id.",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+        required_permission: "settings.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "listConnectedNumbers",
+      },
+    ],
     data_tables: ["organizations", "whatsapp_accounts"],
 
   },
@@ -432,6 +642,34 @@ export const FEATURES: readonly FeatureManifest[] = [
     usage_meters: [{ key: "seats", name: "Team seats", unit: "seats" }],
     data_tables: ["organization_members", "invitations", "member_permissions"],
   },
+  {
+    key: "ai",
+    name: "AI assistant",
+    description:
+      "The AI layer: the tools a model may call on this workspace's data, and who may use them.",
+    icon: "sparkles",
+    flag_key: "ai_features",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "ai.use",
+        name: "Use AI",
+        description: "Ask the assistant questions and let it read this workspace's data.",
+        min_role: "agent",
+      },
+      {
+        key: "ai.configure",
+        name: "Configure AI",
+        description: "Change how the assistant behaves and which capabilities it may use.",
+        min_role: "admin",
+      },
+    ],
+    analytics: none,
+    activity_actions: ["ai_tool_invoked"],
+    settings_path: "/app/settings",
+    data_tables: [],
+  },
+
   {
     key: "billing",
     name: "Billing",
@@ -486,6 +724,13 @@ export function roleDefaults(role: OrgRole): string[] {
 export function navFeatures(): FeatureManifest[] {
   return FEATURES.filter((f) => Boolean(f.nav_path)).sort(
     (a, b) => (a.nav_order ?? 999) - (b.nav_order ?? 999),
+  );
+}
+
+/** Every AI tool any feature declares, with its owning feature. */
+export function allAiTools(): (AiTool & { feature: string; flag_key: string })[] {
+  return FEATURES.flatMap((f) =>
+    (f.ai_tools ?? []).map((t) => ({ ...t, feature: f.key, flag_key: f.flag_key })),
   );
 }
 

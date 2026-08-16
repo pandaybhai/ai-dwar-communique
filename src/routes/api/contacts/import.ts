@@ -209,6 +209,27 @@ export const Route = createFileRoute("/api/contacts/import")({
             .eq("id", importId)
             .eq("organization_id", organizationId);
 
+          const { emitEvent, recordUsage } = await import("@/lib/events.server");
+          emitEvent(supabase, "contact.imported", {
+            organizationId,
+            actorUserId: userId,
+            entityType: "contact_import",
+            entityId: importId,
+            properties: {
+              created_count: created,
+              updated_count: updatedCount,
+              skipped_count: skipped,
+              status,
+            },
+          });
+          if (created > 0) {
+            recordUsage(supabase, "contacts_stored", {
+              organizationId,
+              quantity: created,
+              metadata: { import_id: importId },
+            });
+          }
+
           await logServerActivity(supabase, organizationId, userId, "contacts_imported", {
             import_id: importId,
             created_count: created,

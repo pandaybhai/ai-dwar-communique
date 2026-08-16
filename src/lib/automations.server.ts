@@ -7,6 +7,8 @@ type AnyRecord = Record<string, unknown>;
 
 const AWAY_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
+import { emitEvent } from "@/lib/events.server";
+
 function log(stage: string, extra: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ scope: "automation", stage, ...extra }));
 }
@@ -167,6 +169,12 @@ export async function evaluateAutomations(
     .maybeSingle();
   if ((contact?.opt_in_status as string | undefined) === "opted_out") {
     log("skipped", { automation_id: active[0]!.id, reason: "contact_opted_out" });
+    emitEvent(supabase, "automation.skipped", {
+      organizationId: args.organizationId,
+      entityType: "automation",
+      entityId: active[0]!.id,
+      properties: { automation_id: active[0]!.id, skip_reason: "contact_opted_out" },
+    });
     await recordRun(supabase, {
       ...base,
       automation_id: active[0]!.id,
@@ -215,6 +223,16 @@ export async function evaluateAutomations(
 
     if (skipReason) {
       log("skipped", { automation_id: automation.id, reason: skipReason });
+      emitEvent(supabase, "automation.skipped", {
+        organizationId: args.organizationId,
+        entityType: "automation",
+        entityId: automation.id,
+        properties: {
+          automation_id: automation.id,
+          trigger: automation.trigger_type,
+          skip_reason: skipReason,
+        },
+      });
       await recordRun(supabase, {
         ...base,
         automation_id: automation.id,
@@ -260,6 +278,16 @@ export async function evaluateAutomations(
     log(result.ok ? "sent" : "failed", {
       automation_id: automation.id,
       reason: result.ok ? null : result.error,
+    });
+    emitEvent(supabase, result.ok ? "automation.fired" : "automation.skipped", {
+      organizationId: args.organizationId,
+      entityType: "automation",
+      entityId: automation.id,
+      properties: {
+        automation_id: automation.id,
+        trigger: automation.trigger_type,
+        ...(result.ok ? {} : { skip_reason: result.error ?? "send_failed" }),
+      },
     });
     return;
   }

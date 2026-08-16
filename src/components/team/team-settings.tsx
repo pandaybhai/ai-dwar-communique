@@ -34,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ErrorState } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
+import { recordClientUsage } from "@/lib/events.client";
 import { useOrg } from "@/lib/org-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -243,6 +244,7 @@ export function TeamSettings() {
       toast.error(databaseMessage(err, "We couldn't remove that member."));
       return;
     }
+    recordClientUsage("seats", orgId, -1, { change: "member_removed" });
     await logActivity("member.removed", orgId, {
       member_user_id: member.user_id,
       role: member.role,
@@ -269,6 +271,7 @@ export function TeamSettings() {
     }
     setEmail("");
     await logActivity("member.invited", orgId, { role: inviteRole });
+    recordClientUsage("seats", orgId, 1, { change: "member_invited", role: inviteRole });
     toast.success("Invite created — copy the link and share it.");
     await load();
   }

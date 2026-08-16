@@ -8,7 +8,8 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { FEATURES, ROLE_RANK, allActivityActions, allPermissionKeys } from "./feature-registry";
+import { FEATURES, ROLE_RANK, allActivityActions, allPermissionKeys, allAiTools } from "./feature-registry";
+import { declaredEventTypes, declaredMeterKeys } from "./events";
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -35,6 +36,45 @@ function emittedActivityActions(srcDir: string): Map<string, string> {
     }
   }
   return found;
+}
+
+/** Event types and meter keys actually emitted anywhere in the source tree. */
+function emittedKeys(srcDir: string): { events: Map<string, string>; meters: Map<string, string> } {
+  const events = new Map<string, string>();
+  const meters = new Map<string, string>();
+  for (const file of walk(srcDir)) {
+    const text = readFileSync(file, "utf8");
+    for (const m of text.matchAll(/emit(?:Client)?Event\(\s*(?:supabase\s*,\s*)?"([a-z0-9_.]+)"/g)) {
+      const key = m[1] ?? "";
+      if (key && !events.has(key)) events.set(key, file);
+    }
+    for (const m of text.matchAll(/eventType:\s*"([a-z0-9_.]+)"/g)) {
+      const key = m[1] ?? "";
+      if (key && !events.has(key)) events.set(key, file);
+    }
+    for (const m of text.matchAll(/record(?:Client)?Usage\(\s*(?:supabase\s*,\s*)?"([a-z0-9_]+)"/g)) {
+      const key = m[1] ?? "";
+      if (key && !meters.has(key)) meters.set(key, file);
+    }
+  }
+  return { events, meters };
+}
+
+/** Handler keys implemented in the AI tool broker. */
+function implementedHandlers(srcDir: string): Set<string> {
+  const out = new Set<string>();
+  try {
+    const text = readFileSync(join(srcDir, "lib", "ai-tools.server.ts"), "utf8");
+    const start = text.indexOf("AI_TOOL_HANDLERS");
+    if (start >= 0) {
+      for (const m of text.slice(start).matchAll(/^\s{2}async\s+([A-Za-z0-9_]+)\s*\(/gm)) {
+        out.add(m[1] ?? "");
+      }
+    }
+  } catch {
+    // handled by the caller: an unreadable broker means no handlers exist
+  }
+  return out;
 }
 
 export function validateFeatureRegistry(srcDir = join(process.cwd(), "src")): string[] {
@@ -116,6 +156,48 @@ export function validateFeatureRegistry(srcDir = join(process.cwd(), "src")): st
     }
   } catch {
     // source scan is best-effort; manifest checks above still apply
+  }
+
+  // ---- event spine, usage meters and AI tools ----
+  const declaredEvents = new Set(declaredEventTypes());
+  const declaredMeters = new Set(declaredMeterKeys());
+  try {
+    const { events, meters } = emittedKeys(srcDir);
+    const rel = (f: string) => f.replace(process.cwd() + "/", "");
+    for (const [key, file] of events) {
+      if (!declaredEvents.has(key)) {
+        issues.push(
+          `event type "${key}" is emitted in ${rel(file)} but no feature declares it in analytics.event_types.`,
+        );
+      }
+    }
+    for (const [key, file] of meters) {
+      if (!declaredMeters.has(key)) {
+        issues.push(
+          `usage meter "${key}" is recorded in ${rel(file)} but no feature declares it in usage_meters.`,
+        );
+      }
+    }
+  } catch {
+    // source scan is best-effort; manifest checks still apply
+  }
+
+  const handlers = implementedHandlers(srcDir);
+  const seenTool = new Set<string>();
+  for (const tool of allAiTools()) {
+    const at = `feature "${tool.feature}" ai_tool "${tool.name}"`;
+    if (seenTool.has(tool.name)) issues.push(`${at}: duplicate tool name.`);
+    seenTool.add(tool.name);
+    if (!tool.description.trim()) issues.push(`${at}: needs a description a model can read.`);
+    if (!declaredPermissions.has(tool.required_permission)) {
+      issues.push(`${at}: required_permission "${tool.required_permission}" is not declared by any feature.`);
+    }
+    if (!handlers.has(tool.handler)) {
+      issues.push(`${at}: handler "${tool.handler}" is not implemented in src/lib/ai-tools.server.ts.`);
+    }
+    if (tool.parameters.properties["organization_id"]) {
+      issues.push(`${at}: organization_id is bound by the broker and must never be a model parameter.`);
+    }
   }
 
   return issues;

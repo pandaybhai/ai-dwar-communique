@@ -232,6 +232,45 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
             .eq("id", conversation.id);
         }
 
+        // Capture + metering. Meta bills on template category, so a text reply
+        // inside the service window meters as "service" and a template meters
+        // as whatever category Meta approved it under.
+        const { emitEvent, recordUsage } = await import("@/lib/events.server");
+        const { meterForMessageCategory } = await import("@/lib/events");
+        let category = "service";
+        if (messageType === "template") {
+          const { data: tpl } = await supabase
+            .from("message_templates")
+            .select("category")
+            .eq("organization_id", organizationId)
+            .eq("waba_id", connection.wabaId)
+            .eq("name", templateName)
+            .maybeSingle();
+          category = String((tpl as { category?: string } | null)?.category ?? "utility");
+        }
+        emitEvent(supabase, "message.sent", {
+          organizationId,
+          whatsappAccountId: connection.accountId,
+          actorUserId: userId,
+          entityType: "message",
+          entityId: message?.id ?? null,
+          properties: {
+            message_type: messageType,
+            template_name: messageType === "template" ? templateName : null,
+            waba_id: connection.wabaId,
+            category,
+          },
+        });
+        recordUsage(supabase, meterForMessageCategory(category), {
+          organizationId,
+          quantity: 1,
+          metadata: {
+            whatsapp_account_id: connection.accountId,
+            message_id: message?.id ?? null,
+            message_type: messageType,
+          },
+        });
+
         await logServerActivity(supabase, organizationId, userId, "message_sent", {
           message_type: messageType,
           whatsapp_account_id: connection.accountId,
