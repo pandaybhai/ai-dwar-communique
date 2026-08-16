@@ -123,6 +123,47 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
         return Response.json({ account: saved, reprocessed_events: reprocessed });
       },
 
+      /** Choose which number a workspace sends from by default. */
+      PATCH: async ({ request }) => {
+        const { requireOrgMember, isResponse, jsonError, logServerActivity, requirePermission } =
+          await import("@/lib/whatsapp-api.server");
+
+        let payload: Record<string, unknown> = {};
+        try {
+          payload = (await request.json()) as Record<string, unknown>;
+        } catch {
+          payload = {};
+        }
+
+        const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
+        if (isResponse(auth)) return auth;
+        const denied = await requirePermission(auth, "settings.whatsapp", "change the default number");
+        if (denied) return denied;
+
+        const { supabase, organizationId, userId } = auth;
+        const accountId = String(payload["whatsapp_account_id"] ?? "").trim();
+        if (!accountId) return jsonError("Choose a number to make default.");
+
+        const { data: account } = await supabase
+          .from("whatsapp_accounts")
+          .select("id, status")
+          .eq("id", accountId)
+          .eq("organization_id", organizationId)
+          .maybeSingle();
+        if (!account) return jsonError("That number isn't connected to this workspace.", 404);
+        if (account.status !== "active") {
+          return jsonError("Only a connected number can be the default.", 400);
+        }
+
+        const { setDefaultAccount } = await import("@/lib/whatsapp-numbers.server");
+        await setDefaultAccount(supabase, organizationId, accountId);
+
+        await logServerActivity(supabase, organizationId, userId, "whatsapp_default_changed", {
+          whatsapp_account_id: accountId,
+        });
+        return Response.json({ ok: true, whatsapp_account_id: accountId });
+      },
+
       DELETE: async ({ request }) => {
         const { requireOrgMember, isResponse, jsonError, logServerActivity, graphFetch } =
           await import("@/lib/whatsapp-api.server");
