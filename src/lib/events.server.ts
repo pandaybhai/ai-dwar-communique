@@ -62,6 +62,7 @@ export async function emitEvents(
   rows: AnalyticsEventInput[],
 ): Promise<void> {
   if (rows.length === 0) return;
+  rows.forEach(warnIfDimensionless);
   try {
     await supabase.from("analytics_events").insert(
       rows.map((input) => ({
