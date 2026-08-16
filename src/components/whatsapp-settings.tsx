@@ -4,6 +4,8 @@ import {
   Loader2,
   MessageCircle,
   PlugZap,
+  RefreshCw,
+
   Send,
   ShieldCheck,
   Unplug,
@@ -275,7 +277,30 @@ function ConnectedCard({
   orgId: string;
 }) {
   const [working, setWorking] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+
+  async function refreshQuality() {
+    setRefreshing(true);
+    setFailure(null);
+    const { data, error } = await callApi<{ quality_rating: string; changed: boolean }>(
+      "/api/whatsapp/refresh-quality",
+      { body: { organization_id: orgId } },
+    );
+    setRefreshing(false);
+    if (error) {
+      setFailure(error);
+      toast.error(error);
+      return;
+    }
+    toast.success(
+      data?.changed
+        ? `Quality updated to ${data.quality_rating}`
+        : `Quality is still ${data?.quality_rating ?? "UNKNOWN"}`,
+    );
+    await onChanged();
+  }
+
 
   async function disconnect() {
     setWorking(true);
@@ -331,35 +356,51 @@ function ConnectedCard({
           </div>
         </div>
         {canManage ? (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" className="rounded-full" disabled={working}>
-                {working ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Unplug className="mr-2 h-4 w-4" />
-                )}
-                Disconnect
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Disconnect this number?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  We'll stop incoming messages, revoke the stored access token and remove it from our
-                  servers. Your contacts and conversations stay exactly as they are, and you can run
-                  sign-up again whenever you're ready.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="rounded-full">Keep connected</AlertDialogCancel>
-                <AlertDialogAction className="rounded-full" onClick={() => void disconnect()}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              className="rounded-full"
+              disabled={refreshing}
+              onClick={() => void refreshQuality()}
+            >
+              {refreshing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Refresh quality
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="rounded-full" disabled={working}>
+                  {working ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Unplug className="mr-2 h-4 w-4" />
+                  )}
                   Disconnect
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Disconnect this number?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    We'll stop incoming messages, revoke the stored access token and remove it from
+                    our servers. Your contacts and conversations stay exactly as they are, and you
+                    can run sign-up again whenever you're ready.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="rounded-full">Keep connected</AlertDialogCancel>
+                  <AlertDialogAction className="rounded-full" onClick={() => void disconnect()}>
+                    Disconnect
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         ) : null}
+
       </div>
 
       {failure ? (

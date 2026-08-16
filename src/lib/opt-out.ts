@@ -16,7 +16,11 @@ export const OPT_OUT_CONFIRMATION =
 export const OPT_IN_CONFIRMATION =
   "You're subscribed again and will receive our updates. Reply STOP anytime to unsubscribe.";
 
-function normalize(text: string): string {
+/**
+ * The single normalisation pipeline used both by the matcher and by the
+ * keyword settings UI, so what gets stored is exactly what will match.
+ */
+export function normalizeKeyword(text: string): string {
   return text
     .trim()
     .toLowerCase()
@@ -24,6 +28,9 @@ function normalize(text: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+const normalize = normalizeKeyword;
+
 
 /**
  * Matches an inbound message against opt-out / opt-in keywords. Case-insensitive,
