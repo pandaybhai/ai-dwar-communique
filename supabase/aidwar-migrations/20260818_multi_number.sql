@@ -100,10 +100,16 @@ FROM (
 ) a
 WHERE a.organization_id = t.organization_id AND t.waba_id IS NULL;
 
+-- '' means "not yet attributed to a WABA"; keeping it non-null lets upserts
+-- target a plain unique index instead of an expression index.
+UPDATE public.message_templates SET waba_id = '' WHERE waba_id IS NULL;
+ALTER TABLE public.message_templates ALTER COLUMN waba_id SET DEFAULT '';
+ALTER TABLE public.message_templates ALTER COLUMN waba_id SET NOT NULL;
+
 ALTER TABLE public.message_templates
   DROP CONSTRAINT IF EXISTS message_templates_organization_id_name_language_key;
 CREATE UNIQUE INDEX IF NOT EXISTS message_templates_org_waba_name_lang_key
-  ON public.message_templates (organization_id, COALESCE(waba_id, ''), name, language);
+  ON public.message_templates (organization_id, waba_id, name, language);
 CREATE INDEX IF NOT EXISTS message_templates_waba_idx
   ON public.message_templates (organization_id, waba_id, status);
 
