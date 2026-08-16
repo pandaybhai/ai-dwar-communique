@@ -49,7 +49,10 @@ export function InboxView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [numberFilter, setNumberFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const { numbers } = useWhatsAppNumbers();
+
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
