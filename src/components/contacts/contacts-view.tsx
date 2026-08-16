@@ -255,27 +255,29 @@ export function ContactsView({
           </p>
         )}
         <div className="mb-8 flex flex-wrap items-center gap-2">
-          {canExport || canImport ? (
-            <>
-              <Button
-                variant="ghost"
-                className="rounded-full"
-                onClick={() => void exportCsv()}
-                disabled={exporting}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                {exporting ? "Exporting…" : "Export CSV"}
-              </Button>
-              <ImportContactsDialog organizationId={organizationId} onImported={() => void load()} />
-            </>
+          {canExport ? (
+            <Button
+              variant="ghost"
+              className="rounded-full"
+              onClick={() => void exportCsv()}
+              disabled={exporting}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {exporting ? "Exporting…" : "Export CSV"}
+            </Button>
           ) : null}
-          <AddContactDialog
-            organizationId={organizationId}
-            onCreated={() => {
-              setPage(0);
-              void load();
-            }}
-          />
+          <PermissionGate allowed={canImport} reason={permissionDeniedReason("Import contacts")}>
+            <ImportContactsDialog organizationId={organizationId} onImported={() => void load()} />
+          </PermissionGate>
+          <PermissionGate allowed={canEdit} reason={permissionDeniedReason("Edit contacts")}>
+            <AddContactDialog
+              organizationId={organizationId}
+              onCreated={() => {
+                setPage(0);
+                void load();
+              }}
+            />
+          </PermissionGate>
         </div>
       </div>
 
