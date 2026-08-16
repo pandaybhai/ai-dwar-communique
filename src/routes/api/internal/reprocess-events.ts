@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { buildInfo } from "@/lib/build-info";
 
 /**
  * Catch-up worker for stored webhook events that were never processed
@@ -27,7 +28,7 @@ export const Route = createFileRoute("/api/internal/reprocess-events")({
           limit: 100,
         });
 
-        return Response.json({ processed });
+        return Response.json({ processed, commit: buildInfo().commit });
       },
     },
   },
