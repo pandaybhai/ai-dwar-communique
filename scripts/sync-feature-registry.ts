@@ -32,9 +32,11 @@ lines.push(`create table if not exists public.feature_registry (
   analytics jsonb not null default '{}'::jsonb,
   activity_actions text[] not null default '{}',
   usage_meters jsonb not null default '[]'::jsonb,
+  ai_tools jsonb not null default '[]'::jsonb,
   data_tables text[] not null default '{}',
   synced_at timestamptz not null default now()
 );`);
+lines.push("alter table public.feature_registry add column if not exists ai_tools jsonb not null default '[]'::jsonb;");
 lines.push("grant select on public.feature_registry to authenticated;");
 lines.push("grant all on public.feature_registry to service_role;");
 lines.push("alter table public.feature_registry enable row level security;");
@@ -64,16 +66,17 @@ on conflict (key) do update set name = excluded.name, description = excluded.des
 
   lines.push(`insert into public.feature_registry (
   key, name, description, icon, nav_path, nav_order, nav_permission, flag_key, settings_path,
-  permissions, analytics, activity_actions, usage_meters, data_tables, synced_at
+  permissions, analytics, activity_actions, usage_meters, ai_tools, data_tables, synced_at
 ) values (
   ${q(f.key)}, ${q(f.name)}, ${q(f.description)}, ${q(f.icon)}, ${q(f.nav_path)}, ${f.nav_order ?? "null"}, ${q(f.nav_permission)}, ${q(f.flag_key)}, ${q(f.settings_path)},
-  ${json(f.permissions)}, ${json(f.analytics)}, ${arr(f.activity_actions)}, ${json(f.usage_meters ?? [])}, ${arr(f.data_tables)}, now()
+  ${json(f.permissions)}, ${json(f.analytics)}, ${arr(f.activity_actions)}, ${json(f.usage_meters ?? [])}, ${json(f.ai_tools ?? [])}, ${arr(f.data_tables)}, now()
 ) on conflict (key) do update set
   name = excluded.name, description = excluded.description, icon = excluded.icon,
   nav_path = excluded.nav_path, nav_order = excluded.nav_order, nav_permission = excluded.nav_permission,
   flag_key = excluded.flag_key, settings_path = excluded.settings_path,
   permissions = excluded.permissions, analytics = excluded.analytics,
   activity_actions = excluded.activity_actions, usage_meters = excluded.usage_meters,
+  ai_tools = excluded.ai_tools,
   data_tables = excluded.data_tables, synced_at = now();`);
   lines.push("");
 }
