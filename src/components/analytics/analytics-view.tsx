@@ -19,6 +19,7 @@ import {
   fetchSourceBreakdown,
   fetchTeamPerformance,
   fetchTimeseries,
+  makeFilters,
   periodForDays,
   type AutomationRow,
   type CampaignPerformance,
@@ -32,9 +33,19 @@ import {
   type TeamRow,
 } from "@/lib/analytics";
 import { analyticsSections } from "@/lib/feature-registry";
+import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
+import { numberLabel } from "@/lib/whatsapp-numbers";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 /** One tab per feature that declares an analytics dashboard section. */
 const SECTIONS = analyticsSections();
+
 
 const RANGES = [
   { days: 7, label: "Last 7 days" },
@@ -50,8 +61,11 @@ export function AnalyticsView({
   timezone: string;
 }) {
   const [days, setDays] = useState(30);
+  const [accountId, setAccountId] = useState<string>("all");
+  const { numbers, multiple } = useWhatsAppNumbers({ activeOnly: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
 
   const [overview, setOverview] = useState<Overview | null>(null);
   const [series, setSeries] = useState<SeriesPoint[]>([]);
@@ -68,6 +82,8 @@ export function AnalyticsView({
     setError(null);
     const label = RANGES.find((r) => r.days === days)?.label ?? `Last ${days} days`;
     const period: Period = periodForDays(timezone, days, label);
+    // One filter object for every panel — unfiltered means all numbers combined.
+    const filters = makeFilters(period, accountId === "all" ? null : accountId);
 
     const [
       overviewRes,
@@ -80,16 +96,17 @@ export function AnalyticsView({
       automationRes,
       qualityRes,
     ] = await Promise.all([
-      fetchOverview(organizationId, period),
-      fetchTimeseries(organizationId, period),
-      fetchCampaignPerformance(organizationId, period),
-      fetchContactsSummary(organizationId),
-      fetchSourceBreakdown(organizationId),
-      fetchResponseTimes(organizationId, period),
-      fetchTeamPerformance(organizationId, period),
-      fetchAutomationPerformance(organizationId, period),
-      fetchQualityHistory(organizationId, period),
+      fetchOverview(organizationId, filters),
+      fetchTimeseries(organizationId, filters),
+      fetchCampaignPerformance(organizationId, filters),
+      fetchContactsSummary(organizationId, filters),
+      fetchSourceBreakdown(organizationId, filters),
+      fetchResponseTimes(organizationId, filters),
+      fetchTeamPerformance(organizationId, filters),
+      fetchAutomationPerformance(organizationId, filters),
+      fetchQualityHistory(organizationId, filters),
     ]);
+
 
     const firstError =
       overviewRes.error ??
@@ -113,7 +130,7 @@ export function AnalyticsView({
     setAutomations(automationRes.data ?? []);
     setQuality(qualityRes.data ?? []);
     setLoading(false);
-  }, [organizationId, timezone, days]);
+  }, [organizationId, timezone, days, accountId]);
 
   useEffect(() => {
     void load();
@@ -173,7 +190,23 @@ export function AnalyticsView({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {multiple ? (
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger className="h-9 w-[220px] rounded-xl text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All numbers</SelectItem>
+                {numbers.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {numberLabel(n)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+
           <span className="text-xs text-muted-foreground">
             Dates shown in {overview?.timezone ?? timezone}
           </span>

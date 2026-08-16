@@ -32,9 +32,12 @@ import {
 
 export function CreateTemplateDialog({
   organizationId,
+  whatsappAccountId,
   onCreated,
 }: {
   organizationId: string;
+  /** Templates are submitted into one number's business account. */
+  whatsappAccountId?: string | null;
   onCreated: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -82,6 +85,7 @@ export function CreateTemplateDialog({
       body: {
         action: "create",
         organization_id: organizationId,
+        whatsapp_account_id: whatsappAccountId ?? null,
         name: slug,
         category,
         language,

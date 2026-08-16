@@ -49,6 +49,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
+import { numberLabel, numberSubtitle } from "@/lib/whatsapp-numbers";
+
 
 type AudienceSummary = {
   matched: number;
@@ -138,6 +141,11 @@ export function CampaignWizard({
   const [launching, setLaunching] = useState(false);
   const [loadingLists, setLoadingLists] = useState(true);
 
+  // A campaign always sends from one number. Default is the workspace default.
+  const { numbers, defaultNumber, multiple } = useWhatsAppNumbers();
+  const [accountId, setAccountId] = useState<string>("");
+  const senderNumber = numbers.find((n) => n.id === accountId) ?? null;
+
   useEffect(() => {
     if (!open) return;
     setStep(0);
@@ -153,21 +161,31 @@ export function CampaignWizard({
 
   useEffect(() => {
     if (!open) return;
+    if (!accountId && defaultNumber) setAccountId(defaultNumber.id);
+  }, [open, accountId, defaultNumber]);
+
+  useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     void (async () => {
       setLoadingLists(true);
+      const wabaId = senderNumber?.waba_id ?? null;
+      const templateQuery = aidwar
+        .from("message_templates")
+        .select(
+          "id, organization_id, waba_id, meta_template_id, name, language, category, status, components, rejection_reason, created_at, updated_at",
+        )
+        .eq("organization_id", organizationId)
+        .eq("status", "APPROVED")
+        .order("name", { ascending: true });
+      // Templates live inside a WABA — only this number's library is offered.
       const [seg, tpl, contacts] = await Promise.all([
         aidwar
           .from("segments")
           .select("id, name, description, filters, created_by, created_at")
           .eq("organization_id", organizationId)
           .order("created_at", { ascending: false }),
-        aidwar
-          .from("message_templates")
-          .select("id, organization_id, meta_template_id, name, language, category, status, components, rejection_reason, created_at, updated_at")
-          .eq("organization_id", organizationId)
-          .eq("status", "APPROVED")
-          .order("name", { ascending: true }),
+        wabaId ? templateQuery.eq("waba_id", wabaId) : Promise.resolve({ data: [] as unknown[] }),
         aidwar
           .from("contacts")
           .select("attributes")
@@ -177,7 +195,11 @@ export function CampaignWizard({
       ]);
       if (cancelled) return;
       setSegments((seg.data ?? []) as SegmentRow[]);
-      setTemplates((tpl.data ?? []) as TemplateRow[]);
+      const rows = (tpl.data ?? []) as TemplateRow[];
+      setTemplates(rows);
+      // Switching numbers can strand a template that doesn't exist on the new
+      // WABA — clear it now instead of failing at send time.
+      setTemplateName((current) => (rows.some((t) => t.name === current) ? current : ""));
       const keys = new Set<string>();
       for (const row of (contacts.data ?? []) as { attributes: Record<string, unknown> | null }[]) {
         for (const k of Object.keys(row.attributes ?? {})) keys.add(k);
@@ -188,22 +210,27 @@ export function CampaignWizard({
     return () => {
       cancelled = true;
     };
-  }, [open, organizationId]);
+  }, [open, organizationId, senderNumber?.waba_id]);
 
   const loadAudience = useCallback(async () => {
     setAudienceLoading(true);
     const { data } = await callApi<AudienceSummary>("/api/campaigns/audience", {
-      body: { organization_id: organizationId, segment_id: segmentId === "all" ? null : segmentId },
+      body: {
+        organization_id: organizationId,
+        segment_id: segmentId === "all" ? null : segmentId,
+        whatsapp_account_id: accountId || null,
+      },
     });
     setAudience(data);
     setAudienceLoading(false);
-  }, [organizationId, segmentId]);
+  }, [organizationId, segmentId, accountId]);
 
   useEffect(() => {
     if (!open || step !== 1) return;
     const t = setTimeout(() => void loadAudience(), 150);
     return () => clearTimeout(t);
   }, [open, step, loadAudience]);
+
 
   const template = useMemo(
     () => templates.find((t) => t.name === templateName) ?? null,
@@ -234,7 +261,7 @@ export function CampaignWizard({
 
   const canNext = () => {
     if (step === 0) return name.trim().length >= 2;
-    if (step === 1) return (audience?.eligible ?? 0) > 0;
+    if (step === 1) return Boolean(accountId) && (audience?.eligible ?? 0) > 0;
     if (step === 2)
       return Boolean(template) && variables.every((n) => mappingIsComplete(mappings[String(n)]));
     if (step === 3) return sendNow || Boolean(scheduledAt);
@@ -251,8 +278,10 @@ export function CampaignWizard({
         segment_id: segmentId === "all" ? null : segmentId,
         variable_mappings: mappings,
         scheduled_at: scheduledAt,
+        whatsapp_account_id: accountId || null,
       },
     });
+
     setLaunching(false);
     if (error || !data) {
       toast.error(error ?? "We couldn't launch this campaign.");
@@ -302,9 +331,32 @@ export function CampaignWizard({
 
             {step === 1 && (
               <div className="space-y-4">
+                {multiple ? (
+                  <div className="space-y-2">
+                    <Label>Send from</Label>
+                    <Select value={accountId} onValueChange={setAccountId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pick a number" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {numbers.map((n) => (
+                          <SelectItem key={n.id} value={n.id}>
+                            {numberLabel(n)}
+                            {numberSubtitle(n) ? ` · ${numberSubtitle(n)}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Templates and delivery are tied to this number. Opt-outs always apply across
+                      the whole workspace.
+                    </p>
+                  </div>
+                ) : null}
                 <div className="space-y-2">
                   <Label>Who should receive this?</Label>
                   <Select value={segmentId} onValueChange={setSegmentId}>
+
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -500,6 +552,8 @@ export function CampaignWizard({
                   <dl className="space-y-2 text-sm">
                     {[
                       ["Campaign", name],
+                      ["Sending from", numberLabel(senderNumber)],
+
                       [
                         "Audience",
                         `${audience?.eligible ?? 0} opted-in contacts${

@@ -126,20 +126,38 @@ async function rpc<T>(fn: string, args: RpcArgs): Promise<{ data: T | null; erro
   return { data: data as T, error: null };
 }
 
-const range = (organizationId: string, period: Period) => ({
+/**
+ * Shared filter contract. Every panel takes the same object, so a filter added
+ * here reaches all of them at once. `whatsappAccountId: null` means all
+ * connected numbers combined.
+ */
+export type AnalyticsFilters = { period: Period; whatsappAccountId: string | null };
+
+export const makeFilters = (
+  period: Period,
+  whatsappAccountId: string | null = null,
+): AnalyticsFilters => ({ period, whatsappAccountId });
+
+const range = (organizationId: string, f: AnalyticsFilters) => ({
   p_organization_id: organizationId,
-  p_from: period.from,
-  p_to: period.to,
+  p_from: f.period.from,
+  p_to: f.period.to,
+  p_whatsapp_account_id: f.whatsappAccountId,
 });
 
-export const fetchOverview = (organizationId: string, period: Period) =>
-  rpc<Overview>("analytics_overview", range(organizationId, period));
+const scope = (organizationId: string, f: AnalyticsFilters) => ({
+  p_organization_id: organizationId,
+  p_whatsapp_account_id: f.whatsappAccountId,
+});
 
-export const fetchTimeseries = (organizationId: string, period: Period) =>
-  rpc<SeriesPoint[]>("analytics_timeseries", range(organizationId, period));
+export const fetchOverview = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<Overview>("analytics_overview", range(organizationId, f));
 
-export const fetchCampaignPerformance = (organizationId: string, period: Period) =>
-  rpc<CampaignPerformance[]>("analytics_campaign_performance", range(organizationId, period));
+export const fetchTimeseries = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<SeriesPoint[]>("analytics_timeseries", range(organizationId, f));
+
+export const fetchCampaignPerformance = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<CampaignPerformance[]>("analytics_campaign_performance", range(organizationId, f));
 
 export const fetchCampaignFailures = (organizationId: string, campaignId: string) =>
   rpc<FailureReason[]>("analytics_campaign_failures", {
@@ -162,23 +180,24 @@ export const fetchCampaignRecipients = (
     p_offset: offset,
   });
 
-export const fetchContactsSummary = (organizationId: string) =>
-  rpc<ContactsSummary>("analytics_contacts_summary", { p_organization_id: organizationId });
+export const fetchContactsSummary = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<ContactsSummary>("analytics_contacts_summary", scope(organizationId, f));
 
-export const fetchSourceBreakdown = (organizationId: string) =>
-  rpc<SourceRow[]>("contacts_source_breakdown", { p_organization_id: organizationId });
+export const fetchSourceBreakdown = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<SourceRow[]>("contacts_source_breakdown", scope(organizationId, f));
 
-export const fetchResponseTimes = (organizationId: string, period: Period) =>
-  rpc<ResponseTimes>("analytics_response_times", range(organizationId, period));
+export const fetchResponseTimes = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<ResponseTimes>("analytics_response_times", range(organizationId, f));
 
-export const fetchTeamPerformance = (organizationId: string, period: Period) =>
-  rpc<TeamRow[]>("analytics_team_performance", range(organizationId, period));
+export const fetchTeamPerformance = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<TeamRow[]>("analytics_team_performance", range(organizationId, f));
 
-export const fetchAutomationPerformance = (organizationId: string, period: Period) =>
-  rpc<AutomationRow[]>("analytics_automation_performance", range(organizationId, period));
+export const fetchAutomationPerformance = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<AutomationRow[]>("analytics_automation_performance", range(organizationId, f));
 
-export const fetchQualityHistory = (organizationId: string, period: Period) =>
-  rpc<QualityPoint[]>("analytics_quality_history", range(organizationId, period));
+export const fetchQualityHistory = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<QualityPoint[]>("analytics_quality_history", range(organizationId, f));
+
 
 // ------------------------------------------------------------------ presentation
 
