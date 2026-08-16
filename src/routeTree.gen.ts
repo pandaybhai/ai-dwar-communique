@@ -21,6 +21,7 @@ import { Route as AdminActivityRouteImport } from './routes/admin/activity'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as ApiPermissionsRouteImport } from './routes/api/permissions'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAutomationsRouteImport } from './routes/app/automations'
@@ -107,6 +108,11 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   id: '/users',
   path: '/users',
   getParentRoute: () => AdminRouteRoute,
+} as any)
+const ApiPermissionsRoute = ApiPermissionsRouteImport.update({
+  id: '/api/permissions',
+  path: '/api/permissions',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
@@ -256,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
@@ -294,6 +301,7 @@ export interface FileRoutesByTo {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
@@ -335,6 +343,7 @@ export interface FileRoutesById {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
@@ -377,6 +386,7 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
+    | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
     | '/app/contacts'
@@ -415,6 +425,7 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
+    | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
     | '/app/contacts'
@@ -455,6 +466,7 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
+    | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
     | '/app/contacts'
@@ -492,6 +504,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   SignupRoute: typeof SignupRoute
   TermsRoute: typeof TermsRoute
+  ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
@@ -596,6 +609,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/users'
       preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRouteRoute
+    }
+    '/api/permissions': {
+      id: '/api/permissions'
+      path: '/api/permissions'
+      fullPath: '/api/permissions'
+      preLoaderRoute: typeof ApiPermissionsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/app/': {
       id: '/app/'
@@ -838,6 +858,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   SignupRoute: SignupRoute,
   TermsRoute: TermsRoute,
+  ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,

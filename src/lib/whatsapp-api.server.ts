@@ -7,7 +7,7 @@ export type AuthContext = {
   supabase: SupabaseClient;
   userId: string;
   organizationId: string;
-  role: "owner" | "admin" | "agent";
+  role: "owner" | "admin" | "marketer" | "agent";
 };
 
 export function jsonError(message: string, status = 400): Response {
