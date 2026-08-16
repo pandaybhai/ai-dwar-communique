@@ -53,8 +53,57 @@ function Card({ children }: { children: React.ReactNode }) {
   return <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">{children}</div>;
 }
 
+type TokenStatus = {
+  connected: boolean;
+  credentials_missing?: boolean;
+  expires_at?: string | null;
+  days_left?: number | null;
+  token_expiring?: boolean;
+  token_expired?: boolean;
+  expiry_unknown?: boolean;
+};
+
+function TokenExpiryBanner({ status }: { status: TokenStatus | null }) {
+  if (!status?.connected) return null;
+
+  let message: string | null = null;
+  let tone: "warn" | "error" = "warn";
+
+  if (status.credentials_missing) {
+    message =
+      "We can't find a stored access token for this number. Reconnect with Facebook to restore sending.";
+    tone = "error";
+  } else if (status.token_expired) {
+    message =
+      "Your access token has expired. Campaigns and replies will fail until you reconnect with Facebook.";
+    tone = "error";
+  } else if (status.token_expiring) {
+    const days = status.days_left ?? 0;
+    message = `Your access token expires in ${days <= 0 ? "less than a day" : `${days} day${days === 1 ? "" : "s"}`}. Reconnect with Facebook to avoid sending failures.`;
+  } else if (status.expiry_unknown) {
+    message =
+      "We couldn't read an expiry date for this connection. Reconnect with Facebook so we can monitor it for you.";
+    tone = "error";
+  }
+
+  if (!message) return null;
+
+  return (
+    <div
+      className={`flex items-start gap-3 rounded-2xl border p-4 text-sm ${
+        tone === "error"
+          ? "border-destructive/30 bg-destructive/5 text-destructive"
+          : "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400"
+      }`}
+    >
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+      <p>{message}</p>
+    </div>
+  );
+}
+
 export function WhatsAppTab() {
-  const { active, canManage } = useOrg();
+  const { active, canManage, isSuperAdmin } = useOrg();
   const orgId = active?.organization.id;
   const [account, setAccount] = useState<Account | null>(null);
   const [loading, setLoading] = useState(true);
