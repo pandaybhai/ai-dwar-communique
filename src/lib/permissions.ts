@@ -27,51 +27,22 @@ export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
   agent: "Inbox conversations and read-only contacts.",
 };
 
-export const PERMISSION_CATEGORIES = [
-  "inbox",
-  "contacts",
-  "marketing",
-  "team",
-  "settings",
-  "billing",
-] as const;
+/**
+ * Categories are feature keys — the registry is the only list of features.
+ * Nothing here is hand-maintained.
+ */
+export const PERMISSION_CATEGORIES = FEATURES.map((f) => f.key);
 
-export type PermissionCategory = (typeof PERMISSION_CATEGORIES)[number];
+export type PermissionCategory = string;
 
-export const CATEGORY_LABELS: Record<PermissionCategory, string> = {
-  inbox: "Inbox",
-  contacts: "Contacts",
-  marketing: "Marketing",
-  team: "Team",
-  settings: "Settings",
-  billing: "Billing",
-};
+export const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
+  FEATURES.map((f) => [f.key, f.name]),
+);
 
-/** Keys seeded in public.permissions. */
-export const PERMISSION_KEYS = [
-  "inbox.view",
-  "inbox.reply",
-  "inbox.assign",
-  "inbox.close",
-  "contacts.view",
-  "contacts.edit",
-  "contacts.import",
-  "contacts.export",
-  "contacts.delete",
-  "segments.manage",
-  "campaigns.view",
-  "campaigns.create",
-  "campaigns.send",
-  "templates.manage",
-  "automations.manage",
-  "analytics.view",
-  "team.manage",
-  "settings.manage",
-  "settings.whatsapp",
-  "billing.manage",
-] as const;
+/** Keys declared by the feature manifests and synced into public.permissions. */
+export const PERMISSION_KEYS = allPermissionKeys();
 
-export type PermissionKey = (typeof PERMISSION_KEYS)[number];
+export type PermissionKey = string;
 
 export type PermissionRow = {
   key: string;
@@ -80,6 +51,7 @@ export type PermissionRow = {
   category: PermissionCategory;
   min_role: OrgRole;
 };
+
 
 /** Friendly copy shown in the tooltip of a control the user cannot use. */
 export function permissionDeniedReason(name: string): string {
