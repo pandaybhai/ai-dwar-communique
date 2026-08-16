@@ -6,9 +6,7 @@ import { useOrg } from "@/lib/org-context";
  * to `all`; a partner tier can later resolve to its own client organizations
  * without any query being rewritten.
  */
-export type AdminScope =
-  | { mode: "all" }
-  | { mode: "organizations"; organizationIds: string[] };
+export type AdminScope = { mode: "all" } | { mode: "organizations"; organizationIds: string[] };
 
 export function useAdminScope(): AdminScope {
   const { isSuperAdmin, memberships } = useOrg();
@@ -27,7 +25,10 @@ export function applyScope<T extends { in: (column: string, values: string[]) =>
 ): T {
   if (scope.mode === "all") return query;
   // An empty scope must return nothing, never everything.
-  return query.in(column, scope.organizationIds.length ? scope.organizationIds : ["00000000-0000-0000-0000-000000000000"]);
+  return query.in(
+    column,
+    scope.organizationIds.length ? scope.organizationIds : ["00000000-0000-0000-0000-000000000000"],
+  );
 }
 
 export function scopeLabel(scope: AdminScope): string {
