@@ -1,3 +1,4 @@
+import { applyScope, useAdminScope } from "@/lib/admin-scope";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Activity, Search } from "lucide-react";
@@ -98,11 +99,14 @@ function AdminActivity() {
     setError(null);
     setRows(null);
 
-    let q = aidwar
-      .from("activity_log")
-      .select("id, organization_id, user_id, action, details, created_at", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+    let q = applyScope(
+      aidwar
+        .from("activity_log")
+        .select("id, organization_id, user_id, action, details, created_at", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1),
+      scope,
+    );
 
     if (orgId) q = q.eq("organization_id", orgId);
     if (userId) q = q.eq("user_id", userId);

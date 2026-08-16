@@ -1,3 +1,4 @@
+import { applyScope, useAdminScope } from "@/lib/admin-scope";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Building2, Loader2, PauseCircle, PlayCircle, Search } from "lucide-react";
@@ -81,10 +82,14 @@ function AdminOrganizations() {
     setError(null);
     setOrgs(null);
 
-    let q = aidwar
-      .from("organizations")
-      .select("id, name, slug, status, created_at", { count: "exact" })
-      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+    let q = applyScope(
+      aidwar
+        .from("organizations")
+        .select("id, name, slug, status, created_at", { count: "exact" })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1),
+      scope,
+      "id",
+    );
 
     if (search) q = q.or(`name.ilike.%${search}%,slug.ilike.%${search}%`);
     if (status) q = q.eq("status", status);

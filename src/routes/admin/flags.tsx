@@ -1,3 +1,4 @@
+import { applyScope, useAdminScope } from "@/lib/admin-scope";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Flag, Loader2, Plus, Search } from "lucide-react";
@@ -44,7 +45,11 @@ function AdminFlags() {
 
   const load = useCallback(async () => {
     setError(null);
-    let orgQ = aidwar.from("organizations").select("id, name").order("name").limit(50);
+    let orgQ = applyScope(
+      aidwar.from("organizations").select("id, name").order("name").limit(50),
+      scope,
+      "id",
+    );
     if (orgSearch) orgQ = orgQ.or(`name.ilike.%${orgSearch}%,slug.ilike.%${orgSearch}%`);
 
     const [{ data: f, error: err }, { data: o }] = await Promise.all([
