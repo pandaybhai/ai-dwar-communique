@@ -155,8 +155,10 @@ export function ChatThread({
           <p className="truncate text-sm font-semibold text-foreground">{label}</p>
           <p className="truncate text-xs text-muted-foreground">
             {conversation.contact?.phone ?? "—"}
+            {fromNumber ? <span className="opacity-70"> · via {fromNumber}</span> : null}
           </p>
         </div>
+
         <Badge
           variant="secondary"
           className={
