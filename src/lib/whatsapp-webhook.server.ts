@@ -175,7 +175,7 @@ async function messageEventDimensions(
         .eq("name", templateName);
       if (wabaId) query = query.eq("waba_id", wabaId);
       const { data: tpl } = await query.limit(1).maybeSingle();
-      props["category"] = String(
+      props["billing_category"] = String(
         (tpl as { category?: string } | null)?.category ?? "utility",
       ).toLowerCase();
     }
