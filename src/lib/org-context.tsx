@@ -52,6 +52,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [flagsLoading, setFlagsLoading] = useState(true);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [permissionOverrides, setPermissionOverrides] = useState<Record<string, boolean>>({});
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
 
   const load = useCallback(async () => {
     setError(null);
