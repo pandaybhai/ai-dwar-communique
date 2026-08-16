@@ -9,6 +9,7 @@ import {
   qualityLabel,
 } from "@/lib/opt-out";
 import { sendServiceText } from "@/lib/service-text.server";
+import { getWhatsAppConnection } from "@/lib/whatsapp-numbers.server";
 import {
   evaluateAutomations,
   loadAutomations,
@@ -292,7 +293,12 @@ async function applyOptKeywords(
 
   const { error } = await supabase
     .from("contacts")
-    .update({ opt_in_status: nextStatus, updated_at: new Date().toISOString() })
+    .update({
+      opt_in_status: nextStatus,
+      // Audit only — the block itself is workspace-wide, never per number.
+      opt_status_account_id: args.accountId,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", args.contactId);
   if (error) {
     log("status_update_failed", { action, next_status: nextStatus, error: error.message });
@@ -308,6 +314,8 @@ async function applyOptKeywords(
       keyword: optOut ?? optIn,
       previous_status: args.currentStatus,
       new_status: nextStatus,
+      whatsapp_account_id: args.accountId,
+      scope: "organization",
     },
   });
 
@@ -316,6 +324,7 @@ async function applyOptKeywords(
   await sendServiceText(supabase, {
     organizationId: args.organizationId,
     phoneNumberId: args.phoneNumberId,
+    accessToken: args.accessToken,
     conversationId: args.conversationId,
     to: args.waId,
     body: optOut ? OPT_OUT_CONFIRMATION : OPT_IN_CONFIRMATION,
@@ -391,6 +400,7 @@ export async function processWebhookPayload(
     const keywordCache = new Map<string, KeywordSets>();
     const automationCache = new Map<string, AutomationRow[]>();
     const timezoneCache = new Map<string, string>();
+    const tokenCache = new Map<string, string>();
     let routedAny = false;
 
     for (const entry of entries) {
@@ -404,17 +414,19 @@ export async function processWebhookPayload(
           const displayNumber = String(
             value["display_phone_number"] ?? value["phone_number"] ?? "",
           );
+          // Always scope to the WABA the event came from. Matching on the
+          // display number alone would attach one client's health event to
+          // whichever account happened to sort first.
           let lookup = supabase
             .from("whatsapp_accounts")
             .select("id, organization_id, phone_number_id, quality_rating, status")
-            .order("connected_at", { ascending: false, nullsFirst: false })
-            .limit(1);
+            .eq("waba_id", wabaId);
           if (displayNumber) lookup = lookup.eq("display_phone_number", displayNumber);
-          else lookup = lookup.eq("waba_id", wabaId);
 
-          const { data: healthRows } = await lookup;
-          const healthAccount = healthRows?.[0];
-          if (!healthAccount) continue;
+          const { data: healthRows } = await lookup.limit(2);
+          // Ambiguous or unknown: record it and skip rather than guess.
+          if (!healthRows || healthRows.length !== 1) continue;
+          const healthAccount = healthRows[0]!;
           routedAny = true;
 
           const nowIso = new Date().toISOString();
@@ -468,12 +480,20 @@ export async function processWebhookPayload(
         // ---- template status updates (routed by WABA id, not phone number) ----
         if (String(change["field"] ?? "") === "message_template_status_update") {
           const wabaId = String(entry["id"] ?? "");
-          const { data: wabaAccount } = await supabase
+          // A WABA can hold several numbers, so this is a list, not a single
+          // row — but every number on it belongs to one organization.
+          const { data: wabaAccounts } = await supabase
             .from("whatsapp_accounts")
             .select("organization_id")
-            .eq("waba_id", wabaId)
-            .maybeSingle();
-          if (!wabaAccount) continue;
+            .eq("waba_id", wabaId);
+          const wabaOrgIds = Array.from(
+            new Set(
+              ((wabaAccounts ?? []) as Array<{ organization_id: string }>).map(
+                (r) => r.organization_id,
+              ),
+            ),
+          );
+          if (wabaOrgIds.length !== 1) continue;
           routedAny = true;
 
           const templateName = value["message_template_name"] as string | undefined;
@@ -497,7 +517,9 @@ export async function processWebhookPayload(
                 nextStatus === "REJECTED" ? (reason && reason !== "NONE" ? reason : "Rejected by review") : null,
               updated_at: new Date().toISOString(),
             })
-            .eq("organization_id", wabaAccount.organization_id as string);
+            .eq("organization_id", wabaOrgIds[0]!)
+            // Templates live inside a WABA — never touch the other library.
+            .eq("waba_id", wabaId);
 
           if (metaTemplateId !== undefined && metaTemplateId !== null) {
             update = update.eq("meta_template_id", String(metaTemplateId));
@@ -521,10 +543,22 @@ export async function processWebhookPayload(
           .eq("phone_number_id", phoneNumberId)
           .maybeSingle();
 
+        // phone_number_id is globally unique, so an unknown one means the
+        // payload isn't ours: it stays recorded and unrouted, never attached
+        // to some other account.
         if (!account) continue;
         routedAny = true;
         const orgId = account.organization_id as string;
         const accountId = account.id as string;
+
+        // Token for THIS number's WABA — replies always go back out on the
+        // number the customer wrote to.
+        let accessToken = tokenCache.get(accountId);
+        if (accessToken === undefined) {
+          const { connection } = await getWhatsAppConnection(supabase, orgId, accountId);
+          accessToken = connection?.accessToken ?? "";
+          tokenCache.set(accountId, accessToken);
+        }
 
         // ---- inbound messages ----
         const contactsMeta = (value["contacts"] as AnyRecord[] | undefined) ?? [];
@@ -652,6 +686,7 @@ export async function processWebhookPayload(
           await evaluateAutomations(supabase, {
             organizationId: orgId,
             phoneNumberId,
+            accessToken,
             conversationId: conversation.id as string,
             contactId: contact.id as string,
             inboundMessageId: String(msg["id"] ?? ""),
