@@ -61,8 +61,11 @@ export function AnalyticsView({
   timezone: string;
 }) {
   const [days, setDays] = useState(30);
+  const [accountId, setAccountId] = useState<string>("all");
+  const { numbers, multiple } = useWhatsAppNumbers({ activeOnly: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
 
   const [overview, setOverview] = useState<Overview | null>(null);
   const [series, setSeries] = useState<SeriesPoint[]>([]);
