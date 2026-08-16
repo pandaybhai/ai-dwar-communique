@@ -23,8 +23,15 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
 
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
-        if (auth.role !== "owner" && auth.role !== "admin") {
-          return jsonError("Only owners and admins can connect WhatsApp.", 403);
+
+        // Manual token paste skips the register and subscribe steps, so it is a
+        // platform-support tool only — never available to org admins.
+        const { isSuperAdmin, debugToken } = await import("@/lib/whatsapp-api.server");
+        if (!(await isSuperAdmin(auth.supabase, auth.userId))) {
+          return jsonError(
+            "Manual connection is restricted to AiDwar support. Please use Connect with Facebook.",
+            403,
+          );
         }
 
         const wabaId = String(payload["waba_id"] ?? "").trim();
