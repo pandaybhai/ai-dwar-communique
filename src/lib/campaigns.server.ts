@@ -105,35 +105,29 @@ export async function resolveAudienceContacts(
 
 export type SenderContext = {
   accountId: string;
+  wabaId: string;
   phoneNumberId: string;
   accessToken: string;
 };
 
+/**
+ * A campaign sends from one chosen number (campaigns.whatsapp_account_id).
+ * Only when nothing specifies one do we fall back to the workspace default —
+ * which is exactly the old behaviour for a single-number workspace.
+ */
 export async function loadSenderContext(
   supabase: SupabaseClient,
   organizationId: string,
+  whatsappAccountId?: string | null,
 ): Promise<SenderContext | null> {
-  const { data: account } = await supabase
-    .from("whatsapp_accounts")
-    .select("id, phone_number_id")
-    .eq("organization_id", organizationId)
-    .eq("status", "active")
-    .order("connected_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!account) return null;
-
-  const { data: cred } = await supabase
-    .from("whatsapp_credentials")
-    .select("access_token")
-    .eq("organization_id", organizationId)
-    .maybeSingle();
-  if (!cred?.access_token) return null;
-
+  const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
+  const { connection } = await getWhatsAppConnection(supabase, organizationId, whatsappAccountId);
+  if (!connection) return null;
   return {
-    accountId: account.id as string,
-    phoneNumberId: account.phone_number_id as string,
-    accessToken: cred.access_token as string,
+    accountId: connection.accountId,
+    wabaId: connection.wabaId,
+    phoneNumberId: connection.phoneNumberId,
+    accessToken: connection.accessToken,
   };
 }
 
@@ -149,6 +143,8 @@ async function conversationFor(
     .select("id")
     .eq("organization_id", organizationId)
     .eq("contact_id", contactId)
+    // One thread per contact per number.
+    .eq("whatsapp_account_id", accountId)
     .neq("status", "closed")
     .order("last_message_at", { ascending: false })
     .limit(1)

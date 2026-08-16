@@ -386,15 +386,23 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
       {
         key: "settings.whatsapp",
-        name: "Manage connection",
-        description: "Connect, disconnect or reconnect the business number.",
+        name: "Manage connections",
+        description: "Add, disconnect or reconnect the business numbers this workspace sends from.",
         min_role: "owner",
       },
     ],
     analytics: none,
-    activity_actions: ["organization.created", "organization.updated", "user.logged_in"],
+    activity_actions: [
+      "organization.created",
+      "organization.updated",
+      "user.logged_in",
+      "whatsapp_connected",
+      "whatsapp_disconnected",
+      "whatsapp_default_changed",
+    ],
     settings_path: "/app/settings",
     data_tables: ["organizations", "whatsapp_accounts"],
+
   },
   {
     key: "team",

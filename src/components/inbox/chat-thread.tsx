@@ -102,6 +102,9 @@ export function ChatThread({
   onSend,
   onSendTemplate,
   organizationId,
+  numberLabel: fromNumber,
+  wabaId,
+
   onBack,
   onAssign,
   onToggleStatus,
@@ -114,9 +117,15 @@ export function ChatThread({
   onSend: (text: string) => Promise<boolean>;
   onSendTemplate: (payload: TemplateSendPayload) => Promise<boolean>;
   organizationId: string | null;
+  /** Name of the connected number this thread arrived on, when there's more than one. */
+  numberLabel?: string | null;
+  /** Business account behind that number — scopes the template library. */
+  wabaId?: string | null;
+
   onBack: () => void;
   onAssign: (userId: string | null) => void;
   onToggleStatus: () => void;
+
 }) {
   const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -151,8 +160,10 @@ export function ChatThread({
           <p className="truncate text-sm font-semibold text-foreground">{label}</p>
           <p className="truncate text-xs text-muted-foreground">
             {conversation.contact?.phone ?? "—"}
+            {fromNumber ? <span className="opacity-70"> · via {fromNumber}</span> : null}
           </p>
         </div>
+
         <Badge
           variant="secondary"
           className={
@@ -283,9 +294,11 @@ export function ChatThread({
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         organizationId={organizationId}
+        wabaId={wabaId ?? null}
         sending={sending}
         onSend={onSendTemplate}
       />
+
     </div>
   );
 }

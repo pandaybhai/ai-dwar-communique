@@ -24,7 +24,7 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
         const { data: campaigns } = await supabase
           .from("campaigns")
           .select(
-            "id, organization_id, status, template_name, template_language, scheduled_at, started_at",
+            "id, organization_id, whatsapp_account_id, status, template_name, template_language, scheduled_at, started_at",
           )
           .or(`status.eq.sending,and(status.eq.scheduled,scheduled_at.lte.${nowIso})`)
           .order("created_at", { ascending: true })
@@ -49,7 +49,12 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
             continue;
           }
 
-          const sender = await loadSenderContext(supabase, orgId);
+          // The campaign carries the number it was created for.
+          const sender = await loadSenderContext(
+            supabase,
+            orgId,
+            (campaign["whatsapp_account_id"] as string | null) ?? null,
+          );
           if (!sender) {
             await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
             report.push({ campaign_id: campaignId, paused: "no_active_whatsapp_account" });
@@ -60,6 +65,8 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
             .from("message_templates")
             .select("components")
             .eq("organization_id", orgId)
+            // Template libraries are per business account.
+            .eq("waba_id", sender.wabaId)
             .eq("name", templateName)
             .limit(1)
             .maybeSingle();

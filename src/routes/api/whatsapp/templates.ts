@@ -30,71 +30,100 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
         if (denied) return denied;
         const { supabase, organizationId, userId } = auth;
 
-        const { data: account } = await supabase
-          .from("whatsapp_accounts")
-          .select("waba_id")
-          .eq("organization_id", organizationId)
-          .eq("status", "active")
-          .order("connected_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (!account?.waba_id) {
-          return jsonError("Connect your business number before managing templates.", 400);
-        }
-
-        const { data: cred } = await supabase
-          .from("whatsapp_credentials")
-          .select("access_token")
-          .eq("organization_id", organizationId)
-          .maybeSingle();
-        if (!cred?.access_token) {
-          return jsonError("Your credentials are missing. Reconnect the number.", 400);
-        }
+        const { getWhatsAppConnection, listWabaConnections } = await import(
+          "@/lib/whatsapp-numbers.server"
+        );
+        // Templates live inside a WABA, not inside a workspace. An org with two
+        // business accounts has two separate libraries.
+        const requestedAccountId = (payload["whatsapp_account_id"] as string | undefined) || null;
 
         const action = String(payload["action"] ?? "sync");
         const nowIso = new Date().toISOString();
 
         // ---------------- sync ----------------
         if (action === "sync") {
-          const result = await graphFetch(`${account.waba_id}/message_templates`, cred.access_token, {
-            query: { limit: "200", fields: "id,name,language,category,status,components,rejected_reason" },
-          });
-          if (!result.ok) {
-            return Response.json({ error: graphErrorMessage(result.body) }, { status: 400 });
+          // Sync per WABA — one number's library must never overwrite another's.
+          let targets: Array<{ wabaId: string; accessToken: string }>;
+          if (requestedAccountId) {
+            const { connection, error } = await getWhatsAppConnection(
+              supabase,
+              organizationId,
+              requestedAccountId,
+            );
+            if (!connection) return jsonError(error ?? "No connected number.", 400);
+            targets = [{ wabaId: connection.wabaId, accessToken: connection.accessToken }];
+          } else {
+            targets = await listWabaConnections(supabase, organizationId);
+          }
+          if (targets.length === 0) {
+            return jsonError("Connect your business number before managing templates.", 400);
           }
 
-          const rows = (result.body["data"] as AnyRecord[] | undefined) ?? [];
           let synced = 0;
-          for (const t of rows) {
-            const name = String(t["name"] ?? "");
-            if (!name) continue;
-            const rejected = t["rejected_reason"] as string | undefined;
-            const { error } = await supabase.from("message_templates").upsert(
+          let total = 0;
+          const failures: string[] = [];
+
+          for (const target of targets) {
+            const result = await graphFetch(
+              `${target.wabaId}/message_templates`,
+              target.accessToken,
               {
-                organization_id: organizationId,
-                meta_template_id: String(t["id"] ?? "") || null,
-                name,
-                language: String(t["language"] ?? "en_US"),
-                category: (t["category"] as string) ?? null,
-                status: String(t["status"] ?? "PENDING").toUpperCase(),
-                components: (t["components"] as unknown) ?? [],
-                rejection_reason:
-                  rejected && rejected !== "NONE" ? String(rejected) : null,
-                updated_at: nowIso,
+                query: {
+                  limit: "200",
+                  fields: "id,name,language,category,status,components,rejected_reason",
+                },
               },
-              { onConflict: "organization_id,name,language" },
             );
-            if (!error) synced += 1;
+            if (!result.ok) {
+              failures.push(graphErrorMessage(result.body));
+              continue;
+            }
+
+            const rows = (result.body["data"] as AnyRecord[] | undefined) ?? [];
+            total += rows.length;
+            for (const t of rows) {
+              const name = String(t["name"] ?? "");
+              if (!name) continue;
+              const rejected = t["rejected_reason"] as string | undefined;
+              const { error } = await supabase.from("message_templates").upsert(
+                {
+                  organization_id: organizationId,
+                  waba_id: target.wabaId,
+                  meta_template_id: String(t["id"] ?? "") || null,
+                  name,
+                  language: String(t["language"] ?? "en_US"),
+                  category: (t["category"] as string) ?? null,
+                  status: String(t["status"] ?? "PENDING").toUpperCase(),
+                  components: (t["components"] as unknown) ?? [],
+                  rejection_reason: rejected && rejected !== "NONE" ? String(rejected) : null,
+                  updated_at: nowIso,
+                },
+                { onConflict: "organization_id,waba_id,name,language" },
+              );
+              if (!error) synced += 1;
+            }
+          }
+
+          if (synced === 0 && failures.length > 0) {
+            return Response.json({ error: failures[0] }, { status: 400 });
           }
 
           await logServerActivity(supabase, organizationId, userId, "template_synced", {
             count: synced,
+            waba_count: targets.length,
           });
-          return Response.json({ synced, total: rows.length, synced_at: nowIso });
+          return Response.json({ synced, total, synced_at: nowIso });
         }
 
         // ---------------- create ----------------
         if (action === "create") {
+          const { connection, error: connectionError } = await getWhatsAppConnection(
+            supabase,
+            organizationId,
+            requestedAccountId,
+          );
+          if (!connection) return jsonError(connectionError ?? "No connected number.", 400);
+
           const name = slugifyTemplateName(String(payload["name"] ?? ""));
           const language = String(payload["language"] ?? "en_US");
           const category = String(payload["category"] ?? "").toUpperCase();
@@ -128,8 +157,8 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           if (footer) components.push({ type: "FOOTER", text: footer });
 
           const result = await graphFetch(
-            `${account.waba_id}/message_templates`,
-            cred.access_token,
+            `${connection.wabaId}/message_templates`,
+            connection.accessToken,
             { method: "POST", body: { name, language, category, components } },
           );
           if (!result.ok) {
@@ -147,6 +176,7 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
             .upsert(
               {
                 organization_id: organizationId,
+                waba_id: connection.wabaId,
                 meta_template_id: metaId,
                 name,
                 language,
@@ -158,7 +188,7 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
                 rejection_reason: null,
                 updated_at: nowIso,
               },
-              { onConflict: "organization_id,name,language" },
+              { onConflict: "organization_id,waba_id,name,language" },
             )
             .select("id")
             .single();
@@ -171,6 +201,7 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
             template_name: name,
             language,
             category,
+            whatsapp_account_id: connection.accountId,
           });
 
           return Response.json({ id: saved?.id ?? null, meta_template_id: metaId, status });

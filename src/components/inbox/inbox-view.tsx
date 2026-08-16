@@ -9,6 +9,16 @@ import { EmptyState, ErrorState } from "@/components/empty-state";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
+import { numberLabel } from "@/lib/whatsapp-numbers";
+
 import { ChatThread } from "./chat-thread";
 import {
   contactLabel,
@@ -39,7 +49,10 @@ export function InboxView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [numberFilter, setNumberFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const { numbers } = useWhatsAppNumbers();
+
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -57,7 +70,7 @@ export function InboxView() {
     const { data, error: err } = await aidwar
       .from("conversations")
       .select(
-        "id, status, assigned_to, last_message_at, last_customer_message_at, unread_count, contact:contacts(id, name, phone, opt_in_status), preview:messages(body, type, direction, created_at)",
+        "id, status, assigned_to, whatsapp_account_id, last_message_at, last_customer_message_at, unread_count, contact:contacts(id, name, phone, opt_in_status), preview:messages(body, type, direction, created_at)",
       )
       .eq("organization_id", orgId)
       .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -171,20 +184,27 @@ export function InboxView() {
     await aidwar.from("conversations").update({ unread_count: 0 }).eq("id", id);
   }, []);
 
+  const numberById = useMemo(
+    () => new Map(numbers.map((n) => [n.id, n])),
+    [numbers],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return conversations.filter((c) => {
       if (filter === "open" && c.status !== "open") return false;
       if (filter === "closed" && c.status !== "closed") return false;
       if (filter === "mine" && c.assigned_to !== userId) return false;
+      if (numberFilter !== "all" && c.whatsapp_account_id !== numberFilter) return false;
       if (!q) return true;
       const name = (c.contact?.name ?? "").toLowerCase();
       const phone = (c.contact?.phone ?? "").toLowerCase();
       return name.includes(q) || phone.includes(q);
     });
-  }, [conversations, filter, search, userId]);
+  }, [conversations, filter, numberFilter, search, userId]);
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
+
 
   const handleSend = async (text: string): Promise<boolean> => {
     if (!orgId || !activeConversation) return false;
@@ -310,6 +330,22 @@ export function InboxView() {
               className="rounded-full pl-9"
             />
           </div>
+          {numbers.length > 1 ? (
+            <Select value={numberFilter} onValueChange={setNumberFilter}>
+              <SelectTrigger className="rounded-full">
+                <SelectValue placeholder="All numbers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All numbers</SelectItem>
+                {numbers.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {numberLabel(n)}
+                    {n.is_default ? " · Default" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <div className="flex flex-wrap gap-1.5">
             {FILTERS.map((f) => (
               <button
@@ -328,6 +364,7 @@ export function InboxView() {
             ))}
           </div>
         </div>
+
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {loading ? (
@@ -390,6 +427,11 @@ export function InboxView() {
                             </Badge>
                           ) : null}
                         </div>
+                        {numbers.length > 1 && c.whatsapp_account_id ? (
+                          <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
+                            via {numberLabel(numberById.get(c.whatsapp_account_id))}
+                          </p>
+                        ) : null}
                         {assignee ? (
                           <div className="mt-1.5 flex items-center gap-1.5">
                             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[8px] font-semibold text-muted-foreground">
@@ -400,6 +442,7 @@ export function InboxView() {
                             </span>
                           </div>
                         ) : null}
+
                       </div>
                     </button>
                   </li>
@@ -423,6 +466,18 @@ export function InboxView() {
               onSend={handleSend}
               onSendTemplate={handleSendTemplate}
               organizationId={orgId}
+              wabaId={
+                activeConversation.whatsapp_account_id
+                  ? (numberById.get(activeConversation.whatsapp_account_id)?.waba_id ?? null)
+                  : null
+              }
+
+              numberLabel={
+                numbers.length > 1 && activeConversation.whatsapp_account_id
+                  ? numberLabel(numberById.get(activeConversation.whatsapp_account_id))
+                  : null
+              }
+
               onBack={() => setActiveId(null)}
               onAssign={(id) => void handleAssign(id)}
               onToggleStatus={() => void handleToggleStatus()}

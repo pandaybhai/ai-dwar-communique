@@ -67,16 +67,18 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
           );
         }
 
+        // One credential row per business account — a workspace can hold several.
         const { error: credErr } = await supabase.from("whatsapp_credentials").upsert(
           {
             organization_id: organizationId,
+            waba_id: wabaId,
             access_token: accessToken,
             token_type: "business",
             expires_at: info.expires_at,
             granted_scopes: info.granted_scopes,
             updated_at: new Date().toISOString(),
           },
-          { onConflict: "organization_id" },
+          { onConflict: "organization_id,waba_id" },
         );
         if (credErr) return jsonError("We couldn't store your credentials. Please try again.", 500);
 
@@ -95,9 +97,16 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
         const { data: saved, error: accErr } = await supabase
           .from("whatsapp_accounts")
           .upsert(account, { onConflict: "phone_number_id" })
-          .select("id, display_phone_number, verified_name, quality_rating, status, connected_at")
+          .select(
+            "id, waba_id, phone_number_id, display_phone_number, verified_name, quality_rating, status, is_default, connected_at",
+          )
           .single();
         if (accErr) return jsonError("We couldn't save this number. Please try again.", 500);
+
+        // The first number a workspace connects becomes its default; later ones
+        // are added alongside it and leave the default untouched.
+        const { ensureDefaultAccount } = await import("@/lib/whatsapp-numbers.server");
+        await ensureDefaultAccount(supabase, organizationId);
 
         let reprocessed = 0;
         try {
@@ -112,6 +121,47 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
         });
 
         return Response.json({ account: saved, reprocessed_events: reprocessed });
+      },
+
+      /** Choose which number a workspace sends from by default. */
+      PATCH: async ({ request }) => {
+        const { requireOrgMember, isResponse, jsonError, logServerActivity, requirePermission } =
+          await import("@/lib/whatsapp-api.server");
+
+        let payload: Record<string, unknown> = {};
+        try {
+          payload = (await request.json()) as Record<string, unknown>;
+        } catch {
+          payload = {};
+        }
+
+        const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
+        if (isResponse(auth)) return auth;
+        const denied = await requirePermission(auth, "settings.whatsapp", "change the default number");
+        if (denied) return denied;
+
+        const { supabase, organizationId, userId } = auth;
+        const accountId = String(payload["whatsapp_account_id"] ?? "").trim();
+        if (!accountId) return jsonError("Choose a number to make default.");
+
+        const { data: account } = await supabase
+          .from("whatsapp_accounts")
+          .select("id, status")
+          .eq("id", accountId)
+          .eq("organization_id", organizationId)
+          .maybeSingle();
+        if (!account) return jsonError("That number isn't connected to this workspace.", 404);
+        if (account.status !== "active") {
+          return jsonError("Only a connected number can be the default.", 400);
+        }
+
+        const { setDefaultAccount } = await import("@/lib/whatsapp-numbers.server");
+        await setDefaultAccount(supabase, organizationId, accountId);
+
+        await logServerActivity(supabase, organizationId, userId, "whatsapp_default_changed", {
+          whatsapp_account_id: accountId,
+        });
+        return Response.json({ ok: true, whatsapp_account_id: accountId });
       },
 
       DELETE: async ({ request }) => {
@@ -132,34 +182,50 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
         if (denied) return denied;
 
         const { supabase, organizationId, userId } = auth;
+        const { getWhatsAppConnection, ensureDefaultAccount } = await import(
+          "@/lib/whatsapp-numbers.server"
+        );
 
-        // Best effort with Meta first: stop webhooks and revoke the token so a
-        // later re-connect starts from a clean slate. Local cleanup happens
-        // regardless — a stale token must never survive a disconnect here.
-        const { data: creds } = await supabase
-          .from("whatsapp_credentials")
-          .select("access_token")
-          .eq("organization_id", organizationId)
-          .maybeSingle();
-        const { data: accounts } = await supabase
+        // Disconnect one number, never the whole workspace.
+        const targetAccountId = (payload["whatsapp_account_id"] as string | undefined) || null;
+        const { connection, error: connectionError } = await getWhatsAppConnection(
+          supabase,
+          organizationId,
+          targetAccountId,
+        );
+
+        const { data: targetRow } = await supabase
           .from("whatsapp_accounts")
-          .select("waba_id")
+          .select("id, waba_id")
           .eq("organization_id", organizationId)
-          .eq("status", "active");
+          .eq("id", targetAccountId ?? connection?.accountId ?? "")
+          .maybeSingle();
+        const account = (targetRow ?? null) as { id: string; waba_id: string | null } | null;
+        if (!account) return jsonError(connectionError ?? "That number isn't connected.", 404);
 
-        const token = (creds?.access_token as string | undefined) ?? "";
+        // Is this the last active number on its business account? Only then may
+        // we unsubscribe the WABA and drop its token — a sibling number on the
+        // same business account still needs both.
+        const { data: siblings } = await supabase
+          .from("whatsapp_accounts")
+          .select("id")
+          .eq("organization_id", organizationId)
+          .eq("waba_id", account.waba_id ?? "")
+          .eq("status", "active")
+          .neq("id", account.id);
+        const lastOnWaba = (siblings ?? []).length === 0;
+
+        const token = connection?.accessToken ?? "";
         let unsubscribed = false;
         let revoked = false;
-        if (token) {
-          for (const row of accounts ?? []) {
-            const wabaId = (row as { waba_id: string | null }).waba_id;
-            if (!wabaId) continue;
-            try {
-              const res = await graphFetch(`${wabaId}/subscribed_apps`, token, { method: "DELETE" });
-              unsubscribed = unsubscribed || res.ok;
-            } catch {
-              // Meta being unreachable must not block the disconnect.
-            }
+        if (token && lastOnWaba && account.waba_id) {
+          try {
+            const res = await graphFetch(`${account.waba_id}/subscribed_apps`, token, {
+              method: "DELETE",
+            });
+            unsubscribed = res.ok;
+          } catch {
+            // Meta being unreachable must not block the disconnect.
           }
           try {
             const res = await graphFetch("me/permissions", token, { method: "DELETE" });
@@ -171,15 +237,31 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
 
         await supabase
           .from("whatsapp_accounts")
-          .update({ status: "disconnected" })
-          .eq("organization_id", organizationId);
-        await supabase.from("whatsapp_credentials").delete().eq("organization_id", organizationId);
+          .update({ status: "disconnected", is_default: false })
+          .eq("id", account.id);
+
+        if (lastOnWaba && account.waba_id) {
+          await supabase
+            .from("whatsapp_credentials")
+            .delete()
+            .eq("organization_id", organizationId)
+            .eq("waba_id", account.waba_id);
+        }
+
+        // Promote another live number so the workspace still has a default.
+        await ensureDefaultAccount(supabase, organizationId);
 
         await logServerActivity(supabase, organizationId, userId, "whatsapp_disconnected", {
+          whatsapp_account_id: account.id,
           unsubscribed,
           token_revoked: revoked,
         });
-        return Response.json({ ok: true, unsubscribed, token_revoked: revoked });
+        return Response.json({
+          ok: true,
+          whatsapp_account_id: account.id,
+          unsubscribed,
+          token_revoked: revoked,
+        });
       },
     },
   },
