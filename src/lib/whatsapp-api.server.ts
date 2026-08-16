@@ -121,3 +121,73 @@ export function graphErrorMessage(body: Record<string, unknown>): string {
 /** Re-exported from the shared helper so every write path agrees. */
 export { normalizePhone, toWaId } from "@/lib/phone";
 
+
+export type TokenInfo = {
+  expires_at: string | null;
+  granted_scopes: string[] | null;
+  error: string | null;
+};
+
+/**
+ * Introspects a business token with Meta's /debug_token endpoint using the app
+ * access token, so we can persist the real expiry instead of guessing. A token
+ * that silently expires takes campaigns down, so callers log a null expiry.
+ */
+export async function debugToken(inputToken: string): Promise<TokenInfo> {
+  const appId = process.env["META_APP_ID"];
+  const appSecret = process.env["META_APP_SECRET"];
+  if (!appId || !appSecret) {
+    return { expires_at: null, granted_scopes: null, error: "meta_app_credentials_missing" };
+  }
+
+  try {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/debug_token`);
+    url.searchParams.set("input_token", inputToken);
+    url.searchParams.set("access_token", `${appId}|${appSecret}`);
+    const res = await fetch(url.toString());
+    const body = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) return { expires_at: null, granted_scopes: null, error: graphErrorMessage(body) };
+
+    const data = (body["data"] ?? {}) as Record<string, unknown>;
+    const expiresAtSeconds = Number(data["expires_at"] ?? 0);
+    const scopes = Array.isArray(data["scopes"]) ? (data["scopes"] as string[]) : null;
+    // 0 means "never expires" for system-user tokens — still not a real date.
+    const expiresAt =
+      Number.isFinite(expiresAtSeconds) && expiresAtSeconds > 0
+        ? new Date(expiresAtSeconds * 1000).toISOString()
+        : null;
+    return { expires_at: expiresAt, granted_scopes: scopes, error: null };
+  } catch {
+    return { expires_at: null, granted_scopes: null, error: "debug_token_unreachable" };
+  }
+}
+
+export const TOKEN_EXPIRY_WARNING_DAYS = 7;
+
+/** Shared expiry classification used by the status route and the UI banner. */
+export function classifyTokenExpiry(expiresAt: string | null | undefined): {
+  expires_at: string | null;
+  days_left: number | null;
+  token_expiring: boolean;
+  token_expired: boolean;
+  expiry_unknown: boolean;
+} {
+  if (!expiresAt) {
+    return {
+      expires_at: null,
+      days_left: null,
+      token_expiring: false,
+      token_expired: false,
+      expiry_unknown: true,
+    };
+  }
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  const days = ms / 86_400_000;
+  return {
+    expires_at: expiresAt,
+    days_left: Math.floor(days),
+    token_expiring: days > 0 && days < TOKEN_EXPIRY_WARNING_DAYS,
+    token_expired: ms <= 0,
+    expiry_unknown: false,
+  };
+}
