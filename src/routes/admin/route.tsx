@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { aidwar } from "@/integrations/aidwar/client";
 import { AdminShell } from "@/components/admin-shell";
+import { OrgProvider } from "@/lib/org-context";
 
 export const Route = createFileRoute("/admin")({
   ssr: false,
@@ -15,8 +16,10 @@ export const Route = createFileRoute("/admin")({
     return { user: data.user };
   },
   component: () => (
-    <AdminShell>
-      <Outlet />
-    </AdminShell>
+    <OrgProvider>
+      <AdminShell>
+        <Outlet />
+      </AdminShell>
+    </OrgProvider>
   ),
 });
