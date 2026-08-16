@@ -310,6 +310,22 @@ export function InboxView() {
               className="rounded-full pl-9"
             />
           </div>
+          {numbers.length > 1 ? (
+            <Select value={numberFilter} onValueChange={setNumberFilter}>
+              <SelectTrigger className="rounded-full">
+                <SelectValue placeholder="All numbers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All numbers</SelectItem>
+                {numbers.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {numberLabel(n)}
+                    {n.is_default ? " · Default" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <div className="flex flex-wrap gap-1.5">
             {FILTERS.map((f) => (
               <button
@@ -328,6 +344,7 @@ export function InboxView() {
             ))}
           </div>
         </div>
+
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {loading ? (
