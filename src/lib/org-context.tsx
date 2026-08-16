@@ -165,6 +165,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const isFeatureEnabled = useCallback((key: string) => flags[key] ?? false, [flags]);
 
+  const can = useCallback((key: string) => permissions.includes(key), [permissions]);
+
   return (
     <OrgContext.Provider
       value={{
