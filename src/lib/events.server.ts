@@ -9,7 +9,28 @@ import type { AnalyticsEventInput, EventProperties, UsageRecordInput } from "@/l
  * callers `void` the promise. Writes need the service-role client — the table
  * only grants insert to service_role.
  */
+/**
+ * A dimensionless event can't be filtered in any chart, and the gap is only
+ * ever noticed weeks later. Warn loudly at emission instead.
+ */
+function warnIfDimensionless(input: AnalyticsEventInput): void {
+  const props = input.properties ?? {};
+  if (Object.keys(props).length === 0) {
+    console.warn(
+      JSON.stringify({
+        scope: "events",
+        stage: "empty_properties",
+        event_type: input.eventType,
+        entity_type: input.entityType,
+        entity_id: input.entityId ?? null,
+        organization_id: input.organizationId,
+      }),
+    );
+  }
+}
+
 async function insertEvent(supabase: SupabaseClient, input: AnalyticsEventInput): Promise<void> {
+  warnIfDimensionless(input);
   const { error } = await supabase.from("analytics_events").insert({
     organization_id: input.organizationId,
     whatsapp_account_id: input.whatsappAccountId ?? null,
@@ -41,6 +62,7 @@ export async function emitEvents(
   rows: AnalyticsEventInput[],
 ): Promise<void> {
   if (rows.length === 0) return;
+  rows.forEach(warnIfDimensionless);
   try {
     await supabase.from("analytics_events").insert(
       rows.map((input) => ({

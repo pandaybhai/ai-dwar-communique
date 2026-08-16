@@ -215,8 +215,12 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
             entityType: "message",
             entityId: failedMessage?.id ?? null,
             properties: {
+              message_id: failedMessage?.id ?? null,
+              conversation_id: conversation?.id ?? null,
+              contact_id: contactId,
               campaign_id: null,
               template_name: messageType === "template" ? templateName : null,
+              billing_category: messageType === "template" ? "utility" : "service",
               waba_id: connection.wabaId,
               whatsapp_account_id: connection.accountId,
               message_type: messageType,
@@ -300,12 +304,15 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           entityType: "message",
           entityId: message?.id ?? null,
           properties: {
+            message_id: message?.id ?? null,
+            conversation_id: conversation?.id ?? null,
+            contact_id: contactId,
             campaign_id: null,
             message_type: messageType,
             template_name: messageType === "template" ? templateName : null,
             waba_id: connection.wabaId,
             whatsapp_account_id: connection.accountId,
-            category,
+            billing_category: category.toLowerCase(),
           },
         });
         recordUsage(supabase, meterForMessageCategory(category), {
@@ -313,8 +320,12 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           quantity: 1,
           metadata: {
             whatsapp_account_id: connection.accountId,
+            waba_id: connection.wabaId,
+            conversation_id: conversation?.id ?? null,
+            contact_id: contactId,
             message_id: message?.id ?? null,
             message_type: messageType,
+            billing_category: category.toLowerCase(),
           },
         });
 

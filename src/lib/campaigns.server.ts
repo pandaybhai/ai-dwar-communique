@@ -192,15 +192,6 @@ export async function sendCampaignTemplate(
   const { meterForMessageCategory } = await import("@/lib/events");
   const { providerErrorDetail, providerErrorCode } = await import("@/lib/whatsapp-api.server");
 
-  const baseProperties = {
-    campaign_id: context.campaignId,
-    template_name: template.name,
-    waba_id: sender.wabaId,
-    whatsapp_account_id: sender.accountId,
-    category: context.category,
-    message_type: "template",
-  };
-
   const to = toWaId(recipient.phone);
 
   let contactId = recipient.contactId;
@@ -222,6 +213,20 @@ export async function sendCampaignTemplate(
     sender.accountId,
     contactId,
   );
+
+  // Every per-message event carries the same dimensions, so sent/delivered/read
+  // can be filtered by campaign, template, number and billing bucket alike.
+  const baseProperties = {
+    conversation_id: conversationId,
+    contact_id: contactId,
+    campaign_id: context.campaignId,
+    template_name: template.name,
+    waba_id: sender.wabaId,
+    whatsapp_account_id: sender.accountId,
+    billing_category: context.category,
+    message_type: "template",
+  };
+
 
   /** Writes the failed message row + event, so no rejection goes unrecorded. */
   const recordFailure = async (friendly: string, detail: string, errorCode: string | null) => {
@@ -246,7 +251,11 @@ export async function sendCampaignTemplate(
       whatsappAccountId: sender.accountId,
       entityType: "message",
       entityId: (failedRow?.id as string) ?? null,
-      properties: { ...baseProperties, error_code: errorCode },
+      properties: {
+        ...baseProperties,
+        message_id: (failedRow?.id as string) ?? null,
+        error_code: errorCode,
+      },
     });
 
     return { messageId: (failedRow?.id as string) ?? null, error: friendly.slice(0, 300) };
@@ -320,7 +329,7 @@ export async function sendCampaignTemplate(
     whatsappAccountId: sender.accountId,
     entityType: "message",
     entityId: messageId,
-    properties: baseProperties,
+    properties: { ...baseProperties, message_id: messageId },
   });
   // Meta bills per template category, so the meter is recorded on the same path.
   recordUsage(supabase, meterForMessageCategory(context.category), {
