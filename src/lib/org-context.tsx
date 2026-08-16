@@ -132,6 +132,27 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     };
   }, [activeId]);
 
+  const loadPermissions = useCallback(async (orgId: string | null) => {
+    if (!orgId) {
+      setPermissions([]);
+      setPermissionOverrides({});
+      setPermissionsLoading(false);
+      return;
+    }
+    setPermissionsLoading(true);
+    const { data } = await callApi<{
+      permissions: string[];
+      overrides: Record<string, boolean>;
+    }>(`/api/permissions?organization_id=${encodeURIComponent(orgId)}`, { method: "GET" });
+    setPermissions(data?.permissions ?? []);
+    setPermissionOverrides(data?.overrides ?? {});
+    setPermissionsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadPermissions(activeId);
+  }, [activeId, loadPermissions]);
+
   const setActiveOrg = useCallback((organizationId: string) => {
     setActiveId(organizationId);
     if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, organizationId);
