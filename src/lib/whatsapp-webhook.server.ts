@@ -837,7 +837,7 @@ export async function processWebhookPayload(
 
           const { data: existing } = await supabase
             .from("messages")
-            .select("id, status, type, template_name")
+            .select("id, status, type, template_name, conversation_id")
             .eq("meta_message_id", metaId)
             .eq("organization_id", orgId)
             .maybeSingle();
