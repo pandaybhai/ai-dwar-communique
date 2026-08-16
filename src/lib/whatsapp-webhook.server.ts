@@ -8,6 +8,13 @@ import {
   matchKeyword,
   qualityLabel,
 } from "@/lib/opt-out";
+import { sendServiceText } from "@/lib/service-text.server";
+import {
+  evaluateAutomations,
+  loadAutomations,
+  loadOrgTimezone,
+} from "@/lib/automations.server";
+import type { AutomationRow } from "@/lib/automations";
 
 /** Service-role client for the AiDwar (Mumbai) backend. Server-only. */
 export function getServiceClient(): SupabaseClient {
@@ -225,72 +232,9 @@ async function loadOptKeywords(
   return sets;
 }
 
-/**
- * Sends a single plain-text message through the organization's connected
- * number. Used only for opt-out / opt-in confirmations, which are service
- * replies inside the 24-hour window.
- */
-async function sendServiceText(
-  supabase: SupabaseClient,
-  args: {
-    organizationId: string;
-    accountId: string;
-    phoneNumberId: string;
-    conversationId: string;
-    to: string;
-    body: string;
-  },
-): Promise<void> {
-  const { data: cred } = await supabase
-    .from("whatsapp_credentials")
-    .select("access_token")
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!cred?.access_token) return;
+// Plain session sends live in service-text.server.ts so the automations
+// engine can reuse the exact same path (never a template).
 
-  const res = await fetch(
-    `https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cred.access_token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: args.to,
-        type: "text",
-        text: { body: args.body },
-      }),
-    },
-  );
-
-  let json: AnyRecord = {};
-  try {
-    json = (await res.json()) as AnyRecord;
-  } catch {
-    json = {};
-  }
-  const metaMessageId =
-    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
-  const nowIso = new Date().toISOString();
-
-  await supabase.from("messages").insert({
-    organization_id: args.organizationId,
-    conversation_id: args.conversationId,
-    meta_message_id: metaMessageId,
-    direction: "outbound",
-    type: "text",
-    body: args.body,
-    status: res.ok ? "pending" : "failed",
-    status_updated_at: nowIso,
-    ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
-  });
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: nowIso })
-    .eq("id", args.conversationId);
-}
 
 /**
  * Applies opt-out / opt-in keyword handling for one inbound message. The
@@ -310,7 +254,7 @@ async function applyOptKeywords(
     body: string | null;
     keywords: KeywordSets;
   },
-): Promise<void> {
+): Promise<boolean> {
   const log = (stage: string, extra: Record<string, unknown> = {}) =>
     console.log(
       JSON.stringify({
@@ -332,7 +276,7 @@ async function applyOptKeywords(
         opt_in: args.keywords.optIn.length,
       },
     });
-    return;
+    return false;
   }
 
   const nextStatus = optOut ? "opted_out" : "opted_in";
@@ -341,7 +285,7 @@ async function applyOptKeywords(
 
   if (args.currentStatus === nextStatus) {
     log("skipped_already_in_status", { action, next_status: nextStatus });
-    return;
+    return true;
   }
 
   const { error } = await supabase
@@ -350,7 +294,7 @@ async function applyOptKeywords(
     .eq("id", args.contactId);
   if (error) {
     log("status_update_failed", { action, next_status: nextStatus, error: error.message });
-    return;
+    return true;
   }
   log("status_updated", { action, next_status: nextStatus });
 
@@ -369,13 +313,13 @@ async function applyOptKeywords(
   // bypasses the campaign audience guard (the contact is already opted_out).
   await sendServiceText(supabase, {
     organizationId: args.organizationId,
-    accountId: args.accountId,
     phoneNumberId: args.phoneNumberId,
     conversationId: args.conversationId,
     to: args.waId,
     body: optOut ? OPT_OUT_CONFIRMATION : OPT_IN_CONFIRMATION,
   });
   log("confirmation_sent", { action, next_status: nextStatus });
+  return true;
 }
 
 
@@ -443,6 +387,8 @@ export async function processWebhookPayload(
     const entries = (payload["entry"] as AnyRecord[] | undefined) ?? [];
     const markerCache = new Map<string, MarkerRow[]>();
     const keywordCache = new Map<string, KeywordSets>();
+    const automationCache = new Map<string, AutomationRow[]>();
+    const timezoneCache = new Map<string, string>();
     let routedAny = false;
 
     for (const entry of entries) {
@@ -572,6 +518,10 @@ export async function processWebhookPayload(
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
           const waId = toWaId(msg["from"] as string | undefined);
           if (!waId) continue;
+          // Our own number appearing as the sender means this is an echo of a
+          // message we sent (confirmation, automation reply). Never automate on it.
+          const selfWaId = toWaId(metadata["display_phone_number"] as string | undefined);
+          const isSystemEcho = Boolean(selfWaId && selfWaId === waId);
           const profile = contactsMeta.find((c) => c["wa_id"] === waId);
           const profileName =
             ((profile?.["profile"] as AnyRecord | undefined)?.["name"] as string | undefined) ??
@@ -671,7 +621,7 @@ export async function processWebhookPayload(
           // Opt-out / opt-in runs on EVERY inbound text, independent of whether
           // the message row was new — it is idempotent (no-op when the status
           // already matches), so duplicate deliveries cannot swallow a "STOP".
-          await applyOptKeywords(supabase, {
+          const optKeywordMatched = await applyOptKeywords(supabase, {
             organizationId: orgId,
             accountId,
             phoneNumberId,
@@ -681,6 +631,23 @@ export async function processWebhookPayload(
             waId,
             body,
             keywords: await loadOptKeywords(supabase, orgId, keywordCache),
+          });
+
+          // Automations run last, and never for a message that was an opt-out /
+          // opt-in keyword. Inbound only — our own outbound sends (including
+          // opt-out confirmations and automation replies) never reach here.
+          await evaluateAutomations(supabase, {
+            organizationId: orgId,
+            phoneNumberId,
+            conversationId: conversation.id as string,
+            contactId: contact.id as string,
+            inboundMessageId: String(msg["id"] ?? ""),
+            waId,
+            body,
+            optKeywordMatched,
+            isSystemEcho,
+            orgTimezone: await loadOrgTimezone(supabase, orgId, timezoneCache),
+            automations: await loadAutomations(supabase, orgId, automationCache),
           });
 
 

@@ -1,38 +1,49 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Workflow, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { EmptyState, PageHeader } from "@/components/empty-state";
+import { Lock } from "lucide-react";
+import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
+import { useOrg } from "@/lib/org-context";
+import { AutomationsView } from "@/components/automations/automations-view";
+
+const DESCRIPTION =
+  "Welcome messages, keyword auto-replies and off-hours cover — one reply per message, always.";
 
 export const Route = createFileRoute("/app/automations")({
   head: () => ({
     meta: [
       { title: "Automations — AiDwar" },
-      { name: "description", content: "Automated replies, follow-ups and AI sales flows that run around the clock." },
+      { name: "description", content: DESCRIPTION },
       { property: "og:title", content: "Automations — AiDwar" },
-      { property: "og:description", content: "Automated replies, follow-ups and AI sales flows that run around the clock." },
+      { property: "og:description", content: DESCRIPTION },
     ],
   }),
   component: AutomationsPage,
 });
 
 function AutomationsPage() {
+  const { enabled, loading } = useFeatureFlag("automations");
+  const { active, canManage } = useOrg();
+  const organizationId = active?.organization.id ?? null;
+
+  if (loading || !active || !organizationId) return <PageSkeleton />;
+
+  if (!enabled) {
+    return (
+      <>
+        <PageHeader title="Automations" description={DESCRIPTION} />
+        <EmptyState
+          icon={Lock}
+          title="Automations are turned off"
+          description="This feature isn't enabled for your workspace yet. Reach out to your administrator to switch it on."
+        />
+      </>
+    );
+  }
+
   return (
     <>
-      <PageHeader
-        title="Automations"
-        description="Welcome messages, keyword replies, abandoned-cart nudges and AI agent handoffs — all on autopilot."
-      />
-      <EmptyState
-        icon={Workflow}
-        title="No automations yet"
-        description="Build a flow that greets new customers, answers common questions and follows up while your team sleeps."
-        action={
-          <Button className="rounded-full" disabled>
-            <Zap className="mr-2 h-4 w-4" />
-            Create automation — coming soon
-          </Button>
-        }
-      />
+      <PageHeader title="Automations" description={DESCRIPTION} />
+      <AutomationsView organizationId={organizationId} canManage={canManage} />
     </>
   );
 }

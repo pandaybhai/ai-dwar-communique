@@ -22,7 +22,11 @@ export type ActivityAction =
   | "opt_out_keyword_deleted"
   | "contact_opted_out"
   | "contact_opted_in"
-  | "quality_changed";
+  | "quality_changed"
+  | "automation_created"
+  | "automation_updated"
+  | "automation_toggled"
+  | "automation_deleted";
 
 /**
  * Append-only activity logging. Never pass message contents or credentials —
