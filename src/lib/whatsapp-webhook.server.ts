@@ -131,23 +131,41 @@ async function messageEventDimensions(
   supabase: SupabaseClient,
   organizationId: string,
   wabaId: string | null,
-  message: { id: string; type?: string | null; template_name?: string | null },
+  message: {
+    id: string;
+    type?: string | null;
+    template_name?: string | null;
+    conversation_id?: string | null;
+  },
 ): Promise<Record<string, unknown>> {
   const templateName = message.template_name ?? null;
   const props: Record<string, unknown> = {
+    message_id: message.id,
+    conversation_id: message.conversation_id ?? null,
+    contact_id: null,
     campaign_id: null,
     template_name: templateName,
     waba_id: wabaId,
     message_type: message.type ?? null,
-    category: templateName ? "utility" : "service",
+    billing_category: templateName ? "utility" : "service",
   };
   try {
     const { data: recipient } = await supabase
       .from("campaign_recipients")
-      .select("campaign_id")
+      .select("campaign_id, contact_id")
       .eq("message_id", message.id)
       .maybeSingle();
     props["campaign_id"] = (recipient?.campaign_id as string) ?? null;
+    props["contact_id"] = (recipient?.contact_id as string) ?? null;
+
+    if (!props["contact_id"] && message.conversation_id) {
+      const { data: conv } = await supabase
+        .from("conversations")
+        .select("contact_id")
+        .eq("id", message.conversation_id)
+        .maybeSingle();
+      props["contact_id"] = (conv?.contact_id as string) ?? null;
+    }
 
     if (templateName) {
       let query = supabase
