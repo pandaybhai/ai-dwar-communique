@@ -41,6 +41,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   tz text;
 BEGIN
@@ -77,6 +78,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   tz text := public.analytics_guard(p_organization_id);
   span int := GREATEST((p_to - p_from) + 1, 1);
@@ -167,6 +169,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   tz text := public.analytics_guard(p_organization_id);
   cur_start timestamptz;
@@ -244,6 +247,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   tz text := public.analytics_guard(p_organization_id);
   cur_start timestamptz;
@@ -283,6 +287,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 BEGIN
   PERFORM public.analytics_guard(p_organization_id);
   RETURN QUERY
@@ -312,6 +317,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 BEGIN
   PERFORM public.analytics_guard(p_organization_id);
   RETURN QUERY
@@ -343,6 +349,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   result jsonb;
 BEGIN
@@ -374,6 +381,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   tz text := public.analytics_guard(p_organization_id);
   cur_start timestamptz;
@@ -437,6 +445,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   tz text := public.analytics_guard(p_organization_id);
   cur_start timestamptz;
@@ -492,6 +501,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   tz text := public.analytics_guard(p_organization_id);
   cur_start timestamptz;
@@ -547,6 +557,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   tz text := public.analytics_guard(p_organization_id);
   cur_start timestamptz;
