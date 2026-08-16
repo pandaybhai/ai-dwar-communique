@@ -146,6 +146,9 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
         const { error: credErr } = await supabase.from("whatsapp_credentials").upsert(
           {
             organization_id: organizationId,
+            // Embedded Signup returns a token scoped to one business account,
+            // so credentials are stored per WABA, not per workspace.
+            waba_id: wabaId,
             access_token: accessToken,
             token_type: "business",
             two_step_pin: pin,
@@ -153,7 +156,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
             granted_scopes: info.granted_scopes,
             updated_at: new Date().toISOString(),
           },
-          { onConflict: "organization_id" },
+          { onConflict: "organization_id,waba_id" },
         );
         if (credErr) {
           return stepError("We couldn't store your connection. Please try again.", "token_exchanged", 500);
@@ -174,12 +177,25 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
             },
             { onConflict: "phone_number_id" },
           )
-          .select("id, display_phone_number, verified_name, quality_rating, status, connected_at")
+          .select(
+            "id, waba_id, phone_number_id, display_phone_number, verified_name, quality_rating, status, is_default, connected_at",
+          )
           .single();
         if (accErr) {
-          await supabase.from("whatsapp_credentials").delete().eq("organization_id", organizationId);
+          // Only roll back this business account's credentials — other numbers
+          // in the workspace keep working.
+          await supabase
+            .from("whatsapp_credentials")
+            .delete()
+            .eq("organization_id", organizationId)
+            .eq("waba_id", wabaId);
           return stepError("We couldn't save this number. Please try again.", "token_exchanged", 500);
         }
+
+        // First number connected becomes the workspace default; adding a second
+        // number leaves the existing default alone.
+        const { ensureDefaultAccount } = await import("@/lib/whatsapp-numbers.server");
+        await ensureDefaultAccount(supabase, organizationId);
 
         // 4. Subscribe our app to the client's WABA so webhooks start flowing.
         const warnings: string[] = [];
