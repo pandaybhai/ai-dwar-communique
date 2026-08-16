@@ -436,6 +436,17 @@ export async function processWebhookPayload(
             await supabase.from("whatsapp_accounts").update(patch).eq("id", healthAccount.id);
           }
 
+          // Quality timeline: only current state lives on the account row, so
+          // every reported rating is appended to its own history table.
+          if (nextQuality) {
+            await supabase.from("whatsapp_quality_history").insert({
+              organization_id: healthAccount.organization_id as string,
+              phone_number_id: (healthAccount.phone_number_id as string | null) ?? null,
+              quality_rating: nextQuality,
+              recorded_at: nowIso,
+            });
+          }
+
           await supabase.from("activity_log").insert({
             organization_id: healthAccount.organization_id as string,
             action: nextQuality ? "quality_changed" : "account_health_update",
