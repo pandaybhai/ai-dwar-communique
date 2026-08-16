@@ -122,6 +122,51 @@ async function applyCampaignStatus(
   });
 }
 
+/**
+ * Shared dimensions for message.sent/delivered/read/failed: which campaign the
+ * message belonged to, the template, the business account and the billing
+ * category. Lookup failures degrade to nulls — capture never blocks the webhook.
+ */
+async function messageEventDimensions(
+  supabase: SupabaseClient,
+  organizationId: string,
+  wabaId: string | null,
+  message: { id: string; type?: string | null; template_name?: string | null },
+): Promise<Record<string, unknown>> {
+  const templateName = message.template_name ?? null;
+  const props: Record<string, unknown> = {
+    campaign_id: null,
+    template_name: templateName,
+    waba_id: wabaId,
+    message_type: message.type ?? null,
+    category: templateName ? "utility" : "service",
+  };
+  try {
+    const { data: recipient } = await supabase
+      .from("campaign_recipients")
+      .select("campaign_id")
+      .eq("message_id", message.id)
+      .maybeSingle();
+    props["campaign_id"] = (recipient?.campaign_id as string) ?? null;
+
+    if (templateName) {
+      let query = supabase
+        .from("message_templates")
+        .select("category")
+        .eq("organization_id", organizationId)
+        .eq("name", templateName);
+      if (wabaId) query = query.eq("waba_id", wabaId);
+      const { data: tpl } = await query.limit(1).maybeSingle();
+      props["category"] = String(
+        (tpl as { category?: string } | null)?.category ?? "utility",
+      ).toLowerCase();
+    }
+  } catch {
+    // dimensions are best-effort
+  }
+  return props;
+}
+
 /** Counts one reply per contact per campaign for campaigns sent in the last 7 days. */
 async function applyCampaignReply(
   supabase: SupabaseClient,
@@ -791,11 +836,14 @@ export async function processWebhookPayload(
 
           const { data: existing } = await supabase
             .from("messages")
-            .select("id, status")
+            .select("id, status, type, template_name")
             .eq("meta_message_id", metaId)
             .eq("organization_id", orgId)
             .maybeSingle();
           if (!existing) continue;
+
+          // Every per-message event carries the same dimensions as the send.
+          const statusProps = await messageEventDimensions(supabase, orgId, wabaId, existing);
 
           const tsSeconds = Number(st["timestamp"] ?? 0);
           const at = tsSeconds
@@ -817,6 +865,8 @@ export async function processWebhookPayload(
               entityId: existing.id as string,
               occurredAt: at,
               properties: {
+                ...statusProps,
+                whatsapp_account_id: accountId,
                 error_code: errs[0]?.["code"] != null ? String(errs[0]!["code"]) : null,
               },
             });
@@ -840,6 +890,7 @@ export async function processWebhookPayload(
               entityType: "message",
               entityId: existing.id as string,
               occurredAt: at,
+              properties: { ...statusProps, whatsapp_account_id: accountId },
             });
           }
         }
