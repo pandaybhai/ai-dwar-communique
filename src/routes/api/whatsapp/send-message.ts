@@ -185,11 +185,23 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
         });
 
         if (!result.ok) {
+          console.error(
+            JSON.stringify({
+              at: "send_message_rejected",
+              organization_id: organizationId,
+              user_id: userId,
+              conversation_id: conversation?.id ?? null,
+              message_type: messageType,
+              status: result.status,
+              provider_error: result.body["error"] ?? null,
+            }),
+          );
           return Response.json(
             { error: graphErrorMessage(result.body), provider_response: result.body },
             { status: 400 },
           );
         }
+
 
         const metaMessageId =
           ((result.body["messages"] as Array<Record<string, unknown>> | undefined)?.[0]?.[
