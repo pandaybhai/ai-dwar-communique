@@ -289,9 +289,11 @@ export function ChatThread({
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         organizationId={organizationId}
+        wabaId={wabaId ?? null}
         sending={sending}
         onSend={onSendTemplate}
       />
+
     </div>
   );
 }
