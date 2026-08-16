@@ -31,12 +31,15 @@ export function TemplatePickerDialog({
   open,
   onOpenChange,
   organizationId,
+  wabaId,
   sending,
   onSend,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   organizationId: string | null;
+  /** Scope the library to the business account behind the sending number. */
+  wabaId?: string | null;
   sending: boolean;
   onSend: (payload: TemplateSendPayload) => Promise<boolean>;
 }) {
@@ -50,12 +53,13 @@ export function TemplatePickerDialog({
     let cancelled = false;
     setLoading(true);
     void (async () => {
-      const { data } = await aidwar
+      let query = aidwar
         .from("message_templates")
         .select("*")
         .eq("organization_id", organizationId)
-        .eq("status", "APPROVED")
-        .order("name");
+        .eq("status", "APPROVED");
+      if (wabaId) query = query.eq("waba_id", wabaId);
+      const { data } = await query.order("name");
       if (cancelled) return;
       setTemplates((data ?? []) as TemplateRow[]);
       setLoading(false);
@@ -63,7 +67,8 @@ export function TemplatePickerDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, organizationId]);
+  }, [open, organizationId, wabaId]);
+
 
   const selected = templates.find((t) => t.id === selectedId) ?? null;
   const body = selected ? templateBodyText(selected.components) : "";
