@@ -130,7 +130,7 @@ export function AnalyticsView({
     setAutomations(automationRes.data ?? []);
     setQuality(qualityRes.data ?? []);
     setLoading(false);
-  }, [organizationId, timezone, days]);
+  }, [organizationId, timezone, days, accountId]);
 
   useEffect(() => {
     void load();
