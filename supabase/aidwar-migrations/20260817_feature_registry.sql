@@ -28,7 +28,6 @@ do $$ begin
 end $$;
 
 alter table public.permissions drop constraint if exists permissions_category_check;
-alter table public.permissions add constraint permissions_category_check check (category in ('inbox', 'contacts', 'campaigns', 'templates', 'automations', 'analytics', 'compliance', 'settings', 'team', 'billing'));
 
 -- Shared Inbox
 insert into public.feature_flags (key, name, description, default_enabled)
@@ -309,5 +308,7 @@ create or replace view public.feature_registry_drift as
     select 1 from public.feature_registry r
     where r.permissions @> jsonb_build_array(jsonb_build_object('key', rp.permission_key))
   );
+alter table public.permissions add constraint permissions_category_check check (category in ('inbox', 'contacts', 'campaigns', 'templates', 'automations', 'analytics', 'compliance', 'settings', 'team', 'billing'));
+
 grant select on public.feature_registry_drift to authenticated;
 grant select on public.feature_registry_drift to service_role;

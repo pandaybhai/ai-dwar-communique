@@ -48,11 +48,6 @@ lines.push("");
 // Permission categories are now feature keys, so each feature gets its own
 // section in the permission editor.
 lines.push("alter table public.permissions drop constraint if exists permissions_category_check;");
-lines.push(
-  `alter table public.permissions add constraint permissions_category_check check (category in (${FEATURES.map(
-    (f) => q(f.key),
-  ).join(", ")}));`,
-);
 lines.push("");
 
 for (const f of FEATURES) {
@@ -111,6 +106,13 @@ create or replace view public.feature_registry_drift as
     select 1 from public.feature_registry r
     where r.permissions @> jsonb_build_array(jsonb_build_object('key', rp.permission_key))
   );`);
+// Re-added only after every permission row carries a feature key as category.
+lines.push(
+  `alter table public.permissions add constraint permissions_category_check check (category in (${FEATURES.map(
+    (f) => q(f.key),
+  ).join(", ")}));`,
+);
+lines.push("");
 lines.push("grant select on public.feature_registry_drift to authenticated;");
 lines.push("grant select on public.feature_registry_drift to service_role;");
 
