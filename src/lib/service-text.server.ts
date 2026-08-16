@@ -9,26 +9,25 @@ export type ServiceTextResult = {
 };
 
 /**
- * Sends a single plain-text message through the organization's connected
- * number. Used for opt-out / opt-in confirmations and automation replies —
- * always a session message, never a template.
+ * Sends a single plain-text message through one specific connected number.
+ * Used for opt-out / opt-in confirmations and automation replies — always a
+ * session message, never a template. The caller resolves the number and its
+ * token through getWhatsAppConnection, so this never guesses which number to
+ * reply from.
  */
 export async function sendServiceText(
   supabase: SupabaseClient,
   args: {
     organizationId: string;
     phoneNumberId: string;
+    accessToken: string;
     conversationId: string;
     to: string;
     body: string;
   },
 ): Promise<ServiceTextResult> {
-  const { data: cred } = await supabase
-    .from("whatsapp_credentials")
-    .select("access_token")
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!cred?.access_token) return { ok: false, messageId: null, error: "no_credentials" };
+  if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
+
 
   const res = await fetch(
     `https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`,
