@@ -28,22 +28,28 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { aidwar } from "@/integrations/aidwar/client";
 import { useOrg } from "@/lib/org-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { to: "/app/inbox", label: "Inbox", icon: Inbox, flag: "inbox" },
-  { to: "/app/contacts", label: "Contacts", icon: Contact, flag: null },
-  { to: "/app/campaigns", label: "Campaigns", icon: Megaphone, flag: "campaigns" },
-  { to: "/app/templates", label: "Templates", icon: MessageSquareText, flag: "templates" },
-  { to: "/app/automations", label: "Automations", icon: Workflow, flag: "automations" },
-  { to: "/app/analytics", label: "Analytics", icon: BarChart3, flag: "analytics" },
-  { to: "/app/settings", label: "Settings", icon: Settings, flag: null },
+  { to: "/app/inbox", label: "Inbox", icon: Inbox, flag: "inbox", perm: "inbox.view" },
+  { to: "/app/contacts", label: "Contacts", icon: Contact, flag: null, perm: "contacts.view" },
+  { to: "/app/campaigns", label: "Campaigns", icon: Megaphone, flag: "campaigns", perm: "campaigns.view" },
+  { to: "/app/templates", label: "Templates", icon: MessageSquareText, flag: "templates", perm: "templates.manage" },
+  { to: "/app/automations", label: "Automations", icon: Workflow, flag: "automations", perm: "automations.manage" },
+  { to: "/app/analytics", label: "Analytics", icon: BarChart3, flag: "analytics", perm: "analytics.view" },
+  { to: "/app/settings", label: "Settings", icon: Settings, flag: null, perm: null },
 ] as const;
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { isFeatureEnabled, flagsLoading } = useOrg();
-  const items = NAV.filter((item) => !item.flag || flagsLoading || isFeatureEnabled(item.flag));
+  const { can, loading: permsLoading } = usePermissions();
+  const items = NAV.filter(
+    (item) =>
+      (!item.flag || flagsLoading || isFeatureEnabled(item.flag)) &&
+      (!item.perm || permsLoading || can(item.perm)),
+  );
   return (
     <nav className="space-y-1">
       {items.map((item) => {
