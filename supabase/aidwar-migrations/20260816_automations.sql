@@ -19,16 +19,17 @@ ALTER TABLE public.automations ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "automations_select_members" ON public.automations;
 CREATE POLICY "automations_select_members" ON public.automations
   FOR SELECT TO authenticated USING (public.is_org_member(organization_id));
+-- has_org_role is an exact role match, so owners must be named explicitly.
 DROP POLICY IF EXISTS "automations_insert_admins" ON public.automations;
 CREATE POLICY "automations_insert_admins" ON public.automations
-  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(organization_id, 'admin'));
+  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(organization_id, 'admin') OR public.has_org_role(organization_id, 'owner'));
 DROP POLICY IF EXISTS "automations_update_admins" ON public.automations;
 CREATE POLICY "automations_update_admins" ON public.automations
-  FOR UPDATE TO authenticated USING (public.has_org_role(organization_id, 'admin'))
-  WITH CHECK (public.has_org_role(organization_id, 'admin'));
+  FOR UPDATE TO authenticated USING (public.has_org_role(organization_id, 'admin') OR public.has_org_role(organization_id, 'owner'))
+  WITH CHECK (public.has_org_role(organization_id, 'admin') OR public.has_org_role(organization_id, 'owner'));
 DROP POLICY IF EXISTS "automations_delete_admins" ON public.automations;
 CREATE POLICY "automations_delete_admins" ON public.automations
-  FOR DELETE TO authenticated USING (public.has_org_role(organization_id, 'admin'));
+  FOR DELETE TO authenticated USING (public.has_org_role(organization_id, 'admin') OR public.has_org_role(organization_id, 'owner'));
 
 CREATE INDEX IF NOT EXISTS automations_org_active_idx
   ON public.automations(organization_id, is_active, priority);
