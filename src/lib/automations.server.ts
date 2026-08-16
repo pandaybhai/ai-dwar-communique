@@ -119,6 +119,7 @@ export async function evaluateAutomations(
   args: {
     organizationId: string;
     phoneNumberId: string;
+    accessToken: string;
     conversationId: string;
     contactId: string;
     inboundMessageId: string;
@@ -236,6 +237,7 @@ export async function evaluateAutomations(
     const result = await sendServiceText(supabase, {
       organizationId: args.organizationId,
       phoneNumberId: args.phoneNumberId,
+      accessToken: args.accessToken,
       conversationId: args.conversationId,
       to: args.waId,
       body: automation.message_body,
