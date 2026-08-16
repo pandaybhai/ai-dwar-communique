@@ -561,3 +561,55 @@ BEGIN
          FOR EACH ROW EXECUTE FUNCTION public.log_super_admin_write()', t);
   END LOOP;
 END $$;
+
+-- Invitation acceptance: the invitee joins themselves, so allow that path
+-- when a valid pending invite for exactly that role exists.
+CREATE OR REPLACE FUNCTION public.guard_member_role_assignment()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  actor uuid := auth.uid();
+  actor_role text;
+  member_count int;
+BEGIN
+  IF actor IS NULL OR public.is_super_admin() THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'UPDATE' AND NEW.role = OLD.role THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT count(*) INTO member_count
+  FROM public.organization_members m
+  WHERE m.organization_id = NEW.organization_id;
+
+  IF TG_OP = 'INSERT' AND member_count = 0 THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'INSERT' AND NEW.user_id = actor AND EXISTS (
+    SELECT 1 FROM public.invitations i
+    WHERE i.organization_id = NEW.organization_id
+      AND i.role = NEW.role
+      AND i.accepted_at IS NULL
+      AND i.expires_at > now()
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT m.role INTO actor_role
+  FROM public.organization_members m
+  WHERE m.organization_id = NEW.organization_id AND m.user_id = actor;
+
+  IF actor_role IS NULL THEN
+    RAISE EXCEPTION 'Only members of this workspace can manage its team.';
+  END IF;
+
+  IF public.role_rank(actor_role) <= public.role_rank(NEW.role) THEN
+    RAISE EXCEPTION 'You can only assign roles below your own (your role: %, attempted: %).',
+      actor_role, NEW.role;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
