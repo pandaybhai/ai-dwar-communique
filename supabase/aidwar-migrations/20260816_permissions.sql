@@ -14,6 +14,7 @@ GRANT SELECT ON public.permissions TO authenticated;
 GRANT ALL ON public.permissions TO service_role;
 ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "permissions_select_all" ON public.permissions;
+DROP POLICY IF EXISTS "permissions_select_all" ON public.permissions;
 CREATE POLICY "permissions_select_all" ON public.permissions
   FOR SELECT TO authenticated USING (true);
 
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.role_permissions (
 GRANT SELECT ON public.role_permissions TO authenticated;
 GRANT ALL ON public.role_permissions TO service_role;
 ALTER TABLE public.role_permissions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "role_permissions_select_all" ON public.role_permissions;
 DROP POLICY IF EXISTS "role_permissions_select_all" ON public.role_permissions;
 CREATE POLICY "role_permissions_select_all" ON public.role_permissions
   FOR SELECT TO authenticated USING (true);
@@ -182,21 +184,25 @@ GRANT EXECUTE ON FUNCTION public.has_permission(uuid, text) TO authenticated, se
 
 -- ============================== member_permissions RLS + escalation guard ==
 DROP POLICY IF EXISTS "member_permissions_select" ON public.member_permissions;
+DROP POLICY IF EXISTS "member_permissions_select" ON public.member_permissions;
 CREATE POLICY "member_permissions_select" ON public.member_permissions
   FOR SELECT TO authenticated
   USING (public.is_org_member(organization_id) OR public.is_super_admin());
 
+DROP POLICY IF EXISTS "member_permissions_insert" ON public.member_permissions;
 DROP POLICY IF EXISTS "member_permissions_insert" ON public.member_permissions;
 CREATE POLICY "member_permissions_insert" ON public.member_permissions
   FOR INSERT TO authenticated
   WITH CHECK (public.has_permission(organization_id, 'team.manage') OR public.is_super_admin());
 
 DROP POLICY IF EXISTS "member_permissions_update" ON public.member_permissions;
+DROP POLICY IF EXISTS "member_permissions_update" ON public.member_permissions;
 CREATE POLICY "member_permissions_update" ON public.member_permissions
   FOR UPDATE TO authenticated
   USING (public.has_permission(organization_id, 'team.manage') OR public.is_super_admin())
   WITH CHECK (public.has_permission(organization_id, 'team.manage') OR public.is_super_admin());
 
+DROP POLICY IF EXISTS "member_permissions_delete" ON public.member_permissions;
 DROP POLICY IF EXISTS "member_permissions_delete" ON public.member_permissions;
 CREATE POLICY "member_permissions_delete" ON public.member_permissions
   FOR DELETE TO authenticated
@@ -323,17 +329,20 @@ CREATE TRIGGER guard_last_owner_trg
 
 -- Membership write policies now run on permissions, not on the coarse role check.
 DROP POLICY IF EXISTS "Owners and admins can add members" ON public.organization_members;
+DROP POLICY IF EXISTS "Members with team.manage can add members" ON public.organization_members;
 CREATE POLICY "Members with team.manage can add members" ON public.organization_members
   FOR INSERT TO authenticated
   WITH CHECK (public.has_permission(organization_id, 'team.manage') OR public.is_super_admin());
 
 DROP POLICY IF EXISTS "Owners and admins can update members" ON public.organization_members;
+DROP POLICY IF EXISTS "Members with team.manage can update members" ON public.organization_members;
 CREATE POLICY "Members with team.manage can update members" ON public.organization_members
   FOR UPDATE TO authenticated
   USING ((public.has_permission(organization_id, 'team.manage') AND user_id <> auth.uid()) OR public.is_super_admin())
   WITH CHECK ((public.has_permission(organization_id, 'team.manage') AND user_id <> auth.uid()) OR public.is_super_admin());
 
 DROP POLICY IF EXISTS "Owners and admins can remove members" ON public.organization_members;
+DROP POLICY IF EXISTS "Members with team.manage can remove members" ON public.organization_members;
 CREATE POLICY "Members with team.manage can remove members" ON public.organization_members
   FOR DELETE TO authenticated
   USING ((public.has_permission(organization_id, 'team.manage') AND user_id <> auth.uid()) OR public.is_super_admin());
@@ -341,80 +350,101 @@ CREATE POLICY "Members with team.manage can remove members" ON public.organizati
 -- ================================================= policy migration =======
 -- contacts
 DROP POLICY IF EXISTS "contacts_select_members" ON public.contacts;
+DROP POLICY IF EXISTS "contacts_select_members" ON public.contacts;
 CREATE POLICY "contacts_select_members" ON public.contacts
   FOR SELECT TO authenticated USING (public.has_permission(organization_id, 'contacts.view'));
 DROP POLICY IF EXISTS "contacts_insert_members" ON public.contacts;
+DROP POLICY IF EXISTS "contacts_insert_members" ON public.contacts;
 CREATE POLICY "contacts_insert_members" ON public.contacts
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'contacts.edit'));
+DROP POLICY IF EXISTS "contacts_update_members" ON public.contacts;
 DROP POLICY IF EXISTS "contacts_update_members" ON public.contacts;
 CREATE POLICY "contacts_update_members" ON public.contacts
   FOR UPDATE TO authenticated USING (public.has_permission(organization_id, 'contacts.edit'))
   WITH CHECK (public.has_permission(organization_id, 'contacts.edit'));
 DROP POLICY IF EXISTS "contacts_delete_admins" ON public.contacts;
+DROP POLICY IF EXISTS "contacts_delete_permitted" ON public.contacts;
 CREATE POLICY "contacts_delete_permitted" ON public.contacts
   FOR DELETE TO authenticated USING (public.has_permission(organization_id, 'contacts.delete'));
 
 -- contact_tags
 DROP POLICY IF EXISTS "contact_tags_select_members" ON public.contact_tags;
+DROP POLICY IF EXISTS "contact_tags_select_members" ON public.contact_tags;
 CREATE POLICY "contact_tags_select_members" ON public.contact_tags
   FOR SELECT TO authenticated USING (public.has_permission(organization_id, 'contacts.view'));
 DROP POLICY IF EXISTS "contact_tags_insert_members" ON public.contact_tags;
+DROP POLICY IF EXISTS "contact_tags_insert_members" ON public.contact_tags;
 CREATE POLICY "contact_tags_insert_members" ON public.contact_tags
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'contacts.edit'));
+DROP POLICY IF EXISTS "contact_tags_delete_members" ON public.contact_tags;
 DROP POLICY IF EXISTS "contact_tags_delete_members" ON public.contact_tags;
 CREATE POLICY "contact_tags_delete_members" ON public.contact_tags
   FOR DELETE TO authenticated USING (public.has_permission(organization_id, 'contacts.edit'));
 
 -- tags
 DROP POLICY IF EXISTS "tags_select_members" ON public.tags;
+DROP POLICY IF EXISTS "tags_select_members" ON public.tags;
 CREATE POLICY "tags_select_members" ON public.tags
   FOR SELECT TO authenticated USING (public.has_permission(organization_id, 'contacts.view'));
 DROP POLICY IF EXISTS "tags_insert_members" ON public.tags;
+DROP POLICY IF EXISTS "tags_insert_members" ON public.tags;
 CREATE POLICY "tags_insert_members" ON public.tags
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'contacts.edit'));
+DROP POLICY IF EXISTS "tags_update_members" ON public.tags;
 DROP POLICY IF EXISTS "tags_update_members" ON public.tags;
 CREATE POLICY "tags_update_members" ON public.tags
   FOR UPDATE TO authenticated USING (public.has_permission(organization_id, 'contacts.edit'))
   WITH CHECK (public.has_permission(organization_id, 'contacts.edit'));
 DROP POLICY IF EXISTS "tags_delete_admins" ON public.tags;
+DROP POLICY IF EXISTS "tags_delete_permitted" ON public.tags;
 CREATE POLICY "tags_delete_permitted" ON public.tags
   FOR DELETE TO authenticated USING (public.has_permission(organization_id, 'contacts.edit'));
 
 -- contact_imports
 DROP POLICY IF EXISTS "contact_imports_select_members" ON public.contact_imports;
+DROP POLICY IF EXISTS "contact_imports_select_members" ON public.contact_imports;
 CREATE POLICY "contact_imports_select_members" ON public.contact_imports
   FOR SELECT TO authenticated USING (public.has_permission(organization_id, 'contacts.view'));
 DROP POLICY IF EXISTS "contact_imports_insert_admins" ON public.contact_imports;
+DROP POLICY IF EXISTS "contact_imports_insert_permitted" ON public.contact_imports;
 CREATE POLICY "contact_imports_insert_permitted" ON public.contact_imports
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'contacts.import'));
 DROP POLICY IF EXISTS "contact_imports_update_admins" ON public.contact_imports;
+DROP POLICY IF EXISTS "contact_imports_update_permitted" ON public.contact_imports;
 CREATE POLICY "contact_imports_update_permitted" ON public.contact_imports
   FOR UPDATE TO authenticated USING (public.has_permission(organization_id, 'contacts.import'))
   WITH CHECK (public.has_permission(organization_id, 'contacts.import'));
 
 -- segments
 DROP POLICY IF EXISTS "segments_select_members" ON public.segments;
+DROP POLICY IF EXISTS "segments_select_members" ON public.segments;
 CREATE POLICY "segments_select_members" ON public.segments
   FOR SELECT TO authenticated USING (public.has_permission(organization_id, 'contacts.view'));
 DROP POLICY IF EXISTS "segments_insert_members" ON public.segments;
+DROP POLICY IF EXISTS "segments_insert_members" ON public.segments;
 CREATE POLICY "segments_insert_members" ON public.segments
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'segments.manage'));
+DROP POLICY IF EXISTS "segments_update_members" ON public.segments;
 DROP POLICY IF EXISTS "segments_update_members" ON public.segments;
 CREATE POLICY "segments_update_members" ON public.segments
   FOR UPDATE TO authenticated USING (public.has_permission(organization_id, 'segments.manage'))
   WITH CHECK (public.has_permission(organization_id, 'segments.manage'));
 DROP POLICY IF EXISTS "segments_delete_admins" ON public.segments;
+DROP POLICY IF EXISTS "segments_delete_permitted" ON public.segments;
 CREATE POLICY "segments_delete_permitted" ON public.segments
   FOR DELETE TO authenticated USING (public.has_permission(organization_id, 'segments.manage'));
 
 -- campaigns
 DROP POLICY IF EXISTS "campaigns_select_members" ON public.campaigns;
+DROP POLICY IF EXISTS "campaigns_select_members" ON public.campaigns;
 CREATE POLICY "campaigns_select_members" ON public.campaigns
   FOR SELECT TO authenticated USING (public.has_permission(organization_id, 'campaigns.view'));
 DROP POLICY IF EXISTS "campaigns_insert_admins" ON public.campaigns;
+DROP POLICY IF EXISTS "campaigns_insert_permitted" ON public.campaigns;
 CREATE POLICY "campaigns_insert_permitted" ON public.campaigns
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'campaigns.create'));
 DROP POLICY IF EXISTS "campaigns_update_admins" ON public.campaigns;
+DROP POLICY IF EXISTS "campaigns_update_permitted" ON public.campaigns;
 CREATE POLICY "campaigns_update_permitted" ON public.campaigns
   FOR UPDATE TO authenticated
   USING (public.has_permission(organization_id, 'campaigns.create') OR public.has_permission(organization_id, 'campaigns.send'))
@@ -422,39 +452,48 @@ CREATE POLICY "campaigns_update_permitted" ON public.campaigns
 
 -- campaign_recipients
 DROP POLICY IF EXISTS "campaign_recipients_select_members" ON public.campaign_recipients;
+DROP POLICY IF EXISTS "campaign_recipients_select_members" ON public.campaign_recipients;
 CREATE POLICY "campaign_recipients_select_members" ON public.campaign_recipients
   FOR SELECT TO authenticated USING (public.has_permission(organization_id, 'campaigns.view'));
 
 -- message_templates
 DROP POLICY IF EXISTS "org members read templates" ON public.message_templates;
+DROP POLICY IF EXISTS "org members read templates" ON public.message_templates;
 CREATE POLICY "org members read templates" ON public.message_templates
   FOR SELECT TO authenticated
   USING (public.has_permission(organization_id, 'inbox.view') OR public.has_permission(organization_id, 'campaigns.view'));
 DROP POLICY IF EXISTS "org admins insert templates" ON public.message_templates;
+DROP POLICY IF EXISTS "templates_insert_permitted" ON public.message_templates;
 CREATE POLICY "templates_insert_permitted" ON public.message_templates
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'templates.manage'));
 DROP POLICY IF EXISTS "org admins update templates" ON public.message_templates;
+DROP POLICY IF EXISTS "templates_update_permitted" ON public.message_templates;
 CREATE POLICY "templates_update_permitted" ON public.message_templates
   FOR UPDATE TO authenticated USING (public.has_permission(organization_id, 'templates.manage'))
   WITH CHECK (public.has_permission(organization_id, 'templates.manage'));
 
 -- automations
 DROP POLICY IF EXISTS "automations_select_members" ON public.automations;
+DROP POLICY IF EXISTS "automations_select_members" ON public.automations;
 CREATE POLICY "automations_select_members" ON public.automations
   FOR SELECT TO authenticated
   USING (public.has_permission(organization_id, 'automations.manage') OR public.has_permission(organization_id, 'inbox.view'));
 DROP POLICY IF EXISTS "automations_insert_admins" ON public.automations;
+DROP POLICY IF EXISTS "automations_insert_permitted" ON public.automations;
 CREATE POLICY "automations_insert_permitted" ON public.automations
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'automations.manage'));
 DROP POLICY IF EXISTS "automations_update_admins" ON public.automations;
+DROP POLICY IF EXISTS "automations_update_permitted" ON public.automations;
 CREATE POLICY "automations_update_permitted" ON public.automations
   FOR UPDATE TO authenticated USING (public.has_permission(organization_id, 'automations.manage'))
   WITH CHECK (public.has_permission(organization_id, 'automations.manage'));
 DROP POLICY IF EXISTS "automations_delete_admins" ON public.automations;
+DROP POLICY IF EXISTS "automations_delete_permitted" ON public.automations;
 CREATE POLICY "automations_delete_permitted" ON public.automations
   FOR DELETE TO authenticated USING (public.has_permission(organization_id, 'automations.manage'));
 
 -- automation_runs
+DROP POLICY IF EXISTS "automation_runs_select_members" ON public.automation_runs;
 DROP POLICY IF EXISTS "automation_runs_select_members" ON public.automation_runs;
 CREATE POLICY "automation_runs_select_members" ON public.automation_runs
   FOR SELECT TO authenticated
@@ -462,24 +501,30 @@ CREATE POLICY "automation_runs_select_members" ON public.automation_runs
 
 -- conversations
 DROP POLICY IF EXISTS "conversations_select_members" ON public.conversations;
+DROP POLICY IF EXISTS "conversations_select_members" ON public.conversations;
 CREATE POLICY "conversations_select_members" ON public.conversations
   FOR SELECT TO authenticated USING (public.has_permission(organization_id, 'inbox.view'));
 DROP POLICY IF EXISTS "conversations_insert_members" ON public.conversations;
+DROP POLICY IF EXISTS "conversations_insert_members" ON public.conversations;
 CREATE POLICY "conversations_insert_members" ON public.conversations
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'inbox.reply'));
+DROP POLICY IF EXISTS "conversations_update_members" ON public.conversations;
 DROP POLICY IF EXISTS "conversations_update_members" ON public.conversations;
 CREATE POLICY "conversations_update_members" ON public.conversations
   FOR UPDATE TO authenticated
   USING (public.has_permission(organization_id, 'inbox.reply') OR public.has_permission(organization_id, 'inbox.assign'))
   WITH CHECK (public.has_permission(organization_id, 'inbox.reply') OR public.has_permission(organization_id, 'inbox.assign'));
 DROP POLICY IF EXISTS "conversations_delete_admins" ON public.conversations;
+DROP POLICY IF EXISTS "conversations_delete_permitted" ON public.conversations;
 CREATE POLICY "conversations_delete_permitted" ON public.conversations
   FOR DELETE TO authenticated USING (public.has_permission(organization_id, 'inbox.close'));
 
 -- messages
 DROP POLICY IF EXISTS "messages_select_members" ON public.messages;
+DROP POLICY IF EXISTS "messages_select_members" ON public.messages;
 CREATE POLICY "messages_select_members" ON public.messages
   FOR SELECT TO authenticated USING (public.has_permission(organization_id, 'inbox.view'));
+DROP POLICY IF EXISTS "messages_insert_members" ON public.messages;
 DROP POLICY IF EXISTS "messages_insert_members" ON public.messages;
 CREATE POLICY "messages_insert_members" ON public.messages
   FOR INSERT TO authenticated
@@ -487,29 +532,36 @@ CREATE POLICY "messages_insert_members" ON public.messages
 
 -- opt_out_keywords
 DROP POLICY IF EXISTS "opt_out_keywords_select_members" ON public.opt_out_keywords;
+DROP POLICY IF EXISTS "opt_out_keywords_select_members" ON public.opt_out_keywords;
 CREATE POLICY "opt_out_keywords_select_members" ON public.opt_out_keywords
   FOR SELECT TO authenticated
   USING (public.has_permission(organization_id, 'contacts.view') OR public.has_permission(organization_id, 'settings.manage'));
 DROP POLICY IF EXISTS "opt_out_keywords_insert_admins" ON public.opt_out_keywords;
+DROP POLICY IF EXISTS "opt_out_keywords_insert_permitted" ON public.opt_out_keywords;
 CREATE POLICY "opt_out_keywords_insert_permitted" ON public.opt_out_keywords
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'settings.manage'));
 DROP POLICY IF EXISTS "opt_out_keywords_delete_admins" ON public.opt_out_keywords;
+DROP POLICY IF EXISTS "opt_out_keywords_delete_permitted" ON public.opt_out_keywords;
 CREATE POLICY "opt_out_keywords_delete_permitted" ON public.opt_out_keywords
   FOR DELETE TO authenticated USING (public.has_permission(organization_id, 'settings.manage'));
 
 -- lead_source_markers
 DROP POLICY IF EXISTS "lead_source_markers_select_members" ON public.lead_source_markers;
+DROP POLICY IF EXISTS "lead_source_markers_select_members" ON public.lead_source_markers;
 CREATE POLICY "lead_source_markers_select_members" ON public.lead_source_markers
   FOR SELECT TO authenticated
   USING (public.has_permission(organization_id, 'contacts.view') OR public.has_permission(organization_id, 'settings.manage'));
 DROP POLICY IF EXISTS "lead_source_markers_insert_admins" ON public.lead_source_markers;
+DROP POLICY IF EXISTS "lead_source_markers_insert_permitted" ON public.lead_source_markers;
 CREATE POLICY "lead_source_markers_insert_permitted" ON public.lead_source_markers
   FOR INSERT TO authenticated WITH CHECK (public.has_permission(organization_id, 'settings.manage'));
 DROP POLICY IF EXISTS "lead_source_markers_update_admins" ON public.lead_source_markers;
+DROP POLICY IF EXISTS "lead_source_markers_update_permitted" ON public.lead_source_markers;
 CREATE POLICY "lead_source_markers_update_permitted" ON public.lead_source_markers
   FOR UPDATE TO authenticated USING (public.has_permission(organization_id, 'settings.manage'))
   WITH CHECK (public.has_permission(organization_id, 'settings.manage'));
 DROP POLICY IF EXISTS "lead_source_markers_delete_admins" ON public.lead_source_markers;
+DROP POLICY IF EXISTS "lead_source_markers_delete_permitted" ON public.lead_source_markers;
 CREATE POLICY "lead_source_markers_delete_permitted" ON public.lead_source_markers
   FOR DELETE TO authenticated USING (public.has_permission(organization_id, 'settings.manage'));
 
