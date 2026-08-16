@@ -1,3 +1,4 @@
+import { usePermissions } from "@/hooks/use-permissions";
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Radar, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -29,7 +30,9 @@ const SOURCE_CHOICES = Object.keys(SOURCE_LABELS).filter(
 );
 
 export function LeadSourcesTab() {
-  const { active, canManage } = useOrg();
+  const { active } = useOrg();
+  const { can } = usePermissions();
+  const canManage = can("settings.manage");
   const organizationId = active?.organization.id ?? null;
   const canEdit = canManage;
 

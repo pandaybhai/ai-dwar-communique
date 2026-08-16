@@ -26,7 +26,11 @@ export type ActivityAction =
   | "automation_created"
   | "automation_updated"
   | "automation_toggled"
-  | "automation_deleted";
+  | "automation_deleted"
+  | "member.role_changed"
+  | "member.removed"
+  | "member.permission_overridden"
+  | "member.permission_reset";
 
 /**
  * Append-only activity logging. Never pass message contents or credentials —

@@ -4,6 +4,7 @@ import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { useOrg } from "@/lib/org-context";
 import { AutomationsView } from "@/components/automations/automations-view";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const DESCRIPTION =
   "Welcome messages, keyword auto-replies and off-hours cover — one reply per message, always.";
@@ -22,7 +23,9 @@ export const Route = createFileRoute("/app/automations")({
 
 function AutomationsPage() {
   const { enabled, loading } = useFeatureFlag("automations");
-  const { active, canManage } = useOrg();
+  const { active } = useOrg();
+  const { can } = usePermissions();
+  const canManage = can("automations.manage");
   const organizationId = active?.organization.id ?? null;
 
   if (loading || !active || !organizationId) return <PageSkeleton />;

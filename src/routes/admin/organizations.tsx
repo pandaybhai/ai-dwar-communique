@@ -1,3 +1,4 @@
+import { applyScope, useAdminScope } from "@/lib/admin-scope";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Building2, Loader2, PauseCircle, PlayCircle, Search } from "lucide-react";
@@ -14,9 +15,15 @@ export const Route = createFileRoute("/admin/organizations")({
   head: () => ({
     meta: [
       { title: "Organizations — AiDwar Admin" },
-      { name: "description", content: "Every workspace on AiDwar with member counts and status controls." },
+      {
+        name: "description",
+        content: "Every workspace on AiDwar with member counts and status controls.",
+      },
       { property: "og:title", content: "Organizations — AiDwar Admin" },
-      { property: "og:description", content: "Every workspace on AiDwar with member counts and status controls." },
+      {
+        property: "og:description",
+        content: "Every workspace on AiDwar with member counts and status controls.",
+      },
     ],
   }),
   component: AdminOrganizations,
@@ -77,14 +84,19 @@ function AdminOrganizations() {
     return () => clearTimeout(t);
   }, [query]);
 
+  const scope = useAdminScope();
   const load = useCallback(async () => {
     setError(null);
     setOrgs(null);
 
-    let q = aidwar
-      .from("organizations")
-      .select("id, name, slug, status, created_at", { count: "exact" })
-      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+    let q = applyScope(
+      aidwar
+        .from("organizations")
+        .select("id, name, slug, status, created_at", { count: "exact" })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1),
+      scope,
+      "id",
+    );
 
     if (search) q = q.or(`name.ilike.%${search}%,slug.ilike.%${search}%`);
     if (status) q = q.eq("status", status);
@@ -133,10 +145,9 @@ function AdminOrganizations() {
     if (sort === "members_desc") withCounts = [...withCounts].sort((a, b) => b.members - a.members);
     if (sort === "members_asc") withCounts = [...withCounts].sort((a, b) => a.members - b.members);
 
-
     setOrgs(withCounts);
     setTotal(count ?? withCounts.length);
-  }, [page, search, status, sort]);
+  }, [page, search, status, sort, scope]);
 
   useEffect(() => {
     void load();
@@ -145,7 +156,10 @@ function AdminOrganizations() {
   async function toggleStatus(org: Org) {
     setBusy(org.id);
     const next = org.status === "active" ? "suspended" : "active";
-    const { error: err } = await aidwar.from("organizations").update({ status: next }).eq("id", org.id);
+    const { error: err } = await aidwar
+      .from("organizations")
+      .update({ status: next })
+      .eq("id", org.id);
     setBusy(null);
     if (err) {
       setError("We couldn't update that organization.");
@@ -158,8 +172,15 @@ function AdminOrganizations() {
 
   return (
     <>
-      <PageHeader title="Organizations" description="Every workspace on AiDwar, with members, status and controls." />
-      {error ? <div className="mb-6"><ErrorState message={error} /></div> : null}
+      <PageHeader
+        title="Organizations"
+        description="Every workspace on AiDwar, with members, status and controls."
+      />
+      {error ? (
+        <div className="mb-6">
+          <ErrorState message={error} />
+        </div>
+      ) : null}
 
       <div className="mb-6 grid gap-4 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-3">
         <div className="space-y-2">
@@ -177,7 +198,14 @@ function AdminOrganizations() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="org_status">Status</Label>
-          <SelectBox id="org_status" value={status} onChange={(v) => { setStatus(v); setPage(0); }}>
+          <SelectBox
+            id="org_status"
+            value={status}
+            onChange={(v) => {
+              setStatus(v);
+              setPage(0);
+            }}
+          >
             <option value="">All statuses</option>
             <option value="active">Active</option>
             <option value="suspended">Suspended</option>
@@ -185,7 +213,14 @@ function AdminOrganizations() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="org_sort">Sort</Label>
-          <SelectBox id="org_sort" value={sort} onChange={(v) => { setSort(v); setPage(0); }}>
+          <SelectBox
+            id="org_sort"
+            value={sort}
+            onChange={(v) => {
+              setSort(v);
+              setPage(0);
+            }}
+          >
             <option value="created_desc">Newest first</option>
             <option value="created_asc">Oldest first</option>
             <option value="members_desc">Most members</option>

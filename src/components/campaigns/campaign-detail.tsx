@@ -27,6 +27,7 @@ import { ErrorState } from "@/components/empty-state";
 import { NoResults, Pagination, TableSkeleton } from "@/components/data-pagination";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const PAGE_SIZE = 20;
 
@@ -93,7 +94,9 @@ export function CampaignDetail({
   organizationId: string;
   role: string | null;
 }) {
-  const isAdmin = role === "owner" || role === "admin";
+  const { can } = usePermissions();
+  const isAdmin = can("campaigns.send");
+  void role;
   const [campaign, setCampaign] = useState<CampaignRow | null>(null);
   const [recipients, setRecipients] = useState<CampaignRecipientRow[]>([]);
   const [total, setTotal] = useState(0);

@@ -1,3 +1,4 @@
+import { applyScope, useAdminScope } from "@/lib/admin-scope";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Flag, Loader2, Plus, Search } from "lucide-react";
@@ -14,13 +15,22 @@ export const Route = createFileRoute("/admin/flags")({
       { title: "Feature Flags — AiDwar Admin" },
       { name: "description", content: "Global feature defaults and per-workspace overrides." },
       { property: "og:title", content: "Feature Flags — AiDwar Admin" },
-      { property: "og:description", content: "Global feature defaults and per-workspace overrides." },
+      {
+        property: "og:description",
+        content: "Global feature defaults and per-workspace overrides.",
+      },
     ],
   }),
   component: AdminFlags,
 });
 
-type FlagRow = { id: string; key: string; name: string; description: string | null; default_enabled: boolean };
+type FlagRow = {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  default_enabled: boolean;
+};
 type OrgRow = { id: string; name: string };
 type Override = { organization_id: string; flag_key: string; enabled: boolean };
 
@@ -42,13 +52,21 @@ function AdminFlags() {
     return () => clearTimeout(t);
   }, [orgQuery]);
 
+  const scope = useAdminScope();
   const load = useCallback(async () => {
     setError(null);
-    let orgQ = aidwar.from("organizations").select("id, name").order("name").limit(50);
+    let orgQ = applyScope(
+      aidwar.from("organizations").select("id, name").order("name").limit(50),
+      scope,
+      "id",
+    );
     if (orgSearch) orgQ = orgQ.or(`name.ilike.%${orgSearch}%,slug.ilike.%${orgSearch}%`);
 
     const [{ data: f, error: err }, { data: o }] = await Promise.all([
-      aidwar.from("feature_flags").select("id, key, name, description, default_enabled").order("key"),
+      aidwar
+        .from("feature_flags")
+        .select("id, key, name, description, default_enabled")
+        .order("key"),
       orgQ,
     ]);
     if (err) {
@@ -64,21 +82,26 @@ function AdminFlags() {
       const { data: ov } = await aidwar
         .from("organization_feature_overrides")
         .select("organization_id, flag_key, enabled")
-        .in("organization_id", orgRows.map((r) => r.id));
+        .in(
+          "organization_id",
+          orgRows.map((r) => r.id),
+        );
       setOverrides((ov ?? []) as Override[]);
     } else {
       setOverrides([]);
     }
-  }, [orgSearch]);
+  }, [orgSearch, scope]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-
   async function createFlag(e: React.FormEvent) {
     e.preventDefault();
-    const key = newKey.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+    const key = newKey
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, "_");
     if (!key || newName.trim().length < 2) {
       setError("Give the flag a key and a name.");
       return;
@@ -99,7 +122,10 @@ function AdminFlags() {
 
   async function setDefault(flag: FlagRow, enabled: boolean) {
     setBusy(`default:${flag.key}`);
-    const { error: err } = await aidwar.from("feature_flags").update({ default_enabled: enabled }).eq("id", flag.id);
+    const { error: err } = await aidwar
+      .from("feature_flags")
+      .update({ default_enabled: enabled })
+      .eq("id", flag.id);
     setBusy(null);
     if (err) setError("We couldn't update that flag.");
     else await load();
@@ -114,7 +140,10 @@ function AdminFlags() {
     setBusy(`${orgId}:${flag.key}`);
     const { error: err } = await aidwar
       .from("organization_feature_overrides")
-      .upsert({ organization_id: orgId, flag_key: flag.key, enabled }, { onConflict: "organization_id,flag_key" });
+      .upsert(
+        { organization_id: orgId, flag_key: flag.key, enabled },
+        { onConflict: "organization_id,flag_key" },
+      );
     setBusy(null);
     if (err) setError("We couldn't save that override.");
     else await load();
@@ -140,7 +169,11 @@ function AdminFlags() {
         title="Feature Flags"
         description="Global defaults plus per-organization overrides. Disabled features disappear cleanly from the workspace."
       />
-      {error ? <div className="mb-6"><ErrorState message={error} /></div> : null}
+      {error ? (
+        <div className="mb-6">
+          <ErrorState message={error} />
+        </div>
+      ) : null}
 
       <form
         onSubmit={createFlag}
@@ -148,24 +181,44 @@ function AdminFlags() {
       >
         <div className="space-y-2">
           <Label htmlFor="flag_key">Key</Label>
-          <Input id="flag_key" value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="ai_features" />
+          <Input
+            id="flag_key"
+            value={newKey}
+            onChange={(e) => setNewKey(e.target.value)}
+            placeholder="ai_features"
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="flag_name">Name</Label>
-          <Input id="flag_name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="AI Features" />
+          <Input
+            id="flag_name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="AI Features"
+          />
         </div>
         <div className="flex items-center gap-2 pb-2">
           <Switch id="flag_default" checked={newDefault} onCheckedChange={setNewDefault} />
-          <Label htmlFor="flag_default" className="text-sm">On by default</Label>
+          <Label htmlFor="flag_default" className="text-sm">
+            On by default
+          </Label>
         </div>
         <Button type="submit" className="rounded-full" disabled={creating}>
-          {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+          {creating ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Plus className="mr-2 h-4 w-4" />
+          )}
           Add flag
         </Button>
       </form>
 
       {flags.length === 0 ? (
-        <EmptyState icon={Flag} title="No feature flags yet" description="Create your first flag to start controlling what customers can see." />
+        <EmptyState
+          icon={Flag}
+          title="No feature flags yet"
+          description="Create your first flag to start controlling what customers can see."
+        />
       ) : (
         <div className="space-y-8">
           <section className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
@@ -211,17 +264,20 @@ function AdminFlags() {
             </header>
             {orgs.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-                {orgSearch ? `No organizations match “${orgSearch}”.` : "No organizations to configure yet."}
+                {orgSearch
+                  ? `No organizations match “${orgSearch}”.`
+                  : "No organizations to configure yet."}
               </p>
             ) : (
-
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Organization</th>
                       {flags.map((f) => (
-                        <th key={f.id} className="px-4 py-3 font-semibold">{f.name}</th>
+                        <th key={f.id} className="px-4 py-3 font-semibold">
+                          {f.name}
+                        </th>
                       ))}
                     </tr>
                   </thead>

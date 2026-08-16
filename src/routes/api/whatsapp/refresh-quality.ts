@@ -26,9 +26,9 @@ export const Route = createFileRoute("/api/whatsapp/refresh-quality")({
 
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
-        if (auth.role !== "owner" && auth.role !== "admin") {
-          return jsonError("Only owners and admins can refresh number quality.", 403);
-        }
+        const { requirePermission } = await import("@/lib/whatsapp-api.server");
+        const denied = await requirePermission(auth, "settings.whatsapp", "refresh number quality");
+        if (denied) return denied;
 
         const { supabase, organizationId, userId } = auth;
 

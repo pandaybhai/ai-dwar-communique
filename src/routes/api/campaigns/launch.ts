@@ -21,10 +21,10 @@ export const Route = createFileRoute("/api/campaigns/launch")({
 
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
-        const { supabase, organizationId, userId, role } = auth;
-        if (role !== "owner" && role !== "admin") {
-          return jsonError("Only owners and admins can launch campaigns.", 403);
-        }
+        const { supabase, organizationId, userId } = auth;
+        const { requirePermission } = await import("@/lib/whatsapp-api.server");
+        const denied = await requirePermission(auth, "campaigns.send", "launch campaigns");
+        if (denied) return denied;
 
         const name = String(payload["name"] ?? "").trim();
         const templateName = String(payload["template_name"] ?? "").trim();

@@ -1,3 +1,4 @@
+import { usePermissions } from "@/hooks/use-permissions";
 import { useCallback, useEffect, useState } from "react";
 import { Copy, Filter, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -32,7 +33,9 @@ export function SegmentsView({
   tags: TagRow[];
   attributeKeys: string[];
 }) {
-  const isAdmin = role === "owner" || role === "admin";
+  const { can } = usePermissions();
+  const isAdmin = can("segments.manage");
+  void role;
 
   const [segments, setSegments] = useState<SegmentRow[]>([]);
   const [authors, setAuthors] = useState<Record<string, string>>({});

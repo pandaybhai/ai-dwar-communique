@@ -1,3 +1,4 @@
+import { applyScope, useAdminScope } from "@/lib/admin-scope";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Activity, Search } from "lucide-react";
@@ -13,7 +14,10 @@ export const Route = createFileRoute("/admin/activity")({
       { title: "Activity — AiDwar Admin" },
       { name: "description", content: "Cross-organization audit trail of significant actions." },
       { property: "og:title", content: "Activity — AiDwar Admin" },
-      { property: "og:description", content: "Cross-organization audit trail of significant actions." },
+      {
+        property: "og:description",
+        content: "Cross-organization audit trail of significant actions.",
+      },
     ],
   }),
   component: AdminActivity,
@@ -86,23 +90,29 @@ function AdminActivity() {
       ]);
       setOrgs((o ?? []) as { id: string; name: string }[]);
       setUsers(
-        ((p ?? []) as { id: string; full_name: string | null; email: string | null }[]).map((u) => ({
-          id: u.id,
-          label: u.full_name || u.email || u.id.slice(0, 8),
-        })),
+        ((p ?? []) as { id: string; full_name: string | null; email: string | null }[]).map(
+          (u) => ({
+            id: u.id,
+            label: u.full_name || u.email || u.id.slice(0, 8),
+          }),
+        ),
       );
     })();
   }, []);
 
+  const scope = useAdminScope();
   const load = useCallback(async () => {
     setError(null);
     setRows(null);
 
-    let q = aidwar
-      .from("activity_log")
-      .select("id, organization_id, user_id, action, details, created_at", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+    let q = applyScope(
+      aidwar
+        .from("activity_log")
+        .select("id, organization_id, user_id, action, details, created_at", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1),
+      scope,
+    );
 
     if (orgId) q = q.eq("organization_id", orgId);
     if (userId) q = q.eq("user_id", userId);
@@ -122,7 +132,7 @@ function AdminActivity() {
     setRows(list);
     setTotal(count ?? list.length);
     setActions((prev) => Array.from(new Set([...prev, ...list.map((r) => r.action)])).sort());
-  }, [orgId, userId, action, search, from, to, page]);
+  }, [orgId, userId, action, search, from, to, page, scope]);
 
   useEffect(() => {
     void load();
@@ -141,8 +151,15 @@ function AdminActivity() {
 
   return (
     <>
-      <PageHeader title="Activity" description="Cross-organization audit trail of every significant action on AiDwar." />
-      {error ? <div className="mb-6"><ErrorState message={error} /></div> : null}
+      <PageHeader
+        title="Activity"
+        description="Cross-organization audit trail of every significant action on AiDwar."
+      />
+      {error ? (
+        <div className="mb-6">
+          <ErrorState message={error} />
+        </div>
+      ) : null}
 
       <div className="mb-6 grid gap-4 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-6">
         <div className="space-y-2 lg:col-span-2">
@@ -163,7 +180,9 @@ function AdminActivity() {
           <Select id="f_org" value={orgId} onChange={reset(setOrgId)}>
             <option value="">All organizations</option>
             {orgs.map((o) => (
-              <option key={o.id} value={o.id}>{o.name}</option>
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
             ))}
           </Select>
         </div>
@@ -172,7 +191,9 @@ function AdminActivity() {
           <Select id="f_user" value={userId} onChange={reset(setUserId)}>
             <option value="">All users</option>
             {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.label}</option>
+              <option key={u.id} value={u.id}>
+                {u.label}
+              </option>
             ))}
           </Select>
         </div>
@@ -181,17 +202,35 @@ function AdminActivity() {
           <Select id="f_action" value={action} onChange={reset(setAction)}>
             <option value="">All actions</option>
             {actions.map((a) => (
-              <option key={a} value={a}>{a}</option>
+              <option key={a} value={a}>
+                {a}
+              </option>
             ))}
           </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="f_from">From</Label>
-          <Input id="f_from" type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(0); }} />
+          <Input
+            id="f_from"
+            type="date"
+            value={from}
+            onChange={(e) => {
+              setFrom(e.target.value);
+              setPage(0);
+            }}
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="f_to">To</Label>
-          <Input id="f_to" type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(0); }} />
+          <Input
+            id="f_to"
+            type="date"
+            value={to}
+            onChange={(e) => {
+              setTo(e.target.value);
+              setPage(0);
+            }}
+          />
         </div>
       </div>
 
@@ -228,13 +267,15 @@ function AdminActivity() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {r.organization_id ? orgName.get(r.organization_id) ?? "—" : "—"}
+                      {r.organization_id ? (orgName.get(r.organization_id) ?? "—") : "—"}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {r.user_id ? userName.get(r.user_id) ?? "—" : "—"}
+                      {r.user_id ? (userName.get(r.user_id) ?? "—") : "—"}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {r.details && Object.keys(r.details).length > 0 ? JSON.stringify(r.details) : "—"}
+                      {r.details && Object.keys(r.details).length > 0
+                        ? JSON.stringify(r.details)
+                        : "—"}
                     </td>
                   </tr>
                 ))}

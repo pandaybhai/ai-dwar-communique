@@ -7,7 +7,7 @@ export type AuthContext = {
   supabase: SupabaseClient;
   userId: string;
   organizationId: string;
-  role: "owner" | "admin" | "agent";
+  role: "owner" | "admin" | "marketer" | "agent";
 };
 
 export function jsonError(message: string, status = 400): Response {
@@ -52,6 +52,22 @@ export async function requireOrgMember(
 
 export function isResponse(value: unknown): value is Response {
   return value instanceof Response;
+}
+
+/**
+ * Permission gate for server routes. Mirrors public.has_permission — never a
+ * role-name comparison, so per-member overrides are honoured everywhere.
+ * Returns null when allowed, or the 403 Response to send back.
+ */
+export async function requirePermission(
+  auth: AuthContext,
+  permission: string,
+  friendlyAction = "do this",
+): Promise<Response | null> {
+  const { hasPermission } = await import("@/lib/permissions.server");
+  const allowed = await hasPermission(auth.supabase, auth.organizationId, auth.userId, permission);
+  if (allowed) return null;
+  return jsonError(`You don't have permission to ${friendlyAction} in this workspace.`, 403);
 }
 
 /** Append-only activity logging from the server (never message contents). */

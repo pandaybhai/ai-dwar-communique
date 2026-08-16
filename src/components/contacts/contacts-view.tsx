@@ -1,3 +1,6 @@
+import { PermissionGate } from "@/components/permission-gate";
+import { permissionDeniedReason } from "@/lib/permissions";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Contact as ContactIcon, Download, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -50,7 +53,12 @@ export function ContactsView({
   role: string | null;
   showHeader?: boolean;
 }) {
-  const isAdmin = role === "owner" || role === "admin";
+  const { can } = usePermissions();
+  const canEdit = can("contacts.edit");
+  const canImport = can("contacts.import");
+  const canExport = can("contacts.export");
+  const canDeleteContacts = can("contacts.delete");
+  void role;
 
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -249,27 +257,29 @@ export function ContactsView({
           </p>
         )}
         <div className="mb-8 flex flex-wrap items-center gap-2">
-          {isAdmin ? (
-            <>
-              <Button
-                variant="ghost"
-                className="rounded-full"
-                onClick={() => void exportCsv()}
-                disabled={exporting}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                {exporting ? "Exporting…" : "Export CSV"}
-              </Button>
-              <ImportContactsDialog organizationId={organizationId} onImported={() => void load()} />
-            </>
+          {canExport ? (
+            <Button
+              variant="ghost"
+              className="rounded-full"
+              onClick={() => void exportCsv()}
+              disabled={exporting}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {exporting ? "Exporting…" : "Export CSV"}
+            </Button>
           ) : null}
-          <AddContactDialog
-            organizationId={organizationId}
-            onCreated={() => {
-              setPage(0);
-              void load();
-            }}
-          />
+          <PermissionGate allowed={canImport} reason={permissionDeniedReason("Import contacts")}>
+            <ImportContactsDialog organizationId={organizationId} onImported={() => void load()} />
+          </PermissionGate>
+          <PermissionGate allowed={canEdit} reason={permissionDeniedReason("Edit contacts")}>
+            <AddContactDialog
+              organizationId={organizationId}
+              onCreated={() => {
+                setPage(0);
+                void load();
+              }}
+            />
+          </PermissionGate>
         </div>
       </div>
 
@@ -455,7 +465,7 @@ export function ContactsView({
         contact={selected}
         organizationId={organizationId}
         allTags={allTags}
-        canDelete={isAdmin}
+        canDelete={canDeleteContacts}
         onClose={() => setSelected(null)}
         onChanged={() => {
           void loadTags();

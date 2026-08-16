@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { aidwar } from "@/integrations/aidwar/client";
+import { callApi } from "@/lib/whatsapp-client";
 
-export type OrgRole = "owner" | "admin" | "agent";
+export type OrgRole = "owner" | "admin" | "marketer" | "agent";
 
 export type Organization = {
   id: string;
@@ -28,10 +29,16 @@ type OrgContextValue = {
   profile: Profile | null;
   setActiveOrg: (organizationId: string) => void;
   reload: () => Promise<void>;
+  /** @deprecated gate on a permission key via usePermissions() instead. */
   canManage: boolean;
   isSuperAdmin: boolean;
   flagsLoading: boolean;
   isFeatureEnabled: (key: string) => boolean;
+  permissions: string[];
+  permissionOverrides: Record<string, boolean>;
+  permissionsLoading: boolean;
+  can: (key: string) => boolean;
+  reloadPermissions: () => Promise<void>;
 };
 
 const OrgContext = createContext<OrgContextValue | null>(null);
@@ -45,6 +52,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [flagsLoading, setFlagsLoading] = useState(true);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [permissionOverrides, setPermissionOverrides] = useState<Record<string, boolean>>({});
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
 
   const load = useCallback(async () => {
     setError(null);
@@ -74,18 +84,23 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const list: Membership[] = ((rows ?? []) as unknown as {
-      role: OrgRole;
-      organizations: Organization | Organization[] | null;
-    }[])
+    const list: Membership[] = (
+      (rows ?? []) as unknown as {
+        role: OrgRole;
+        organizations: Organization | Organization[] | null;
+      }[]
+    )
       .map((r) => ({
         role: r.role,
-        organization: (Array.isArray(r.organizations) ? r.organizations[0] : r.organizations) ?? null,
+        organization:
+          (Array.isArray(r.organizations) ? r.organizations[0] : r.organizations) ?? null,
       }))
       .filter((m): m is Membership => m.organization !== null);
 
     setMemberships(list);
-    setProfile((prof as Profile) ?? { id: uid, full_name: null, email: userData.user?.email ?? null });
+    setProfile(
+      (prof as Profile) ?? { id: uid, full_name: null, email: userData.user?.email ?? null },
+    );
 
     const stored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
     const next = list.find((m) => m.organization.id === stored) ?? list[0] ?? null;
@@ -125,6 +140,27 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     };
   }, [activeId]);
 
+  const loadPermissions = useCallback(async (orgId: string | null) => {
+    if (!orgId) {
+      setPermissions([]);
+      setPermissionOverrides({});
+      setPermissionsLoading(false);
+      return;
+    }
+    setPermissionsLoading(true);
+    const { data } = await callApi<{
+      permissions: string[];
+      overrides: Record<string, boolean>;
+    }>(`/api/permissions?organization_id=${encodeURIComponent(orgId)}`, { method: "GET" });
+    setPermissions(data?.permissions ?? []);
+    setPermissionOverrides(data?.overrides ?? {});
+    setPermissionsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadPermissions(activeId);
+  }, [activeId, loadPermissions]);
+
   const setActiveOrg = useCallback((organizationId: string) => {
     setActiveId(organizationId);
     if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, organizationId);
@@ -133,6 +169,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const active = memberships.find((m) => m.organization.id === activeId) ?? null;
 
   const isFeatureEnabled = useCallback((key: string) => flags[key] ?? false, [flags]);
+
+  const can = useCallback((key: string) => permissions.includes(key), [permissions]);
 
   return (
     <OrgContext.Provider
@@ -148,6 +186,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         isSuperAdmin: Boolean(profile?.is_super_admin),
         flagsLoading,
         isFeatureEnabled,
+        permissions,
+        permissionOverrides,
+        permissionsLoading,
+        can,
+        reloadPermissions: () => loadPermissions(activeId),
       }}
     >
       {children}
