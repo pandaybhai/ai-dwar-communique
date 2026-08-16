@@ -1,3 +1,5 @@
+import { PermissionGate } from "@/components/permission-gate";
+import { permissionDeniedReason } from "@/lib/permissions";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Contact as ContactIcon, Download, Search } from "lucide-react";
