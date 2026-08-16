@@ -141,6 +141,36 @@ export function graphErrorMessage(body: Record<string, unknown>): string {
 }
 
 
+/**
+ * The full provider error, kept verbatim enough to debug a rejected send:
+ * code, error_subcode, the nested error_data.details and the fbtrace_id.
+ * Stored on messages.error_detail (text) as JSON.
+ */
+export function providerErrorDetail(
+  body: Record<string, unknown>,
+  fallback = "unknown_error",
+): string {
+  const err = (body?.["error"] ?? null) as Record<string, unknown> | null;
+  if (!err) return JSON.stringify({ message: fallback, raw: body ?? null }).slice(0, 4000);
+  const data = (err["error_data"] ?? null) as Record<string, unknown> | null;
+  return JSON.stringify({
+    message: err["message"] ?? fallback,
+    type: err["type"] ?? null,
+    code: err["code"] ?? null,
+    error_subcode: err["error_subcode"] ?? null,
+    error_user_title: err["error_user_title"] ?? null,
+    error_user_msg: err["error_user_msg"] ?? null,
+    details: data?.["details"] ?? null,
+    fbtrace_id: err["fbtrace_id"] ?? null,
+  }).slice(0, 4000);
+}
+
+/** Numeric provider error code, for event properties. */
+export function providerErrorCode(body: Record<string, unknown>): string | null {
+  const err = (body?.["error"] ?? null) as Record<string, unknown> | null;
+  return err?.["code"] != null ? String(err["code"]) : null;
+}
+
 /** Re-exported from the shared helper so every write path agrees. */
 export { normalizePhone, toWaId } from "@/lib/phone";
 
