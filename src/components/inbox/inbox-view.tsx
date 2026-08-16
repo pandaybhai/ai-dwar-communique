@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { useOrg } from "@/lib/org-context";
 import { logActivity } from "@/lib/activity";
+import { emitClientEvent } from "@/lib/events.client";
 import { callApi } from "@/lib/whatsapp-client";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { Input } from "@/components/ui/input";
@@ -287,6 +288,12 @@ export function InboxView() {
       conversation_id: activeConversation.id,
       assigned_to: assignee,
     });
+    emitClientEvent("conversation.assigned", orgId, {
+      entityType: "conversation",
+      entityId: activeConversation.id,
+      whatsappAccountId: activeConversation.whatsapp_account_id ?? null,
+      properties: { assigned_to: assignee },
+    });
   };
 
   const handleToggleStatus = async () => {
@@ -306,6 +313,11 @@ export function InboxView() {
     toast.success(next === "closed" ? "Conversation closed." : "Conversation reopened.");
     if (next === "closed") {
       void logActivity("conversation_closed", orgId, { conversation_id: activeConversation.id });
+      emitClientEvent("conversation.closed", orgId, {
+        entityType: "conversation",
+        entityId: activeConversation.id,
+        whatsappAccountId: activeConversation.whatsapp_account_id ?? null,
+      });
     }
   };
 

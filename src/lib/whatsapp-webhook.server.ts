@@ -16,6 +16,7 @@ import {
   loadOrgTimezone,
 } from "@/lib/automations.server";
 import type { AutomationRow } from "@/lib/automations";
+import { emitEvent } from "@/lib/events.server";
 
 /** Service-role client for the AiDwar (Mumbai) backend. Server-only. */
 export function getServiceClient(): SupabaseClient {
@@ -306,6 +307,19 @@ async function applyOptKeywords(
   }
   log("status_updated", { action, next_status: nextStatus });
 
+  emitEvent(supabase, optOut ? "contact.opted_out" : "contact.opted_in", {
+    organizationId: args.organizationId,
+    whatsappAccountId: args.accountId,
+    entityType: "contact",
+    entityId: args.contactId,
+    properties: {
+      keyword: optOut ?? optIn,
+      previous_status: args.currentStatus,
+      // The block is workspace-wide; the number is audit detail only.
+      scope: "organization",
+    },
+  });
+
   await supabase.from("activity_log").insert({
     organization_id: args.organizationId,
     action: optOut ? "contact_opted_out" : "contact_opted_in",
@@ -461,6 +475,28 @@ export async function processWebhookPayload(
             });
           }
 
+          if (nextQuality) {
+            emitEvent(supabase, "whatsapp.quality_changed", {
+              organizationId: healthAccount.organization_id as string,
+              whatsappAccountId: healthAccount.id as string,
+              entityType: "whatsapp_account",
+              entityId: healthAccount.id as string,
+              properties: {
+                old_rating: healthAccount.quality_rating ?? null,
+                new_rating: nextQuality,
+              },
+            });
+          }
+          if (patch["status"] === "disconnected") {
+            emitEvent(supabase, "whatsapp.disconnected", {
+              organizationId: healthAccount.organization_id as string,
+              whatsappAccountId: healthAccount.id as string,
+              entityType: "whatsapp_account",
+              entityId: healthAccount.id as string,
+              properties: { event: event || null, reason: "meta_account_update" },
+            });
+          }
+
           await supabase.from("activity_log").insert({
             organization_id: healthAccount.organization_id as string,
             action: nextQuality ? "quality_changed" : "account_health_update",
@@ -530,6 +566,18 @@ export async function processWebhookPayload(
             continue;
           }
           await update;
+          if (nextStatus === "APPROVED" || nextStatus === "REJECTED") {
+            emitEvent(supabase, nextStatus === "APPROVED" ? "template.approved" : "template.rejected", {
+              organizationId: wabaOrgIds[0]!,
+              entityType: "message_template",
+              entityId: metaTemplateId != null ? String(metaTemplateId) : null,
+              properties: {
+                template_name: templateName ?? null,
+                waba_id: wabaId,
+                ...(nextStatus === "REJECTED" ? { reason: reason ?? null } : {}),
+              },
+            });
+          }
           continue;
         }
 
@@ -597,9 +645,22 @@ export async function processWebhookPayload(
               },
               { onConflict: "organization_id,phone" },
             )
-            .select("id, opt_in_status")
+            .select("id, opt_in_status, created_at")
             .single();
           if (!contact) continue;
+
+          // The upsert can't tell us whether it inserted, so a freshly stamped
+          // created_at is the signal for a genuinely new contact.
+          const contactAge = Date.now() - new Date(String(contact.created_at)).getTime();
+          if (contactAge >= 0 && contactAge < 10_000) {
+            emitEvent(supabase, "contact.created", {
+              organizationId: orgId,
+              whatsappAccountId: accountId,
+              entityType: "contact",
+              entityId: contact.id as string,
+              properties: { contact_source: attribution.source },
+            });
+          }
 
           let { data: conversation } = await supabase
             .from("conversations")
@@ -622,6 +683,15 @@ export async function processWebhookPayload(
               .select("id, unread_count")
               .single();
             conversation = created;
+            if (created) {
+              emitEvent(supabase, "conversation.opened", {
+                organizationId: orgId,
+                whatsappAccountId: accountId,
+                entityType: "conversation",
+                entityId: created.id as string,
+                properties: { opened_by: "inbound" },
+              });
+            }
           }
           if (!conversation) continue;
 
@@ -663,6 +733,14 @@ export async function processWebhookPayload(
               })
               .eq("id", conversation.id);
             await applyCampaignReply(supabase, orgId, contact.id);
+            emitEvent(supabase, "message.received", {
+              organizationId: orgId,
+              whatsappAccountId: accountId,
+              entityType: "message",
+              entityId: inserted[0]!.id as string,
+              occurredAt,
+              properties: { message_type: type, conversation_id: conversation.id },
+            });
           }
 
           // Opt-out / opt-in runs on EVERY inbound text, independent of whether
@@ -732,6 +810,16 @@ export async function processWebhookPayload(
               .update({ status: "failed", status_updated_at: at, error_detail: detail })
               .eq("id", existing.id);
             await applyCampaignStatus(supabase, existing.id, "failed", detail);
+            emitEvent(supabase, "message.failed", {
+              organizationId: orgId,
+              whatsappAccountId: accountId,
+              entityType: "message",
+              entityId: existing.id as string,
+              occurredAt: at,
+              properties: {
+                error_code: errs[0]?.["code"] != null ? String(errs[0]!["code"]) : null,
+              },
+            });
             continue;
           }
 
@@ -745,6 +833,15 @@ export async function processWebhookPayload(
             .update({ status: nextStatus, status_updated_at: at })
             .eq("id", existing.id);
           await applyCampaignStatus(supabase, existing.id, nextStatus, null);
+          if (nextStatus === "delivered" || nextStatus === "read" || nextStatus === "sent") {
+            emitEvent(supabase, `message.${nextStatus}`, {
+              organizationId: orgId,
+              whatsappAccountId: accountId,
+              entityType: "message",
+              entityId: existing.id as string,
+              occurredAt: at,
+            });
+          }
         }
 
       }
