@@ -26,10 +26,12 @@ function emittedActivityActions(srcDir: string): Map<string, string> {
   for (const file of walk(srcDir)) {
     const text = readFileSync(file, "utf8");
     for (const m of text.matchAll(/logActivity\(\s*"([a-z0-9_.]+)"/g)) {
-      if (!found.has(m[1])) found.set(m[1], file);
+      const key = m[1] ?? "";
+      if (key && !found.has(key)) found.set(key, file);
     }
     for (const m of text.matchAll(/action:\s*"([a-z0-9_.]+)"\s*(?:,|\n)/g)) {
-      if (/activity_log/.test(text) && !found.has(m[1])) found.set(m[1], file);
+      const key = m[1] ?? "";
+      if (key && /activity_log/.test(text) && !found.has(key)) found.set(key, file);
     }
   }
   return found;
@@ -104,9 +106,10 @@ export function validateFeatureRegistry(srcDir = join(process.cwd(), "src")): st
     for (const file of walk(srcDir)) {
       const text = readFileSync(file, "utf8");
       for (const m of text.matchAll(/\bcan\(\s*"([a-z0-9_]+\.[a-z0-9_]+)"\s*\)/g)) {
-        if (!declaredPermissions.has(m[1])) {
+        const key = m[1] ?? "";
+        if (key && !declaredPermissions.has(key)) {
           issues.push(
-            `permission "${m[1]}" is checked in ${file.replace(process.cwd() + "/", "")} but not declared in any manifest.`,
+            `permission "${key}" is checked in ${file.replace(process.cwd() + "/", "")} but not declared in any manifest.`,
           );
         }
       }
