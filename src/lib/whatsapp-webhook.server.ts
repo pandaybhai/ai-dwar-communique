@@ -404,7 +404,7 @@ export async function processWebhookPayload(
           );
           let lookup = supabase
             .from("whatsapp_accounts")
-            .select("id, organization_id, quality_rating, status")
+            .select("id, organization_id, phone_number_id, quality_rating, status")
             .order("connected_at", { ascending: false, nullsFirst: false })
             .limit(1);
           if (displayNumber) lookup = lookup.eq("display_phone_number", displayNumber);
@@ -434,6 +434,17 @@ export async function processWebhookPayload(
 
           if (Object.keys(patch).length > 0) {
             await supabase.from("whatsapp_accounts").update(patch).eq("id", healthAccount.id);
+          }
+
+          // Quality timeline: only current state lives on the account row, so
+          // every reported rating is appended to its own history table.
+          if (nextQuality) {
+            await supabase.from("whatsapp_quality_history").insert({
+              organization_id: healthAccount.organization_id as string,
+              phone_number_id: (healthAccount.phone_number_id as string | null) ?? null,
+              quality_rating: nextQuality,
+              recorded_at: nowIso,
+            });
           }
 
           await supabase.from("activity_log").insert({
