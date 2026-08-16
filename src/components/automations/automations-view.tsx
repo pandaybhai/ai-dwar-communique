@@ -115,7 +115,7 @@ export function AutomationsView({
     void load();
   }
 
-  if (error) return <ErrorState message={error} onRetry={() => void load()} />;
+  if (error) return <ErrorState message={error} />;
 
   if (rows === null) {
     return (
