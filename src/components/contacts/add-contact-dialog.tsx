@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { normalizePhone, toWaId } from "@/lib/phone";
 import { logActivity } from "@/lib/activity";
+import { emitClientEvent, recordClientUsage } from "@/lib/events.client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,6 +64,11 @@ export function AddContactDialog({
       return;
     }
     void logActivity("contact_created", organizationId, { source: "manual" });
+    emitClientEvent("contact.created", organizationId, {
+      entityType: "contact",
+      properties: { contact_source: "manual" },
+    });
+    recordClientUsage("contacts_stored", organizationId, 1, { source: "manual" });
     toast.success("Contact added.");
     setName("");
     setPhone("");

@@ -234,6 +234,14 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           // never block the connect flow
         }
 
+        const { emitEvent } = await import("@/lib/events.server");
+        emitEvent(supabase, "whatsapp.connected", {
+          organizationId,
+          actorUserId: userId,
+          entityType: "whatsapp_account",
+          properties: { waba_id: wabaId, method: "embedded_signup", registered },
+        });
+
         await logServerActivity(supabase, organizationId, userId, "whatsapp_connected", {
           method: "embedded_signup",
           phone_number_id: phoneNumberId,

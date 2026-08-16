@@ -197,6 +197,21 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
             return jsonError("Submitted to review, but we couldn't save it locally. Try syncing.", 500);
           }
 
+          const { emitEvent } = await import("@/lib/events.server");
+          emitEvent(supabase, "template.created", {
+            organizationId,
+            actorUserId: userId,
+            whatsappAccountId: connection.accountId,
+            entityType: "message_template",
+            entityId: saved?.id ?? null,
+            properties: {
+              template_name: name,
+              language,
+              category,
+              waba_id: connection.wabaId,
+            },
+          });
+
           await logServerActivity(supabase, organizationId, userId, "template_created", {
             template_name: name,
             language,
