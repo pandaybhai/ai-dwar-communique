@@ -102,6 +102,7 @@ export function ChatThread({
   onSend,
   onSendTemplate,
   organizationId,
+  numberLabel: fromNumber,
   onBack,
   onAssign,
   onToggleStatus,
@@ -114,9 +115,12 @@ export function ChatThread({
   onSend: (text: string) => Promise<boolean>;
   onSendTemplate: (payload: TemplateSendPayload) => Promise<boolean>;
   organizationId: string | null;
+  /** Name of the connected number this thread arrived on, when there's more than one. */
+  numberLabel?: string | null;
   onBack: () => void;
   onAssign: (userId: string | null) => void;
   onToggleStatus: () => void;
+
 }) {
   const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
