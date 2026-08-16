@@ -37,9 +37,9 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
 
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
-        if (auth.role !== "owner" && auth.role !== "admin") {
-          return jsonError("Only owners and admins can connect WhatsApp.", 403);
-        }
+        const { requirePermission } = await import("@/lib/whatsapp-api.server");
+        const denied = await requirePermission(auth, "settings.whatsapp", "connect the business number");
+        if (denied) return denied;
 
         const code = String(payload["code"] ?? "").trim();
         const wabaId = String(payload["waba_id"] ?? "").trim();

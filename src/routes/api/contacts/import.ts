@@ -28,9 +28,9 @@ export const Route = createFileRoute("/api/contacts/import")({
 
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
-        if (auth.role !== "owner" && auth.role !== "admin") {
-          return jsonError("Only owners and admins can import contacts.", 403);
-        }
+        const { requirePermission } = await import("@/lib/whatsapp-api.server");
+        const denied = await requirePermission(auth, "contacts.import", "import contacts");
+        if (denied) return denied;
         const { supabase, organizationId, userId } = auth;
         const action = String(payload["action"] ?? "");
 
