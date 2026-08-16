@@ -63,13 +63,16 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
 
           const { data: template } = await supabase
             .from("message_templates")
-            .select("components")
+            .select("components, category")
             .eq("organization_id", orgId)
             // Template libraries are per business account.
             .eq("waba_id", sender.wabaId)
             .eq("name", templateName)
             .limit(1)
             .maybeSingle();
+          const templateCategory = String(
+            (template as { category?: string } | null)?.category ?? "marketing",
+          ).toLowerCase();
           const variableOrder = extractVariables(
             templateBodyText((template?.components ?? []) as never),
           );
@@ -103,13 +106,14 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
                 language: (campaign["template_language"] as string) ?? "en_US",
                 variableOrder,
               },
+              { campaignId, category: templateCategory },
             );
 
             if (outcome.error) {
               failed += 1;
               await supabase
                 .from("campaign_recipients")
-                .update({ status: "failed", error: outcome.error })
+                .update({ status: "failed", error: outcome.error, message_id: outcome.messageId })
                 .eq("id", recipient.id);
             } else {
               sent += 1;
