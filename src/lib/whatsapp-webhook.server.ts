@@ -518,6 +518,10 @@ export async function processWebhookPayload(
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
           const waId = toWaId(msg["from"] as string | undefined);
           if (!waId) continue;
+          // Our own number appearing as the sender means this is an echo of a
+          // message we sent (confirmation, automation reply). Never automate on it.
+          const selfWaId = toWaId(metadata["display_phone_number"] as string | undefined);
+          const isSystemEcho = Boolean(selfWaId && selfWaId === waId);
           const profile = contactsMeta.find((c) => c["wa_id"] === waId);
           const profileName =
             ((profile?.["profile"] as AnyRecord | undefined)?.["name"] as string | undefined) ??
@@ -641,6 +645,7 @@ export async function processWebhookPayload(
             waId,
             body,
             optKeywordMatched,
+            isSystemEcho,
             orgTimezone: await loadOrgTimezone(supabase, orgId, timezoneCache),
             automations: await loadAutomations(supabase, orgId, automationCache),
           });

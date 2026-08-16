@@ -125,6 +125,7 @@ export async function evaluateAutomations(
     waId: string;
     body: string | null;
     optKeywordMatched: boolean;
+    isSystemEcho: boolean;
     orgTimezone: string;
     automations: AutomationRow[];
   },
@@ -138,6 +139,11 @@ export async function evaluateAutomations(
 
   // Rule 1 — opt-out always wins. A contact who typed STOP gets the
   // unsubscribe confirmation and nothing else.
+  // Rule 7 — never let an automation reply to something our own system sent.
+  if (args.isSystemEcho) {
+    log("skipped", { automation_id: null, reason: "system_echo" });
+    return;
+  }
   if (args.optKeywordMatched) {
     log("skipped", { automation_id: null, reason: "opt_keyword" });
     return;
