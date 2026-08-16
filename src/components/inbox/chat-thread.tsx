@@ -103,6 +103,8 @@ export function ChatThread({
   onSendTemplate,
   organizationId,
   numberLabel: fromNumber,
+  wabaId,
+
   onBack,
   onAssign,
   onToggleStatus,
