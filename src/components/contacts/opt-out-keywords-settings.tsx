@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePermissions } from "@/hooks/use-permissions";
 
 type KeywordAction = "opt_out" | "opt_in";
 type KeywordRow = { id: string; keyword: string; action: KeywordAction };
@@ -36,7 +37,9 @@ const COPY: Record<KeywordAction, { title: string; hint: string; placeholder: st
 };
 
 export function OptOutKeywordsCard() {
-  const { active, canManage } = useOrg();
+  const { active } = useOrg();
+  const { can } = usePermissions();
+  const canManage = can("settings.manage");
   const organizationId = active?.organization.id ?? null;
 
   const [rows, setRows] = useState<KeywordRow[] | null>(null);

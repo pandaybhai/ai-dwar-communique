@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+import { usePermissions } from "@/hooks/use-permissions";
   Table,
   TableBody,
   TableCell,
@@ -50,7 +51,12 @@ export function ContactsView({
   role: string | null;
   showHeader?: boolean;
 }) {
-  const isAdmin = role === "owner" || role === "admin";
+  const { can } = usePermissions();
+  const canEdit = can("contacts.edit");
+  const canImport = can("contacts.import");
+  const canExport = can("contacts.export");
+  const canDeleteContacts = can("contacts.delete");
+  void role;
 
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -249,7 +255,7 @@ export function ContactsView({
           </p>
         )}
         <div className="mb-8 flex flex-wrap items-center gap-2">
-          {isAdmin ? (
+          {canExport || canImport ? (
             <>
               <Button
                 variant="ghost"
@@ -455,7 +461,7 @@ export function ContactsView({
         contact={selected}
         organizationId={organizationId}
         allTags={allTags}
-        canDelete={isAdmin}
+        canDelete={canDeleteContacts}
         onClose={() => setSelected(null)}
         onChanged={() => {
           void loadTags();

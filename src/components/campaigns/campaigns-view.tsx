@@ -15,6 +15,7 @@ import { CampaignWizard } from "@/components/campaigns/campaign-wizard";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export function CampaignsView({
   organizationId,
@@ -25,7 +26,9 @@ export function CampaignsView({
   timezone: string;
   role: string | null;
 }) {
-  const isAdmin = role === "owner" || role === "admin";
+  const { can } = usePermissions();
+  const isAdmin = can("campaigns.create");
+  void role;
   const [rows, setRows] = useState<CampaignRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

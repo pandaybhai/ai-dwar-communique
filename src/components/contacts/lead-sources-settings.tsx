@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+import { usePermissions } from "@/hooks/use-permissions";
   Select,
   SelectContent,
   SelectItem,
@@ -29,7 +30,9 @@ const SOURCE_CHOICES = Object.keys(SOURCE_LABELS).filter(
 );
 
 export function LeadSourcesTab() {
-  const { active, canManage } = useOrg();
+  const { active } = useOrg();
+  const { can } = usePermissions();
+  const canManage = can("settings.manage");
   const organizationId = active?.organization.id ?? null;
   const canEdit = canManage;
 

@@ -22,6 +22,7 @@ import {
   type TemplateRow,
 } from "@/lib/templates";
 import { CreateTemplateDialog } from "./create-template-dialog";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const SYNC_KEY = "aidwar.templates.last_sync";
 const TEN_MINUTES = 10 * 60 * 1000;
@@ -41,7 +42,9 @@ function TemplateSkeleton() {
 }
 
 export function TemplatesView() {
-  const { active, canManage } = useOrg();
+  const { active } = useOrg();
+  const { can } = usePermissions();
+  const canManage = can("templates.manage");
   const orgId = active?.organization.id ?? null;
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [loading, setLoading] = useState(true);

@@ -11,6 +11,7 @@ import { SegmentBuilderDialog } from "@/components/segments/segment-builder-dial
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+import { usePermissions } from "@/hooks/use-permissions";
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -32,7 +33,9 @@ export function SegmentsView({
   tags: TagRow[];
   attributeKeys: string[];
 }) {
-  const isAdmin = role === "owner" || role === "admin";
+  const { can } = usePermissions();
+  const isAdmin = can("segments.manage");
+  void role;
 
   const [segments, setSegments] = useState<SegmentRow[]>([]);
   const [authors, setAuthors] = useState<Record<string, string>>({});

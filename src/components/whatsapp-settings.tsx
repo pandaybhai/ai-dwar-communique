@@ -38,6 +38,7 @@ import { callApi } from "@/lib/whatsapp-client";
 import { useOrg } from "@/lib/org-context";
 import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
+import { usePermissions } from "@/hooks/use-permissions";
 
 type Account = {
   id: string;
@@ -104,7 +105,9 @@ function TokenExpiryBanner({ status }: { status: TokenStatus | null }) {
 }
 
 export function WhatsAppTab() {
-  const { active, canManage, isSuperAdmin } = useOrg();
+  const { active, isSuperAdmin } = useOrg();
+  const { can } = usePermissions();
+  const canManage = can("settings.whatsapp");
   const orgId = active?.organization.id;
   const [account, setAccount] = useState<Account | null>(null);
   const [loading, setLoading] = useState(true);
