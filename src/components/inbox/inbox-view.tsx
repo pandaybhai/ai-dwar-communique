@@ -466,6 +466,12 @@ export function InboxView() {
               onSend={handleSend}
               onSendTemplate={handleSendTemplate}
               organizationId={orgId}
+              wabaId={
+                activeConversation.whatsapp_account_id
+                  ? (numberById.get(activeConversation.whatsapp_account_id)?.waba_id ?? null)
+                  : null
+              }
+
               numberLabel={
                 numbers.length > 1 && activeConversation.whatsapp_account_id
                   ? numberLabel(numberById.get(activeConversation.whatsapp_account_id))
