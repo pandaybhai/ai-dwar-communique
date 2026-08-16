@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { useOrg } from "@/lib/org-context";
 import { logActivity } from "@/lib/activity";
-import { emitClientEvent } from "@/lib/events.client";
+import { emitClientEvent } from "@/lib/events-capture";
 import { callApi } from "@/lib/whatsapp-client";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { Input } from "@/components/ui/input";

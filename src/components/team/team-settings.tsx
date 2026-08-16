@@ -34,7 +34,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ErrorState } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
-import { recordClientUsage } from "@/lib/events.client";
+import { recordClientUsage } from "@/lib/events-capture";
 import { useOrg } from "@/lib/org-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import {

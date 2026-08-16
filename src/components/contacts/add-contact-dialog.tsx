@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { normalizePhone, toWaId } from "@/lib/phone";
 import { logActivity } from "@/lib/activity";
-import { emitClientEvent, recordClientUsage } from "@/lib/events.client";
+import { emitClientEvent, recordClientUsage } from "@/lib/events-capture";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
