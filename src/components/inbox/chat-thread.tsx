@@ -119,6 +119,9 @@ export function ChatThread({
   organizationId: string | null;
   /** Name of the connected number this thread arrived on, when there's more than one. */
   numberLabel?: string | null;
+  /** Business account behind that number — scopes the template library. */
+  wabaId?: string | null;
+
   onBack: () => void;
   onAssign: (userId: string | null) => void;
   onToggleStatus: () => void;
