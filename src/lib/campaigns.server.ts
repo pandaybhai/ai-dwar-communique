@@ -251,7 +251,11 @@ export async function sendCampaignTemplate(
       whatsappAccountId: sender.accountId,
       entityType: "message",
       entityId: (failedRow?.id as string) ?? null,
-      properties: { ...baseProperties, error_code: errorCode },
+      properties: {
+        ...baseProperties,
+        message_id: (failedRow?.id as string) ?? null,
+        error_code: errorCode,
+      },
     });
 
     return { messageId: (failedRow?.id as string) ?? null, error: friendly.slice(0, 300) };
