@@ -9,6 +9,16 @@ import { EmptyState, ErrorState } from "@/components/empty-state";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
+import { numberLabel } from "@/lib/whatsapp-numbers";
+
 import { ChatThread } from "./chat-thread";
 import {
   contactLabel,
