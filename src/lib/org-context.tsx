@@ -179,6 +179,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         isSuperAdmin: Boolean(profile?.is_super_admin),
         flagsLoading,
         isFeatureEnabled,
+        permissions,
+        permissionOverrides,
+        permissionsLoading,
+        can,
+        reloadPermissions: () => loadPermissions(activeId),
       }}
     >
       {children}
