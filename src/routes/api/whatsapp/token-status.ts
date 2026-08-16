@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 /**
- * Connection token status. whatsapp_credentials is service-role only, so the
- * browser can never read the token or its expiry directly — this route returns
- * only the safe classification the UI needs.
+ * Connection token status, per connected number. whatsapp_credentials is
+ * service-role only, so the browser can never read a token or its expiry
+ * directly — this route returns only the safe classification the UI needs.
+ * A workspace can hold several numbers across several business accounts, and
+ * each business account carries its own token and expiry.
  */
 export const Route = createFileRoute("/api/whatsapp/token-status")({
   server: {
@@ -25,40 +27,73 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
 
         const { supabase, organizationId } = auth;
 
-        const { data: account } = await supabase
+        const { data: accounts } = await supabase
           .from("whatsapp_accounts")
-          .select("id, status")
+          .select("id, waba_id, display_phone_number, verified_name, status, is_default")
           .eq("organization_id", organizationId)
-          .eq("status", "active")
-          .limit(1)
-          .maybeSingle();
-        if (!account) return Response.json({ connected: false });
+          .eq("status", "active");
 
-        const { data: cred, error } = await supabase
+        const rows = (accounts ?? []) as Array<{
+          id: string;
+          waba_id: string | null;
+          display_phone_number: string | null;
+          verified_name: string | null;
+          is_default: boolean;
+        }>;
+        if (rows.length === 0) return Response.json({ connected: false, numbers: [] });
+
+        const wabaIds = Array.from(
+          new Set(rows.map((r) => r.waba_id).filter((v): v is string => Boolean(v))),
+        );
+
+        const { data: creds, error } = await supabase
           .from("whatsapp_credentials")
-          .select("expires_at, granted_scopes")
+          .select("waba_id, expires_at, granted_scopes")
           .eq("organization_id", organizationId)
-          .maybeSingle();
+          .in("waba_id", wabaIds.length > 0 ? wabaIds : ["__none__"]);
         if (error) return jsonError("We couldn't check your connection health.", 500);
 
-        const expiry = classifyTokenExpiry(cred?.expires_at as string | null | undefined);
-        if (!cred) {
-          return Response.json({ connected: true, credentials_missing: true, ...expiry });
-        }
-        if (expiry.expiry_unknown) {
-          console.error(
-            JSON.stringify({
-              scope: "whatsapp_token",
-              event: "expiry_missing_on_read",
-              organization_id: organizationId,
-            }),
-          );
-        }
+        const byWaba = new Map(
+          ((creds ?? []) as Array<{
+            waba_id: string;
+            expires_at: string | null;
+            granted_scopes: string[] | null;
+          }>).map((c) => [c.waba_id, c]),
+        );
+
+        const numbers = rows.map((row) => {
+          const cred = row.waba_id ? byWaba.get(row.waba_id) : undefined;
+          const expiry = classifyTokenExpiry(cred?.expires_at);
+          if (cred && expiry.expiry_unknown) {
+            console.error(
+              JSON.stringify({
+                scope: "whatsapp_token",
+                event: "expiry_missing_on_read",
+                organization_id: organizationId,
+                whatsapp_account_id: row.id,
+              }),
+            );
+          }
+          return {
+            whatsapp_account_id: row.id,
+            waba_id: row.waba_id,
+            display_phone_number: row.display_phone_number,
+            verified_name: row.verified_name,
+            is_default: row.is_default,
+            credentials_missing: !cred,
+            scopes: cred?.granted_scopes ?? null,
+            ...expiry,
+          };
+        });
+
+        // Worst case across numbers, so a single banner can speak for the
+        // workspace while the settings list shows each number individually.
         return Response.json({
           connected: true,
-          credentials_missing: false,
-          scopes: (cred.granted_scopes as string[] | null) ?? null,
-          ...expiry,
+          numbers,
+          credentials_missing: numbers.some((n) => n.credentials_missing),
+          token_expired: numbers.some((n) => n.token_expired),
+          token_expiring: numbers.some((n) => n.token_expiring),
         });
       },
     },
