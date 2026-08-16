@@ -9,7 +9,10 @@ export type TemplateComponent = {
 export type TemplateRow = {
   id: string;
   organization_id: string;
+  /** Templates live inside one business account — two numbers can mean two libraries. */
+  waba_id: string | null;
   meta_template_id: string | null;
+
   name: string;
   language: string;
   category: string | null;
