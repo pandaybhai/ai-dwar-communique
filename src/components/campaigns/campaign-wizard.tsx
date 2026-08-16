@@ -552,6 +552,8 @@ export function CampaignWizard({
                   <dl className="space-y-2 text-sm">
                     {[
                       ["Campaign", name],
+                      ["Sending from", numberLabel(senderNumber)],
+
                       [
                         "Audience",
                         `${audience?.eligible ?? 0} opted-in contacts${
