@@ -672,7 +672,9 @@ export async function processWebhookPayload(
             organizationId: orgId,
             accountId,
             phoneNumberId,
+            accessToken,
             conversationId: conversation.id as string,
+
             contactId: contact.id as string,
             currentStatus: (contact as { opt_in_status?: string }).opt_in_status ?? null,
             waId,
