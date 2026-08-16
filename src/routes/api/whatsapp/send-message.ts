@@ -28,6 +28,11 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
         if (isResponse(auth)) return auth;
         const { supabase, organizationId, userId } = auth;
 
+        // Replying is an inbox permission, not a role — agents hold it by preset.
+        const { requirePermission } = await import("@/lib/whatsapp-api.server");
+        const denied = await requirePermission(auth, "inbox.reply", "reply to conversations");
+        if (denied) return denied;
+
         const messageType = String(payload["message_type"] ?? "text");
         const conversationId = (payload["conversation_id"] as string) ?? null;
         const rawPhone = String(payload["phone"] ?? "").trim();

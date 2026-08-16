@@ -21,7 +21,7 @@ export const Route = createFileRoute("/api/campaigns/launch")({
 
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
-        const { supabase, organizationId, userId, role } = auth;
+        const { supabase, organizationId, userId } = auth;
         const { requirePermission } = await import("@/lib/whatsapp-api.server");
         const denied = await requirePermission(auth, "campaigns.send", "launch campaigns");
         if (denied) return denied;
