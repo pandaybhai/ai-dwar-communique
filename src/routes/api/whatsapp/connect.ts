@@ -53,11 +53,27 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
 
         const { supabase, organizationId, userId } = auth;
 
+        const info = await debugToken(accessToken);
+        if (!info.expires_at) {
+          console.error(
+            JSON.stringify({
+              scope: "whatsapp_token",
+              event: "expiry_missing",
+              method: "manual",
+              organization_id: organizationId,
+              phone_number_id: phoneNumberId,
+              debug_token_error: info.error,
+            }),
+          );
+        }
+
         const { error: credErr } = await supabase.from("whatsapp_credentials").upsert(
           {
             organization_id: organizationId,
             access_token: accessToken,
             token_type: "business",
+            expires_at: info.expires_at,
+            granted_scopes: info.granted_scopes,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "organization_id" },
