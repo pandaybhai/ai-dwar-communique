@@ -184,6 +184,46 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
         });
 
         if (!result.ok) {
+          // A rejected send is still a message: record it as failed with the
+          // provider's full error so it is visible in the inbox and analytics.
+          const { providerErrorDetail, providerErrorCode } = await import(
+            "@/lib/whatsapp-api.server"
+          );
+          const failedAt = new Date().toISOString();
+          const { data: failedMessage } = await supabase
+            .from("messages")
+            .insert({
+              organization_id: organizationId,
+              conversation_id: conversation?.id ?? null,
+              direction: "outbound",
+              type: messageType,
+              body: messageType === "text" ? body : null,
+              template_name: messageType === "template" ? templateName : null,
+              status: "failed",
+              status_updated_at: failedAt,
+              error_detail: providerErrorDetail(result.body),
+              sent_by: userId,
+            })
+            .select("id")
+            .single();
+
+          const { emitEvent: emitFailed } = await import("@/lib/events.server");
+          emitFailed(supabase, "message.failed", {
+            organizationId,
+            whatsappAccountId: connection.accountId,
+            actorUserId: userId,
+            entityType: "message",
+            entityId: failedMessage?.id ?? null,
+            properties: {
+              campaign_id: null,
+              template_name: messageType === "template" ? templateName : null,
+              waba_id: connection.wabaId,
+              whatsapp_account_id: connection.accountId,
+              message_type: messageType,
+              error_code: providerErrorCode(result.body),
+            },
+          });
+
           console.error(
             JSON.stringify({
               at: "send_message_rejected",
@@ -192,11 +232,16 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
               conversation_id: conversation?.id ?? null,
               message_type: messageType,
               status: result.status,
+              message_id: failedMessage?.id ?? null,
               provider_error: result.body["error"] ?? null,
             }),
           );
           return Response.json(
-            { error: graphErrorMessage(result.body), provider_response: result.body },
+            {
+              error: graphErrorMessage(result.body),
+              message_id: failedMessage?.id ?? null,
+              provider_response: result.body,
+            },
             { status: 400 },
           );
         }
@@ -255,9 +300,11 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           entityType: "message",
           entityId: message?.id ?? null,
           properties: {
+            campaign_id: null,
             message_type: messageType,
             template_name: messageType === "template" ? templateName : null,
             waba_id: connection.wabaId,
+            whatsapp_account_id: connection.accountId,
             category,
           },
         });

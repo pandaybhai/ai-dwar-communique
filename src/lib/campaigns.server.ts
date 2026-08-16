@@ -166,16 +166,99 @@ async function conversationFor(
 
 export type SendOutcome = { messageId: string | null; error: string | null };
 
-/** Sends one campaign template message and records it in the inbox. */
+/** Extra dimensions carried onto every per-message event and usage record. */
+export type SendCampaignContext = {
+  campaignId: string | null;
+  /** Meta billing category of the template: marketing/utility/authentication/service. */
+  category: string;
+};
+
+/**
+ * Sends one campaign template message and records it in the inbox.
+ *
+ * Both outcomes leave a messages row behind: a rejected send is a real message
+ * with status 'failed' and the provider's full error in error_detail, so a
+ * campaign that fails at the Graph call is never invisible.
+ */
 export async function sendCampaignTemplate(
   supabase: SupabaseClient,
   organizationId: string,
   sender: SenderContext,
   recipient: { contactId: string | null; phone: string; variables: Record<string, string> },
   template: { name: string; language: string; variableOrder: number[] },
+  context: SendCampaignContext = { campaignId: null, category: "marketing" },
 ): Promise<SendOutcome> {
+  const { emitEvent, recordUsage } = await import("@/lib/events.server");
+  const { meterForMessageCategory } = await import("@/lib/events");
+  const { providerErrorDetail, providerErrorCode } = await import("@/lib/whatsapp-api.server");
+
+  const baseProperties = {
+    campaign_id: context.campaignId,
+    template_name: template.name,
+    waba_id: sender.wabaId,
+    whatsapp_account_id: sender.accountId,
+    category: context.category,
+    message_type: "template",
+  };
+
   const to = toWaId(recipient.phone);
-  if (!to || to.length < 8) return { messageId: null, error: "Invalid phone number." };
+
+  let contactId = recipient.contactId;
+  if (!contactId && to && to.length >= 8) {
+    const { data: contact } = await supabase
+      .from("contacts")
+      .upsert(
+        { organization_id: organizationId, phone: normalizePhone(to), wa_id: to },
+        { onConflict: "organization_id,phone" },
+      )
+      .select("id")
+      .single();
+    contactId = (contact?.id as string) ?? null;
+  }
+
+  const conversationId = await conversationFor(
+    supabase,
+    organizationId,
+    sender.accountId,
+    contactId,
+  );
+
+  /** Writes the failed message row + event, so no rejection goes unrecorded. */
+  const recordFailure = async (friendly: string, detail: string, errorCode: string | null) => {
+    const nowIso = new Date().toISOString();
+    const { data: failedRow } = await supabase
+      .from("messages")
+      .insert({
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        direction: "outbound",
+        type: "template",
+        template_name: template.name,
+        status: "failed",
+        status_updated_at: nowIso,
+        error_detail: detail,
+      })
+      .select("id")
+      .single();
+
+    emitEvent(supabase, "message.failed", {
+      organizationId,
+      whatsappAccountId: sender.accountId,
+      entityType: "message",
+      entityId: (failedRow?.id as string) ?? null,
+      properties: { ...baseProperties, error_code: errorCode },
+    });
+
+    return { messageId: (failedRow?.id as string) ?? null, error: friendly.slice(0, 300) };
+  };
+
+  if (!to || to.length < 8) {
+    return recordFailure(
+      "Invalid phone number.",
+      JSON.stringify({ message: "invalid_phone_number", phone: recipient.phone }),
+      "invalid_phone_number",
+    );
+  }
 
   const parameters = template.variableOrder.map((n) => ({
     type: "text",
@@ -196,32 +279,19 @@ export async function sendCampaignTemplate(
     },
   });
 
-  if (!result.ok) return { messageId: null, error: graphErrorMessage(result.body).slice(0, 300) };
+  if (!result.ok) {
+    return recordFailure(
+      graphErrorMessage(result.body),
+      providerErrorDetail(result.body),
+      providerErrorCode(result.body),
+    );
+  }
 
   const metaMessageId =
     ((result.body["messages"] as Array<Record<string, unknown>> | undefined)?.[0]?.["id"] as
       | string
       | undefined) ?? null;
 
-  let contactId = recipient.contactId;
-  if (!contactId) {
-    const { data: contact } = await supabase
-      .from("contacts")
-      .upsert(
-        { organization_id: organizationId, phone: normalizePhone(to), wa_id: to },
-        { onConflict: "organization_id,phone" },
-      )
-      .select("id")
-      .single();
-    contactId = (contact?.id as string) ?? null;
-  }
-
-  const conversationId = await conversationFor(
-    supabase,
-    organizationId,
-    sender.accountId,
-    contactId,
-  );
   const nowIso = new Date().toISOString();
 
   const { data: message } = await supabase
@@ -243,5 +313,29 @@ export async function sendCampaignTemplate(
     await supabase.from("conversations").update({ last_message_at: nowIso }).eq("id", conversationId);
   }
 
-  return { messageId: (message?.id as string) ?? null, error: null };
+  const messageId = (message?.id as string) ?? null;
+
+  emitEvent(supabase, "message.sent", {
+    organizationId,
+    whatsappAccountId: sender.accountId,
+    entityType: "message",
+    entityId: messageId,
+    properties: baseProperties,
+  });
+  // Meta bills per template category, so the meter is recorded on the same path.
+  recordUsage(supabase, meterForMessageCategory(context.category), {
+    organizationId,
+    quantity: 1,
+    metadata: {
+      whatsapp_account_id: sender.accountId,
+      waba_id: sender.wabaId,
+      campaign_id: context.campaignId,
+      template_name: template.name,
+      message_id: messageId,
+      message_type: "template",
+    },
+  });
+
+  return { messageId, error: null };
 }
+
