@@ -71,6 +71,19 @@ export async function logServerActivity(
   }
 }
 
+/** True only for platform super admins (profiles.is_super_admin). */
+export async function isSuperAdmin(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("is_super_admin")
+    .eq("id", userId)
+    .maybeSingle();
+  return (data as { is_super_admin?: boolean } | null)?.is_super_admin === true;
+}
+
 export type GraphResult = { ok: boolean; status: number; body: Record<string, unknown> };
 
 export async function graphFetch(
