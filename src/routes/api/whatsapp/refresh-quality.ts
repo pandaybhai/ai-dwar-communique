@@ -69,6 +69,14 @@ export const Route = createFileRoute("/api/whatsapp/refresh-quality")({
           .eq("id", account.id as string);
         if (updateErr) return jsonError("We couldn't save the latest quality rating.", 500);
 
+        // Append to the quality timeline — the account row only holds current state.
+        await supabase.from("whatsapp_quality_history").insert({
+          organization_id: organizationId,
+          phone_number_id: account.phone_number_id as string,
+          quality_rating: rating,
+          recorded_at: nowIso,
+        });
+
         if (previous !== rating) {
           await logServerActivity(supabase, organizationId, userId, "quality_changed", {
             old_rating: previous,
