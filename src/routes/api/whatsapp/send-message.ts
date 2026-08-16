@@ -215,8 +215,12 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
             entityType: "message",
             entityId: failedMessage?.id ?? null,
             properties: {
+              message_id: failedMessage?.id ?? null,
+              conversation_id: conversation?.id ?? null,
+              contact_id: contactId,
               campaign_id: null,
               template_name: messageType === "template" ? templateName : null,
+              billing_category: messageType === "template" ? "utility" : "service",
               waba_id: connection.wabaId,
               whatsapp_account_id: connection.accountId,
               message_type: messageType,
