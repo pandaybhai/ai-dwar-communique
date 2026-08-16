@@ -68,6 +68,8 @@ export function AnalyticsView({
     setError(null);
     const label = RANGES.find((r) => r.days === days)?.label ?? `Last ${days} days`;
     const period: Period = periodForDays(timezone, days, label);
+    // One filter object for every panel — unfiltered means all numbers combined.
+    const filters = makeFilters(period, accountId === "all" ? null : accountId);
 
     const [
       overviewRes,
@@ -80,16 +82,17 @@ export function AnalyticsView({
       automationRes,
       qualityRes,
     ] = await Promise.all([
-      fetchOverview(organizationId, period),
-      fetchTimeseries(organizationId, period),
-      fetchCampaignPerformance(organizationId, period),
-      fetchContactsSummary(organizationId),
-      fetchSourceBreakdown(organizationId),
-      fetchResponseTimes(organizationId, period),
-      fetchTeamPerformance(organizationId, period),
-      fetchAutomationPerformance(organizationId, period),
-      fetchQualityHistory(organizationId, period),
+      fetchOverview(organizationId, filters),
+      fetchTimeseries(organizationId, filters),
+      fetchCampaignPerformance(organizationId, filters),
+      fetchContactsSummary(organizationId, filters),
+      fetchSourceBreakdown(organizationId, filters),
+      fetchResponseTimes(organizationId, filters),
+      fetchTeamPerformance(organizationId, filters),
+      fetchAutomationPerformance(organizationId, filters),
+      fetchQualityHistory(organizationId, filters),
     ]);
+
 
     const firstError =
       overviewRes.error ??
