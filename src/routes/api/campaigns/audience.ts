@@ -19,6 +19,16 @@ export const Route = createFileRoute("/api/campaigns/audience")({
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
 
+        // The number is part of the request: opt-out state is workspace-wide,
+        // but sendability belongs to a number, so the count is re-run whenever
+        // the picker changes. An account id that isn't ours is rejected.
+        const accountId = (payload["whatsapp_account_id"] as string | null) || null;
+        if (accountId) {
+          const { resolveAccount } = await import("@/lib/whatsapp-numbers.server");
+          const { account } = await resolveAccount(auth.supabase, auth.organizationId, accountId);
+          if (!account) return jsonError("That number isn't connected to this workspace.");
+        }
+
         try {
           const summary = await audienceSummary(
             auth.supabase,
@@ -29,6 +39,7 @@ export const Route = createFileRoute("/api/campaigns/audience")({
         } catch {
           return jsonError("We couldn't work out this audience. Please try again.", 500);
         }
+
       },
     },
   },

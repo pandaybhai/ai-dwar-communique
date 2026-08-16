@@ -129,7 +129,9 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         await logServerActivity(supabase, organizationId, userId, "campaign_launched", {
           name,
           recipient_count: rows.length,
+          whatsapp_account_id: connection.accountId,
         });
+
 
         return Response.json({
           campaign_id: campaign.id,
