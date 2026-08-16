@@ -184,20 +184,27 @@ export function InboxView() {
     await aidwar.from("conversations").update({ unread_count: 0 }).eq("id", id);
   }, []);
 
+  const numberById = useMemo(
+    () => new Map(numbers.map((n) => [n.id, n])),
+    [numbers],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return conversations.filter((c) => {
       if (filter === "open" && c.status !== "open") return false;
       if (filter === "closed" && c.status !== "closed") return false;
       if (filter === "mine" && c.assigned_to !== userId) return false;
+      if (numberFilter !== "all" && c.whatsapp_account_id !== numberFilter) return false;
       if (!q) return true;
       const name = (c.contact?.name ?? "").toLowerCase();
       const phone = (c.contact?.phone ?? "").toLowerCase();
       return name.includes(q) || phone.includes(q);
     });
-  }, [conversations, filter, search, userId]);
+  }, [conversations, filter, numberFilter, search, userId]);
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
+
 
   const handleSend = async (text: string): Promise<boolean> => {
     if (!orgId || !activeConversation) return false;
