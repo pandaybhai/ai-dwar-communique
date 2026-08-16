@@ -130,9 +130,16 @@ export async function graphFetch(
 
 export function graphErrorMessage(body: Record<string, unknown>): string {
   const err = body["error"] as Record<string, unknown> | undefined;
+  const code = Number(err?.["code"] ?? 0);
+  // 131005 with a valid token almost always means the Meta app restricts which
+  // server IPs may call the API — our senders run on shared cloud IPs.
+  if (code === 131005) {
+    return "Meta refused this send with “Access denied”. The connected Meta app is restricting which server IP addresses can call the API — remove the server IP allowlist in the Meta app settings (App settings → Advanced → Allowed server IPs) and try again.";
+  }
   const msg = (err?.["error_user_msg"] ?? err?.["message"]) as string | undefined;
   return msg ?? "The messaging provider rejected the request.";
 }
+
 
 /** Re-exported from the shared helper so every write path agrees. */
 export { normalizePhone, toWaId } from "@/lib/phone";
