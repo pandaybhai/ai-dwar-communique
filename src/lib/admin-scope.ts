@@ -8,12 +8,29 @@ import { useOrg } from "@/lib/org-context";
  * to `all`; a partner tier can later resolve to its own client organizations
  * without any query being rewritten.
  */
-export type AdminScope = { mode: "all" } | { mode: "organizations"; organizationIds: string[] };
+export type AdminScope = ({ mode: "all" } | { mode: "organizations"; organizationIds: string[] }) & {
+  /** False while the org context is still resolving membership / super admin. */
+  ready: boolean;
+};
 
 export function useAdminScope(): AdminScope {
-  const { isSuperAdmin, memberships } = useOrg();
-  if (isSuperAdmin) return { mode: "all" };
-  return { mode: "organizations", organizationIds: memberships.map((m) => m.organization.id) };
+  const { isSuperAdmin, memberships, loading } = useOrg();
+  const orgIds = memberships.map((m) => m.organization.id).join(",");
+
+  // Must be referentially stable: admin lists put the scope in a useCallback
+  // dependency list, so a fresh object each render re-triggers the fetch and
+  // leaves the list stuck on skeletons forever.
+  return useMemo<AdminScope>(
+    () =>
+      isSuperAdmin
+        ? { mode: "all", ready: !loading }
+        : {
+            mode: "organizations",
+            organizationIds: orgIds ? orgIds.split(",") : [],
+            ready: !loading,
+          },
+    [isSuperAdmin, orgIds, loading],
+  );
 }
 
 /**
