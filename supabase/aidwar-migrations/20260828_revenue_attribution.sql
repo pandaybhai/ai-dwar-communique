@@ -351,7 +351,7 @@ BEGIN
       (SELECT f.name FROM public.flows f WHERE f.id = g.source_id),
       'Unknown'
     )::text,
-    g.messages_sent, g.orders, g.revenue, ROUND(g.median_hours, 1), g.currency
+    g.messages_sent, g.orders, g.revenue::numeric, ROUND(g.median_hours::numeric, 1), g.currency
   FROM merged g
   ORDER BY g.revenue DESC, g.messages_sent DESC;
 END;
