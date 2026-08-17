@@ -41,34 +41,34 @@ function FlowsPage() {
   return (
     <>
       <PageHeader
-        title="Flows"
-        description="Turn store events into messages — a nudge when a checkout is abandoned, an update when an order ships."
+        title="Automatic messages"
+        description="Let AiDwar message your customers on WhatsApp for you — a reminder when someone leaves items in their cart, an update when their order ships."
       />
       {loading || permsLoading || flagLoading ? (
         <PageSkeleton />
       ) : !active ? (
         <EmptyState
           icon={Workflow}
-          title="No workspace selected"
-          description="Pick a workspace from the switcher to see its flows."
+          title="Pick a shop first"
+          description="Choose a shop at the top of the page to see its automatic messages."
         />
       ) : !enabled ? (
         <EmptyState
           icon={Lock}
-          title="Flows are turned off"
-          description="This feature isn't enabled for your workspace yet. Ask your administrator to switch it on."
+          title="This isn\u2019t switched on for you yet"
+          description="Automatic messages aren't available on your account yet. Ask us or your administrator to switch them on."
         />
       ) : !can("flows.view") ? (
         <EmptyState
           icon={Lock}
-          title="Flows are restricted"
-          description='You need the "View flows" permission for this workspace. Ask an owner or admin to grant it.'
+          title="You don\u2019t have access to this"
+          description="Ask the shop owner to give you permission to see automatic messages."
         />
       ) : (
         <Tabs defaultValue="flows">
           <TabsList className="mb-6">
-            <TabsTrigger value="flows">Flows</TabsTrigger>
-            <TabsTrigger value="log">Sends log</TabsTrigger>
+            <TabsTrigger value="flows">Your flows</TabsTrigger>
+            <TabsTrigger value="log">What was sent</TabsTrigger>
           </TabsList>
           <TabsContent value="flows">
             <FlowsView organizationId={active.organization.id} onLoaded={setFlows} />

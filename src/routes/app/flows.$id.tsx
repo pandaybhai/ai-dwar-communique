@@ -35,8 +35,8 @@ function FlowDetailPage() {
     return (
       <EmptyState
         icon={Lock}
-        title="Flows are unavailable"
-        description="This feature is either switched off for your workspace or you don't have permission to see it."
+        title="You don\u2019t have access to this"
+        description="Automatic messages are either switched off for your account, or you don't have permission to see them."
       />
     );
   }
