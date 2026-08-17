@@ -616,6 +616,19 @@ async function failJob(supabase: SupabaseClient, job: JobRow, message: string): 
  * next tick resumes from the stored cursor, so a big store backfills across
  * many short invocations instead of dying inside one.
  */
+/**
+ * A failure that must not kill the job: refresh timeouts, 5xx and 429 are all
+ * retryable against the same refresh token, so the job goes back in the queue.
+ */
+class TransientSyncError extends Error {
+  constructor(
+    message: string,
+    readonly fatal: boolean,
+  ) {
+    super(message);
+  }
+}
+
 async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<string, unknown>> {
   const { getShopifyConnection, refreshShopifyToken } = await import("@/lib/shopify.server");
   // getShopifyConnection refreshes ahead of the expiry window, so the token we
@@ -668,7 +681,7 @@ async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<s
       refreshToken: row?.refresh_token ?? null,
       refreshTokenExpiresAt: row?.refresh_token_expires_at ?? null,
     });
-    if (!refreshed.ok) throw new Error(refreshed.error);
+    if (!refreshed.ok) throw new TransientSyncError(refreshed.error, refreshed.fatal);
     accessToken = refreshed.accessToken;
     return call();
   };
@@ -771,6 +784,11 @@ export async function processSyncJobTick(
     return { stalled, claimed: true, ...result };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Backfill chunk failed.";
+    if (err instanceof TransientSyncError && !err.fatal) {
+      // Leave the job queued: the next tick retries with the same credentials.
+      await updateJob(supabase, job.id, { status: "queued", error: message });
+      return { stalled, claimed: true, job_id: job.id, retry: message };
+    }
     await failJob(supabase, job, message);
     return { stalled, claimed: true, job_id: job.id, failed: message };
   }
