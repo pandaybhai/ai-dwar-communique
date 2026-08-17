@@ -142,7 +142,9 @@ export function ReceiptsView({
   organizationId: string;
   timezone: string;
 }) {
-  const [days, setDays] = useState(30);
+  const [period, setPeriod] = useState<Period>(() =>
+    periodForDays(timezone, 30, "Last 30 days"),
+  );
   const [accountId, setAccountId] = useState<string>("all");
   const { numbers, multiple } = useWhatsAppNumbers({ activeOnly: false });
 
@@ -157,8 +159,6 @@ export function ReceiptsView({
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const label = RANGES.find((r) => r.days === days)?.label ?? `Last ${days} days`;
-    const period: Period = periodForDays(timezone, days, label);
     const filters = makeFilters(period, accountId === "all" ? null : accountId);
 
     const [sourceRes, stepRes, summaryRes, settingsRes] = await Promise.all([
@@ -176,7 +176,7 @@ export function ReceiptsView({
     setSummary(summaryRes.data ?? null);
     setGst(Number(settingsRes.data?.gst_percent ?? 18));
     setLoading(false);
-  }, [organizationId, timezone, days, accountId]);
+  }, [organizationId, period, accountId]);
 
   useEffect(() => {
     void load();
@@ -191,23 +191,27 @@ export function ReceiptsView({
   const stepsFor = (row: AttributionSourceRow) =>
     steps.filter((s) => s.source_id === row.source_id && s.source_type === row.source_type);
 
+  const exportCsv = () => {
+    const selected = numbers.find((n) => n.id === accountId);
+    const csv = buildReceiptsCsv({
+      rows: active,
+      steps,
+      totals,
+      gstPercent: gst,
+      currency,
+      period,
+      numberLabel: selected ? numberLabel(selected) : "All numbers",
+    });
+    downloadCsv(`aidwar-receipts-${period.from}-to-${period.to}.csv`, csv);
+  };
+
   if (error) return <ErrorState message={error} />;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-          <SelectTrigger className="w-44 rounded-full" aria-label="Time period">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {RANGES.map((r) => (
-              <SelectItem key={r.days} value={String(r.days)}>
-                {r.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <DateRangePicker timezone={timezone} period={period} onChange={setPeriod} />
+
 
         {multiple ? (
           <Select value={accountId} onValueChange={setAccountId}>
