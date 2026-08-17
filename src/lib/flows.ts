@@ -60,6 +60,10 @@ export type SendSettingsRow = {
   attribution_window_hours: number;
   /** India-specific tax added on top of what Meta bills, shown on Receipts. */
   gst_percent: number;
+  /** Days of silence after which we try to win a customer back. */
+  winback_after_days: number;
+  /** Days after an order at which we suggest buying again. */
+  reorder_after_days: number;
 };
 
 export const DEFAULT_SEND_SETTINGS: Omit<SendSettingsRow, "organization_id"> = {
@@ -71,7 +75,10 @@ export const DEFAULT_SEND_SETTINGS: Omit<SendSettingsRow, "organization_id"> = {
   marketing_cap_per_week: 3,
   attribution_window_hours: 72,
   gst_percent: 18,
+  winback_after_days: 90,
+  reorder_after_days: 45,
 };
+
 
 export function messageClassOf(flow: Pick<FlowRow, "config">): MessageClass {
   const declared = String((flow.config ?? {})["message_class"] ?? "").toLowerCase();
@@ -108,7 +115,26 @@ export const FLOW_COPY: Record<string, { title: string; promise: string; trigger
       "Automatically tell customers when their order is confirmed, shipped and delivered — so they stop asking.",
     trigger: "Customer places an order",
   },
+  winback: {
+    title: "Win back quiet customers",
+    promise:
+      "When a customer hasn't ordered for a while, we'll send one friendly message inviting them back. You choose how long \u201Ca while\u201D is in Settings.",
+    trigger: "A customer hasn't ordered in a long time",
+  },
+  reorder: {
+    title: "Time to reorder",
+    promise:
+      "For things people buy again \u2014 when an order is old enough that they may be running low, we'll offer them a one-tap reorder.",
+    trigger: "An order is old enough to be running out",
+  },
+  review_request: {
+    title: "Ask for a review",
+    promise:
+      "Three days after an order is delivered, we'll ask the customer how it went. Reviews help the next shopper decide.",
+    trigger: "An order is delivered",
+  },
 };
+
 
 export function flowTitle(flow: Pick<FlowRow, "key" | "name">): string {
   return FLOW_COPY[flow.key]?.title ?? flow.name;
@@ -153,6 +179,7 @@ export const CANCEL_REASON_LABELS: Record<string, string> = {
   no_template: "Not sent — no message was chosen for this step",
   trigger_gone: "Not sent — the order or cart no longer applies",
   contact_missing: "Not sent — this customer was removed",
+  customer_returned: "Not sent — they placed a new order in the meantime",
 };
 
 export function cancelReasonLabel(reason: string | null | undefined): string | null {
@@ -162,6 +189,12 @@ export function cancelReasonLabel(reason: string | null | undefined): string | n
 
 /** Human names for the steps the seeded flows ship with. */
 export function stepLabel(flowKey: string, step: FlowStepRow): string {
+  const byFlow: Record<string, string> = {
+    winback: "Come back message",
+    reorder: "Reorder nudge",
+    review_request: "Review request",
+  };
+  if (byFlow[flowKey]) return byFlow[flowKey] as string;
   const event = String((step.condition ?? {})["event"] ?? "");
   const byEvent: Record<string, string> = {
     order_created: "Order confirmed",
@@ -174,6 +207,7 @@ export function stepLabel(flowKey: string, step: FlowStepRow): string {
   }
   return `Message ${step.step_order}`;
 }
+
 
 /** "1 hour later", "1 day later" — never a number of minutes. */
 export function formatDelay(minutes: number): string {

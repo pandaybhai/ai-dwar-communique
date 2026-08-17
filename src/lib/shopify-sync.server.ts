@@ -372,7 +372,22 @@ export async function upsertOrder(
     if (row.fulfilled_at && !previous?.fulfillment_status) await schedule("order_fulfilled");
     else if (row.fulfillment_status === "fulfilled" && previous?.fulfillment_status !== "fulfilled")
       await schedule("order_fulfilled");
-    if (row.delivered_at) await schedule("order_delivered");
+    if (row.delivered_at) {
+      await schedule("order_delivered");
+      // Review request: same delivery moment, its own flow, three days later.
+      outcomes.push(
+        await scheduleFlow(ctx.supabase, {
+          organizationId: ctx.organizationId,
+          flowKey: "review_request",
+          contactId: match.contactId,
+          triggerType: "review_request",
+          triggerId: orderId,
+          event: "order_delivered",
+          ...(row.delivered_at ? { baseAt: new Date(row.delivered_at) } : {}),
+        }),
+      );
+    }
+
     if (row.cancelled_at && !previous?.cancelled_at) {
       await cancelScheduledSends(ctx.supabase, orderId, "order_cancelled");
     }

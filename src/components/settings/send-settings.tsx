@@ -52,8 +52,9 @@ export function SendSettingsTab() {
     const { data } = await aidwar
       .from("organization_send_settings")
       .select(
-        "quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_exempt_transactional, marketing_cap_per_day, marketing_cap_per_week, attribution_window_hours, gst_percent",
+        "quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_exempt_transactional, marketing_cap_per_day, marketing_cap_per_week, attribution_window_hours, gst_percent, winback_after_days, reorder_after_days",
       )
+
       .eq("organization_id", orgId)
       .maybeSingle();
     setRow((data as Omit<SendSettingsRow, "organization_id">) ?? { ...DEFAULT_SEND_SETTINGS });
@@ -222,7 +223,53 @@ export function SendSettingsTab() {
               onChange={(e) => set({ marketing_cap_per_week: Math.max(0, Number(e.target.value)) })}
             />
           </div>
+      </div>
+
+      <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">
+        <h2 className="text-base font-semibold text-foreground">When a customer goes quiet</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          These decide when the “Win back quiet customers” and “Time to reorder” messages become
+          due. Both only go to customers who agreed to promotional messages, and both respect your
+          quiet hours and frequency caps.
+        </p>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="winback_days">Win them back after (days without an order)</Label>
+            <Input
+              id="winback_days"
+              type="number"
+              min={1}
+              max={730}
+              value={row.winback_after_days}
+              disabled={!canManage}
+              onChange={(e) =>
+                set({
+                  winback_after_days: Math.min(730, Math.max(1, Number(e.target.value) || 1)),
+                })
+              }
+            />
+            <p className="text-xs text-muted-foreground">Most shops leave this at 90 days.</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="reorder_days">Suggest a reorder after (days since that order)</Label>
+            <Input
+              id="reorder_days"
+              type="number"
+              min={1}
+              max={730}
+              value={row.reorder_after_days}
+              disabled={!canManage}
+              onChange={(e) =>
+                set({
+                  reorder_after_days: Math.min(730, Math.max(1, Number(e.target.value) || 1)),
+                })
+              }
+            />
+            <p className="text-xs text-muted-foreground">Most shops leave this at 45 days.</p>
+          </div>
         </div>
+      </div>
+
       </div>
 
       <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">

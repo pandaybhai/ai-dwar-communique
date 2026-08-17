@@ -43,6 +43,7 @@ import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/con
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
+import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
 import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/internal/reconcile-events'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
@@ -241,6 +242,11 @@ const ApiInternalCampaignWorkerRoute =
     path: '/api/internal/campaign-worker',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiInternalFlowScanRoute = ApiInternalFlowScanRouteImport.update({
+  id: '/api/internal/flow-scan',
+  path: '/api/internal/flow-scan',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalFlowWorkerRoute = ApiInternalFlowWorkerRouteImport.update({
   id: '/api/internal/flow-worker',
   path: '/api/internal/flow-worker',
@@ -414,6 +420,7 @@ export interface FileRoutesByFullPath {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
+  '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
@@ -473,6 +480,7 @@ export interface FileRoutesByTo {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
+  '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
@@ -535,6 +543,7 @@ export interface FileRoutesById {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
+  '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
@@ -598,6 +607,7 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
+    | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
@@ -657,6 +667,7 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
+    | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
@@ -718,6 +729,7 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
+    | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
@@ -767,6 +779,7 @@ export interface RootRouteChildren {
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
+  ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
   ApiInternalReconcileEventsRoute: typeof ApiInternalReconcileEventsRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
@@ -1030,6 +1043,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalCampaignWorkerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/flow-scan': {
+      id: '/api/internal/flow-scan'
+      path: '/api/internal/flow-scan'
+      fullPath: '/api/internal/flow-scan'
+      preLoaderRoute: typeof ApiInternalFlowScanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/flow-worker': {
       id: '/api/internal/flow-worker'
       path: '/api/internal/flow-worker'
@@ -1284,6 +1304,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
+  ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
   ApiInternalReconcileEventsRoute: ApiInternalReconcileEventsRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
