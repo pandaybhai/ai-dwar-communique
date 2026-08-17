@@ -127,33 +127,14 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           details: { provider: "shopify", shop_domain: shopDomain, scopes },
         });
 
-        // Backfill runs behind the redirect so the merchant lands on a page,
-        // not on a spinner waiting for 90 days of orders.
-        const { data: job } = await service
-          .from("integration_sync_jobs")
-          .insert({
-            organization_id: verified.organizationId,
-            integration_id: integrationId,
-            kind: "backfill",
-            status: "running",
-            phase: "queued",
-          })
-          .select("id")
-          .maybeSingle();
-
-        const jobId = (job as { id: string } | null)?.id;
-        if (jobId) {
-          const { runBackfill } = await import("@/lib/shopify-sync.server");
-          void runBackfill(
-            {
-              supabase: service,
-              organizationId: verified.organizationId,
-              integrationId,
-              shopDomain,
-            },
-            { accessToken: exchange.accessToken, jobId },
-          ).catch(() => {});
-        }
+        // The backfill is queued, not run here: this request is about to end in
+        // a redirect and the runtime tears us down with it. The cron worker
+        // picks the job up on the next tick and walks it a page at a time.
+        const { enqueueBackfill } = await import("@/lib/shopify-sync.server");
+        await enqueueBackfill(service, {
+          organizationId: verified.organizationId,
+          integrationId,
+        });
 
         return settingsUrl({ shopify_connected: shopDomain });
       },
