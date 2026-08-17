@@ -383,20 +383,27 @@ export async function cancelRecoveredCheckouts(
   );
   if (triggerIds.length === 0) return 0;
 
-  let query = supabase
+  const { data: recovered } = await supabase
     .from("abandoned_checkouts")
     .select("id, contact_id, raw")
     .in("id", triggerIds)
     .not("recovered_at", "is", null);
-  if (match.contactId) query = query.eq("contact_id", match.contactId);
 
-  const { data: recovered } = await query;
+  const rows = (recovered as Array<{ id: string; contact_id: string | null; raw: Record<string, unknown> | null }>) ?? [];
+  const matched = rows.filter((row) => {
+    if (match.contactId && row.contact_id === match.contactId) return true;
+    if (!match.externalCustomerId) return false;
+    const customer = (row.raw?.["customer"] as Record<string, unknown> | undefined) ?? {};
+    return String(customer["id"] ?? "") === String(match.externalCustomerId);
+  });
+
   let cancelled = 0;
-  for (const row of (recovered as Array<{ id: string }>) ?? []) {
+  for (const row of matched) {
     cancelled += await cancelScheduledSends(supabase, row.id, "recovered");
   }
   return cancelled;
 }
+
 
 /** True when the checkout behind a pending send has since been recovered. */
 export async function triggerStillValid(
