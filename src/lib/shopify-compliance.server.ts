@@ -74,7 +74,7 @@ export async function receiveComplianceWebhook(
     .maybeSingle();
 
   // A repeat delivery of an event we already hold is acknowledged, not re-run.
-  if (error) return { response: new Response("ok", { status: 200 }) };
+  if (error) return { response: Response.json({ ok: true, duplicate: true }, { status: 200 }) };
 
   return {
     delivery: {
