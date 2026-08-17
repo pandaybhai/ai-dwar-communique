@@ -27,6 +27,7 @@ import { LeadSourcesTab } from "@/components/contacts/lead-sources-settings";
 import { OptOutKeywordsCard } from "@/components/contacts/opt-out-keywords-settings";
 import { DeleteWorkspaceCard } from "@/components/settings/delete-workspace-card";
 import { IntegrationsTab } from "@/components/integrations/integrations-settings";
+import { SendSettingsTab } from "@/components/settings/send-settings";
 
 
 export const Route = createFileRoute("/app/settings")({
@@ -77,6 +78,8 @@ function SettingsTabs() {
   const { enabled: shopifyEnabled } = useFeatureFlag("shopify");
   const { can } = usePermissions();
   const showIntegrations = shopifyEnabled && can("integrations.view");
+  const { enabled: flowsEnabled } = useFeatureFlag("flows");
+  const showSending = flowsEnabled && can("flows.view");
 
   return (
     <Tabs defaultValue="general" className="max-w-3xl">
@@ -85,6 +88,7 @@ function SettingsTabs() {
         <TabsTrigger value="team">Team</TabsTrigger>
         <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
         {showIntegrations ? <TabsTrigger value="integrations">Integrations</TabsTrigger> : null}
+        {showSending ? <TabsTrigger value="sending">Sending</TabsTrigger> : null}
         <TabsTrigger value="sources">Lead sources</TabsTrigger>
       </TabsList>
       <TabsContent value="general" className="mt-6 space-y-6">
@@ -101,6 +105,11 @@ function SettingsTabs() {
       {showIntegrations ? (
         <TabsContent value="integrations" className="mt-6">
           <IntegrationsTab />
+        </TabsContent>
+      ) : null}
+      {showSending ? (
+        <TabsContent value="sending" className="mt-6">
+          <SendSettingsTab />
         </TabsContent>
       ) : null}
       <TabsContent value="sources" className="mt-6 space-y-6">
