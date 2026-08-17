@@ -20,6 +20,10 @@ export function SiteFooter() {
             <Link to="/terms" className="text-muted-foreground hover:text-foreground">
               Terms of Service
             </Link>
+            <Link to="/data-deletion" className="text-muted-foreground hover:text-foreground">
+              Data Deletion
+            </Link>
+
             <a
               href="mailto:support@aidwar.in"
               className="text-muted-foreground hover:text-foreground"
