@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage, Section, Bullets } from "@/components/legal-page";
 
 const TITLE = "Privacy Policy — AiDwar";
