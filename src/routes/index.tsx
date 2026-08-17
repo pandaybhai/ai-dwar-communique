@@ -24,9 +24,9 @@ import { WaitlistDialog } from "@/components/waitlist-dialog";
 import { PhoneDemo } from "@/components/marketing/phone-demo";
 import { Reveal } from "@/components/marketing/reveal";
 
-const TITLE = "AiDwar — Your AI Marketing Employee for WhatsApp";
+const TITLE = "AiDwar — AI WhatsApp Marketing Platform for Growing Businesses";
 const DESCRIPTION =
-  "AiDwar plans campaigns, writes messages, replies to customers and reports revenue on the official WhatsApp Business API. You approve, it executes.";
+  "AiDwar is the AI-powered WhatsApp marketing platform that automates campaigns, replies, and analytics on the official WhatsApp Business API.";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -158,8 +158,8 @@ function Index() {
                 </span>
               </h1>
               <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                AiDwar plans campaigns, writes messages, replies to customers and reports revenue —
-                on the official WhatsApp Business API. You approve, it executes.
+                AiDwar is the AI-powered WhatsApp marketing platform that automates campaigns,
+                replies, and analytics — on the official WhatsApp Business API.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <WaitlistDialog
