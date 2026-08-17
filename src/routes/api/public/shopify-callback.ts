@@ -56,6 +56,14 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           return settingsUrl({ shopify_error: "exchange" });
         }
 
+        // Only an offline token (shpat_) survives long enough for background
+        // sync. Refuse an online token at install rather than storing it.
+        const { isOfflineAccessToken } = await import("@/lib/shopify.server");
+        if (!isOfflineAccessToken(exchange.accessToken)) {
+          return settingsUrl({ shopify_error: "online_token" });
+        }
+
+
         const service = getServiceClient();
         const nowIso = new Date().toISOString();
         const scopes = exchange.scopes?.length ? exchange.scopes : [...SHOPIFY_SCOPES];

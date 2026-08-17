@@ -118,6 +118,18 @@ export async function verifyWebhookHmac(
   return timingSafeEqual(header, expected);
 }
 
+/**
+ * Offline tokens (shpat_) are issued to the app and never expire; online
+ * (per-user) tokens (shpua_) die with the user's session and would break the
+ * background sync worker. The install URL therefore never sends
+ * grant_options[]=per-user — Shopify defaults to offline without it.
+ */
+export const ONLINE_TOKEN_ERROR = "online access token detected — reinstall required";
+
+export function isOfflineAccessToken(token: string | null | undefined): boolean {
+  return String(token ?? "").startsWith("shpat_");
+}
+
 export function buildInstallUrl(args: {
   shopDomain: string;
   apiKey: string;
@@ -129,8 +141,10 @@ export function buildInstallUrl(args: {
   url.searchParams.set("scope", SHOPIFY_SCOPES.join(","));
   url.searchParams.set("redirect_uri", args.redirectUri);
   url.searchParams.set("state", args.state);
+  // Deliberately no grant_options[]=per-user: that would mint an online token.
   return url.toString();
 }
+
 
 export function callbackUrl(request: Request): string {
   const configured = process.env["SHOPIFY_APP_URL"];

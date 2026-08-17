@@ -617,12 +617,22 @@ async function failJob(supabase: SupabaseClient, job: JobRow, message: string): 
  * many short invocations instead of dying inside one.
  */
 async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<string, unknown>> {
-  const { getShopifyConnection } = await import("@/lib/shopify.server");
+  const { getShopifyConnection, isOfflineAccessToken, ONLINE_TOKEN_ERROR } = await import(
+    "@/lib/shopify.server"
+  );
   const connection = await getShopifyConnection(supabase, job.integration_id);
   if (!connection.ok) {
     await failJob(supabase, job, connection.error);
     return { job_id: job.id, failed: connection.error };
   }
+
+  // Startup assertion: an online (per-user) token expires and would break this
+  // worker mid-backfill. Surface it now instead of failing silently later.
+  if (!isOfflineAccessToken(connection.accessToken)) {
+    await failJob(supabase, job, ONLINE_TOKEN_ERROR);
+    return { job_id: job.id, failed: ONLINE_TOKEN_ERROR };
+  }
+
 
   const ctx: SyncContext = {
     supabase,

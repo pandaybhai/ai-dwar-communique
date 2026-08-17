@@ -8,6 +8,9 @@ embedded = false
 
 [access_scopes]
 scopes = "read_orders,read_checkouts,read_customers,read_products"
+# Offline (shpat_) tokens only — the background sync worker must outlive any
+# user session, so the app is never installed in online access mode.
+use_legacy_install_flow = true
 
 [auth]
 redirect_urls = [
