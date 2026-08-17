@@ -90,10 +90,10 @@ export function IntegrationsTab() {
 
   const load = useCallback(
     async (quiet = false) => {
-      if (!active?.id) return;
+      if (!active?.organization.id) return;
       if (!quiet) setLoading(true);
       const { data, error: err } = await callApi<ListResponse>(
-        `/api/integrations/shopify?organization_id=${encodeURIComponent(active.id)}`,
+        `/api/integrations/shopify?organization_id=${encodeURIComponent(active.organization.id)}`,
         { method: "GET" },
       );
       if (err) setError(err);
@@ -104,7 +104,7 @@ export function IntegrationsTab() {
       }
       setLoading(false);
     },
-    [active?.id],
+    [active?.organization.id],
   );
 
   useEffect(() => {
@@ -146,11 +146,11 @@ export function IntegrationsTab() {
   }, []);
 
   const startInstall = async () => {
-    if (!active?.id) return;
+    if (!active?.organization.id) return;
     setInstalling(true);
     const { data, error: err } = await callApi<{ install_url: string }>(
       "/api/integrations/shopify",
-      { body: { organization_id: active.id, action: "install", shop_domain: shopDomain } },
+      { body: { organization_id: active.organization.id, action: "install", shop_domain: shopDomain } },
     );
     setInstalling(false);
     if (err || !data?.install_url) {
@@ -161,10 +161,10 @@ export function IntegrationsTab() {
   };
 
   const act = async (integrationId: string, action: "resync" | "disconnect") => {
-    if (!active?.id) return;
+    if (!active?.organization.id) return;
     setBusyId(integrationId);
     const { error: err } = await callApi(`/api/integrations/shopify`, {
-      body: { organization_id: active.id, action, integration_id: integrationId },
+      body: { organization_id: active.organization.id, action, integration_id: integrationId },
     });
     setBusyId(null);
     if (err) {
