@@ -40,12 +40,12 @@ export async function receiveComplianceWebhook(
     await import("@/lib/shopify.server");
 
   const creds = shopifyCredentials();
-  if (!creds) return { response: new Response("Not configured", { status: 503 }) };
+  if (!creds) return { response: Response.json({ error: "Not configured" }, { status: 503 }) };
 
   const rawBody = await request.text();
   const signature = request.headers.get("x-shopify-hmac-sha256");
   if (!(await verifyWebhookHmac(rawBody, signature, creds.apiSecret))) {
-    return { response: new Response("Invalid signature", { status: 401 }) };
+    return { response: Response.json({ error: "Invalid signature" }, { status: 401 }) };
   }
 
   const shopDomain = normalizeShopDomain(request.headers.get("x-shopify-shop-domain"));
@@ -74,7 +74,7 @@ export async function receiveComplianceWebhook(
     .maybeSingle();
 
   // A repeat delivery of an event we already hold is acknowledged, not re-run.
-  if (error) return { response: new Response("ok", { status: 200 }) };
+  if (error) return { response: Response.json({ ok: true, duplicate: true }, { status: 200 }) };
 
   return {
     delivery: {

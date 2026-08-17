@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-/** Shopify mandatory compliance webhook: customers/data_request. */
-export const Route = createFileRoute("/api/public/shopify/webhooks/customers-data-request")({
+/**
+ * Shopify mandatory compliance webhook: customers/data_request.
+ * Alias of /api/public/shopify/webhooks/customers-data-request so deliveries
+ * to either path are honoured.
+ */
+export const Route = createFileRoute("/api/shopify/webhooks/customers-data-request")({
   server: {
     handlers: {
       POST: async ({ request }) => {

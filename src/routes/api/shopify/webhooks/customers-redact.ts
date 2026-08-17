@@ -1,7 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-/** Shopify mandatory compliance webhook: customers/redact. */
-export const Route = createFileRoute("/api/public/shopify/webhooks/customers-redact")({
+/**
+ * Shopify mandatory compliance webhook: customers/redact.
+ * Alias of /api/public/shopify/webhooks/customers-redact.
+ */
+export const Route = createFileRoute("/api/shopify/webhooks/customers-redact")({
   server: {
     handlers: {
       POST: async ({ request }) => {
