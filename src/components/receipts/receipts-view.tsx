@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, IndianRupee, Megaphone, RefreshCw, Workflow } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  IndianRupee,
+  Megaphone,
+  RefreshCw,
+  Workflow,
+} from "lucide-react";
 import { AnalyticsRevenue } from "@/components/analytics/analytics-revenue";
+import { DateRangePicker } from "@/components/receipts/date-range-picker";
 import { ErrorState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
 import { numberLabel } from "@/lib/whatsapp-numbers";
+import { buildReceiptsCsv, downloadCsv } from "@/lib/receipts-csv";
 import {
   fetchAttributionSources,
   fetchAttributionSteps,
@@ -36,11 +46,6 @@ import {
  * labelled rather than shown as if it were final.
  */
 
-const RANGES = [
-  { days: 7, label: "Last 7 days" },
-  { days: 30, label: "Last 30 days" },
-  { days: 90, label: "Last 90 days" },
-];
 
 function money(amount: number, currency: string | null): string {
   const value = Number(amount) || 0;
@@ -137,7 +142,9 @@ export function ReceiptsView({
   organizationId: string;
   timezone: string;
 }) {
-  const [days, setDays] = useState(30);
+  const [period, setPeriod] = useState<Period>(() =>
+    periodForDays(timezone, 30, "Last 30 days"),
+  );
   const [accountId, setAccountId] = useState<string>("all");
   const { numbers, multiple } = useWhatsAppNumbers({ activeOnly: false });
 
@@ -152,8 +159,6 @@ export function ReceiptsView({
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const label = RANGES.find((r) => r.days === days)?.label ?? `Last ${days} days`;
-    const period: Period = periodForDays(timezone, days, label);
     const filters = makeFilters(period, accountId === "all" ? null : accountId);
 
     const [sourceRes, stepRes, summaryRes, settingsRes] = await Promise.all([
@@ -171,7 +176,7 @@ export function ReceiptsView({
     setSummary(summaryRes.data ?? null);
     setGst(Number(settingsRes.data?.gst_percent ?? 18));
     setLoading(false);
-  }, [organizationId, timezone, days, accountId]);
+  }, [organizationId, period, accountId]);
 
   useEffect(() => {
     void load();
@@ -186,23 +191,27 @@ export function ReceiptsView({
   const stepsFor = (row: AttributionSourceRow) =>
     steps.filter((s) => s.source_id === row.source_id && s.source_type === row.source_type);
 
+  const exportCsv = () => {
+    const selected = numbers.find((n) => n.id === accountId);
+    const csv = buildReceiptsCsv({
+      rows: active,
+      steps,
+      totals,
+      gstPercent: gst,
+      currency,
+      period,
+      numberLabel: selected ? numberLabel(selected) : "All numbers",
+    });
+    downloadCsv(`aidwar-receipts-${period.from}-to-${period.to}.csv`, csv);
+  };
+
   if (error) return <ErrorState message={error} />;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-          <SelectTrigger className="w-44 rounded-full" aria-label="Time period">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {RANGES.map((r) => (
-              <SelectItem key={r.days} value={String(r.days)}>
-                {r.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <DateRangePicker timezone={timezone} period={period} onChange={setPeriod} />
+
 
         {multiple ? (
           <Select value={accountId} onValueChange={setAccountId}>
@@ -229,6 +238,17 @@ export function ReceiptsView({
         >
           <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
           Refresh
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          onClick={exportCsv}
+          disabled={loading || active.length === 0}
+        >
+          <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+          Export CSV
         </Button>
       </div>
 
