@@ -1,12 +1,14 @@
-/** Build identity, resolved from whatever the host provides at runtime. */
+import { COMMIT_SHA, BUILT_AT } from "@/build-info";
+
+/**
+ * Build identity. The values come from src/build-info.ts, a file generated at
+ * build time and compiled into the bundle — it cannot be missing at runtime
+ * the way an unset environment variable can.
+ */
 export function buildInfo() {
-  const commit =
-    process.env["COMMIT_SHA"] ??
-    process.env["VERCEL_GIT_COMMIT_SHA"] ??
-    process.env["CF_PAGES_COMMIT_SHA"] ??
-    process.env["GIT_COMMIT"] ??
-    "unknown";
-  const built_at = process.env["BUILD_TIME"] ?? null;
-  const env = process.env["NODE_ENV"] ?? "development";
-  return { commit, built_at, env };
+  return {
+    commit: COMMIT_SHA,
+    built_at: BUILT_AT,
+    env: process.env["NODE_ENV"] ?? "development",
+  };
 }
