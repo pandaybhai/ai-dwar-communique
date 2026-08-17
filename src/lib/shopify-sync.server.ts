@@ -622,23 +622,26 @@ async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<s
 
   if (phase === "orders") {
     // Window is anchored to the job, so resuming never shifts the range.
+    const windowDays = orderWindowDays(connection.integration);
     const since = new Date(
-      new Date(job.started_at).getTime() - 90 * 24 * 60 * 60 * 1000,
+      new Date(job.started_at).getTime() - windowDays * 24 * 60 * 60 * 1000,
     ).toISOString();
     const result: RestResult = await fetchPage("orders.json", {
       status: "any",
       created_at_min: since,
     });
     if (!result.ok) {
+      const detail = restErrorMessage(result);
       await failJob(
         supabase,
         job,
         result.status === 403
-          ? "Shopify refused access to orders (403). The app needs read_orders and approval for protected customer data."
-          : `Shopify orders sync failed (${result.status}).`,
+          ? `Shopify refused access to orders. The app needs read_orders (and read_all_orders for history beyond ${ORDER_WINDOW_DAYS} days) plus approval for protected customer data. ${detail}`
+          : `Shopify orders sync failed. ${detail}`,
       );
-      return { job_id: job.id, failed: "orders" };
+      return { job_id: job.id, failed: "orders", error: detail };
     }
+
     const list = Array.isArray(result.body["orders"]) ? (result.body["orders"] as AnyRecord[]) : [];
     let orders = job.orders_synced;
     let contacts = job.contacts_matched;
