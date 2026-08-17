@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone, toWaId } from "@/lib/phone";
 import { emitEvent, recordUsage } from "@/lib/events.server";
-import { shopifyRest, type RestResult } from "@/lib/shopify.server";
+import { shopifyRest, restErrorMessage, type RestResult } from "@/lib/shopify.server";
 
 /**
  * Turning Shopify objects into AiDwar rows.
