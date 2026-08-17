@@ -388,3 +388,27 @@ $$;
 REVOKE ALL ON FUNCTION public.analytics_attribution_steps(uuid, date, date, uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.analytics_attribution_steps(uuid, date, date, uuid)
   TO authenticated, service_role;
+
+-- GST is a presentation concern for the Receipts page, and lives behind the
+-- same permission guard as every other analytics read.
+CREATE OR REPLACE FUNCTION public.analytics_cost_settings(p_organization_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  tz text := public.analytics_guard(p_organization_id);
+BEGIN
+  RETURN jsonb_build_object(
+    'timezone', tz,
+    'gst_percent', COALESCE((
+      SELECT s.gst_percent FROM public.organization_send_settings s
+      WHERE s.organization_id = p_organization_id), 18)
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.analytics_cost_settings(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.analytics_cost_settings(uuid) TO authenticated, service_role;
