@@ -57,6 +57,8 @@ import { Route as ApiWhatsappTokenStatusRouteImport } from './routes/api/whatsap
 import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
 import { Route as AppCampaignsIdRouteImport } from './routes/app/campaigns.$id'
 import { Route as ApiPublicShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/public/shopify/webhooks/customers-data-request'
+import { Route as ApiPublicShopifyWebhooksCustomersRedactRouteImport } from './routes/api/public/shopify/webhooks/customers-redact'
+import { Route as ApiPublicShopifyWebhooksShopRedactRouteImport } from './routes/api/public/shopify/webhooks/shop-redact'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -306,6 +308,18 @@ const ApiPublicShopifyWebhooksCustomersDataRequestRoute =
     path: '/api/public/shopify/webhooks/customers-data-request',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicShopifyWebhooksCustomersRedactRoute =
+  ApiPublicShopifyWebhooksCustomersRedactRouteImport.update({
+    id: '/api/public/shopify/webhooks/customers-redact',
+    path: '/api/public/shopify/webhooks/customers-redact',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicShopifyWebhooksShopRedactRoute =
+  ApiPublicShopifyWebhooksShopRedactRouteImport.update({
+    id: '/api/public/shopify/webhooks/shop-redact',
+    path: '/api/public/shopify/webhooks/shop-redact',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -356,6 +370,8 @@ export interface FileRoutesByFullPath {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
+  '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
+  '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -404,6 +420,8 @@ export interface FileRoutesByTo {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/campaigns': typeof AppCampaignsIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
+  '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
+  '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -455,6 +473,8 @@ export interface FileRoutesById {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
+  '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
+  '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -507,6 +527,8 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/campaigns/'
     | '/api/public/shopify/webhooks/customers-data-request'
+    | '/api/public/shopify/webhooks/customers-redact'
+    | '/api/public/shopify/webhooks/shop-redact'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -555,6 +577,8 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/campaigns'
     | '/api/public/shopify/webhooks/customers-data-request'
+    | '/api/public/shopify/webhooks/customers-redact'
+    | '/api/public/shopify/webhooks/shop-redact'
   id:
     | '__root__'
     | '/'
@@ -605,6 +629,8 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/campaigns/'
     | '/api/public/shopify/webhooks/customers-data-request'
+    | '/api/public/shopify/webhooks/customers-redact'
+    | '/api/public/shopify/webhooks/shop-redact'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -642,6 +668,8 @@ export interface RootRouteChildren {
   ApiWhatsappTemplatesRoute: typeof ApiWhatsappTemplatesRoute
   ApiWhatsappTokenStatusRoute: typeof ApiWhatsappTokenStatusRoute
   ApiPublicShopifyWebhooksCustomersDataRequestRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
+  ApiPublicShopifyWebhooksCustomersRedactRoute: typeof ApiPublicShopifyWebhooksCustomersRedactRoute
+  ApiPublicShopifyWebhooksShopRedactRoute: typeof ApiPublicShopifyWebhooksShopRedactRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -982,6 +1010,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/shopify/webhooks/customers-redact': {
+      id: '/api/public/shopify/webhooks/customers-redact'
+      path: '/api/public/shopify/webhooks/customers-redact'
+      fullPath: '/api/public/shopify/webhooks/customers-redact'
+      preLoaderRoute: typeof ApiPublicShopifyWebhooksCustomersRedactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/shopify/webhooks/shop-redact': {
+      id: '/api/public/shopify/webhooks/shop-redact'
+      path: '/api/public/shopify/webhooks/shop-redact'
+      fullPath: '/api/public/shopify/webhooks/shop-redact'
+      preLoaderRoute: typeof ApiPublicShopifyWebhooksShopRedactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1069,6 +1111,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappTokenStatusRoute: ApiWhatsappTokenStatusRoute,
   ApiPublicShopifyWebhooksCustomersDataRequestRoute:
     ApiPublicShopifyWebhooksCustomersDataRequestRoute,
+  ApiPublicShopifyWebhooksCustomersRedactRoute:
+    ApiPublicShopifyWebhooksCustomersRedactRoute,
+  ApiPublicShopifyWebhooksShopRedactRoute:
+    ApiPublicShopifyWebhooksShopRedactRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

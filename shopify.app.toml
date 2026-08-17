@@ -1,4 +1,4 @@
-﻿# Shopify app configuration for AiDwar (Meezoy Ventures Private Limited).
+# Shopify app configuration for AiDwar (Meezoy Ventures Private Limited).
 # The API version here must match SHOPIFY_API_VERSION in src/lib/shopify.server.ts.
 
 name = "AiDwar"
