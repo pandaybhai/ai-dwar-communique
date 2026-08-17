@@ -77,7 +77,7 @@ function DataDeletionPage() {
         </p>
       </Section>
 
-      <Section heading="3. What we commit to">
+      <Section heading="4. What we commit to">
         <Bullets
           items={[
             "We acknowledge every request within 7 days.",
@@ -88,7 +88,7 @@ function DataDeletionPage() {
         />
       </Section>
 
-      <Section heading="4. What we keep, and why">
+      <Section heading="5. What we keep, and why">
         <Bullets
           items={[
             "Billing and tax records — invoices, payment references and GST records. Indian tax law requires us to keep these for 8 years from the end of the relevant financial year. They contain company and payment details, not your contacts or messages.",
@@ -98,13 +98,13 @@ function DataDeletionPage() {
         <p>Nothing else is retained after a deletion is completed.</p>
       </Section>
 
-      <Section heading="5. Meta Platform Data">
+      <Section heading="6. Meta Platform Data">
         <p>
           Access tokens, WhatsApp Business Account IDs, phone number IDs and related details we
-          receive from Meta are stored only for as long as the number is connected. They are deleted
-          when you disconnect a number, and when a workspace is deleted. They are never retained
-          after that, never shared with anyone else, and never used for any purpose other than
-          sending and receiving messages on your behalf.
+          receive from Meta are deleted as soon as a WhatsApp number is disconnected or a workspace
+          is deleted. They are never retained after that point, never shared with anyone else, and
+          never used for any purpose other than sending and receiving messages on your behalf while
+          the connection is active.
         </p>
       </Section>
 
