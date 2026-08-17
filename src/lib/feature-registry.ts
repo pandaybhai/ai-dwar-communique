@@ -24,6 +24,7 @@ export type FeatureIcon =
   | "settings"
   | "users"
   | "credit-card"
+  | "shopping-bag"
   | "sparkles";
 
 export type PermissionManifest = {
