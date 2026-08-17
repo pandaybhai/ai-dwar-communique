@@ -844,7 +844,12 @@ export const FEATURES: readonly FeatureManifest[] = [
       metrics: ["flow_sends", "flow_skips"],
       dashboard_section: false,
     },
-    activity_actions: ["flow_toggled", "flow_step_updated", "send_settings_updated"],
+    activity_actions: [
+      "flow_toggled",
+      "flow_step_updated",
+      "send_settings_updated",
+      "reconciliation_mismatch",
+    ],
     settings_path: "/app/settings",
     data_tables: [
       "flows",

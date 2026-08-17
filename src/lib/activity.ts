@@ -31,6 +31,7 @@ export type ActivityAction =
   | "flow_toggled"
   | "flow_step_updated"
   | "send_settings_updated"
+  | "reconciliation_mismatch"
   | "member.role_changed"
   | "member.removed"
   | "member.permission_overridden"
