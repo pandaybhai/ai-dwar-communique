@@ -253,7 +253,11 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             {
               campaignId: null,
               category: String(template.category ?? "utility").toLowerCase(),
+              flowId: send.flow_id,
+              flowStepId: send.flow_step_id,
+              scheduledSendId: send.id,
             },
+
           );
 
           if (outcome.error) {

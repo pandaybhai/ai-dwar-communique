@@ -208,25 +208,26 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
             .single();
 
           const { emitEvent: emitFailed } = await import("@/lib/events.server");
+          const { outboundMessageDimensions } = await import("@/lib/message-events");
           emitFailed(supabase, "message.failed", {
             organizationId,
             whatsappAccountId: connection.accountId,
             actorUserId: userId,
             entityType: "message",
             entityId: failedMessage?.id ?? null,
-            properties: {
-              message_id: failedMessage?.id ?? null,
-              conversation_id: conversation?.id ?? null,
-              contact_id: contactId,
-              campaign_id: null,
-              template_name: messageType === "template" ? templateName : null,
-              billing_category: messageType === "template" ? "utility" : "service",
-              waba_id: connection.wabaId,
-              whatsapp_account_id: connection.accountId,
-              message_type: messageType,
-              error_code: providerErrorCode(result.body),
-            },
+            properties: outboundMessageDimensions({
+              messageId: failedMessage?.id ?? null,
+              conversationId: conversation?.id ?? null,
+              contactId,
+              wabaId: connection.wabaId,
+              whatsappAccountId: connection.accountId,
+              templateName: messageType === "template" ? templateName : null,
+              messageType,
+              billingCategory: messageType === "template" ? "utility" : "service",
+              errorCode: providerErrorCode(result.body),
+            }),
           });
+
 
           console.error(
             JSON.stringify({
@@ -297,24 +298,25 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
             .maybeSingle();
           category = String((tpl as { category?: string } | null)?.category ?? "utility");
         }
+        const { outboundMessageDimensions } = await import("@/lib/message-events");
         emitEvent(supabase, "message.sent", {
           organizationId,
           whatsappAccountId: connection.accountId,
           actorUserId: userId,
           entityType: "message",
           entityId: message?.id ?? null,
-          properties: {
-            message_id: message?.id ?? null,
-            conversation_id: conversation?.id ?? null,
-            contact_id: contactId,
-            campaign_id: null,
-            message_type: messageType,
-            template_name: messageType === "template" ? templateName : null,
-            waba_id: connection.wabaId,
-            whatsapp_account_id: connection.accountId,
-            billing_category: category.toLowerCase(),
-          },
+          properties: outboundMessageDimensions({
+            messageId: message?.id ?? null,
+            conversationId: conversation?.id ?? null,
+            contactId,
+            wabaId: connection.wabaId,
+            whatsappAccountId: connection.accountId,
+            templateName: messageType === "template" ? templateName : null,
+            messageType,
+            billingCategory: category,
+          }),
         });
+
         recordUsage(supabase, meterForMessageCategory(category), {
           organizationId,
           quantity: 1,
