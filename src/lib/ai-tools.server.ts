@@ -232,6 +232,86 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       .order("is_default", { ascending: false });
     return { ok: true, data: data ?? [] };
   },
+
+  async lookupOrder(ctx, args) {
+    const orderNumber = str(args["order_number"]);
+    const phone = str(args["phone"]);
+    if (!orderNumber && !phone) return { ok: false, error: "Give an order_number or a phone." };
+
+    let query = ctx.supabase
+      .from("orders")
+      .select(
+        "id, order_number, financial_status, fulfillment_status, is_cod, currency, total, placed_at, cancelled_at, fulfilled_at, delivered_at, contact_id",
+      )
+      .eq("organization_id", ctx.organizationId)
+      .order("placed_at", { ascending: false })
+      .limit(1);
+
+    if (orderNumber) {
+      const withHash = orderNumber.startsWith("#") ? orderNumber : `#${orderNumber}`;
+      query = query.in("order_number", [orderNumber, withHash]);
+    } else {
+      const { contact } = await findContact(ctx, args);
+      if (!contact) return { ok: false, error: "No contact with that number in this workspace." };
+      query = query.eq("contact_id", contact["id"] as string);
+    }
+
+    const { data } = await query.maybeSingle();
+    if (!data) return { ok: false, error: "No matching order in this workspace." };
+
+    const order = data as Record<string, unknown>;
+    const { data: items } = await ctx.supabase
+      .from("order_items")
+      .select("title, quantity, price")
+      .eq("order_id", order["id"] as string);
+    return { ok: true, data: { ...order, items: items ?? [] } };
+  },
+
+  async getCustomerOrders(ctx, args) {
+    const { contact, error } = await findContact(ctx, args);
+    if (!contact) return { ok: false, error: error ?? "Not found." };
+    const limit = Math.min(Math.max(num(args["limit"], 5), 1), 20);
+    const { data } = await ctx.supabase
+      .from("orders")
+      .select(
+        "id, order_number, financial_status, fulfillment_status, is_cod, currency, total, placed_at, cancelled_at",
+      )
+      .eq("organization_id", ctx.organizationId)
+      .eq("contact_id", contact["id"] as string)
+      .order("placed_at", { ascending: false })
+      .limit(limit);
+    return { ok: true, data: { contact_id: contact["id"], orders: data ?? [] } };
+  },
+
+  async getAbandonedCheckout(ctx, args) {
+    const { contact, error } = await findContact(ctx, args);
+    if (!contact) return { ok: false, error: error ?? "Not found." };
+    const { data } = await ctx.supabase
+      .from("abandoned_checkouts")
+      .select("id, checkout_url, total, currency, abandoned_at, recovered_at")
+      .eq("organization_id", ctx.organizationId)
+      .eq("contact_id", contact["id"] as string)
+      .is("recovered_at", null)
+      .order("abandoned_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!data) return { ok: false, error: "No open abandoned checkout for that customer." };
+    return { ok: true, data };
+  },
+
+  async searchProducts(ctx, args) {
+    const query = str(args["query"]);
+    if (!query) return { ok: false, error: "query is required." };
+    const limit = Math.min(Math.max(num(args["limit"], 5), 1), 20);
+    const safe = query.replace(/[%,()]/g, " ").trim();
+    const { data } = await ctx.supabase
+      .from("products")
+      .select("id, title, price, currency, status, product_url, image_url")
+      .eq("organization_id", ctx.organizationId)
+      .ilike("title", `%${safe}%`)
+      .limit(limit);
+    return { ok: true, data: data ?? [] };
+  },
 };
 
 /** Flag state for one organization, resolved exactly like the client hook. */
