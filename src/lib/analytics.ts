@@ -98,12 +98,41 @@ export type AttributionSourceRow = {
   source_type: "campaign" | "flow";
   source_id: string;
   name: string;
+  created_at: string;
   messages_sent: number;
+  delivered: number;
+  read_count: number;
+  clicked: number;
   orders: number;
   revenue: number;
+  /** What Meta billed for the delivered messages, before tax. */
+  spent: number;
+  /** False when any message in the row has no billable status yet. */
+  cost_complete: boolean;
   median_hours: number | null;
   currency: string | null;
 };
+
+/** One template send inside a campaign or flow — the expandable child rows. */
+export type AttributionStepRow = {
+  source_type: "campaign" | "flow";
+  source_id: string;
+  step_id: string | null;
+  step_order: number | null;
+  name: string;
+  messages_sent: number;
+  delivered: number;
+  read_count: number;
+  clicked: number;
+  orders: number;
+  revenue: number;
+  spent: number;
+  cost_complete: boolean;
+  currency: string | null;
+};
+
+export type CostSettings = { timezone: string; gst_percent: number };
+
 
 export type SourceRow = { source: string; contacts: number };
 
