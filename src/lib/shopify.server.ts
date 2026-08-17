@@ -173,6 +173,9 @@ export type RestResult = {
   body: Record<string, unknown>;
   /** Cursor for the next page, when Shopify sent a rel="next" Link header. */
   nextPageInfo: string | null;
+  /** Shopify's request id, echoed in X-Request-Id — needed for support. */
+  requestId?: string | null;
+
 };
 
 function nextPageInfoFrom(linkHeader: string | null): string | null {
