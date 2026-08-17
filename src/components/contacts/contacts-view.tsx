@@ -68,7 +68,7 @@ export function ContactsView({
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [tagFilter, setTagFilter] = useState("all");
-  const [optInFilter, setOptInFilter] = useState(initialOptIn ?? "all");
+  const [optInFilter, setOptInFilter] = useState(initialOptIn || "all");
   const [segmentFilter, setSegmentFilter] = useState("all");
   const [segments, setSegments] = useState<SegmentRow[]>([]);
   const [page, setPage] = useState(0);
