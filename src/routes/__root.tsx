@@ -108,7 +108,26 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
       },
     ],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          name: "AiDwar",
+          legalName: "Meezoy Ventures Private Limited",
+          url: "https://ai-dwar-communique.lovable.app/",
+          email: "support@aidwar.in",
+          address: {
+            "@type": "PostalAddress",
+            addressLocality: "Hyderabad",
+            addressCountry: "IN",
+          },
+        }),
+      },
+    ],
   }),
+
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
