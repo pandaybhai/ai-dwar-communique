@@ -148,12 +148,13 @@ export function IntegrationsTab() {
     window.history.replaceState({}, "", url.toString());
   }, []);
 
-  const startInstall = async () => {
+  const startInstall = async (domain?: string) => {
     if (!active?.organization.id) return;
+    const shop = (domain ?? shopDomain).trim();
     setInstalling(true);
     const { data, error: err } = await callApi<{ install_url: string }>(
       "/api/integrations/shopify",
-      { body: { organization_id: active.organization.id, action: "install", shop_domain: shopDomain } },
+      { body: { organization_id: active.organization.id, action: "install", shop_domain: shop } },
     );
     setInstalling(false);
     if (err || !data?.install_url) {
