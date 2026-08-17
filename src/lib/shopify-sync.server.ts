@@ -630,7 +630,13 @@ async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<s
       created_at_min: since,
     });
     if (!result.ok) {
-      await failJob(supabase, job, `Shopify orders sync failed (${result.status}).`);
+      await failJob(
+        supabase,
+        job,
+        result.status === 403
+          ? "Shopify refused access to orders (403). The app needs read_orders and approval for protected customer data."
+          : `Shopify orders sync failed (${result.status}).`,
+      );
       return { job_id: job.id, failed: "orders" };
     }
     const list = Array.isArray(result.body["orders"]) ? (result.body["orders"] as AnyRecord[]) : [];
