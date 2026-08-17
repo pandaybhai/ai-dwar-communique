@@ -56,6 +56,8 @@ export type SendSettingsRow = {
   quiet_hours_exempt_transactional: boolean;
   marketing_cap_per_day: number;
   marketing_cap_per_week: number;
+  /** How long after a promotional message a sale still counts as coming from it. */
+  attribution_window_hours: number;
 };
 
 export const DEFAULT_SEND_SETTINGS: Omit<SendSettingsRow, "organization_id"> = {
@@ -65,6 +67,7 @@ export const DEFAULT_SEND_SETTINGS: Omit<SendSettingsRow, "organization_id"> = {
   quiet_hours_exempt_transactional: false,
   marketing_cap_per_day: 1,
   marketing_cap_per_week: 3,
+  attribution_window_hours: 72,
 };
 
 export function messageClassOf(flow: Pick<FlowRow, "config">): MessageClass {
