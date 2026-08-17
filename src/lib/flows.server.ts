@@ -569,3 +569,39 @@ export async function resolveFlowVariables(
 
   return { "1": name };
 }
+
+/**
+ * Post-ingest assertion.
+ *
+ * If an organization has an enabled flow and an ingest produced neither a
+ * scheduled send nor a deliberate skip, the scheduler was never reached —
+ * exactly the silent nothing that let three orders pass unnoticed. Log it.
+ */
+export async function warnIfFlowSilent(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    flowKey: string;
+    triggerId: string;
+    outcomes: Array<{ scheduled: number; reason?: string }>;
+  },
+): Promise<void> {
+  const acted = args.outcomes.some((o) => o.scheduled > 0 || o.reason);
+  if (acted) return;
+  const { data: flow } = await supabase
+    .from("flows")
+    .select("id, is_enabled")
+    .eq("organization_id", args.organizationId)
+    .eq("key", args.flowKey)
+    .maybeSingle();
+  if (!(flow as { is_enabled?: boolean } | null)?.is_enabled) return;
+  console.warn(
+    JSON.stringify({
+      scope: "flows",
+      stage: "silent_ingest",
+      organization_id: args.organizationId,
+      flow_key: args.flowKey,
+      trigger_id: args.triggerId,
+    }),
+  );
+}
