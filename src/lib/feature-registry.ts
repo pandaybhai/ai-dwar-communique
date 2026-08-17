@@ -882,7 +882,10 @@ export const FEATURES: readonly FeatureManifest[] = [
         "revenue_unattributed",
         "orders_attributed",
         "revenue_per_message",
+        "cost_spent",
+        "revenue_per_rupee_spent",
       ],
+
       dashboard_section: true,
       section_id: "revenue",
       section_label: "Sales from messages",
