@@ -136,6 +136,9 @@ export function IntegrationsTab() {
         invalid_request: "Shopify sent an incomplete response. Please try again.",
         exchange: "Shopify wouldn't complete the install. Please try again.",
         save: "We couldn't save the connection. Please try again.",
+        online_token:
+          "Shopify issued a temporary per-user token. Reinstall the app so background sync keeps working.",
+
       };
       toast.error(messages[failure] ?? "We couldn't finish connecting that store.");
     }
