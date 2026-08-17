@@ -893,7 +893,7 @@ export const FEATURES: readonly FeatureManifest[] = [
     },
     activity_actions: [],
     settings_path: "/app/settings",
-    data_tables: ["revenue_attributions"],
+    data_tables: ["revenue_attributions", "message_rates"],
   },
 
   {
