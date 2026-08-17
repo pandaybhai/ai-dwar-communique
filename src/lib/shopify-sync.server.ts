@@ -502,6 +502,21 @@ type JobRow = {
 const STALL_MS = 10 * 60 * 1000;
 const PAGE_SIZE = "250";
 
+/**
+ * Plain read_orders only exposes the last 60 days; asking for more makes
+ * Shopify answer 403. read_all_orders (protected data approval) lifts that.
+ */
+export const ORDER_WINDOW_DAYS = 60;
+export const ORDER_WINDOW_DAYS_ALL = 365;
+
+export function orderWindowDays(integration: Record<string, unknown>): number {
+  const scopes = Array.isArray(integration["scopes"])
+    ? (integration["scopes"] as unknown[]).map((s) => String(s))
+    : [];
+  return scopes.includes("read_all_orders") ? ORDER_WINDOW_DAYS_ALL : ORDER_WINDOW_DAYS;
+}
+
+
 /** Fail any job that claims to be running but hasn't moved in 10 minutes. */
 export async function failStalledSyncJobs(supabase: SupabaseClient): Promise<number> {
   const cutoff = new Date(Date.now() - STALL_MS).toISOString();
