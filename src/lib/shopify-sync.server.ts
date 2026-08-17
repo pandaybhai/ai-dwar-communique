@@ -1,7 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone, toWaId } from "@/lib/phone";
 import { emitEvent, recordUsage } from "@/lib/events.server";
-import { shopifyRest, restErrorMessage, type RestResult } from "@/lib/shopify.server";
+import {
+  shopifyRest,
+  restErrorMessage,
+  refreshExpiringShopifyTokens,
+  type RestResult,
+} from "@/lib/shopify.server";
 
 /**
  * Turning Shopify objects into AiDwar rows.
@@ -826,20 +831,31 @@ export async function processSyncJobTick(
   supabase: SupabaseClient,
 ): Promise<Record<string, unknown>> {
   const stalled = await failStalledSyncJobs(supabase);
+
+  // Before anything can exit early: a store with nothing queued still has to
+  // keep its Shopify grant alive, and a refresh problem must never stop a job
+  // that could still run.
+  let tokens: Record<string, number> | { error: string };
+  try {
+    tokens = await refreshExpiringShopifyTokens(supabase);
+  } catch (err) {
+    tokens = { error: err instanceof Error ? err.message : "Token refresh sweep failed." };
+  }
+
   const job = await claimJob(supabase);
-  if (!job) return { stalled, claimed: false };
+  if (!job) return { stalled, tokens, claimed: false };
 
   try {
     const result = await runChunk(supabase, job);
-    return { stalled, claimed: true, ...result };
+    return { stalled, tokens, claimed: true, ...result };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Backfill chunk failed.";
     if (err instanceof TransientSyncError && !err.fatal) {
       // Leave the job queued: the next tick retries with the same credentials.
       await updateJob(supabase, job.id, { status: "queued", error: message });
-      return { stalled, claimed: true, job_id: job.id, retry: message };
+      return { stalled, tokens, claimed: true, job_id: job.id, retry: message };
     }
     await failJob(supabase, job, message);
-    return { stalled, claimed: true, job_id: job.id, failed: message };
+    return { stalled, tokens, claimed: true, job_id: job.id, failed: message };
   }
 }

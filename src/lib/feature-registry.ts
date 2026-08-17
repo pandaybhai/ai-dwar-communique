@@ -716,6 +716,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "shopify_data_request",
       "shopify_customer_redacted",
       "shopify_shop_redacted",
+      "shopify_token_refreshed",
     ],
     settings_path: "/app/settings",
     usage_meters: [
