@@ -806,6 +806,9 @@ export const FEATURES: readonly FeatureManifest[] = [
     description:
       "Scheduled messaging: turn store events into WhatsApp messages with delays, quiet hours and frequency caps.",
     icon: "workflow",
+    nav_path: "/app/flows",
+    nav_order: 55,
+    nav_permission: "flows.view",
     flag_key: "flows",
     flag_default_enabled: false,
     permissions: [
@@ -828,7 +831,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       metrics: ["flow_sends", "flow_skips"],
       dashboard_section: false,
     },
-    activity_actions: [],
+    activity_actions: ["flow_toggled", "flow_step_updated", "send_settings_updated"],
     settings_path: "/app/settings",
     data_tables: ["flows", "flow_steps", "scheduled_sends", "organization_send_settings"],
   },
