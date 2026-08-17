@@ -6,7 +6,50 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import type { Plugin } from "vite";
+import { execSync } from "node:child_process";
+import { writeFileSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { validateFeatureRegistry } from "./src/lib/feature-registry.check";
+
+/**
+ * Writes src/build-info.ts with the current git short SHA and an ISO build
+ * timestamp as literal constants, so build identity ships inside the bundle.
+ */
+function buildInfoGenerator(): Plugin {
+  return {
+    name: "aidwar-build-info",
+    enforce: "pre",
+    buildStart() {
+      let commit =
+        process.env["COMMIT_SHA"] ??
+        process.env["VERCEL_GIT_COMMIT_SHA"] ??
+        process.env["CF_PAGES_COMMIT_SHA"] ??
+        process.env["GIT_COMMIT"] ??
+        "";
+      if (!commit) {
+        try {
+          commit = execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim();
+        } catch {
+          commit = "";
+        }
+      }
+      commit = commit ? commit.slice(0, 12) : "unknown";
+
+      const contents = `// AUTO-GENERATED at build time by the build-info Vite plugin. Do not edit.
+export const COMMIT_SHA = ${JSON.stringify(commit)};
+export const BUILT_AT = ${JSON.stringify(new Date().toISOString())} as string | null;
+`;
+      const target = resolve(import.meta.dirname, "src/build-info.ts");
+      try {
+        if (readFileSync(target, "utf8") === contents) return;
+      } catch {
+        // file missing — write it
+      }
+      writeFileSync(target, contents);
+    },
+  };
+}
+
 
 /**
  * Fails the build when a feature manifest is incomplete — a feature with no
@@ -29,7 +72,7 @@ function featureRegistryGuard(): Plugin {
 }
 
 export default defineConfig({
-  vite: { plugins: [featureRegistryGuard()] },
+  vite: { plugins: [buildInfoGenerator(), featureRegistryGuard()] },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
