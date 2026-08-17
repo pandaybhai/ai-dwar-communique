@@ -10,7 +10,15 @@ import { ContactsView } from "@/components/contacts/contacts-view";
 import { SegmentsView } from "@/components/segments/segments-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+type ContactsSearch = { opt_in?: string };
+
 export const Route = createFileRoute("/app/contacts")({
+  validateSearch: (search: Record<string, unknown>): ContactsSearch => {
+    const value = typeof search['opt_in'] === "string" ? (search['opt_in'] as string) : undefined;
+    return value && ["unknown", "opted_in", "opted_out"].includes(value)
+      ? { opt_in: value }
+      : {};
+  },
   head: () => ({
     meta: [
       { title: "Contacts — AiDwar" },
@@ -23,6 +31,7 @@ export const Route = createFileRoute("/app/contacts")({
 });
 
 function ContactsPage() {
+  const optInParam = Route.useSearch().opt_in;
   const { enabled, loading } = useFeatureFlag("contacts");
   const { active } = useOrg();
   const organizationId = active?.organization.id ?? null;
@@ -83,7 +92,12 @@ function ContactsPage() {
           <TabsTrigger value="segments">Segments</TabsTrigger>
         </TabsList>
         <TabsContent value="contacts">
-          <ContactsView organizationId={organizationId} role={active.role} showHeader={false} />
+          <ContactsView
+            organizationId={organizationId}
+            role={active.role}
+            showHeader={false}
+            initialOptIn={optInParam ?? "all"}
+          />
         </TabsContent>
         <TabsContent value="segments">
           <SegmentsView

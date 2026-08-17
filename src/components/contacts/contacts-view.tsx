@@ -50,10 +50,13 @@ export function ContactsView({
   organizationId,
   role,
   showHeader = true,
+  initialOptIn,
 }: {
   organizationId: string;
   role: string | null;
   showHeader?: boolean;
+  /** Deep link from the flows reachability warning, e.g. ?opt_in=unknown. */
+  initialOptIn?: string;
 }) {
   const { can } = usePermissions();
   const canEdit = can("contacts.edit");
@@ -65,7 +68,7 @@ export function ContactsView({
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [tagFilter, setTagFilter] = useState("all");
-  const [optInFilter, setOptInFilter] = useState("all");
+  const [optInFilter, setOptInFilter] = useState(initialOptIn || "all");
   const [segmentFilter, setSegmentFilter] = useState("all");
   const [segments, setSegments] = useState<SegmentRow[]>([]);
   const [page, setPage] = useState(0);
