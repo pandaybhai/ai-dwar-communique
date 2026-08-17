@@ -18,10 +18,8 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           registerWebhooks,
           getServiceClient,
           grantTimestamps,
-          ONLINE_TOKEN_ERROR,
           SHOPIFY_SCOPES,
         } = await import("@/lib/shopify.server");
-        void ONLINE_TOKEN_ERROR;
 
         const url = new URL(request.url);
         const settingsUrl = (params: Record<string, string>) => {
