@@ -325,18 +325,20 @@ export async function upsertOrder(
   // Order lifecycle flow: one step per lifecycle moment, each fired once per
   // order (the partial unique index on scheduled_sends is the real guard).
   {
-    const { scheduleFlow, cancelScheduledSends, cancelRecoveredCheckouts } = await import(
-      "@/lib/flows.server"
-    );
-    const schedule = (event: string) =>
-      scheduleFlow(ctx.supabase, {
-        organizationId: ctx.organizationId,
-        flowKey: "order_lifecycle",
-        contactId: match.contactId,
-        triggerType: "order",
-        triggerId: orderId,
-        event,
-      });
+    const { scheduleFlow, cancelScheduledSends, cancelRecoveredCheckouts, warnIfFlowSilent } =
+      await import("@/lib/flows.server");
+    const outcomes: Array<{ scheduled: number; reason?: string }> = [];
+    const schedule = async (event: string) =>
+      outcomes.push(
+        await scheduleFlow(ctx.supabase, {
+          organizationId: ctx.organizationId,
+          flowKey: "order_lifecycle",
+          contactId: match.contactId,
+          triggerType: "order",
+          triggerId: orderId,
+          event,
+        }),
+      );
 
     if (!previous) {
       await schedule("order_created");
@@ -353,7 +355,16 @@ export async function upsertOrder(
     if (row.cancelled_at && !previous?.cancelled_at) {
       await cancelScheduledSends(ctx.supabase, orderId, "order_cancelled");
     }
+    if (!previous) {
+      await warnIfFlowSilent(ctx.supabase, {
+        organizationId: ctx.organizationId,
+        flowKey: "order_lifecycle",
+        triggerId: orderId,
+        outcomes,
+      });
+    }
   }
+
 
   return { orderId, contactId: match.contactId, created: !previous };
 
