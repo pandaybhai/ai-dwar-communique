@@ -16,6 +16,7 @@ import { Route as DataDeletionRouteImport } from './routes/data-deletion'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminActivityRouteImport } from './routes/admin/activity'
@@ -85,6 +86,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsRoute = TermsRouteImport.update({
@@ -276,6 +282,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/flags': typeof AdminFlagsRoute
@@ -318,6 +325,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/flags': typeof AdminFlagsRoute
@@ -363,6 +371,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/flags': typeof AdminFlagsRoute
@@ -409,6 +418,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/signup'
+    | '/sitemap.xml'
     | '/terms'
     | '/admin/activity'
     | '/admin/flags'
@@ -451,6 +461,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/signup'
+    | '/sitemap.xml'
     | '/terms'
     | '/admin/activity'
     | '/admin/flags'
@@ -495,6 +506,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/signup'
+    | '/sitemap.xml'
     | '/terms'
     | '/admin/activity'
     | '/admin/flags'
@@ -540,6 +552,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
   SignupRoute: typeof SignupRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   ApiEventsRoute: typeof ApiEventsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
@@ -612,6 +625,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -918,6 +938,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
   SignupRoute: SignupRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
   ApiEventsRoute: ApiEventsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,

@@ -36,11 +36,33 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: TITLE },
       { property: "og:description", content: DESCRIPTION },
       { property: "og:type", content: "website" },
+      { property: "og:url", content: "https://ai-dwar-communique.lovable.app/" },
       { name: "twitter:card", content: "summary_large_image" },
+    ],
+    links: [{ rel: "canonical", href: "https://ai-dwar-communique.lovable.app/" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "AiDwar",
+          applicationCategory: "BusinessApplication",
+          operatingSystem: "Web",
+          url: "https://ai-dwar-communique.lovable.app/",
+          description: DESCRIPTION,
+          publisher: {
+            "@type": "Organization",
+            name: "Meezoy Ventures Private Limited",
+            url: "https://ai-dwar-communique.lovable.app/",
+          },
+        }),
+      },
     ],
   }),
   component: Index,
 });
+
 
 const day = [
   {
