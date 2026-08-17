@@ -106,7 +106,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               type: "flow.skipped",
               properties: { ...baseProps, reason: "flow_disabled" },
             });
-            continue;
+            return;
           }
 
           const messageClass = flows.messageClassOf(flow);
@@ -123,7 +123,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               type: "flow.cancelled",
               properties: { ...baseProps, reason: validity.reason ?? "invalid_trigger" },
             });
-            continue;
+            return;
           }
 
           if (!send.contact_id) {
@@ -131,7 +131,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               type: "flow.skipped",
               properties: { ...baseProps, reason: "no_contact" },
             });
-            continue;
+            return;
           }
 
           const { data: contactRow } = await supabase
@@ -151,7 +151,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               type: "flow.skipped",
               properties: { ...baseProps, reason: "no_contact" },
             });
-            continue;
+            return;
           }
 
           const consent = flows.optInAllows(contact.opt_in_status, messageClass);
@@ -164,7 +164,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
                 message_class: messageClass,
               },
             });
-            continue;
+            return;
           }
 
           const settings = await flows.loadSendSettings(supabase, orgId);
@@ -178,7 +178,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               .update({ send_after: allowedAt.toISOString(), claimed_at: null })
               .eq("id", send.id);
             outcomes.push({ id: send.id, status: "deferred", send_after: allowedAt.toISOString() });
-            continue;
+            return;
           }
 
           if (messageClass === "marketing") {
@@ -193,7 +193,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
                 type: "flow.skipped",
                 properties: { ...baseProps, reason: "frequency_cap", message_class: messageClass },
               });
-              continue;
+              return;
             }
           }
 
@@ -202,7 +202,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               type: "flow.skipped",
               properties: { ...baseProps, reason: "no_template" },
             });
-            continue;
+            return;
           }
 
           const { data: templateRow } = await supabase
@@ -224,7 +224,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               type: "flow.skipped",
               properties: { ...baseProps, reason: "template_unavailable" },
             });
-            continue;
+            return;
           }
 
           const sender = await loadSenderContext(supabase, orgId, flow.whatsapp_account_id);
@@ -233,7 +233,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               type: "flow.skipped",
               properties: { ...baseProps, reason: "no_sender" },
             });
-            continue;
+            return;
           }
 
           const variables = await flows.resolveFlowVariables(
@@ -272,7 +272,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
                 properties: { ...baseProps, reason: "send_failed", error: outcome.error },
               },
             );
-            continue;
+            return;
           }
 
           await finish(
