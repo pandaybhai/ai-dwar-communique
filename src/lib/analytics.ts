@@ -77,6 +77,34 @@ export type ContactsSummary = {
   unknown: number;
 };
 
+/** Sales linked back to a message, and — just as importantly — sales we couldn't link. */
+export type AttributionSummary = {
+  timezone: string;
+  from: string;
+  to: string;
+  window_hours: number;
+  currency: string | null;
+  orders_total: number;
+  revenue_total: number;
+  orders_attributed: number;
+  revenue_attributed: number;
+  orders_unattributed: number;
+  revenue_unattributed: number;
+  median_hours_to_conversion: number | null;
+  messages_sent: number;
+};
+
+export type AttributionSourceRow = {
+  source_type: "campaign" | "flow";
+  source_id: string;
+  name: string;
+  messages_sent: number;
+  orders: number;
+  revenue: number;
+  median_hours: number | null;
+  currency: string | null;
+};
+
 export type SourceRow = { source: string; contacts: number };
 
 export type ResponseTimes = {
@@ -197,6 +225,12 @@ export const fetchAutomationPerformance = (organizationId: string, f: AnalyticsF
 
 export const fetchQualityHistory = (organizationId: string, f: AnalyticsFilters) =>
   rpc<QualityPoint[]>("analytics_quality_history", range(organizationId, f));
+
+export const fetchAttributionSummary = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<AttributionSummary>("analytics_attribution_summary", range(organizationId, f));
+
+export const fetchAttributionSources = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<AttributionSourceRow[]>("analytics_attribution_sources", range(organizationId, f));
 
 
 // ------------------------------------------------------------------ presentation

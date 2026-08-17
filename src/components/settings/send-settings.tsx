@@ -52,7 +52,7 @@ export function SendSettingsTab() {
     const { data } = await aidwar
       .from("organization_send_settings")
       .select(
-        "quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_exempt_transactional, marketing_cap_per_day, marketing_cap_per_week",
+        "quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_exempt_transactional, marketing_cap_per_day, marketing_cap_per_week, attribution_window_hours",
       )
       .eq("organization_id", orgId)
       .maybeSingle();
@@ -222,6 +222,31 @@ export function SendSettingsTab() {
               onChange={(e) => set({ marketing_cap_per_week: Math.max(0, Number(e.target.value)) })}
             />
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">
+        <h2 className="text-base font-semibold text-foreground">Linking sales to messages</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          If a customer buys within this many hours of getting a promotional message from you, we
+          count that sale as coming from the message. Order updates never take credit for a sale.
+        </p>
+        <div className="mt-6 max-w-xs space-y-2">
+          <Label htmlFor="attribution_window">Hours after a message</Label>
+          <Input
+            id="attribution_window"
+            type="number"
+            min={1}
+            max={720}
+            value={row.attribution_window_hours}
+            disabled={!canManage}
+            onChange={(e) =>
+              set({
+                attribution_window_hours: Math.min(720, Math.max(1, Number(e.target.value) || 1)),
+              })
+            }
+          />
+          <p className="text-xs text-muted-foreground">Most stores leave this at 72 hours.</p>
         </div>
       </div>
 

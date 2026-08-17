@@ -838,6 +838,40 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
 
   {
+    key: "revenue_attribution",
+    name: "Sales from messages",
+    description:
+      "Links orders back to the last promotional message the customer received, and shows honestly which sales could not be linked.",
+    icon: "bar-chart",
+    flag_key: "revenue_attribution",
+    flag_default_enabled: true,
+    permissions: [
+      {
+        key: "revenue.view",
+        name: "View sales from messages",
+        description: "See which campaigns and flows produced sales, and how much.",
+        min_role: "marketer",
+      },
+    ],
+    analytics: {
+      event_types: [],
+      metrics: [
+        "revenue_attributed",
+        "revenue_unattributed",
+        "orders_attributed",
+        "revenue_per_message",
+      ],
+      dashboard_section: true,
+      section_id: "revenue",
+      section_label: "Sales from messages",
+      section_order: 25,
+    },
+    activity_actions: [],
+    settings_path: "/app/settings",
+    data_tables: ["revenue_attributions"],
+  },
+
+  {
 
     key: "billing",
     name: "Billing",

@@ -6,10 +6,13 @@ import { AnalyticsContacts } from "@/components/analytics/analytics-contacts";
 import { AnalyticsInbox } from "@/components/analytics/analytics-inbox";
 import { AnalyticsOverview } from "@/components/analytics/analytics-overview";
 import { AnalyticsQuality } from "@/components/analytics/analytics-quality";
+import { AnalyticsRevenue } from "@/components/analytics/analytics-revenue";
 import { ErrorState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  fetchAttributionSources,
+  fetchAttributionSummary,
   fetchAutomationPerformance,
   fetchCampaignPerformance,
   fetchContactsSummary,
@@ -21,6 +24,8 @@ import {
   fetchTimeseries,
   makeFilters,
   periodForDays,
+  type AttributionSourceRow,
+  type AttributionSummary,
   type AutomationRow,
   type CampaignPerformance,
   type ContactsSummary,
@@ -76,6 +81,8 @@ export function AnalyticsView({
   const [team, setTeam] = useState<TeamRow[]>([]);
   const [automations, setAutomations] = useState<AutomationRow[]>([]);
   const [quality, setQuality] = useState<QualityPoint[]>([]);
+  const [revenue, setRevenue] = useState<AttributionSummary | null>(null);
+  const [revenueSources, setRevenueSources] = useState<AttributionSourceRow[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +102,8 @@ export function AnalyticsView({
       teamRes,
       automationRes,
       qualityRes,
+      revenueRes,
+      revenueSourceRes,
     ] = await Promise.all([
       fetchOverview(organizationId, filters),
       fetchTimeseries(organizationId, filters),
@@ -105,6 +114,8 @@ export function AnalyticsView({
       fetchTeamPerformance(organizationId, filters),
       fetchAutomationPerformance(organizationId, filters),
       fetchQualityHistory(organizationId, filters),
+      fetchAttributionSummary(organizationId, filters),
+      fetchAttributionSources(organizationId, filters),
     ]);
 
 
@@ -129,6 +140,8 @@ export function AnalyticsView({
     setTeam(teamRes.data ?? []);
     setAutomations(automationRes.data ?? []);
     setQuality(qualityRes.data ?? []);
+    setRevenue(revenueRes.data);
+    setRevenueSources(revenueSourceRes.data ?? []);
     setLoading(false);
   }, [organizationId, timezone, days, accountId]);
 
@@ -162,6 +175,8 @@ export function AnalyticsView({
         return <AnalyticsInbox response={response} team={team} series={series} loading={loading} />;
       case "automations":
         return <AnalyticsAutomations rows={automations} loading={loading} />;
+      case "revenue":
+        return <AnalyticsRevenue summary={revenue} sources={revenueSources} loading={loading} />;
       case "quality":
         return <AnalyticsQuality points={quality} timezone={timezone} loading={loading} />;
       default:

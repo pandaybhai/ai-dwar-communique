@@ -123,9 +123,12 @@ async function applyCampaignStatus(
 }
 
 /**
- * Shared dimensions for message.sent/delivered/read/failed: which campaign the
- * message belonged to, the template, the business account and the billing
- * category. Lookup failures degrade to nulls — capture never blocks the webhook.
+ * Shared dimensions for message.sent/delivered/read/failed: which campaign or
+ * flow the message belonged to, the template, the business account, the billing
+ * category and the marketing/transactional class. Attribution now lives on the
+ * messages row itself, so the status callbacks carry exactly the same
+ * dimensions the send path emitted. Lookup failures degrade to nulls — capture
+ * never blocks the webhook.
  */
 async function messageEventDimensions(
   supabase: SupabaseClient,
@@ -136,35 +139,53 @@ async function messageEventDimensions(
     type?: string | null;
     template_name?: string | null;
     conversation_id?: string | null;
+    campaign_id?: string | null;
+    flow_id?: string | null;
+    flow_step_id?: string | null;
+    scheduled_send_id?: string | null;
   },
 ): Promise<Record<string, unknown>> {
+  const { outboundMessageDimensions } = await import("@/lib/message-events");
   const templateName = message.template_name ?? null;
-  const props: Record<string, unknown> = {
-    message_id: message.id,
-    conversation_id: message.conversation_id ?? null,
-    contact_id: null,
-    campaign_id: null,
-    template_name: templateName,
-    waba_id: wabaId,
-    message_type: message.type ?? null,
-    billing_category: templateName ? "utility" : "service",
-  };
-  try {
-    const { data: recipient } = await supabase
-      .from("campaign_recipients")
-      .select("campaign_id, contact_id")
-      .eq("message_id", message.id)
-      .maybeSingle();
-    props["campaign_id"] = (recipient?.campaign_id as string) ?? null;
-    props["contact_id"] = (recipient?.contact_id as string) ?? null;
+  let contactId: string | null = null;
+  let campaignId = message.campaign_id ?? null;
+  let flowId = message.flow_id ?? null;
+  let flowStepId = message.flow_step_id ?? null;
+  let scheduledSendId = message.scheduled_send_id ?? null;
+  let billingCategory = templateName ? "utility" : "service";
+  let accountId: string | null = null;
 
-    if (!props["contact_id"] && message.conversation_id) {
+  try {
+    // Older rows predate the attribution columns; fall back to the recipient row.
+    if (!campaignId && !flowId) {
+      const { data: recipient } = await supabase
+        .from("campaign_recipients")
+        .select("campaign_id, contact_id")
+        .eq("message_id", message.id)
+        .maybeSingle();
+      campaignId = (recipient?.campaign_id as string) ?? null;
+      contactId = (recipient?.contact_id as string) ?? null;
+
+      if (!campaignId) {
+        const { data: send } = await supabase
+          .from("scheduled_sends")
+          .select("id, flow_id, flow_step_id")
+          .eq("message_id", message.id)
+          .maybeSingle();
+        flowId = (send?.flow_id as string) ?? null;
+        flowStepId = (send?.flow_step_id as string) ?? null;
+        scheduledSendId = (send?.id as string) ?? null;
+      }
+    }
+
+    if (message.conversation_id) {
       const { data: conv } = await supabase
         .from("conversations")
-        .select("contact_id")
+        .select("contact_id, whatsapp_account_id")
         .eq("id", message.conversation_id)
         .maybeSingle();
-      props["contact_id"] = (conv?.contact_id as string) ?? null;
+      contactId = contactId ?? ((conv?.contact_id as string) ?? null);
+      accountId = (conv?.whatsapp_account_id as string) ?? null;
     }
 
     if (templateName) {
@@ -175,15 +196,28 @@ async function messageEventDimensions(
         .eq("name", templateName);
       if (wabaId) query = query.eq("waba_id", wabaId);
       const { data: tpl } = await query.limit(1).maybeSingle();
-      props["billing_category"] = String(
-        (tpl as { category?: string } | null)?.category ?? "utility",
-      ).toLowerCase();
+      billingCategory = String((tpl as { category?: string } | null)?.category ?? "utility");
     }
   } catch {
     // dimensions are best-effort
   }
-  return props;
+
+  return outboundMessageDimensions({
+    messageId: message.id,
+    conversationId: message.conversation_id ?? null,
+    contactId,
+    wabaId,
+    whatsappAccountId: accountId,
+    templateName,
+    messageType: message.type ?? null,
+    billingCategory,
+    campaignId,
+    flowId,
+    flowStepId,
+    scheduledSendId,
+  });
 }
+
 
 /** Counts one reply per contact per campaign for campaigns sent in the last 7 days. */
 async function applyCampaignReply(
@@ -855,7 +889,7 @@ export async function processWebhookPayload(
 
           const { data: existing } = await supabase
             .from("messages")
-            .select("id, status, type, template_name, conversation_id")
+            .select("id, status, type, template_name, conversation_id, campaign_id, flow_id, flow_step_id, scheduled_send_id")
             .eq("meta_message_id", metaId)
             .eq("organization_id", orgId)
             .maybeSingle();

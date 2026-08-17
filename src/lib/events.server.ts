@@ -11,15 +11,30 @@ import type { AnalyticsEventInput, EventProperties, UsageRecordInput } from "@/l
  */
 /**
  * A dimensionless event can't be filtered in any chart, and the gap is only
- * ever noticed weeks later. Warn loudly at emission instead.
+ * ever noticed weeks later. Warn loudly at emission instead. Outbound message
+ * events additionally have a required dimension set — that's what revenue
+ * attribution and per-source reporting join on.
  */
+const REQUIRED_MESSAGE_DIMENSIONS = [
+  "contact_id",
+  "whatsapp_account_id",
+  "template_name",
+  "message_class",
+] as const;
+
 function warnIfDimensionless(input: AnalyticsEventInput): void {
-  const props = input.properties ?? {};
-  if (Object.keys(props).length === 0) {
+  const props = (input.properties ?? {}) as Record<string, unknown>;
+  const missing = Object.keys(props).length === 0
+    ? ["*"]
+    : input.eventType.startsWith("message.")
+      ? REQUIRED_MESSAGE_DIMENSIONS.filter((k) => !(k in props))
+      : [];
+  if (missing.length > 0) {
     console.warn(
       JSON.stringify({
         scope: "events",
         stage: "empty_properties",
+        missing,
         event_type: input.eventType,
         entity_type: input.entityType,
         entity_id: input.entityId ?? null,
@@ -28,6 +43,7 @@ function warnIfDimensionless(input: AnalyticsEventInput): void {
     );
   }
 }
+
 
 async function insertEvent(supabase: SupabaseClient, input: AnalyticsEventInput): Promise<void> {
   warnIfDimensionless(input);
