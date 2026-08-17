@@ -33,18 +33,27 @@ function buildInfoGenerator(): Plugin {
           commit = "";
         }
       }
-      commit = commit ? commit.slice(0, 12) : "unknown";
+      const target = resolve(import.meta.dirname, "src/build-info.ts");
+      let existing = "";
+      try {
+        existing = readFileSync(target, "utf8");
+      } catch {
+        existing = "";
+      }
+
+      // The deploy builder has no git checkout, so a SHA resolved here is
+      // authoritative and a missing one must never clobber the committed value.
+      if (!commit) {
+        const previous = /COMMIT_SHA = "([^"]+)"/.exec(existing)?.[1];
+        commit = previous && previous !== "dev" ? previous : "unknown";
+      }
+      commit = commit.slice(0, 12);
 
       const contents = `// AUTO-GENERATED at build time by the build-info Vite plugin. Do not edit.
 export const COMMIT_SHA = ${JSON.stringify(commit)};
 export const BUILT_AT = ${JSON.stringify(new Date().toISOString())} as string | null;
 `;
-      const target = resolve(import.meta.dirname, "src/build-info.ts");
-      try {
-        if (readFileSync(target, "utf8") === contents) return;
-      } catch {
-        // file missing — write it
-      }
+      if (existing === contents) return;
       writeFileSync(target, contents);
     },
   };
