@@ -117,7 +117,7 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
         }
 
         const { emitEvent: emitConnect } = await import("@/lib/events.server");
-        emitConnect(supabase, "whatsapp.connected", {
+        await emitConnect(supabase, "whatsapp.connected", {
           organizationId,
           actorUserId: userId,
           whatsappAccountId: (saved as { id?: string } | null)?.id ?? null,
@@ -263,7 +263,7 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
         await ensureDefaultAccount(supabase, organizationId);
 
         const { emitEvent: emitDisconnect } = await import("@/lib/events.server");
-        emitDisconnect(supabase, "whatsapp.disconnected", {
+        await emitDisconnect(supabase, "whatsapp.disconnected", {
           organizationId,
           actorUserId: userId,
           whatsappAccountId: account.id as string,

@@ -236,7 +236,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
         }
 
         const { emitEvent } = await import("@/lib/events.server");
-        emitEvent(supabase, "whatsapp.connected", {
+        await emitEvent(supabase, "whatsapp.connected", {
           organizationId,
           actorUserId: userId,
           entityType: "whatsapp_account",

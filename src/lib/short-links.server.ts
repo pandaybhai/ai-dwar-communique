@@ -25,6 +25,8 @@ export type ShortLinkInput = {
   organizationId: string;
   targetUrl: string;
   scheduledSendId?: string | null;
+  /** Campaign sends have no scheduled_sends row, so the campaign is stored here. */
+  campaignId?: string | null;
   contactId?: string | null;
   ttlDays?: number;
 };
@@ -49,6 +51,7 @@ export async function createShortLink(
       token,
       target_url: input.targetUrl,
       scheduled_send_id: input.scheduledSendId ?? null,
+      campaign_id: input.campaignId ?? null,
       contact_id: input.contactId ?? null,
       expires_at: expiresAt,
     });
@@ -64,6 +67,7 @@ export type ShortLinkRow = {
   organization_id: string;
   target_url: string;
   scheduled_send_id: string | null;
+  campaign_id: string | null;
   contact_id: string | null;
   expires_at: string | null;
 };
@@ -74,7 +78,7 @@ export async function resolveShortLink(
 ): Promise<ShortLinkRow | null> {
   const { data } = await supabase
     .from("short_links")
-    .select("id, organization_id, target_url, scheduled_send_id, contact_id, expires_at")
+    .select("id, organization_id, target_url, scheduled_send_id, campaign_id, contact_id, expires_at")
     .eq("token", token)
     .maybeSingle();
   return (data as ShortLinkRow | null) ?? null;

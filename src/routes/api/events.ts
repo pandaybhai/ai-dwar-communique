@@ -31,7 +31,7 @@ export const Route = createFileRoute("/api/events")({
 
         if (eventType) {
           if (!declaredEventTypes().includes(eventType)) return jsonError("Unknown event type.");
-          emitEvent(auth.supabase, eventType, {
+          await emitEvent(auth.supabase, eventType, {
             organizationId: auth.organizationId,
             actorUserId: auth.userId,
             whatsappAccountId: (payload["whatsapp_account_id"] as string | null) ?? null,
@@ -43,7 +43,7 @@ export const Route = createFileRoute("/api/events")({
 
         if (meterKey) {
           if (!declaredMeterKeys().includes(meterKey)) return jsonError("Unknown usage meter.");
-          recordUsage(auth.supabase, meterKey, {
+          await recordUsage(auth.supabase, meterKey, {
             organizationId: auth.organizationId,
             quantity: typeof payload["quantity"] === "number" ? (payload["quantity"] as number) : 1,
             metadata: (payload["metadata"] ?? {}) as Record<string, unknown>,

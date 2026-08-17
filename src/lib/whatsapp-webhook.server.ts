@@ -404,7 +404,7 @@ async function applyOptKeywords(
   }
   log("status_updated", { action, next_status: nextStatus });
 
-  emitEvent(supabase, optOut ? "contact.opted_out" : "contact.opted_in", {
+  await emitEvent(supabase, optOut ? "contact.opted_out" : "contact.opted_in", {
     organizationId: args.organizationId,
     whatsappAccountId: args.accountId,
     entityType: "contact",
@@ -573,7 +573,7 @@ export async function processWebhookPayload(
           }
 
           if (nextQuality) {
-            emitEvent(supabase, "whatsapp.quality_changed", {
+            await emitEvent(supabase, "whatsapp.quality_changed", {
               organizationId: healthAccount.organization_id as string,
               whatsappAccountId: healthAccount.id as string,
               entityType: "whatsapp_account",
@@ -585,7 +585,7 @@ export async function processWebhookPayload(
             });
           }
           if (patch["status"] === "disconnected") {
-            emitEvent(supabase, "whatsapp.disconnected", {
+            await emitEvent(supabase, "whatsapp.disconnected", {
               organizationId: healthAccount.organization_id as string,
               whatsappAccountId: healthAccount.id as string,
               entityType: "whatsapp_account",
@@ -664,7 +664,7 @@ export async function processWebhookPayload(
           }
           await update;
           if (nextStatus === "APPROVED" || nextStatus === "REJECTED") {
-            emitEvent(supabase, nextStatus === "APPROVED" ? "template.approved" : "template.rejected", {
+            await emitEvent(supabase, nextStatus === "APPROVED" ? "template.approved" : "template.rejected", {
               organizationId: wabaOrgIds[0]!,
               entityType: "message_template",
               entityId: metaTemplateId != null ? String(metaTemplateId) : null,
@@ -751,7 +751,7 @@ export async function processWebhookPayload(
           // created_at is the signal for a genuinely new contact.
           const contactAge = Date.now() - new Date(String(contact.created_at)).getTime();
           if (contactAge >= 0 && contactAge < 10_000) {
-            emitEvent(supabase, "contact.created", {
+            await emitEvent(supabase, "contact.created", {
               organizationId: orgId,
               whatsappAccountId: accountId,
               entityType: "contact",
@@ -782,7 +782,7 @@ export async function processWebhookPayload(
               .single();
             conversation = created;
             if (created) {
-              emitEvent(supabase, "conversation.opened", {
+              await emitEvent(supabase, "conversation.opened", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
                 entityType: "conversation",
@@ -831,7 +831,7 @@ export async function processWebhookPayload(
               })
               .eq("id", conversation.id);
             await applyCampaignReply(supabase, orgId, contact.id);
-            emitEvent(supabase, "message.received", {
+            await emitEvent(supabase, "message.received", {
               organizationId: orgId,
               whatsappAccountId: accountId,
               entityType: "message",
@@ -936,7 +936,7 @@ export async function processWebhookPayload(
               .update({ status: "failed", status_updated_at: at, error_detail: detail })
               .eq("id", existing.id);
             await applyCampaignStatus(supabase, existing.id, "failed", detail);
-            emitEvent(supabase, "message.failed", {
+            await emitEvent(supabase, "message.failed", {
               organizationId: orgId,
               whatsappAccountId: accountId,
               entityType: "message",
@@ -962,7 +962,7 @@ export async function processWebhookPayload(
             .eq("id", existing.id);
           await applyCampaignStatus(supabase, existing.id, nextStatus, null);
           if (nextStatus === "delivered" || nextStatus === "read" || nextStatus === "sent") {
-            emitEvent(supabase, `message.${nextStatus}`, {
+            await emitEvent(supabase, `message.${nextStatus}`, {
               organizationId: orgId,
               whatsappAccountId: accountId,
               entityType: "message",

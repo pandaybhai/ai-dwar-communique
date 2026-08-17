@@ -127,7 +127,7 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         }
 
         const { emitEvent, recordUsage } = await import("@/lib/events.server");
-        emitEvent(supabase, "campaign.launched", {
+        await emitEvent(supabase, "campaign.launched", {
           organizationId,
           actorUserId: userId,
           whatsappAccountId: connection.accountId,
@@ -141,7 +141,7 @@ export const Route = createFileRoute("/api/campaigns/launch")({
             recipient_count: rows.length,
           },
         });
-        recordUsage(supabase, "campaign_messages", {
+        await recordUsage(supabase, "campaign_messages", {
           organizationId,
           quantity: rows.length,
           metadata: {
