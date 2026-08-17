@@ -89,8 +89,10 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             id: string;
             step_order: number;
             template_id: string | null;
+            condition: Record<string, unknown> | null;
             is_enabled: boolean;
           } | null;
+
 
           const baseProps = {
             flow_key: flow?.key ?? null,
@@ -125,6 +127,22 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             });
             return;
           }
+
+          // Step-level gates (cash-on-delivery only, still-unanswered) are
+          // re-checked here too — the answer can arrive after scheduling.
+          const gate = await flows.stepGateAllows(supabase, step.condition, {
+            type: send.trigger_type,
+            id: send.trigger_id,
+          });
+          if (!gate.allowed) {
+            await finish("skipped", { cancel_reason: gate.reason ?? "step_condition" }, {
+              type: "flow.skipped",
+              properties: { ...baseProps, reason: gate.reason ?? "step_condition" },
+            });
+            return;
+          }
+
+
 
           if (!send.contact_id) {
             await finish("skipped", { cancel_reason: "no_contact" }, {
@@ -290,6 +308,18 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               },
             },
           );
+
+          // A cash-on-delivery ask remembers which message asked, so the
+          // customer's button reply can be matched back to the order.
+          const { noteCodAsk } = await import("@/lib/cod.server");
+          await noteCodAsk(supabase, {
+            flowKey: flow.key,
+            triggerType: send.trigger_type,
+            triggerId: send.trigger_id,
+            scheduledSendId: send.id,
+            messageId: outcome.messageId ?? null,
+          });
+
           } catch (caught) {
             const error = caught instanceof Error ? caught.message : String(caught);
             console.error(JSON.stringify({
@@ -373,11 +403,17 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
           }
         }
 
+        // Cash-on-delivery asks that got no answer within 24 hours.
+        const { expireCodConfirmations } = await import("@/lib/cod.server");
+        const codExpired = await expireCodConfirmations(supabase);
+
         return Response.json({
           claimed: batch.length,
           outcomes,
+          cod_expired: codExpired,
           commit: buildInfo().commit,
         });
+
       },
     },
   },

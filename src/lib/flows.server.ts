@@ -557,15 +557,23 @@ export async function resolveFlowVariables(
   if (triggerType === "order") {
     const { data } = await supabase
       .from("orders")
-      .select("order_number, total, currency")
+      .select("order_number, total, currency, organization_id")
       .eq("id", triggerId)
       .maybeSingle();
+    // {{4}} is the shop's own name — the COD ask says who is calling.
+    const orgId = (data?.["organization_id"] as string | null) ?? null;
+    const { data: org } = orgId
+      ? await supabase.from("organizations").select("name").eq("id", orgId).maybeSingle()
+      : { data: null };
     return {
       "1": name,
       "2": (data?.["order_number"] as string | null) ?? "",
       "3": data?.["total"] != null ? `${data["currency"] ?? ""} ${data["total"]}`.trim() : "",
+      "4": (org?.["name"] as string | null) ?? "",
     };
   }
+
+
 
   return { "1": name };
 }
@@ -604,4 +612,39 @@ export async function warnIfFlowSilent(
       trigger_id: args.triggerId,
     }),
   );
+}
+
+/**
+ * Extra gates a step can declare in its condition, re-checked at dispatch time.
+ *
+ * `cod_only` — send only for cash-on-delivery orders.
+ * `requires: cod_pending` — send only while the customer still owes an answer,
+ * so a reminder can never chase someone who already replied.
+ */
+export async function stepGateAllows(
+  supabase: SupabaseClient,
+  condition: Record<string, unknown> | null,
+  trigger: { type: string; id: string | null },
+): Promise<{ allowed: boolean; reason?: string }> {
+  const cond = condition ?? {};
+
+  if (cond["cod_only"] === true) {
+    if (trigger.type !== "order" || !trigger.id) return { allowed: false, reason: "not_cod" };
+    const { data } = await supabase
+      .from("orders")
+      .select("is_cod")
+      .eq("id", trigger.id)
+      .maybeSingle();
+    if (!(data as { is_cod?: boolean } | null)?.is_cod) return { allowed: false, reason: "not_cod" };
+  }
+
+  if (String(cond["requires"] ?? "") === "cod_pending") {
+    if (!trigger.id) return { allowed: false, reason: "cod_answered" };
+    const { codStillPending } = await import("@/lib/cod.server");
+    if (!(await codStillPending(supabase, trigger.id))) {
+      return { allowed: false, reason: "cod_answered" };
+    }
+  }
+
+  return { allowed: true };
 }

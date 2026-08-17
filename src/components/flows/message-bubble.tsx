@@ -29,6 +29,12 @@ export function MessageBubble({
   const parts = (components as TemplateComponent[] | null) ?? null;
   const body = renderTemplate(templateBodyText(parts), SAMPLES);
   const footer = templateFooterText(parts);
+  // Quick replies are part of what the customer sees, and for cash-on-delivery
+  // they are the whole point — show them, don't just describe them.
+  const buttons = ((parts ?? []).find(
+    (part) => String((part as { type?: string }).type ?? "").toUpperCase() === "BUTTONS",
+  ) as { buttons?: { text?: string }[] } | undefined)?.buttons?.filter((b) => b?.text) ?? [];
+
 
   if (!body) {
     return (
@@ -56,8 +62,21 @@ export function MessageBubble({
             <Check className="h-3 w-3" aria-hidden="true" />
             <span className="sr-only">Example message, already read</span>
           </p>
+          {buttons.length > 0 ? (
+            <ul className="-mx-3 mt-2 list-none space-y-px border-t border-neutral-900/10 p-0 pt-1 dark:border-white/10">
+              {buttons.map((button) => (
+                <li
+                  key={button.text}
+                  className="px-3 py-1.5 text-center text-sm font-medium text-emerald-700 dark:text-emerald-300"
+                >
+                  {button.text}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       </div>
+
       <p className="mt-2 text-xs text-neutral-600 dark:text-muted-foreground">
         Example details shown — real customer names and orders are filled in when it sends.
       </p>
