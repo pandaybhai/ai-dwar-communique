@@ -467,11 +467,27 @@ async function updateJob(
     .eq("id", jobId);
 }
 
-/** Jobs are enqueued and picked up by the cron worker; nothing runs inline. */
+/**
+ * Jobs are enqueued and picked up by the cron worker; nothing runs inline.
+ * At most one non-terminal job may exist per integration (enforced by a
+ * partial unique index), so an existing queued/running job is reused rather
+ * than piling up duplicates. Failed jobs are never re-enqueued automatically:
+ * retrying is an explicit user action.
+ */
 export async function enqueueBackfill(
   supabase: SupabaseClient,
   args: { organizationId: string; integrationId: string; kind?: string },
 ): Promise<string | null> {
+  const { data: active } = await supabase
+    .from("integration_sync_jobs")
+    .select("id")
+    .eq("integration_id", args.integrationId)
+    .in("status", ["queued", "running"])
+    .order("started_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (active) return (active as { id: string }).id;
+
   const { data } = await supabase
     .from("integration_sync_jobs")
     .insert({
@@ -483,8 +499,20 @@ export async function enqueueBackfill(
     })
     .select("id")
     .maybeSingle();
-  return (data as { id: string } | null)?.id ?? null;
+  if (data) return (data as { id: string }).id;
+
+  // Lost the race against a concurrent enqueue — the index rejected us.
+  const { data: raced } = await supabase
+    .from("integration_sync_jobs")
+    .select("id")
+    .eq("integration_id", args.integrationId)
+    .in("status", ["queued", "running"])
+    .order("started_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (raced as { id: string } | null)?.id ?? null;
 }
+
 
 type JobRow = {
   id: string;
