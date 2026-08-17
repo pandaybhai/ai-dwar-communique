@@ -561,6 +561,83 @@ export async function refreshShopifyToken(
   return { ok: true, accessToken: result.grant.accessToken };
 }
 
+/** Refresh anything expiring within this window, regardless of sync activity. */
+export const PROACTIVE_REFRESH_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Keep every connected store's grant alive on a schedule.
+ *
+ * Refreshing only when an API call is about to happen means a quiet store — one
+ * with nothing queued to sync — never refreshes at all, and once the 90-day
+ * refresh token lapses the integration dies silently and the merchant has to
+ * reinstall. This runs each worker tick before any early exit, so activity is
+ * irrelevant to staying connected.
+ *
+ * Transient failures (network, timeout, 5xx, 429) leave the stored refresh
+ * token untouched — Shopify replays the same response for up to an hour — and
+ * never mark the integration in error. Only a dead grant is terminal.
+ */
+export async function refreshExpiringShopifyTokens(
+  supabase: SupabaseClient,
+  windowMs: number = PROACTIVE_REFRESH_WINDOW_MS,
+): Promise<{ checked: number; refreshed: number; retry: number; expired: number }> {
+  const summary = { checked: 0, refreshed: 0, retry: 0, expired: 0 };
+
+  const { data: integrations } = await supabase
+    .from("integrations")
+    .select("id, organization_id, shop_domain")
+    .eq("provider", "shopify")
+    .eq("status", "connected");
+
+  const rows = (integrations as
+    | { id: string; organization_id: string; shop_domain: string | null }[]
+    | null) ?? [];
+  if (!rows.length) return summary;
+
+  const cutoff = new Date(Date.now() + windowMs).toISOString();
+  const { data: credentials } = await supabase
+    .from("integration_credentials")
+    .select("integration_id, expires_at, refresh_token, refresh_token_expires_at")
+    .in("integration_id", rows.map((r) => r.id))
+    .not("expires_at", "is", null)
+    .lte("expires_at", cutoff);
+
+  const creds = (credentials as
+    | {
+        integration_id: string;
+        expires_at: string | null;
+        refresh_token: string | null;
+        refresh_token_expires_at: string | null;
+      }[]
+    | null) ?? [];
+
+  for (const cred of creds) {
+    const integration = rows.find((r) => r.id === cred.integration_id);
+    if (!integration) continue;
+    summary.checked += 1;
+
+    // A refresh must never take a sync tick down with it.
+    try {
+      const result = await refreshShopifyToken(supabase, {
+        integrationId: integration.id,
+        organizationId: integration.organization_id,
+        shopDomain: integration.shop_domain ?? "",
+        refreshToken: cred.refresh_token,
+        refreshTokenExpiresAt: cred.refresh_token_expires_at,
+      });
+      if (result.ok) summary.refreshed += 1;
+      else if (result.fatal) summary.expired += 1;
+      else summary.retry += 1;
+    } catch {
+      // Treated as transient: the same refresh token is still good next tick.
+      summary.retry += 1;
+    }
+  }
+
+  return summary;
+}
+
+
 
 /**
  * OAuth state. Signed rather than stored: the callback arrives on a public
