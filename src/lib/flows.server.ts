@@ -146,28 +146,40 @@ export function applyQuietHours(
  */
 export async function frequencyCapReached(
   supabase: SupabaseClient,
+  organizationId: string,
   contactId: string,
   settings: SendSettings,
 ): Promise<boolean> {
-  const now = Date.now();
-  const dayAgo = new Date(now - 24 * 3600_000).toISOString();
-  const weekAgo = new Date(now - 7 * 24 * 3600_000).toISOString();
+  // Only marketing flows count, so resolve those flow ids first rather than
+  // filtering through an embedded jsonb path.
+  const { data: flowRows } = await supabase
+    .from("flows")
+    .select("id, config")
+    .eq("organization_id", organizationId);
+  const marketingFlowIds = ((flowRows as FlowRow[]) ?? [])
+    .filter((f) => messageClassOf(f) === "marketing")
+    .map((f) => f.id);
+  if (marketingFlowIds.length === 0) return false;
 
+  const now = Date.now();
   const countSince = async (since: string) => {
     const { count } = await supabase
       .from("scheduled_sends")
-      .select("id, flows!inner(config)", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("contact_id", contactId)
       .eq("status", "sent")
-      .eq("flows.config->>message_class", "marketing")
+      .in("flow_id", marketingFlowIds)
       .gte("updated_at", since);
     return count ?? 0;
   };
 
+  const dayAgo = new Date(now - 24 * 3600_000).toISOString();
+  const weekAgo = new Date(now - 7 * 24 * 3600_000).toISOString();
   if (settings.capPerDay >= 0 && (await countSince(dayAgo)) >= settings.capPerDay) return true;
   if (settings.capPerWeek >= 0 && (await countSince(weekAgo)) >= settings.capPerWeek) return true;
   return false;
 }
+
 
 export async function loadFlow(
   supabase: SupabaseClient,
