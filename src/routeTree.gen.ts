@@ -30,6 +30,7 @@ import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAutomationsRouteImport } from './routes/app/automations'
 import { Route as AppContactsRouteImport } from './routes/app/contacts'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
+import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
@@ -170,6 +171,11 @@ const AppContactsRoute = AppContactsRouteImport.update({
 const AppInboxRoute = AppInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppReceiptsRoute = AppReceiptsRouteImport.update({
+  id: '/receipts',
+  path: '/receipts',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -386,6 +392,7 @@ export interface FileRoutesByFullPath {
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
+  '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
@@ -443,6 +450,7 @@ export interface FileRoutesByTo {
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
+  '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
@@ -503,6 +511,7 @@ export interface FileRoutesById {
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/inbox': typeof AppInboxRoute
+  '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
@@ -564,6 +573,7 @@ export interface FileRouteTypes {
     | '/app/automations'
     | '/app/contacts'
     | '/app/inbox'
+    | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
@@ -621,6 +631,7 @@ export interface FileRouteTypes {
     | '/app/automations'
     | '/app/contacts'
     | '/app/inbox'
+    | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
@@ -680,6 +691,7 @@ export interface FileRouteTypes {
     | '/app/automations'
     | '/app/contacts'
     | '/app/inbox'
+    | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
@@ -911,6 +923,13 @@ declare module '@tanstack/react-router' {
       path: '/inbox'
       fullPath: '/app/inbox'
       preLoaderRoute: typeof AppInboxRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/receipts': {
+      id: '/app/receipts'
+      path: '/receipts'
+      fullPath: '/app/receipts'
+      preLoaderRoute: typeof AppReceiptsRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/settings': {
@@ -1193,6 +1212,7 @@ interface AppRouteRouteChildren {
   AppAutomationsRoute: typeof AppAutomationsRoute
   AppContactsRoute: typeof AppContactsRoute
   AppInboxRoute: typeof AppInboxRoute
+  AppReceiptsRoute: typeof AppReceiptsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTemplatesRoute: typeof AppTemplatesRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -1207,6 +1227,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAutomationsRoute: AppAutomationsRoute,
   AppContactsRoute: AppContactsRoute,
   AppInboxRoute: AppInboxRoute,
+  AppReceiptsRoute: AppReceiptsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTemplatesRoute: AppTemplatesRoute,
   AppIndexRoute: AppIndexRoute,
