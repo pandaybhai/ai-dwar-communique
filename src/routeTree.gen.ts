@@ -42,6 +42,7 @@ import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/imp
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
+import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
 import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
 import { Route as ApiPublicShopifyWebhookRouteImport } from './routes/api/public/shopify-webhook'
@@ -224,6 +225,12 @@ const ApiInternalReprocessEventsRoute =
     path: '/api/internal/reprocess-events',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiInternalShopifySyncWorkerRoute =
+  ApiInternalShopifySyncWorkerRouteImport.update({
+    id: '/api/internal/shopify-sync-worker',
+    path: '/api/internal/shopify-sync-worker',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInternalVersionRoute = ApiInternalVersionRouteImport.update({
   id: '/api/internal/version',
   path: '/api/internal/version',
@@ -327,6 +334,7 @@ export interface FileRoutesByFullPath {
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
+  '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
@@ -373,6 +381,7 @@ export interface FileRoutesByTo {
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
+  '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
@@ -422,6 +431,7 @@ export interface FileRoutesById {
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
+  '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
@@ -472,6 +482,7 @@ export interface FileRouteTypes {
     | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
+    | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
@@ -518,6 +529,7 @@ export interface FileRouteTypes {
     | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
+    | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
@@ -566,6 +578,7 @@ export interface FileRouteTypes {
     | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
+    | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
@@ -603,6 +616,7 @@ export interface RootRouteChildren {
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
+  ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
   ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
   ApiPublicShopifyWebhookRoute: typeof ApiPublicShopifyWebhookRoute
@@ -849,6 +863,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalReprocessEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/shopify-sync-worker': {
+      id: '/api/internal/shopify-sync-worker'
+      path: '/api/internal/shopify-sync-worker'
+      fullPath: '/api/internal/shopify-sync-worker'
+      preLoaderRoute: typeof ApiInternalShopifySyncWorkerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/version': {
       id: '/api/internal/version'
       path: '/api/internal/version'
@@ -1013,6 +1034,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
+  ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
   ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
   ApiPublicShopifyWebhookRoute: ApiPublicShopifyWebhookRoute,
