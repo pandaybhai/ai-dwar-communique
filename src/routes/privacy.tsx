@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage, Section, Bullets } from "@/components/legal-page";
 
 const TITLE = "Privacy Policy — AiDwar";
@@ -126,9 +126,14 @@ function PrivacyPage() {
           </a>{" "}
           and we will respond within the timelines prescribed by law. If you are an end contact of
           one of our customers, please direct your request to that business; we will assist them in
-          responding.
+          responding. Step-by-step instructions, including self-serve workspace deletion, are on our{" "}
+          <Link to="/data-deletion" className="text-primary hover:underline">
+            Data Deletion
+          </Link>{" "}
+          page.
         </p>
       </Section>
+
 
       <Section heading="9. Compliance with the DPDP Act, 2023">
         <p>

@@ -25,6 +25,8 @@ import { TeamSettings } from "@/components/team/team-settings";
 import { WhatsAppTab } from "@/components/whatsapp-settings";
 import { LeadSourcesTab } from "@/components/contacts/lead-sources-settings";
 import { OptOutKeywordsCard } from "@/components/contacts/opt-out-keywords-settings";
+import { DeleteWorkspaceCard } from "@/components/settings/delete-workspace-card";
+
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
@@ -70,9 +72,11 @@ function SettingsPage() {
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="sources">Lead sources</TabsTrigger>
           </TabsList>
-          <TabsContent value="general" className="mt-6">
+          <TabsContent value="general" className="mt-6 space-y-6">
             <GeneralTab />
+            <DeleteWorkspaceCard />
           </TabsContent>
+
           <TabsContent value="team" className="mt-6">
             <TeamSettings />
           </TabsContent>
