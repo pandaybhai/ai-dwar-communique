@@ -211,6 +211,9 @@ BEGIN
       BOOL_AND(billable IS NOT NULL OR status NOT IN ('sent','delivered','read')) AS cost_complete
     FROM msgs GROUP BY 1, 2
   ),
+  -- Clicks are only knowable from events; sent/delivered/read come from the
+  -- message rows the status webhook writes, because those predate the event
+  -- dimensions and never lose a row to a missing property.
   funnel AS (
     SELECT
       CASE WHEN e.properties->>'campaign_id' IS NOT NULL THEN 'campaign' ELSE 'flow' END AS source_type,
@@ -218,27 +221,21 @@ BEGIN
         NULLIF(e.properties->>'campaign_id','')::uuid,
         NULLIF(e.properties->>'flow_id','')::uuid
       ) AS source_id,
-      COUNT(DISTINCT e.properties->>'message_id')
-        FILTER (WHERE e.event_type = 'message.sent') AS sent,
-      COUNT(DISTINCT e.properties->>'message_id')
-        FILTER (WHERE e.event_type = 'message.delivered') AS delivered,
-      COUNT(DISTINCT e.properties->>'message_id')
-        FILTER (WHERE e.event_type = 'message.read') AS read_count,
-      COUNT(DISTINCT COALESCE(e.properties->>'scheduled_send_id', e.id::text))
-        FILTER (WHERE e.event_type = 'flow.clicked') AS clicked
+      COUNT(DISTINCT COALESCE(e.properties->>'scheduled_send_id', e.id::text)) AS clicked
     FROM public.analytics_events e
     WHERE e.organization_id = p_organization_id
-      AND e.event_type IN ('message.sent','message.delivered','message.read','flow.clicked')
+      AND e.event_type = 'flow.clicked'
       AND e.occurred_at >= cur_start AND e.occurred_at < cur_end
       AND (NULLIF(e.properties->>'campaign_id','') IS NOT NULL
         OR NULLIF(e.properties->>'flow_id','') IS NOT NULL)
-      AND (p_whatsapp_account_id IS NULL
-        OR NULLIF(e.properties->>'whatsapp_account_id','')::uuid = p_whatsapp_account_id)
     GROUP BY 1, 2
   ),
   sends AS (
-    SELECT source_type, source_id, COUNT(*) AS messages_sent
-    FROM msgs WHERE status IN ('sent','delivered','read') GROUP BY 1, 2
+    SELECT source_type, source_id,
+      COUNT(*) FILTER (WHERE status IN ('sent','delivered','read')) AS messages_sent,
+      COUNT(*) FILTER (WHERE status IN ('delivered','read')) AS delivered,
+      COUNT(*) FILTER (WHERE status = 'read') AS read_count
+    FROM msgs GROUP BY 1, 2
   ),
   sales AS (
     SELECT ra.source_type, ra.source_id,
@@ -269,8 +266,8 @@ BEGIN
       (SELECT f.created_at FROM public.flows f WHERE f.id = k.source_id)
     ),
     COALESCE(s.messages_sent, 0),
-    COALESCE(fn.delivered, 0),
-    COALESCE(fn.read_count, 0),
+    COALESCE(s.delivered, 0),
+    COALESCE(s.read_count, 0),
     COALESCE(fn.clicked, 0),
     COALESCE(x.orders, 0),
     COALESCE(x.revenue, 0)::numeric,
