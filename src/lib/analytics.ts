@@ -292,6 +292,16 @@ export function periodForDays(timezone: string, days: number, label: string): Pe
   };
 }
 
+/** A period between two calendar days (inclusive), for custom ranges. */
+export function periodBetween(from: string, to: string, label: string): Period {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  const days = Number.isNaN(start) || Number.isNaN(end)
+    ? 1
+    : Math.max(1, Math.round((end - start) / 86_400_000) + 1);
+  return { from, to, days, label };
+}
+
 /**
  * Rates on tiny denominators lie — "100% delivered" off one message is noise.
  * Below the threshold we surface the raw counts instead.
