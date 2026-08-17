@@ -67,6 +67,16 @@ function DataDeletionPage() {
         />
       </Section>
 
+      <Section heading="3. Controller and processor roles">
+        <p>
+          AiDwar is operated by Meezoy Ventures Private Limited. For data uploaded by client
+          businesses — such as contact lists, messages, templates and campaign records — AiDwar acts
+          as a processor and processes that data only on the client business&apos;s instructions. For
+          account data, authentication data, billing records and Meta Platform Data (access tokens,
+          WhatsApp Business Account details and related identifiers), AiDwar is the controller.
+        </p>
+      </Section>
+
       <Section heading="3. What we commit to">
         <Bullets
           items={[
