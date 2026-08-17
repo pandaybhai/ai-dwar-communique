@@ -169,7 +169,7 @@ export async function evaluateAutomations(
     .maybeSingle();
   if ((contact?.opt_in_status as string | undefined) === "opted_out") {
     log("skipped", { automation_id: active[0]!.id, reason: "contact_opted_out" });
-    emitEvent(supabase, "automation.skipped", {
+    await emitEvent(supabase, "automation.skipped", {
       organizationId: args.organizationId,
       entityType: "automation",
       entityId: active[0]!.id,
@@ -223,7 +223,7 @@ export async function evaluateAutomations(
 
     if (skipReason) {
       log("skipped", { automation_id: automation.id, reason: skipReason });
-      emitEvent(supabase, "automation.skipped", {
+      await emitEvent(supabase, "automation.skipped", {
         organizationId: args.organizationId,
         entityType: "automation",
         entityId: automation.id,
@@ -279,7 +279,7 @@ export async function evaluateAutomations(
       automation_id: automation.id,
       reason: result.ok ? null : result.error,
     });
-    emitEvent(supabase, result.ok ? "automation.fired" : "automation.skipped", {
+    await emitEvent(supabase, result.ok ? "automation.fired" : "automation.skipped", {
       organizationId: args.organizationId,
       entityType: "automation",
       entityId: automation.id,

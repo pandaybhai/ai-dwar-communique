@@ -124,7 +124,7 @@ async function handleUninstall(supabase: SupabaseClient, ctx: SyncContext): Prom
     .update({ status: "disconnected", sync_error: null })
     .eq("id", ctx.integrationId);
 
-  emitEvent(supabase, "shopify.disconnected", {
+  await emitEvent(supabase, "shopify.disconnected", {
     organizationId: ctx.organizationId,
     entityType: "integration",
     entityId: ctx.integrationId,

@@ -209,7 +209,7 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
 
           const { emitEvent: emitFailed } = await import("@/lib/events.server");
           const { outboundMessageDimensions } = await import("@/lib/message-events");
-          emitFailed(supabase, "message.failed", {
+          await emitFailed(supabase, "message.failed", {
             organizationId,
             whatsappAccountId: connection.accountId,
             actorUserId: userId,
@@ -299,7 +299,7 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           category = String((tpl as { category?: string } | null)?.category ?? "utility");
         }
         const { outboundMessageDimensions } = await import("@/lib/message-events");
-        emitEvent(supabase, "message.sent", {
+        await emitEvent(supabase, "message.sent", {
           organizationId,
           whatsappAccountId: connection.accountId,
           actorUserId: userId,
@@ -317,7 +317,7 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           }),
         });
 
-        recordUsage(supabase, meterForMessageCategory(category), {
+        await recordUsage(supabase, meterForMessageCategory(category), {
           organizationId,
           quantity: 1,
           metadata: {

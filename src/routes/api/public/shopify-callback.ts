@@ -116,7 +116,7 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
         });
 
         const { emitEvent } = await import("@/lib/events.server");
-        emitEvent(service, "shopify.connected", {
+        await emitEvent(service, "shopify.connected", {
           organizationId: verified.organizationId,
           entityType: "integration",
           entityId: integrationId,

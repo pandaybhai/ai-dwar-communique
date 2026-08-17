@@ -141,7 +141,7 @@ async function settle(
   await cancelScheduledSends(supabase, row.order_id, `cod_${status}`);
 
   const { emitEvent } = await import("@/lib/events.server");
-  emitEvent(supabase, `cod.${status}`, {
+  await emitEvent(supabase, `cod.${status}`, {
     organizationId: row.organization_id,
     entityType: "order",
     entityId: row.order_id,

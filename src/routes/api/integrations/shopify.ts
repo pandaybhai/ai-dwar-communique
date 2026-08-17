@@ -140,7 +140,7 @@ export const Route = createFileRoute("/api/integrations/shopify")({
             .eq("id", integrationId);
 
           const { emitEvent } = await import("@/lib/events.server");
-          emitEvent(supabase, "shopify.disconnected", {
+          await emitEvent(supabase, "shopify.disconnected", {
             organizationId,
             entityType: "integration",
             entityId: integrationId,

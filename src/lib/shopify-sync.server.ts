@@ -285,14 +285,14 @@ export async function upsertOrder(
     };
 
     if (!previous) {
-      emitEvent(ctx.supabase, "order.created", {
+      await emitEvent(ctx.supabase, "order.created", {
         organizationId: ctx.organizationId,
         entityType: "order",
         entityId: orderId,
         properties: dimensions,
         ...(row.placed_at ? { occurredAt: row.placed_at } : {}),
       });
-      recordUsage(ctx.supabase, "shopify_orders_synced", {
+      await recordUsage(ctx.supabase, "shopify_orders_synced", {
         organizationId: ctx.organizationId,
         quantity: 1,
         metadata: {
@@ -303,7 +303,7 @@ export async function upsertOrder(
       });
     }
     if (row.fulfillment_status === "fulfilled" && previous?.fulfillment_status !== "fulfilled") {
-      emitEvent(ctx.supabase, "order.fulfilled", {
+      await emitEvent(ctx.supabase, "order.fulfilled", {
         organizationId: ctx.organizationId,
         entityType: "order",
         entityId: orderId,
@@ -312,7 +312,7 @@ export async function upsertOrder(
       });
     }
     if (row.cancelled_at && !previous?.cancelled_at) {
-      emitEvent(ctx.supabase, "order.cancelled", {
+      await emitEvent(ctx.supabase, "order.cancelled", {
         organizationId: ctx.organizationId,
         entityType: "order",
         entityId: orderId,
@@ -422,7 +422,7 @@ export async function upsertProduct(ctx: SyncContext, product: AnyRecord): Promi
 
   const productId = (saved as { id: string } | null)?.id ?? null;
   if (productId) {
-    emitEvent(ctx.supabase, "product.synced", {
+    await emitEvent(ctx.supabase, "product.synced", {
       organizationId: ctx.organizationId,
       entityType: "product",
       entityId: productId,
@@ -498,7 +498,7 @@ export async function upsertCheckout(ctx: SyncContext, checkout: AnyRecord): Pro
 
   const checkoutId = (saved as { id: string } | null)?.id ?? previous?.id ?? null;
   if (checkoutId && !previous && !completedAt) {
-    emitEvent(ctx.supabase, "checkout.abandoned", {
+    await emitEvent(ctx.supabase, "checkout.abandoned", {
       organizationId: ctx.organizationId,
       entityType: "abandoned_checkout",
       entityId: checkoutId,

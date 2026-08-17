@@ -18,6 +18,7 @@ export type FeatureIcon =
   | "contact"
   | "megaphone"
   | "message-square-text"
+  | "receipt"
   | "workflow"
   | "bar-chart"
   | "shield-check"
@@ -859,9 +860,13 @@ export const FEATURES: readonly FeatureManifest[] = [
     name: "Sales from messages",
     description:
       "Links orders back to the last promotional message the customer received, and shows honestly which sales could not be linked.",
-    icon: "bar-chart",
+    icon: "receipt",
     flag_key: "revenue_attribution",
     flag_default_enabled: true,
+    nav_path: "/app/receipts",
+    nav_order: 65,
+    nav_permission: "revenue.view",
+
     permissions: [
       {
         key: "revenue.view",
@@ -877,7 +882,10 @@ export const FEATURES: readonly FeatureManifest[] = [
         "revenue_unattributed",
         "orders_attributed",
         "revenue_per_message",
+        "cost_spent",
+        "revenue_per_rupee_spent",
       ],
+
       dashboard_section: true,
       section_id: "revenue",
       section_label: "Sales from messages",
@@ -885,7 +893,7 @@ export const FEATURES: readonly FeatureManifest[] = [
     },
     activity_actions: [],
     settings_path: "/app/settings",
-    data_tables: ["revenue_attributions"],
+    data_tables: ["revenue_attributions", "message_rates"],
   },
 
   {

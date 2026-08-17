@@ -61,7 +61,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               .eq("id", send.id);
             if (finishError) throw new Error(`Could not persist ${status}: ${finishError.message}`);
             if (event) {
-              emitEvent(supabase, event.type, {
+              await emitEvent(supabase, event.type, {
                 organizationId: orgId,
                 entityType: "scheduled_send",
                 entityId: send.id,
@@ -97,6 +97,8 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
           const baseProps = {
             flow_key: flow?.key ?? null,
             flow_id: send.flow_id,
+            // Every flow event joins back to its row through this.
+            scheduled_send_id: send.id,
             step_order: step?.step_order ?? null,
             contact_id: send.contact_id,
             trigger_type: send.trigger_type,
@@ -350,12 +352,13 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
                 error: persistError.message,
               }));
             } else {
-              emitEvent(supabase, "flow.failed", {
+              await emitEvent(supabase, "flow.failed", {
                 organizationId: orgId,
                 entityType: "scheduled_send",
                 entityId: send.id,
                 properties: {
                   flow_id: send.flow_id,
+                  scheduled_send_id: send.id,
                   contact_id: send.contact_id,
                   trigger_type: send.trigger_type,
                   trigger_id: send.trigger_id,

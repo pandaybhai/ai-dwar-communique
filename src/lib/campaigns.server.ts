@@ -276,7 +276,7 @@ export async function sendCampaignTemplate(
       .select("id")
       .single();
 
-    emitEvent(supabase, "message.failed", {
+    await emitEvent(supabase, "message.failed", {
       organizationId,
       whatsappAccountId: sender.accountId,
       entityType: "message",
@@ -318,6 +318,7 @@ export async function sendCampaignTemplate(
         organizationId,
         targetUrl: context.linkTarget,
         scheduledSendId: context.scheduledSendId ?? null,
+        campaignId: context.campaignId ?? null,
         contactId,
       });
       if (!token) {
@@ -399,7 +400,7 @@ export async function sendCampaignTemplate(
 
   const messageId = (message?.id as string) ?? null;
 
-  emitEvent(supabase, "message.sent", {
+  await emitEvent(supabase, "message.sent", {
     organizationId,
     whatsappAccountId: sender.accountId,
     entityType: "message",
@@ -407,7 +408,7 @@ export async function sendCampaignTemplate(
     properties: dimensions(messageId),
   });
   // Meta bills per template category, so the meter is recorded on the same path.
-  recordUsage(supabase, meterForMessageCategory(context.category), {
+  await recordUsage(supabase, meterForMessageCategory(context.category), {
     organizationId,
     quantity: 1,
     metadata: {

@@ -182,6 +182,34 @@ export function validateFeatureRegistry(srcDir = join(process.cwd(), "src")): st
     // source scan is best-effort; manifest checks still apply
   }
 
+  // Emission must be awaited. A fire-and-forget insert is discarded when the
+  // serverless response returns, which is how flow.sent under-recorded and
+  // flow.clicked never recorded at all. Catching it here keeps it from
+  // reappearing at a new call site months from now.
+  try {
+    for (const file of walk(srcDir)) {
+      if (/events\.server\.ts$/.test(file)) continue;
+      const text = readFileSync(file, "utf8");
+      // Local aliases (`const { emitEvent: emitFailed } = ...`) count too.
+      const aliases = Array.from(
+        text.matchAll(/\b(?:emitEvents?|recordUsage)\s*:\s*([A-Za-z0-9_]+)/g),
+        (m) => m[1]!,
+      );
+      const names = ["emitEvents?", "recordUsage", ...aliases].join("|");
+      text.split("\n").forEach((line, index) => {
+        const m = new RegExp(`(^|[^.\\w])(${names})\\s*\\(`).exec(line);
+        if (!m) return;
+        const before = line.slice(0, m.index + m[1]!.length);
+        if (/await\s*$/.test(before)) return;
+        issues.push(
+          `${file.replace(process.cwd() + "/", "")}:${index + 1}: ${m[2]}() must be awaited — an un-awaited emission is dropped when the response returns.`,
+        );
+      });
+    }
+  } catch {
+    // source scan is best-effort; manifest checks still apply
+  }
+
   const handlers = implementedHandlers(srcDir);
   const seenTool = new Set<string>();
   for (const tool of allAiTools()) {

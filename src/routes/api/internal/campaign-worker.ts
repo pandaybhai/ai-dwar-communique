@@ -149,7 +149,7 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
             // the worker can't double-count a completion.
             if (finished && finished.length > 0) {
               const { emitEvent } = await import("@/lib/events.server");
-              emitEvent(supabase, "campaign.completed", {
+              await emitEvent(supabase, "campaign.completed", {
                 organizationId: campaign["organization_id"] as string,
                 whatsappAccountId: (campaign["whatsapp_account_id"] as string | null) ?? null,
                 entityType: "campaign",

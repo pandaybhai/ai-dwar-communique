@@ -52,7 +52,7 @@ export function SendSettingsTab() {
     const { data } = await aidwar
       .from("organization_send_settings")
       .select(
-        "quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_exempt_transactional, marketing_cap_per_day, marketing_cap_per_week, attribution_window_hours",
+        "quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_exempt_transactional, marketing_cap_per_day, marketing_cap_per_week, attribution_window_hours, gst_percent",
       )
       .eq("organization_id", orgId)
       .maybeSingle();
@@ -247,6 +247,30 @@ export function SendSettingsTab() {
             }
           />
           <p className="text-xs text-muted-foreground">Most stores leave this at 72 hours.</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">
+        <h2 className="text-base font-semibold text-foreground">Tax on message charges</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Meta bills you for delivered messages, and your invoice adds tax on top. We use this rate
+          to show the with-tax figure on your Receipts page. In India this is normally 18%.
+        </p>
+        <div className="mt-6 max-w-xs space-y-2">
+          <Label htmlFor="gst_percent">Tax added to message charges (%)</Label>
+          <Input
+            id="gst_percent"
+            type="number"
+            min={0}
+            max={100}
+            step="0.01"
+            value={row.gst_percent}
+            disabled={!canManage}
+            onChange={(e) =>
+              set({ gst_percent: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })
+            }
+          />
+          <p className="text-xs text-muted-foreground">Set to 0 if tax doesn&rsquo;t apply to you.</p>
         </div>
       </div>
 

@@ -243,6 +243,9 @@ export async function scheduleFlow(
       properties: {
         flow_key: input.flowKey,
         flow_id: flow?.id ?? null,
+        // No row exists yet on a pre-schedule skip, but the key is always
+        // present so an absent key can only ever mean a bug.
+        scheduled_send_id: null,
         message_class: flow ? messageClassOf(flow) : null,
         contact_id: input.contactId,
         trigger_type: input.triggerType,
@@ -347,6 +350,7 @@ export async function scheduleFlow(
         properties: {
           flow_key: flow.key,
           flow_id: flow.id,
+          scheduled_send_id: null,
           step_order: step.step_order,
           message_class: cls,
           contact_id: input.contactId,
@@ -372,6 +376,7 @@ export async function scheduleFlow(
       properties: {
         flow_key: flow.key,
         flow_id: flow.id,
+        scheduled_send_id: row.id,
         step_order: wanted.find((s) => s.id === row.flow_step_id)?.step_order ?? null,
         message_class: cls,
         contact_id: input.contactId,
@@ -427,6 +432,7 @@ export async function cancelScheduledSends(
       properties: {
         flow_key: (flow?.["key"] as string | undefined) ?? null,
         flow_id: row.flow_id,
+        scheduled_send_id: row.id,
         step_order: null,
         reason,
         contact_id: row.contact_id,
