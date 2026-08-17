@@ -45,8 +45,7 @@ function buildInfoGenerator(): Plugin {
       // authoritative and a missing one must never clobber the committed value.
       if (!commit) {
         const previous = /COMMIT_SHA = "([^"]+)"/.exec(existing)?.[1];
-        if (previous && previous !== "unknown" && previous !== "dev") return;
-        commit = "unknown";
+        commit = previous && previous !== "dev" ? previous : "unknown";
       }
       commit = commit.slice(0, 12);
 
