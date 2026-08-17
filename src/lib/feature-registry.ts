@@ -18,6 +18,7 @@ export type FeatureIcon =
   | "contact"
   | "megaphone"
   | "message-square-text"
+  | "receipt"
   | "workflow"
   | "bar-chart"
   | "shield-check"
