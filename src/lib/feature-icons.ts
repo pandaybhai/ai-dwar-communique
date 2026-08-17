@@ -6,6 +6,7 @@ import {
   Megaphone,
   MessageSquareText,
   Settings,
+  ShoppingBag,
   Sparkles,
   ShieldCheck,
   Users,
@@ -26,5 +27,6 @@ export const FEATURE_ICONS: Record<FeatureIcon, LucideIcon> = {
   settings: Settings,
   users: Users,
   "credit-card": CreditCard,
+  "shopping-bag": ShoppingBag,
   sparkles: Sparkles,
 };

@@ -26,6 +26,7 @@ import { WhatsAppTab } from "@/components/whatsapp-settings";
 import { LeadSourcesTab } from "@/components/contacts/lead-sources-settings";
 import { OptOutKeywordsCard } from "@/components/contacts/opt-out-keywords-settings";
 import { DeleteWorkspaceCard } from "@/components/settings/delete-workspace-card";
+import { IntegrationsTab } from "@/components/integrations/integrations-settings";
 
 
 export const Route = createFileRoute("/app/settings")({
@@ -65,31 +66,48 @@ function SettingsPage() {
       ) : !active ? (
         <ErrorState message="We couldn't find your workspace. Please refresh the page." />
       ) : (
-        <Tabs defaultValue="general" className="max-w-3xl">
-          <TabsList>
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="team">Team</TabsTrigger>
-            <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
-            <TabsTrigger value="sources">Lead sources</TabsTrigger>
-          </TabsList>
-          <TabsContent value="general" className="mt-6 space-y-6">
-            <GeneralTab />
-            <DeleteWorkspaceCard />
-          </TabsContent>
-
-          <TabsContent value="team" className="mt-6">
-            <TeamSettings />
-          </TabsContent>
-          <TabsContent value="whatsapp" className="mt-6">
-            <WhatsAppTab />
-          </TabsContent>
-          <TabsContent value="sources" className="mt-6 space-y-6">
-            <LeadSourcesTab />
-            <ComplianceSection />
-          </TabsContent>
-        </Tabs>
+        <SettingsTabs />
       )}
     </>
+  );
+}
+
+/** Tabs, with integrations appearing only where the feature is switched on. */
+function SettingsTabs() {
+  const { enabled: shopifyEnabled } = useFeatureFlag("shopify");
+  const { can } = usePermissions();
+  const showIntegrations = shopifyEnabled && can("integrations.view");
+
+  return (
+    <Tabs defaultValue="general" className="max-w-3xl">
+      <TabsList>
+        <TabsTrigger value="general">General</TabsTrigger>
+        <TabsTrigger value="team">Team</TabsTrigger>
+        <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+        {showIntegrations ? <TabsTrigger value="integrations">Integrations</TabsTrigger> : null}
+        <TabsTrigger value="sources">Lead sources</TabsTrigger>
+      </TabsList>
+      <TabsContent value="general" className="mt-6 space-y-6">
+        <GeneralTab />
+        <DeleteWorkspaceCard />
+      </TabsContent>
+
+      <TabsContent value="team" className="mt-6">
+        <TeamSettings />
+      </TabsContent>
+      <TabsContent value="whatsapp" className="mt-6">
+        <WhatsAppTab />
+      </TabsContent>
+      {showIntegrations ? (
+        <TabsContent value="integrations" className="mt-6">
+          <IntegrationsTab />
+        </TabsContent>
+      ) : null}
+      <TabsContent value="sources" className="mt-6 space-y-6">
+        <LeadSourcesTab />
+        <ComplianceSection />
+      </TabsContent>
+    </Tabs>
   );
 }
 

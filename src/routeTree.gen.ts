@@ -39,9 +39,12 @@ import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
+import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
+import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
+import { Route as ApiPublicShopifyWebhookRouteImport } from './routes/api/public/shopify-webhook'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
 import { Route as ApiWhatsappEsConfigRouteImport } from './routes/api/whatsapp/es-config'
@@ -204,6 +207,11 @@ const ApiContactsImportRoute = ApiContactsImportRouteImport.update({
   path: '/api/contacts/import',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiIntegrationsShopifyRoute = ApiIntegrationsShopifyRouteImport.update({
+  id: '/api/integrations/shopify',
+  path: '/api/integrations/shopify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalCampaignWorkerRoute =
   ApiInternalCampaignWorkerRouteImport.update({
     id: '/api/internal/campaign-worker',
@@ -219,6 +227,17 @@ const ApiInternalReprocessEventsRoute =
 const ApiInternalVersionRoute = ApiInternalVersionRouteImport.update({
   id: '/api/internal/version',
   path: '/api/internal/version',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicShopifyCallbackRoute =
+  ApiPublicShopifyCallbackRouteImport.update({
+    id: '/api/public/shopify-callback',
+    path: '/api/public/shopify-callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicShopifyWebhookRoute = ApiPublicShopifyWebhookRouteImport.update({
+  id: '/api/public/shopify-webhook',
+  path: '/api/public/shopify-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicWhatsappWebhookRoute =
@@ -305,9 +324,12 @@ export interface FileRoutesByFullPath {
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
+  '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
@@ -348,9 +370,12 @@ export interface FileRoutesByTo {
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
+  '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
@@ -394,9 +419,12 @@ export interface FileRoutesById {
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
+  '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
@@ -441,9 +469,12 @@ export interface FileRouteTypes {
     | '/api/campaigns/launch'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
     | '/api/internal/version'
+    | '/api/public/shopify-callback'
+    | '/api/public/shopify-webhook'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
@@ -484,9 +515,12 @@ export interface FileRouteTypes {
     | '/api/campaigns/launch'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
     | '/api/internal/version'
+    | '/api/public/shopify-callback'
+    | '/api/public/shopify-webhook'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
@@ -529,9 +563,12 @@ export interface FileRouteTypes {
     | '/api/campaigns/launch'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
     | '/api/internal/version'
+    | '/api/public/shopify-callback'
+    | '/api/public/shopify-webhook'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
@@ -563,9 +600,12 @@ export interface RootRouteChildren {
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
+  ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
+  ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
+  ApiPublicShopifyWebhookRoute: typeof ApiPublicShopifyWebhookRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
   ApiWhatsappEsConfigRoute: typeof ApiWhatsappEsConfigRoute
@@ -788,6 +828,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiContactsImportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/shopify': {
+      id: '/api/integrations/shopify'
+      path: '/api/integrations/shopify'
+      fullPath: '/api/integrations/shopify'
+      preLoaderRoute: typeof ApiIntegrationsShopifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/campaign-worker': {
       id: '/api/internal/campaign-worker'
       path: '/api/internal/campaign-worker'
@@ -807,6 +854,20 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/version'
       fullPath: '/api/internal/version'
       preLoaderRoute: typeof ApiInternalVersionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/shopify-callback': {
+      id: '/api/public/shopify-callback'
+      path: '/api/public/shopify-callback'
+      fullPath: '/api/public/shopify-callback'
+      preLoaderRoute: typeof ApiPublicShopifyCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/shopify-webhook': {
+      id: '/api/public/shopify-webhook'
+      path: '/api/public/shopify-webhook'
+      fullPath: '/api/public/shopify-webhook'
+      preLoaderRoute: typeof ApiPublicShopifyWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/whatsapp-webhook': {
@@ -949,9 +1010,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
+  ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
+  ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
+  ApiPublicShopifyWebhookRoute: ApiPublicShopifyWebhookRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,
   ApiWhatsappEsConfigRoute: ApiWhatsappEsConfigRoute,

@@ -24,6 +24,7 @@ export type FeatureIcon =
   | "settings"
   | "users"
   | "credit-card"
+  | "shopping-bag"
   | "sparkles";
 
 export type PermissionManifest = {
@@ -668,6 +669,131 @@ export const FEATURES: readonly FeatureManifest[] = [
     activity_actions: ["ai_tool_invoked"],
     settings_path: "/app/settings",
     data_tables: [],
+  },
+  {
+    key: "shopify",
+    name: "Shopify",
+    description:
+      "Connect Shopify stores and keep orders, products, checkouts and customers in sync.",
+    icon: "shopping-bag",
+    flag_key: "shopify",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "integrations.view",
+        name: "View integrations",
+        description: "See connected stores and their sync state.",
+        min_role: "marketer",
+      },
+      {
+        key: "integrations.manage",
+        name: "Manage integrations",
+        description: "Connect, resync and disconnect stores for this workspace.",
+        min_role: "owner",
+      },
+    ],
+    analytics: {
+      event_types: [
+        "shopify.connected",
+        "shopify.disconnected",
+        "order.created",
+        "order.fulfilled",
+        "order.cancelled",
+        "checkout.abandoned",
+        "product.synced",
+      ],
+      metrics: ["orders_synced", "abandoned_checkouts"],
+      dashboard_section: false,
+    },
+    activity_actions: [
+      "integration_connected",
+      "integration_disconnected",
+      "integration_resynced",
+      "integration_data_request",
+      "integration_customer_redacted",
+      "integration_shop_redacted",
+    ],
+    settings_path: "/app/settings",
+    usage_meters: [
+      { key: "shopify_orders_synced", name: "Shopify orders synced", unit: "orders" },
+    ],
+    ai_tools: [
+      {
+        name: "lookup_order",
+        description:
+          "Look up a single order by its order number, or the most recent order for a phone number. Returns status, totals and line items.",
+        parameters: {
+          type: "object",
+          properties: {
+            order_number: { type: "string", description: "Order number as shown in Shopify, e.g. #1042." },
+            phone: { type: "string", description: "Customer phone in any format; used when no order number is known." },
+          },
+          additionalProperties: false,
+        },
+        required_permission: "integrations.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "lookupOrder",
+      },
+      {
+        name: "get_customer_orders",
+        description: "List recent orders for a customer, found by phone number.",
+        parameters: {
+          type: "object",
+          properties: {
+            phone: { type: "string", description: "Customer phone in any format." },
+            limit: { type: "number", description: "How many orders to return, default 5, max 20." },
+          },
+          required: ["phone"],
+          additionalProperties: false,
+        },
+        required_permission: "integrations.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "getCustomerOrders",
+      },
+      {
+        name: "get_abandoned_checkout",
+        description:
+          "Get the most recent abandoned checkout for a phone number, including its recovery URL and total.",
+        parameters: {
+          type: "object",
+          properties: { phone: { type: "string", description: "Customer phone in any format." } },
+          required: ["phone"],
+          additionalProperties: false,
+        },
+        required_permission: "integrations.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "getAbandonedCheckout",
+      },
+      {
+        name: "search_products",
+        description: "Search synced store products by title, returning price, status and product URL.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Words to match against the product title." },
+            limit: { type: "number", description: "How many products to return, default 5, max 20." },
+          },
+          required: ["query"],
+          additionalProperties: false,
+        },
+        required_permission: "integrations.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "searchProducts",
+      },
+    ],
+    data_tables: [
+      "integrations",
+      "integration_credentials",
+      "integration_sync_jobs",
+      "products",
+      "orders",
+      "order_items",
+      "abandoned_checkouts",
+    ],
   },
 
   {
