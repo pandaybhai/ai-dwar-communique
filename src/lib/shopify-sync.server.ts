@@ -443,8 +443,24 @@ export async function upsertCheckout(ctx: SyncContext, checkout: AnyRecord): Pro
       },
       occurredAt: abandonedAt,
     });
+
+    const { scheduleFlow } = await import("@/lib/flows.server");
+    await scheduleFlow(ctx.supabase, {
+      organizationId: ctx.organizationId,
+      flowKey: "abandoned_checkout",
+      contactId: match.contactId,
+      triggerType: "abandoned_checkout",
+      triggerId: checkoutId,
+    });
+  }
+
+  // Recovery cancels anything still pending for this checkout.
+  if (checkoutId && completedAt && !previous?.recovered_at) {
+    const { cancelScheduledSends } = await import("@/lib/flows.server");
+    await cancelScheduledSends(ctx.supabase, checkoutId, "recovered");
   }
 }
+
 
 /** Customer webhooks only touch the contact record and its consent state. */
 export async function syncCustomer(ctx: SyncContext, customer: AnyRecord): Promise<void> {
