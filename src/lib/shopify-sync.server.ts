@@ -616,23 +616,30 @@ async function failJob(supabase: SupabaseClient, job: JobRow, message: string): 
  * next tick resumes from the stored cursor, so a big store backfills across
  * many short invocations instead of dying inside one.
  */
+/**
+ * A failure that must not kill the job: refresh timeouts, 5xx and 429 are all
+ * retryable against the same refresh token, so the job goes back in the queue.
+ */
+class TransientSyncError extends Error {
+  constructor(
+    message: string,
+    readonly fatal: boolean,
+  ) {
+    super(message);
+  }
+}
+
 async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<string, unknown>> {
-  const { getShopifyConnection, isOfflineAccessToken, ONLINE_TOKEN_ERROR } = await import(
-    "@/lib/shopify.server"
-  );
+  const { getShopifyConnection, refreshShopifyToken } = await import("@/lib/shopify.server");
+  // getShopifyConnection refreshes ahead of the expiry window, so the token we
+  // get back is always good for at least the next few minutes.
   const connection = await getShopifyConnection(supabase, job.integration_id);
   if (!connection.ok) {
     await failJob(supabase, job, connection.error);
     return { job_id: job.id, failed: connection.error };
   }
 
-  // Startup assertion: an online (per-user) token expires and would break this
-  // worker mid-backfill. Surface it now instead of failing silently later.
-  if (!isOfflineAccessToken(connection.accessToken)) {
-    await failJob(supabase, job, ONLINE_TOKEN_ERROR);
-    return { job_id: job.id, failed: ONLINE_TOKEN_ERROR };
-  }
-
+  let accessToken = connection.accessToken;
 
   const ctx: SyncContext = {
     supabase,
@@ -644,13 +651,41 @@ async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<s
   const phase = job.phase === "queued" || job.phase === "starting" ? "products" : job.phase;
   const cursor = job.phase === phase ? job.cursor : null;
 
-  const fetchPage = (path: string, query: Record<string, string>) =>
-    shopifyRest({
+  const fetchPage = async (path: string, query: Record<string, string>) => {
+    const call = () =>
+      shopifyRest({
+        shopDomain: ctx.shopDomain,
+        accessToken,
+        path,
+        query: cursor ? { limit: PAGE_SIZE, page_info: cursor } : { limit: PAGE_SIZE, ...query },
+      });
+
+    const first = await call();
+    if (first.status !== 401) return first;
+
+    // A 401 mid-chunk means the token died early; refresh once and retry.
+    const { data: cred } = await supabase
+      .from("integration_credentials")
+      .select("refresh_token, refresh_token_expires_at")
+      .eq("integration_id", job.integration_id)
+      .maybeSingle();
+    const row = cred as {
+      refresh_token?: string | null;
+      refresh_token_expires_at?: string | null;
+    } | null;
+
+    const refreshed = await refreshShopifyToken(supabase, {
+      integrationId: job.integration_id,
+      organizationId: job.organization_id,
       shopDomain: ctx.shopDomain,
-      accessToken: connection.accessToken,
-      path,
-      query: cursor ? { limit: PAGE_SIZE, page_info: cursor } : { limit: PAGE_SIZE, ...query },
+      refreshToken: row?.refresh_token ?? null,
+      refreshTokenExpiresAt: row?.refresh_token_expires_at ?? null,
     });
+    if (!refreshed.ok) throw new TransientSyncError(refreshed.error, refreshed.fatal);
+    accessToken = refreshed.accessToken;
+    return call();
+  };
+
 
   if (phase === "products") {
     const result: RestResult = await fetchPage("products.json", {});
@@ -749,6 +784,11 @@ export async function processSyncJobTick(
     return { stalled, claimed: true, ...result };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Backfill chunk failed.";
+    if (err instanceof TransientSyncError && !err.fatal) {
+      // Leave the job queued: the next tick retries with the same credentials.
+      await updateJob(supabase, job.id, { status: "queued", error: message });
+      return { stalled, claimed: true, job_id: job.id, retry: message };
+    }
     await failJob(supabase, job, message);
     return { stalled, claimed: true, job_id: job.id, failed: message };
   }
