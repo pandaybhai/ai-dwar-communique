@@ -83,3 +83,129 @@ export function statusBadgeClass(status: string): string {
       return "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400";
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Send-time payload construction
+ *
+ * Meta rejects a send with "(#131008) Required parameter is missing"
+ * whenever a template declares a variable the payload doesn't fill —
+ * body, header or a dynamic URL button alike. We derive what a template
+ * needs from its own stored components, so a new template with a link
+ * button works without any code change.
+ * ------------------------------------------------------------------ */
+
+export type TemplateUrlButton = {
+  /** Position of the button inside the BUTTONS block — Meta's "index". */
+  index: number;
+  /** Variables declared inside the URL, e.g. {{1}} in https://…/r/{{1}}. */
+  variables: number[];
+  url: string;
+};
+
+export type TemplateVariableSpec = {
+  header: number[];
+  body: number[];
+  urlButtons: TemplateUrlButton[];
+};
+
+/** Everything a template needs filled in at send time. */
+export function templateVariableSpec(
+  components: TemplateComponent[] | null | undefined,
+): TemplateVariableSpec {
+  const list = (components ?? []) as TemplateComponent[];
+  const header = list.find((c) => String(c.type).toUpperCase() === "HEADER");
+  const headerVars =
+    header && String(header.format ?? "TEXT").toUpperCase() === "TEXT"
+      ? extractVariables(header.text ?? "")
+      : [];
+
+  const buttonsBlock = list.find((c) => String(c.type).toUpperCase() === "BUTTONS");
+  const urlButtons: TemplateUrlButton[] = [];
+  (buttonsBlock?.buttons ?? []).forEach((button, index) => {
+    if (String(button["type"] ?? "").toUpperCase() !== "URL") return;
+    const url = String(button["url"] ?? "");
+    const variables = extractVariables(url);
+    if (variables.length > 0) urlButtons.push({ index, variables, url });
+  });
+
+  return {
+    header: headerVars,
+    body: extractVariables(templateBodyText(list)),
+    urlButtons,
+  };
+}
+
+export type TemplatePayloadInput = {
+  spec: TemplateVariableSpec;
+  /** Values keyed by variable number, as used in the body text. */
+  values: Record<string, string>;
+  /** Header values, when the header carries its own variables. */
+  headerValues?: Record<string, string>;
+  /** Short-link tokens, one per URL button, keyed by button index. */
+  buttonTokens?: Record<number, string>;
+};
+
+export type TemplatePayloadResult =
+  | { components: Array<Record<string, unknown>>; error: null }
+  | { components: null; error: string };
+
+/**
+ * Builds the Graph `template.components` payload and refuses to send when a
+ * declared variable has no value — naming the component and index instead of
+ * letting Meta answer with #131008.
+ */
+export function buildTemplatePayloadComponents(
+  input: TemplatePayloadInput,
+): TemplatePayloadResult {
+  const components: Array<Record<string, unknown>> = [];
+
+  if (input.spec.header.length > 0) {
+    const missing = input.spec.header.filter(
+      (n) => !(input.headerValues ?? {})[String(n)]?.trim(),
+    );
+    if (missing.length > 0) {
+      return { components: null, error: missingMessage("header", missing) };
+    }
+    components.push({
+      type: "header",
+      parameters: input.spec.header.map((n) => ({
+        type: "text",
+        text: (input.headerValues ?? {})[String(n)] as string,
+      })),
+    });
+  }
+
+  if (input.spec.body.length > 0) {
+    const missing = input.spec.body.filter((n) => !input.values[String(n)]?.trim());
+    if (missing.length > 0) {
+      return { components: null, error: missingMessage("body", missing) };
+    }
+    components.push({
+      type: "body",
+      parameters: input.spec.body.map((n) => ({ type: "text", text: input.values[String(n)] })),
+    });
+  }
+
+  for (const button of input.spec.urlButtons) {
+    const token = (input.buttonTokens ?? {})[button.index];
+    if (!token || !token.trim()) {
+      return {
+        components: null,
+        error: missingMessage(`button ${button.index} (link)`, button.variables),
+      };
+    }
+    components.push({
+      type: "button",
+      sub_type: "url",
+      index: String(button.index),
+      parameters: [{ type: "text", text: token }],
+    });
+  }
+
+  return { components, error: null };
+}
+
+function missingMessage(component: string, missing: number[]): string {
+  const list = missing.map((n) => `{{${n}}}`).join(", ");
+  return `This message can't be sent: the template's ${component} needs ${list} and we have no value for ${missing.length > 1 ? "them" : "it"}.`;
+}

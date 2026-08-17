@@ -544,13 +544,18 @@ export async function resolveFlowVariables(
   if (triggerType === "abandoned_checkout") {
     const { data } = await supabase
       .from("abandoned_checkouts")
-      .select("total, currency, checkout_url")
+      .select("total, currency, organization_id")
       .eq("id", triggerId)
       .maybeSingle();
+    // {{2}} is the store's own name — the cart link now lives on the button.
+    const orgId = (data?.["organization_id"] as string | null) ?? null;
+    const { data: org } = orgId
+      ? await supabase.from("organizations").select("name").eq("id", orgId).maybeSingle()
+      : { data: null };
     return {
       "1": name,
-      "2": data?.["total"] != null ? `${data["currency"] ?? ""} ${data["total"]}`.trim() : "",
-      "3": (data?.["checkout_url"] as string | null) ?? "",
+      "2": (org?.["name"] as string | null) ?? "our store",
+      "3": data?.["total"] != null ? `${data["currency"] ?? ""} ${data["total"]}`.trim() : "",
     };
   }
 
@@ -647,4 +652,38 @@ export async function stepGateAllows(
   }
 
   return { allowed: true };
+}
+
+/**
+ * Where a template's link button should take the customer for this trigger.
+ * Returned raw — the sender shortens it and counts the click.
+ */
+export async function flowLinkTarget(
+  supabase: SupabaseClient,
+  triggerType: string,
+  triggerId: string | null,
+): Promise<string | null> {
+  if (!triggerId) return null;
+
+  if (triggerType === "abandoned_checkout") {
+    const { data } = await supabase
+      .from("abandoned_checkouts")
+      .select("checkout_url")
+      .eq("id", triggerId)
+      .maybeSingle();
+    return (data?.["checkout_url"] as string | null) ?? null;
+  }
+
+  if (triggerType === "order") {
+    const { data } = await supabase
+      .from("orders")
+      .select("raw")
+      .eq("id", triggerId)
+      .maybeSingle();
+    const raw = (data?.["raw"] ?? {}) as Record<string, unknown>;
+    const url = raw["order_status_url"];
+    return typeof url === "string" && url ? url : null;
+  }
+
+  return null;
 }
