@@ -166,31 +166,14 @@ export const Route = createFileRoute("/api/integrations/shopify")({
           const connection = await getShopifyConnection(service, integrationId);
           if (!connection.ok) return jsonError(connection.error, 400);
 
-          const { data: job } = await service
-            .from("integration_sync_jobs")
-            .insert({
-              organization_id: organizationId,
-              integration_id: integrationId,
-              kind: "backfill",
-              status: "running",
-              phase: "queued",
-            })
-            .select("id")
-            .maybeSingle();
-          const jobId = (job as { id: string } | null)?.id;
+          // Enqueue only — the cron worker does the paging so this request
+          // stays short and the work survives the response.
+          const { enqueueBackfill } = await import("@/lib/shopify-sync.server");
+          const jobId = await enqueueBackfill(service, {
+            organizationId,
+            integrationId,
+          });
           if (!jobId) return jsonError("We couldn't start the sync just now.", 500);
-
-          const { runBackfill } = await import("@/lib/shopify-sync.server");
-          // Deliberately not awaited: the UI polls the job instead of hanging.
-          void runBackfill(
-            {
-              supabase: service,
-              organizationId,
-              integrationId,
-              shopDomain: integration.shop_domain,
-            },
-            { accessToken: connection.accessToken, jobId },
-          ).catch(() => {});
 
           await logServerActivity(supabase, organizationId, userId, "integration_resynced", {
             provider: "shopify",
