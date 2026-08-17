@@ -10,7 +10,7 @@ import { FlowsView } from "@/components/flows/flows-view";
 import { SendsLog } from "@/components/flows/sends-log";
 import type { FlowRow } from "@/lib/flows";
 
-export const Route = createFileRoute("/app/flows")({
+export const Route = createFileRoute("/app/flows/")({
   head: () => ({
     meta: [
       { title: "Flows — AiDwar" },
