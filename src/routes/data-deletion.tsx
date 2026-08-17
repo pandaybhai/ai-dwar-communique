@@ -126,7 +126,7 @@ function DataDeletionPage() {
       </Section>
 
 
-      <Section heading="7. Who to contact">
+      <Section heading="8. Who to contact">
         <p className="font-medium text-foreground">Registered entity</p>
         <p className="mb-4">
           Meezoy Ventures Private Limited
