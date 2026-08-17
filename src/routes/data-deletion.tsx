@@ -108,6 +108,24 @@ function DataDeletionPage() {
         </p>
       </Section>
 
+      <Section heading="7. Shopify store data">
+        <p>
+          When a merchant connects a Shopify store to AiDwar, we receive customer name, email
+          address, phone number and order data from that store. We use it for one purpose only: to
+          deliver WhatsApp messages on the merchant&apos;s behalf. We never sell it, never share it
+          with third parties, and never use it to build profiles or train models.
+        </p>
+        <Bullets
+          items={[
+            "The merchant who owns the Shopify store is the controller of that data. AiDwar is the processor and acts only on their instructions.",
+            "Uninstalling the AiDwar app from a Shopify store triggers deletion of all data synced from that store — products, orders, order line items, abandoned checkouts, sync records and the stored access token — within 30 days, and usually within 48 hours.",
+            "Shopify's data request and redaction webhooks are honoured automatically. A customers/data_request is recorded and answered within 30 days; a customers/redact permanently deletes that shopper's records from the merchant's workspace; a shop/redact removes everything synced from that store.",
+            "Shoppers should contact the merchant they bought from, who can action the request directly. If you cannot reach them, email privacy@aidwar.in and we will forward and follow it up.",
+          ]}
+        />
+      </Section>
+
+
       <Section heading="7. Who to contact">
         <p className="font-medium text-foreground">Registered entity</p>
         <p className="mb-4">
