@@ -426,21 +426,39 @@ export async function markAuthExpired(
 /**
  * Persist a refreshed grant. The previous refresh token is invalidated the
  * moment Shopify hands back a new one, so both halves are written together.
+ * token_refreshed_at records the rotation itself, so refresh health can be read
+ * directly instead of inferred from expiry maths.
  */
 async function persistGrant(
   supabase: SupabaseClient,
   args: { integrationId: string; organizationId: string; grant: TokenGrant },
 ): Promise<void> {
+  const now = new Date().toISOString();
   await supabase
     .from("integration_credentials")
     .update({
       access_token: args.grant.accessToken,
       ...(args.grant.scopes.length ? { granted_scopes: args.grant.scopes } : {}),
       ...grantTimestamps(args.grant),
-      updated_at: new Date().toISOString(),
+      token_refreshed_at: now,
+      updated_at: now,
     })
     .eq("integration_id", args.integrationId);
+
+  if (args.organizationId) {
+    await supabase.from("activity_log").insert({
+      organization_id: args.organizationId,
+      action: "shopify_token_refreshed",
+      details: {
+        provider: "shopify",
+        integration_id: args.integrationId,
+        expires_at: grantTimestamps(args.grant).expires_at,
+        refreshed_at: now,
+      },
+    });
+  }
 }
+
 
 /**
  * Resolve a connected store's token, refreshing it first when it is inside the
