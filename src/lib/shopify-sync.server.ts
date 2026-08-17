@@ -461,100 +461,232 @@ async function updateJob(
   jobId: string,
   patch: Record<string, unknown>,
 ): Promise<void> {
-  await supabase.from("integration_sync_jobs").update(patch).eq("id", jobId);
+  await supabase
+    .from("integration_sync_jobs")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", jobId);
+}
+
+/** Jobs are enqueued and picked up by the cron worker; nothing runs inline. */
+export async function enqueueBackfill(
+  supabase: SupabaseClient,
+  args: { organizationId: string; integrationId: string; kind?: string },
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("integration_sync_jobs")
+    .insert({
+      organization_id: args.organizationId,
+      integration_id: args.integrationId,
+      kind: args.kind ?? "backfill",
+      status: "queued",
+      phase: "queued",
+    })
+    .select("id")
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+type JobRow = {
+  id: string;
+  organization_id: string;
+  integration_id: string;
+  status: string;
+  phase: string;
+  cursor: string | null;
+  products_synced: number;
+  orders_synced: number;
+  contacts_matched: number;
+  started_at: string;
+};
+
+const STALL_MS = 10 * 60 * 1000;
+const PAGE_SIZE = "250";
+
+/** Fail any job that claims to be running but hasn't moved in 10 minutes. */
+export async function failStalledSyncJobs(supabase: SupabaseClient): Promise<number> {
+  const cutoff = new Date(Date.now() - STALL_MS).toISOString();
+  const { data } = await supabase
+    .from("integration_sync_jobs")
+    .update({
+      status: "failed",
+      error: "Sync stalled: no progress for over 10 minutes.",
+      finished_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("status", "running")
+    .lt("updated_at", cutoff)
+    .select("id, integration_id");
+
+  const rows = (data ?? []) as Array<{ id: string; integration_id: string }>;
+  for (const row of rows) {
+    await supabase
+      .from("integrations")
+      .update({ sync_error: "Sync stalled and was stopped.", status: "error" })
+      .eq("id", row.integration_id);
+  }
+  return rows.length;
 }
 
 /**
- * Backfill: every product, then the last 90 days of orders. Paginated with
- * page_info cursors and rate-limit aware through shopifyRest. Progress lands
- * on integration_sync_jobs so the UI can watch without blocking.
+ * Claim the oldest pending job. The compare-and-set on updated_at means two
+ * overlapping ticks can never take the same row.
  */
-export async function runBackfill(
-  ctx: SyncContext,
-  args: { accessToken: string; jobId: string },
-): Promise<void> {
-  let products = 0;
-  let orders = 0;
-  let contacts = 0;
+async function claimJob(supabase: SupabaseClient): Promise<JobRow | null> {
+  const { data } = await supabase
+    .from("integration_sync_jobs")
+    .select(
+      "id, organization_id, integration_id, status, phase, cursor, products_synced, orders_synced, contacts_matched, started_at, updated_at",
+    )
+    .in("status", ["queued", "running"])
+    .order("started_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-  const page = async (path: string, query: Record<string, string>, pageInfo: string | null) =>
-    shopifyRest({
-      shopDomain: ctx.shopDomain,
-      accessToken: args.accessToken,
-      path,
-      query: pageInfo ? { limit: "250", page_info: pageInfo } : { limit: "250", ...query },
-    });
+  const job = data as (JobRow & { updated_at: string }) | null;
+  if (!job) return null;
 
-  const failed = async (result: RestResult, phase: string) => {
-    const message = `Shopify ${phase} sync failed (${result.status}).`;
-    await updateJob(ctx.supabase, args.jobId, {
-      status: "failed",
-      phase,
-      error: message,
-      finished_at: new Date().toISOString(),
-    });
-    await ctx.supabase
-      .from("integrations")
-      .update({ sync_error: message, status: "error" })
-      .eq("id", ctx.integrationId);
+  const { data: claimed } = await supabase
+    .from("integration_sync_jobs")
+    .update({ status: "running", updated_at: new Date().toISOString() })
+    .eq("id", job.id)
+    .eq("updated_at", job.updated_at)
+    .select("id")
+    .maybeSingle();
+  return claimed ? job : null;
+}
+
+async function failJob(supabase: SupabaseClient, job: JobRow, message: string): Promise<void> {
+  await updateJob(supabase, job.id, {
+    status: "failed",
+    error: message,
+    finished_at: new Date().toISOString(),
+  });
+  await supabase
+    .from("integrations")
+    .update({ sync_error: message, status: "error" })
+    .eq("id", job.integration_id);
+}
+
+/**
+ * Process exactly one bounded chunk of the claimed job — a page of products or
+ * a page of orders — then persist phase, cursor and counters and return. The
+ * next tick resumes from the stored cursor, so a big store backfills across
+ * many short invocations instead of dying inside one.
+ */
+async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<string, unknown>> {
+  const { getShopifyConnection } = await import("@/lib/shopify.server");
+  const connection = await getShopifyConnection(supabase, job.integration_id);
+  if (!connection.ok) {
+    await failJob(supabase, job, connection.error);
+    return { job_id: job.id, failed: connection.error };
+  }
+
+  const ctx: SyncContext = {
+    supabase,
+    organizationId: job.organization_id,
+    integrationId: job.integration_id,
+    shopDomain: connection.shopDomain,
   };
 
-  try {
-    await updateJob(ctx.supabase, args.jobId, { phase: "products" });
-    let cursor: string | null = null;
-    do {
-      const result: RestResult = await page("products.json", {}, cursor);
-      if (!result.ok) return void (await failed(result, "products"));
-      const list = Array.isArray(result.body["products"])
-        ? (result.body["products"] as AnyRecord[])
-        : [];
-      for (const product of list) if (await upsertProduct(ctx, product)) products += 1;
-      await updateJob(ctx.supabase, args.jobId, { products_synced: products });
-      cursor = result.nextPageInfo;
-    } while (cursor);
+  const phase = job.phase === "queued" || job.phase === "starting" ? "products" : job.phase;
+  const cursor = job.phase === phase ? job.cursor : null;
 
-    await updateJob(ctx.supabase, args.jobId, { phase: "orders" });
-    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-    cursor = null;
-    do {
-      const result: RestResult = await page(
-        "orders.json",
-        { status: "any", created_at_min: since },
-        cursor,
-      );
-      if (!result.ok) return void (await failed(result, "orders"));
-      const list = Array.isArray(result.body["orders"]) ? (result.body["orders"] as AnyRecord[]) : [];
-      for (const order of list) {
-        const saved = await upsertOrder(ctx, order);
-        if (saved.orderId) orders += 1;
-        if (saved.contactId) contacts += 1;
-      }
-      await updateJob(ctx.supabase, args.jobId, {
+  const fetchPage = (path: string, query: Record<string, string>) =>
+    shopifyRest({
+      shopDomain: ctx.shopDomain,
+      accessToken: connection.accessToken,
+      path,
+      query: cursor ? { limit: PAGE_SIZE, page_info: cursor } : { limit: PAGE_SIZE, ...query },
+    });
+
+  if (phase === "products") {
+    const result: RestResult = await fetchPage("products.json", {});
+    if (!result.ok) {
+      await failJob(supabase, job, `Shopify products sync failed (${result.status}).`);
+      return { job_id: job.id, failed: "products" };
+    }
+    const list = Array.isArray(result.body["products"])
+      ? (result.body["products"] as AnyRecord[])
+      : [];
+    let products = job.products_synced;
+    for (const product of list) if (await upsertProduct(ctx, product)) products += 1;
+
+    const next = result.nextPageInfo;
+    await updateJob(supabase, job.id, {
+      phase: next ? "products" : "orders",
+      cursor: next,
+      products_synced: products,
+    });
+    return { job_id: job.id, phase: "products", page: list.length, products_synced: products };
+  }
+
+  if (phase === "orders") {
+    // Window is anchored to the job, so resuming never shifts the range.
+    const since = new Date(
+      new Date(job.started_at).getTime() - 90 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const result: RestResult = await fetchPage("orders.json", {
+      status: "any",
+      created_at_min: since,
+    });
+    if (!result.ok) {
+      await failJob(supabase, job, `Shopify orders sync failed (${result.status}).`);
+      return { job_id: job.id, failed: "orders" };
+    }
+    const list = Array.isArray(result.body["orders"]) ? (result.body["orders"] as AnyRecord[]) : [];
+    let orders = job.orders_synced;
+    let contacts = job.contacts_matched;
+    for (const order of list) {
+      const saved = await upsertOrder(ctx, order);
+      if (saved.orderId) orders += 1;
+      if (saved.contactId) contacts += 1;
+    }
+
+    const next = result.nextPageInfo;
+    if (next) {
+      await updateJob(supabase, job.id, {
+        phase: "orders",
+        cursor: next,
         orders_synced: orders,
         contacts_matched: contacts,
       });
-      cursor = result.nextPageInfo;
-    } while (cursor);
+      return { job_id: job.id, phase: "orders", page: list.length, orders_synced: orders };
+    }
 
-    await updateJob(ctx.supabase, args.jobId, {
+    const nowIso = new Date().toISOString();
+    await updateJob(supabase, job.id, {
       status: "completed",
       phase: "done",
-      finished_at: new Date().toISOString(),
+      cursor: null,
+      orders_synced: orders,
+      contacts_matched: contacts,
+      finished_at: nowIso,
     });
-    await ctx.supabase
+    await supabase
       .from("integrations")
-      .update({ last_sync_at: new Date().toISOString(), sync_error: null, status: "connected" })
-      .eq("id", ctx.integrationId);
+      .update({ last_sync_at: nowIso, sync_error: null, status: "connected" })
+      .eq("id", job.integration_id);
+    return { job_id: job.id, phase: "done", orders_synced: orders, contacts_matched: contacts };
+  }
+
+  await failJob(supabase, job, `Unknown sync phase "${phase}".`);
+  return { job_id: job.id, failed: "phase" };
+}
+
+/** One cron tick: retire stalled jobs, then advance one job by one chunk. */
+export async function processSyncJobTick(
+  supabase: SupabaseClient,
+): Promise<Record<string, unknown>> {
+  const stalled = await failStalledSyncJobs(supabase);
+  const job = await claimJob(supabase);
+  if (!job) return { stalled, claimed: false };
+
+  try {
+    const result = await runChunk(supabase, job);
+    return { stalled, claimed: true, ...result };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Backfill failed.";
-    await updateJob(ctx.supabase, args.jobId, {
-      status: "failed",
-      error: message,
-      finished_at: new Date().toISOString(),
-    });
-    await ctx.supabase
-      .from("integrations")
-      .update({ sync_error: message, status: "error" })
-      .eq("id", ctx.integrationId);
+    const message = err instanceof Error ? err.message : "Backfill chunk failed.";
+    await failJob(supabase, job, message);
+    return { stalled, claimed: true, job_id: job.id, failed: message };
   }
 }
