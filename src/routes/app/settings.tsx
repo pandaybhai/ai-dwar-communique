@@ -25,6 +25,8 @@ import { TeamSettings } from "@/components/team/team-settings";
 import { WhatsAppTab } from "@/components/whatsapp-settings";
 import { LeadSourcesTab } from "@/components/contacts/lead-sources-settings";
 import { OptOutKeywordsCard } from "@/components/contacts/opt-out-keywords-settings";
+import { DeleteWorkspaceCard } from "@/components/settings/delete-workspace-card";
+
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
