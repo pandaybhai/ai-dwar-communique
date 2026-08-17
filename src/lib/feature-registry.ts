@@ -860,9 +860,13 @@ export const FEATURES: readonly FeatureManifest[] = [
     name: "Sales from messages",
     description:
       "Links orders back to the last promotional message the customer received, and shows honestly which sales could not be linked.",
-    icon: "bar-chart",
+    icon: "receipt",
     flag_key: "revenue_attribution",
     flag_default_enabled: true,
+    nav_path: "/app/receipts",
+    nav_order: 65,
+    nav_permission: "revenue.view",
+
     permissions: [
       {
         key: "revenue.view",
