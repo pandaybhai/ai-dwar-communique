@@ -41,6 +41,10 @@ export type SendSettings = {
   quietExemptTransactional: boolean;
   capPerDay: number;
   capPerWeek: number;
+  /** Days of silence after which a customer is worth winning back. */
+  winbackAfterDays: number;
+  /** Days after an order at which a reorder nudge makes sense. */
+  reorderAfterDays: number;
   timezone: string;
 };
 
@@ -51,7 +55,10 @@ const DEFAULT_SETTINGS: Omit<SendSettings, "timezone"> = {
   quietExemptTransactional: false,
   capPerDay: 1,
   capPerWeek: 3,
+  winbackAfterDays: 90,
+  reorderAfterDays: 45,
 };
+
 
 /** A flow declares the class of everything it sends; nothing infers it. */
 export function messageClassOf(flow: FlowRow): MessageClass {
@@ -67,8 +74,9 @@ export async function loadSendSettings(
     supabase
       .from("organization_send_settings")
       .select(
-        "quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_exempt_transactional, marketing_cap_per_day, marketing_cap_per_week",
+        "quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_exempt_transactional, marketing_cap_per_day, marketing_cap_per_week, winback_after_days, reorder_after_days",
       )
+
       .eq("organization_id", organizationId)
       .maybeSingle(),
     supabase.from("organizations").select("timezone").eq("id", organizationId).maybeSingle(),
@@ -90,7 +98,10 @@ export async function loadSendSettings(
     ),
     capPerDay: num("marketing_cap_per_day", DEFAULT_SETTINGS.capPerDay),
     capPerWeek: num("marketing_cap_per_week", DEFAULT_SETTINGS.capPerWeek),
+    winbackAfterDays: num("winback_after_days", DEFAULT_SETTINGS.winbackAfterDays),
+    reorderAfterDays: num("reorder_after_days", DEFAULT_SETTINGS.reorderAfterDays),
     timezone: (org?.["timezone"] as string | undefined) || "Asia/Kolkata",
+
   };
 }
 
@@ -515,8 +526,33 @@ export async function triggerStillValid(
     if (!data) return { valid: false, reason: "trigger_missing" };
     if (data["cancelled_at"]) return { valid: false, reason: "order_cancelled" };
   }
+  // The time-based flows key their trigger to an order too, but a newer order
+  // means the customer already came back — a winback or reorder nudge then has
+  // nothing to say, so it is cancelled rather than sent.
+  if (triggerType === "winback" || triggerType === "reorder" || triggerType === "review_request") {
+    const { data } = await supabase
+      .from("orders")
+      .select("contact_id, cancelled_at, placed_at")
+      .eq("id", triggerId)
+      .maybeSingle();
+    const order = data as
+      | { contact_id: string | null; cancelled_at: string | null; placed_at: string | null }
+      | null;
+    if (!order) return { valid: false, reason: "trigger_missing" };
+    if (order.cancelled_at) return { valid: false, reason: "order_cancelled" };
+    if (triggerType !== "review_request" && order.contact_id && order.placed_at) {
+      const { count } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("contact_id", order.contact_id)
+        .is("cancelled_at", null)
+        .gt("placed_at", order.placed_at);
+      if ((count ?? 0) > 0) return { valid: false, reason: "customer_returned" };
+    }
+  }
   return { valid: true };
 }
+
 
 /**
  * Opt-in basis. Transactional messages reach unknown contacts because the
@@ -585,8 +621,38 @@ export async function resolveFlowVariables(
   }
 
 
+  // Time-based flows all hang off an order row, but each says a different
+  // thing, so the variables are resolved per flow rather than per table.
+  if (triggerType === "winback" || triggerType === "reorder" || triggerType === "review_request") {
+    const { data } = await supabase
+      .from("orders")
+      .select("order_number, organization_id")
+      .eq("id", triggerId)
+      .maybeSingle();
+    const orgId = (data?.["organization_id"] as string | null) ?? null;
+    const { data: org } = orgId
+      ? await supabase.from("organizations").select("name").eq("id", orgId).maybeSingle()
+      : { data: null };
+    const storeName = (org?.["name"] as string | null) ?? "our store";
+
+    if (triggerType === "winback") return { "1": name, "2": storeName };
+    if (triggerType === "review_request") {
+      return { "1": name, "2": (data?.["order_number"] as string | null) ?? "" };
+    }
+
+    const { data: items } = await supabase
+      .from("order_items")
+      .select("title")
+      .eq("order_id", triggerId)
+      .limit(1);
+    const product =
+      ((items as Array<{ title: string | null }> | null)?.[0]?.title ?? "").trim() ||
+      "your last order";
+    return { "1": name, "2": product, "3": storeName };
+  }
 
   return { "1": name };
+
 }
 
 /**
@@ -691,5 +757,165 @@ export async function flowLinkTarget(
     return typeof url === "string" && url ? url : null;
   }
 
+  if (triggerType === "winback" || triggerType === "reorder" || triggerType === "review_request") {
+    const { data } = await supabase
+      .from("orders")
+      .select("organization_id, raw")
+      .eq("id", triggerId)
+      .maybeSingle();
+    const orgId = (data?.["organization_id"] as string | null) ?? null;
+    const shopUrl = orgId ? await storefrontUrl(supabase, orgId) : null;
+    if (triggerType === "winback") return shopUrl;
+
+    // Reorder and review both point at the product the customer bought, and
+    // fall back to somewhere useful rather than sending no link at all.
+    const { data: items } = await supabase
+      .from("order_items")
+      .select("external_product_id")
+      .eq("order_id", triggerId)
+      .limit(1);
+    const externalProductId =
+      (items as Array<{ external_product_id: string | null }> | null)?.[0]?.external_product_id ??
+      null;
+    if (externalProductId && orgId) {
+      const { data: product } = await supabase
+        .from("products")
+        .select("product_url")
+        .eq("organization_id", orgId)
+        .eq("external_id", externalProductId)
+        .not("product_url", "is", null)
+        .limit(1)
+        .maybeSingle();
+      const url = product?.["product_url"] as string | null | undefined;
+      if (url) return url;
+    }
+    const raw = (data?.["raw"] ?? {}) as Record<string, unknown>;
+    const statusUrl = raw["order_status_url"];
+    if (triggerType === "review_request" && typeof statusUrl === "string" && statusUrl) {
+      return statusUrl;
+    }
+    return shopUrl;
+  }
+
+
+
   return null;
 }
+
+/** The shop's own storefront — where a "see what's new" button belongs. */
+async function storefrontUrl(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("integrations")
+    .select("shop_domain")
+    .eq("organization_id", organizationId)
+    .eq("provider", "shopify")
+    .not("shop_domain", "is", null)
+    .limit(1)
+    .maybeSingle();
+  const domain = (data?.["shop_domain"] as string | null) ?? null;
+  return domain ? `https://${domain}` : null;
+}
+
+/**
+ * Daily scan for the flows that trigger on elapsed time rather than an event.
+ *
+ * Winback and reorder both hang their trigger off an order id, so the existing
+ * partial unique index on scheduled_sends is the whole idempotency story: one
+ * winback per "most recent order" (it can only repeat once the customer buys
+ * again), one reorder per order. No enrolment table needed.
+ */
+export async function scanTimeBasedFlows(
+  supabase: SupabaseClient,
+): Promise<{ organizations: number; winback: number; reorder: number }> {
+  const { data: flowRows } = await supabase
+    .from("flows")
+    .select("id, organization_id, key, is_enabled")
+    .in("key", ["winback", "reorder"])
+    .eq("is_enabled", true);
+
+  const enabled = new Map<string, Map<string, string>>();
+  for (const row of ((flowRows as Array<{ id: string; organization_id: string; key: string }>) ??
+    [])) {
+    const byKey = enabled.get(row.organization_id) ?? new Map<string, string>();
+    byKey.set(row.key, row.id);
+    enabled.set(row.organization_id, byKey);
+  }
+
+
+  let winback = 0;
+  let reorder = 0;
+
+  for (const [organizationId, keys] of enabled) {
+    const settings = await loadSendSettings(supabase, organizationId);
+
+    // The most recent live order per contact. Everything both flows need is
+    // decided from that one row.
+    const { data: orderRows } = await supabase
+      .from("orders")
+      .select("id, contact_id, placed_at")
+      .eq("organization_id", organizationId)
+      .is("cancelled_at", null)
+      .not("contact_id", "is", null)
+      .not("placed_at", "is", null)
+      .order("placed_at", { ascending: false })
+      .limit(5000);
+
+    const latest = new Map<string, { id: string; placedAt: number }>();
+    for (const row of ((orderRows as Array<{
+      id: string;
+      contact_id: string | null;
+      placed_at: string | null;
+    }>) ?? [])) {
+      const contactId = row.contact_id;
+      if (!contactId || latest.has(contactId)) continue;
+      const placedAt = new Date(row.placed_at as string).getTime();
+      if (Number.isNaN(placedAt)) continue;
+      latest.set(contactId, { id: row.id, placedAt });
+    }
+
+    // Orders these flows have already acted on. Filtering them out here keeps
+    // the scan quiet: a daily re-run of the same eligible customer must not
+    // write an "already scheduled" skip every night for the rest of time.
+    const flowIds = Array.from(keys.values());
+    const { data: doneRows } = await supabase
+      .from("scheduled_sends")
+      .select("flow_id, trigger_id")
+      .in("flow_id", flowIds)
+      .neq("status", "cancelled")
+      .limit(20000);
+    const done = new Set(
+      ((doneRows as Array<{ flow_id: string; trigger_id: string | null }>) ?? []).map(
+        (row) => `${row.flow_id}:${row.trigger_id ?? ""}`,
+      ),
+    );
+
+    const now = Date.now();
+    for (const [contactId, order] of latest) {
+      const ageDays = (now - order.placedAt) / 86_400_000;
+
+      const run = async (key: "winback" | "reorder", afterDays: number) => {
+        const flowId = keys.get(key);
+        if (!flowId || ageDays < afterDays) return 0;
+        if (done.has(`${flowId}:${order.id}`)) return 0;
+        const outcome = await scheduleFlow(supabase, {
+          organizationId,
+          flowKey: key,
+          contactId,
+          triggerType: key,
+          triggerId: order.id,
+        });
+        return outcome.scheduled;
+      };
+
+      winback += await run("winback", settings.winbackAfterDays);
+      reorder += await run("reorder", settings.reorderAfterDays);
+    }
+
+  }
+
+  return { organizations: enabled.size, winback, reorder };
+}
+

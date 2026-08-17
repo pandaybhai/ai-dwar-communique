@@ -320,7 +320,115 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           return Response.json({ created, failures });
         }
 
+        // ---- the three retention messages (winback, reorder, review) ----
+        if (action === "create_retention_templates") {
+          const { connection, error: connectionError } = await getWhatsAppConnection(
+            supabase,
+            organizationId,
+            requestedAccountId,
+          );
+          if (!connection) return jsonError(connectionError ?? "No connected number.", 400);
+
+          const language = String(payload["language"] ?? "en");
+          // Every link goes through our own short-link redirect, so clicks are
+          // counted and the destination can differ per customer.
+          const linkButton = (text: string) => ({
+            type: "BUTTONS",
+            buttons: [
+              {
+                type: "URL",
+                text,
+                url: "https://aidwar.in/r/{{1}}",
+                example: ["https://aidwar.in/r/ab12cd34ef"],
+              },
+            ],
+          });
+
+          const specs = [
+            {
+              name: "winback_offer",
+              body: "Hi {{1}}, it's been a while since your last order from {{2}}. Here's what's new.",
+              examples: ["Priya", "Kurta House"],
+              button: "See what's new",
+            },
+            {
+              name: "reorder_reminder",
+              body:
+                "Hi {{1}}, running low? You ordered {{2}} from {{3}} a while back — reorder in one tap.",
+              examples: ["Priya", "Cotton Kurta", "Kurta House"],
+              button: "Reorder",
+            },
+            {
+              name: "review_request",
+              body: "Hi {{1}}, how was your order {{2}}? Your review helps other shoppers.",
+              examples: ["Priya", "#1024"],
+              button: "Leave a review",
+            },
+          ];
+
+          const created: string[] = [];
+          const failures: string[] = [];
+
+          for (const spec of specs) {
+            const components: AnyRecord[] = [
+              { type: "BODY", text: spec.body, example: { body_text: [spec.examples] } },
+              linkButton(spec.button),
+            ];
+
+            const result = await graphFetch(
+              `${connection.wabaId}/message_templates`,
+              connection.accessToken,
+              {
+                method: "POST",
+                body: { name: spec.name, language, category: "MARKETING", components },
+              },
+            );
+            if (!result.ok) {
+              failures.push(`${spec.name}: ${graphErrorMessage(result.body)}`);
+              continue;
+            }
+
+            const status = String(result.body["status"] ?? "PENDING").toUpperCase();
+            await supabase.from("message_templates").upsert(
+              {
+                organization_id: organizationId,
+                waba_id: connection.wabaId,
+                meta_template_id: (result.body["id"] as string) ?? null,
+                name: spec.name,
+                language,
+                category: "MARKETING",
+                status: ["PENDING", "APPROVED", "REJECTED", "PAUSED"].includes(status)
+                  ? status
+                  : "PENDING",
+                components,
+                rejection_reason: null,
+                updated_at: nowIso,
+              },
+              { onConflict: "organization_id,waba_id,name,language" },
+            );
+            created.push(spec.name);
+          }
+
+          if (created.length === 0) {
+            return Response.json(
+              { error: failures[0] ?? "We couldn't submit these messages." },
+              { status: 400 },
+            );
+          }
+
+          await logServerActivity(supabase, organizationId, userId, "template_created", {
+            template_names: created,
+            category: "MARKETING",
+            purpose: "retention_flows",
+            whatsapp_account_id: connection.accountId,
+          });
+
+          return Response.json({ created, failures });
+        }
+
         return jsonError("Unsupported action.");
+
+
 
       },
     },
