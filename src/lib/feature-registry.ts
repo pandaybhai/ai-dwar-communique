@@ -801,6 +801,40 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
 
   {
+    key: "flows",
+    name: "Flows",
+    description:
+      "Scheduled messaging: turn store events into WhatsApp messages with delays, quiet hours and frequency caps.",
+    icon: "workflow",
+    flag_key: "flows",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "flows.view",
+        name: "View flows",
+        description: "See flows, their steps and what has been scheduled or sent.",
+        min_role: "marketer",
+      },
+      {
+        key: "flows.manage",
+        name: "Manage flows",
+        description:
+          "Turn flows on or off, edit steps and templates, and change quiet hours and frequency caps.",
+        min_role: "admin",
+      },
+    ],
+    analytics: {
+      event_types: ["flow.scheduled", "flow.sent", "flow.cancelled", "flow.skipped"],
+      metrics: ["flow_sends", "flow_skips"],
+      dashboard_section: false,
+    },
+    activity_actions: [],
+    settings_path: "/app/settings",
+    data_tables: ["flows", "flow_steps", "scheduled_sends", "organization_send_settings"],
+  },
+
+  {
+
     key: "billing",
     name: "Billing",
     description: "Plan, usage and invoices for this workspace.",
