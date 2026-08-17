@@ -956,11 +956,46 @@ export async function processWebhookPayload(
           if (incoming === undefined || incoming <= current) continue; // never downgrade
           if (existing.status === "failed") continue;
 
+          // What Meta actually charged for. This is authoritative: a utility
+          // message inside an open service window is free, and only a billable
+          // delivered message costs anything. Cost is never inferred from the
+          // fact that a send happened.
+          const pricing = st["pricing"] as AnyRecord | undefined;
+          const pricingPatch = pricing
+            ? {
+                billable: pricing["billable"] === undefined ? null : Boolean(pricing["billable"]),
+                pricing_model: pricing["pricing_model"] != null ? String(pricing["pricing_model"]) : null,
+                pricing_category:
+                  pricing["category"] != null ? String(pricing["category"]).toLowerCase() : null,
+              }
+            : {};
+
           await supabase
             .from("messages")
-            .update({ status: nextStatus, status_updated_at: at })
+            .update({ status: nextStatus, status_updated_at: at, ...pricingPatch })
             .eq("id", existing.id);
           await applyCampaignStatus(supabase, existing.id, nextStatus, null);
+
+          // Priced from the rate card, in the database, so a missing rate is a
+          // warning and never a guessed number.
+          if (nextStatus === "delivered" || nextStatus === "read") {
+            const { data: priced, error: priceError } = await supabase.rpc("price_message", {
+              p_message_id: existing.id,
+            });
+            if (priceError || priced === false) {
+              console.warn(
+                JSON.stringify({
+                  scope: "message_cost",
+                  stage: "no_matching_rate",
+                  message_id: existing.id,
+                  category: (pricingPatch as { pricing_category?: string | null }).pricing_category ?? null,
+                  organization_id: orgId,
+                  error: priceError?.message ?? null,
+                }),
+              );
+            }
+          }
+
           if (nextStatus === "delivered" || nextStatus === "read" || nextStatus === "sent") {
             await emitEvent(supabase, `message.${nextStatus}`, {
               organizationId: orgId,
@@ -971,6 +1006,7 @@ export async function processWebhookPayload(
               properties: { ...statusProps, whatsapp_account_id: accountId },
             });
           }
+
         }
 
       }
