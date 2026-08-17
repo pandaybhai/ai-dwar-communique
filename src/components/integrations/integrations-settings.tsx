@@ -262,6 +262,20 @@ export function IntegrationsTab() {
 
               {canManage ? (
                 <div className="mt-5 flex flex-wrap gap-2">
+                  {integration.status !== "connected" ? (
+                    <Button
+                      size="sm"
+                      disabled={installing}
+                      onClick={() => void startInstall(integration.shop_domain)}
+                    >
+                      {installing ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Reinstall app
+                    </Button>
+                  ) : null}
                   <Button
                     variant="outline"
                     size="sm"
@@ -272,6 +286,7 @@ export function IntegrationsTab() {
                     Resync
                   </Button>
                   <AlertDialog>
+
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="sm" disabled={busyId === integration.id}>
                         <Unplug className="mr-2 h-4 w-4" />
