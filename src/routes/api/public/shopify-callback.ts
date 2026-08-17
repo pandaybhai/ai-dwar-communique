@@ -17,8 +17,11 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           exchangeAccessToken,
           registerWebhooks,
           getServiceClient,
+          grantTimestamps,
+          ONLINE_TOKEN_ERROR,
           SHOPIFY_SCOPES,
         } = await import("@/lib/shopify.server");
+        void ONLINE_TOKEN_ERROR;
 
         const url = new URL(request.url);
         const settingsUrl = (params: Record<string, string>) => {
@@ -52,21 +55,22 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           apiSecret: creds.apiSecret,
           code,
         });
-        if (!exchange.ok || !exchange.accessToken) {
+        if (!exchange.ok || !exchange.grant) {
           return settingsUrl({ shopify_error: "exchange" });
         }
+        const grant = exchange.grant;
 
-        // Only an offline token (shpat_) survives long enough for background
-        // sync. Refuse an online token at install rather than storing it.
-        const { isOfflineAccessToken } = await import("@/lib/shopify.server");
-        if (!isOfflineAccessToken(exchange.accessToken)) {
+        // Access mode is decided by associated_user, not by the token prefix:
+        // shpat_/shpua_ reflects app distribution, not offline vs online. An
+        // online token dies with the user's session and breaks background sync.
+        if (grant.associatedUser) {
           return settingsUrl({ shopify_error: "online_token" });
         }
 
 
         const service = getServiceClient();
         const nowIso = new Date().toISOString();
-        const scopes = exchange.scopes?.length ? exchange.scopes : [...SHOPIFY_SCOPES];
+        const scopes = grant.scopes.length ? grant.scopes : [...SHOPIFY_SCOPES];
 
         // One row per (org, provider, shop) — reinstalling reuses it.
         const { data: saved } = await service
@@ -96,9 +100,10 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           {
             integration_id: integrationId,
             organization_id: verified.organizationId,
-            access_token: exchange.accessToken,
+            access_token: grant.accessToken,
             granted_scopes: scopes,
             install_state: "installed",
+            ...grantTimestamps(grant),
             updated_at: nowIso,
           },
           { onConflict: "integration_id" },
@@ -108,7 +113,7 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           (process.env["SHOPIFY_APP_URL"] ?? url.origin).replace(/\/$/, "") || url.origin;
         const hooks = await registerWebhooks({
           shopDomain,
-          accessToken: exchange.accessToken,
+          accessToken: grant.accessToken,
           callbackBase,
         });
 
@@ -128,12 +133,21 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           },
         });
 
+        // Metadata only — never the token itself.
         await service.from("activity_log").insert({
           organization_id: verified.organizationId,
           user_id: verified.userId || null,
           action: "integration_connected",
-          details: { provider: "shopify", shop_domain: shopDomain, scopes },
+          details: {
+            provider: "shopify",
+            shop_domain: shopDomain,
+            scopes,
+            token_prefix: grant.accessToken.slice(0, 6),
+            expires_in: grant.expiresIn,
+            refresh_token_returned: Boolean(grant.refreshToken),
+          },
         });
+
 
         // The backfill is queued, not run here: this request is about to end in
         // a redirect and the runtime tears us down with it. The cron worker
