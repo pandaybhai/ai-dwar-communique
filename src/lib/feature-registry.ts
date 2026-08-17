@@ -842,7 +842,7 @@ export const FEATURES: readonly FeatureManifest[] = [
     name: "Sales from messages",
     description:
       "Links orders back to the last promotional message the customer received, and shows honestly which sales could not be linked.",
-    icon: "indian-rupee",
+    icon: "bar-chart",
     flag_key: "revenue_attribution",
     flag_default_enabled: true,
     permissions: [
