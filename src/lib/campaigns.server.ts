@@ -175,6 +175,8 @@ export type SendCampaignContext = {
   flowId?: string | null;
   flowStepId?: string | null;
   scheduledSendId?: string | null;
+  /** Destination for a dynamic URL button, shortened at send time. */
+  linkTarget?: string | null;
 };
 
 
@@ -190,7 +192,13 @@ export async function sendCampaignTemplate(
   organizationId: string,
   sender: SenderContext,
   recipient: { contactId: string | null; phone: string; variables: Record<string, string> },
-  template: { name: string; language: string; variableOrder: number[] },
+  template: {
+    name: string;
+    language: string;
+    variableOrder: number[];
+    /** The template's stored components, so link buttons can be filled generically. */
+    components?: import("@/lib/templates").TemplateComponent[] | null;
+  },
   context: SendCampaignContext = { campaignId: null, category: "marketing" },
 ): Promise<SendOutcome> {
   const { emitEvent, recordUsage } = await import("@/lib/events.server");
@@ -288,10 +296,54 @@ export async function sendCampaignTemplate(
     );
   }
 
-  const parameters = template.variableOrder.map((n) => ({
-    type: "text",
-    text: recipient.variables[String(n)] ?? "",
-  }));
+  // What the template itself declares — body, header and dynamic link buttons.
+  const { templateVariableSpec, buildTemplatePayloadComponents } = await import("@/lib/templates");
+  const spec = template.components
+    ? templateVariableSpec(template.components)
+    : { header: [], body: template.variableOrder, urlButtons: [] };
+
+  // A URL button with a variable needs a short link minted for this send.
+  const buttonTokens: Record<number, string> = {};
+  if (spec.urlButtons.length > 0) {
+    if (!context.linkTarget) {
+      return recordFailure(
+        "This message can't be sent: its button links somewhere we don't have a destination for.",
+        JSON.stringify({ message: "missing_link_target", template: template.name }),
+        "missing_link_target",
+      );
+    }
+    const { createShortLink } = await import("@/lib/short-links.server");
+    for (const button of spec.urlButtons) {
+      const { token, error } = await createShortLink(supabase, {
+        organizationId,
+        targetUrl: context.linkTarget,
+        scheduledSendId: context.scheduledSendId ?? null,
+        contactId,
+      });
+      if (!token) {
+        return recordFailure(
+          "This message can't be sent: we couldn't prepare its link.",
+          JSON.stringify({ message: "short_link_failed", error }),
+          "short_link_failed",
+        );
+      }
+      buttonTokens[button.index] = token;
+    }
+  }
+
+  const payload = buildTemplatePayloadComponents({
+    spec,
+    values: recipient.variables,
+    headerValues: recipient.variables,
+    buttonTokens,
+  });
+  if (payload.error) {
+    return recordFailure(
+      payload.error,
+      JSON.stringify({ message: "template_parameters_missing", detail: payload.error }),
+      "template_parameters_missing",
+    );
+  }
 
   const result = await graphFetch(`${sender.phoneNumberId}/messages`, sender.accessToken, {
     method: "POST",
@@ -302,10 +354,13 @@ export async function sendCampaignTemplate(
       template: {
         name: template.name,
         language: { code: template.language },
-        ...(parameters.length ? { components: [{ type: "body", parameters }] } : {}),
+        ...(payload.components && payload.components.length
+          ? { components: payload.components }
+          : {}),
       },
     },
   });
+
 
   if (!result.ok) {
     return recordFailure(

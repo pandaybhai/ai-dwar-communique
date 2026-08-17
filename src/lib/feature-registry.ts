@@ -834,6 +834,7 @@ export const FEATURES: readonly FeatureManifest[] = [
         "flow.cancelled",
         "flow.skipped",
         "flow.failed",
+        "flow.clicked",
         "cod.confirmed",
         "cod.cancelled",
         "cod.no_response",
@@ -844,7 +845,13 @@ export const FEATURES: readonly FeatureManifest[] = [
     },
     activity_actions: ["flow_toggled", "flow_step_updated", "send_settings_updated"],
     settings_path: "/app/settings",
-    data_tables: ["flows", "flow_steps", "scheduled_sends", "organization_send_settings"],
+    data_tables: [
+      "flows",
+      "flow_steps",
+      "scheduled_sends",
+      "organization_send_settings",
+      "short_links",
+    ],
   },
 
   {

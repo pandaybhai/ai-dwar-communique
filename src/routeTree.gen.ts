@@ -33,6 +33,7 @@ import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as RTokenRouteImport } from './routes/r.$token'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
 import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
@@ -184,6 +185,11 @@ const AppTemplatesRoute = AppTemplatesRouteImport.update({
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RTokenRoute = RTokenRouteImport.update({
+  id: '/r/$token',
+  path: '/r/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAiToolsRoute = ApiAiToolsRouteImport.update({
@@ -383,6 +389,7 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
+  '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -439,6 +446,7 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
+  '/r/$token': typeof RTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -498,6 +506,7 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
+  '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -558,6 +567,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
+    | '/r/$token'
     | '/admin/'
     | '/app/'
     | '/api/ai/tools'
@@ -614,6 +624,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
+    | '/r/$token'
     | '/admin'
     | '/app'
     | '/api/ai/tools'
@@ -672,6 +683,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
+    | '/r/$token'
     | '/admin/'
     | '/app/'
     | '/api/ai/tools'
@@ -721,6 +733,7 @@ export interface RootRouteChildren {
   ApiEventsRoute: typeof ApiEventsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  RTokenRoute: typeof RTokenRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
@@ -919,6 +932,13 @@ declare module '@tanstack/react-router' {
       path: '/join/$token'
       fullPath: '/join/$token'
       preLoaderRoute: typeof JoinTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/r/$token': {
+      id: '/r/$token'
+      path: '/r/$token'
+      fullPath: '/r/$token'
+      preLoaderRoute: typeof RTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/tools': {
@@ -1213,6 +1233,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiEventsRoute: ApiEventsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,
+  RTokenRoute: RTokenRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,

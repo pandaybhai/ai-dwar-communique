@@ -254,6 +254,12 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             return;
           }
 
+          const linkTarget = await flows.flowLinkTarget(
+            supabase,
+            send.trigger_type,
+            send.trigger_id,
+          );
+
           const variables = await flows.resolveFlowVariables(
             supabase,
             send.trigger_type,
@@ -270,6 +276,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               name: template.name,
               language: template.language || "en_US",
               variableOrder: extractVariables(templateBodyText((template.components ?? []) as never)),
+              components: (template.components ?? []) as never,
             },
             {
               campaignId: null,
@@ -277,6 +284,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               flowId: send.flow_id,
               flowStepId: send.flow_step_id,
               scheduledSendId: send.id,
+              linkTarget,
             },
 
           );
