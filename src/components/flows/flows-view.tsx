@@ -7,6 +7,8 @@ import { logActivity } from "@/lib/activity";
 import { usePermissions } from "@/hooks/use-permissions";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { PermissionGate } from "@/components/permission-gate";
+import { CodPanel } from "@/components/flows/cod-panel";
+
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -312,7 +314,13 @@ export function FlowsView({
           <span className="sr-only"> sending times and limits</span>
         </Link>
       </div>
+
+      {flows.some((f) => f.key === "cod_confirmation") ? (
+        <CodPanel organizationId={organizationId} timezone="Asia/Kolkata" />
+      ) : null}
+
     </div>
+
   );
 }
 

@@ -858,9 +858,33 @@ export async function processWebhookPayload(
             keywords: await loadOptKeywords(supabase, orgId, keywordCache),
           });
 
+          // Cash-on-delivery answers. Button replies quote the message that
+          // asked, which is how the answer finds its order; anything typed is
+          // still stored verbatim so nothing is lost.
+          let codHandled = false;
+          if (!isSystemEcho && !optKeywordMatched) {
+            const { applyCodReply } = await import("@/lib/cod.server");
+            const interactive = msg["interactive"] as AnyRecord | undefined;
+            const buttonReply = interactive?.["button_reply"] as AnyRecord | undefined;
+            const payload =
+              ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
+              (buttonReply?.["id"] as string | undefined) ??
+              null;
+            const contextMetaId =
+              ((msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined) ?? null;
+            codHandled = await applyCodReply(supabase, {
+              organizationId: orgId,
+              contactId: contact.id as string,
+              contextMetaId,
+              body,
+              payload,
+            });
+          }
+
           // Automations run last, and never for a message that was an opt-out /
-          // opt-in keyword. Inbound only — our own outbound sends (including
-          // opt-out confirmations and automation replies) never reach here.
+          // opt-in keyword or a cash-on-delivery answer. Inbound only — our own
+          // outbound sends (including opt-out confirmations and automation
+          // replies) never reach here.
           await evaluateAutomations(supabase, {
             organizationId: orgId,
             phoneNumberId,
@@ -870,11 +894,12 @@ export async function processWebhookPayload(
             inboundMessageId: String(msg["id"] ?? ""),
             waId,
             body,
-            optKeywordMatched,
+            optKeywordMatched: optKeywordMatched || codHandled,
             isSystemEcho,
             orgTimezone: await loadOrgTimezone(supabase, orgId, timezoneCache),
             automations: await loadAutomations(supabase, orgId, automationCache),
           });
+
 
 
 

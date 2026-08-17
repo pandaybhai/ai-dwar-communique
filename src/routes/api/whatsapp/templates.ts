@@ -222,7 +222,106 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           return Response.json({ id: saved?.id ?? null, meta_template_id: metaId, status });
         }
 
+        // -------- create the two cash-on-delivery messages in one go --------
+        if (action === "create_cod_templates") {
+          const { connection, error: connectionError } = await getWhatsAppConnection(
+            supabase,
+            organizationId,
+            requestedAccountId,
+          );
+          if (!connection) return jsonError(connectionError ?? "No connected number.", 400);
+
+          const language = String(payload["language"] ?? "en_US");
+          const buttons = {
+            type: "BUTTONS",
+            buttons: [
+              { type: "QUICK_REPLY", text: "Yes, confirm" },
+              { type: "QUICK_REPLY", text: "No, cancel" },
+            ],
+          };
+          const specs = [
+            {
+              name: "cod_confirm",
+              body:
+                "Hi {{1}}, please confirm your cash-on-delivery order {{2}} for {{3}} from {{4}}. We'll only ship once you confirm.",
+              examples: ["Priya", "#1024", "INR 1499", "Kurta House"],
+            },
+            {
+              name: "cod_reminder",
+              body: "Hi {{1}}, we still need you to confirm order {{2}} before we can ship it.",
+              examples: ["Priya", "#1024"],
+            },
+          ];
+
+          const created: string[] = [];
+          const failures: string[] = [];
+
+          for (const spec of specs) {
+            const components: AnyRecord[] = [
+              {
+                type: "BODY",
+                text: spec.body,
+                example: { body_text: [spec.examples] },
+              },
+              buttons,
+            ];
+
+            const result = await graphFetch(
+              `${connection.wabaId}/message_templates`,
+              connection.accessToken,
+              {
+                method: "POST",
+                body: { name: spec.name, language, category: "UTILITY", components },
+              },
+            );
+
+            // Already submitted earlier is not an error worth surfacing — the
+            // sync below picks the existing one up.
+            if (!result.ok) {
+              failures.push(`${spec.name}: ${graphErrorMessage(result.body)}`);
+              continue;
+            }
+
+            const status = String(result.body["status"] ?? "PENDING").toUpperCase();
+            await supabase.from("message_templates").upsert(
+              {
+                organization_id: organizationId,
+                waba_id: connection.wabaId,
+                meta_template_id: (result.body["id"] as string) ?? null,
+                name: spec.name,
+                language,
+                category: "UTILITY",
+                status: ["PENDING", "APPROVED", "REJECTED", "PAUSED"].includes(status)
+                  ? status
+                  : "PENDING",
+                components,
+                rejection_reason: null,
+                updated_at: nowIso,
+              },
+              { onConflict: "organization_id,waba_id,name,language" },
+            );
+            created.push(spec.name);
+          }
+
+          if (created.length === 0) {
+            return Response.json(
+              { error: failures[0] ?? "We couldn't submit these messages." },
+              { status: 400 },
+            );
+          }
+
+          await logServerActivity(supabase, organizationId, userId, "template_created", {
+            template_names: created,
+            category: "UTILITY",
+            purpose: "cod_confirmation",
+            whatsapp_account_id: connection.accountId,
+          });
+
+          return Response.json({ created, failures });
+        }
+
         return jsonError("Unsupported action.");
+
       },
     },
   },

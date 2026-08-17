@@ -342,12 +342,33 @@ export async function upsertOrder(
 
     if (!previous) {
       await schedule("order_created");
+      // Cash on delivery: record the ask up front, then let the COD flow do the
+      // asking. Read-only Shopify scopes mean the answer only ever lives here.
+      if (row.is_cod) {
+        const { ensureCodConfirmation } = await import("@/lib/cod.server");
+        await ensureCodConfirmation(ctx.supabase, {
+          organizationId: ctx.organizationId,
+          orderId,
+          contactId: match.contactId,
+        });
+        outcomes.push(
+          await scheduleFlow(ctx.supabase, {
+            organizationId: ctx.organizationId,
+            flowKey: "cod_confirmation",
+            contactId: match.contactId,
+            triggerType: "order",
+            triggerId: orderId,
+            event: "order_created",
+          }),
+        );
+      }
       // A purchase recovers whatever checkout the same shopper abandoned.
       await cancelRecoveredCheckouts(ctx.supabase, ctx.organizationId, {
         contactId: match.contactId,
         externalCustomerId,
       });
     }
+
     if (row.fulfilled_at && !previous?.fulfillment_status) await schedule("order_fulfilled");
     else if (row.fulfillment_status === "fulfilled" && previous?.fulfillment_status !== "fulfilled")
       await schedule("order_fulfilled");
