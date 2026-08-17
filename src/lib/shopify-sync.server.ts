@@ -602,9 +602,10 @@ async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<s
   if (phase === "products") {
     const result: RestResult = await fetchPage("products.json", {});
     if (!result.ok) {
-      await failJob(supabase, job, `Shopify products sync failed (${result.status}).`);
-      return { job_id: job.id, failed: "products" };
+      await failJob(supabase, job, `Shopify products sync failed. ${restErrorMessage(result)}`);
+      return { job_id: job.id, failed: "products", error: restErrorMessage(result) };
     }
+
     const list = Array.isArray(result.body["products"])
       ? (result.body["products"] as AnyRecord[])
       : [];
