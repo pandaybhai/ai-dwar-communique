@@ -226,20 +226,61 @@ export async function scheduleFlow(
   supabase: SupabaseClient,
   input: ScheduleInput,
 ): Promise<{ scheduled: number; reason?: string }> {
-  if (!input.contactId) return { scheduled: 0, reason: "no_contact" };
+  const { emitEvents, emitEvent } = await import("@/lib/events.server");
+
+  // A flow that declines must never look like a flow that was never asked.
+  const skip = async (
+    reason: string,
+    flow?: FlowRow | null,
+    extra: Record<string, unknown> = {},
+  ) => {
+    await emitEvent(supabase, "flow.skipped", {
+      organizationId: input.organizationId,
+      entityType: "flow_trigger",
+      entityId: input.triggerId,
+      ...(flow?.whatsapp_account_id ? { whatsappAccountId: flow.whatsapp_account_id } : {}),
+      properties: {
+        flow_key: input.flowKey,
+        flow_id: flow?.id ?? null,
+        message_class: flow ? messageClassOf(flow) : null,
+        contact_id: input.contactId,
+        trigger_type: input.triggerType,
+        trigger_id: input.triggerId,
+        event: input.event ?? null,
+        reason,
+        ...extra,
+      },
+    });
+    return { scheduled: 0, reason };
+  };
+
+  if (!input.contactId) return await skip("no_contact");
 
   const { flow, steps } = await loadFlow(supabase, input.organizationId, input.flowKey);
-  if (!flow || !flow.is_enabled) return { scheduled: 0, reason: "flow_disabled" };
-  if (steps.length === 0) return { scheduled: 0, reason: "no_steps" };
+  if (!flow) return await skip("no_flow");
+  if (!flow.is_enabled) return await skip("flow_disabled", flow);
+  if (steps.length === 0) return await skip("no_enabled_steps", flow);
+
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("opt_in_status")
+    .eq("id", input.contactId)
+    .maybeSingle();
+  if ((contact as { opt_in_status?: string } | null)?.opt_in_status === "opted_out") {
+    return await skip("contact_opted_out", flow);
+  }
 
   const settings = await loadSendSettings(supabase, input.organizationId);
   const cls = messageClassOf(flow);
   const base = input.baseAt ?? new Date();
 
-  const wanted = input.event
+  const matched = input.event
     ? steps.filter((s) => String((s.condition ?? {})["event"] ?? "") === input.event)
     : steps.filter((s) => !(s.condition ?? {})["event"]);
-  if (wanted.length === 0) return { scheduled: 0, reason: "no_matching_step" };
+  if (matched.length === 0) return await skip("no_matching_step", flow);
+
+  const wanted = matched.filter((s) => s.template_id);
+  if (wanted.length === 0) return await skip("no_template", flow);
 
   const { data: existing } = await supabase
     .from("scheduled_sends")
@@ -255,9 +296,15 @@ export async function scheduleFlow(
       .map((row) => row.flow_step_id),
   );
 
-  const rows = wanted
-    .filter((step) => !taken.has(step.id))
-    .map((step) => ({
+  const pending = wanted.filter((step) => !taken.has(step.id));
+  if (pending.length === 0) return await skip("already_scheduled", flow);
+
+  // Inserted one at a time: the only unique index is partial
+  // (status = 'scheduled'), which Postgres cannot infer for ON CONFLICT, and a
+  // single duplicate must not sink the whole batch.
+  const created: Array<{ id: string; flow_step_id: string }> = [];
+  for (const step of pending) {
+    const row = {
       organization_id: input.organizationId,
       flow_id: flow.id,
       flow_step_id: step.id,
@@ -270,19 +317,48 @@ export async function scheduleFlow(
         cls,
       ).toISOString(),
       status: "scheduled",
-    }));
+    };
+    const { data: inserted, error } = await supabase
+      .from("scheduled_sends")
+      .insert(row)
+      .select("id, flow_step_id")
+      .maybeSingle();
 
-  if (rows.length === 0) return { scheduled: 0, reason: "already_scheduled" };
+    if (error) {
+      // 23505 = the race guard did its job; anything else is a real failure.
+      if (error.code === "23505") {
+        await skip("already_scheduled", flow, { step_order: step.step_order });
+        continue;
+      }
+      console.error("[flows] schedule insert failed", {
+        flow_key: flow.key,
+        step_id: step.id,
+        trigger_id: input.triggerId,
+        code: error.code,
+        message: error.message,
+      });
+      await emitEvent(supabase, "flow.failed", {
+        organizationId: input.organizationId,
+        entityType: "flow_trigger",
+        entityId: input.triggerId,
+        ...(flow.whatsapp_account_id ? { whatsappAccountId: flow.whatsapp_account_id } : {}),
+        properties: {
+          flow_key: flow.key,
+          flow_id: flow.id,
+          step_order: step.step_order,
+          message_class: cls,
+          contact_id: input.contactId,
+          trigger_type: input.triggerType,
+          trigger_id: input.triggerId,
+          reason: "schedule_insert_failed",
+          error_detail: error.message,
+        },
+      });
+      continue;
+    }
+    if (inserted) created.push(inserted as { id: string; flow_step_id: string });
+  }
 
-  const { data: inserted } = await supabase
-    .from("scheduled_sends")
-    // The partial unique index is the real guard against a race between two
-    // concurrent webhook deliveries; ignoreDuplicates keeps it silent.
-    .upsert(rows, { onConflict: "flow_step_id,trigger_id", ignoreDuplicates: true })
-    .select("id, flow_step_id");
-
-  const { emitEvents } = await import("@/lib/events.server");
-  const created = (inserted as Array<{ id: string; flow_step_id: string }>) ?? [];
   await emitEvents(
     supabase,
     created.map((row) => ({
@@ -306,6 +382,7 @@ export async function scheduleFlow(
 
   return { scheduled: created.length };
 }
+
 
 /** Cancels every pending send for a trigger row (recovery, cancellation, …). */
 export async function cancelScheduledSends(
