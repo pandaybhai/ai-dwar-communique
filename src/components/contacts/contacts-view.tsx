@@ -6,6 +6,8 @@ import { Contact as ContactIcon, Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { downloadCsv, toCsv } from "@/lib/csv";
+import { logActivity } from "@/lib/activity";
+
 import {
   OPT_IN_CLASSES,
   OPT_IN_LABELS,
@@ -241,7 +243,18 @@ export function ContactsView({
         ...rows.map((r) => [r.name ?? "", r.phone, r.opt_in_status, r.created_at]),
       ]),
     );
+    // Bulk exports are logged; reading a single contact is not.
+    void logActivity("contacts_exported", organizationId, {
+      row_count: rows.length,
+      filters: {
+        search: debounced || null,
+        tag: tagFilter,
+        opt_in: optInFilter,
+        segment: segmentFilter,
+      },
+    });
   }
+
 
   return (
     <>

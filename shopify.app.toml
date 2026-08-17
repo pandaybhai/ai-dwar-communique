@@ -1,0 +1,41 @@
+# Shopify app configuration for AiDwar (Meezoy Ventures Private Limited).
+# The API version here must match SHOPIFY_API_VERSION in src/lib/shopify.server.ts.
+
+name = "AiDwar"
+handle = "aidwar"
+application_url = "https://aidwar.in"
+embedded = false
+
+[access_scopes]
+scopes = "read_orders,read_checkouts,read_customers,read_products"
+
+[auth]
+redirect_urls = [
+  "https://aidwar.in/api/public/shopify-callback",
+  "https://www.aidwar.in/api/public/shopify-callback"
+]
+
+[webhooks]
+api_version = "2024-10"
+
+  [webhooks.privacy_compliance]
+  customer_data_request_url = "https://aidwar.in/api/public/shopify/webhooks/customers-data-request"
+  customer_deletion_url = "https://aidwar.in/api/public/shopify/webhooks/customers-redact"
+  shop_deletion_url = "https://aidwar.in/api/public/shopify/webhooks/shop-redact"
+
+  [[webhooks.subscriptions]]
+  topics = [
+    "orders/create",
+    "orders/updated",
+    "orders/cancelled",
+    "orders/fulfilled",
+    "checkouts/create",
+    "checkouts/update",
+    "customers/create",
+    "customers/update",
+    "products/create",
+    "products/update",
+    "products/delete",
+    "app/uninstalled"
+  ]
+  uri = "https://aidwar.in/api/public/shopify-webhook"
