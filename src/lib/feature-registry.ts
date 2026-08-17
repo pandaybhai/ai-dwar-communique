@@ -828,7 +828,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: {
-      event_types: ["flow.scheduled", "flow.sent", "flow.cancelled", "flow.skipped"],
+      event_types: ["flow.scheduled", "flow.sent", "flow.cancelled", "flow.skipped", "flow.failed"],
       metrics: ["flow_sends", "flow_skips"],
       dashboard_section: false,
     },
