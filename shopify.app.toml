@@ -12,8 +12,6 @@ scopes = "read_orders,read_checkouts,read_customers,read_products"
 # user session, so the app is never installed in online access mode.
 use_legacy_install_flow = true
 
-[access]
-
 [auth]
 redirect_urls = [
   "https://aidwar.in/api/public/shopify-callback",
