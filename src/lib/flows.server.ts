@@ -226,7 +226,7 @@ export async function scheduleFlow(
   supabase: SupabaseClient,
   input: ScheduleInput,
 ): Promise<{ scheduled: number; reason?: string }> {
-  const { emitEvents, emitEvent } = await import("@/lib/events.server");
+  const { emitEvents } = await import("@/lib/events.server");
 
   // A flow that declines must never look like a flow that was never asked.
   const skip = async (
@@ -234,7 +234,8 @@ export async function scheduleFlow(
     flow?: FlowRow | null,
     extra: Record<string, unknown> = {},
   ) => {
-    await emitEvent(supabase, "flow.skipped", {
+    await emitEvents(supabase, [{
+      eventType: "flow.skipped",
       organizationId: input.organizationId,
       entityType: "flow_trigger",
       entityId: input.triggerId,
@@ -250,7 +251,7 @@ export async function scheduleFlow(
         reason,
         ...extra,
       },
-    });
+    }]);
     return { scheduled: 0, reason };
   };
 
@@ -337,7 +338,8 @@ export async function scheduleFlow(
         code: error.code,
         message: error.message,
       });
-      await emitEvent(supabase, "flow.failed", {
+      await emitEvents(supabase, [{
+        eventType: "flow.failed",
         organizationId: input.organizationId,
         entityType: "flow_trigger",
         entityId: input.triggerId,
@@ -353,7 +355,7 @@ export async function scheduleFlow(
           reason: "schedule_insert_failed",
           error_detail: error.message,
         },
-      });
+      }]);
       continue;
     }
     if (inserted) created.push(inserted as { id: string; flow_step_id: string });
