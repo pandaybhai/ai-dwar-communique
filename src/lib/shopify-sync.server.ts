@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone, toWaId } from "@/lib/phone";
 import { emitEvent, recordUsage } from "@/lib/events.server";
-import { shopifyRest, type RestResult } from "@/lib/shopify.server";
+import { shopifyRest, restErrorMessage, type RestResult } from "@/lib/shopify.server";
 
 /**
  * Turning Shopify objects into AiDwar rows.
@@ -467,11 +467,27 @@ async function updateJob(
     .eq("id", jobId);
 }
 
-/** Jobs are enqueued and picked up by the cron worker; nothing runs inline. */
+/**
+ * Jobs are enqueued and picked up by the cron worker; nothing runs inline.
+ * At most one non-terminal job may exist per integration (enforced by a
+ * partial unique index), so an existing queued/running job is reused rather
+ * than piling up duplicates. Failed jobs are never re-enqueued automatically:
+ * retrying is an explicit user action.
+ */
 export async function enqueueBackfill(
   supabase: SupabaseClient,
   args: { organizationId: string; integrationId: string; kind?: string },
 ): Promise<string | null> {
+  const { data: active } = await supabase
+    .from("integration_sync_jobs")
+    .select("id")
+    .eq("integration_id", args.integrationId)
+    .in("status", ["queued", "running"])
+    .order("started_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (active) return (active as { id: string }).id;
+
   const { data } = await supabase
     .from("integration_sync_jobs")
     .insert({
@@ -483,8 +499,20 @@ export async function enqueueBackfill(
     })
     .select("id")
     .maybeSingle();
-  return (data as { id: string } | null)?.id ?? null;
+  if (data) return (data as { id: string }).id;
+
+  // Lost the race against a concurrent enqueue — the index rejected us.
+  const { data: raced } = await supabase
+    .from("integration_sync_jobs")
+    .select("id")
+    .eq("integration_id", args.integrationId)
+    .in("status", ["queued", "running"])
+    .order("started_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (raced as { id: string } | null)?.id ?? null;
 }
+
 
 type JobRow = {
   id: string;
@@ -501,6 +529,21 @@ type JobRow = {
 
 const STALL_MS = 10 * 60 * 1000;
 const PAGE_SIZE = "250";
+
+/**
+ * Plain read_orders only exposes the last 60 days; asking for more makes
+ * Shopify answer 403. read_all_orders (protected data approval) lifts that.
+ */
+export const ORDER_WINDOW_DAYS = 60;
+export const ORDER_WINDOW_DAYS_ALL = 365;
+
+export function orderWindowDays(integration: Record<string, unknown>): number {
+  const scopes = Array.isArray(integration["scopes"])
+    ? (integration["scopes"] as unknown[]).map((s) => String(s))
+    : [];
+  return scopes.includes("read_all_orders") ? ORDER_WINDOW_DAYS_ALL : ORDER_WINDOW_DAYS;
+}
+
 
 /** Fail any job that claims to be running but hasn't moved in 10 minutes. */
 export async function failStalledSyncJobs(supabase: SupabaseClient): Promise<number> {
@@ -602,9 +645,10 @@ async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<s
   if (phase === "products") {
     const result: RestResult = await fetchPage("products.json", {});
     if (!result.ok) {
-      await failJob(supabase, job, `Shopify products sync failed (${result.status}).`);
-      return { job_id: job.id, failed: "products" };
+      await failJob(supabase, job, `Shopify products sync failed. ${restErrorMessage(result)}`);
+      return { job_id: job.id, failed: "products", error: restErrorMessage(result) };
     }
+
     const list = Array.isArray(result.body["products"])
       ? (result.body["products"] as AnyRecord[])
       : [];
@@ -622,23 +666,26 @@ async function runChunk(supabase: SupabaseClient, job: JobRow): Promise<Record<s
 
   if (phase === "orders") {
     // Window is anchored to the job, so resuming never shifts the range.
+    const windowDays = orderWindowDays(connection.integration);
     const since = new Date(
-      new Date(job.started_at).getTime() - 90 * 24 * 60 * 60 * 1000,
+      new Date(job.started_at).getTime() - windowDays * 24 * 60 * 60 * 1000,
     ).toISOString();
     const result: RestResult = await fetchPage("orders.json", {
       status: "any",
       created_at_min: since,
     });
     if (!result.ok) {
+      const detail = restErrorMessage(result);
       await failJob(
         supabase,
         job,
         result.status === 403
-          ? "Shopify refused access to orders (403). The app needs read_orders and approval for protected customer data."
-          : `Shopify orders sync failed (${result.status}).`,
+          ? `Shopify refused access to orders. The app needs read_orders (and read_all_orders for history beyond ${ORDER_WINDOW_DAYS} days) plus approval for protected customer data. ${detail}`
+          : `Shopify orders sync failed. ${detail}`,
       );
-      return { job_id: job.id, failed: "orders" };
+      return { job_id: job.id, failed: "orders", error: detail };
     }
+
     const list = Array.isArray(result.body["orders"]) ? (result.body["orders"] as AnyRecord[]) : [];
     let orders = job.orders_synced;
     let contacts = job.contacts_matched;

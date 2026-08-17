@@ -173,6 +173,9 @@ export type RestResult = {
   body: Record<string, unknown>;
   /** Cursor for the next page, when Shopify sent a rel="next" Link header. */
   nextPageInfo: string | null;
+  /** Shopify's request id, echoed in X-Request-Id — needed for support. */
+  requestId?: string | null;
+
 };
 
 function nextPageInfoFrom(linkHeader: string | null): string | null {
@@ -242,15 +245,25 @@ export async function shopifyRest(args: {
     status: res.status,
     body,
     nextPageInfo: nextPageInfoFrom(res.headers.get("link")),
+    requestId: res.headers.get("x-request-id"),
   };
 }
 
+/**
+ * The full diagnostic: Shopify's own message plus its X-Request-Id, which is
+ * what support needs. A bare status code costs a debugging round trip.
+ */
 export function restErrorMessage(result: RestResult): string {
-  const errors = result.body["errors"];
-  if (typeof errors === "string") return errors;
-  if (errors && typeof errors === "object") return JSON.stringify(errors).slice(0, 300);
-  return `Shopify returned ${result.status}.`;
+  const errors = result.body["errors"] ?? result.body["error"];
+  let detail = "";
+  if (typeof errors === "string") detail = errors;
+  else if (errors && typeof errors === "object") detail = JSON.stringify(errors).slice(0, 300);
+  const parts = [`Shopify returned ${result.status}`];
+  if (detail) parts.push(detail);
+  if (result.requestId) parts.push(`X-Request-Id: ${result.requestId}`);
+  return parts.join(" — ");
 }
+
 
 /** Registers every topic. Already-registered topics come back as 422 and are fine. */
 export async function registerWebhooks(args: {
