@@ -73,43 +73,80 @@ export function messageClassOf(flow: Pick<FlowRow, "config">): MessageClass {
 }
 
 export const MESSAGE_CLASS_LABELS: Record<MessageClass, string> = {
-  marketing: "Marketing",
-  transactional: "Transactional",
+  marketing: "Promotional",
+  transactional: "Order updates",
 };
 
 export const MESSAGE_CLASS_CLASSES: Record<MessageClass, string> = {
-  marketing: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  transactional: "border-primary/25 bg-primary/10 text-primary",
+  marketing: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+  transactional: "border-primary/40 bg-primary/10 text-primary",
 };
 
+/** One plain sentence per message class, for people new to automation. */
+export const MESSAGE_CLASS_HINTS: Record<MessageClass, string> = {
+  marketing: "Only sent to customers who agreed to promotional messages.",
+  transactional: "Sent to every customer — these are updates about their own order.",
+};
+
+/** The merchant-facing name and promise of each flow we ship. */
+export const FLOW_COPY: Record<string, { title: string; promise: string; trigger: string }> = {
+  abandoned_checkout: {
+    title: "Left items in cart",
+    promise:
+      "When someone adds items but doesn't buy, we'll remind them on WhatsApp. Most shops recover about 1 in 10 carts this way.",
+    trigger: "Customer leaves items in cart",
+  },
+  order_lifecycle: {
+    title: "Order updates",
+    promise:
+      "Automatically tell customers when their order is confirmed, shipped and delivered — so they stop asking.",
+    trigger: "Customer places an order",
+  },
+};
+
+export function flowTitle(flow: Pick<FlowRow, "key" | "name">): string {
+  return FLOW_COPY[flow.key]?.title ?? flow.name;
+}
+
+export function flowPromise(flow: Pick<FlowRow, "key">): string {
+  return (
+    FLOW_COPY[flow.key]?.promise ??
+    "This flow sends WhatsApp messages automatically when something happens in your store."
+  );
+}
+
+export function flowTrigger(flow: Pick<FlowRow, "key">): string {
+  return FLOW_COPY[flow.key]?.trigger ?? "Something happens in your store";
+}
+
 export const STATUS_LABELS: Record<SendStatus, string> = {
-  scheduled: "Scheduled",
+  scheduled: "Waiting to send",
   sent: "Sent",
-  cancelled: "Cancelled",
-  failed: "Failed",
+  cancelled: "Not sent",
+  failed: "Didn't go through",
   skipped: "Skipped",
 };
 
 export const STATUS_CLASSES: Record<SendStatus, string> = {
-  scheduled: "border-border bg-muted text-muted-foreground",
-  sent: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  cancelled: "border-border bg-muted text-muted-foreground",
-  failed: "border-destructive/25 bg-destructive/10 text-destructive",
-  skipped: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  scheduled: "border-border bg-muted text-foreground",
+  sent: "border-emerald-600/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300",
+  cancelled: "border-border bg-muted text-foreground",
+  failed: "border-destructive/40 bg-destructive/10 text-destructive",
+  skipped: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300",
 };
 
-/** Every reason the engine writes, in the merchant's words. */
+/** Every reason the engine writes, as a sentence a shop owner understands. */
 export const CANCEL_REASON_LABELS: Record<string, string> = {
-  recovered: "Checkout was recovered",
-  order_cancelled: "Order was cancelled",
-  no_marketing_optin: "Contact hasn't opted in to marketing",
-  opted_out: "Contact opted out",
-  frequency_cap: "Frequency cap reached",
-  flow_disabled: "Flow was switched off",
-  step_disabled: "Step was switched off",
-  no_template: "No approved template on the step",
-  trigger_gone: "The order or checkout no longer qualifies",
-  contact_missing: "Contact no longer exists",
+  recovered: "Not sent — they completed their order",
+  order_cancelled: "Not sent — the order was cancelled",
+  no_marketing_optin: "Not sent — customer hasn't agreed to promotional messages",
+  opted_out: "Not sent — customer asked to stop receiving messages",
+  frequency_cap: "Skipped — this customer already got a message today",
+  flow_disabled: "Not sent — you turned this off",
+  step_disabled: "Not sent — this message was turned off",
+  no_template: "Not sent — no message was chosen for this step",
+  trigger_gone: "Not sent — the order or cart no longer applies",
+  contact_missing: "Not sent — this customer was removed",
 };
 
 export function cancelReasonLabel(reason: string | null | undefined): string | null {
@@ -126,20 +163,30 @@ export function stepLabel(flowKey: string, step: FlowStepRow): string {
     order_delivered: "Order delivered",
   };
   if (byEvent[event]) return byEvent[event] as string;
-  if (flowKey === "abandoned_checkout") return `Reminder ${step.step_order}`;
-  return `Step ${step.step_order}`;
+  if (flowKey === "abandoned_checkout") {
+    return step.step_order === 1 ? "First reminder" : `Reminder ${step.step_order}`;
+  }
+  return `Message ${step.step_order}`;
 }
 
+/** "1 hour later", "1 day later" — never a number of minutes. */
 export function formatDelay(minutes: number): string {
-  if (minutes <= 0) return "Immediately";
-  if (minutes < 60) return `After ${minutes} min`;
+  if (minutes <= 0) return "Straight away";
+  if (minutes < 60) return `${minutes} minutes later`;
   if (minutes % 1440 === 0) {
     const days = minutes / 1440;
-    return `After ${days} day${days === 1 ? "" : "s"}`;
+    return days === 1 ? "1 day later" : `${days} days later`;
+  }
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return hours === 1 ? "1 hour later" : `${hours} hours later`;
   }
   const hours = Math.round((minutes / 60) * 10) / 10;
-  return `After ${hours} hour${hours === 1 ? "" : "s"}`;
+  return `${hours} hours later`;
 }
+
+/** The choices we offer for "how long after". */
+export const DELAY_CHOICES = [0, 15, 30, 60, 120, 240, 360, 720, 1440, 2880, 4320];
 
 export type TemplateLite = {
   id: string;
@@ -147,11 +194,12 @@ export type TemplateLite = {
   language: string;
   status: string;
   waba_id: string | null;
+  components?: unknown;
 };
 
 /**
- * The enable guard. A flow may only go live when every enabled step points at
- * an approved template — and the answer names the step that is blocking it.
+ * The enable guard. A flow may only go live when every message that is switched
+ * on has an approved message chosen — and the answer names the blocking step.
  */
 export function enableBlocker(
   flow: Pick<FlowRow, "key">,
@@ -160,21 +208,29 @@ export function enableBlocker(
 ): string | null {
   const enabled = steps.filter((s) => s.is_enabled);
   if (enabled.length === 0) {
-    return "This flow has no enabled steps, so there is nothing to send. Enable at least one step first.";
+    return "Every message in this flow is switched off, so there is nothing to send. Switch one on first.";
   }
   const byId = new Map(templates.map((t) => [t.id, t]));
   for (const step of enabled.sort((a, b) => a.step_order - b.step_order)) {
     const label = stepLabel(flow.key, step);
     const tpl = step.template_id ? byId.get(step.template_id) : undefined;
-    if (!step.template_id) return `“${label}” has no template selected yet.`;
+    if (!step.template_id) return `Choose the message to send for “${label}”.`;
     if (!tpl) {
-      return `The template on “${label}” isn't available on this number any more. Pick another one.`;
+      return `The message chosen for “${label}” isn't available on this number any more. Pick another one.`;
     }
     if (tpl.status.toUpperCase() !== "APPROVED") {
-      return `The template on “${label}” (${tpl.name}) is ${tpl.status.toLowerCase()}, not approved yet.`;
+      return `The message for “${label}” is still waiting for WhatsApp approval, so it can't be sent yet.`;
     }
   }
   return null;
+}
+
+/** "We won't message between 9pm and 9am" — quiet hours as a sentence. */
+export function hour12(hour: number): string {
+  const h = ((hour % 24) + 24) % 24;
+  const suffix = h < 12 ? "am" : "pm";
+  const base = h % 12 === 0 ? 12 : h % 12;
+  return `${base}${suffix}`;
 }
 
 export function formatDateTime(value: string | null | undefined, timezone?: string): string {
