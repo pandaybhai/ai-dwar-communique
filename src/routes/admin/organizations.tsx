@@ -88,6 +88,7 @@ function AdminOrganizations() {
 
   const scope = useAdminScope();
   const load = useCallback(async () => {
+    if (!scope.ready) return;
     setError(null);
     setOrgs(null);
 
