@@ -6,6 +6,8 @@ import { Contact as ContactIcon, Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { downloadCsv, toCsv } from "@/lib/csv";
+import { logActivity } from "@/lib/activity";
+
 import {
   OPT_IN_CLASSES,
   OPT_IN_LABELS,
