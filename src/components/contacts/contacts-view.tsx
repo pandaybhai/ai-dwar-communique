@@ -241,7 +241,18 @@ export function ContactsView({
         ...rows.map((r) => [r.name ?? "", r.phone, r.opt_in_status, r.created_at]),
       ]),
     );
+    // Bulk exports are logged; reading a single contact is not.
+    void logActivity("contacts_exported", organizationId, {
+      row_count: rows.length,
+      filters: {
+        search: debounced || null,
+        tag: tagFilter,
+        opt_in: optInFilter,
+        segment: segmentFilter,
+      },
+    });
   }
+
 
   return (
     <>
