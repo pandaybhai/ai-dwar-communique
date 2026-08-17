@@ -70,9 +70,11 @@ function SettingsPage() {
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="sources">Lead sources</TabsTrigger>
           </TabsList>
-          <TabsContent value="general" className="mt-6">
+          <TabsContent value="general" className="mt-6 space-y-6">
             <GeneralTab />
+            <DeleteWorkspaceCard />
           </TabsContent>
+
           <TabsContent value="team" className="mt-6">
             <TeamSettings />
           </TabsContent>
