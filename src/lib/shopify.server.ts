@@ -310,3 +310,46 @@ export async function getShopifyConnection(
     accessToken,
   };
 }
+
+/**
+ * OAuth state. Signed rather than stored: the callback arrives on a public
+ * route with no session, so the state itself has to carry — and prove — which
+ * workspace started the install.
+ */
+export async function signInstallState(payload: {
+  organizationId: string;
+  shopDomain: string;
+  userId: string;
+}): Promise<string> {
+  const creds = shopifyCredentials();
+  if (!creds) throw new Error("Shopify app credentials are not configured.");
+  const body = JSON.stringify({ ...payload, ts: Date.now(), nonce: crypto.randomUUID() });
+  const encoded = btoa(body).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const signature = toHex(await hmacBytes(creds.apiSecret, encoded));
+  return `${encoded}.${signature}`;
+}
+
+export async function verifyInstallState(
+  state: string,
+): Promise<{ organizationId: string; shopDomain: string; userId: string } | null> {
+  const creds = shopifyCredentials();
+  if (!creds) return null;
+  const [encoded, signature] = state.split(".");
+  if (!encoded || !signature) return null;
+  const expected = toHex(await hmacBytes(creds.apiSecret, encoded));
+  if (!timingSafeEqual(signature, expected)) return null;
+
+  try {
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const parsed = JSON.parse(atob(padded)) as Record<string, unknown>;
+    // An install link older than an hour is stale, not an install.
+    if (Date.now() - Number(parsed["ts"] ?? 0) > 60 * 60 * 1000) return null;
+    const organizationId = String(parsed["organizationId"] ?? "");
+    const shopDomain = String(parsed["shopDomain"] ?? "");
+    const userId = String(parsed["userId"] ?? "");
+    if (!organizationId || !shopDomain) return null;
+    return { organizationId, shopDomain, userId };
+  } catch {
+    return null;
+  }
+}
