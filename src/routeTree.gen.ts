@@ -43,6 +43,7 @@ import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integra
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
+import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
 import { Route as ApiWhatsappEsConfigRouteImport } from './routes/api/whatsapp/es-config'
@@ -227,6 +228,12 @@ const ApiInternalVersionRoute = ApiInternalVersionRouteImport.update({
   path: '/api/internal/version',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicShopifyCallbackRoute =
+  ApiPublicShopifyCallbackRouteImport.update({
+    id: '/api/public/shopify-callback',
+    path: '/api/public/shopify-callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp-webhook',
@@ -315,6 +322,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
@@ -359,6 +367,7 @@ export interface FileRoutesByTo {
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
@@ -406,6 +415,7 @@ export interface FileRoutesById {
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
@@ -454,6 +464,7 @@ export interface FileRouteTypes {
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
     | '/api/internal/version'
+    | '/api/public/shopify-callback'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
@@ -498,6 +509,7 @@ export interface FileRouteTypes {
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
     | '/api/internal/version'
+    | '/api/public/shopify-callback'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
@@ -544,6 +556,7 @@ export interface FileRouteTypes {
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
     | '/api/internal/version'
+    | '/api/public/shopify-callback'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
@@ -579,6 +592,7 @@ export interface RootRouteChildren {
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
+  ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
   ApiWhatsappEsConfigRoute: typeof ApiWhatsappEsConfigRoute
@@ -829,6 +843,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalVersionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/shopify-callback': {
+      id: '/api/public/shopify-callback'
+      path: '/api/public/shopify-callback'
+      fullPath: '/api/public/shopify-callback'
+      preLoaderRoute: typeof ApiPublicShopifyCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp-webhook': {
       id: '/api/public/whatsapp-webhook'
       path: '/api/public/whatsapp-webhook'
@@ -973,6 +994,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
+  ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,
   ApiWhatsappEsConfigRoute: ApiWhatsappEsConfigRoute,
