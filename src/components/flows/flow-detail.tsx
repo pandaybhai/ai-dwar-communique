@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Clock, Loader2, Workflow } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
@@ -9,8 +9,7 @@ import { EmptyState, ErrorState } from "@/components/empty-state";
 import { PermissionGate } from "@/components/permission-gate";
 import { SendsLog } from "@/components/flows/sends-log";
 import { ReachabilityWarning } from "@/components/flows/flows-view";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { MessageBubble } from "@/components/flows/message-bubble";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -23,9 +22,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DELAY_CHOICES,
   MESSAGE_CLASS_CLASSES,
+  MESSAGE_CLASS_HINTS,
   MESSAGE_CLASS_LABELS,
   enableBlocker,
+  flowPromise,
+  flowTitle,
+  flowTrigger,
   formatDelay,
   messageClassOf,
   stepLabel,
@@ -54,6 +58,7 @@ export function FlowDetail({
   const [templates, setTemplates] = useState<TemplateLite[]>([]);
   const [numbers, setNumbers] = useState<WhatsAppNumber[]>([]);
   const [unknownContacts, setUnknownContacts] = useState(0);
+  const [announcement, setAnnouncement] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +78,7 @@ export function FlowDetail({
         .order("step_order"),
       aidwar
         .from("message_templates")
-        .select("id, name, language, status, waba_id")
+        .select("id, name, language, status, waba_id, components")
         .eq("organization_id", organizationId)
         .order("name"),
       aidwar.from("whatsapp_accounts").select(NUMBER_COLUMNS).eq("organization_id", organizationId),
@@ -85,7 +90,7 @@ export function FlowDetail({
     ]);
     setLoading(false);
     if (flowRes.error || !flowRes.data) {
-      setError("We couldn't find this flow. It may have been removed.");
+      setError("We couldn't find this. It may have been removed.");
       return;
     }
     setFlow(flowRes.data as FlowRow);
@@ -109,7 +114,7 @@ export function FlowDetail({
     );
   }, [flow, numbers]);
 
-  /** Only templates approved on the number this flow sends from. */
+  /** Only messages approved on the number this flow sends from. */
   const usableTemplates = useMemo(() => {
     const waba = account?.waba_id ?? null;
     return templates.filter(
@@ -128,10 +133,11 @@ export function FlowDetail({
     setSteps((prev) => prev.map((s) => (s.id === step.id ? { ...s, ...patch } : s)));
     const { error: err } = await aidwar.from("flow_steps").update(patch).eq("id", step.id);
     if (err) {
-      toast.error("We couldn't save this step. Please try again.");
+      toast.error("We couldn't save that. Please try again.");
       void load();
       return;
     }
+    setAnnouncement("Saved.");
     void logActivity("flow_step_updated", organizationId, {
       flow: flow?.key,
       step_order: step.step_order,
@@ -141,19 +147,23 @@ export function FlowDetail({
 
   async function toggleFlow(next: boolean) {
     if (!flow) return;
+    const title = flowTitle(flow);
     if (next && blocker) {
-      toast.error(`${flow.name} can't be switched on yet`, { description: blocker });
+      toast.error(`“${title}” can't be turned on yet`, { description: blocker });
+      setAnnouncement(`${title} could not be turned on. ${blocker}`);
       return;
     }
     setFlow({ ...flow, is_enabled: next });
     const { error: err } = await aidwar.from("flows").update({ is_enabled: next }).eq("id", flow.id);
     if (err) {
-      toast.error("We couldn't change this flow. Please try again.");
+      toast.error("We couldn't change this. Please try again.");
       void load();
       return;
     }
     void logActivity("flow_toggled", organizationId, { flow: flow.key, is_enabled: next });
-    toast.success(next ? `${flow.name} is live.` : `${flow.name} paused.`);
+    const msg = next ? `${title} is on. Messages will start going out.` : `${title} is off.`;
+    toast.success(msg);
+    setAnnouncement(msg);
   }
 
   async function setAccount(accountId: string) {
@@ -177,7 +187,7 @@ export function FlowDetail({
 
   if (loading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4" aria-busy="true">
         <Skeleton className="h-10 w-64 rounded-xl" />
         <Skeleton className="h-64 w-full rounded-2xl" />
       </div>
@@ -188,57 +198,68 @@ export function FlowDetail({
     return (
       <EmptyState
         icon={Workflow}
-        title="Flow not found"
-        description="This flow no longer exists in this workspace."
+        title="Not found"
+        description="This no longer exists in your workspace."
       />
     );
   }
 
   const cls = messageClassOf(flow);
+  const title = flowTitle(flow);
 
   return (
     <div className="space-y-6">
-      <div>
-        <Button asChild variant="ghost" size="sm" className="-ml-2 rounded-full">
-          <Link to="/app/flows">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> All flows
-          </Link>
-        </Button>
-      </div>
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
 
-      <div className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-foreground">{flow.name}</h1>
-            <span
-              className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${MESSAGE_CLASS_CLASSES[cls]}`}
-            >
-              {MESSAGE_CLASS_LABELS[cls]}
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {flow.is_enabled ? "Live" : "Paused"}
-            {account ? ` · sending from ${numberLabel(account)}` : " · no number connected yet"}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">{flow.is_enabled ? "On" : "Off"}</span>
-          <PermissionGate
-            allowed={canManage}
-            reason='You need the "Manage flows" permission to switch a flow on or off.'
+      <Link
+        to="/app/flows"
+        className="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to all flows
+      </Link>
+
+      <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{title}</h1>
+          <span
+            className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${MESSAGE_CLASS_CLASSES[cls]}`}
           >
-            <Switch
-              checked={flow.is_enabled}
-              onCheckedChange={(v) => void toggleFlow(v)}
-              aria-label="Enable flow"
-            />
-          </PermissionGate>
+            {MESSAGE_CLASS_LABELS[cls]}
+          </span>
+        </div>
+        <p className="mt-2 max-w-prose text-sm leading-relaxed text-foreground">
+          {flowPromise(flow)}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {MESSAGE_CLASS_HINTS[cls]}
+          {account ? ` Sent from ${numberLabel(account)}.` : " No number connected yet."}
+        </p>
+
+        <div className="mt-4 rounded-xl border border-border/60 bg-muted/30 p-3">
+          <label
+            htmlFor="flow-toggle"
+            className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-foreground"
+          >
+            <PermissionGate
+              allowed={canManage}
+              reason="Ask the shop owner to give you permission to turn flows on and off."
+            >
+              <Switch
+                id="flow-toggle"
+                checked={flow.is_enabled}
+                onCheckedChange={(v) => void toggleFlow(v)}
+              />
+            </PermissionGate>
+            <span>{flow.is_enabled ? "On — messages are going out" : "Off — nothing is sent"}</span>
+          </label>
         </div>
       </div>
 
       {!flow.is_enabled && blocker ? (
-        <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-5 text-sm text-foreground">
-          <span className="font-semibold">Can't switch this flow on yet.</span> {blocker}
+        <div className="rounded-2xl border border-amber-600/40 bg-amber-500/5 p-5 text-sm text-foreground">
+          <span className="font-semibold">You can't turn this on yet.</span> {blocker}
         </div>
       ) : null}
 
@@ -248,16 +269,18 @@ export function FlowDetail({
 
       <Tabs defaultValue="steps">
         <TabsList className="mb-6">
-          <TabsTrigger value="steps">Steps</TabsTrigger>
-          <TabsTrigger value="log">Sends log</TabsTrigger>
+          <TabsTrigger value="steps">The messages</TabsTrigger>
+          <TabsTrigger value="log">What was sent</TabsTrigger>
         </TabsList>
 
         <TabsContent value="steps" className="space-y-4">
           {numbers.length > 1 ? (
             <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
-              <Label className="text-sm font-semibold">Sending number</Label>
+              <Label htmlFor="flow-number" className="text-sm font-semibold">
+                Send from this number
+              </Label>
               <p className="mt-1 text-sm text-muted-foreground">
-                Templates below are the ones approved on this number.
+                You can only pick messages that WhatsApp approved for this number.
               </p>
               <div className="mt-3 max-w-sm">
                 <Select
@@ -265,11 +288,11 @@ export function FlowDetail({
                   onValueChange={(v) => void setAccount(v)}
                   disabled={!canManage}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Default number" />
+                  <SelectTrigger id="flow-number" className="min-h-11">
+                    <SelectValue placeholder="Main number" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_TEMPLATE}>Default number</SelectItem>
+                    <SelectItem value={NO_TEMPLATE}>Main number</SelectItem>
                     {numbers.map((n) => (
                       <SelectItem key={n.id} value={n.id}>
                         {numberLabel(n)}
@@ -278,26 +301,52 @@ export function FlowDetail({
                   </SelectContent>
                 </Select>
               </div>
+              {!canManage ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  You can look, but only an owner or admin can change this.
+                </p>
+              ) : null}
             </div>
           ) : null}
 
           {steps.length === 0 ? (
             <EmptyState
               icon={Workflow}
-              title="This flow has no steps"
-              description="Steps are created with the flow. If none appear, your workspace setup is incomplete — reach out to support."
+              title="No messages here yet"
+              description="Messages are created together with the flow. If none show up, your shop setup isn't finished — reach out to us and we'll help."
             />
           ) : (
-            steps.map((step) => (
-              <StepCard
-                key={step.id}
-                flowKey={flow.key}
-                step={step}
-                templates={selectableTemplates}
-                canManage={canManage}
-                onChange={(patch) => void updateStep(step, patch)}
-              />
-            ))
+            <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6">
+              <ol className="list-none space-y-0 p-0">
+                <TimelineRow first dot="filled">
+                  <p className="text-sm font-semibold text-foreground">{flowTrigger(flow)}</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    This is what starts the messages.
+                  </p>
+                </TimelineRow>
+
+                {steps.map((step) => (
+                  <TimelineRow key={step.id} dot={step.is_enabled ? "filled" : "hollow"}>
+                    <StepBlock
+                      flowKey={flow.key}
+                      step={step}
+                      templates={selectableTemplates}
+                      canManage={canManage}
+                      onChange={(patch) => void updateStep(step, patch)}
+                    />
+                  </TimelineRow>
+                ))}
+
+                <TimelineRow last dot="check">
+                  <p className="text-sm font-medium text-foreground">
+                    If they buy, we stop messaging automatically.
+                  </p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    Nobody gets a reminder for something they already paid for.
+                  </p>
+                </TimelineRow>
+              </ol>
+            </div>
           )}
         </TabsContent>
 
@@ -309,7 +358,41 @@ export function FlowDetail({
   );
 }
 
-function StepCard({
+function TimelineRow({
+  children,
+  dot,
+  first,
+  last,
+}: {
+  children: React.ReactNode;
+  dot: "filled" | "hollow" | "check";
+  first?: boolean;
+  last?: boolean;
+}) {
+  return (
+    <li className="relative grid grid-cols-[1.5rem_minmax(0,1fr)] gap-3 pb-6 last:pb-0 sm:gap-4">
+      <div className="relative flex justify-center">
+        {!first ? (
+          <span className="absolute -top-6 bottom-1/2 w-px bg-border" aria-hidden="true" />
+        ) : null}
+        {!last ? (
+          <span className="absolute top-4 bottom-0 w-px bg-border" aria-hidden="true" />
+        ) : null}
+        {dot === "check" ? (
+          <CheckCircle2 className="relative mt-1 h-4 w-4 text-primary" aria-hidden="true" />
+        ) : (
+          <span
+            className={`relative mt-1.5 h-3 w-3 rounded-full border-2 border-primary ${dot === "filled" ? "bg-primary" : "bg-background"}`}
+            aria-hidden="true"
+          />
+        )}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </li>
+  );
+}
+
+function StepBlock({
   flowKey,
   step,
   templates,
@@ -322,101 +405,131 @@ function StepCard({
   canManage: boolean;
   onChange: (patch: Partial<FlowStepRow>) => void;
 }) {
-  const [delay, setDelay] = useState(String(step.delay_minutes));
-  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const label = stepLabel(flowKey, step);
+  const selected = templates.find((t) => t.id === step.template_id) ?? null;
+  const pending = selected && selected.status.toUpperCase() !== "APPROVED";
 
-  useEffect(() => {
-    setDelay(String(step.delay_minutes));
-  }, [step.delay_minutes]);
-
-  function commitDelay() {
-    const next = Number(delay);
-    if (!Number.isFinite(next) || next < 0) {
-      toast.error("Delay must be zero or more minutes.");
-      setDelay(String(step.delay_minutes));
-      return;
-    }
-    if (next === step.delay_minutes) return;
-    setSaving(true);
-    onChange({ delay_minutes: Math.round(next) });
-    setTimeout(() => setSaving(false), 400);
-  }
+  const delayChoices = Array.from(new Set([...DELAY_CHOICES, step.delay_minutes])).sort(
+    (a, b) => a - b,
+  );
 
   return (
-    <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 className="text-base font-semibold text-foreground">
-            {stepLabel(flowKey, step)}
-          </h3>
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Clock className="h-3.5 w-3.5" /> {formatDelay(step.delay_minutes)}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">
-            {step.is_enabled ? "Enabled" : "Disabled"}
-          </span>
-          <PermissionGate
-            allowed={canManage}
-            reason='You need the "Manage flows" permission to change steps.'
-          >
-            <Switch
-              checked={step.is_enabled}
-              onCheckedChange={(v) => onChange({ is_enabled: v })}
-              aria-label={`Enable ${stepLabel(flowKey, step)}`}
-            />
-          </PermissionGate>
-        </div>
+    <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h3 className="text-sm font-semibold text-foreground">
+          {formatDelay(step.delay_minutes)}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          we send “{selected ? selected.name.replace(/_/g, " ") : "nothing yet"}” ({label})
+        </p>
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor={`tpl-${step.id}`}>Template</Label>
-          <Select
-            value={step.template_id ?? NO_TEMPLATE}
-            onValueChange={(v) => onChange({ template_id: v === NO_TEMPLATE ? null : v })}
-            disabled={!canManage}
-          >
-            <SelectTrigger id={`tpl-${step.id}`}>
-              <SelectValue placeholder="Choose a template" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_TEMPLATE}>No template selected</SelectItem>
-              {templates.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name} · {t.language}
-                  {t.status.toUpperCase() === "APPROVED" ? "" : ` (${t.status.toLowerCase()})`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {templates.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No templates on this number yet — create one under Templates first.
+      {!step.is_enabled ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          This message is switched off, so it won't be sent.
+        </p>
+      ) : (
+        <div className="mt-3">
+          <MessageBubble
+            components={selected?.components}
+            emptyHint="No message chosen yet — pick one below so this can be sent."
+          />
+          {pending ? (
+            <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
+              WhatsApp hasn't approved this message yet, so it can't be sent.
             </p>
           ) : null}
         </div>
+      )}
 
-        <div className="space-y-2">
-          <Label htmlFor={`delay-${step.id}`}>Delay (minutes)</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id={`delay-${step.id}`}
-              type="number"
-              min={0}
-              value={delay}
-              disabled={!canManage}
-              onChange={(e) => setDelay(e.target.value)}
-              onBlur={commitDelay}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <PermissionGate
+          allowed={canManage}
+          reason="Ask the shop owner to give you permission to change these messages."
+        >
+          <button
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            aria-expanded={editing}
+            className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {editing ? "Done" : "Change"}
+            <span className="sr-only"> the {label} message</span>
+          </button>
+        </PermissionGate>
+        <label
+          htmlFor={`step-on-${step.id}`}
+          className="flex min-h-11 cursor-pointer items-center gap-2 px-1 text-sm text-foreground"
+        >
+          <PermissionGate
+            allowed={canManage}
+            reason="Ask the shop owner to give you permission to change these messages."
+          >
+            <Switch
+              id={`step-on-${step.id}`}
+              checked={step.is_enabled}
+              onCheckedChange={(v) => onChange({ is_enabled: v })}
             />
-            {saving ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Counted from the moment the flow is triggered. Quiet hours can push a send later.
-          </p>
-        </div>
+          </PermissionGate>
+          <span>{step.is_enabled ? "On" : "Off"}</span>
+        </label>
       </div>
+
+      {editing ? (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor={`tpl-${step.id}`}>Which message to send</Label>
+            <Select
+              value={step.template_id ?? NO_TEMPLATE}
+              onValueChange={(v) => onChange({ template_id: v === NO_TEMPLATE ? null : v })}
+              disabled={!canManage}
+            >
+              <SelectTrigger id={`tpl-${step.id}`} className="min-h-11">
+                <SelectValue placeholder="Choose a message" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_TEMPLATE}>No message chosen</SelectItem>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name.replace(/_/g, " ")}
+                    {t.status.toUpperCase() === "APPROVED" ? "" : " (waiting for approval)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {templates.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                You haven't written any messages for this number yet. Create one under Templates
+                first.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`delay-${step.id}`}>How long after</Label>
+            <Select
+              value={String(step.delay_minutes)}
+              onValueChange={(v) => onChange({ delay_minutes: Number(v) })}
+              disabled={!canManage}
+            >
+              <SelectTrigger id={`delay-${step.id}`} className="min-h-11">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {delayChoices.map((m) => (
+                  <SelectItem key={m} value={String(m)}>
+                    {formatDelay(m)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Counted from the moment it starts. Quiet hours can push it a little later.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
