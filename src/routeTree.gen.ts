@@ -39,6 +39,7 @@ import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
+import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
@@ -204,6 +205,11 @@ const ApiContactsImportRoute = ApiContactsImportRouteImport.update({
   path: '/api/contacts/import',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiIntegrationsShopifyRoute = ApiIntegrationsShopifyRouteImport.update({
+  id: '/api/integrations/shopify',
+  path: '/api/integrations/shopify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalCampaignWorkerRoute =
   ApiInternalCampaignWorkerRouteImport.update({
     id: '/api/internal/campaign-worker',
@@ -305,6 +311,7 @@ export interface FileRoutesByFullPath {
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
@@ -348,6 +355,7 @@ export interface FileRoutesByTo {
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
@@ -394,6 +402,7 @@ export interface FileRoutesById {
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
@@ -441,6 +450,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/launch'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
     | '/api/internal/version'
@@ -484,6 +494,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/launch'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
     | '/api/internal/version'
@@ -529,6 +540,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/launch'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/integrations/shopify'
     | '/api/internal/campaign-worker'
     | '/api/internal/reprocess-events'
     | '/api/internal/version'
@@ -563,6 +575,7 @@ export interface RootRouteChildren {
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
+  ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
@@ -788,6 +801,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiContactsImportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/shopify': {
+      id: '/api/integrations/shopify'
+      path: '/api/integrations/shopify'
+      fullPath: '/api/integrations/shopify'
+      preLoaderRoute: typeof ApiIntegrationsShopifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/campaign-worker': {
       id: '/api/internal/campaign-worker'
       path: '/api/internal/campaign-worker'
@@ -949,6 +969,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
+  ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
