@@ -54,6 +54,7 @@ function AdminFlags() {
 
   const scope = useAdminScope();
   const load = useCallback(async () => {
+    if (!scope.ready) return;
     setError(null);
     let orgQ = applyScope(
       aidwar.from("organizations").select("id, name").order("name").limit(50),

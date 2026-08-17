@@ -102,6 +102,7 @@ function AdminActivity() {
 
   const scope = useAdminScope();
   const load = useCallback(async () => {
+    if (!scope.ready) return;
     setError(null);
     setRows(null);
 
