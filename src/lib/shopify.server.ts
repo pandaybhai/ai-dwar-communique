@@ -412,13 +412,46 @@ export async function registerWebhooks(args: {
   return { registered, failed };
 }
 
-/** Resolve a connected store's token. Never returns the token to a client. */
+/** Mark a store as needing a fresh install; the UI surfaces the reconnect prompt. */
+export async function markAuthExpired(
+  supabase: SupabaseClient,
+  integrationId: string,
+): Promise<void> {
+  await supabase
+    .from("integrations")
+    .update({ status: "error", sync_error: AUTH_EXPIRED_ERROR })
+    .eq("id", integrationId);
+}
+
+/**
+ * Persist a refreshed grant. The previous refresh token is invalidated the
+ * moment Shopify hands back a new one, so both halves are written together.
+ */
+async function persistGrant(
+  supabase: SupabaseClient,
+  args: { integrationId: string; organizationId: string; grant: TokenGrant },
+): Promise<void> {
+  await supabase
+    .from("integration_credentials")
+    .update({
+      access_token: args.grant.accessToken,
+      ...(args.grant.scopes.length ? { granted_scopes: args.grant.scopes } : {}),
+      ...grantTimestamps(args.grant),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("integration_id", args.integrationId);
+}
+
+/**
+ * Resolve a connected store's token, refreshing it first when it is inside the
+ * skew window. Never returns the token — or the refresh token — to a client.
+ */
 export async function getShopifyConnection(
   supabase: SupabaseClient,
   integrationId: string,
 ): Promise<
   | { ok: true; integration: Record<string, unknown>; shopDomain: string; accessToken: string }
-  | { ok: false; error: string }
+  | { ok: false; error: string; fatal?: boolean }
 > {
   const { data: integration } = await supabase
     .from("integrations")
@@ -426,22 +459,90 @@ export async function getShopifyConnection(
     .eq("id", integrationId)
     .maybeSingle();
   if (!integration) return { ok: false, error: "That store is not connected." };
+  const shopDomain = String((integration as { shop_domain?: string }).shop_domain ?? "");
+  const organizationId = String((integration as { organization_id?: string }).organization_id ?? "");
 
   const { data: credential } = await supabase
     .from("integration_credentials")
-    .select("access_token")
+    .select("access_token, expires_at, refresh_token, refresh_token_expires_at")
     .eq("integration_id", integrationId)
     .maybeSingle();
-  const accessToken = (credential as { access_token?: string } | null)?.access_token ?? "";
+  const cred = credential as {
+    access_token?: string;
+    expires_at?: string | null;
+    refresh_token?: string | null;
+    refresh_token_expires_at?: string | null;
+  } | null;
+  let accessToken = cred?.access_token ?? "";
   if (!accessToken) return { ok: false, error: "This store has no stored access token." };
+
+  const expiresAt = cred?.expires_at ? Date.parse(cred.expires_at) : null;
+  const needsRefresh = expiresAt !== null && expiresAt - Date.now() <= TOKEN_REFRESH_SKEW_MS;
+
+  if (needsRefresh) {
+    const refreshed = await refreshShopifyToken(supabase, {
+      integrationId,
+      organizationId,
+      shopDomain,
+      refreshToken: cred?.refresh_token ?? null,
+      refreshTokenExpiresAt: cred?.refresh_token_expires_at ?? null,
+    });
+    if (!refreshed.ok) return { ok: false, error: refreshed.error, fatal: refreshed.fatal };
+    accessToken = refreshed.accessToken;
+  }
 
   return {
     ok: true,
     integration: integration as Record<string, unknown>,
-    shopDomain: String((integration as { shop_domain?: string }).shop_domain ?? ""),
+    shopDomain,
     accessToken,
   };
 }
+
+/**
+ * Refresh and persist. Fatal outcomes (dead or missing refresh token, or one
+ * past its 90-day life) flip the integration to error; every other failure is
+ * transient and leaves the stored refresh token intact for the next attempt.
+ */
+export async function refreshShopifyToken(
+  supabase: SupabaseClient,
+  args: {
+    integrationId: string;
+    organizationId: string;
+    shopDomain: string;
+    refreshToken: string | null;
+    refreshTokenExpiresAt?: string | null;
+  },
+): Promise<{ ok: true; accessToken: string } | { ok: false; fatal: boolean; error: string }> {
+  const creds = shopifyCredentials();
+  if (!creds) return { ok: false, fatal: false, error: "Shopify app credentials are not configured." };
+
+  const rtExpiry = args.refreshTokenExpiresAt ? Date.parse(args.refreshTokenExpiresAt) : null;
+  if (!args.refreshToken || (rtExpiry !== null && rtExpiry <= Date.now())) {
+    await markAuthExpired(supabase, args.integrationId);
+    return { ok: false, fatal: true, error: AUTH_EXPIRED_ERROR };
+  }
+
+  const result = await refreshAccessToken({
+    shopDomain: args.shopDomain,
+    apiKey: creds.apiKey,
+    apiSecret: creds.apiSecret,
+    refreshToken: args.refreshToken,
+  });
+
+  if (!result.ok) {
+    if (result.fatal) await markAuthExpired(supabase, args.integrationId);
+    return result;
+  }
+
+  await persistGrant(supabase, {
+    integrationId: args.integrationId,
+    organizationId: args.organizationId,
+    grant: result.grant,
+  });
+  return { ok: true, accessToken: result.grant.accessToken };
+}
+
 
 /**
  * OAuth state. Signed rather than stored: the callback arrives on a public
