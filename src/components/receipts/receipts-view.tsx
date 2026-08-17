@@ -239,6 +239,17 @@ export function ReceiptsView({
           <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
           Refresh
         </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          onClick={exportCsv}
+          disabled={loading || active.length === 0}
+        >
+          <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+          Export CSV
+        </Button>
       </div>
 
       <section
