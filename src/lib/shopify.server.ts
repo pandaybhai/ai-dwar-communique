@@ -119,16 +119,18 @@ export async function verifyWebhookHmac(
 }
 
 /**
- * Offline tokens (shpat_) are issued to the app and never expire; online
- * (per-user) tokens (shpua_) die with the user's session and would break the
- * background sync worker. The install URL therefore never sends
- * grant_options[]=per-user — Shopify defaults to offline without it.
+ * Access-mode guard. The shpat_/shpua_ prefix reflects the app's distribution
+ * status, not its access mode, so it cannot be used to tell offline from
+ * online. The reliable signal is the token response itself: Shopify only
+ * includes an associated_user object when the token is online (per-user).
  */
 export const ONLINE_TOKEN_ERROR = "online access token detected — reinstall required";
 
-export function isOfflineAccessToken(token: string | null | undefined): boolean {
-  return String(token ?? "").startsWith("shpat_");
-}
+/** The refresh token is gone for good; only a fresh install can fix it. */
+export const AUTH_EXPIRED_ERROR = "Shopify authorization expired — reconnect required";
+
+/** Refresh this many ms before the stated expiry so a call never races it. */
+export const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
 
 export function buildInstallUrl(args: {
   shopDomain: string;
@@ -152,12 +154,59 @@ export function callbackUrl(request: Request): string {
   return `${origin}/api/public/shopify-callback`;
 }
 
+export type TokenGrant = {
+  accessToken: string;
+  scopes: string[];
+  /** Seconds until the access token dies. Absent on legacy non-expiring grants. */
+  expiresIn: number | null;
+  refreshToken: string | null;
+  refreshTokenExpiresIn: number | null;
+  /** Present only on online (per-user) tokens. */
+  associatedUser: boolean;
+};
+
+function parseTokenBody(body: Record<string, unknown>): TokenGrant | null {
+  const accessToken = String(body["access_token"] ?? "");
+  if (!accessToken) return null;
+  const num = (key: string) => {
+    const value = Number(body[key]);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+  return {
+    accessToken,
+    scopes: String(body["scope"] ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    expiresIn: num("expires_in"),
+    refreshToken: (body["refresh_token"] as string | undefined) || null,
+    refreshTokenExpiresIn: num("refresh_token_expires_in"),
+    associatedUser: Boolean(body["associated_user"]),
+  };
+}
+
+/** Timestamps written to integration_credentials, derived at write time. */
+export function grantTimestamps(grant: TokenGrant): {
+  expires_at: string | null;
+  refresh_token: string | null;
+  refresh_token_expires_at: string | null;
+} {
+  const now = Date.now();
+  return {
+    expires_at: grant.expiresIn ? new Date(now + grant.expiresIn * 1000).toISOString() : null,
+    refresh_token: grant.refreshToken,
+    refresh_token_expires_at: grant.refreshTokenExpiresIn
+      ? new Date(now + grant.refreshTokenExpiresIn * 1000).toISOString()
+      : null,
+  };
+}
+
 export async function exchangeAccessToken(args: {
   shopDomain: string;
   apiKey: string;
   apiSecret: string;
   code: string;
-}): Promise<{ ok: boolean; accessToken?: string; scopes?: string[]; error?: string }> {
+}): Promise<{ ok: boolean; grant?: TokenGrant; error?: string }> {
   const res = await fetch(`https://${args.shopDomain}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -165,21 +214,77 @@ export async function exchangeAccessToken(args: {
       client_id: args.apiKey,
       client_secret: args.apiSecret,
       code: args.code,
+      // Apps created after 2026-04-01 must use expiring offline tokens; the
+      // Admin API rejects non-expiring ones outright.
+      expiring: 1,
     }),
   });
   if (!res.ok) return { ok: false, error: `Shopify refused the token exchange (${res.status}).` };
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  const accessToken = String(body["access_token"] ?? "");
-  if (!accessToken) return { ok: false, error: "Shopify returned no access token." };
-  return {
-    ok: true,
-    accessToken,
-    scopes: String(body["scope"] ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-  };
+  const grant = parseTokenBody(body);
+  if (!grant) return { ok: false, error: "Shopify returned no access token." };
+  return { ok: true, grant };
 }
+
+/**
+ * Exchange the stored refresh token for a fresh pair.
+ *
+ * Retry semantics matter here. Network failures, timeouts, 5xx and 429 are
+ * transient and the *same* refresh token may be retried — Shopify replays the
+ * same refreshed response for up to an hour. Only a 401 invalid_request (or a
+ * refresh token past its 90-day life) means the grant is definitively dead.
+ */
+export async function refreshAccessToken(args: {
+  shopDomain: string;
+  apiKey: string;
+  apiSecret: string;
+  refreshToken: string;
+}): Promise<{ ok: true; grant: TokenGrant } | { ok: false; fatal: boolean; error: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`https://${args.shopDomain}/admin/oauth/access_token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_id: args.apiKey,
+        client_secret: args.apiSecret,
+        grant_type: "refresh_token",
+        refresh_token: args.refreshToken,
+      }),
+    });
+  } catch (err) {
+    // Transient: the same refresh token stays valid and can be retried.
+    return {
+      ok: false,
+      fatal: false,
+      error: err instanceof Error ? err.message : "Shopify token refresh failed.",
+    };
+  }
+
+  const raw = await res.text();
+  let body: Record<string, unknown> = {};
+  try {
+    body = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    body = {};
+  }
+
+  if (!res.ok) {
+    const fatal = res.status === 401 && String(body["error"] ?? "") === "invalid_request";
+    return {
+      ok: false,
+      fatal,
+      error: fatal
+        ? AUTH_EXPIRED_ERROR
+        : `Shopify token refresh failed (${res.status}). ${raw.slice(0, 200)}`,
+    };
+  }
+
+  const grant = parseTokenBody(body);
+  if (!grant) return { ok: false, fatal: false, error: "Shopify returned no access token." };
+  return { ok: true, grant };
+}
+
 
 export type RestResult = {
   ok: boolean;
