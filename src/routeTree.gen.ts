@@ -56,6 +56,7 @@ import { Route as ApiWhatsappTemplatesRouteImport } from './routes/api/whatsapp/
 import { Route as ApiWhatsappTokenStatusRouteImport } from './routes/api/whatsapp/token-status'
 import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
 import { Route as AppCampaignsIdRouteImport } from './routes/app/campaigns.$id'
+import { Route as ApiPublicShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/public/shopify/webhooks/customers-data-request'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -299,6 +300,12 @@ const AppCampaignsIdRoute = AppCampaignsIdRouteImport.update({
   path: '/campaigns/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const ApiPublicShopifyWebhooksCustomersDataRequestRoute =
+  ApiPublicShopifyWebhooksCustomersDataRequestRouteImport.update({
+    id: '/api/public/shopify/webhooks/customers-data-request',
+    path: '/api/public/shopify/webhooks/customers-data-request',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -348,6 +355,7 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
+  '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -395,6 +403,7 @@ export interface FileRoutesByTo {
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/campaigns': typeof AppCampaignsIndexRoute
+  '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -445,6 +454,7 @@ export interface FileRoutesById {
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
+  '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -496,6 +506,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
     | '/app/campaigns/'
+    | '/api/public/shopify/webhooks/customers-data-request'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -543,6 +554,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
     | '/app/campaigns'
+    | '/api/public/shopify/webhooks/customers-data-request'
   id:
     | '__root__'
     | '/'
@@ -592,6 +604,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
     | '/app/campaigns/'
+    | '/api/public/shopify/webhooks/customers-data-request'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -628,6 +641,7 @@ export interface RootRouteChildren {
   ApiWhatsappSendMessageRoute: typeof ApiWhatsappSendMessageRoute
   ApiWhatsappTemplatesRoute: typeof ApiWhatsappTemplatesRoute
   ApiWhatsappTokenStatusRoute: typeof ApiWhatsappTokenStatusRoute
+  ApiPublicShopifyWebhooksCustomersDataRequestRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -961,6 +975,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCampaignsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/api/public/shopify/webhooks/customers-data-request': {
+      id: '/api/public/shopify/webhooks/customers-data-request'
+      path: '/api/public/shopify/webhooks/customers-data-request'
+      fullPath: '/api/public/shopify/webhooks/customers-data-request'
+      preLoaderRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1046,6 +1067,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappSendMessageRoute: ApiWhatsappSendMessageRoute,
   ApiWhatsappTemplatesRoute: ApiWhatsappTemplatesRoute,
   ApiWhatsappTokenStatusRoute: ApiWhatsappTokenStatusRoute,
+  ApiPublicShopifyWebhooksCustomersDataRequestRoute:
+    ApiPublicShopifyWebhooksCustomersDataRequestRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
