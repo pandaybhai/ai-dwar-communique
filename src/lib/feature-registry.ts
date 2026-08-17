@@ -244,6 +244,7 @@ export const FEATURES: readonly FeatureManifest[] = [
     activity_actions: [
       "contact_created",
       "contacts_imported",
+      "contacts_exported",
       "tag_created",
       "optin_changed",
       "segment_created",
@@ -712,6 +713,9 @@ export const FEATURES: readonly FeatureManifest[] = [
       "integration_data_request",
       "integration_customer_redacted",
       "integration_shop_redacted",
+      "shopify_data_request",
+      "shopify_customer_redacted",
+      "shopify_shop_redacted",
     ],
     settings_path: "/app/settings",
     usage_meters: [

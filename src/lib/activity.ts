@@ -12,6 +12,7 @@ export type ActivityAction =
   | "template_synced"
   | "contact_created"
   | "contacts_imported"
+  | "contacts_exported"
   | "tag_created"
   | "optin_changed"
   | "segment_created"
