@@ -248,12 +248,32 @@ export async function handleCustomersRedact(delivery: VerifiedDelivery): Promise
         await service.from("orders").delete().in("id", orderIds);
       }
 
-      if (contactIds.length) {
-        await service
+      // Checkouts carry no external_customer_id column, so the shopper is
+      // identified from the stored payload as well as any matched contact.
+      let checkoutIds: string[] = [];
+      if (externalCustomerId) {
+        const { data } = await service
           .from("abandoned_checkouts")
-          .delete()
+          .select("id")
+          .eq("integration_id", integration.id)
+          .eq("raw->customer->>id", externalCustomerId);
+        checkoutIds = ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
+      }
+      if (contactIds.length) {
+        const { data } = await service
+          .from("abandoned_checkouts")
+          .select("id")
           .eq("integration_id", integration.id)
           .in("contact_id", contactIds);
+        for (const row of (data ?? []) as Array<{ id: string }>) checkoutIds.push(row.id);
+      }
+      checkoutIds = Array.from(new Set(checkoutIds));
+      if (checkoutIds.length) {
+        await service.from("abandoned_checkouts").delete().in("id", checkoutIds);
+      }
+
+      if (contactIds.length) {
+
 
         const { data: convos } = await service
           .from("conversations")
