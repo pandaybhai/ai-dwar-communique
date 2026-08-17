@@ -299,6 +299,8 @@ export async function handleCustomersRedact(delivery: VerifiedDelivery): Promise
           external_customer_id: externalCustomerId || null,
           contacts_deleted: contactIds.length,
           orders_deleted: orderIds.length,
+          checkouts_deleted: checkoutIds.length,
+
         },
       });
     }
