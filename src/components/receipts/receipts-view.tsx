@@ -186,7 +186,7 @@ export function ReceiptsView({
   const stepsFor = (row: AttributionSourceRow) =>
     steps.filter((s) => s.source_id === row.source_id && s.source_type === row.source_type);
 
-  if (error) return <ErrorState description={error} onRetry={() => void load()} />;
+  if (error) return <ErrorState message={error} />;
 
   return (
     <div className="space-y-6">
