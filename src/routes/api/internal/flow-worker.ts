@@ -47,7 +47,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
 
         const outcomes: Array<Record<string, unknown>> = [];
 
-        for (const send of batch) {
+        await Promise.all(batch.map(async (send) => {
           const orgId = send.organization_id;
 
           const finish = async (
@@ -55,10 +55,11 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             patch: Record<string, unknown>,
             event: { type: string; properties: Record<string, unknown> } | null,
           ) => {
-            await supabase
+            const { error: finishError } = await supabase
               .from("scheduled_sends")
               .update({ status, claimed_at: null, ...patch })
               .eq("id", send.id);
+            if (finishError) throw new Error(`Could not persist ${status}: ${finishError.message}`);
             if (event) {
               emitEvent(supabase, event.type, {
                 organizationId: orgId,
@@ -69,6 +70,8 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             }
             outcomes.push({ id: send.id, status, ...patch });
           };
+
+          try {
 
           const { data: flowRow } = await supabase
             .from("flows")
@@ -265,7 +268,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               "failed",
               { error: outcome.error, message_id: outcome.messageId },
               {
-                type: "flow.skipped",
+                type: "flow.failed",
                 properties: { ...baseProps, reason: "send_failed", error: outcome.error },
               },
             );
@@ -287,6 +290,87 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               },
             },
           );
+          } catch (caught) {
+            const error = caught instanceof Error ? caught.message : String(caught);
+            console.error(JSON.stringify({
+              scope: "flows",
+              stage: "dispatch_exception",
+              scheduled_send_id: send.id,
+              organization_id: orgId,
+              error,
+            }));
+
+            const { error: persistError } = await supabase
+              .from("scheduled_sends")
+              .update({ status: "failed", claimed_at: null, error: error.slice(0, 1000) })
+              .eq("id", send.id);
+            if (persistError) {
+              console.error(JSON.stringify({
+                scope: "flows",
+                stage: "dispatch_exception_persist_failed",
+                scheduled_send_id: send.id,
+                error: persistError.message,
+              }));
+            } else {
+              emitEvent(supabase, "flow.failed", {
+                organizationId: orgId,
+                entityType: "scheduled_send",
+                entityId: send.id,
+                properties: {
+                  flow_id: send.flow_id,
+                  contact_id: send.contact_id,
+                  trigger_type: send.trigger_type,
+                  trigger_id: send.trigger_id,
+                  reason: "dispatch_exception",
+                  error,
+                },
+              });
+              outcomes.push({ id: send.id, status: "failed", error });
+            }
+          }
+        }));
+
+        const claimedIds = batch.map((send) => send.id);
+        if (claimedIds.length > 0) {
+          const { data: stranded, error: strandedQueryError } = await supabase
+            .from("scheduled_sends")
+            .select("id")
+            .in("id", claimedIds)
+            .eq("status", "scheduled")
+            .not("claimed_at", "is", null);
+
+          if (strandedQueryError) {
+            console.warn(JSON.stringify({
+              scope: "flows",
+              stage: "stranded_check_failed",
+              claimed: claimedIds.length,
+              error: strandedQueryError.message,
+            }));
+          } else if ((stranded ?? []).length > 0) {
+            const strandedIds = stranded.map((row) => row.id as string);
+            console.warn(JSON.stringify({
+              scope: "flows",
+              stage: "tick_ended_with_claimed_rows",
+              claimed: claimedIds.length,
+              stranded: strandedIds,
+            }));
+            const error = "Dispatch tick ended before this claimed send reached an outcome.";
+            const { error: terminalizeError } = await supabase
+              .from("scheduled_sends")
+              .update({ status: "failed", claimed_at: null, error })
+              .in("id", strandedIds)
+              .eq("status", "scheduled");
+            if (terminalizeError) {
+              console.error(JSON.stringify({
+                scope: "flows",
+                stage: "stranded_terminalize_failed",
+                stranded: strandedIds,
+                error: terminalizeError.message,
+              }));
+            } else {
+              outcomes.push(...strandedIds.map((id) => ({ id, status: "failed", error })));
+            }
+          }
         }
 
         return Response.json({
