@@ -494,13 +494,19 @@ export async function upsertCheckout(ctx: SyncContext, checkout: AnyRecord): Pro
       occurredAt: abandonedAt,
     });
 
-    const { scheduleFlow } = await import("@/lib/flows.server");
-    await scheduleFlow(ctx.supabase, {
+    const { scheduleFlow, warnIfFlowSilent } = await import("@/lib/flows.server");
+    const outcome = await scheduleFlow(ctx.supabase, {
       organizationId: ctx.organizationId,
       flowKey: "abandoned_checkout",
       contactId: match.contactId,
       triggerType: "abandoned_checkout",
       triggerId: checkoutId,
+    });
+    await warnIfFlowSilent(ctx.supabase, {
+      organizationId: ctx.organizationId,
+      flowKey: "abandoned_checkout",
+      triggerId: checkoutId,
+      outcomes: [outcome],
     });
   }
 
