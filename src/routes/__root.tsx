@@ -84,17 +84,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content: "oCAYfgIMKBXHiHET8iRUm7YujXPeIBFIAw3hJhKAHD0",
       },
 
-      { title: "AiDwar — AI-Powered WhatsApp Marketing Platform" },
+      { title: "AiDwar — AI WhatsApp Marketing Platform for Growing Businesses" },
       {
         name: "description",
         content:
-          "AiDwar is the AI-powered marketing platform for WhatsApp — broadcasts, automations, shared team inbox and an AI sales agent.",
+          "AiDwar is the AI-powered WhatsApp marketing platform that automates campaigns, replies, and analytics on the official WhatsApp Business API.",
       },
       { name: "author", content: "Meezoy Ventures Private Limited" },
-      { property: "og:title", content: "AiDwar — AI-Powered WhatsApp Marketing Platform" },
+      { property: "og:title", content: "AiDwar — AI WhatsApp Marketing Platform for Growing Businesses" },
       {
         property: "og:description",
-        content: "AI campaigns, broadcasts and an AI sales agent on the official WhatsApp Business Platform.",
+        content:
+          "AiDwar is the AI-powered WhatsApp marketing platform that automates campaigns, replies, and analytics on the official WhatsApp Business API.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
