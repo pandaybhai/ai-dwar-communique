@@ -261,6 +261,13 @@ export const fetchAttributionSummary = (organizationId: string, f: AnalyticsFilt
 export const fetchAttributionSources = (organizationId: string, f: AnalyticsFilters) =>
   rpc<AttributionSourceRow[]>("analytics_attribution_sources", range(organizationId, f));
 
+export const fetchAttributionSteps = (organizationId: string, f: AnalyticsFilters) =>
+  rpc<AttributionStepRow[]>("analytics_attribution_steps", range(organizationId, f));
+
+/** Tax rate for the with-tax column; the same guard as every other read. */
+export const fetchCostSettings = (organizationId: string) =>
+  rpc<CostSettings>("analytics_cost_settings", { p_organization_id: organizationId });
+
 
 // ------------------------------------------------------------------ presentation
 
