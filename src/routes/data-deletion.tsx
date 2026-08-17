@@ -108,9 +108,12 @@ function DataDeletionPage() {
         </p>
       </Section>
 
-      <Section heading="6. Who to contact">
-        <p>
-          Meezoy Ventures Private Limited, Hyderabad, Telangana, India — the company behind AiDwar.
+      <Section heading="7. Who to contact">
+        <p className="font-medium text-foreground">Registered entity</p>
+        <p className="mb-4">
+          Meezoy Ventures Private Limited
+          <br />
+          Hyderabad, Telangana, India
         </p>
         <Bullets
           items={[
