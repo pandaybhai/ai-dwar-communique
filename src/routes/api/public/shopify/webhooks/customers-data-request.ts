@@ -11,7 +11,7 @@ export const Route = createFileRoute("/api/public/shopify/webhooks/customers-dat
         const result = await receiveComplianceWebhook(request, "customers/data_request");
         if ("response" in result) return result.response;
         await handleCustomersDataRequest(result.delivery);
-        return new Response("ok", { status: 200 });
+        return Response.json({ ok: true }, { status: 200 });
       },
     },
   },

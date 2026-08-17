@@ -11,7 +11,7 @@ export const Route = createFileRoute("/api/public/shopify/webhooks/customers-red
         const result = await receiveComplianceWebhook(request, "customers/redact");
         if ("response" in result) return result.response;
         await handleCustomersRedact(result.delivery);
-        return new Response("ok", { status: 200 });
+        return Response.json({ ok: true }, { status: 200 });
       },
     },
   },

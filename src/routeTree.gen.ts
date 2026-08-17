@@ -58,6 +58,7 @@ import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.in
 import { Route as AppCampaignsIdRouteImport } from './routes/app/campaigns.$id'
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
+import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/shopify/webhooks/shop-redact'
 import { Route as ApiPublicShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/public/shopify/webhooks/customers-data-request'
 import { Route as ApiPublicShopifyWebhooksCustomersRedactRouteImport } from './routes/api/public/shopify/webhooks/customers-redact'
 import { Route as ApiPublicShopifyWebhooksShopRedactRouteImport } from './routes/api/public/shopify/webhooks/shop-redact'
@@ -316,6 +317,12 @@ const ApiShopifyWebhooksCustomersRedactRoute =
     path: '/api/shopify/webhooks/customers-redact',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiShopifyWebhooksShopRedactRoute =
+  ApiShopifyWebhooksShopRedactRouteImport.update({
+    id: '/api/shopify/webhooks/shop-redact',
+    path: '/api/shopify/webhooks/shop-redact',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicShopifyWebhooksCustomersDataRequestRoute =
   ApiPublicShopifyWebhooksCustomersDataRequestRouteImport.update({
     id: '/api/public/shopify/webhooks/customers-data-request',
@@ -385,6 +392,7 @@ export interface FileRoutesByFullPath {
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
+  '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -437,6 +445,7 @@ export interface FileRoutesByTo {
   '/app/campaigns': typeof AppCampaignsIndexRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
+  '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -492,6 +501,7 @@ export interface FileRoutesById {
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
+  '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -548,6 +558,7 @@ export interface FileRouteTypes {
     | '/app/campaigns/'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
+    | '/api/shopify/webhooks/shop-redact'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
@@ -600,6 +611,7 @@ export interface FileRouteTypes {
     | '/app/campaigns'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
+    | '/api/shopify/webhooks/shop-redact'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
@@ -654,6 +666,7 @@ export interface FileRouteTypes {
     | '/app/campaigns/'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
+    | '/api/shopify/webhooks/shop-redact'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
@@ -695,6 +708,7 @@ export interface RootRouteChildren {
   ApiWhatsappTokenStatusRoute: typeof ApiWhatsappTokenStatusRoute
   ApiShopifyWebhooksCustomersDataRequestRoute: typeof ApiShopifyWebhooksCustomersDataRequestRoute
   ApiShopifyWebhooksCustomersRedactRoute: typeof ApiShopifyWebhooksCustomersRedactRoute
+  ApiShopifyWebhooksShopRedactRoute: typeof ApiShopifyWebhooksShopRedactRoute
   ApiPublicShopifyWebhooksCustomersDataRequestRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   ApiPublicShopifyWebhooksCustomersRedactRoute: typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   ApiPublicShopifyWebhooksShopRedactRoute: typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -1045,6 +1059,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShopifyWebhooksCustomersRedactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/shopify/webhooks/shop-redact': {
+      id: '/api/shopify/webhooks/shop-redact'
+      path: '/api/shopify/webhooks/shop-redact'
+      fullPath: '/api/shopify/webhooks/shop-redact'
+      preLoaderRoute: typeof ApiShopifyWebhooksShopRedactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/shopify/webhooks/customers-data-request': {
       id: '/api/public/shopify/webhooks/customers-data-request'
       path: '/api/public/shopify/webhooks/customers-data-request'
@@ -1155,6 +1176,7 @@ const rootRouteChildren: RootRouteChildren = {
     ApiShopifyWebhooksCustomersDataRequestRoute,
   ApiShopifyWebhooksCustomersRedactRoute:
     ApiShopifyWebhooksCustomersRedactRoute,
+  ApiShopifyWebhooksShopRedactRoute: ApiShopifyWebhooksShopRedactRoute,
   ApiPublicShopifyWebhooksCustomersDataRequestRoute:
     ApiPublicShopifyWebhooksCustomersDataRequestRoute,
   ApiPublicShopifyWebhooksCustomersRedactRoute:
