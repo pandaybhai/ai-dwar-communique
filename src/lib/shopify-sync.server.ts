@@ -317,7 +317,41 @@ export async function upsertOrder(
     }
   }
 
+  // Order lifecycle flow: one step per lifecycle moment, each fired once per
+  // order (the partial unique index on scheduled_sends is the real guard).
+  {
+    const { scheduleFlow, cancelScheduledSends, cancelRecoveredCheckouts } = await import(
+      "@/lib/flows.server"
+    );
+    const schedule = (event: string) =>
+      scheduleFlow(ctx.supabase, {
+        organizationId: ctx.organizationId,
+        flowKey: "order_lifecycle",
+        contactId: match.contactId,
+        triggerType: "order",
+        triggerId: orderId,
+        event,
+      });
+
+    if (!previous) {
+      await schedule("order_created");
+      // A purchase recovers whatever checkout the same shopper abandoned.
+      await cancelRecoveredCheckouts(ctx.supabase, ctx.organizationId, {
+        contactId: match.contactId,
+        externalCustomerId,
+      });
+    }
+    if (row.fulfilled_at && !previous?.fulfillment_status) await schedule("order_fulfilled");
+    else if (row.fulfillment_status === "fulfilled" && previous?.fulfillment_status !== "fulfilled")
+      await schedule("order_fulfilled");
+    if (row.delivered_at) await schedule("order_delivered");
+    if (row.cancelled_at && !previous?.cancelled_at) {
+      await cancelScheduledSends(ctx.supabase, orderId, "order_cancelled");
+    }
+  }
+
   return { orderId, contactId: match.contactId, created: !previous };
+
 }
 
 export async function upsertProduct(ctx: SyncContext, product: AnyRecord): Promise<boolean> {
