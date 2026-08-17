@@ -239,9 +239,3 @@ ALTER TABLE public.webhook_events
 CREATE UNIQUE INDEX IF NOT EXISTS webhook_events_provider_external_unique_idx
   ON public.webhook_events (provider, external_event_id)
   WHERE external_event_id IS NOT NULL;
-
--- Lead source vocabulary: purchases arriving from a connected store.
-INSERT INTO public.lead_source_markers (organization_id, keyword, source, is_active)
-SELECT o.id, 'shopify', 'shopify', true
-FROM public.organizations o
-ON CONFLICT DO NOTHING;
