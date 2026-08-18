@@ -168,6 +168,29 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                         Passed to your team because: {run.escalation_signal.replace(/_/g, " ")}
                       </p>
                     ) : null}
+                    {run.tool_calls && run.tool_calls.length > 0 ? (
+                      <ul className="mt-3 space-y-1.5">
+                        {run.tool_calls.map((t, i) => (
+                          <li
+                            key={`${t.tool_name}-${i}`}
+                            className="flex flex-wrap items-center gap-2 text-xs"
+                          >
+                            <Badge
+                              variant={t.ok ? "secondary" : "destructive"}
+                              className="text-[11px]"
+                            >
+                              {t.ok ? "Checked" : "Failed"}: {t.tool_name.replace(/_/g, " ")}
+                            </Badge>
+                            {t.latency_ms ? (
+                              <span className="text-muted-foreground">{t.latency_ms} ms</span>
+                            ) : null}
+                            {!t.ok && t.error ? (
+                              <span className="text-muted-foreground">{t.error}</span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                     {run.sources && run.sources.length > 0 ? (
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         {run.sources.map((s, i) => (

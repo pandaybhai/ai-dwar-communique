@@ -68,7 +68,13 @@ export type RunResult = {
   status: "ok" | "refused" | "escalated" | "capped" | "error";
   output: string;
   sources: RunSource[];
-  toolCalls: { tool: string; ok: boolean; error?: string }[];
+  toolCalls: {
+    tool: string;
+    ok: boolean;
+    error?: string;
+    latencyMs?: number;
+    activityLogId?: string | null;
+  }[];
   escalationSignal: string | null;
   costAmount: number | null;
   costCurrency: string | null;
@@ -576,6 +582,23 @@ export async function executeRun(
       .maybeSingle();
     result.runId = (data as { id?: string } | null)?.id ?? null;
     if (result.runId) {
+      // One row per tool invocation, written only now because run_id is NOT NULL.
+      if (result.toolCalls.length) {
+        const { error: traceError } = await supabase.from("ai_tool_calls").insert(
+          result.toolCalls.map((call) => ({
+            organization_id: organizationId,
+            run_id: result.runId,
+            tool_name: call.tool,
+            ok: call.ok,
+            error: call.error ?? null,
+            latency_ms: call.latencyMs ?? null,
+            activity_log_id: call.activityLogId ?? null,
+          })),
+        );
+        if (traceError) {
+          console.error("[ai-run] tool call trace not written", traceError.message);
+        }
+      }
       await rollUpUsage(supabase, organizationId, task, result);
     }
     return result;
@@ -696,12 +719,18 @@ export async function executeRun(
         for (const tc of call.toolCalls) {
           const result = await runTool(supabase, organizationId, actorUserId, tc.name, tc.args);
           if (!result.ok) anyToolFailed = true;
-          toolCalls.push({ tool: tc.name, ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+          toolCalls.push({
+            tool: tc.name,
+            ok: result.ok,
+            ...(result.error ? { error: result.error } : {}),
+            ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
+            activityLogId: result.activityLogId ?? null,
+          });
           sources.push({ kind: "tool", label: tc.name });
           items.push({
             type: "function_call_output",
             call_id: tc.id,
-            output: JSON.stringify(result).slice(0, 6000),
+            output: JSON.stringify(modelView(result)).slice(0, 6000),
           });
         }
       }
@@ -721,12 +750,18 @@ export async function executeRun(
         for (const tc of call.toolCalls) {
           const result = await runTool(supabase, organizationId, actorUserId, tc.name, tc.args);
           if (!result.ok) anyToolFailed = true;
-          toolCalls.push({ tool: tc.name, ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+          toolCalls.push({
+            tool: tc.name,
+            ok: result.ok,
+            ...(result.error ? { error: result.error } : {}),
+            ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
+            activityLogId: result.activityLogId ?? null,
+          });
           sources.push({ kind: "tool", label: tc.name });
           messages.push({
             role: "tool",
             tool_call_id: tc.id,
-            content: JSON.stringify(result).slice(0, 6000),
+            content: JSON.stringify(modelView(result)).slice(0, 6000),
           });
         }
       }
@@ -813,6 +848,11 @@ export function decideEscalation(input: {
   if (!input.knowledgeMatched && !input.toolUsed) return "no_source";
 
   return null;
+}
+
+/** Trace fields are ours, not the model's — keep them out of the prompt. */
+function modelView(result: { ok: boolean; data?: unknown; error?: string }) {
+  return { ok: result.ok, ...(result.data !== undefined ? { data: result.data } : {}), ...(result.error ? { error: result.error } : {}) };
 }
 
 async function runTool(

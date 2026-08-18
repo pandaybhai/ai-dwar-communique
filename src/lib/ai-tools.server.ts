@@ -26,7 +26,15 @@ export type ToolContext = {
 };
 
 export type ToolArgs = Record<string, unknown>;
-export type ToolResult = { ok: boolean; data?: unknown; error?: string };
+export type ToolResult = {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+  /** Set by invokeTool: the activity_log row this invocation wrote. */
+  activityLogId?: string | null;
+  /** Set by invokeTool: wall-clock time of the invocation. */
+  latencyMs?: number;
+};
 
 type Handler = (ctx: ToolContext, args: ToolArgs) => Promise<ToolResult>;
 
@@ -398,53 +406,73 @@ export async function invokeTool(
   args: ToolArgs,
   options: InvokeOptions = {},
 ): Promise<ToolResult> {
+  const startedAt = Date.now();
   const available = await brokerTools(ctx.supabase, ctx.organizationId, ctx.actorUserId);
   const tool = available.find((t) => t.name === toolName);
 
-  const log = async (status: string, detail?: string) => {
+  /** Returns the activity_log row id so the caller can join a run to its trace. */
+  const log = async (status: string, detail?: string): Promise<string | null> => {
     const { organization_id: _org, ...safeArgs } = args as Record<string, unknown>;
-    await ctx.supabase
-      .from("activity_log")
-      .insert({
-        organization_id: ctx.organizationId,
-        user_id: ctx.actorUserId,
-        action: "ai_tool_invoked",
-        details: {
-          tool: toolName,
-          arguments: safeArgs,
-          status,
-          initiated_by: ctx.initiatedBy,
-          ...(detail ? { detail } : {}),
-        },
-      })
-      .then(
-        () => undefined,
-        () => undefined,
-      );
+    try {
+      const { data } = await ctx.supabase
+        .from("activity_log")
+        .insert({
+          organization_id: ctx.organizationId,
+          user_id: ctx.actorUserId,
+          action: "ai_tool_invoked",
+          details: {
+            tool: toolName,
+            arguments: safeArgs,
+            status,
+            initiated_by: ctx.initiatedBy,
+            ...(detail ? { detail } : {}),
+          },
+        })
+        .select("id")
+        .maybeSingle();
+      return (data as { id?: string } | null)?.id ?? null;
+    } catch {
+      return null;
+    }
   };
 
+  const done = (result: ToolResult, activityLogId: string | null): ToolResult => ({
+    ...result,
+    activityLogId,
+    latencyMs: Date.now() - startedAt,
+  });
+
   if (!tool) {
-    await log("denied", "not_available");
-    return { ok: false, error: "That tool isn't available to you in this workspace." };
+    const logId = await log("denied", "not_available");
+    return done(
+      { ok: false, error: "That tool isn't available to you in this workspace." },
+      logId,
+    );
   }
 
   if (tool.access === "write") {
     if (tool.requires_confirmation && !options.confirmed) {
-      await log("needs_confirmation");
-      return { ok: false, error: "This action needs to be confirmed by a person first." };
+      const logId = await log("needs_confirmation");
+      return done({ ok: false, error: "This action needs to be confirmed by a person first." }, logId);
     }
     if (await writeRateLimited(ctx.supabase, ctx.organizationId)) {
-      await log("rate_limited");
-      return { ok: false, error: "Too many AI actions in this workspace right now. Try again later." };
+      const logId = await log("rate_limited");
+      return done(
+        { ok: false, error: "Too many AI actions in this workspace right now. Try again later." },
+        logId,
+      );
     }
   }
 
   try {
     const result = await AI_TOOL_HANDLERS[tool.handler]!(ctx, args);
-    await log(result.ok ? "ok" : "error", result.ok ? undefined : result.error);
-    return result;
+    const logId = await log(result.ok ? "ok" : "error", result.ok ? undefined : result.error);
+    return done(result, logId);
   } catch (err) {
-    await log("error", err instanceof Error ? err.message.slice(0, 200) : "handler_failed");
-    return { ok: false, error: "That tool failed to run." };
+    const logId = await log(
+      "error",
+      err instanceof Error ? err.message.slice(0, 200) : "handler_failed",
+    );
+    return done({ ok: false, error: "That tool failed to run." }, logId);
   }
 }
