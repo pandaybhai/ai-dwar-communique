@@ -19,12 +19,12 @@ export function TierInternalBadge({
   className = "",
 }: {
   /** The tier key a run used, when the badge should look the truth up. */
-  tier?: string | null;
-  internals?: TierInternal[] | null;
+  tier?: string | null | undefined;
+  internals?: TierInternal[] | null | undefined;
   /** Or the resolved values straight from a past run. */
-  provider?: string | null;
-  model?: string | null;
-  route?: "direct" | "gateway" | string | null;
+  provider?: string | null | undefined;
+  model?: string | null | undefined;
+  route?: "direct" | "gateway" | string | null | undefined;
   className?: string;
 }) {
   const { isSuperAdmin } = useOrg();

@@ -38,7 +38,7 @@ export function BrainPicker({
 }: {
   organizationId: string;
   tiers: AiTier[];
-  internals?: TierInternal[] | null;
+  internals?: TierInternal[] | null | undefined;
   taskTiers: TaskTier[];
   settings: EmployeeSettings | null;
   spendThisMonth: number;

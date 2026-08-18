@@ -40,7 +40,7 @@ export function Playground({
 }: {
   organizationId: string;
   tiers: AiTier[];
-  internals?: TierInternal[] | null;
+  internals?: TierInternal[] | null | undefined;
   currency: string;
   onRan: () => void | Promise<void>;
   onEnableAi?: () => Promise<boolean>;
@@ -275,7 +275,7 @@ function TierSelect({
   value: string;
   onChange: (v: string) => void;
   tiers: AiTier[];
-  internals?: TierInternal[] | null;
+  internals?: TierInternal[] | null | undefined;
 }) {
   const chosen = tiers.find((t) => t.key === value);
   return (
@@ -327,7 +327,7 @@ function AnswerCard({
 }: {
   run: PlaygroundRun;
   currency: string;
-  internals?: TierInternal[] | null;
+  internals?: TierInternal[] | null | undefined;
   onEnableAi?: () => void | Promise<void>;
   enabling?: boolean;
 }) {
@@ -403,7 +403,7 @@ function SideCard({
   label: string;
   side: CompareSide;
   currency: string;
-  internals?: TierInternal[] | null;
+  internals?: TierInternal[] | null | undefined;
 }) {
   // A broken connection, a spending limit or a switched-off workspace is not a
   // weak answer — say which it is instead of "nothing to say, cost unknown".
