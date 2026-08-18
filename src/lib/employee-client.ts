@@ -29,6 +29,17 @@ export type AiTier = {
   relative_cost_text: string | null;
 };
 
+/**
+ * Platform-internal truth behind a merchant-facing tier. Only ever sent to a
+ * platform Super Admin; absent for every other signed-in user.
+ */
+export type TierInternal = {
+  key: string;
+  provider: string;
+  model_id: string;
+  route: "direct" | "gateway" | string;
+};
+
 export type TaskTier = {
   task: string;
   tier: string;
@@ -79,6 +90,8 @@ export type ToolRow = {
 
 export type EmployeeOverview = {
   agent: EmployeeAgent | null;
+  is_super_admin?: boolean;
+  tier_internals?: TierInternal[] | null;
   settings: EmployeeSettings | null;
   spend_this_month: number;
   tiers: AiTier[];
@@ -112,6 +125,10 @@ export type EmployeeRun = {
   output: string | null;
   sources: RunSource[] | null;
   tool_calls?: EmployeeToolCall[] | null;
+  /** Super Admin only: what actually answered this run. */
+  provider?: string | null;
+  model?: string | null;
+  route?: "direct" | "gateway" | string | null;
   created_at: string;
 };
 
