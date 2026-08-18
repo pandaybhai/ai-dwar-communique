@@ -106,6 +106,21 @@ function EmployeePage() {
   const canConfigure = can("ai.configure");
   const mode = overview?.agent?.mode ?? "off";
   const currency = overview?.settings?.currency ?? "INR";
+  const aiEnabled = overview?.settings?.ai_enabled !== false;
+
+  const setAiEnabled = async (value: boolean) => {
+    if (!organizationId) return;
+    const { error } = await employeeApi({
+      organization_id: organizationId,
+      action: "save_settings",
+      ai_enabled: value,
+    });
+    if (error) toast.error(error);
+    else {
+      toast.success(value ? "AI is on." : "AI is off.");
+      void load();
+    }
+  };
 
   return (
     <>
