@@ -31,7 +31,7 @@ export const Route = createFileRoute("/api/ai/employee")({
           "set_mode",
           "save_settings",
           "save_instructions",
-          "set_brain",
+          "set_tier",
           "revert_instructions",
         ].includes(action);
         if (needsConfigure) {
