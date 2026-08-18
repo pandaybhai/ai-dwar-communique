@@ -85,7 +85,14 @@ function AdminAi() {
   }
 
   if (!data && !error) return <PageSkeleton />;
-  if (!data) return <ErrorState message={error ?? "AI operations could not be loaded."} onRetry={load} />;
+  if (!data) {
+    return (
+      <div className="space-y-4">
+        <ErrorState message={error ?? "AI operations could not be loaded."} />
+        <Button variant="outline" onClick={() => void load()}>Try again</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
