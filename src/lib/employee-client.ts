@@ -81,8 +81,8 @@ export type EmployeeOverview = {
   agent: EmployeeAgent | null;
   settings: EmployeeSettings | null;
   spend_this_month: number;
-  models: BrainModel[];
-  task_models: TaskModel[];
+  tiers: AiTier[];
+  task_models: TaskTier[];
   instructions: InstructionVersion[];
   sources: KnowledgeSource[];
   tools: ToolRow[];
