@@ -3,6 +3,7 @@ import { ClipboardList, Loader2, PencilLine } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { TierInternalBadge } from "@/components/employee/tier-internal-badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -180,6 +181,7 @@ export function WorkLog({
                     </p>
                   </div>
                   <Badge variant={status.tone}>{status.label}</Badge>
+                  <TierInternalBadge provider={run.provider} model={run.model} route={run.route} />
                   <span className="text-xs text-muted-foreground">
                     {run.cost_source === "unknown" ? "—" : moneyText(run.billed_amount, currency)}
                   </span>
