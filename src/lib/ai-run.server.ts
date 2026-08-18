@@ -516,6 +516,7 @@ async function callResponses(
   model: string,
   input: unknown[],
   tools: BrokeredTool[],
+  direct = false,
 ): Promise<GatewayCall & { items: unknown[] }> {
   const body: Record<string, unknown> = { model, input, stream: true, store: false };
   if (tools.length > 0) {
@@ -529,7 +530,7 @@ async function callResponses(
   }
   const res = await fetch(`${base}/responses`, {
     method: "POST",
-    headers: gatewayHeaders(key),
+    headers: gatewayHeaders(key, direct),
     body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) {
@@ -873,7 +874,7 @@ export async function executeRun(
   let answer = "";
 
   try {
-    if (isOpenAiModel(brain.model_id)) {
+    if (isOpenAiModel(brain.model_id) || (direct && brain.provider === "openai")) {
       const items: unknown[] = [];
       if (system) items.push({ role: "system", content: [{ type: "input_text", text: system }] });
       for (const turn of history) {
@@ -889,7 +890,7 @@ export async function executeRun(
       items.push({ role: "user", content: [{ type: "input_text", text: input }] });
 
       for (let step = 0; step < maxSteps; step += 1) {
-        const call = await callResponses(GATEWAY, key, brain.model_id, items, tools);
+        const call = await callResponses(apiBase, key, wire, items, tools, direct);
         inputTokens += call.inputTokens ?? 0;
         outputTokens += call.outputTokens ?? 0;
         answer = call.text || answer;
@@ -921,7 +922,7 @@ export async function executeRun(
       messages.push({ role: "user", content: input });
 
       for (let step = 0; step < maxSteps; step += 1) {
-        const call = await callChatCompletions(GATEWAY, key, brain.model_id, messages, tools);
+        const call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
         inputTokens += call.inputTokens ?? 0;
         outputTokens += call.outputTokens ?? 0;
         answer = call.text || answer;
