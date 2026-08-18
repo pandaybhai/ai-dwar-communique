@@ -719,12 +719,18 @@ export async function executeRun(
         for (const tc of call.toolCalls) {
           const result = await runTool(supabase, organizationId, actorUserId, tc.name, tc.args);
           if (!result.ok) anyToolFailed = true;
-          toolCalls.push({ tool: tc.name, ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+          toolCalls.push({
+            tool: tc.name,
+            ok: result.ok,
+            ...(result.error ? { error: result.error } : {}),
+            latencyMs: result.latencyMs ?? null ?? undefined,
+            activityLogId: result.activityLogId ?? null,
+          });
           sources.push({ kind: "tool", label: tc.name });
           items.push({
             type: "function_call_output",
             call_id: tc.id,
-            output: JSON.stringify(result).slice(0, 6000),
+            output: JSON.stringify(modelView(result)).slice(0, 6000),
           });
         }
       }
@@ -744,12 +750,18 @@ export async function executeRun(
         for (const tc of call.toolCalls) {
           const result = await runTool(supabase, organizationId, actorUserId, tc.name, tc.args);
           if (!result.ok) anyToolFailed = true;
-          toolCalls.push({ tool: tc.name, ok: result.ok, ...(result.error ? { error: result.error } : {}) });
+          toolCalls.push({
+            tool: tc.name,
+            ok: result.ok,
+            ...(result.error ? { error: result.error } : {}),
+            latencyMs: result.latencyMs ?? null ?? undefined,
+            activityLogId: result.activityLogId ?? null,
+          });
           sources.push({ kind: "tool", label: tc.name });
           messages.push({
             role: "tool",
             tool_call_id: tc.id,
-            content: JSON.stringify(result).slice(0, 6000),
+            content: JSON.stringify(modelView(result)).slice(0, 6000),
           });
         }
       }
@@ -836,6 +848,11 @@ export function decideEscalation(input: {
   if (!input.knowledgeMatched && !input.toolUsed) return "no_source";
 
   return null;
+}
+
+/** Trace fields are ours, not the model's — keep them out of the prompt. */
+function modelView(result: { ok: boolean; data?: unknown; error?: string }) {
+  return { ok: result.ok, ...(result.data !== undefined ? { data: result.data } : {}), ...(result.error ? { error: result.error } : {}) };
 }
 
 async function runTool(
