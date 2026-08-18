@@ -150,6 +150,10 @@ export type CompareSide = {
   answer: string;
   answered: boolean;
   passedToYou: boolean;
+  /** What actually happened: ok, escalated, refused, capped, error. */
+  status: string;
+  /** Plain-words reason when I couldn't answer — a broken connection, a limit. */
+  error: string | null;
   sources: RunSource[];
   tools: string[];
   billedAmount: number | null;
