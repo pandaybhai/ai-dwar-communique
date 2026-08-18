@@ -25,9 +25,9 @@ import { EmptyState, ErrorState } from "@/components/empty-state";
 import {
   statusBadgeClass,
   templateBodyText,
-  templateFooterText,
   type TemplateRow,
 } from "@/lib/templates";
+import { componentsToPreview, TemplatePreview } from "@/components/templates/template-preview";
 import { CreateTemplateDialog } from "./create-template-dialog";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
@@ -51,8 +51,7 @@ function TemplateSkeleton() {
 }
 
 function TemplateCard({ template, owner }: { template: TemplateRow; owner: string }) {
-  const body = templateBodyText(template.components);
-  const footer = templateFooterText(template.components);
+  const preview = componentsToPreview(template.components);
   return (
     <div className="animate-in fade-in slide-in-from-bottom-1 flex flex-col rounded-2xl border border-border/70 bg-card p-5 shadow-sm transition-shadow duration-200 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
@@ -89,10 +88,7 @@ function TemplateCard({ template, owner }: { template: TemplateRow; owner: strin
       </div>
 
       <div className="mt-4 rounded-2xl bg-muted/40 p-3">
-        <div className="rounded-2xl rounded-bl-md border border-border/70 bg-card px-3.5 py-2.5 text-sm shadow-sm">
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{body || "—"}</p>
-          {footer ? <p className="mt-2 text-[11px] text-muted-foreground">{footer}</p> : null}
-        </div>
+        <TemplatePreview model={preview} className="max-w-none" />
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
