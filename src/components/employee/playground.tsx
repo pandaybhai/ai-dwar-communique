@@ -306,7 +306,17 @@ function Sources({ sources }: { sources: RunSource[] | null | undefined }) {
   );
 }
 
-function AnswerCard({ run, currency }: { run: PlaygroundRun; currency: string }) {
+function AnswerCard({
+  run,
+  currency,
+  onEnableAi,
+  enabling,
+}: {
+  run: PlaygroundRun;
+  currency: string;
+  onEnableAi?: () => void | Promise<void>;
+  enabling?: boolean;
+}) {
   const blocked = run.status !== "ok" && !run.output;
   const blockedLabel =
     run.status === "refused"
