@@ -877,7 +877,9 @@ export async function executeRun(
       ...base,
       status: "capped",
       output: "",
-      error: `This month's AI spending limit (${platformCap.currency} ${platformCap.cap}) has been reached.`,
+      error: platformCap.misconfigured
+        ? "I've hit this month's limit. The platform has no valid monthly ceiling set, so nothing runs until the platform team sets one."
+        : `This month's AI spending limit (${platformCap.currency} ${platformCap.cap}) has been reached.`,
     });
   }
 
