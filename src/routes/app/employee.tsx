@@ -3,10 +3,19 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Bot, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
+import { BehaviourEditor } from "@/components/employee/behaviour-editor";
+import { BrainPicker } from "@/components/employee/brain-picker";
 import { KnowledgeManager } from "@/components/employee/knowledge-manager";
+import { Playground } from "@/components/employee/playground";
+import { ToolsList } from "@/components/employee/tools-list";
+import { WorkLog } from "@/components/employee/work-log";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/use-permissions";
+import { employeeApi, moneyText, type EmployeeOverview } from "@/lib/employee-client";
+import { useOrg } from "@/lib/org-context";
+
 import { employeeApi, moneyText, type EmployeeOverview } from "@/lib/employee-client";
 import { useOrg } from "@/lib/org-context";
 
