@@ -110,6 +110,14 @@ export type EmployeeRun = {
   created_at: string;
 };
 
+export type WeeklyReport = {
+  since: string;
+  answered: number;
+  passed: number;
+  cost: number;
+  learn: { question: string; times: number; last_at: string }[];
+};
+
 export type EmployeeToolCall = {
   tool_name: string;
   ok: boolean;
