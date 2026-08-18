@@ -286,30 +286,60 @@ export function billedFromCost(cost: number | null, markup: number): number | nu
  * Vault and are read here, server side, by name only — the name is all that is
  * ever stored in a readable table.
  */
-async function resolveApiKey(
+async function readVaultSecret(
   supabase: SupabaseClient,
-  organizationId: string,
-  provider: string,
-): Promise<{ key: string | null; base: string }> {
-  if (provider === "lovable") {
-    return { key: process.env["LOVABLE_API_KEY"] ?? null, base: GATEWAY };
-  }
+  name: string | null | undefined,
+): Promise<string | null> {
+  if (!name) return null;
   const { data } = await supabase
-    .from("ai_providers")
-    .select("vault_secret_name")
-    .eq("organization_id", organizationId)
-    .eq("provider", provider)
-    .maybeSingle();
-  const name = (data as { vault_secret_name?: string } | null)?.vault_secret_name;
-  if (!name) return { key: null, base: GATEWAY };
-  const { data: secret } = await supabase
     .schema("vault")
     .from("decrypted_secrets")
     .select("decrypted_secret")
     .eq("name", name)
     .maybeSingle();
-  const key = (secret as { decrypted_secret?: string } | null)?.decrypted_secret ?? null;
-  return { key, base: GATEWAY };
+  return (data as { decrypted_secret?: string } | null)?.decrypted_secret ?? null;
+}
+
+/**
+ * Keys belong to the platform. An organisation only supplies its own when it
+ * is on an enterprise bring-your-own-account deal, and that override wins.
+ */
+async function resolveApiKey(
+  supabase: SupabaseClient,
+  organizationId: string,
+  provider: string,
+): Promise<{ key: string | null; base: string }> {
+  // 1. Organisation override, if this workspace brought its own account.
+  const { data: own } = await supabase
+    .from("ai_providers")
+    .select("vault_secret_name")
+    .eq("organization_id", organizationId)
+    .eq("provider", provider)
+    .eq("status", "active")
+    .maybeSingle();
+  const ownKey = await readVaultSecret(
+    supabase,
+    (own as { vault_secret_name?: string } | null)?.vault_secret_name,
+  );
+  if (ownKey) return { key: ownKey, base: GATEWAY };
+
+  // 2. Platform credentials, held once for everyone.
+  const { data: platform } = await supabase
+    .from("platform_ai_providers")
+    .select("vault_secret_name, is_active")
+    .eq("provider", provider)
+    .maybeSingle();
+  const row = platform as { vault_secret_name?: string; is_active?: boolean } | null;
+  if (row?.is_active !== false) {
+    const platformKey = await readVaultSecret(supabase, row?.vault_secret_name);
+    if (platformKey) return { key: platformKey, base: GATEWAY };
+  }
+
+  // 3. The platform's own gateway credential.
+  if (provider === "lovable") {
+    return { key: process.env["LOVABLE_API_KEY"] ?? null, base: GATEWAY };
+  }
+  return { key: null, base: GATEWAY };
 }
 
 // ----------------------------------------------------------------- pricing
