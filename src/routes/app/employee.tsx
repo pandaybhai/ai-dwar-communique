@@ -299,6 +299,40 @@ function EmployeePage() {
 
         </div>
       )}
+
+      <AlertDialog open={gate !== null} onOpenChange={(open) => !open && setGate(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Let me show you my work first</AlertDialogTitle>
+            <AlertDialogDescription>
+              {gate?.message ??
+                "You haven't tested me yet. Want to see how I'd have answered your last 20 customer questions first?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Not now</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const mode = gate?.mode;
+                setGate(null);
+                if (mode) void setMode(mode, true);
+              }}
+            >
+              Switch anyway
+            </Button>
+            <AlertDialogAction
+              onClick={() => {
+                setGate(null);
+                setTab("try");
+                setCompareRequest((n) => n + 1);
+              }}
+            >
+              Run the test on my last 20 questions
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
