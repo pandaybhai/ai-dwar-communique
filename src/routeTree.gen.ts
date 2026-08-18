@@ -64,6 +64,7 @@ import { Route as ApiWhatsappEsConfigRouteImport } from './routes/api/whatsapp/e
 import { Route as ApiWhatsappEsExchangeRouteImport } from './routes/api/whatsapp/es-exchange'
 import { Route as ApiWhatsappRefreshQualityRouteImport } from './routes/api/whatsapp/refresh-quality'
 import { Route as ApiWhatsappSendMessageRouteImport } from './routes/api/whatsapp/send-message'
+import { Route as ApiWhatsappTemplateMediaRouteImport } from './routes/api/whatsapp/template-media'
 import { Route as ApiWhatsappTemplatesRouteImport } from './routes/api/whatsapp/templates'
 import { Route as ApiWhatsappTokenStatusRouteImport } from './routes/api/whatsapp/token-status'
 import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
@@ -361,6 +362,12 @@ const ApiWhatsappSendMessageRoute = ApiWhatsappSendMessageRouteImport.update({
   path: '/api/whatsapp/send-message',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappTemplateMediaRoute =
+  ApiWhatsappTemplateMediaRouteImport.update({
+    id: '/api/whatsapp/template-media',
+    path: '/api/whatsapp/template-media',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiWhatsappTemplatesRoute = ApiWhatsappTemplatesRouteImport.update({
   id: '/api/whatsapp/templates',
   path: '/api/whatsapp/templates',
@@ -484,6 +491,7 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
+  '/api/whatsapp/template-media': typeof ApiWhatsappTemplateMediaRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
@@ -551,6 +559,7 @@ export interface FileRoutesByTo {
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
+  '/api/whatsapp/template-media': typeof ApiWhatsappTemplateMediaRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
@@ -621,6 +630,7 @@ export interface FileRoutesById {
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
+  '/api/whatsapp/template-media': typeof ApiWhatsappTemplateMediaRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
@@ -692,6 +702,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/es-exchange'
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
+    | '/api/whatsapp/template-media'
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
@@ -759,6 +770,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/es-exchange'
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
+    | '/api/whatsapp/template-media'
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
@@ -828,6 +840,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/es-exchange'
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
+    | '/api/whatsapp/template-media'
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
@@ -883,6 +896,7 @@ export interface RootRouteChildren {
   ApiWhatsappEsExchangeRoute: typeof ApiWhatsappEsExchangeRoute
   ApiWhatsappRefreshQualityRoute: typeof ApiWhatsappRefreshQualityRoute
   ApiWhatsappSendMessageRoute: typeof ApiWhatsappSendMessageRoute
+  ApiWhatsappTemplateMediaRoute: typeof ApiWhatsappTemplateMediaRoute
   ApiWhatsappTemplatesRoute: typeof ApiWhatsappTemplatesRoute
   ApiWhatsappTokenStatusRoute: typeof ApiWhatsappTokenStatusRoute
   ApiShopifyWebhooksCustomersDataRequestRoute: typeof ApiShopifyWebhooksCustomersDataRequestRoute
@@ -1280,6 +1294,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappSendMessageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/template-media': {
+      id: '/api/whatsapp/template-media'
+      path: '/api/whatsapp/template-media'
+      fullPath: '/api/whatsapp/template-media'
+      preLoaderRoute: typeof ApiWhatsappTemplateMediaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/templates': {
       id: '/api/whatsapp/templates'
       path: '/api/whatsapp/templates'
@@ -1466,6 +1487,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappEsExchangeRoute: ApiWhatsappEsExchangeRoute,
   ApiWhatsappRefreshQualityRoute: ApiWhatsappRefreshQualityRoute,
   ApiWhatsappSendMessageRoute: ApiWhatsappSendMessageRoute,
+  ApiWhatsappTemplateMediaRoute: ApiWhatsappTemplateMediaRoute,
   ApiWhatsappTemplatesRoute: ApiWhatsappTemplatesRoute,
   ApiWhatsappTokenStatusRoute: ApiWhatsappTokenStatusRoute,
   ApiShopifyWebhooksCustomersDataRequestRoute:

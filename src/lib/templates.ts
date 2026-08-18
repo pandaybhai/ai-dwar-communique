@@ -580,6 +580,43 @@ export function draftToComponents(draft: TemplateDraft): TemplateComponent[] {
   return components;
 }
 
+/**
+ * What we store locally: Meta's own components, plus the URL of each uploaded
+ * file. Meta is never sent this extra field — it only ever receives the upload
+ * handle — but the send path needs a link it can still fetch months later,
+ * long after the handle has expired.
+ */
+export function annotateStoredComponents(
+  components: TemplateComponent[],
+  draft: TemplateDraft,
+): TemplateComponent[] {
+  return components.map((component) => {
+    const type = String(component.type).toUpperCase();
+    if (type === "HEADER" && isMediaHeader(component.format) && draft.headerMediaUrl) {
+      return {
+        ...component,
+        example: { ...(component.example ?? {}), aidwar_media_url: draft.headerMediaUrl },
+      };
+    }
+    if (type === "CAROUSEL") {
+      return {
+        ...component,
+        cards: (component.cards ?? []).map((card, index) => {
+          const url = draft.cards[index]?.mediaUrl;
+          if (!url) return card;
+          const parts = ((card["components"] as TemplateComponent[] | undefined) ?? []).map((part) =>
+            String(part.type).toUpperCase() === "HEADER"
+              ? { ...part, example: { ...(part.example ?? {}), aidwar_media_url: url } }
+              : part,
+          );
+          return { ...card, components: parts };
+        }),
+      };
+    }
+    return component;
+  });
+}
+
 /* ------------------------------------------------------------------ *
  * Stored components → readable shape (preview, template list, picker)
  * ------------------------------------------------------------------ */
