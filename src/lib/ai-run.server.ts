@@ -911,6 +911,8 @@ export async function executeRun(
       outputTokens: outputTokens || null,
       costAmount: priced.amount,
       costCurrency: priced.currency,
+      billedAmount: billedFromCost(priced.amount, markup),
+      billedCurrency: priced.currency,
       costKnown: priced.source === "rate_card",
     });
   }
@@ -926,6 +928,8 @@ export async function executeRun(
     outputTokens: outputTokens || null,
     costAmount: priced.amount,
     costCurrency: priced.currency,
+    billedAmount: billedFromCost(priced.amount, markup),
+    billedCurrency: priced.currency,
     costKnown: priced.source === "rate_card",
   };
 
