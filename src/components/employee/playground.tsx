@@ -94,11 +94,7 @@ export function Playground({
   };
 
 
-  const parseBrain = (value: string) => {
-    if (value === "default") return null;
-    const [provider, ...rest] = value.split("::");
-    return { provider, model_id: rest.join("::") };
-  };
+  const parseTier = (value: string) => (value === "default" ? null : value);
 
   const compare = async () => {
     if (questions.length === 0) {
@@ -106,12 +102,14 @@ export function Playground({
       return;
     }
     setComparing(true);
+    const tA = parseTier(tierA);
+    const tB = parseTier(tierB);
     const { data, error } = await aiRunApi<CompareResult>({
       organization_id: organizationId,
       action: "compare",
       questions,
-      config_a: { label: "Setup A", ...(parseBrain(brainA) ?? {}) },
-      config_b: { label: "Setup B", ...(parseBrain(brainB) ?? {}) },
+      config_a: { label: "Setup A", ...(tA ? { tier: tA } : {}) },
+      config_b: { label: "Setup B", ...(tB ? { tier: tB } : {}) },
     });
     setComparing(false);
     if (error) toast.error(error);
@@ -122,26 +120,26 @@ export function Playground({
   };
 
   const pickWinner = async (side: "A" | "B") => {
-    const brain = parseBrain(side === "A" ? brainA : brainB);
-    if (!brain) {
-      toast.info("That setup already is what it uses today.");
+    const tier = parseTier(side === "A" ? tierA : tierB);
+    if (!tier) {
+      toast.info("That's already how I work today.");
       return;
     }
     setPicking(side);
     const { error } = await employeeApi({
       organization_id: organizationId,
-      action: "set_brain",
+      action: "set_tier",
       task: "agent_reply",
-      provider: brain.provider,
-      model_id: brain.model_id,
+      tier,
     });
     setPicking(null);
     if (error) toast.error(error);
     else {
-      toast.success(`Setup ${side} is now what answers your customers.`);
+      toast.success(`Setup ${side} is now how I answer your customers.`);
       await onRan();
     }
   };
+
 
   return (
     <section
