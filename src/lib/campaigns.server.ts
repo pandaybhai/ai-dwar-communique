@@ -182,6 +182,15 @@ export type SendCampaignContext = {
   /** When a limited-time offer's countdown runs out. */
   offerExpiresAt?: string | null;
   /**
+   * The picture, video or document for a media header, when the send supplies
+   * its own. Templates authored in AiDwar remember the file they were built
+   * with; ones synced from Meta don't, so the caller must pass one.
+   */
+  headerMediaUrl?: string | null;
+  /** The map pin for a location header. */
+  headerLocation?: { latitude: string; longitude: string; name?: string; address?: string } | null;
+
+  /**
    * Per-card values for a carousel, in card order. A product carousel in a cart
    * reminder fills one entry per product; anything left out falls back to the
    * picture and link stored on the template itself.
