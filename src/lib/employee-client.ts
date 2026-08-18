@@ -112,6 +112,7 @@ export type EmployeeRun = {
 export type PlaygroundRun = {
   runId: string | null;
   status: string;
+  error?: string | null;
   output: string;
   sources: RunSource[];
   toolCalls: { tool: string; ok: boolean; error?: string }[];
