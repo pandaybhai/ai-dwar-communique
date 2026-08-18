@@ -67,15 +67,17 @@ export const Route = createFileRoute("/api/ai/employee")({
                 .select("ai_enabled, ai_monthly_cap_amount, currency, brain_choice")
                 .eq("organization_id", org)
                 .maybeSingle(),
+              // Tiers, not vendors: the merchant never sees who or what runs it.
               supabase
-                .from("ai_models")
-                .select("provider, model_id, display_name, plain_description, supports_tools, recommended_for")
-                .eq("is_available", true)
-                .eq("is_deprecated", false)
-                .order("display_name"),
+                .from("ai_tiers")
+                .select(
+                  "key, display_name, plain_description, speed_text, quality_text, relative_cost_text",
+                )
+                .eq("is_active", true)
+                .order("sort_order"),
               supabase
                 .from("ai_task_models")
-                .select("task, provider, model_id, agent_id")
+                .select("task, tier, agent_id")
                 .eq("organization_id", org),
               supabase
                 .from("ai_instructions")
