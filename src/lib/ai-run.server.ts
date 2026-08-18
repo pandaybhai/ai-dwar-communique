@@ -809,6 +809,18 @@ export async function executeRun(
     });
   }
 
+  // Every workspace can be inside its own limit while the platform as a whole
+  // is not. The ceiling below is the platform's, set by the Super Admin.
+  const platformCap = await overPlatformCap(supabase);
+  if (platformCap.over) {
+    return finish({
+      ...base,
+      status: "capped",
+      output: "",
+      error: `This month's AI spending limit (${platformCap.currency} ${platformCap.cap}) has been reached.`,
+    });
+  }
+
   const { key, base: apiBase, direct } = await resolveApiKey(supabase, organizationId, brain.provider);
   const wire = direct ? wireModel(brain.provider, brain.model_id) : brain.model_id;
 
