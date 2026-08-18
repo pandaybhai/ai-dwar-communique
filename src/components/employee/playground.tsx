@@ -17,7 +17,7 @@ import {
   aiRunApi,
   employeeApi,
   moneyText,
-  type BrainModel,
+  type AiTier,
   type CompareResult,
   type CompareSide,
   type PlaygroundRun,
@@ -30,13 +30,13 @@ import {
  */
 export function Playground({
   organizationId,
-  models,
+  tiers,
   currency,
   onRan,
   onEnableAi,
 }: {
   organizationId: string;
-  models: BrainModel[];
+  tiers: AiTier[];
   currency: string;
   onRan: () => void | Promise<void>;
   onEnableAi?: () => Promise<boolean>;
@@ -48,8 +48,8 @@ export function Playground({
 
 
   const [questions, setQuestions] = useState<string[]>([]);
-  const [brainA, setBrainA] = useState("default");
-  const [brainB, setBrainB] = useState(models[0] ? `${models[0].provider}::${models[0].model_id}` : "default");
+  const [tierA, setTierA] = useState("default");
+  const [tierB, setTierB] = useState(tiers[0]?.key ?? "default");
   const [comparing, setComparing] = useState(false);
   const [result, setResult] = useState<CompareResult | null>(null);
   const [picking, setPicking] = useState<"A" | "B" | null>(null);
