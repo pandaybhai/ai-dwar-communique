@@ -97,14 +97,19 @@ function toSide(run: RunResult): SideResult {
 }
 
 function summarise(sides: SideResult[]): CompareSummary {
-  const costKnown = sides.length > 0 && sides.every((s) => s.costKnown);
+  // A run that never reached a model is a broken setup, not a zero-quality
+  // answer: it is counted separately and kept out of cost and timing.
+  const broken = sides.filter((s) => s.status === "error");
+  const scored = sides.filter((s) => s.status !== "error");
+  const costKnown = scored.length > 0 && scored.every((s) => s.costKnown);
   return {
-    answered: sides.filter((s) => s.answered).length,
-    passed: sides.filter((s) => s.passedToYou).length,
-    totalBilled: costKnown ? sides.reduce((sum, s) => sum + (s.billedAmount ?? 0), 0) : null,
+    answered: scored.filter((s) => s.answered).length,
+    passed: scored.filter((s) => s.passedToYou).length,
+    didNotRun: broken.length,
+    totalBilled: costKnown ? scored.reduce((sum, s) => sum + (s.billedAmount ?? 0), 0) : null,
     costKnown,
-    averageMs: sides.length
-      ? Math.round(sides.reduce((sum, s) => sum + s.latencyMs, 0) / sides.length)
+    averageMs: scored.length
+      ? Math.round(scored.reduce((sum, s) => sum + s.latencyMs, 0) / scored.length)
       : 0,
   };
 }
