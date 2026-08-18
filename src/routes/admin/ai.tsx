@@ -41,6 +41,7 @@ type Model = {
 };
 type Overview = {
   markup: number;
+  platform_cap: { amount: number; currency: string; spent: number };
   providers: Provider[];
   tiers: Tier[];
   models: Model[];
