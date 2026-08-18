@@ -172,7 +172,7 @@ export function BehaviourEditor({
       </div>
 
       <div className="mt-5 space-y-2">
-        <Label htmlFor="escalation">When it should fetch a person</Label>
+        <Label htmlFor="escalation">When I should fetch a person</Label>
         <Textarea
           id="escalation"
           rows={4}

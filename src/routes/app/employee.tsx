@@ -95,7 +95,7 @@ function EmployeePage() {
       <EmptyState
         icon={Bot}
         title="No workspace selected"
-        description="Pick a workspace from the switcher to meet its AI employee."
+        description="Pick a workspace from the switcher and I\u2019ll show you my work there."
       />
     );
   }
@@ -220,11 +220,11 @@ function EmployeePage() {
 
           <Tabs value={tab} onValueChange={setTab} className="space-y-6">
             <TabsList className="flex w-full flex-wrap justify-start gap-1">
-              <TabsTrigger value="knows">What it knows</TabsTrigger>
-              <TabsTrigger value="behaviour">How it behaves</TabsTrigger>
-              <TabsTrigger value="brains">Brains &amp; tools</TabsTrigger>
-              <TabsTrigger value="try">Try it</TabsTrigger>
-              <TabsTrigger value="work">Its work</TabsTrigger>
+              <TabsTrigger value="knows">What I know</TabsTrigger>
+              <TabsTrigger value="behaviour">How I behave</TabsTrigger>
+              <TabsTrigger value="brains">My brain &amp; tools</TabsTrigger>
+              <TabsTrigger value="try">Try me</TabsTrigger>
+              <TabsTrigger value="work">My work</TabsTrigger>
             </TabsList>
 
             <TabsContent value="knows">
