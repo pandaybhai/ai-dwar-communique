@@ -310,13 +310,14 @@ async function readVaultSecret(
   name: string | null | undefined,
 ): Promise<string | null> {
   if (!name) return null;
-  const { data } = await supabase
-    .schema("vault")
-    .from("decrypted_secrets")
-    .select("decrypted_secret")
-    .eq("name", name)
-    .maybeSingle();
-  return (data as { decrypted_secret?: string } | null)?.decrypted_secret ?? null;
+  // The vault schema is not exposed over the data API, so the read goes
+  // through a security-definer function in public rather than a table select.
+  const { data, error } = await supabase.rpc("read_vault_secret", { p_name: name });
+  if (error) {
+    console.error("[ai] vault read failed", name, error.message);
+    return null;
+  }
+  return typeof data === "string" && data.length > 0 ? data : null;
 }
 
 /**
