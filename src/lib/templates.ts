@@ -56,6 +56,18 @@ export function extractVariables(text: string): number[] {
   return Array.from(found).sort((a, b) => a - b);
 }
 
+/**
+ * Meta rejects template text whose first or last thing is a variable, because
+ * it can't tell where the sentence begins or ends.
+ */
+export function startsOrEndsWithVariable(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return /^\{\{\s*\d+\s*\}\}/.test(t) || /\{\{\s*\d+\s*\}\}$/.test(t);
+}
+
+
+
 export function componentOf(
   components: TemplateComponent[] | null | undefined,
   type: string,
@@ -362,6 +374,9 @@ export function validateDraft(draft: TemplateDraft): string[] {
   if (bodyVars.some((v, i) => v !== i + 1)) {
     errors.push("Number your variables in order, starting at {{1}}.");
   }
+  if (startsOrEndsWithVariable(draft.body)) {
+    errors.push("Meta won't accept a message that starts or ends with a variable — add a word before or after it.");
+  }
   if (bodyVars.some((v) => !draft.bodyExamples[v]?.trim())) {
     errors.push("Meta requires an example value for every variable in the body.");
   }
@@ -404,6 +419,9 @@ export function validateDraft(draft: TemplateDraft): string[] {
       const vars = extractVariables(card.body);
       if (vars.some((v, n) => v !== n + 1)) {
         errors.push(`${label}: number its variables in order, starting at {{1}}.`);
+      }
+      if (startsOrEndsWithVariable(card.body)) {
+        errors.push(`${label}: Meta won't accept text that starts or ends with a variable — add a word before or after it.`);
       }
       if (vars.some((v) => !card.bodyExamples[v]?.trim())) {
         errors.push(`${label} needs an example value for every variable.`);
