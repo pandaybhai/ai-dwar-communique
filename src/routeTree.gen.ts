@@ -29,12 +29,15 @@ import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAutomationsRouteImport } from './routes/app/automations'
 import { Route as AppContactsRouteImport } from './routes/app/contacts'
+import { Route as AppEmployeeRouteImport } from './routes/app/employee'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as RTokenRouteImport } from './routes/r.$token'
+import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
+import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
 import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
@@ -42,9 +45,11 @@ import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/l
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
+import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-run'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
+import { Route as ApiInternalKnowledgeRefreshRouteImport } from './routes/api/internal/knowledge-refresh'
 import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/internal/reconcile-events'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
@@ -170,6 +175,11 @@ const AppContactsRoute = AppContactsRouteImport.update({
   path: '/contacts',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppEmployeeRoute = AppEmployeeRouteImport.update({
+  id: '/employee',
+  path: '/employee',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppInboxRoute = AppInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
@@ -198,6 +208,16 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
 const RTokenRoute = RTokenRouteImport.update({
   id: '/r/$token',
   path: '/r/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiEmployeeRoute = ApiAiEmployeeRouteImport.update({
+  id: '/api/ai/employee',
+  path: '/api/ai/employee',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiKnowledgeRoute = ApiAiKnowledgeRouteImport.update({
+  id: '/api/ai/knowledge',
+  path: '/api/ai/knowledge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAiToolsRoute = ApiAiToolsRouteImport.update({
@@ -236,6 +256,11 @@ const ApiIntegrationsShopifyRoute = ApiIntegrationsShopifyRouteImport.update({
   path: '/api/integrations/shopify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalAiRunRoute = ApiInternalAiRunRouteImport.update({
+  id: '/api/internal/ai-run',
+  path: '/api/internal/ai-run',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalCampaignWorkerRoute =
   ApiInternalCampaignWorkerRouteImport.update({
     id: '/api/internal/campaign-worker',
@@ -252,6 +277,12 @@ const ApiInternalFlowWorkerRoute = ApiInternalFlowWorkerRouteImport.update({
   path: '/api/internal/flow-worker',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalKnowledgeRefreshRoute =
+  ApiInternalKnowledgeRefreshRouteImport.update({
+    id: '/api/internal/knowledge-refresh',
+    path: '/api/internal/knowledge-refresh',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInternalReconcileEventsRoute =
   ApiInternalReconcileEventsRouteImport.update({
     id: '/api/internal/reconcile-events',
@@ -404,6 +435,7 @@ export interface FileRoutesByFullPath {
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
+  '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -412,6 +444,8 @@ export interface FileRoutesByFullPath {
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/ai/employee': typeof ApiAiEmployeeRoute
+  '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
@@ -419,9 +453,11 @@ export interface FileRoutesByFullPath {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
+  '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
+  '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
@@ -464,6 +500,7 @@ export interface FileRoutesByTo {
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
+  '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -472,6 +509,8 @@ export interface FileRoutesByTo {
   '/r/$token': typeof RTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/api/ai/employee': typeof ApiAiEmployeeRoute
+  '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
@@ -479,9 +518,11 @@ export interface FileRoutesByTo {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
+  '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
+  '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
@@ -527,6 +568,7 @@ export interface FileRoutesById {
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
+  '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -535,6 +577,8 @@ export interface FileRoutesById {
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/ai/employee': typeof ApiAiEmployeeRoute
+  '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
@@ -542,9 +586,11 @@ export interface FileRoutesById {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
+  '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
+  '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
@@ -591,6 +637,7 @@ export interface FileRouteTypes {
     | '/app/analytics'
     | '/app/automations'
     | '/app/contacts'
+    | '/app/employee'
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
@@ -599,6 +646,8 @@ export interface FileRouteTypes {
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/api/ai/employee'
+    | '/api/ai/knowledge'
     | '/api/ai/tools'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
@@ -606,9 +655,11 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
+    | '/api/internal/ai-run'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
+    | '/api/internal/knowledge-refresh'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
@@ -651,6 +702,7 @@ export interface FileRouteTypes {
     | '/app/analytics'
     | '/app/automations'
     | '/app/contacts'
+    | '/app/employee'
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
@@ -659,6 +711,8 @@ export interface FileRouteTypes {
     | '/r/$token'
     | '/admin'
     | '/app'
+    | '/api/ai/employee'
+    | '/api/ai/knowledge'
     | '/api/ai/tools'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
@@ -666,9 +720,11 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
+    | '/api/internal/ai-run'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
+    | '/api/internal/knowledge-refresh'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
@@ -713,6 +769,7 @@ export interface FileRouteTypes {
     | '/app/analytics'
     | '/app/automations'
     | '/app/contacts'
+    | '/app/employee'
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
@@ -721,6 +778,8 @@ export interface FileRouteTypes {
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/api/ai/employee'
+    | '/api/ai/knowledge'
     | '/api/ai/tools'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
@@ -728,9 +787,11 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
+    | '/api/internal/ai-run'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
+    | '/api/internal/knowledge-refresh'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
@@ -771,6 +832,8 @@ export interface RootRouteChildren {
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
   RTokenRoute: typeof RTokenRoute
+  ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
+  ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
@@ -778,9 +841,11 @@ export interface RootRouteChildren {
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
+  ApiInternalAiRunRoute: typeof ApiInternalAiRunRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
+  ApiInternalKnowledgeRefreshRoute: typeof ApiInternalKnowledgeRefreshRoute
   ApiInternalReconcileEventsRoute: typeof ApiInternalReconcileEventsRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
@@ -945,6 +1010,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppContactsRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/employee': {
+      id: '/app/employee'
+      path: '/employee'
+      fullPath: '/app/employee'
+      preLoaderRoute: typeof AppEmployeeRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/inbox': {
       id: '/app/inbox'
       path: '/inbox'
@@ -985,6 +1057,20 @@ declare module '@tanstack/react-router' {
       path: '/r/$token'
       fullPath: '/r/$token'
       preLoaderRoute: typeof RTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/employee': {
+      id: '/api/ai/employee'
+      path: '/api/ai/employee'
+      fullPath: '/api/ai/employee'
+      preLoaderRoute: typeof ApiAiEmployeeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/knowledge': {
+      id: '/api/ai/knowledge'
+      path: '/api/ai/knowledge'
+      fullPath: '/api/ai/knowledge'
+      preLoaderRoute: typeof ApiAiKnowledgeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/tools': {
@@ -1036,6 +1122,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIntegrationsShopifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/ai-run': {
+      id: '/api/internal/ai-run'
+      path: '/api/internal/ai-run'
+      fullPath: '/api/internal/ai-run'
+      preLoaderRoute: typeof ApiInternalAiRunRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/campaign-worker': {
       id: '/api/internal/campaign-worker'
       path: '/api/internal/campaign-worker'
@@ -1055,6 +1148,13 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/flow-worker'
       fullPath: '/api/internal/flow-worker'
       preLoaderRoute: typeof ApiInternalFlowWorkerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/knowledge-refresh': {
+      id: '/api/internal/knowledge-refresh'
+      path: '/api/internal/knowledge-refresh'
+      fullPath: '/api/internal/knowledge-refresh'
+      preLoaderRoute: typeof ApiInternalKnowledgeRefreshRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/internal/reconcile-events': {
@@ -1252,6 +1352,7 @@ interface AppRouteRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomationsRoute: typeof AppAutomationsRoute
   AppContactsRoute: typeof AppContactsRoute
+  AppEmployeeRoute: typeof AppEmployeeRoute
   AppInboxRoute: typeof AppInboxRoute
   AppReceiptsRoute: typeof AppReceiptsRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -1267,6 +1368,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAutomationsRoute: AppAutomationsRoute,
   AppContactsRoute: AppContactsRoute,
+  AppEmployeeRoute: AppEmployeeRoute,
   AppInboxRoute: AppInboxRoute,
   AppReceiptsRoute: AppReceiptsRoute,
   AppSettingsRoute: AppSettingsRoute,
@@ -1296,6 +1398,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,
   RTokenRoute: RTokenRoute,
+  ApiAiEmployeeRoute: ApiAiEmployeeRoute,
+  ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
@@ -1303,9 +1407,11 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
+  ApiInternalAiRunRoute: ApiInternalAiRunRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
+  ApiInternalKnowledgeRefreshRoute: ApiInternalKnowledgeRefreshRoute,
   ApiInternalReconcileEventsRoute: ApiInternalReconcileEventsRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,

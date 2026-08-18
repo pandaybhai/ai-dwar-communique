@@ -647,12 +647,16 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "ai",
-    name: "AI assistant",
+    name: "AI employee",
     description:
-      "The AI layer: the tools a model may call on this workspace's data, and who may use them.",
+      "The AI employee: what it knows, how it behaves, the tools it may use on this workspace's data, and every answer it has given.",
     icon: "sparkles",
+    nav_path: "/app/employee",
+    nav_order: 55,
+    nav_permission: "ai.use",
     flag_key: "ai_features",
     flag_default_enabled: false,
+
     permissions: [
       {
         key: "ai.use",
@@ -668,9 +672,35 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: none,
-    activity_actions: ["ai_tool_invoked"],
-    settings_path: "/app/settings",
-    data_tables: [],
+    activity_actions: [
+      "ai_tool_invoked",
+      "ai_mode_changed",
+      "ai_settings_updated",
+      "ai_brain_changed",
+      "ai_instructions_updated",
+      "ai_knowledge_added",
+      "ai_knowledge_removed",
+      "ai_answer_corrected",
+    ],
+    settings_path: "/app/employee",
+    usage_meters: [
+      { key: "ai_answers", name: "AI answers", unit: "answers" },
+      { key: "ai_spend", name: "AI spend", unit: "currency" },
+    ],
+    data_tables: [
+      "ai_agents",
+      "organization_ai_settings",
+      "ai_task_models",
+      "ai_runs",
+      "ai_tool_calls",
+      "ai_usage",
+      "ai_instructions",
+      "ai_comparisons",
+      "knowledge_sources",
+      "knowledge_documents",
+      "knowledge_chunks",
+    ],
+
   },
   {
     key: "shopify",
