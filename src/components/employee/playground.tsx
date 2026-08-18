@@ -33,15 +33,19 @@ export function Playground({
   models,
   currency,
   onRan,
+  onEnableAi,
 }: {
   organizationId: string;
   models: BrainModel[];
   currency: string;
   onRan: () => void | Promise<void>;
+  onEnableAi?: () => Promise<boolean>;
 }) {
   const [question, setQuestion] = useState("");
   const [running, setRunning] = useState(false);
+  const [enabling, setEnabling] = useState(false);
   const [run, setRun] = useState<PlaygroundRun | null>(null);
+
 
   const [questions, setQuestions] = useState<string[]>([]);
   const [brainA, setBrainA] = useState("default");
