@@ -44,11 +44,21 @@ const REASON_TEXT: Record<string, string> = {
 };
 
 /** Every single thing it did, why, what it read, and what it cost. */
-export function WorkLog({ organizationId, currency }: { organizationId: string; currency: string }) {
+export function WorkLog({
+  organizationId,
+  currency,
+  onRaiseLimit,
+}: {
+  organizationId: string;
+  currency: string;
+  /** Takes the merchant to where the monthly limit lives. */
+  onRaiseLimit?: () => void;
+}) {
   const [runs, setRuns] = useState<EmployeeRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [traceId, setTraceId] = useState<string | null>(null);
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -146,6 +156,12 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
           {runs.map((run) => {
             const status = STATUS_TEXT[run.status] ?? { label: run.status, tone: "secondary" as const };
             const expanded = openId === run.id;
+            const signal = run.escalation_signal;
+            const traceOpen = traceId === run.id;
+            const reason =
+              (signal ? REASON_TEXT[signal] : null) ??
+              (signal ? signal.replace(/_/g, " ") : null) ??
+              (run.status === "capped" ? REASON_TEXT["capped"]! : null);
             return (
               <li key={run.id} className="rounded-xl border border-border/70 bg-muted/20">
                 <button
@@ -172,7 +188,7 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                 {expanded ? (
                   <div className="border-t border-border/70 px-4 py-3">
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                      {run.output || "No answer was produced."}
+                      {run.output || "I didn't write anything here."}
                     </p>
                     {reason ? (
                       <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-muted/40 p-3">
@@ -209,7 +225,7 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                               variant={t.ok ? "secondary" : "destructive"}
                               className="text-[11px]"
                             >
-                              {t.ok ? "Checked" : "Failed"}: {t.tool_name.replace(/_/g, " ")}
+                              {t.ok ? "I checked" : "I couldn\u2019t reach"}: {t.tool_name.replace(/_/g, " ")}
                             </Badge>
                             {t.latency_ms ? (
                               <span className="text-muted-foreground">{t.latency_ms} ms</span>
@@ -232,7 +248,7 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                       </div>
                     ) : (
                       <p className="mt-3 text-xs text-muted-foreground">
-                        It answered without reading anything of yours.
+                        I answered this without reading anything of yours.
                       </p>
                     )}
 
@@ -277,7 +293,7 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                           onClick={() => startCorrection(run)}
                         >
                           <PencilLine className="mr-2 h-3.5 w-3.5" />
-                          This answer was wrong
+                          That answer was wrong
                         </Button>
                       )
                     ) : null}
