@@ -37,6 +37,7 @@ export function Playground({
   currency,
   onRan,
   onEnableAi,
+  compareRequest = 0,
 }: {
   organizationId: string;
   tiers: AiTier[];
@@ -44,7 +45,10 @@ export function Playground({
   currency: string;
   onRan: () => void | Promise<void>;
   onEnableAi?: () => Promise<boolean>;
+  /** Bumped from outside to jump straight into the batch test. */
+  compareRequest?: number;
 }) {
+  const [tab, setTab] = useState("ask");
   const [question, setQuestion] = useState("");
   const [running, setRunning] = useState(false);
   const [enabling, setEnabling] = useState(false);
@@ -123,6 +127,14 @@ export function Playground({
     }
   };
 
+  // Asked from the mode switch: open the batch test and start it.
+  useEffect(() => {
+    if (!compareRequest) return;
+    setTab("compare");
+    void compare();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareRequest]);
+
   const pickWinner = async (side: "A" | "B") => {
     const tier = parseTier(side === "A" ? tierA : tierB);
     if (!tier) {
@@ -158,7 +170,7 @@ export function Playground({
         through two setups and see which one you'd rather have answering.
       </p>
 
-      <Tabs defaultValue="ask" className="mt-5">
+      <Tabs value={tab} onValueChange={setTab} className="mt-5">
         <TabsList>
           <TabsTrigger value="ask">Ask it something</TabsTrigger>
           <TabsTrigger value="compare">Compare two setups</TabsTrigger>

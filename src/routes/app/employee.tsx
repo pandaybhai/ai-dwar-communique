@@ -10,6 +10,16 @@ import { Playground } from "@/components/employee/playground";
 import { ToolsList } from "@/components/employee/tools-list";
 import { WeeklyReport } from "@/components/employee/weekly-report";
 import { WorkLog } from "@/components/employee/work-log";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,6 +64,8 @@ function EmployeePage() {
   const [overview, setOverview] = useState<EmployeeOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("knows");
+  const [gate, setGate] = useState<{ mode: string; message: string } | null>(null);
+  const [compareRequest, setCompareRequest] = useState(0);
 
   const load = useCallback(async () => {
     if (!organizationId) return;
@@ -70,16 +82,17 @@ function EmployeePage() {
     void load();
   }, [load]);
 
-  const setMode = async (mode: string) => {
+  const setMode = async (mode: string, skipTest = false) => {
     if (!organizationId) return;
     const { error, raw } = await employeeApi({
       organization_id: organizationId,
       action: "set_mode",
       mode,
+      ...(skipTest ? { skip_test: true } : {}),
     });
     const needsTest = (raw as { needs_test?: boolean } | null)?.needs_test;
     if (needsTest) {
-      toast.warning((raw as { message: string }).message);
+      setGate({ mode, message: (raw as { message: string }).message });
       return;
     }
     if (error) toast.error(error);
@@ -267,6 +280,7 @@ function EmployeePage() {
                 internals={overview?.tier_internals ?? null}
                 currency={currency}
                 onRan={load}
+                compareRequest={compareRequest}
                 {...(canConfigure ? { onEnableAi: enableAi } : {})}
               />
 
@@ -295,6 +309,40 @@ function EmployeePage() {
 
         </div>
       )}
+
+      <AlertDialog open={gate !== null} onOpenChange={(open) => !open && setGate(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Let me show you my work first</AlertDialogTitle>
+            <AlertDialogDescription>
+              {gate?.message ??
+                "You haven't tested me yet. Want to see how I'd have answered your last 20 customer questions first?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Not now</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const mode = gate?.mode;
+                setGate(null);
+                if (mode) void setMode(mode, true);
+              }}
+            >
+              Switch anyway
+            </Button>
+            <AlertDialogAction
+              onClick={() => {
+                setGate(null);
+                setTab("try");
+                setCompareRequest((n) => n + 1);
+              }}
+            >
+              Run the test on my last 20 questions
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
