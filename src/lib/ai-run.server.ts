@@ -807,7 +807,9 @@ export async function executeRun(
     });
   }
 
-  const { key } = await resolveApiKey(supabase, organizationId, brain.provider);
+  const { key, base: apiBase, direct } = await resolveApiKey(supabase, organizationId, brain.provider);
+  const wire = direct ? wireModel(brain.provider, brain.model_id) : brain.model_id;
+
   if (!key) {
     return finish({ ...base, status: "error", error: "No AI connection is set up." });
   }
