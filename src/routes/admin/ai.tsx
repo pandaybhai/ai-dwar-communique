@@ -135,6 +135,14 @@ function AdminAi() {
         </div>
       </section>
 
+      <PlatformCapCard
+        cap={data.platform_cap ?? { amount: 0, currency: "INR", spent: 0 }}
+        value={platformCap}
+        onChange={setPlatformCap}
+        busy={busy === "platform_cap"}
+        onSave={() => act("set_platform_cap", { amount: Number(platformCap) }, "platform_cap")}
+      />
+
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold">Platform providers</h2>
