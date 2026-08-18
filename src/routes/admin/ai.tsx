@@ -69,6 +69,7 @@ function AdminAi() {
     }
     setData(result.data);
     setMarkup(String(result.data.markup));
+    setPlatformCap(String(result.data.platform_cap?.amount ?? 0));
   }, []);
 
   useEffect(() => void load(), [load]);
