@@ -174,12 +174,31 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                       {run.output || "No answer was produced."}
                     </p>
-                    {run.escalation_signal ? (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Passed to your team because: {run.escalation_signal.replace(/_/g, " ")}
-                      </p>
+                    {reason ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-muted/40 p-3">
+                        <p className="min-w-0 flex-1 text-sm text-foreground">{reason}</p>
+                        {signal === "tool_failed" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setTraceId(traceOpen ? null : run.id)}
+                          >
+                            {traceOpen ? "Hide what went wrong" : "See what went wrong"}
+                          </Button>
+                        ) : null}
+                        {(signal === "no_source" || signal === "unsure") && canConfigure ? (
+                          <Button size="sm" variant="outline" onClick={() => startCorrection(run)}>
+                            Teach me the answer
+                          </Button>
+                        ) : null}
+                        {(signal === "capped" || run.status === "capped") && onRaiseLimit ? (
+                          <Button size="sm" variant="outline" onClick={onRaiseLimit}>
+                            Raise this month's limit
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
-                    {run.tool_calls && run.tool_calls.length > 0 ? (
+                    {run.tool_calls && run.tool_calls.length > 0 && (traceOpen || signal !== "tool_failed") ? (
                       <ul className="mt-3 space-y-1.5">
                         {run.tool_calls.map((t, i) => (
                           <li
