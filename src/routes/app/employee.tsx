@@ -106,6 +106,21 @@ function EmployeePage() {
   const canConfigure = can("ai.configure");
   const mode = overview?.agent?.mode ?? "off";
   const currency = overview?.settings?.currency ?? "INR";
+  const aiEnabled = overview?.settings?.ai_enabled !== false;
+
+  const setAiEnabled = async (value: boolean) => {
+    if (!organizationId) return;
+    const { error } = await employeeApi({
+      organization_id: organizationId,
+      action: "save_settings",
+      ai_enabled: value,
+    });
+    if (error) toast.error(error);
+    else {
+      toast.success(value ? "AI is on." : "AI is off.");
+      void load();
+    }
+  };
 
   return (
     <>
@@ -115,6 +130,19 @@ function EmployeePage() {
         <PageSkeleton />
       ) : (
         <div className="space-y-10">
+          {!aiEnabled ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+              <div>
+                <p className="text-sm font-semibold text-foreground">AI is switched off here</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Nothing will answer, draft or test until you turn it on for this workspace.
+                </p>
+              </div>
+              <Button disabled={!canConfigure} onClick={() => void setAiEnabled(true)}>
+                Turn AI on
+              </Button>
+            </div>
+          ) : null}
           <section
             aria-labelledby="mode-heading"
             className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm"

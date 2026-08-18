@@ -284,11 +284,24 @@ function Sources({ sources }: { sources: RunSource[] | null | undefined }) {
 }
 
 function AnswerCard({ run, currency }: { run: PlaygroundRun; currency: string }) {
+  const blocked = run.status !== "ok" && !run.output;
+  const blockedLabel =
+    run.status === "refused"
+      ? "Didn't run"
+      : run.status === "capped"
+        ? "Spending limit reached"
+        : "Something went wrong";
   return (
-    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+    <div
+      className={`rounded-xl border p-4 ${blocked ? "border-destructive/40 bg-destructive/5" : "border-border/70 bg-muted/20"}`}
+    >
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={run.escalationSignal ? "secondary" : "default"}>
-          {run.escalationSignal ? "Would pass to your team" : "Would answer"}
+        <Badge variant={blocked ? "destructive" : run.escalationSignal ? "secondary" : "default"}>
+          {blocked
+            ? blockedLabel
+            : run.escalationSignal
+              ? "Would pass to your team"
+              : "Would answer"}
         </Badge>
         <span className="text-xs text-muted-foreground">
           {run.brainName} · {Math.round(run.latencyMs / 100) / 10}s ·{" "}
@@ -296,8 +309,15 @@ function AnswerCard({ run, currency }: { run: PlaygroundRun; currency: string })
         </span>
       </div>
       <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {run.output || "It had nothing to say."}
+        {run.output ||
+          run.error ||
+          "It had nothing to say."}
       </p>
+      {blocked && run.status === "refused" ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Switch your AI employee on at the top of this page, then try again.
+        </p>
+      ) : null}
       <Sources sources={run.sources} />
     </div>
   );
