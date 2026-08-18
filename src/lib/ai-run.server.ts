@@ -327,7 +327,11 @@ async function resolveApiKey(
   supabase: SupabaseClient,
   organizationId: string,
   provider: string,
-): Promise<{ key: string | null; base: string }> {
+): Promise<{ key: string | null; base: string; direct: boolean }> {
+  const directBase = DIRECT_ENDPOINTS[provider];
+  const vendor = (key: string) =>
+    directBase ? { key, base: directBase, direct: true } : { key, base: GATEWAY, direct: false };
+
   // 1. Organisation override, if this workspace brought its own account.
   const { data: own } = await supabase
     .from("ai_providers")
@@ -340,7 +344,7 @@ async function resolveApiKey(
     supabase,
     (own as { vault_secret_name?: string } | null)?.vault_secret_name,
   );
-  if (ownKey) return { key: ownKey, base: GATEWAY };
+  if (ownKey) return vendor(ownKey);
 
   // 2. Platform credentials, held once for everyone.
   const { data: platform } = await supabase
@@ -351,15 +355,16 @@ async function resolveApiKey(
   const row = platform as { vault_secret_name?: string; is_active?: boolean } | null;
   if (row?.is_active !== false) {
     const platformKey = await readVaultSecret(supabase, row?.vault_secret_name);
-    if (platformKey) return { key: platformKey, base: GATEWAY };
+    if (platformKey) return vendor(platformKey);
   }
 
   // 3. The platform's own gateway credential.
   if (provider === "lovable") {
-    return { key: process.env["LOVABLE_API_KEY"] ?? null, base: GATEWAY };
+    return { key: process.env["LOVABLE_API_KEY"] ?? null, base: GATEWAY, direct: false };
   }
-  return { key: null, base: GATEWAY };
+  return { key: null, base: GATEWAY, direct: false };
 }
+
 
 // ----------------------------------------------------------------- pricing
 
