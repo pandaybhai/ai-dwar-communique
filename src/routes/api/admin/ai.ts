@@ -27,10 +27,9 @@ export const Route = createFileRoute("/api/admin/ai")({
         if (action === "overview") {
           const [settings, providers, tiers, models, rates, runs] = await Promise.all([
             supabase.from("platform_settings").select("ai_markup_multiplier").eq("id", true).single(),
-            supabase
-              .from("platform_ai_providers")
-              .select("provider, vault_secret_name, is_active, last_error, updated_at")
-              .order("provider"),
+            // The status function answers "is a key actually stored?" by
+            // query, checking the vault rather than trusting a name column.
+            supabase.rpc("platform_ai_credential_status"),
             supabase
               .from("ai_tiers")
               .select("key, display_name, provider, model_id, is_active, sort_order")
@@ -57,10 +56,19 @@ export const Route = createFileRoute("/api/admin/ai")({
           const billed = runRows.reduce((sum, row) => sum + Number(row.billed_amount ?? 0), 0);
           return Response.json({
             markup: Number(settings.data?.ai_markup_multiplier ?? 3),
-            providers: (providers.data ?? []).map((row) => ({
-              ...row,
-              has_key: Boolean(row.vault_secret_name),
-              vault_secret_name: undefined,
+            providers: ((providers.data ?? []) as Array<{
+              provider: string;
+              is_active: boolean;
+              key_present: boolean;
+              key_set_at: string | null;
+              last_error: string | null;
+            }>).map((row) => ({
+              provider: row.provider,
+              is_active: row.is_active,
+              has_key: row.key_present,
+              key_set_at: row.key_set_at,
+              last_error: row.last_error,
+              updated_at: row.key_set_at,
             })),
             tiers: tiers.data ?? [],
             models: models.data ?? [],

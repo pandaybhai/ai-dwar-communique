@@ -371,17 +371,35 @@ function AnswerCard({
 }
 
 function SideCard({ label, side, currency }: { label: string; side: CompareSide; currency: string }) {
+  // A broken connection, a spending limit or a switched-off workspace is not a
+  // weak answer — say which it is instead of "nothing to say, cost unknown".
+  const broke = side.status === "error" || side.status === "refused" || side.status === "capped";
+  const costLine = broke
+    ? "I never reached the AI, so nothing was charged"
+    : side.costKnown
+      ? moneyText(side.billedAmount, currency)
+      : "cost unknown";
+
   return (
-    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+    <div
+      className={`rounded-xl border p-3 ${broke ? "border-destructive/40 bg-destructive/5" : "border-border/70 bg-muted/20"}`}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline">{label}</Badge>
+        {broke ? <Badge variant="destructive">Didn't run</Badge> : null}
         <span className="text-[11px] text-muted-foreground">
-          {side.brainName} · {side.costKnown ? moneyText(side.billedAmount, currency) : "cost unknown"}
+          {side.brainName} · {costLine}
         </span>
       </div>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {side.answer || (side.passedToYou ? "I'd pass this to you." : "I had nothing to say here.")}
-      </p>
+      {broke ? (
+        <p className="mt-2 text-sm leading-relaxed text-destructive">
+          {side.error ?? "I couldn't run this setup at all."}
+        </p>
+      ) : (
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+          {side.answer || (side.passedToYou ? "I'd pass this to you." : "I had nothing to say here.")}
+        </p>
+      )}
       <Sources sources={side.sources} />
     </div>
   );

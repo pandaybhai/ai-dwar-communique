@@ -310,13 +310,14 @@ async function readVaultSecret(
   name: string | null | undefined,
 ): Promise<string | null> {
   if (!name) return null;
-  const { data } = await supabase
-    .schema("vault")
-    .from("decrypted_secrets")
-    .select("decrypted_secret")
-    .eq("name", name)
-    .maybeSingle();
-  return (data as { decrypted_secret?: string } | null)?.decrypted_secret ?? null;
+  // The vault schema is not exposed over the data API, so the read goes
+  // through a security-definer function in public rather than a table select.
+  const { data, error } = await supabase.rpc("read_vault_secret", { p_name: name });
+  if (error) {
+    console.error("[ai] vault read failed", name, error.message);
+    return null;
+  }
+  return typeof data === "string" && data.length > 0 ? data : null;
 }
 
 /**
@@ -812,7 +813,11 @@ export async function executeRun(
   const wire = direct ? wireModel(brain.provider, brain.model_id) : brain.model_id;
 
   if (!key) {
-    return finish({ ...base, status: "error", error: "No AI connection is set up." });
+    return finish({
+      ...base,
+      status: "error",
+      error: `My "${brain.display_name}" setup has no working connection behind it, so I couldn't think at all. This isn't a bad answer — it's a broken connection. Ask the platform team to check the key for this setup.`,
+    });
   }
 
   // ------------------------------------------------------------- knowledge
