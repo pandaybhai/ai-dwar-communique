@@ -130,6 +130,19 @@ function EmployeePage() {
         <PageSkeleton />
       ) : (
         <div className="space-y-10">
+          {!aiEnabled ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+              <div>
+                <p className="text-sm font-semibold text-foreground">AI is switched off here</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Nothing will answer, draft or test until you turn it on for this workspace.
+                </p>
+              </div>
+              <Button disabled={!canConfigure} onClick={() => void setAiEnabled(true)}>
+                Turn AI on
+              </Button>
+            </div>
+          ) : null}
           <section
             aria-labelledby="mode-heading"
             className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm"
