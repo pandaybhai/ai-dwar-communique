@@ -83,6 +83,17 @@ export function Playground({
     }
   };
 
+  const enableAndRetry = async () => {
+    if (!onEnableAi) return;
+    setEnabling(true);
+    const ok = await onEnableAi();
+    setEnabling(false);
+    if (!ok) return;
+    setRun(null);
+    await ask();
+  };
+
+
   const parseBrain = (value: string) => {
     if (value === "default") return null;
     const [provider, ...rest] = value.split("::");
