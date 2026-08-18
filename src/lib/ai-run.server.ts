@@ -1014,13 +1014,20 @@ async function rollUpUsage(
   const today = new Date().toISOString().slice(0, 10);
   const { data: existing } = await supabase
     .from("ai_usage")
-    .select("id, runs, input_tokens, output_tokens, cost_amount")
+    .select("id, runs, input_tokens, output_tokens, cost_amount, billed_amount")
     .eq("organization_id", organizationId)
     .eq("usage_date", today)
     .eq("task", task)
     .maybeSingle();
   const row = existing as
-    | { id: string; runs: number; input_tokens: number; output_tokens: number; cost_amount: number }
+    | {
+        id: string;
+        runs: number;
+        input_tokens: number;
+        output_tokens: number;
+        cost_amount: number;
+        billed_amount: number;
+      }
     | null;
   if (row) {
     await supabase
@@ -1030,6 +1037,7 @@ async function rollUpUsage(
         input_tokens: Number(row.input_tokens) + (result.inputTokens ?? 0),
         output_tokens: Number(row.output_tokens) + (result.outputTokens ?? 0),
         cost_amount: Number(row.cost_amount) + (result.costAmount ?? 0),
+        billed_amount: Number(row.billed_amount ?? 0) + (result.billedAmount ?? 0),
         updated_at: new Date().toISOString(),
       })
       .eq("id", row.id);
@@ -1042,6 +1050,7 @@ async function rollUpUsage(
       input_tokens: result.inputTokens ?? 0,
       output_tokens: result.outputTokens ?? 0,
       cost_amount: result.costAmount ?? 0,
+      billed_amount: result.billedAmount ?? 0,
       currency: result.costCurrency ?? "INR",
     });
   }
