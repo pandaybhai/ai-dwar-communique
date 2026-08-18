@@ -72,16 +72,17 @@ function EmployeePage() {
     void load();
   }, [load]);
 
-  const setMode = async (mode: string) => {
+  const setMode = async (mode: string, skipTest = false) => {
     if (!organizationId) return;
     const { error, raw } = await employeeApi({
       organization_id: organizationId,
       action: "set_mode",
       mode,
+      ...(skipTest ? { skip_test: true } : {}),
     });
     const needsTest = (raw as { needs_test?: boolean } | null)?.needs_test;
     if (needsTest) {
-      toast.warning((raw as { message: string }).message);
+      setGate({ mode, message: (raw as { message: string }).message });
       return;
     }
     if (error) toast.error(error);
