@@ -362,6 +362,9 @@ export function validateDraft(draft: TemplateDraft): string[] {
   if (bodyVars.some((v, i) => v !== i + 1)) {
     errors.push("Number your variables in order, starting at {{1}}.");
   }
+  if (startsOrEndsWithVariable(draft.body)) {
+    errors.push("Meta won't accept a message that starts or ends with a variable — add a word before or after it.");
+  }
   if (bodyVars.some((v) => !draft.bodyExamples[v]?.trim())) {
     errors.push("Meta requires an example value for every variable in the body.");
   }
