@@ -48,6 +48,7 @@ import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-r
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
+import { Route as ApiInternalKnowledgeRefreshRouteImport } from './routes/api/internal/knowledge-refresh'
 import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/internal/reconcile-events'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
@@ -270,6 +271,12 @@ const ApiInternalFlowWorkerRoute = ApiInternalFlowWorkerRouteImport.update({
   path: '/api/internal/flow-worker',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalKnowledgeRefreshRoute =
+  ApiInternalKnowledgeRefreshRouteImport.update({
+    id: '/api/internal/knowledge-refresh',
+    path: '/api/internal/knowledge-refresh',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInternalReconcileEventsRoute =
   ApiInternalReconcileEventsRouteImport.update({
     id: '/api/internal/reconcile-events',
@@ -443,6 +450,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
+  '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
@@ -506,6 +514,7 @@ export interface FileRoutesByTo {
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
+  '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
@@ -572,6 +581,7 @@ export interface FileRoutesById {
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
+  '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
@@ -639,6 +649,7 @@ export interface FileRouteTypes {
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
+    | '/api/internal/knowledge-refresh'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
@@ -702,6 +713,7 @@ export interface FileRouteTypes {
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
+    | '/api/internal/knowledge-refresh'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
@@ -767,6 +779,7 @@ export interface FileRouteTypes {
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
+    | '/api/internal/knowledge-refresh'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
@@ -820,6 +833,7 @@ export interface RootRouteChildren {
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
+  ApiInternalKnowledgeRefreshRoute: typeof ApiInternalKnowledgeRefreshRoute
   ApiInternalReconcileEventsRoute: typeof ApiInternalReconcileEventsRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
@@ -1117,6 +1131,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalFlowWorkerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/knowledge-refresh': {
+      id: '/api/internal/knowledge-refresh'
+      path: '/api/internal/knowledge-refresh'
+      fullPath: '/api/internal/knowledge-refresh'
+      preLoaderRoute: typeof ApiInternalKnowledgeRefreshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/reconcile-events': {
       id: '/api/internal/reconcile-events'
       path: '/api/internal/reconcile-events'
@@ -1369,6 +1390,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
+  ApiInternalKnowledgeRefreshRoute: ApiInternalKnowledgeRefreshRoute,
   ApiInternalReconcileEventsRoute: ApiInternalReconcileEventsRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
