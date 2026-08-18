@@ -441,6 +441,12 @@ function SummaryCard({
           <dt>Passed to your team</dt>
           <dd className="font-medium text-foreground">{summary.passed}</dd>
         </div>
+        {summary.didNotRun > 0 ? (
+          <div className="flex justify-between">
+            <dt>Didn&rsquo;t run (setup not connected)</dt>
+            <dd className="font-medium text-destructive">{summary.didNotRun}</dd>
+          </div>
+        ) : null}
         <div className="flex justify-between">
           <dt>Cost for this run</dt>
           <dd className="font-medium text-foreground">
