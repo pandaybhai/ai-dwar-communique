@@ -31,7 +31,7 @@ export const Route = createFileRoute("/api/ai/employee")({
           "set_mode",
           "save_settings",
           "save_instructions",
-          "set_brain",
+          "set_tier",
           "revert_instructions",
         ].includes(action);
         if (needsConfigure) {
@@ -67,15 +67,17 @@ export const Route = createFileRoute("/api/ai/employee")({
                 .select("ai_enabled, ai_monthly_cap_amount, currency, brain_choice")
                 .eq("organization_id", org)
                 .maybeSingle(),
+              // Tiers, not vendors: the merchant never sees who or what runs it.
               supabase
-                .from("ai_models")
-                .select("provider, model_id, display_name, plain_description, supports_tools, recommended_for")
-                .eq("is_available", true)
-                .eq("is_deprecated", false)
-                .order("display_name"),
+                .from("ai_tiers")
+                .select(
+                  "key, display_name, plain_description, speed_text, quality_text, relative_cost_text",
+                )
+                .eq("is_active", true)
+                .order("sort_order"),
               supabase
                 .from("ai_task_models")
-                .select("task, provider, model_id, agent_id")
+                .select("task, tier, agent_id")
                 .eq("organization_id", org),
               supabase
                 .from("ai_instructions")
@@ -92,7 +94,7 @@ export const Route = createFileRoute("/api/ai/employee")({
                 .order("created_at", { ascending: false }),
               supabase
                 .from("ai_runs")
-                .select("status, escalation_signal, task, cost_amount, cost_source, created_at")
+                .select("status, escalation_signal, task, billed_amount, cost_source, created_at")
                 .eq("organization_id", org)
                 .gte("created_at", new Date(Date.now() - 7 * 864e5).toISOString()),
               supabase.rpc("ai_month_spend", { p_org: org }),
@@ -126,7 +128,7 @@ export const Route = createFileRoute("/api/ai/employee")({
               status: string;
               escalation_signal: string | null;
               task: string;
-              cost_amount: number | null;
+              billed_amount: number | null;
               cost_source: string | null;
             }>;
 
@@ -139,7 +141,7 @@ export const Route = createFileRoute("/api/ai/employee")({
               agent,
               settings: settings.data ?? null,
               spend_this_month: Number(spend.data ?? 0),
-              models: models.data ?? [],
+              tiers: models.data ?? [],
               task_models: taskModels.data ?? [],
               instructions: instructions.data ?? [],
               sources: sources.data ?? [],
@@ -163,7 +165,7 @@ export const Route = createFileRoute("/api/ai/employee")({
             const { data } = await supabase
               .from("ai_runs")
               .select(
-                "id, task, status, escalation_signal, cost_amount, cost_source, latency_ms, input_summary, output, sources, created_at",
+                "id, task, tier, status, escalation_signal, billed_amount, cost_source, latency_ms, input_summary, output, sources, created_at",
               )
               .eq("organization_id", org)
               .gte("created_at", since)
@@ -191,7 +193,7 @@ export const Route = createFileRoute("/api/ai/employee")({
             const since = new Date(Date.now() - 7 * 864e5).toISOString();
             const { data } = await supabase
               .from("ai_runs")
-              .select("status, escalation_signal, cost_amount, cost_source, input_summary, created_at")
+              .select("status, escalation_signal, billed_amount, cost_source, input_summary, created_at")
               .eq("organization_id", org)
               .gte("created_at", since)
               .order("created_at", { ascending: false })
@@ -199,7 +201,7 @@ export const Route = createFileRoute("/api/ai/employee")({
             const rows = (data ?? []) as Array<{
               status: string;
               escalation_signal: string | null;
-              cost_amount: number | null;
+              billed_amount: number | null;
               cost_source: string | null;
               input_summary: string | null;
               created_at: string;
@@ -207,8 +209,9 @@ export const Route = createFileRoute("/api/ai/employee")({
 
             const answered = rows.filter((r) => r.status === "ok").length;
             const passed = rows.filter((r) => r.status === "escalated").length;
+            // What the merchant pays, never what the provider charged us.
             const cost = rows.reduce(
-              (sum, r) => sum + (r.cost_source === "unknown" ? 0 : Number(r.cost_amount ?? 0)),
+              (sum, r) => sum + (r.cost_source === "unknown" ? 0 : Number(r.billed_amount ?? 0)),
               0,
             );
 
@@ -319,11 +322,10 @@ export const Route = createFileRoute("/api/ai/employee")({
             return Response.json({ ok: true });
           }
 
-          if (action === "set_brain") {
+          if (action === "set_tier") {
             const task = String(payload["task"] ?? "");
-            const provider = String(payload["provider"] ?? "");
-            const modelId = String(payload["model_id"] ?? "");
-            if (!task || !provider || !modelId) return jsonError("Pick a job and a brain.");
+            const tier = String(payload["tier"] ?? "");
+            if (!task || !tier) return jsonError("Pick a job and how careful I should be.");
             const { data: existing } = await supabase
               .from("ai_task_models")
               .select("id")
@@ -333,18 +335,13 @@ export const Route = createFileRoute("/api/ai/employee")({
               .maybeSingle();
             const row = existing as { id: string } | null;
             const { error } = row
-              ? await supabase
-                  .from("ai_task_models")
-                  .update({ provider, model_id: modelId })
-                  .eq("id", row.id)
-              : await supabase
-                  .from("ai_task_models")
-                  .insert({ organization_id: org, task, provider, model_id: modelId });
+              ? await supabase.from("ai_task_models").update({ tier }).eq("id", row.id)
+              : await supabase.from("ai_task_models").insert({ organization_id: org, task, tier });
             if (error) return jsonError(error.message.replace(/^.*ERROR:\s*/, ""), 400);
             await supabase
               .from("organization_ai_settings")
               .upsert({ organization_id: org, brain_choice: "manual" }, { onConflict: "organization_id" });
-            await logServerActivity(supabase, org, auth.userId, "ai_brain_changed", { task });
+            await logServerActivity(supabase, org, auth.userId, "ai_tier_changed", { task, tier });
             return Response.json({ ok: true });
           }
 

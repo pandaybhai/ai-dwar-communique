@@ -17,7 +17,7 @@ import {
   aiRunApi,
   employeeApi,
   moneyText,
-  type BrainModel,
+  type AiTier,
   type CompareResult,
   type CompareSide,
   type PlaygroundRun,
@@ -30,13 +30,13 @@ import {
  */
 export function Playground({
   organizationId,
-  models,
+  tiers,
   currency,
   onRan,
   onEnableAi,
 }: {
   organizationId: string;
-  models: BrainModel[];
+  tiers: AiTier[];
   currency: string;
   onRan: () => void | Promise<void>;
   onEnableAi?: () => Promise<boolean>;
@@ -48,8 +48,8 @@ export function Playground({
 
 
   const [questions, setQuestions] = useState<string[]>([]);
-  const [brainA, setBrainA] = useState("default");
-  const [brainB, setBrainB] = useState(models[0] ? `${models[0].provider}::${models[0].model_id}` : "default");
+  const [tierA, setTierA] = useState("default");
+  const [tierB, setTierB] = useState(tiers[0]?.key ?? "default");
   const [comparing, setComparing] = useState(false);
   const [result, setResult] = useState<CompareResult | null>(null);
   const [picking, setPicking] = useState<"A" | "B" | null>(null);
@@ -94,11 +94,7 @@ export function Playground({
   };
 
 
-  const parseBrain = (value: string) => {
-    if (value === "default") return null;
-    const [provider, ...rest] = value.split("::");
-    return { provider, model_id: rest.join("::") };
-  };
+  const parseTier = (value: string) => (value === "default" ? null : value);
 
   const compare = async () => {
     if (questions.length === 0) {
@@ -106,12 +102,14 @@ export function Playground({
       return;
     }
     setComparing(true);
+    const tA = parseTier(tierA);
+    const tB = parseTier(tierB);
     const { data, error } = await aiRunApi<CompareResult>({
       organization_id: organizationId,
       action: "compare",
       questions,
-      config_a: { label: "Setup A", ...(parseBrain(brainA) ?? {}) },
-      config_b: { label: "Setup B", ...(parseBrain(brainB) ?? {}) },
+      config_a: { label: "Setup A", ...(tA ? { tier: tA } : {}) },
+      config_b: { label: "Setup B", ...(tB ? { tier: tB } : {}) },
     });
     setComparing(false);
     if (error) toast.error(error);
@@ -122,26 +120,26 @@ export function Playground({
   };
 
   const pickWinner = async (side: "A" | "B") => {
-    const brain = parseBrain(side === "A" ? brainA : brainB);
-    if (!brain) {
-      toast.info("That setup already is what it uses today.");
+    const tier = parseTier(side === "A" ? tierA : tierB);
+    if (!tier) {
+      toast.info("That's already how I work today.");
       return;
     }
     setPicking(side);
     const { error } = await employeeApi({
       organization_id: organizationId,
-      action: "set_brain",
+      action: "set_tier",
       task: "agent_reply",
-      provider: brain.provider,
-      model_id: brain.model_id,
+      tier,
     });
     setPicking(null);
     if (error) toast.error(error);
     else {
-      toast.success(`Setup ${side} is now what answers your customers.`);
+      toast.success(`Setup ${side} is now how I answer your customers.`);
       await onRan();
     }
   };
+
 
   return (
     <section
@@ -208,8 +206,8 @@ export function Playground({
             {questions.length === 1 ? "" : "s"} through both.
           </p>
           <div className="grid gap-4 md:grid-cols-2">
-            <BrainSelect id="brain-a" label="Setup A" value={brainA} onChange={setBrainA} models={models} />
-            <BrainSelect id="brain-b" label="Setup B" value={brainB} onChange={setBrainB} models={models} />
+            <TierSelect id="tier-a" label="Setup A" value={tierA} onChange={setTierA} tiers={tiers} />
+            <TierSelect id="tier-b" label="Setup B" value={tierB} onChange={setTierB} tiers={tiers} />
           </div>
           <Button onClick={() => void compare()} disabled={comparing}>
             {comparing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Scale className="mr-2 h-4 w-4" />}
@@ -259,19 +257,20 @@ export function Playground({
   );
 }
 
-function BrainSelect({
+function TierSelect({
   id,
   label,
   value,
   onChange,
-  models,
+  tiers,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
-  models: BrainModel[];
+  tiers: AiTier[];
 }) {
+  const chosen = tiers.find((t) => t.key === value);
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
@@ -280,14 +279,17 @@ function BrainSelect({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="default">What it uses today</SelectItem>
-          {models.map((m) => (
-            <SelectItem key={`${m.provider}::${m.model_id}`} value={`${m.provider}::${m.model_id}`}>
-              {m.display_name}
+          <SelectItem value="default">How I work today</SelectItem>
+          {tiers.map((t) => (
+            <SelectItem key={t.key} value={t.key}>
+              {t.display_name}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+      {chosen?.plain_description ? (
+        <p className="text-xs text-muted-foreground">{chosen.plain_description}</p>
+      ) : null}
     </div>
   );
 }
@@ -338,7 +340,7 @@ function AnswerCard({
         </Badge>
         <span className="text-xs text-muted-foreground">
           {run.brainName} · {Math.round(run.latencyMs / 100) / 10}s ·{" "}
-          {run.costKnown ? moneyText(run.costAmount, currency) : "cost unknown"}
+          {run.costKnown ? moneyText(run.billedAmount, currency) : "cost unknown"}
         </span>
       </div>
       <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
@@ -374,7 +376,7 @@ function SideCard({ label, side, currency }: { label: string; side: CompareSide;
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline">{label}</Badge>
         <span className="text-[11px] text-muted-foreground">
-          {side.brainName} · {side.costKnown ? moneyText(side.costAmount, currency) : "cost unknown"}
+          {side.brainName} · {side.costKnown ? moneyText(side.billedAmount, currency) : "cost unknown"}
         </span>
       </div>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
@@ -413,7 +415,7 @@ function SummaryCard({
         <div className="flex justify-between">
           <dt>Cost for this run</dt>
           <dd className="font-medium text-foreground">
-            {summary.costKnown ? moneyText(summary.totalCost, currency) : "—"}
+            {summary.costKnown ? moneyText(summary.totalBilled, currency) : "—"}
           </dd>
         </div>
         <div className="flex justify-between">

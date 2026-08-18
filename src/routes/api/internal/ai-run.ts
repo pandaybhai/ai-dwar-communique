@@ -84,7 +84,7 @@ export const Route = createFileRoute("/api/internal/ai-run")({
               supabase,
               common,
               question,
-              (payload["brain"] as { provider: string; model_id: string } | null) ?? null,
+              (payload["tier"] as string | null) ?? null,
               (payload["instructions"] as string | null) ?? null,
             );
             return Response.json({ run });

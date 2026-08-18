@@ -11,8 +11,8 @@ import type { RunResult } from "@/lib/ai-run.server";
 
 export type CompareConfig = {
   label?: string;
-  provider?: string;
-  model_id?: string;
+  /** A merchant-facing tier key, never a vendor or a model. */
+  tier?: string;
   instructions?: string | null;
 };
 
@@ -28,19 +28,19 @@ export type SideResult = {
   passedToYou: boolean;
   sources: RunResult["sources"];
   tools: string[];
-  costAmount: number | null;
+  /** What the merchant pays for this answer. */
+  billedAmount: number | null;
   costKnown: boolean;
   latencyMs: number;
+  tier: string;
   brainName: string;
-  provider: string;
-  model: string;
   runId: string | null;
 };
 
 export type CompareSummary = {
   answered: number;
   passed: number;
-  totalCost: number | null;
+  totalBilled: number | null;
   costKnown: boolean;
   averageMs: number;
 };
@@ -81,12 +81,11 @@ function toSide(run: RunResult): SideResult {
     passedToYou: run.status === "escalated",
     sources: run.sources,
     tools: run.toolCalls.map((t) => t.tool),
-    costAmount: run.costAmount,
+    billedAmount: run.billedAmount,
     costKnown: run.costKnown,
     latencyMs: run.latencyMs,
+    tier: run.tier,
     brainName: run.brainName,
-    provider: run.provider,
-    model: run.model,
     runId: run.runId,
   };
 }
@@ -96,7 +95,7 @@ function summarise(sides: SideResult[]): CompareSummary {
   return {
     answered: sides.filter((s) => s.answered).length,
     passed: sides.filter((s) => s.passedToYou).length,
-    totalCost: costKnown ? sides.reduce((sum, s) => sum + (s.costAmount ?? 0), 0) : null,
+    totalBilled: costKnown ? sides.reduce((sum, s) => sum + (s.billedAmount ?? 0), 0) : null,
     costKnown,
     averageMs: sides.length
       ? Math.round(sides.reduce((sum, s) => sum + s.latencyMs, 0) / sides.length)
@@ -138,11 +137,6 @@ export async function runComparison(
     .maybeSingle();
   const comparisonId = (created as { id?: string } | null)?.id ?? null;
 
-  const brain = (config: CompareConfig) =>
-    config.provider && config.model_id
-      ? { provider: config.provider, model_id: config.model_id }
-      : null;
-
   const pairs: ComparePair[] = [];
   for (const question of questions) {
     // Sequential on purpose: the gateway rate limit is shared by the workspace.
@@ -150,7 +144,7 @@ export async function runComparison(
       supabase,
       common,
       question,
-      brain(configA),
+      configA.tier ?? null,
       configA.instructions ?? null,
       comparisonId,
     );
@@ -158,7 +152,7 @@ export async function runComparison(
       supabase,
       common,
       question,
-      brain(configB),
+      configB.tier ?? null,
       configB.instructions ?? null,
       comparisonId,
     );

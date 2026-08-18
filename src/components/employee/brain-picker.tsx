@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Brain, Sparkles } from "lucide-react";
+import { Gauge, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,26 +16,26 @@ import {
   employeeApi,
   moneyText,
   TASK_LABELS,
-  type BrainModel,
+  type AiTier,
   type EmployeeSettings,
-  type TaskModel,
+  type TaskTier,
 } from "@/lib/employee-client";
 
 const TASKS = ["agent_reply", "suggest_reply", "summarise", "auto_tag"] as const;
 
-/** Which brain does which job, and the monthly ceiling on spend. */
+/** How careful I should be on each job, and the monthly ceiling on spend. */
 export function BrainPicker({
   organizationId,
-  models,
-  taskModels,
+  tiers,
+  taskTiers,
   settings,
   spendThisMonth,
   canConfigure,
   onChanged,
 }: {
   organizationId: string;
-  models: BrainModel[];
-  taskModels: TaskModel[];
+  tiers: AiTier[];
+  taskTiers: TaskTier[];
   settings: EmployeeSettings | null;
   spendThisMonth: number;
   canConfigure: boolean;
@@ -50,11 +50,11 @@ export function BrainPicker({
   const [savingCap, setSavingCap] = useState(false);
 
   const chosen = (task: string) => {
-    const row = taskModels.find((t) => t.task === task && !t.agent_id);
-    return row ? `${row.provider}::${row.model_id}` : "recommended";
+    const row = taskTiers.find((t) => t.task === task && !t.agent_id);
+    return row ? row.tier : "recommended";
   };
 
-  const setBrain = async (task: string, value: string) => {
+  const setTier = async (task: string, value: string) => {
     if (value === "recommended") {
       const { error } = await employeeApi({
         organization_id: organizationId,
@@ -63,22 +63,20 @@ export function BrainPicker({
       });
       if (error) toast.error(error);
       else {
-        toast.success("Back to our recommendation.");
+        toast.success("Back to my recommendation.");
         await onChanged();
       }
       return;
     }
-    const [provider, ...rest] = value.split("::");
     const { error } = await employeeApi({
       organization_id: organizationId,
-      action: "set_brain",
+      action: "set_tier",
       task,
-      provider,
-      model_id: rest.join("::"),
+      tier: value,
     });
     if (error) toast.error(error);
     else {
-      toast.success("Brain changed.");
+      toast.success("Saved. I'll work that way from now on.");
       await onChanged();
     }
   };
@@ -100,24 +98,40 @@ export function BrainPicker({
 
   return (
     <section
-      aria-labelledby="brains-heading"
+      aria-labelledby="tiers-heading"
       className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 id="brains-heading" className="flex items-center gap-2 text-lg font-semibold text-foreground">
-            <Brain className="h-5 w-5 text-primary" />
-            Which brain does which job
+          <h2 id="tiers-heading" className="flex items-center gap-2 text-lg font-semibold text-foreground">
+            <Gauge className="h-5 w-5 text-primary" />
+            How careful I should be on each job
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Leave these on our recommendation unless you have a reason. Talking to customers
-            deserves the best one; tagging does not.
+            Leave these on my recommendation unless you have a reason. Talking to customers
+            deserves my most careful work; tagging does not.
           </p>
         </div>
         <Badge variant="secondary">
           {moneyText(spendThisMonth, currency)} spent this month
         </Badge>
       </div>
+
+      {tiers.length > 0 ? (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {tiers.map((t) => (
+            <div key={t.key} className="rounded-xl border border-border/70 bg-muted/20 p-4">
+              <p className="text-sm font-medium text-foreground">{t.display_name}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t.plain_description}</p>
+              <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                {t.speed_text ? <li>{t.speed_text}</li> : null}
+                {t.quality_text ? <li>{t.quality_text}</li> : null}
+                {t.relative_cost_text ? <li>{t.relative_cost_text}</li> : null}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-6 space-y-4">
         {TASKS.map((task) => {
@@ -133,22 +147,22 @@ export function BrainPicker({
               </div>
               <Select
                 value={chosen(task)}
-                onValueChange={(v) => void setBrain(task, v)}
+                onValueChange={(v) => void setTier(task, v)}
                 disabled={!canConfigure}
               >
-                <SelectTrigger aria-label={`Brain for ${label?.title ?? task}`}>
+                <SelectTrigger aria-label={`How careful I should be when ${label?.title ?? task}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="recommended">
                     <span className="flex items-center gap-2">
                       <Sparkles className="h-3.5 w-3.5 text-primary" />
-                      Our recommendation
+                      My recommendation
                     </span>
                   </SelectItem>
-                  {models.map((m) => (
-                    <SelectItem key={`${m.provider}::${m.model_id}`} value={`${m.provider}::${m.model_id}`}>
-                      {m.display_name}
+                  {tiers.map((t) => (
+                    <SelectItem key={t.key} value={t.key}>
+                      {t.display_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -162,8 +176,8 @@ export function BrainPicker({
         <div>
           <p className="text-sm font-medium text-foreground">Monthly spending limit</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            When it hits this, the employee stops spending and hands everything to your team. Zero
-            means no limit.
+            When it hits this, I stop spending and hand everything to your team. Zero means no
+            limit.
           </p>
         </div>
         <div className="flex items-end gap-2">

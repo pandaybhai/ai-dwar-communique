@@ -16,19 +16,22 @@ export type EmployeeSettings = {
   brain_choice: "recommended" | "manual" | string;
 };
 
-export type BrainModel = {
-  provider: string;
-  model_id: string;
+/**
+ * What the merchant chooses: how careful I should be, in words. Vendors,
+ * models and API keys are the platform's business, not theirs.
+ */
+export type AiTier = {
+  key: string;
   display_name: string;
   plain_description: string | null;
-  supports_tools: boolean;
-  recommended_for: string[] | null;
+  speed_text: string | null;
+  quality_text: string | null;
+  relative_cost_text: string | null;
 };
 
-export type TaskModel = {
+export type TaskTier = {
   task: string;
-  provider: string;
-  model_id: string;
+  tier: string;
   agent_id: string | null;
 };
 
@@ -78,8 +81,8 @@ export type EmployeeOverview = {
   agent: EmployeeAgent | null;
   settings: EmployeeSettings | null;
   spend_this_month: number;
-  models: BrainModel[];
-  task_models: TaskModel[];
+  tiers: AiTier[];
+  task_models: TaskTier[];
   instructions: InstructionVersion[];
   sources: KnowledgeSource[];
   tools: ToolRow[];
@@ -98,9 +101,11 @@ export type RunSource = {
 export type EmployeeRun = {
   id: string;
   task: string;
+  tier: string | null;
   status: string;
   escalation_signal: string | null;
-  cost_amount: number | null;
+  /** What this answer cost the merchant. */
+  billed_amount: number | null;
   cost_source: string | null;
   latency_ms: number | null;
   input_summary: string | null;
@@ -133,12 +138,11 @@ export type PlaygroundRun = {
   sources: RunSource[];
   toolCalls: { tool: string; ok: boolean; error?: string }[];
   escalationSignal: string | null;
-  costAmount: number | null;
-  costCurrency: string | null;
+  billedAmount: number | null;
+  billedCurrency: string | null;
   costKnown: boolean;
   latencyMs: number;
-  provider: string;
-  model: string;
+  tier: string;
   brainName: string;
 };
 
@@ -148,20 +152,27 @@ export type CompareSide = {
   passedToYou: boolean;
   sources: RunSource[];
   tools: string[];
-  costAmount: number | null;
+  billedAmount: number | null;
   costKnown: boolean;
   latencyMs: number;
+  tier: string;
   brainName: string;
-  provider: string;
-  model: string;
   runId: string | null;
+};
+
+export type CompareSummary = {
+  answered: number;
+  passed: number;
+  totalBilled: number | null;
+  costKnown: boolean;
+  averageMs: number;
 };
 
 export type CompareResult = {
   comparisonId: string | null;
   pairs: { question: string; a: CompareSide; b: CompareSide }[];
-  summaryA: { answered: number; passed: number; totalCost: number | null; costKnown: boolean; averageMs: number };
-  summaryB: { answered: number; passed: number; totalCost: number | null; costKnown: boolean; averageMs: number };
+  summaryA: CompareSummary;
+  summaryB: CompareSummary;
 };
 
 export const employeeApi = <T,>(body: Record<string, unknown>) =>

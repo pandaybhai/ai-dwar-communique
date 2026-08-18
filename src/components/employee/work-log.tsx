@@ -181,7 +181,7 @@ export function WorkLog({
                   </div>
                   <Badge variant={status.tone}>{status.label}</Badge>
                   <span className="text-xs text-muted-foreground">
-                    {run.cost_source === "unknown" ? "—" : moneyText(run.cost_amount, currency)}
+                    {run.cost_source === "unknown" ? "—" : moneyText(run.billed_amount, currency)}
                   </span>
                 </button>
 
