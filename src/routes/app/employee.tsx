@@ -16,8 +16,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { employeeApi, moneyText, type EmployeeOverview } from "@/lib/employee-client";
 import { useOrg } from "@/lib/org-context";
 
-import { employeeApi, moneyText, type EmployeeOverview } from "@/lib/employee-client";
-import { useOrg } from "@/lib/org-context";
+
 
 const DESCRIPTION =
   "Your AI employee: what it knows, how it behaves, and every answer it has given. Start it in draft, read its work, then let it reply.";
