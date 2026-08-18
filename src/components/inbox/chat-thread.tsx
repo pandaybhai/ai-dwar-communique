@@ -136,13 +136,48 @@ export function ChatThread({
 }) {
   const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [assisting, setAssisting] = useState<"suggest" | "summary" | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const open = withinWindow(conversation.last_customer_message_at);
   const label = contactLabel(conversation.contact);
+  const { can } = usePermissions();
+  const canUseAi = can("ai.use");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, conversation.id]);
+
+  useEffect(() => {
+    setSummary(null);
+  }, [conversation.id]);
+
+  const assist = async (kind: "suggest" | "summary") => {
+    if (!organizationId || assisting) return;
+    setAssisting(kind);
+    const { data, error } = await aiRunApi<{ run: { output: string; status: string } }>({
+      organization_id: organizationId,
+      action: kind === "suggest" ? "suggest_reply" : "summarise",
+      conversation_id: conversation.id,
+    });
+    setAssisting(null);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    const text = data?.run?.output?.trim() ?? "";
+    if (!text) {
+      toast.error("It had nothing useful to add here.");
+      return;
+    }
+    if (kind === "suggest") {
+      setDraft(text);
+      toast.success("Draft ready — read it, edit it, then send.");
+    } else {
+      setSummary(text);
+    }
+  };
+
 
   const submit = async () => {
     const text = draft.trim();
