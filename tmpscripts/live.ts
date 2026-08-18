@@ -24,7 +24,7 @@ const cases: Array<[string, any, any]> = [
     { campaignId: null, category: "marketing", linkTarget: "https://aidwar.in/track/1010" }],
   ["image header + copy code", pick("parity_image_coupon"),
     { campaignId: null, category: "marketing", couponCode: "SAVE20",
-      cards: undefined, headerMediaUrl: IMG }],
+      headerMediaUrl: IMG }],
   ["carousel, 2 cards", pick("parity_carousel"),
     { campaignId: null, category: "marketing",
       cards: [
