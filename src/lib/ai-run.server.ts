@@ -696,7 +696,7 @@ export async function executeRun(
         for (const tc of call.toolCalls) {
           const result = await runTool(supabase, organizationId, actorUserId, tc.name, tc.args);
           if (!result.ok) anyToolFailed = true;
-          toolCalls.push({ tool: tc.name, ok: result.ok, error: result.error });
+          toolCalls.push({ tool: tc.name, ok: result.ok, ...(result.error ? { error: result.error } : {}) });
           sources.push({ kind: "tool", label: tc.name });
           items.push({
             type: "function_call_output",
@@ -721,7 +721,7 @@ export async function executeRun(
         for (const tc of call.toolCalls) {
           const result = await runTool(supabase, organizationId, actorUserId, tc.name, tc.args);
           if (!result.ok) anyToolFailed = true;
-          toolCalls.push({ tool: tc.name, ok: result.ok, error: result.error });
+          toolCalls.push({ tool: tc.name, ok: result.ok, ...(result.error ? { error: result.error } : {}) });
           sources.push({ kind: "tool", label: tc.name });
           messages.push({
             role: "tool",
