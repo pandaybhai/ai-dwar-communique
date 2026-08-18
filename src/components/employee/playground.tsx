@@ -1,0 +1,321 @@
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, MessageSquare, Play, Scale } from "lucide-react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  aiRunApi,
+  employeeApi,
+  moneyText,
+  type BrainModel,
+  type CompareResult,
+  type CompareSide,
+  type PlaygroundRun,
+  type RunSource,
+} from "@/lib/employee-client";
+
+/**
+ * Try it before you trust it: one question at a time, or the same twenty real
+ * customer questions run through two setups side by side.
+ */
+export function Playground({
+  organizationId,
+  models,
+  currency,
+  onRan,
+}: {
+  organizationId: string;
+  models: BrainModel[];
+  currency: string;
+  onRan: () => void | Promise<void>;
+}) {
+  const [question, setQuestion] = useState("");
+  const [running, setRunning] = useState(false);
+  const [run, setRun] = useState<PlaygroundRun | null>(null);
+
+  const [questions, setQuestions] = useState<string[]>([]);
+  const [brainA, setBrainA] = useState("default");
+  const [brainB, setBrainB] = useState(models[0] ? `${models[0].provider}::${models[0].model_id}` : "default");
+  const [comparing, setComparing] = useState(false);
+  const [result, setResult] = useState<CompareResult | null>(null);
+
+  const loadQuestions = useCallback(async () => {
+    const { data } = await employeeApi<{ questions: string[] }>({
+      organization_id: organizationId,
+      action: "questions",
+    });
+    setQuestions(data?.questions ?? []);
+  }, [organizationId]);
+
+  useEffect(() => {
+    void loadQuestions();
+  }, [loadQuestions]);
+
+  const ask = async () => {
+    const text = question.trim();
+    if (!text) return;
+    setRunning(true);
+    const { data, error } = await aiRunApi<{ run: PlaygroundRun }>({
+      organization_id: organizationId,
+      action: "playground",
+      question: text,
+    });
+    setRunning(false);
+    if (error) toast.error(error);
+    else {
+      setRun(data?.run ?? null);
+      await onRan();
+    }
+  };
+
+  const parseBrain = (value: string) => {
+    if (value === "default") return null;
+    const [provider, ...rest] = value.split("::");
+    return { provider, model_id: rest.join("::") };
+  };
+
+  const compare = async () => {
+    if (questions.length === 0) {
+      toast.error("No real customer questions yet — ask one above instead.");
+      return;
+    }
+    setComparing(true);
+    const { data, error } = await aiRunApi<CompareResult>({
+      organization_id: organizationId,
+      action: "compare",
+      questions,
+      config_a: { brain: parseBrain(brainA) },
+      config_b: { brain: parseBrain(brainB) },
+    });
+    setComparing(false);
+    if (error) toast.error(error);
+    else {
+      setResult(data);
+      await onRan();
+    }
+  };
+
+  return (
+    <section
+      aria-labelledby="try-heading"
+      className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm"
+    >
+      <h2 id="try-heading" className="text-lg font-semibold text-foreground">
+        Try it before you trust it
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Nothing here reaches a customer. Ask it something, or replay your last real questions
+        through two setups and see which one you'd rather have answering.
+      </p>
+
+      <Tabs defaultValue="ask" className="mt-5">
+        <TabsList>
+          <TabsTrigger value="ask">Ask it something</TabsTrigger>
+          <TabsTrigger value="compare">Compare two setups</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="ask" className="mt-5 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="pg-question">A question a customer might ask</Label>
+            <Textarea
+              id="pg-question"
+              rows={3}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Where's my order #1042?"
+              className="resize-y"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={() => void ask()} disabled={running || !question.trim()}>
+              {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+              See the answer
+            </Button>
+            {questions.slice(0, 3).map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => setQuestion(q)}
+                className="max-w-xs truncate rounded-full border border-border/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+
+          {run ? <AnswerCard run={run} currency={currency} /> : null}
+        </TabsContent>
+
+        <TabsContent value="compare" className="mt-5 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Running your last {questions.length} real customer question
+            {questions.length === 1 ? "" : "s"} through both.
+          </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <BrainSelect id="brain-a" label="Setup A" value={brainA} onChange={setBrainA} models={models} />
+            <BrainSelect id="brain-b" label="Setup B" value={brainB} onChange={setBrainB} models={models} />
+          </div>
+          <Button onClick={() => void compare()} disabled={comparing}>
+            {comparing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Scale className="mr-2 h-4 w-4" />}
+            Run the comparison
+          </Button>
+
+          {result ? (
+            <div className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <SummaryCard title="Setup A" summary={result.summaryA} currency={currency} />
+                <SummaryCard title="Setup B" summary={result.summaryB} currency={currency} />
+              </div>
+              <ul className="space-y-4">
+                {result.pairs.map((pair, i) => (
+                  <li key={`${pair.question}-${i}`} className="rounded-xl border border-border/70 p-4">
+                    <p className="flex items-start gap-2 text-sm font-medium text-foreground">
+                      <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      {pair.question}
+                    </p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <SideCard label="A" side={pair.a} currency={currency} />
+                      <SideCard label="B" side={pair.b} currency={currency} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </TabsContent>
+      </Tabs>
+    </section>
+  );
+}
+
+function BrainSelect({
+  id,
+  label,
+  value,
+  onChange,
+  models,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  models: BrainModel[];
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id={id}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="default">What it uses today</SelectItem>
+          {models.map((m) => (
+            <SelectItem key={`${m.provider}::${m.model_id}`} value={`${m.provider}::${m.model_id}`}>
+              {m.display_name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function Sources({ sources }: { sources: RunSource[] | null | undefined }) {
+  if (!sources || sources.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      {sources.map((s, i) => (
+        <Badge key={`${s.label}-${i}`} variant="secondary" className="max-w-full truncate text-[11px]">
+          {s.kind === "tool" ? "Looked up: " : "From: "}
+          {s.label}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function AnswerCard({ run, currency }: { run: PlaygroundRun; currency: string }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={run.escalationSignal ? "secondary" : "default"}>
+          {run.escalationSignal ? "Would pass to your team" : "Would answer"}
+        </Badge>
+        <span className="text-xs text-muted-foreground">
+          {run.brainName} · {Math.round(run.latencyMs / 100) / 10}s ·{" "}
+          {run.costKnown ? moneyText(run.costAmount, currency) : "cost unknown"}
+        </span>
+      </div>
+      <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+        {run.output || "It had nothing to say."}
+      </p>
+      <Sources sources={run.sources} />
+    </div>
+  );
+}
+
+function SideCard({ label, side, currency }: { label: string; side: CompareSide; currency: string }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{label}</Badge>
+        <span className="text-[11px] text-muted-foreground">
+          {side.brainName} · {side.costKnown ? moneyText(side.costAmount, currency) : "cost unknown"}
+        </span>
+      </div>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+        {side.answer || (side.passedToYou ? "Passed to your team." : "—")}
+      </p>
+      <Sources sources={side.sources} />
+    </div>
+  );
+}
+
+function SummaryCard({
+  title,
+  summary,
+  currency,
+}: {
+  title: string;
+  summary: CompareResult["summaryA"];
+  currency: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <dl className="mt-2 space-y-1 text-sm text-muted-foreground">
+        <div className="flex justify-between">
+          <dt>Answered</dt>
+          <dd className="font-medium text-foreground">{summary.answered}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt>Passed to your team</dt>
+          <dd className="font-medium text-foreground">{summary.passed}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt>Cost for this run</dt>
+          <dd className="font-medium text-foreground">
+            {summary.costKnown ? moneyText(summary.totalCost, currency) : "—"}
+          </dd>
+        </div>
+        <div className="flex justify-between">
+          <dt>Average time</dt>
+          <dd className="font-medium text-foreground">
+            {Math.round(summary.averageMs / 100) / 10}s
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
