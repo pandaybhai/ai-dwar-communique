@@ -723,7 +723,7 @@ export async function executeRun(
             tool: tc.name,
             ok: result.ok,
             ...(result.error ? { error: result.error } : {}),
-            latencyMs: result.latencyMs ?? null ?? undefined,
+            ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
             activityLogId: result.activityLogId ?? null,
           });
           sources.push({ kind: "tool", label: tc.name });
@@ -754,7 +754,7 @@ export async function executeRun(
             tool: tc.name,
             ok: result.ok,
             ...(result.error ? { error: result.error } : {}),
-            latencyMs: result.latencyMs ?? null ?? undefined,
+            ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
             activityLogId: result.activityLogId ?? null,
           });
           sources.push({ kind: "tool", label: tc.name });
