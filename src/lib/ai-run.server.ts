@@ -423,13 +423,27 @@ type GatewayCall = {
   raw: unknown;
 };
 
-function gatewayHeaders(key: string): Record<string, string> {
+/**
+ * Auth headers. The resale gateway wants its own header; a vendor called
+ * directly with the platform's own key wants a bearer token.
+ */
+function gatewayHeaders(key: string, direct = false): Record<string, string> {
+  if (direct) {
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+      // Anthropic's OpenAI-compatible endpoint also accepts its native header.
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+    };
+  }
   return {
     "Content-Type": "application/json",
     "Lovable-API-Key": key,
     "X-Lovable-AIG-SDK": "fetch",
   };
 }
+
 
 /** Human words for a gateway failure. Only 429/5xx are worth retrying. */
 export function gatewayErrorMessage(status: number, body: string): string {
