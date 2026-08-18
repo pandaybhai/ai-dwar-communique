@@ -3,12 +3,20 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Bot, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
+import { BehaviourEditor } from "@/components/employee/behaviour-editor";
+import { BrainPicker } from "@/components/employee/brain-picker";
 import { KnowledgeManager } from "@/components/employee/knowledge-manager";
+import { Playground } from "@/components/employee/playground";
+import { ToolsList } from "@/components/employee/tools-list";
+import { WorkLog } from "@/components/employee/work-log";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/use-permissions";
 import { employeeApi, moneyText, type EmployeeOverview } from "@/lib/employee-client";
 import { useOrg } from "@/lib/org-context";
+
+
 
 const DESCRIPTION =
   "Your AI employee: what it knows, how it behaves, and every answer it has given. Start it in draft, read its work, then let it reply.";
@@ -160,13 +168,60 @@ function EmployeePage() {
             ) : null}
           </section>
 
-          <KnowledgeManager
-            organizationId={active.organization.id}
-            sources={overview?.sources ?? []}
-            loading={false}
-            canConfigure={canConfigure}
-            onChanged={load}
-          />
+          <Tabs defaultValue="knows" className="space-y-6">
+            <TabsList className="flex w-full flex-wrap justify-start gap-1">
+              <TabsTrigger value="knows">What it knows</TabsTrigger>
+              <TabsTrigger value="behaviour">How it behaves</TabsTrigger>
+              <TabsTrigger value="brains">Brains &amp; tools</TabsTrigger>
+              <TabsTrigger value="try">Try it</TabsTrigger>
+              <TabsTrigger value="work">Its work</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="knows">
+              <KnowledgeManager
+                organizationId={active.organization.id}
+                sources={overview?.sources ?? []}
+                loading={false}
+                canConfigure={canConfigure}
+                onChanged={load}
+              />
+            </TabsContent>
+
+            <TabsContent value="behaviour">
+              <BehaviourEditor
+                organizationId={active.organization.id}
+                versions={overview?.instructions ?? []}
+                canConfigure={canConfigure}
+                onChanged={load}
+              />
+            </TabsContent>
+
+            <TabsContent value="brains" className="space-y-6">
+              <BrainPicker
+                organizationId={active.organization.id}
+                models={overview?.models ?? []}
+                taskModels={overview?.task_models ?? []}
+                settings={overview?.settings ?? null}
+                spendThisMonth={overview?.spend_this_month ?? 0}
+                canConfigure={canConfigure}
+                onChanged={load}
+              />
+              <ToolsList tools={overview?.tools ?? []} />
+            </TabsContent>
+
+            <TabsContent value="try">
+              <Playground
+                organizationId={active.organization.id}
+                models={overview?.models ?? []}
+                currency={currency}
+                onRan={load}
+              />
+            </TabsContent>
+
+            <TabsContent value="work">
+              <WorkLog organizationId={active.organization.id} currency={currency} />
+            </TabsContent>
+          </Tabs>
 
           {!canConfigure ? (
             <p className="text-sm text-muted-foreground">
@@ -179,6 +234,7 @@ function EmployeePage() {
               </Button>
             </div>
           )}
+
         </div>
       )}
     </>

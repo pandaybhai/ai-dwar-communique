@@ -6,14 +6,21 @@ import {
   Check,
   CheckCheck,
   Clock,
+  Loader2,
   MessageSquareText,
   Send,
+  Sparkles,
   UserRound,
+  Wand2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { usePermissions } from "@/hooks/use-permissions";
+import { aiRunApi } from "@/lib/employee-client";
+
 import {
   Select,
   SelectContent,
@@ -129,13 +136,48 @@ export function ChatThread({
 }) {
   const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [assisting, setAssisting] = useState<"suggest" | "summary" | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const open = withinWindow(conversation.last_customer_message_at);
   const label = contactLabel(conversation.contact);
+  const { can } = usePermissions();
+  const canUseAi = can("ai.use");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, conversation.id]);
+
+  useEffect(() => {
+    setSummary(null);
+  }, [conversation.id]);
+
+  const assist = async (kind: "suggest" | "summary") => {
+    if (!organizationId || assisting) return;
+    setAssisting(kind);
+    const { data, error } = await aiRunApi<{ run: { output: string; status: string } }>({
+      organization_id: organizationId,
+      action: kind === "suggest" ? "suggest_reply" : "summarise",
+      conversation_id: conversation.id,
+    });
+    setAssisting(null);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    const text = data?.run?.output?.trim() ?? "";
+    if (!text) {
+      toast.error("It had nothing useful to add here.");
+      return;
+    }
+    if (kind === "suggest") {
+      setDraft(text);
+      toast.success("Draft ready — read it, edit it, then send.");
+    } else {
+      setSummary(text);
+    }
+  };
+
 
   const submit = async () => {
     const text = draft.trim();
@@ -248,7 +290,50 @@ export function ChatThread({
       </div>
 
       <div className="border-t border-border/70 bg-card px-4 py-3">
+        {canUseAi && organizationId ? (
+          <div className="mx-auto mb-3 max-w-3xl space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full"
+                disabled={assisting !== null || messages.length === 0}
+                onClick={() => void assist("suggest")}
+              >
+                {assisting === "suggest" ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="mr-2 h-3.5 w-3.5" />
+                )}
+                Draft a reply
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="rounded-full"
+                disabled={assisting !== null || messages.length === 0}
+                onClick={() => void assist("summary")}
+              >
+                {assisting === "summary" ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-3.5 w-3.5" />
+                )}
+                Catch me up
+              </Button>
+            </div>
+            {summary ? (
+              <div className="rounded-xl border border-border/70 bg-muted/30 px-3.5 py-2.5">
+                <p className="text-xs font-medium text-muted-foreground">The short version</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                  {summary}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {open ? (
+
           <div className="mx-auto flex max-w-3xl items-end gap-2">
             <Textarea
               value={draft}
