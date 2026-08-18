@@ -412,6 +412,33 @@ async function overCap(
   return { over: cap > 0 && spent >= cap, cap, spent, currency: s?.currency ?? "INR" };
 }
 
+/**
+ * Total platform exposure. Per-merchant caps bound each workspace; this bounds
+ * the sum of them. Zero means no ceiling.
+ */
+export async function platformCapState(
+  supabase: SupabaseClient,
+): Promise<{ over: boolean; warn: boolean; cap: number; spent: number; currency: string }> {
+  const { data: settings } = await supabase
+    .from("platform_settings")
+    .select("ai_monthly_cap_amount, ai_cap_currency")
+    .eq("id", true)
+    .maybeSingle();
+  const s = settings as { ai_monthly_cap_amount: number; ai_cap_currency: string } | null;
+  const cap = Number(s?.ai_monthly_cap_amount ?? 0);
+  const { data: spend } = await supabase.rpc("platform_ai_month_spend");
+  const spent = Number(spend ?? 0);
+  return {
+    over: cap > 0 && spent >= cap,
+    warn: cap > 0 && spent >= cap * 0.8,
+    cap,
+    spent,
+    currency: s?.ai_cap_currency ?? "INR",
+  };
+}
+
+const overPlatformCap = platformCapState;
+
 // -------------------------------------------------------------- gateway I/O
 
 type ChatMessage = { role: string; content: unknown; [k: string]: unknown };
