@@ -365,6 +365,7 @@ export function CreateTemplateDialog({
                   </div>
                 </Section>
 
+                {!isCarousel ? (
                 <Section title="Buttons" hint="Up to 10 quick replies, or a mix with at most one call button and two links.">
                   <ButtonEditor
                     idPrefix="btn"
@@ -372,8 +373,9 @@ export function CreateTemplateDialog({
                     onChange={(buttons) => set({ buttons })}
                   />
                 </Section>
+                ) : null}
 
-                {draft.category === "MARKETING" ? (
+                {draft.category === "MARKETING" && !isCarousel ? (
                   <Section
                     title="Limited-time offer"
                     hint="Shows a countdown in the chat — good for a discount that expires."
