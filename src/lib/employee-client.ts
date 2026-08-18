@@ -101,9 +101,11 @@ export type RunSource = {
 export type EmployeeRun = {
   id: string;
   task: string;
+  tier: string | null;
   status: string;
   escalation_signal: string | null;
-  cost_amount: number | null;
+  /** What this answer cost the merchant. */
+  billed_amount: number | null;
   cost_source: string | null;
   latency_ms: number | null;
   input_summary: string | null;
@@ -136,12 +138,11 @@ export type PlaygroundRun = {
   sources: RunSource[];
   toolCalls: { tool: string; ok: boolean; error?: string }[];
   escalationSignal: string | null;
-  costAmount: number | null;
-  costCurrency: string | null;
+  billedAmount: number | null;
+  billedCurrency: string | null;
   costKnown: boolean;
   latencyMs: number;
-  provider: string;
-  model: string;
+  tier: string;
   brainName: string;
 };
 
@@ -151,20 +152,27 @@ export type CompareSide = {
   passedToYou: boolean;
   sources: RunSource[];
   tools: string[];
-  costAmount: number | null;
+  billedAmount: number | null;
   costKnown: boolean;
   latencyMs: number;
+  tier: string;
   brainName: string;
-  provider: string;
-  model: string;
   runId: string | null;
+};
+
+export type CompareSummary = {
+  answered: number;
+  passed: number;
+  totalBilled: number | null;
+  costKnown: boolean;
+  averageMs: number;
 };
 
 export type CompareResult = {
   comparisonId: string | null;
   pairs: { question: string; a: CompareSide; b: CompareSide }[];
-  summaryA: { answered: number; passed: number; totalCost: number | null; costKnown: boolean; averageMs: number };
-  summaryB: { answered: number; passed: number; totalCost: number | null; costKnown: boolean; averageMs: number };
+  summaryA: CompareSummary;
+  summaryB: CompareSummary;
 };
 
 export const employeeApi = <T,>(body: Record<string, unknown>) =>
