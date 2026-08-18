@@ -257,19 +257,20 @@ export function Playground({
   );
 }
 
-function BrainSelect({
+function TierSelect({
   id,
   label,
   value,
   onChange,
-  models,
+  tiers,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
-  models: BrainModel[];
+  tiers: AiTier[];
 }) {
+  const chosen = tiers.find((t) => t.key === value);
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
@@ -278,14 +279,17 @@ function BrainSelect({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="default">What it uses today</SelectItem>
-          {models.map((m) => (
-            <SelectItem key={`${m.provider}::${m.model_id}`} value={`${m.provider}::${m.model_id}`}>
-              {m.display_name}
+          <SelectItem value="default">How I work today</SelectItem>
+          {tiers.map((t) => (
+            <SelectItem key={t.key} value={t.key}>
+              {t.display_name}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+      {chosen?.plain_description ? (
+        <p className="text-xs text-muted-foreground">{chosen.plain_description}</p>
+      ) : null}
     </div>
   );
 }
