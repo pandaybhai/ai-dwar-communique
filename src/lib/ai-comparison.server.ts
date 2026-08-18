@@ -11,8 +11,8 @@ import type { RunResult } from "@/lib/ai-run.server";
 
 export type CompareConfig = {
   label?: string;
-  provider?: string;
-  model_id?: string;
+  /** A merchant-facing tier key, never a vendor or a model. */
+  tier?: string;
   instructions?: string | null;
 };
 
@@ -28,19 +28,19 @@ export type SideResult = {
   passedToYou: boolean;
   sources: RunResult["sources"];
   tools: string[];
-  costAmount: number | null;
+  /** What the merchant pays for this answer. */
+  billedAmount: number | null;
   costKnown: boolean;
   latencyMs: number;
+  tier: string;
   brainName: string;
-  provider: string;
-  model: string;
   runId: string | null;
 };
 
 export type CompareSummary = {
   answered: number;
   passed: number;
-  totalCost: number | null;
+  totalBilled: number | null;
   costKnown: boolean;
   averageMs: number;
 };
