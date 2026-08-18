@@ -340,7 +340,7 @@ function AnswerCard({
         </Badge>
         <span className="text-xs text-muted-foreground">
           {run.brainName} · {Math.round(run.latencyMs / 100) / 10}s ·{" "}
-          {run.costKnown ? moneyText(run.costAmount, currency) : "cost unknown"}
+          {run.costKnown ? moneyText(run.billedAmount, currency) : "cost unknown"}
         </span>
       </div>
       <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
@@ -376,7 +376,7 @@ function SideCard({ label, side, currency }: { label: string; side: CompareSide;
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline">{label}</Badge>
         <span className="text-[11px] text-muted-foreground">
-          {side.brainName} · {side.costKnown ? moneyText(side.costAmount, currency) : "cost unknown"}
+          {side.brainName} · {side.costKnown ? moneyText(side.billedAmount, currency) : "cost unknown"}
         </span>
       </div>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
@@ -415,7 +415,7 @@ function SummaryCard({
         <div className="flex justify-between">
           <dt>Cost for this run</dt>
           <dd className="font-medium text-foreground">
-            {summary.costKnown ? moneyText(summary.totalCost, currency) : "—"}
+            {summary.costKnown ? moneyText(summary.totalBilled, currency) : "—"}
           </dd>
         </div>
         <div className="flex justify-between">
