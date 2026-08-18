@@ -6,14 +6,21 @@ import {
   Check,
   CheckCheck,
   Clock,
+  Loader2,
   MessageSquareText,
   Send,
+  Sparkles,
   UserRound,
+  Wand2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { usePermissions } from "@/hooks/use-permissions";
+import { aiRunApi } from "@/lib/employee-client";
+
 import {
   Select,
   SelectContent,
