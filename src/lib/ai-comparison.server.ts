@@ -42,6 +42,8 @@ export type SideResult = {
 export type CompareSummary = {
   answered: number;
   passed: number;
+  /** Runs that never reached a model — a broken setup, not a weak answer. */
+  didNotRun: number;
   totalBilled: number | null;
   costKnown: boolean;
   averageMs: number;
