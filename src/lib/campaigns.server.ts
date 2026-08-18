@@ -177,6 +177,21 @@ export type SendCampaignContext = {
   scheduledSendId?: string | null;
   /** Destination for a dynamic URL button, shortened at send time. */
   linkTarget?: string | null;
+  /** Coupon code for a copy-code button. One code serves every such button. */
+  couponCode?: string | null;
+  /** When a limited-time offer's countdown runs out. */
+  offerExpiresAt?: string | null;
+  /**
+   * Per-card values for a carousel, in card order. A product carousel in a cart
+   * reminder fills one entry per product; anything left out falls back to the
+   * picture and link stored on the template itself.
+   */
+  cards?: Array<{
+    mediaUrl?: string | null;
+    values?: Record<string, string>;
+    linkTarget?: string | null;
+    couponCode?: string | null;
+  }>;
 };
 
 
@@ -298,11 +313,23 @@ export async function sendCampaignTemplate(
 
   // What the template itself declares — body, header and dynamic link buttons.
   const { templateVariableSpec, buildTemplatePayloadComponents } = await import("@/lib/templates");
+  const { emptyVariableSpec } = await import("@/lib/templates");
   const spec = template.components
     ? templateVariableSpec(template.components)
-    : { header: [], body: template.variableOrder, urlButtons: [] };
+    : emptyVariableSpec(template.variableOrder);
 
-  // A URL button with a variable needs a short link minted for this send.
+  // Every dynamic link — on the message or on a carousel card — gets its own
+  // short link, so a click can be attributed to this send and this card.
+  const { createShortLink } = await import("@/lib/short-links.server");
+  const mintLink = async (target: string): Promise<{ token: string | null; error: string | null }> =>
+    await createShortLink(supabase, {
+      organizationId,
+      targetUrl: target,
+      scheduledSendId: context.scheduledSendId ?? null,
+      campaignId: context.campaignId ?? null,
+      contactId,
+    });
+
   const buttonTokens: Record<number, string> = {};
   if (spec.urlButtons.length > 0) {
     if (!context.linkTarget) {
@@ -312,15 +339,8 @@ export async function sendCampaignTemplate(
         "missing_link_target",
       );
     }
-    const { createShortLink } = await import("@/lib/short-links.server");
     for (const button of spec.urlButtons) {
-      const { token, error } = await createShortLink(supabase, {
-        organizationId,
-        targetUrl: context.linkTarget,
-        scheduledSendId: context.scheduledSendId ?? null,
-        campaignId: context.campaignId ?? null,
-        contactId,
-      });
+      const { token, error } = await mintLink(context.linkTarget);
       if (!token) {
         return recordFailure(
           "This message can't be sent: we couldn't prepare its link.",
@@ -332,11 +352,67 @@ export async function sendCampaignTemplate(
     }
   }
 
+  // Copy-code buttons carry a coupon; one code covers every copy-code button
+  // on the message, which is how Meta models it too.
+  const couponCodes: Record<number, string> = {};
+  for (const index of spec.copyCodeButtons) {
+    if (context.couponCode?.trim()) couponCodes[index] = context.couponCode.trim();
+  }
+
+  // Carousel cards: per-card picture, per-card text, per-card link.
+  const cardValues: import("@/lib/templates").CardValues[] = [];
+  for (const card of spec.cards) {
+    const supplied = context.cards?.[card.index] ?? {};
+    const entry: import("@/lib/templates").CardValues = {};
+    const mediaUrl = supplied.mediaUrl ?? card.mediaUrl;
+    if (mediaUrl) entry.media = { link: mediaUrl };
+    entry.values = supplied.values ?? recipient.variables;
+
+    if (card.urlButtons.length > 0) {
+      const target = supplied.linkTarget ?? context.linkTarget ?? null;
+      if (!target) {
+        return recordFailure(
+          `This message can't be sent: card ${card.index + 1}'s button links somewhere we don't have a destination for.`,
+          JSON.stringify({ message: "missing_link_target", card: card.index, template: template.name }),
+          "missing_link_target",
+        );
+      }
+      const tokens: Record<number, string> = {};
+      for (const button of card.urlButtons) {
+        const { token, error } = await mintLink(target);
+        if (!token) {
+          return recordFailure(
+            `This message can't be sent: we couldn't prepare the link on card ${card.index + 1}.`,
+            JSON.stringify({ message: "short_link_failed", card: card.index, error }),
+            "short_link_failed",
+          );
+        }
+        tokens[button.index] = token;
+      }
+      entry.buttonTokens = tokens;
+    }
+
+    const code = supplied.couponCode ?? context.couponCode ?? null;
+    if (card.copyCodeButtons.length > 0 && code?.trim()) {
+      entry.couponCodes = Object.fromEntries(
+        card.copyCodeButtons.map((i) => [i, code.trim()]),
+      );
+    }
+    cardValues.push(entry);
+  }
+
+  const offerExpirationMs = context.offerExpiresAt
+    ? new Date(context.offerExpiresAt).getTime()
+    : undefined;
+
   const payload = buildTemplatePayloadComponents({
     spec,
     values: recipient.variables,
     headerValues: recipient.variables,
     buttonTokens,
+    couponCodes,
+    ...(cardValues.length ? { cards: cardValues } : {}),
+    ...(offerExpirationMs ? { offerExpirationMs } : {}),
   });
   if (payload.error) {
     return recordFailure(
