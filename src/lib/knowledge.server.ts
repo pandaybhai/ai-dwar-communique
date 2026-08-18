@@ -246,8 +246,9 @@ const readManualQa: Connector = async ({ supabase, sourceId }) => {
 
 export const CONNECTORS: Record<SourceType, Connector> = {
   website: crawlWebsite,
-  pdf: readPdf,
-  spreadsheet: readSpreadsheet,
+  pdf: rereadUpload,
+  spreadsheet: rereadUpload,
+
   manual_qa: readManualQa,
 };
 
