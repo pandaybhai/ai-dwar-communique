@@ -25,8 +25,12 @@ export const Route = createFileRoute("/api/admin/ai")({
         const action = String(payload["action"] ?? "overview");
 
         if (action === "overview") {
-          const [settings, providers, tiers, models, rates, runs] = await Promise.all([
-            supabase.from("platform_settings").select("ai_markup_multiplier").eq("id", true).single(),
+          const [settings, providers, tiers, models, rates, runs, platformSpend] = await Promise.all([
+            supabase
+              .from("platform_settings")
+              .select("ai_markup_multiplier, ai_monthly_cap_amount, ai_cap_currency")
+              .eq("id", true)
+              .single(),
             // The status function answers "is a key actually stored?" by
             // query, checking the vault rather than trusting a name column.
             supabase.rpc("platform_ai_credential_status"),
