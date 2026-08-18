@@ -323,15 +323,15 @@ export async function enabledFlags(
     supabase.from("feature_flags").select("key, default_enabled"),
     supabase
       .from("organization_feature_overrides")
-      .select("feature_key, enabled")
+      .select("flag_key, enabled")
       .eq("organization_id", organizationId),
   ]);
   const state = new Map<string, boolean>();
   for (const f of (flags ?? []) as Array<{ key: string; default_enabled: boolean }>) {
     state.set(f.key, f.default_enabled);
   }
-  for (const o of (overrides ?? []) as Array<{ feature_key: string; enabled: boolean }>) {
-    state.set(o.feature_key, o.enabled);
+  for (const o of (overrides ?? []) as Array<{ flag_key: string; enabled: boolean }>) {
+    state.set(o.flag_key, o.enabled);
   }
   return new Set(Array.from(state.entries()).filter(([, on]) => on).map(([k]) => k));
 }
