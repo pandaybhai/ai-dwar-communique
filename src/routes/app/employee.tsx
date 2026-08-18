@@ -54,6 +54,8 @@ function EmployeePage() {
   const [overview, setOverview] = useState<EmployeeOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("knows");
+  const [gate, setGate] = useState<{ mode: string; message: string } | null>(null);
+  const [compareRequest, setCompareRequest] = useState(0);
 
   const load = useCallback(async () => {
     if (!organizationId) return;
