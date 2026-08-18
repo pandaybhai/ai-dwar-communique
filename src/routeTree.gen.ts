@@ -20,6 +20,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminActivityRouteImport } from './routes/admin/activity'
+import { Route as AdminAiRouteImport } from './routes/admin/ai'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
@@ -36,6 +37,7 @@ import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as RTokenRouteImport } from './routes/r.$token'
+import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
 import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
@@ -130,6 +132,11 @@ const AdminActivityRoute = AdminActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminAiRoute = AdminAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminFlagsRoute = AdminFlagsRouteImport.update({
   id: '/flags',
   path: '/flags',
@@ -208,6 +215,11 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
 const RTokenRoute = RTokenRouteImport.update({
   id: '/r/$token',
   path: '/r/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminAiRoute = ApiAdminAiRouteImport.update({
+  id: '/api/admin/ai',
+  path: '/api/admin/ai',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAiEmployeeRoute = ApiAiEmployeeRouteImport.update({
@@ -427,6 +439,7 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
+  '/admin/ai': typeof AdminAiRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -444,6 +457,7 @@ export interface FileRoutesByFullPath {
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -492,6 +506,7 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
+  '/admin/ai': typeof AdminAiRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -509,6 +524,7 @@ export interface FileRoutesByTo {
   '/r/$token': typeof RTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -560,6 +576,7 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
+  '/admin/ai': typeof AdminAiRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -577,6 +594,7 @@ export interface FileRoutesById {
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -629,6 +647,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/terms'
     | '/admin/activity'
+    | '/admin/ai'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -646,6 +665,7 @@ export interface FileRouteTypes {
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/api/admin/ai'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -694,6 +714,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/terms'
     | '/admin/activity'
+    | '/admin/ai'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -711,6 +732,7 @@ export interface FileRouteTypes {
     | '/r/$token'
     | '/admin'
     | '/app'
+    | '/api/admin/ai'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -761,6 +783,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/terms'
     | '/admin/activity'
+    | '/admin/ai'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -778,6 +801,7 @@ export interface FileRouteTypes {
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/api/admin/ai'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -832,6 +856,7 @@ export interface RootRouteChildren {
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
   RTokenRoute: typeof RTokenRoute
+  ApiAdminAiRoute: typeof ApiAdminAiRoute
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
   ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
@@ -947,6 +972,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminActivityRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/ai': {
+      id: '/admin/ai'
+      path: '/ai'
+      fullPath: '/admin/ai'
+      preLoaderRoute: typeof AdminAiRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/flags': {
       id: '/admin/flags'
       path: '/flags'
@@ -1057,6 +1089,13 @@ declare module '@tanstack/react-router' {
       path: '/r/$token'
       fullPath: '/r/$token'
       preLoaderRoute: typeof RTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/ai': {
+      id: '/api/admin/ai'
+      path: '/api/admin/ai'
+      fullPath: '/api/admin/ai'
+      preLoaderRoute: typeof ApiAdminAiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/employee': {
@@ -1330,6 +1369,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteRouteChildren {
   AdminActivityRoute: typeof AdminActivityRoute
+  AdminAiRoute: typeof AdminAiRoute
   AdminFlagsRoute: typeof AdminFlagsRoute
   AdminOrganizationsRoute: typeof AdminOrganizationsRoute
   AdminUsersRoute: typeof AdminUsersRoute
@@ -1338,6 +1378,7 @@ interface AdminRouteRouteChildren {
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminActivityRoute: AdminActivityRoute,
+  AdminAiRoute: AdminAiRoute,
   AdminFlagsRoute: AdminFlagsRoute,
   AdminOrganizationsRoute: AdminOrganizationsRoute,
   AdminUsersRoute: AdminUsersRoute,
@@ -1398,6 +1439,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,
   RTokenRoute: RTokenRoute,
+  ApiAdminAiRoute: ApiAdminAiRoute,
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
   ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,
