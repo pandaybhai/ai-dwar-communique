@@ -347,10 +347,22 @@ function AnswerCard({
           "It had nothing to say."}
       </p>
       {blocked && run.status === "refused" ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Switch your AI employee on at the top of this page, then try again.
-        </p>
+        onEnableAi ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button size="sm" disabled={enabling} onClick={() => void onEnableAi()}>
+              {enabling ? "Turning on…" : "Turn AI on and retry"}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              This switches AI on for this workspace and asks again.
+            </span>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Ask an owner or admin to switch the AI employee on for this workspace.
+          </p>
+        )
       ) : null}
+
       <Sources sources={run.sources} />
     </div>
   );
