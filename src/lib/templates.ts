@@ -56,6 +56,18 @@ export function extractVariables(text: string): number[] {
   return Array.from(found).sort((a, b) => a - b);
 }
 
+/**
+ * Meta rejects template text whose first or last thing is a variable, because
+ * it can't tell where the sentence begins or ends.
+ */
+export function startsOrEndsWithVariable(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return /^\{\{\s*\d+\s*\}\}/.test(t) || /\{\{\s*\d+\s*\}\}$/.test(t);
+}
+
+
+
 export function componentOf(
   components: TemplateComponent[] | null | undefined,
   type: string,
