@@ -165,7 +165,7 @@ export const Route = createFileRoute("/api/ai/employee")({
             const { data } = await supabase
               .from("ai_runs")
               .select(
-                "id, task, status, escalation_signal, cost_amount, cost_source, latency_ms, input_summary, output, sources, created_at",
+                "id, task, tier, status, escalation_signal, billed_amount, cost_source, latency_ms, input_summary, output, sources, created_at",
               )
               .eq("organization_id", org)
               .gte("created_at", since)
