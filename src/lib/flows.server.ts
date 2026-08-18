@@ -726,10 +726,104 @@ export async function stepGateAllows(
   return { allowed: true };
 }
 
+/** One product shown on a carousel card in a flow message. */
+export type FlowCarouselCard = {
+  mediaUrl?: string | null;
+  values?: Record<string, string>;
+  linkTarget?: string | null;
+};
+
+/**
+ * The products to show on a carousel template's cards for this trigger.
+ *
+ * A cart reminder that shows the actual items — picture, name, price, and a
+ * button straight to each one — earns far more than a line of text with a
+ * link. Anything we can't picture is left out rather than shown blank, and if
+ * nothing has a picture the caller falls back to the plain message.
+ */
+export async function flowCarouselCards(
+  supabase: SupabaseClient,
+  organizationId: string,
+  triggerType: string,
+  triggerId: string | null,
+  maxCards: number,
+  fallbackLink: string | null,
+): Promise<FlowCarouselCard[]> {
+  if (!triggerId || maxCards < 1) return [];
+
+  /** Raw items: name, price and the store's own product id, per trigger. */
+  let items: Array<{ title: string; price: string | null; externalProductId: string | null; imageUrl: string | null }> = [];
+
+  if (triggerType === "abandoned_checkout") {
+    const { data } = await supabase
+      .from("abandoned_checkouts")
+      .select("raw, currency")
+      .eq("id", triggerId)
+      .maybeSingle();
+    const raw = (data?.["raw"] ?? {}) as Record<string, unknown>;
+    const currency = (data?.["currency"] as string | null) ?? "";
+    const lines = Array.isArray(raw["line_items"]) ? (raw["line_items"] as Array<Record<string, unknown>>) : [];
+    items = lines.map((line) => ({
+      title: String(line["title"] ?? "").trim(),
+      price: line["price"] != null ? `${currency} ${line["price"]}`.trim() : null,
+      externalProductId: line["product_id"] != null ? String(line["product_id"]) : null,
+      imageUrl: null,
+    }));
+  } else {
+    const { data } = await supabase
+      .from("order_items")
+      .select("title, price, external_product_id, image_url")
+      .eq("order_id", triggerId)
+      .eq("organization_id", organizationId)
+      .limit(maxCards * 2);
+    items = ((data as Array<Record<string, unknown>>) ?? []).map((row) => ({
+      title: String(row["title"] ?? "").trim(),
+      price: row["price"] != null ? String(row["price"]) : null,
+      externalProductId: row["external_product_id"] != null ? String(row["external_product_id"]) : null,
+      imageUrl: (row["image_url"] as string | null) ?? null,
+    }));
+  }
+
+  if (items.length === 0) return [];
+
+  // Fill in the picture and product page from the synced catalogue.
+  const ids = items.map((i) => i.externalProductId).filter((id): id is string => Boolean(id));
+  const catalogue = new Map<string, { image_url: string | null; product_url: string | null }>();
+  if (ids.length > 0) {
+    const { data } = await supabase
+      .from("products")
+      .select("external_id, image_url, product_url")
+      .eq("organization_id", organizationId)
+      .in("external_id", ids);
+    for (const row of ((data as Array<Record<string, unknown>>) ?? [])) {
+      catalogue.set(String(row["external_id"]), {
+        image_url: (row["image_url"] as string | null) ?? null,
+        product_url: (row["product_url"] as string | null) ?? null,
+      });
+    }
+  }
+
+  const cards: FlowCarouselCard[] = [];
+  for (const item of items) {
+    if (cards.length >= maxCards) break;
+    const match = item.externalProductId ? catalogue.get(item.externalProductId) : undefined;
+    const mediaUrl = item.imageUrl ?? match?.image_url ?? null;
+    // Meta requires a picture on every card, so an item we can't picture is skipped.
+    if (!mediaUrl || !item.title) continue;
+    cards.push({
+      mediaUrl,
+      values: { "1": item.title, "2": item.price ?? "" },
+      linkTarget: match?.product_url ?? fallbackLink,
+    });
+  }
+  return cards;
+}
+
 /**
  * Where a template's link button should take the customer for this trigger.
  * Returned raw — the sender shortens it and counts the click.
  */
+
 export async function flowLinkTarget(
   supabase: SupabaseClient,
   triggerType: string,
