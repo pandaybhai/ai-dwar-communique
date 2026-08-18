@@ -207,7 +207,7 @@ export async function playgroundAnswer(
   supabase: SupabaseClient,
   common: Common,
   question: string,
-  brain?: { provider: string; model_id: string } | null,
+  tier?: string | null,
   instructionsOverride?: string | null,
   comparisonId?: string | null,
 ): Promise<RunResult> {
@@ -222,7 +222,7 @@ export async function playgroundAnswer(
     actingRole: common.actingRole ?? null,
     input: question,
     system: [instructionsOverride?.trim() || brief, AGENT_RULES].filter(Boolean).join("\n"),
-    brain: brain ?? null,
+    tier: tier ?? null,
     comparisonId: comparisonId ?? null,
     useKnowledge: true,
     useTools: true,
