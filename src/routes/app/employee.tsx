@@ -249,8 +249,8 @@ function EmployeePage() {
             <TabsContent value="brains" className="space-y-6">
               <BrainPicker
                 organizationId={active.organization.id}
-                models={overview?.models ?? []}
-                taskModels={overview?.task_models ?? []}
+                tiers={overview?.tiers ?? []}
+                taskTiers={overview?.task_models ?? []}
                 settings={overview?.settings ?? null}
                 spendThisMonth={overview?.spend_this_month ?? 0}
                 canConfigure={canConfigure}
@@ -262,7 +262,7 @@ function EmployeePage() {
             <TabsContent value="try">
               <Playground
                 organizationId={active.organization.id}
-                models={overview?.models ?? []}
+                tiers={overview?.tiers ?? []}
                 currency={currency}
                 onRan={load}
                 {...(canConfigure ? { onEnableAi: enableAi } : {})}
