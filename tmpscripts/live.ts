@@ -1,8 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { loadSenderContext, sendCampaignTemplate } from "@/lib/campaigns.server";
 
-const url = process.env["AIDWAR_MUMBAI_URL"]!;
-const key = process.env["AIDWAR_MUMBAI_SERVICE_ROLE_KEY"]!;
+const url = process.env["AIDWAR_SUPABASE_URL"]!;
+const key = process.env["AIDWAR_SUPABASE_SERVICE_ROLE_KEY"]!;
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 const ORG = "acdb837c-92e9-4791-a13b-275856777f59";
 const ACCOUNT = "9973f1b2-5fbf-4f51-96fd-9a7aa49583a6";
