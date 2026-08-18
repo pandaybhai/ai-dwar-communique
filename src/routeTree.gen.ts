@@ -35,6 +35,7 @@ import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as RTokenRouteImport } from './routes/r.$token'
+import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
 import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
@@ -199,6 +200,11 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
 const RTokenRoute = RTokenRouteImport.update({
   id: '/r/$token',
   path: '/r/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiKnowledgeRoute = ApiAiKnowledgeRouteImport.update({
+  id: '/api/ai/knowledge',
+  path: '/api/ai/knowledge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAiToolsRoute = ApiAiToolsRouteImport.update({
@@ -418,6 +424,7 @@ export interface FileRoutesByFullPath {
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
@@ -479,6 +486,7 @@ export interface FileRoutesByTo {
   '/r/$token': typeof RTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
@@ -543,6 +551,7 @@ export interface FileRoutesById {
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
@@ -608,6 +617,7 @@ export interface FileRouteTypes {
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/api/ai/knowledge'
     | '/api/ai/tools'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
@@ -669,6 +679,7 @@ export interface FileRouteTypes {
     | '/r/$token'
     | '/admin'
     | '/app'
+    | '/api/ai/knowledge'
     | '/api/ai/tools'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
@@ -732,6 +743,7 @@ export interface FileRouteTypes {
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/api/ai/knowledge'
     | '/api/ai/tools'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
@@ -783,6 +795,7 @@ export interface RootRouteChildren {
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
   RTokenRoute: typeof RTokenRoute
+  ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
@@ -998,6 +1011,13 @@ declare module '@tanstack/react-router' {
       path: '/r/$token'
       fullPath: '/r/$token'
       preLoaderRoute: typeof RTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/knowledge': {
+      id: '/api/ai/knowledge'
+      path: '/api/ai/knowledge'
+      fullPath: '/api/ai/knowledge'
+      preLoaderRoute: typeof ApiAiKnowledgeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/tools': {
@@ -1316,6 +1336,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,
   RTokenRoute: RTokenRoute,
+  ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
