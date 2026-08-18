@@ -170,7 +170,7 @@ export function Playground({
         through two setups and see which one you'd rather have answering.
       </p>
 
-      <Tabs defaultValue="ask" className="mt-5">
+      <Tabs value={tab} onValueChange={setTab} className="mt-5">
         <TabsList>
           <TabsTrigger value="ask">Ask it something</TabsTrigger>
           <TabsTrigger value="compare">Compare two setups</TabsTrigger>
