@@ -14,7 +14,8 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           graphErrorMessage,
           logServerActivity,
         } = await import("@/lib/whatsapp-api.server");
-        const { slugifyTemplateName, extractVariables } = await import("@/lib/templates");
+        const { slugifyTemplateName, extractVariables, validateDraft, draftToComponents, annotateStoredComponents, emptyDraft } =
+          await import("@/lib/templates");
 
         let payload: AnyRecord;
         try {
@@ -124,37 +125,41 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           );
           if (!connection) return jsonError(connectionError ?? "No connected number.", 400);
 
-          const name = slugifyTemplateName(String(payload["name"] ?? ""));
-          const language = String(payload["language"] ?? "en_US");
-          const category = String(payload["category"] ?? "").toUpperCase();
-          const body = String(payload["body"] ?? "").trim();
-          const footer = String(payload["footer"] ?? "").trim();
-          const examples = (payload["examples"] as string[] | undefined) ?? [];
+          // The builder sends the whole draft. Older callers send just a body
+          // and a footer, so both shapes are accepted and validated the same way.
+          const incoming = (payload["draft"] as AnyRecord | undefined) ?? null;
+          const draft = incoming
+            ? { ...emptyDraft(), ...(incoming as unknown as ReturnType<typeof emptyDraft>) }
+            : {
+                ...emptyDraft(),
+                name: String(payload["name"] ?? ""),
+                language: String(payload["language"] ?? "en_US"),
+                category: String(payload["category"] ?? "").toUpperCase(),
+                body: String(payload["body"] ?? "").trim(),
+                footer: String(payload["footer"] ?? "").trim(),
+                bodyExamples: Object.fromEntries(
+                  extractVariables(String(payload["body"] ?? "")).map((v, i) => [
+                    v,
+                    ((payload["examples"] as string[] | undefined) ?? [])[i] ?? "",
+                  ]),
+                ),
+              };
 
-          if (!name) return jsonError("A template name is required.");
-          if (!["MARKETING", "UTILITY", "AUTHENTICATION"].includes(category)) {
+          draft.name = slugifyTemplateName(draft.name);
+          draft.category = String(draft.category).toUpperCase();
+          if (!["MARKETING", "UTILITY", "AUTHENTICATION"].includes(draft.category)) {
             return jsonError("Choose a valid category.");
           }
-          if (!body) return jsonError("Template body text is required.");
 
-          const variables = extractVariables(body);
-          if (variables.some((v, i) => v !== i + 1)) {
-            return jsonError("Variables must be numbered in order, starting at {{1}}.");
-          }
-          if (variables.length && examples.filter((e) => e && e.trim()).length !== variables.length) {
-            return jsonError("Give an example value for every variable — Meta requires them.");
-          }
+          // The same rules the builder enforces, applied again here — a request
+          // that skips the UI can't create something Meta will reject.
+          const problems = validateDraft(draft);
+          if (problems.length > 0) return jsonError(problems[0] as string);
 
-          const components: AnyRecord[] = [
-            {
-              type: "BODY",
-              text: body,
-              ...(variables.length
-                ? { example: { body_text: [examples.map((e) => e.trim())] } }
-                : {}),
-            },
-          ];
-          if (footer) components.push({ type: "FOOTER", text: footer });
+          const name = draft.name;
+          const language = draft.language;
+          const category = draft.category;
+          const components = draftToComponents(draft);
 
           const result = await graphFetch(
             `${connection.wabaId}/message_templates`,
@@ -184,7 +189,9 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
                 status: ["PENDING", "APPROVED", "REJECTED", "PAUSED"].includes(status)
                   ? status
                   : "PENDING",
-                components,
+                // Stored with the media URLs attached, so sends keep working
+                // after Meta's upload handles expire.
+                components: annotateStoredComponents(components, draft),
                 rejection_reason: null,
                 updated_at: nowIso,
               },
@@ -195,6 +202,20 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
 
           if (saveErr) {
             return jsonError("Submitted to review, but we couldn't save it locally. Try syncing.", 500);
+          }
+
+          // Tie the uploaded files to the template they belong to, so a deleted
+          // template takes its artwork with it.
+          const handles = [
+            draft.headerHandle,
+            ...draft.cards.map((c) => c.mediaHandle),
+          ].filter(Boolean);
+          if (saved?.id && handles.length > 0) {
+            await supabase
+              .from("template_media_assets")
+              .update({ message_template_id: saved.id })
+              .eq("organization_id", organizationId)
+              .in("meta_handle", handles);
           }
 
           const { emitEvent } = await import("@/lib/events.server");
@@ -209,6 +230,9 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
               language,
               category,
               waba_id: connection.wabaId,
+              header_format: draft.headerFormat,
+              button_count: draft.buttons.length,
+              card_count: draft.cards.length,
             },
           });
 
