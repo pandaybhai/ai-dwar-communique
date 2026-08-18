@@ -322,11 +322,10 @@ export const Route = createFileRoute("/api/ai/employee")({
             return Response.json({ ok: true });
           }
 
-          if (action === "set_brain") {
+          if (action === "set_tier") {
             const task = String(payload["task"] ?? "");
-            const provider = String(payload["provider"] ?? "");
-            const modelId = String(payload["model_id"] ?? "");
-            if (!task || !provider || !modelId) return jsonError("Pick a job and a brain.");
+            const tier = String(payload["tier"] ?? "");
+            if (!task || !tier) return jsonError("Pick a job and how careful I should be.");
             const { data: existing } = await supabase
               .from("ai_task_models")
               .select("id")
@@ -336,18 +335,13 @@ export const Route = createFileRoute("/api/ai/employee")({
               .maybeSingle();
             const row = existing as { id: string } | null;
             const { error } = row
-              ? await supabase
-                  .from("ai_task_models")
-                  .update({ provider, model_id: modelId })
-                  .eq("id", row.id)
-              : await supabase
-                  .from("ai_task_models")
-                  .insert({ organization_id: org, task, provider, model_id: modelId });
+              ? await supabase.from("ai_task_models").update({ tier }).eq("id", row.id)
+              : await supabase.from("ai_task_models").insert({ organization_id: org, task, tier });
             if (error) return jsonError(error.message.replace(/^.*ERROR:\s*/, ""), 400);
             await supabase
               .from("organization_ai_settings")
               .upsert({ organization_id: org, brain_choice: "manual" }, { onConflict: "organization_id" });
-            await logServerActivity(supabase, org, auth.userId, "ai_brain_changed", { task });
+            await logServerActivity(supabase, org, auth.userId, "ai_tier_changed", { task, tier });
             return Response.json({ ok: true });
           }
 
