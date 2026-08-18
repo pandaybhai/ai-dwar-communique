@@ -193,7 +193,7 @@ export const Route = createFileRoute("/api/ai/employee")({
             const since = new Date(Date.now() - 7 * 864e5).toISOString();
             const { data } = await supabase
               .from("ai_runs")
-              .select("status, escalation_signal, cost_amount, cost_source, input_summary, created_at")
+              .select("status, escalation_signal, billed_amount, cost_source, input_summary, created_at")
               .eq("organization_id", org)
               .gte("created_at", since)
               .order("created_at", { ascending: false })
@@ -201,7 +201,7 @@ export const Route = createFileRoute("/api/ai/employee")({
             const rows = (data ?? []) as Array<{
               status: string;
               escalation_signal: string | null;
-              cost_amount: number | null;
+              billed_amount: number | null;
               cost_source: string | null;
               input_summary: string | null;
               created_at: string;
@@ -209,8 +209,9 @@ export const Route = createFileRoute("/api/ai/employee")({
 
             const answered = rows.filter((r) => r.status === "ok").length;
             const passed = rows.filter((r) => r.status === "escalated").length;
+            // What the merchant pays, never what the provider charged us.
             const cost = rows.reduce(
-              (sum, r) => sum + (r.cost_source === "unknown" ? 0 : Number(r.cost_amount ?? 0)),
+              (sum, r) => sum + (r.cost_source === "unknown" ? 0 : Number(r.billed_amount ?? 0)),
               0,
             );
 
