@@ -61,6 +61,15 @@ export const Route = createFileRoute("/api/admin/ai")({
           const billed = runRows.reduce((sum, row) => sum + Number(row.billed_amount ?? 0), 0);
           return Response.json({
             markup: Number(settings.data?.ai_markup_multiplier ?? 3),
+            // The ceiling on total billed spend across every organisation.
+            platform_cap: {
+              amount: Number(
+                (settings.data as { ai_monthly_cap_amount?: number } | null)?.ai_monthly_cap_amount ?? 0,
+              ),
+              currency:
+                (settings.data as { ai_cap_currency?: string } | null)?.ai_cap_currency ?? "INR",
+              spent: Number((platformSpend.data as number | null) ?? 0),
+            },
             providers: ((providers.data ?? []) as Array<{
               provider: string;
               is_active: boolean;
