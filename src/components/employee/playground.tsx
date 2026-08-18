@@ -325,7 +325,9 @@ function AnswerCard({
       ? "I didn't answer this"
       : run.status === "capped"
         ? "I've hit this month's limit"
-        : "Something went wrong";
+        : run.status === "error"
+          ? "This setup isn't connected"
+          : "Something went wrong";
   return (
     <div
       className={`rounded-xl border p-4 ${blocked ? "border-destructive/40 bg-destructive/5" : "border-border/70 bg-muted/20"}`}
@@ -340,14 +342,23 @@ function AnswerCard({
         </Badge>
         <span className="text-xs text-muted-foreground">
           {run.brainName} · {Math.round(run.latencyMs / 100) / 10}s ·{" "}
-          {run.costKnown ? moneyText(run.billedAmount, currency) : "cost unknown"}
+          {run.status === "error" && !run.output
+            ? "nothing charged"
+            : run.costKnown
+              ? moneyText(run.billedAmount, currency)
+              : "cost unknown"}
         </span>
       </div>
-      <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {run.output ||
-          run.error ||
-          "I couldn't answer this one."}
+      <p
+        className={`mt-3 whitespace-pre-wrap text-sm leading-relaxed ${run.status === "error" && !run.output ? "text-destructive" : "text-foreground"}`}
+      >
+        {run.output || run.error || "I couldn't answer this one."}
       </p>
+      {run.status === "error" && !run.output ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Nothing was charged for this — I never reached the AI.
+        </p>
+      ) : null}
       {blocked && run.status === "refused" ? (
         onEnableAi ? (
           <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -430,6 +441,12 @@ function SummaryCard({
           <dt>Passed to your team</dt>
           <dd className="font-medium text-foreground">{summary.passed}</dd>
         </div>
+        {summary.didNotRun > 0 ? (
+          <div className="flex justify-between">
+            <dt>Didn&rsquo;t run (setup not connected)</dt>
+            <dd className="font-medium text-destructive">{summary.didNotRun}</dd>
+          </div>
+        ) : null}
         <div className="flex justify-between">
           <dt>Cost for this run</dt>
           <dd className="font-medium text-foreground">

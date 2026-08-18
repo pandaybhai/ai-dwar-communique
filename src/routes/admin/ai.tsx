@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Bot, KeyRound, Loader2, Save, WalletCards } from "lucide-react";
+import { AlertTriangle, Bot, Gauge, KeyRound, Loader2, Save, WalletCards } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +41,7 @@ type Model = {
 };
 type Overview = {
   markup: number;
+  platform_cap: { amount: number; currency: string; spent: number };
   providers: Provider[];
   tiers: Tier[];
   models: Model[];
@@ -56,6 +57,7 @@ function AdminAi() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [markup, setMarkup] = useState("3");
+  const [platformCap, setPlatformCap] = useState("0");
   const [keys, setKeys] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
@@ -67,6 +69,7 @@ function AdminAi() {
     }
     setData(result.data);
     setMarkup(String(result.data.markup));
+    setPlatformCap(String(result.data.platform_cap?.amount ?? 0));
   }, []);
 
   useEffect(() => void load(), [load]);
@@ -132,6 +135,14 @@ function AdminAi() {
         </div>
       </section>
 
+      <PlatformCapCard
+        cap={data.platform_cap ?? { amount: 0, currency: "INR", spent: 0 }}
+        value={platformCap}
+        onChange={setPlatformCap}
+        busy={busy === "platform_cap"}
+        onSave={() => act("set_platform_cap", { amount: Number(platformCap) }, "platform_cap")}
+      />
+
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold">Platform providers</h2>
@@ -196,5 +207,84 @@ function AdminAi() {
         </div>
       </section>
     </div>
+  );
+}
+/**
+ * Per-merchant caps bound each workspace; total exposure is caps x merchants.
+ * This is the ceiling on all of it, with a warning before it bites.
+ */
+function PlatformCapCard({
+  cap,
+  value,
+  onChange,
+  busy,
+  onSave,
+}: {
+  cap: { amount: number; currency: string; spent: number };
+  value: string;
+  onChange: (next: string) => void;
+  busy: boolean;
+  onSave: () => void;
+}) {
+  const set = cap.amount > 0;
+  const pct = set ? Math.min(100, Math.round((cap.spent / cap.amount) * 100)) : 0;
+  const over = set && cap.spent >= cap.amount;
+  const warn = set && !over && pct >= 80;
+
+  return (
+    <section className="rounded-xl border border-border/70 bg-card p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <Gauge className="mt-0.5 h-5 w-5 text-primary" />
+        <div className="flex-1">
+          <h2 className="font-semibold">Platform monthly ceiling</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The most this platform will bill across every organisation in a calendar month. Set zero for no ceiling. When it is reached, runs stop everywhere with the same plain-words message merchants already see.
+          </p>
+
+          <div className="mt-4 space-y-2">
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="font-medium text-foreground">
+                {money(cap.spent)} used{set ? ` of ${money(cap.amount)}` : ""}
+              </span>
+              {set ? <span className="text-muted-foreground">{pct}%</span> : <span className="text-muted-foreground">No ceiling set</span>}
+            </div>
+            {set ? (
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full transition-all ${over ? "bg-destructive" : warn ? "bg-amber-500" : "bg-primary"}`}
+                  style={{ width: `${Math.max(pct, 2)}%` }}
+                />
+              </div>
+            ) : null}
+            {over ? (
+              <p className="flex items-center gap-2 text-sm font-medium text-destructive">
+                <AlertTriangle className="h-4 w-4" />The ceiling is reached — AI runs are stopped platform-wide.
+              </p>
+            ) : warn ? (
+              <p className="flex items-center gap-2 text-sm font-medium text-amber-600">
+                <AlertTriangle className="h-4 w-4" />Past 80% of the ceiling. Raise it or spend stops for every merchant.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="mt-4 flex max-w-sm items-end gap-3">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="platform-cap">Monthly ceiling ({cap.currency})</Label>
+              <Input
+                id="platform-cap"
+                type="number"
+                min="0"
+                step="100"
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+              />
+            </div>
+            <Button disabled={busy} onClick={onSave}>
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }

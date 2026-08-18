@@ -25,8 +25,12 @@ export const Route = createFileRoute("/api/admin/ai")({
         const action = String(payload["action"] ?? "overview");
 
         if (action === "overview") {
-          const [settings, providers, tiers, models, rates, runs] = await Promise.all([
-            supabase.from("platform_settings").select("ai_markup_multiplier").eq("id", true).single(),
+          const [settings, providers, tiers, models, rates, runs, platformSpend] = await Promise.all([
+            supabase
+              .from("platform_settings")
+              .select("ai_markup_multiplier, ai_monthly_cap_amount, ai_cap_currency")
+              .eq("id", true)
+              .single(),
             // The status function answers "is a key actually stored?" by
             // query, checking the vault rather than trusting a name column.
             supabase.rpc("platform_ai_credential_status"),
@@ -46,6 +50,7 @@ export const Route = createFileRoute("/api/admin/ai")({
               .from("ai_runs")
               .select("cost_amount, billed_amount, cost_source")
               .gte("created_at", new Date(Date.now() - 30 * 864e5).toISOString()),
+            supabase.rpc("platform_ai_month_spend"),
           ]);
           const runRows = (runs.data ?? []) as Array<{
             cost_amount: number | null;
@@ -56,6 +61,15 @@ export const Route = createFileRoute("/api/admin/ai")({
           const billed = runRows.reduce((sum, row) => sum + Number(row.billed_amount ?? 0), 0);
           return Response.json({
             markup: Number(settings.data?.ai_markup_multiplier ?? 3),
+            // The ceiling on total billed spend across every organisation.
+            platform_cap: {
+              amount: Number(
+                (settings.data as { ai_monthly_cap_amount?: number } | null)?.ai_monthly_cap_amount ?? 0,
+              ),
+              currency:
+                (settings.data as { ai_cap_currency?: string } | null)?.ai_cap_currency ?? "INR",
+              spent: Number((platformSpend.data as number | null) ?? 0),
+            },
             providers: ((providers.data ?? []) as Array<{
               provider: string;
               is_active: boolean;
@@ -87,6 +101,19 @@ export const Route = createFileRoute("/api/admin/ai")({
             .update({ ai_markup_multiplier: multiplier, updated_at: new Date().toISOString() })
             .eq("id", true);
           if (error) return jsonError("The markup could not be saved.", 500);
+          return Response.json({ ok: true });
+        }
+
+        if (action === "set_platform_cap") {
+          const amount = Number(payload["amount"]);
+          if (!Number.isFinite(amount) || amount < 0) {
+            return jsonError("Enter a monthly ceiling of zero or more.");
+          }
+          const { error } = await supabase
+            .from("platform_settings")
+            .update({ ai_monthly_cap_amount: amount, updated_at: new Date().toISOString() })
+            .eq("id", true);
+          if (error) return jsonError("The platform ceiling could not be saved.", 500);
           return Response.json({ ok: true });
         }
 
