@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TierInternalBadge } from "@/components/employee/tier-internal-badge";
 import {
   employeeApi,
   moneyText,
@@ -19,6 +20,7 @@ import {
   type AiTier,
   type EmployeeSettings,
   type TaskTier,
+  type TierInternal,
 } from "@/lib/employee-client";
 
 const TASKS = ["agent_reply", "suggest_reply", "summarise", "auto_tag"] as const;
@@ -27,6 +29,7 @@ const TASKS = ["agent_reply", "suggest_reply", "summarise", "auto_tag"] as const
 export function BrainPicker({
   organizationId,
   tiers,
+  internals,
   taskTiers,
   settings,
   spendThisMonth,
@@ -35,6 +38,7 @@ export function BrainPicker({
 }: {
   organizationId: string;
   tiers: AiTier[];
+  internals?: TierInternal[] | null;
   taskTiers: TaskTier[];
   settings: EmployeeSettings | null;
   spendThisMonth: number;
@@ -121,7 +125,10 @@ export function BrainPicker({
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           {tiers.map((t) => (
             <div key={t.key} className="rounded-xl border border-border/70 bg-muted/20 p-4">
-              <p className="text-sm font-medium text-foreground">{t.display_name}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-medium text-foreground">{t.display_name}</p>
+                <TierInternalBadge tier={t.key} internals={internals} />
+              </div>
               <p className="mt-1 text-xs text-muted-foreground">{t.plain_description}</p>
               <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
                 {t.speed_text ? <li>{t.speed_text}</li> : null}
@@ -142,7 +149,12 @@ export function BrainPicker({
               className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 md:grid-cols-[1fr_18rem] md:items-center"
             >
               <div>
-                <p className="text-sm font-medium text-foreground">{label?.title ?? task}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-foreground">{label?.title ?? task}</p>
+                  {chosen(task) !== "recommended" ? (
+                    <TierInternalBadge tier={chosen(task)} internals={internals} />
+                  ) : null}
+                </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">{label?.blurb}</p>
               </div>
               <Select
