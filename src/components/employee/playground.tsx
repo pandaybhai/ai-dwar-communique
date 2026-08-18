@@ -325,7 +325,9 @@ function AnswerCard({
       ? "I didn't answer this"
       : run.status === "capped"
         ? "I've hit this month's limit"
-        : "Something went wrong";
+        : run.status === "error"
+          ? "This setup isn't connected"
+          : "Something went wrong";
   return (
     <div
       className={`rounded-xl border p-4 ${blocked ? "border-destructive/40 bg-destructive/5" : "border-border/70 bg-muted/20"}`}
