@@ -67,7 +67,8 @@ Where cost or certainty is unavailable, the screen says so rather than estimatin
 ## Technical notes
 
 - Migrations applied through `AIDWAR_MUMBAI_DB_URL` with psql and verified by querying the external project; every new public table gets GRANTs, RLS and `has_permission`-based policies.
-- Feature registry: `ai` gains `nav_path: /app/employee`, the new permissions `ai.view` / `ai.manage` alongside existing `ai.use`, the new AI tool declarations, activity actions, analytics event types, usage meters and its `data_tables`. `ai_features` default flipped to off and set off in the database.
+- Feature registry: `ai` gains `nav_path: /app/employee`, the new AI tool declarations, activity actions, analytics event types, usage meters and its `data_tables`. `ai_features` default flipped to off and set off in the database.
+- Permissions stay at the two keys that already exist — no new keys. `ai.use` (owner, admin, marketer, agent) covers inbox suggestions, summaries, auto-tag, the playground and viewing Their work. `ai.configure` (owner, admin) covers providers and keys, the spend cap, knowledge sources, instructions and switching the mode between Off / Draft only / Replying.
 - Server-only files: connectors, embedding, retrieval, provider resolution and Vault reads live behind `.server.ts` / internal routes; keys never enter the client bundle.
 - Website crawl, embedding refresh and weekly re-crawl run as cron-guarded internal routes following the existing `x-cron-secret` worker pattern.
 - Tool calls remain logged to `activity_log` exactly as today; `ai_tool_calls` links to those rows rather than duplicating them.
