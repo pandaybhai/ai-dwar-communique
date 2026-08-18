@@ -94,7 +94,7 @@ export const Route = createFileRoute("/api/ai/employee")({
                 .order("created_at", { ascending: false }),
               supabase
                 .from("ai_runs")
-                .select("status, escalation_signal, task, cost_amount, cost_source, created_at")
+                .select("status, escalation_signal, task, billed_amount, cost_source, created_at")
                 .eq("organization_id", org)
                 .gte("created_at", new Date(Date.now() - 7 * 864e5).toISOString()),
               supabase.rpc("ai_month_spend", { p_org: org }),
