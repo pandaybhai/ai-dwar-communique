@@ -167,6 +167,8 @@ export type CompareSide = {
 export type CompareSummary = {
   answered: number;
   passed: number;
+  /** Runs that never reached the AI — a broken setup, not a weak answer. */
+  didNotRun: number;
   totalBilled: number | null;
   costKnown: boolean;
   averageMs: number;
