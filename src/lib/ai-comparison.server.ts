@@ -53,17 +53,17 @@ export async function recentCustomerQuestions(
 ): Promise<string[]> {
   const { data } = await supabase
     .from("messages")
-    .select("text, created_at")
+    .select("body, created_at")
     .eq("organization_id", organizationId)
     .eq("direction", "inbound")
-    .not("text", "is", null)
+    .not("body", "is", null)
     .order("created_at", { ascending: false })
     .limit(limit * 4);
 
   const seen = new Set<string>();
   const questions: string[] = [];
-  for (const row of (data ?? []) as Array<{ text: string | null }>) {
-    const text = (row.text ?? "").trim();
+  for (const row of (data ?? []) as Array<{ body: string | null }>) {
+    const text = (row.body ?? "").trim();
     if (text.length < 8 || text.length > 300) continue;
     const key = text.toLowerCase();
     if (seen.has(key)) continue;

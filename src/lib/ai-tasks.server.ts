@@ -27,18 +27,18 @@ export async function conversationTurns(
 
   const { data: rows } = await supabase
     .from("messages")
-    .select("direction, text, created_at")
+    .select("direction, body, created_at")
     .eq("organization_id", organizationId)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  const turns = ((rows ?? []) as Array<{ direction: string; text: string | null }>)
-    .filter((m) => (m.text ?? "").trim().length > 0)
+  const turns = ((rows ?? []) as Array<{ direction: string; body: string | null }>)
+    .filter((m) => (m.body ?? "").trim().length > 0)
     .reverse()
     .map<Turn>((m) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
-      content: String(m.text),
+      content: String(m.body),
     }));
 
   return { turns, contactId: c?.contact_id ?? null, contactName: c?.contacts?.name ?? null };
