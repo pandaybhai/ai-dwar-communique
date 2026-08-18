@@ -57,6 +57,7 @@ function AdminAi() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [markup, setMarkup] = useState("3");
+  const [platformCap, setPlatformCap] = useState("0");
   const [keys, setKeys] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
