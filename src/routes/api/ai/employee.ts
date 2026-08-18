@@ -300,7 +300,10 @@ export const Route = createFileRoute("/api/ai/employee")({
             if (typeof payload["ai_enabled"] === "boolean") update["ai_enabled"] = payload["ai_enabled"];
             if (payload["ai_monthly_cap_amount"] !== undefined) {
               const cap = Number(payload["ai_monthly_cap_amount"]);
-              if (!Number.isFinite(cap) || cap < 0) return jsonError("Enter a spending limit of zero or more.");
+              // Zero used to mean "no limit". A missing limit now stops runs,
+              // so the only sensible value is a real one.
+              if (!Number.isFinite(cap) || cap <= 0)
+                return jsonError("Enter a spending limit above zero — there's no unlimited option.");
               update["ai_monthly_cap_amount"] = cap;
             }
             if (payload["brain_choice"] === "recommended" || payload["brain_choice"] === "manual") {

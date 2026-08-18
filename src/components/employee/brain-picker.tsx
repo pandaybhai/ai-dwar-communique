@@ -86,7 +86,7 @@ export function BrainPicker({
     const { error } = await employeeApi({
       organization_id: organizationId,
       action: "save_settings",
-      ai_monthly_cap_amount: cap.trim() === "" ? 0 : Number(cap),
+      ai_monthly_cap_amount: Number(cap),
     });
     setSavingCap(false);
     if (error) toast.error(error);
@@ -176,8 +176,8 @@ export function BrainPicker({
         <div>
           <p className="text-sm font-medium text-foreground">Monthly spending limit</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            When it hits this, I stop spending and hand everything to your team. Zero means no
-            limit.
+            When it hits this, I stop spending and hand everything to your team. There's no
+            unlimited option — if this isn't set, I stop rather than spend without a limit.
           </p>
         </div>
         <div className="flex items-end gap-2">
@@ -191,7 +191,7 @@ export function BrainPicker({
               value={cap}
               disabled={!canConfigure}
               onChange={(e) => setCap(e.target.value)}
-              placeholder="0"
+              placeholder="500"
             />
           </div>
           <Button variant="outline" disabled={!canConfigure || savingCap} onClick={() => void saveCap()}>
