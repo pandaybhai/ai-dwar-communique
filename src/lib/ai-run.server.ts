@@ -455,15 +455,18 @@ export function gatewayErrorMessage(status: number, body: string): string {
   return body.slice(0, 200) || "The AI couldn't complete that.";
 }
 
-/** Chat-completions path — everything that is not an OpenAI model. */
+/** Chat-completions path — every vendor, gateway or direct. */
 async function callChatCompletions(
   base: string,
   key: string,
   model: string,
   messages: ChatMessage[],
   tools: BrokeredTool[],
+  direct = false,
 ): Promise<GatewayCall> {
   const body: Record<string, unknown> = { model, messages };
+  // Anthropic's compatible endpoint insists on an explicit output cap.
+  if (direct && base.includes("anthropic")) body["max_tokens"] = 4096;
   if (tools.length > 0) {
     body["tools"] = tools.map((t) => ({
       type: "function",
@@ -472,9 +475,10 @@ async function callChatCompletions(
   }
   const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
-    headers: gatewayHeaders(key),
+    headers: gatewayHeaders(key, direct),
     body: JSON.stringify(body),
   });
+
   if (!res.ok) {
     throw new Error(gatewayErrorMessage(res.status, await res.text()));
   }
