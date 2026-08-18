@@ -20,6 +20,25 @@ import { brokerTools, invokeTool, type BrokeredTool } from "@/lib/ai-tools.serve
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
+/**
+ * Where each vendor is called directly, when the platform holds that vendor's
+ * own key instead of routing through the resale gateway. Every entry speaks
+ * the OpenAI-compatible chat-completions shape, so one code path serves all.
+ * Adding a future vendor is one line here plus a row in `ai_models`.
+ */
+const DIRECT_ENDPOINTS: Record<string, string> = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+  google: "https://generativelanguage.googleapis.com/v1beta/openai",
+};
+
+/** The model name a vendor expects when called directly, without its prefix. */
+function wireModel(provider: string, modelId: string): string {
+  const prefix = `${provider}/`;
+  return modelId.startsWith(prefix) ? modelId.slice(prefix.length) : modelId;
+}
+
+
 export type AiTask = "suggest_reply" | "summarise" | "auto_tag" | "agent_reply" | "embedding";
 
 export type ResolvedBrain = {
@@ -308,7 +327,11 @@ async function resolveApiKey(
   supabase: SupabaseClient,
   organizationId: string,
   provider: string,
-): Promise<{ key: string | null; base: string }> {
+): Promise<{ key: string | null; base: string; direct: boolean }> {
+  const directBase = DIRECT_ENDPOINTS[provider];
+  const vendor = (key: string) =>
+    directBase ? { key, base: directBase, direct: true } : { key, base: GATEWAY, direct: false };
+
   // 1. Organisation override, if this workspace brought its own account.
   const { data: own } = await supabase
     .from("ai_providers")
@@ -321,7 +344,7 @@ async function resolveApiKey(
     supabase,
     (own as { vault_secret_name?: string } | null)?.vault_secret_name,
   );
-  if (ownKey) return { key: ownKey, base: GATEWAY };
+  if (ownKey) return vendor(ownKey);
 
   // 2. Platform credentials, held once for everyone.
   const { data: platform } = await supabase
@@ -332,15 +355,16 @@ async function resolveApiKey(
   const row = platform as { vault_secret_name?: string; is_active?: boolean } | null;
   if (row?.is_active !== false) {
     const platformKey = await readVaultSecret(supabase, row?.vault_secret_name);
-    if (platformKey) return { key: platformKey, base: GATEWAY };
+    if (platformKey) return vendor(platformKey);
   }
 
   // 3. The platform's own gateway credential.
   if (provider === "lovable") {
-    return { key: process.env["LOVABLE_API_KEY"] ?? null, base: GATEWAY };
+    return { key: process.env["LOVABLE_API_KEY"] ?? null, base: GATEWAY, direct: false };
   }
-  return { key: null, base: GATEWAY };
+  return { key: null, base: GATEWAY, direct: false };
 }
+
 
 // ----------------------------------------------------------------- pricing
 
@@ -399,13 +423,27 @@ type GatewayCall = {
   raw: unknown;
 };
 
-function gatewayHeaders(key: string): Record<string, string> {
+/**
+ * Auth headers. The resale gateway wants its own header; a vendor called
+ * directly with the platform's own key wants a bearer token.
+ */
+function gatewayHeaders(key: string, direct = false): Record<string, string> {
+  if (direct) {
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+      // Anthropic's OpenAI-compatible endpoint also accepts its native header.
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+    };
+  }
   return {
     "Content-Type": "application/json",
     "Lovable-API-Key": key,
     "X-Lovable-AIG-SDK": "fetch",
   };
 }
+
 
 /** Human words for a gateway failure. Only 429/5xx are worth retrying. */
 export function gatewayErrorMessage(status: number, body: string): string {
@@ -417,15 +455,18 @@ export function gatewayErrorMessage(status: number, body: string): string {
   return body.slice(0, 200) || "The AI couldn't complete that.";
 }
 
-/** Chat-completions path — everything that is not an OpenAI model. */
+/** Chat-completions path — every vendor, gateway or direct. */
 async function callChatCompletions(
   base: string,
   key: string,
   model: string,
   messages: ChatMessage[],
   tools: BrokeredTool[],
+  direct = false,
 ): Promise<GatewayCall> {
   const body: Record<string, unknown> = { model, messages };
+  // Anthropic's compatible endpoint insists on an explicit output cap.
+  if (direct && base.includes("anthropic")) body["max_tokens"] = 4096;
   if (tools.length > 0) {
     body["tools"] = tools.map((t) => ({
       type: "function",
@@ -434,9 +475,10 @@ async function callChatCompletions(
   }
   const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
-    headers: gatewayHeaders(key),
+    headers: gatewayHeaders(key, direct),
     body: JSON.stringify(body),
   });
+
   if (!res.ok) {
     throw new Error(gatewayErrorMessage(res.status, await res.text()));
   }
@@ -474,6 +516,7 @@ async function callResponses(
   model: string,
   input: unknown[],
   tools: BrokeredTool[],
+  direct = false,
 ): Promise<GatewayCall & { items: unknown[] }> {
   const body: Record<string, unknown> = { model, input, stream: true, store: false };
   if (tools.length > 0) {
@@ -487,7 +530,7 @@ async function callResponses(
   }
   const res = await fetch(`${base}/responses`, {
     method: "POST",
-    headers: gatewayHeaders(key),
+    headers: gatewayHeaders(key, direct),
     body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) {
@@ -765,7 +808,9 @@ export async function executeRun(
     });
   }
 
-  const { key } = await resolveApiKey(supabase, organizationId, brain.provider);
+  const { key, base: apiBase, direct } = await resolveApiKey(supabase, organizationId, brain.provider);
+  const wire = direct ? wireModel(brain.provider, brain.model_id) : brain.model_id;
+
   if (!key) {
     return finish({ ...base, status: "error", error: "No AI connection is set up." });
   }
@@ -829,7 +874,7 @@ export async function executeRun(
   let answer = "";
 
   try {
-    if (isOpenAiModel(brain.model_id)) {
+    if (isOpenAiModel(brain.model_id) || (direct && brain.provider === "openai")) {
       const items: unknown[] = [];
       if (system) items.push({ role: "system", content: [{ type: "input_text", text: system }] });
       for (const turn of history) {
@@ -845,7 +890,7 @@ export async function executeRun(
       items.push({ role: "user", content: [{ type: "input_text", text: input }] });
 
       for (let step = 0; step < maxSteps; step += 1) {
-        const call = await callResponses(GATEWAY, key, brain.model_id, items, tools);
+        const call = await callResponses(apiBase, key, wire, items, tools, direct);
         inputTokens += call.inputTokens ?? 0;
         outputTokens += call.outputTokens ?? 0;
         answer = call.text || answer;
@@ -877,7 +922,7 @@ export async function executeRun(
       messages.push({ role: "user", content: input });
 
       for (let step = 0; step < maxSteps; step += 1) {
-        const call = await callChatCompletions(GATEWAY, key, brain.model_id, messages, tools);
+        const call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
         inputTokens += call.inputTokens ?? 0;
         outputTokens += call.outputTokens ?? 0;
         answer = call.text || answer;
