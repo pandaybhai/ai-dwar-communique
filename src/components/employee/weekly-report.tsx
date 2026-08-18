@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck, Loader2, PencilLine } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -190,6 +189,3 @@ export function WeeklyReport({
     </section>
   );
 }
-
-/** Unused import guard: Input is kept out deliberately. */
-void Input;
