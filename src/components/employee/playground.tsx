@@ -127,6 +127,14 @@ export function Playground({
     }
   };
 
+  // Asked from the mode switch: open the batch test and start it.
+  useEffect(() => {
+    if (!compareRequest) return;
+    setTab("compare");
+    void compare();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareRequest]);
+
   const pickWinner = async (side: "A" | "B") => {
     const tier = parseTier(side === "A" ? tierA : tierB);
     if (!tier) {
