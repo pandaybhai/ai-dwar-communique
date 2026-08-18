@@ -405,6 +405,9 @@ export function validateDraft(draft: TemplateDraft): string[] {
       if (vars.some((v, n) => v !== n + 1)) {
         errors.push(`${label}: number its variables in order, starting at {{1}}.`);
       }
+      if (startsOrEndsWithVariable(card.body)) {
+        errors.push(`${label}: Meta won't accept text that starts or ends with a variable — add a word before or after it.`);
+      }
       if (vars.some((v) => !card.bodyExamples[v]?.trim())) {
         errors.push(`${label} needs an example value for every variable.`);
       }
