@@ -462,3 +462,43 @@ async function hashText(text: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+/**
+ * Read an uploaded file once and keep its text. The file itself is not stored:
+ * a merchant can see and delete every item it produced.
+ */
+export async function ingestUpload(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  fileName: string,
+  bytes: Uint8Array,
+  kind: "pdf" | "spreadsheet",
+): Promise<{ ok: boolean; itemCount: number; error?: string }> {
+  try {
+    const docs =
+      kind === "pdf"
+        ? await parsePdf(bytes, fileName)
+        : await parseSpreadsheet(bytes, fileName);
+    for (const doc of docs) {
+      await upsertDocument(supabase, organizationId, sourceId, doc);
+    }
+    await supabase
+      .from("knowledge_sources")
+      .update({
+        status: "ready",
+        item_count: docs.length,
+        last_synced_at: new Date().toISOString(),
+        last_error: null,
+      })
+      .eq("id", sourceId);
+    return { ok: true, itemCount: docs.length };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "We couldn't read that file.";
+    await supabase
+      .from("knowledge_sources")
+      .update({ status: "error", last_error: message.slice(0, 300) })
+      .eq("id", sourceId);
+    return { ok: false, itemCount: 0, error: message };
+  }
+}
