@@ -813,7 +813,11 @@ export async function executeRun(
   const wire = direct ? wireModel(brain.provider, brain.model_id) : brain.model_id;
 
   if (!key) {
-    return finish({ ...base, status: "error", error: "No AI connection is set up." });
+    return finish({
+      ...base,
+      status: "error",
+      error: `My "${brain.display_name}" setup has no working connection behind it, so I couldn't think at all. This isn't a bad answer — it's a broken connection. Ask the platform team to check the key for this setup.`,
+    });
   }
 
   // ------------------------------------------------------------- knowledge
