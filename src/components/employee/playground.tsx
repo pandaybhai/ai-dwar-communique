@@ -37,6 +37,7 @@ export function Playground({
   currency,
   onRan,
   onEnableAi,
+  compareRequest = 0,
 }: {
   organizationId: string;
   tiers: AiTier[];
@@ -44,7 +45,10 @@ export function Playground({
   currency: string;
   onRan: () => void | Promise<void>;
   onEnableAi?: () => Promise<boolean>;
+  /** Bumped from outside to jump straight into the batch test. */
+  compareRequest?: number;
 }) {
+  const [tab, setTab] = useState("ask");
   const [question, setQuestion] = useState("");
   const [running, setRunning] = useState(false);
   const [enabling, setEnabling] = useState(false);
