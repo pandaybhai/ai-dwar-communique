@@ -342,7 +342,11 @@ function AnswerCard({
         </Badge>
         <span className="text-xs text-muted-foreground">
           {run.brainName} · {Math.round(run.latencyMs / 100) / 10}s ·{" "}
-          {run.costKnown ? moneyText(run.billedAmount, currency) : "cost unknown"}
+          {run.status === "error" && !run.output
+            ? "nothing charged"
+            : run.costKnown
+              ? moneyText(run.billedAmount, currency)
+              : "cost unknown"}
         </span>
       </div>
       <p
