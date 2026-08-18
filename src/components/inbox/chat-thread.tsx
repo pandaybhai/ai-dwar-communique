@@ -290,7 +290,50 @@ export function ChatThread({
       </div>
 
       <div className="border-t border-border/70 bg-card px-4 py-3">
+        {canUseAi && organizationId ? (
+          <div className="mx-auto mb-3 max-w-3xl space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full"
+                disabled={assisting !== null || messages.length === 0}
+                onClick={() => void assist("suggest")}
+              >
+                {assisting === "suggest" ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="mr-2 h-3.5 w-3.5" />
+                )}
+                Draft a reply
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="rounded-full"
+                disabled={assisting !== null || messages.length === 0}
+                onClick={() => void assist("summary")}
+              >
+                {assisting === "summary" ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-3.5 w-3.5" />
+                )}
+                Catch me up
+              </Button>
+            </div>
+            {summary ? (
+              <div className="rounded-xl border border-border/70 bg-muted/30 px-3.5 py-2.5">
+                <p className="text-xs font-medium text-muted-foreground">The short version</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                  {summary}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {open ? (
+
           <div className="mx-auto flex max-w-3xl items-end gap-2">
             <Textarea
               value={draft}
