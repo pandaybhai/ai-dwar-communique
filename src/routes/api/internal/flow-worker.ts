@@ -269,6 +269,22 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             contact,
           );
 
+          // A carousel template shows the customer's actual items, one card
+          // each. If we can't picture any of them, the template still sends
+          // with whatever the template itself was built with.
+          const { templateVariableSpec } = await import("@/lib/templates");
+          const spec = templateVariableSpec((template.components ?? []) as never);
+          const cards = spec.cards.length
+            ? await flows.flowCarouselCards(
+                supabase,
+                orgId,
+                send.trigger_type,
+                send.trigger_id,
+                spec.cards.length,
+                linkTarget,
+              )
+            : [];
+
           const outcome = await sendCampaignTemplate(
             supabase,
             orgId,
@@ -287,7 +303,9 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               flowStepId: send.flow_step_id,
               scheduledSendId: send.id,
               linkTarget,
+              ...(cards.length ? { cards } : {}),
             },
+
 
           );
 
