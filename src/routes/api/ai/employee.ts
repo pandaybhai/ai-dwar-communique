@@ -169,7 +169,21 @@ export const Route = createFileRoute("/api/ai/employee")({
               .gte("created_at", since)
               .order("created_at", { ascending: false })
               .limit(500);
-            return Response.json({ runs: data ?? [] });
+            const runs = (data ?? []) as Array<Record<string, unknown>>;
+            // The tool trace: which tool ran, whether it worked, and why not.
+            const { data: traces } = await supabase
+              .from("ai_tool_calls")
+              .select("run_id, tool_name, ok, error, latency_ms")
+              .eq("organization_id", org)
+              .in("run_id", runs.map((r) => r["id"] as string).slice(0, 500));
+            const byRun = new Map<string, Array<Record<string, unknown>>>();
+            for (const t of (traces ?? []) as Array<Record<string, unknown>>) {
+              const key = String(t["run_id"]);
+              byRun.set(key, [...(byRun.get(key) ?? []), t]);
+            }
+            return Response.json({
+              runs: runs.map((r) => ({ ...r, tool_calls: byRun.get(String(r["id"])) ?? [] })),
+            });
           }
 
           if (action === "questions") {
