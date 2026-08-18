@@ -243,7 +243,9 @@ function EmployeePage() {
                 models={overview?.models ?? []}
                 currency={currency}
                 onRan={load}
+                {...(canConfigure ? { onEnableAi: enableAi } : {})}
               />
+
             </TabsContent>
 
             <TabsContent value="work">
