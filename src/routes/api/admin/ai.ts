@@ -50,6 +50,7 @@ export const Route = createFileRoute("/api/admin/ai")({
               .from("ai_runs")
               .select("cost_amount, billed_amount, cost_source")
               .gte("created_at", new Date(Date.now() - 30 * 864e5).toISOString()),
+            supabase.rpc("platform_ai_month_spend"),
           ]);
           const runRows = (runs.data ?? []) as Array<{
             cost_amount: number | null;
