@@ -655,7 +655,7 @@ export const FEATURES: readonly FeatureManifest[] = [
     nav_order: 55,
     nav_permission: "ai.use",
     flag_key: "ai_features",
-    flag_default_enabled: false,
+    flag_default_enabled: true,
 
     permissions: [
       {

@@ -885,6 +885,7 @@ export async function processWebhookPayload(
           // opt-in keyword or a cash-on-delivery answer. Inbound only — our own
           // outbound sends (including opt-out confirmations and automation
           // replies) never reach here.
+          const beforeAutomations = new Date().toISOString();
           await evaluateAutomations(supabase, {
             organizationId: orgId,
             phoneNumberId,
@@ -900,11 +901,40 @@ export async function processWebhookPayload(
             automations: await loadAutomations(supabase, orgId, automationCache),
           });
 
+          // The AI employee gets the last word, and only when nothing else
+          // answered this message. Never on our own echoes or on a duplicate
+          // delivery, and never after an automation already replied.
+          if (!isSystemEcho && inserted && inserted.length > 0) {
+            const { count: repliedCount } = await supabase
+              .from("messages")
+              .select("id", { count: "exact", head: true })
+              .eq("conversation_id", conversation.id)
+              .eq("direction", "outbound")
+              .gte("created_at", beforeAutomations);
 
-
-
-
+            try {
+              const { runAgentOnInbound } = await import("@/lib/ai-agent.server");
+              await runAgentOnInbound(supabase, {
+                organizationId: orgId,
+                conversationId: conversation.id as string,
+                contactId: contact.id as string,
+                phoneNumberId,
+                accessToken,
+                waId,
+                body,
+                alreadyHandled: optKeywordMatched || codHandled || (repliedCount ?? 0) > 0,
+                optedOut:
+                  (contact as { opt_in_status?: string }).opt_in_status === "opted_out",
+              });
+            } catch (error) {
+              console.error(
+                "[ai-agent] failed",
+                error instanceof Error ? error.message : String(error),
+              );
+            }
+          }
         }
+
 
         // ---- status updates ----
         for (const st of (value["statuses"] as AnyRecord[] | undefined) ?? []) {

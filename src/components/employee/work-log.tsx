@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { ClipboardList, Loader2 } from "lucide-react";
+import { ClipboardList, Loader2, PencilLine } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   employeeApi,
+  knowledgeApi,
   moneyText,
   whenText,
   type EmployeeRun,
@@ -33,6 +38,39 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [saving, setSaving] = useState(false);
+  const { can } = usePermissions();
+  const canConfigure = can("ai.configure");
+
+  const startCorrection = (run: EmployeeRun) => {
+    setCorrectingId(run.id);
+    setQuestion(run.input_summary ?? "");
+    setAnswer("");
+  };
+
+  const saveCorrection = async () => {
+    if (!question.trim() || !answer.trim()) {
+      toast.error("Write both the question and the answer it should have given.");
+      return;
+    }
+    setSaving(true);
+    const { error } = await knowledgeApi({
+      organization_id: organizationId,
+      action: "correct",
+      question: question.trim(),
+      answer: answer.trim(),
+    });
+    setSaving(false);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    toast.success("Saved. It will use your answer from now on.");
+    setCorrectingId(null);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -144,6 +182,52 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                         It answered without reading anything of yours.
                       </p>
                     )}
+
+                    {canConfigure ? (
+                      correctingId === run.id ? (
+                        <div className="mt-4 space-y-3 rounded-xl border border-border/70 bg-card p-4">
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`q-${run.id}`}>The question</Label>
+                            <Input
+                              id={`q-${run.id}`}
+                              value={question}
+                              onChange={(e) => setQuestion(e.target.value)}
+                              placeholder="What the customer asked"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`a-${run.id}`}>What it should have said</Label>
+                            <Textarea
+                              id={`a-${run.id}`}
+                              rows={3}
+                              value={answer}
+                              onChange={(e) => setAnswer(e.target.value)}
+                              placeholder="Write the right answer in your own words."
+                              className="resize-y"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" disabled={saving} onClick={() => void saveCorrection()}>
+                              {saving ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+                              Teach it this
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setCorrectingId(null)}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-4"
+                          onClick={() => startCorrection(run)}
+                        >
+                          <PencilLine className="mr-2 h-3.5 w-3.5" />
+                          This answer was wrong
+                        </Button>
+                      )
+                    ) : null}
                   </div>
                 ) : null}
               </li>

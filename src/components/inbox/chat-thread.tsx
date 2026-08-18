@@ -10,6 +10,7 @@ import {
   MessageSquareText,
   Send,
   Sparkles,
+  Tags,
   UserRound,
   Wand2,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { aiRunApi } from "@/lib/employee-client";
+import { aidwar } from "@/integrations/aidwar/client";
 
 import {
   Select,
@@ -136,8 +138,10 @@ export function ChatThread({
 }) {
   const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [assisting, setAssisting] = useState<"suggest" | "summary" | null>(null);
+  const [assisting, setAssisting] = useState<"suggest" | "summary" | "tags" | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [proposedTags, setProposedTags] = useState<string[] | null>(null);
+  const [applyingTags, setApplyingTags] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const open = withinWindow(conversation.last_customer_message_at);
   const label = contactLabel(conversation.contact);
@@ -150,6 +154,7 @@ export function ChatThread({
 
   useEffect(() => {
     setSummary(null);
+    setProposedTags(null);
   }, [conversation.id]);
 
   const assist = async (kind: "suggest" | "summary") => {
@@ -175,6 +180,63 @@ export function ChatThread({
       toast.success("Draft ready — read it, edit it, then send.");
     } else {
       setSummary(text);
+    }
+  };
+
+  const proposeTags = async () => {
+    if (!organizationId || assisting) return;
+    setAssisting("tags");
+    const { data, error } = await aiRunApi<{ tags: string[] }>({
+      organization_id: organizationId,
+      action: "auto_tag",
+      conversation_id: conversation.id,
+    });
+    setAssisting(null);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    const tags = (data?.tags ?? []).filter(Boolean);
+    if (tags.length === 0) {
+      toast.error("It couldn't see a useful label for this chat yet.");
+      return;
+    }
+    setProposedTags(tags);
+  };
+
+  const applyTags = async () => {
+    const contactId = conversation.contact?.id;
+    if (!organizationId || !contactId || !proposedTags?.length) return;
+    setApplyingTags(true);
+    try {
+      for (const name of proposedTags) {
+        const { data: existing } = await aidwar
+          .from("tags")
+          .select("id")
+          .eq("organization_id", organizationId)
+          .ilike("name", name)
+          .maybeSingle();
+        let tagId = (existing as { id?: string } | null)?.id ?? null;
+        if (!tagId) {
+          const { data: created, error } = await aidwar
+            .from("tags")
+            .insert({ organization_id: organizationId, name })
+            .select("id")
+            .single();
+          if (error || !created) continue;
+          tagId = (created as { id: string }).id;
+        }
+        await aidwar
+          .from("contact_tags")
+          .upsert(
+            { contact_id: contactId, tag_id: tagId, organization_id: organizationId },
+            { onConflict: "contact_id,tag_id" },
+          );
+      }
+      toast.success("Labels added to this contact.");
+      setProposedTags(null);
+    } finally {
+      setApplyingTags(false);
     }
   };
 
@@ -321,7 +383,50 @@ export function ChatThread({
                 )}
                 Catch me up
               </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="rounded-full"
+                disabled={assisting !== null || messages.length === 0}
+                onClick={() => void proposeTags()}
+              >
+                {assisting === "tags" ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Tags className="mr-2 h-3.5 w-3.5" />
+                )}
+                Suggest labels
+              </Button>
             </div>
+            {proposedTags ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3.5 py-2.5">
+                <span className="text-xs font-medium text-muted-foreground">It suggests:</span>
+                {proposedTags.map((t) => (
+                  <Badge key={t} variant="secondary" className="rounded-full">
+                    {t}
+                  </Badge>
+                ))}
+                <div className="ml-auto flex gap-2">
+                  <Button
+                    size="sm"
+                    className="rounded-full"
+                    disabled={applyingTags}
+                    onClick={() => void applyTags()}
+                  >
+                    {applyingTags ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+                    Add them
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="rounded-full"
+                    onClick={() => setProposedTags(null)}
+                  >
+                    No thanks
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             {summary ? (
               <div className="rounded-xl border border-border/70 bg-muted/30 px-3.5 py-2.5">
                 <p className="text-xs font-medium text-muted-foreground">The short version</p>

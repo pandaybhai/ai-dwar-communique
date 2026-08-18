@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, MessageSquare, Play, Scale } from "lucide-react";
+import { Loader2, MessageSquare, Play, Scale, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ export function Playground({
   const [brainB, setBrainB] = useState(models[0] ? `${models[0].provider}::${models[0].model_id}` : "default");
   const [comparing, setComparing] = useState(false);
   const [result, setResult] = useState<CompareResult | null>(null);
+  const [picking, setPicking] = useState<"A" | "B" | null>(null);
 
   const loadQuestions = useCallback(async () => {
     const { data } = await employeeApi<{ questions: string[] }>({
@@ -94,13 +95,35 @@ export function Playground({
       organization_id: organizationId,
       action: "compare",
       questions,
-      config_a: { brain: parseBrain(brainA) },
-      config_b: { brain: parseBrain(brainB) },
+      config_a: { label: "Setup A", ...(parseBrain(brainA) ?? {}) },
+      config_b: { label: "Setup B", ...(parseBrain(brainB) ?? {}) },
     });
     setComparing(false);
     if (error) toast.error(error);
     else {
       setResult(data);
+      await onRan();
+    }
+  };
+
+  const pickWinner = async (side: "A" | "B") => {
+    const brain = parseBrain(side === "A" ? brainA : brainB);
+    if (!brain) {
+      toast.info("That setup already is what it uses today.");
+      return;
+    }
+    setPicking(side);
+    const { error } = await employeeApi({
+      organization_id: organizationId,
+      action: "set_brain",
+      task: "agent_reply",
+      provider: brain.provider,
+      model_id: brain.model_id,
+    });
+    setPicking(null);
+    if (error) toast.error(error);
+    else {
+      toast.success(`Setup ${side} is now what answers your customers.`);
       await onRan();
     }
   };
@@ -173,9 +196,24 @@ export function Playground({
           {result ? (
             <div className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
-                <SummaryCard title="Setup A" summary={result.summaryA} currency={currency} />
-                <SummaryCard title="Setup B" summary={result.summaryB} currency={currency} />
+                <SummaryCard
+                  title="Setup A"
+                  summary={result.summaryA}
+                  currency={currency}
+                  onPick={() => void pickWinner("A")}
+                  picking={picking === "A"}
+                />
+                <SummaryCard
+                  title="Setup B"
+                  summary={result.summaryB}
+                  currency={currency}
+                  onPick={() => void pickWinner("B")}
+                  picking={picking === "B"}
+                />
               </div>
+              <p className="text-xs text-muted-foreground">
+                Happy with one of them? Make it the setup that answers your customers.
+              </p>
               <ul className="space-y-4">
                 {result.pairs.map((pair, i) => (
                   <li key={`${pair.question}-${i}`} className="rounded-xl border border-border/70 p-4">
@@ -286,10 +324,14 @@ function SummaryCard({
   title,
   summary,
   currency,
+  onPick,
+  picking,
 }: {
   title: string;
   summary: CompareResult["summaryA"];
   currency: string;
+  onPick?: () => void;
+  picking?: boolean;
 }) {
   return (
     <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
@@ -316,6 +358,22 @@ function SummaryCard({
           </dd>
         </div>
       </dl>
+      {onPick ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-3 w-full rounded-full"
+          disabled={picking}
+          onClick={onPick}
+        >
+          {picking ? (
+            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Trophy className="mr-2 h-3.5 w-3.5" />
+          )}
+          Use {title}
+        </Button>
+      ) : null}
     </div>
   );
 }

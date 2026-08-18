@@ -315,7 +315,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 };
 
 /** Flag state for one organization, resolved exactly like the client hook. */
-async function enabledFlags(
+export async function enabledFlags(
   supabase: SupabaseClient,
   organizationId: string,
 ): Promise<Set<string>> {
