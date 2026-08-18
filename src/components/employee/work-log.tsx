@@ -137,8 +137,8 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
         <div className="mt-4">
           <EmptyState
             icon={ClipboardList}
-            title="It hasn't done anything yet"
-            description="Once it starts drafting or answering, every single thing it does shows up here."
+            title="I haven't done anything yet"
+            description="Put me on drafting and every reply I write will show up here, with what I read and what it cost."
           />
         </div>
       ) : (
