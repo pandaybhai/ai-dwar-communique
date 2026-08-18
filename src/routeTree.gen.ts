@@ -42,6 +42,7 @@ import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/l
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
+import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-run'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
@@ -236,6 +237,11 @@ const ApiIntegrationsShopifyRoute = ApiIntegrationsShopifyRouteImport.update({
   path: '/api/integrations/shopify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalAiRunRoute = ApiInternalAiRunRouteImport.update({
+  id: '/api/internal/ai-run',
+  path: '/api/internal/ai-run',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalCampaignWorkerRoute =
   ApiInternalCampaignWorkerRouteImport.update({
     id: '/api/internal/campaign-worker',
@@ -419,6 +425,7 @@ export interface FileRoutesByFullPath {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
+  '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
@@ -479,6 +486,7 @@ export interface FileRoutesByTo {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
+  '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
@@ -542,6 +550,7 @@ export interface FileRoutesById {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
+  '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
@@ -606,6 +615,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
+    | '/api/internal/ai-run'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
@@ -666,6 +676,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
+    | '/api/internal/ai-run'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
@@ -728,6 +739,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
+    | '/api/internal/ai-run'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
@@ -778,6 +790,7 @@ export interface RootRouteChildren {
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
+  ApiInternalAiRunRoute: typeof ApiInternalAiRunRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
@@ -1034,6 +1047,13 @@ declare module '@tanstack/react-router' {
       path: '/api/integrations/shopify'
       fullPath: '/api/integrations/shopify'
       preLoaderRoute: typeof ApiIntegrationsShopifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/ai-run': {
+      id: '/api/internal/ai-run'
+      path: '/api/internal/ai-run'
+      fullPath: '/api/internal/ai-run'
+      preLoaderRoute: typeof ApiInternalAiRunRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/internal/campaign-worker': {
@@ -1303,6 +1323,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
+  ApiInternalAiRunRoute: ApiInternalAiRunRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
