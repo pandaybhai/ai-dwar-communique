@@ -106,7 +106,15 @@ export type EmployeeRun = {
   input_summary: string | null;
   output: string | null;
   sources: RunSource[] | null;
+  tool_calls?: EmployeeToolCall[] | null;
   created_at: string;
+};
+
+export type EmployeeToolCall = {
+  tool_name: string;
+  ok: boolean;
+  error: string | null;
+  latency_ms: number | null;
 };
 
 export type PlaygroundRun = {
