@@ -108,19 +108,24 @@ function EmployeePage() {
   const currency = overview?.settings?.currency ?? "INR";
   const aiEnabled = overview?.settings?.ai_enabled !== false;
 
-  const setAiEnabled = async (value: boolean) => {
-    if (!organizationId) return;
+  const setAiEnabled = async (value: boolean): Promise<boolean> => {
+    if (!organizationId) return false;
     const { error } = await employeeApi({
       organization_id: organizationId,
       action: "save_settings",
       ai_enabled: value,
     });
-    if (error) toast.error(error);
-    else {
-      toast.success(value ? "AI is on." : "AI is off.");
-      void load();
+    if (error) {
+      toast.error(error);
+      return false;
     }
+    toast.success(value ? "AI is on." : "AI is off.");
+    await load();
+    return true;
   };
+
+  const enableAi = () => setAiEnabled(true);
+
 
   return (
     <>
