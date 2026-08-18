@@ -191,7 +191,15 @@ export function Playground({
             ))}
           </div>
 
-          {run ? <AnswerCard run={run} currency={currency} /> : null}
+          {run ? (
+            <AnswerCard
+              run={run}
+              currency={currency}
+              {...(onEnableAi ? { onEnableAi: enableAndRetry } : {})}
+              enabling={enabling}
+            />
+          ) : null}
+
         </TabsContent>
 
         <TabsContent value="compare" className="mt-5 space-y-4">
