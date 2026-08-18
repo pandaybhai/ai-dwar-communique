@@ -68,7 +68,13 @@ export type RunResult = {
   status: "ok" | "refused" | "escalated" | "capped" | "error";
   output: string;
   sources: RunSource[];
-  toolCalls: { tool: string; ok: boolean; error?: string }[];
+  toolCalls: {
+    tool: string;
+    ok: boolean;
+    error?: string;
+    latencyMs?: number;
+    activityLogId?: string | null;
+  }[];
   escalationSignal: string | null;
   costAmount: number | null;
   costCurrency: string | null;
