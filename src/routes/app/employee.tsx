@@ -250,6 +250,7 @@ function EmployeePage() {
               <BrainPicker
                 organizationId={active.organization.id}
                 tiers={overview?.tiers ?? []}
+                internals={overview?.tier_internals ?? null}
                 taskTiers={overview?.task_models ?? []}
                 settings={overview?.settings ?? null}
                 spendThisMonth={overview?.spend_this_month ?? 0}
@@ -263,6 +264,7 @@ function EmployeePage() {
               <Playground
                 organizationId={active.organization.id}
                 tiers={overview?.tiers ?? []}
+                internals={overview?.tier_internals ?? null}
                 currency={currency}
                 onRan={load}
                 {...(canConfigure ? { onEnableAi: enableAi } : {})}

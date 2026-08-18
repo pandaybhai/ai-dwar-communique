@@ -238,7 +238,7 @@ function PlatformCapCard({
         <div className="flex-1">
           <h2 className="font-semibold">Platform monthly ceiling</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            The most this platform will bill across every organisation in a calendar month. Set zero for no ceiling. When it is reached, runs stop everywhere with the same plain-words message merchants already see.
+            There is no unlimited setting: this is the most the platform will bill across every organisation in a calendar month, and an unset or invalid ceiling stops every run rather than letting spend through. When it is reached, runs stop everywhere with the same plain-words message merchants already see.
           </p>
 
           <div className="mt-4 space-y-2">
@@ -246,7 +246,7 @@ function PlatformCapCard({
               <span className="font-medium text-foreground">
                 {money(cap.spent)} used{set ? ` of ${money(cap.amount)}` : ""}
               </span>
-              {set ? <span className="text-muted-foreground">{pct}%</span> : <span className="text-muted-foreground">No ceiling set</span>}
+              {set ? <span className="text-muted-foreground">{pct}%</span> : <span className="font-medium text-destructive">No valid ceiling — all runs stopped</span>}
             </div>
             {set ? (
               <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -273,7 +273,7 @@ function PlatformCapCard({
               <Input
                 id="platform-cap"
                 type="number"
-                min="0"
+                min="1"
                 step="100"
                 value={value}
                 onChange={(event) => onChange(event.target.value)}

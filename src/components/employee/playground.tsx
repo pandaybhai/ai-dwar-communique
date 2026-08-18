@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TierInternalBadge } from "@/components/employee/tier-internal-badge";
 import {
   aiRunApi,
   employeeApi,
@@ -22,6 +23,7 @@ import {
   type CompareSide,
   type PlaygroundRun,
   type RunSource,
+  type TierInternal,
 } from "@/lib/employee-client";
 
 /**
@@ -31,12 +33,14 @@ import {
 export function Playground({
   organizationId,
   tiers,
+  internals,
   currency,
   onRan,
   onEnableAi,
 }: {
   organizationId: string;
   tiers: AiTier[];
+  internals?: TierInternal[] | null | undefined;
   currency: string;
   onRan: () => void | Promise<void>;
   onEnableAi?: () => Promise<boolean>;
@@ -193,6 +197,7 @@ export function Playground({
             <AnswerCard
               run={run}
               currency={currency}
+              internals={internals}
               {...(onEnableAi ? { onEnableAi: enableAndRetry } : {})}
               enabling={enabling}
             />
@@ -206,8 +211,8 @@ export function Playground({
             {questions.length === 1 ? "" : "s"} through both.
           </p>
           <div className="grid gap-4 md:grid-cols-2">
-            <TierSelect id="tier-a" label="Setup A" value={tierA} onChange={setTierA} tiers={tiers} />
-            <TierSelect id="tier-b" label="Setup B" value={tierB} onChange={setTierB} tiers={tiers} />
+            <TierSelect id="tier-a" label="Setup A" value={tierA} onChange={setTierA} tiers={tiers} internals={internals} />
+            <TierSelect id="tier-b" label="Setup B" value={tierB} onChange={setTierB} tiers={tiers} internals={internals} />
           </div>
           <Button onClick={() => void compare()} disabled={comparing}>
             {comparing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Scale className="mr-2 h-4 w-4" />}
@@ -243,8 +248,8 @@ export function Playground({
                       {pair.question}
                     </p>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <SideCard label="A" side={pair.a} currency={currency} />
-                      <SideCard label="B" side={pair.b} currency={currency} />
+                      <SideCard label="A" side={pair.a} currency={currency} internals={internals} />
+                      <SideCard label="B" side={pair.b} currency={currency} internals={internals} />
                     </div>
                   </li>
                 ))}
@@ -263,17 +268,22 @@ function TierSelect({
   value,
   onChange,
   tiers,
+  internals,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
   tiers: AiTier[];
+  internals?: TierInternal[] | null | undefined;
 }) {
   const chosen = tiers.find((t) => t.key === value);
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      <div className="flex flex-wrap items-center gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        {value !== "default" ? <TierInternalBadge tier={value} internals={internals} /> : null}
+      </div>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger id={id}>
           <SelectValue />
@@ -311,11 +321,13 @@ function Sources({ sources }: { sources: RunSource[] | null | undefined }) {
 function AnswerCard({
   run,
   currency,
+  internals,
   onEnableAi,
   enabling,
 }: {
   run: PlaygroundRun;
   currency: string;
+  internals?: TierInternal[] | null | undefined;
   onEnableAi?: () => void | Promise<void>;
   enabling?: boolean;
 }) {
@@ -340,6 +352,7 @@ function AnswerCard({
               ? "I'd pass this to you"
               : "I'd answer this"}
         </Badge>
+        <TierInternalBadge tier={run.tier} internals={internals} />
         <span className="text-xs text-muted-foreground">
           {run.brainName} · {Math.round(run.latencyMs / 100) / 10}s ·{" "}
           {run.status === "error" && !run.output
@@ -381,7 +394,17 @@ function AnswerCard({
   );
 }
 
-function SideCard({ label, side, currency }: { label: string; side: CompareSide; currency: string }) {
+function SideCard({
+  label,
+  side,
+  currency,
+  internals,
+}: {
+  label: string;
+  side: CompareSide;
+  currency: string;
+  internals?: TierInternal[] | null | undefined;
+}) {
   // A broken connection, a spending limit or a switched-off workspace is not a
   // weak answer — say which it is instead of "nothing to say, cost unknown".
   const broke = side.status === "error" || side.status === "refused" || side.status === "capped";
@@ -397,6 +420,7 @@ function SideCard({ label, side, currency }: { label: string; side: CompareSide;
     >
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline">{label}</Badge>
+        <TierInternalBadge tier={side.tier} internals={internals} />
         {broke ? <Badge variant="destructive">Didn't run</Badge> : null}
         <span className="text-[11px] text-muted-foreground">
           {side.brainName} · {costLine}

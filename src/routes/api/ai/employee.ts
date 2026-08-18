@@ -8,7 +8,7 @@ export const Route = createFileRoute("/api/ai/employee")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { requireOrgMember, requirePermission, isResponse, jsonError, logServerActivity } =
+        const { requireOrgMember, requirePermission, isResponse, jsonError, logServerActivity, isSuperAdmin } =
           await import("@/lib/whatsapp-api.server");
 
         let payload: Record<string, unknown>;
@@ -137,8 +137,32 @@ export const Route = createFileRoute("/api/ai/employee")({
               ? Date.now() - new Date(lastTestAt).getTime() < 7 * 864e5
               : false;
 
+            // Platform truth, Super Admin only: which vendor and model actually
+            // sit behind each merchant-facing tier, and how the call is routed.
+            const superAdmin = await isSuperAdmin(supabase, auth.userId);
+            let tierInternals: Array<Record<string, unknown>> | null = null;
+            if (superAdmin) {
+              const { providerRoute } = await import("@/lib/ai-run.server");
+              const { data: internals } = await supabase
+                .from("ai_tiers")
+                .select("key, provider, model_id")
+                .order("sort_order");
+              tierInternals = ((internals ?? []) as Array<{
+                key: string;
+                provider: string;
+                model_id: string;
+              }>).map((row) => ({
+                key: row.key,
+                provider: row.provider,
+                model_id: row.model_id,
+                route: providerRoute(row.provider),
+              }));
+            }
+
             return Response.json({
               agent,
+              is_super_admin: superAdmin,
+              tier_internals: tierInternals,
               settings: settings.data ?? null,
               spend_this_month: Number(spend.data ?? 0),
               tiers: models.data ?? [],
@@ -165,7 +189,7 @@ export const Route = createFileRoute("/api/ai/employee")({
             const { data } = await supabase
               .from("ai_runs")
               .select(
-                "id, task, tier, status, escalation_signal, billed_amount, cost_source, latency_ms, input_summary, output, sources, created_at",
+                "id, task, tier, provider, model, status, escalation_signal, billed_amount, cost_source, latency_ms, input_summary, output, sources, created_at",
               )
               .eq("organization_id", org)
               .gte("created_at", since)
@@ -183,8 +207,26 @@ export const Route = createFileRoute("/api/ai/employee")({
               const key = String(t["run_id"]);
               byRun.set(key, [...(byRun.get(key) ?? []), t]);
             }
+            // The vendor and model behind a past run are platform-internal:
+            // only a Super Admin ever receives them.
+            const superAdmin = await isSuperAdmin(supabase, auth.userId);
+            const { providerRoute } = await import("@/lib/ai-run.server");
             return Response.json({
-              runs: runs.map((r) => ({ ...r, tool_calls: byRun.get(String(r["id"])) ?? [] })),
+              is_super_admin: superAdmin,
+              runs: runs.map((r) => {
+                const { provider, model, ...rest } = r as Record<string, unknown>;
+                return {
+                  ...rest,
+                  ...(superAdmin
+                    ? {
+                        provider,
+                        model,
+                        route: providerRoute(String(provider ?? "")),
+                      }
+                    : {}),
+                  tool_calls: byRun.get(String(r["id"])) ?? [],
+                };
+              }),
             });
           }
 
@@ -300,7 +342,10 @@ export const Route = createFileRoute("/api/ai/employee")({
             if (typeof payload["ai_enabled"] === "boolean") update["ai_enabled"] = payload["ai_enabled"];
             if (payload["ai_monthly_cap_amount"] !== undefined) {
               const cap = Number(payload["ai_monthly_cap_amount"]);
-              if (!Number.isFinite(cap) || cap < 0) return jsonError("Enter a spending limit of zero or more.");
+              // Zero used to mean "no limit". A missing limit now stops runs,
+              // so the only sensible value is a real one.
+              if (!Number.isFinite(cap) || cap <= 0)
+                return jsonError("Enter a spending limit above zero — there's no unlimited option.");
               update["ai_monthly_cap_amount"] = cap;
             }
             if (payload["brain_choice"] === "recommended" || payload["brain_choice"] === "manual") {

@@ -396,10 +396,19 @@ async function priceRun(
   return { amount: Number(amount.toFixed(6)), currency: rate.currency, source: "rate_card" };
 }
 
+/**
+ * A ceiling that is missing, zero or negative is a misconfiguration, not
+ * permission to spend without limit. Both caps below fail closed on it.
+ */
+export function capIsValid(cap: unknown): boolean {
+  const value = Number(cap);
+  return Number.isFinite(value) && value > 0;
+}
+
 async function overCap(
   supabase: SupabaseClient,
   organizationId: string,
-): Promise<{ over: boolean; cap: number; spent: number; currency: string }> {
+): Promise<{ over: boolean; cap: number; spent: number; currency: string; misconfigured: boolean }> {
   const { data: settings } = await supabase
     .from("organization_ai_settings")
     .select("ai_monthly_cap_amount, currency")
@@ -407,18 +416,30 @@ async function overCap(
     .maybeSingle();
   const s = settings as { ai_monthly_cap_amount: number; currency: string } | null;
   const cap = Number(s?.ai_monthly_cap_amount ?? 0);
+  const currency = s?.currency ?? "INR";
+  if (!capIsValid(cap)) {
+    return { over: true, cap: 0, spent: 0, currency, misconfigured: true };
+  }
   const { data: spend } = await supabase.rpc("ai_month_spend", { p_org: organizationId });
   const spent = Number(spend ?? 0);
-  return { over: cap > 0 && spent >= cap, cap, spent, currency: s?.currency ?? "INR" };
+  return { over: spent >= cap, cap, spent, currency, misconfigured: false };
 }
 
 /**
  * Total platform exposure. Per-merchant caps bound each workspace; this bounds
- * the sum of them. Zero means no ceiling.
+ * the sum of them. There is no "unlimited" setting: an unset or invalid
+ * ceiling stops every run until a Super Admin sets a real one.
  */
 export async function platformCapState(
   supabase: SupabaseClient,
-): Promise<{ over: boolean; warn: boolean; cap: number; spent: number; currency: string }> {
+): Promise<{
+  over: boolean;
+  warn: boolean;
+  cap: number;
+  spent: number;
+  currency: string;
+  misconfigured: boolean;
+}> {
   const { data: settings } = await supabase
     .from("platform_settings")
     .select("ai_monthly_cap_amount, ai_cap_currency")
@@ -426,15 +447,25 @@ export async function platformCapState(
     .maybeSingle();
   const s = settings as { ai_monthly_cap_amount: number; ai_cap_currency: string } | null;
   const cap = Number(s?.ai_monthly_cap_amount ?? 0);
+  const currency = s?.ai_cap_currency ?? "INR";
   const { data: spend } = await supabase.rpc("platform_ai_month_spend");
   const spent = Number(spend ?? 0);
+  if (!capIsValid(cap)) {
+    return { over: true, warn: true, cap: 0, spent, currency, misconfigured: true };
+  }
   return {
-    over: cap > 0 && spent >= cap,
-    warn: cap > 0 && spent >= cap * 0.8,
+    over: spent >= cap,
+    warn: spent >= cap * 0.8,
     cap,
     spent,
-    currency: s?.ai_cap_currency ?? "INR",
+    currency,
+    misconfigured: false,
   };
+}
+
+/** Whether a provider is called on the platform's own key or via the gateway. */
+export function providerRoute(provider: string): "direct" | "gateway" {
+  return DIRECT_ENDPOINTS[provider] ? "direct" : "gateway";
 }
 
 const overPlatformCap = platformCapState;
@@ -832,7 +863,9 @@ export async function executeRun(
       ...base,
       status: "capped",
       output: "",
-      error: `This month's AI spending limit (${cap.currency} ${cap.cap}) has been reached.`,
+      error: cap.misconfigured
+        ? "This workspace has no valid monthly spending limit set, so I've stopped rather than spend without one. Set a limit above zero and I'll carry on."
+        : `This month's AI spending limit (${cap.currency} ${cap.cap}) has been reached.`,
     });
   }
 
@@ -844,7 +877,9 @@ export async function executeRun(
       ...base,
       status: "capped",
       output: "",
-      error: `This month's AI spending limit (${platformCap.currency} ${platformCap.cap}) has been reached.`,
+      error: platformCap.misconfigured
+        ? "I've hit this month's limit. The platform has no valid monthly ceiling set, so nothing runs until the platform team sets one."
+        : `This month's AI spending limit (${platformCap.currency} ${platformCap.cap}) has been reached.`,
     });
   }
 
