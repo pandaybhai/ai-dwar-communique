@@ -20,6 +20,25 @@ import { brokerTools, invokeTool, type BrokeredTool } from "@/lib/ai-tools.serve
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
+/**
+ * Where each vendor is called directly, when the platform holds that vendor's
+ * own key instead of routing through the resale gateway. Every entry speaks
+ * the OpenAI-compatible chat-completions shape, so one code path serves all.
+ * Adding a future vendor is one line here plus a row in `ai_models`.
+ */
+const DIRECT_ENDPOINTS: Record<string, string> = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+  google: "https://generativelanguage.googleapis.com/v1beta/openai",
+};
+
+/** The model name a vendor expects when called directly, without its prefix. */
+function wireModel(provider: string, modelId: string): string {
+  const prefix = `${provider}/`;
+  return modelId.startsWith(prefix) ? modelId.slice(prefix.length) : modelId;
+}
+
+
 export type AiTask = "suggest_reply" | "summarise" | "auto_tag" | "agent_reply" | "embedding";
 
 export type ResolvedBrain = {
