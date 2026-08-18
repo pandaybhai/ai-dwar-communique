@@ -27,7 +27,13 @@ export type ToolContext = {
 
 export type ToolArgs = Record<string, unknown>;
 export type ToolResult = {
+  /** True when the tool executed. Finding nothing is still a success. */
   ok: boolean;
+  /**
+   * False when the tool ran fine but there was nothing to return. The agent
+   * must answer this in plain words, never escalate on it.
+   */
+  found?: boolean;
   data?: unknown;
   error?: string;
   /** Set by invokeTool: the activity_log row this invocation wrote. */
@@ -37,6 +43,13 @@ export type ToolResult = {
 };
 
 type Handler = (ctx: ToolContext, args: ToolArgs) => Promise<ToolResult>;
+
+/** A successful lookup that found nothing — never a failure. */
+const empty = (message: string): ToolResult => ({
+  ok: true,
+  found: false,
+  data: { found: false, message },
+});
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const num = (v: unknown, fallback: number): number =>
@@ -92,7 +105,7 @@ async function findContact(ctx: ToolContext, args: ToolArgs) {
 export const AI_TOOL_HANDLERS: Record<string, Handler> = {
   async lookupContact(ctx, args) {
     const { contact, error } = await findContact(ctx, args);
-    if (!contact) return { ok: false, error: error ?? "Not found." };
+    if (!contact) return empty(error ?? "I couldn't find that contact in this workspace.");
     const { data: tagRows } = await ctx.supabase
       .from("contact_tags")
       .select("tags(name)")
@@ -106,7 +119,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
   async checkOptOutStatus(ctx, args) {
     const { contact, error } = await findContact(ctx, args);
-    if (!contact) return { ok: false, error: error ?? "Not found." };
+    if (!contact) return empty(error ?? "I couldn't find that contact in this workspace.");
     const status = String(contact["opt_in_status"] ?? "unknown");
     return {
       ok: true,
@@ -143,7 +156,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
   async searchConversationHistory(ctx, args) {
     const { contact, error } = await findContact(ctx, args);
-    if (!contact) return { ok: false, error: error ?? "Not found." };
+    if (!contact) return empty(error ?? "I couldn't find that contact in this workspace.");
     const limit = Math.min(Math.max(num(args["limit"], 20), 1), 50);
     const { data: conversations } = await ctx.supabase
       .from("conversations")
@@ -177,7 +190,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       .limit(1);
     query = id ? query.eq("id", id) : query.ilike("name", `%${name}%`);
     const { data } = await query.maybeSingle();
-    if (!data) return { ok: false, error: "No campaign matched." };
+    if (!data) return empty("I couldn't find a campaign matching that.");
     return { ok: true, data };
   },
 
@@ -260,12 +273,12 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       query = query.in("order_number", [orderNumber, withHash]);
     } else {
       const { contact } = await findContact(ctx, args);
-      if (!contact) return { ok: false, error: "No contact with that number in this workspace." };
+      if (!contact) return empty("I couldn't find a contact with that number in this workspace.");
       query = query.eq("contact_id", contact["id"] as string);
     }
 
     const { data } = await query.maybeSingle();
-    if (!data) return { ok: false, error: "No matching order in this workspace." };
+    if (!data) return empty("I couldn't find a matching order in this workspace.");
 
     const order = data as Record<string, unknown>;
     const { data: items } = await ctx.supabase
@@ -277,7 +290,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
   async getCustomerOrders(ctx, args) {
     const { contact, error } = await findContact(ctx, args);
-    if (!contact) return { ok: false, error: error ?? "Not found." };
+    if (!contact) return empty(error ?? "I couldn't find that contact in this workspace.");
     const limit = Math.min(Math.max(num(args["limit"], 5), 1), 20);
     const { data } = await ctx.supabase
       .from("orders")
@@ -293,7 +306,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
   async getAbandonedCheckout(ctx, args) {
     const { contact, error } = await findContact(ctx, args);
-    if (!contact) return { ok: false, error: error ?? "Not found." };
+    if (!contact) return empty(error ?? "I couldn't find that contact in this workspace.");
     const { data } = await ctx.supabase
       .from("abandoned_checkouts")
       .select("id, checkout_url, total, currency, abandoned_at, recovered_at")
@@ -303,7 +316,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       .order("abandoned_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (!data) return { ok: false, error: "No open abandoned checkout for that customer." };
+    if (!data) return empty("That customer has no open abandoned checkout.");
     return { ok: true, data };
   },
 
@@ -466,7 +479,8 @@ export async function invokeTool(
 
   try {
     const result = await AI_TOOL_HANDLERS[tool.handler]!(ctx, args);
-    const logId = await log(result.ok ? "ok" : "error", result.ok ? undefined : result.error);
+    const status = result.ok ? (result.found === false ? "not_found" : "ok") : "error";
+    const logId = await log(status, result.ok ? undefined : result.error);
     return done(result, logId);
   } catch (err) {
     const logId = await log(
