@@ -212,27 +212,46 @@ export const Route = createFileRoute("/api/ai/employee")({
               0,
             );
 
-            // Questions it had nothing to answer from, most-asked first.
-            const gaps = new Map<string, { question: string; times: number; last_at: string }>();
-            for (const r of rows) {
-              const unanswered =
-                r.status === "refused" ||
-                (r.status === "escalated" &&
-                  (r.escalation_signal === "no_source" || r.escalation_signal === "unsure"));
-              const question = (r.input_summary ?? "").trim();
-              if (!unanswered || !question) continue;
-              const key = question.toLowerCase();
-              const existing = gaps.get(key);
-              if (existing) existing.times += 1;
-              else gaps.set(key, { question, times: 1, last_at: r.created_at });
+            // Only genuine knowledge gaps: no greetings, nothing another part
+            // of the system handled, nothing it answered elsewhere this week.
+            const { genuineGaps } = await import("@/lib/weekly-gaps");
+
+            const answeredQuestions = rows
+              .filter((r) => r.status === "ok")
+              .map((r) => r.input_summary ?? "");
+
+            let handledElsewhere: string[] = [];
+            try {
+              const { data: runsData } = await supabase
+                .from("automation_runs")
+                .select("inbound_message_id, status, created_at, automations!inner(organization_id)")
+                .eq("automations.organization_id", org)
+                .eq("status", "sent")
+                .gte("created_at", since)
+                .limit(500);
+              const ids = ((runsData ?? []) as Array<{ inbound_message_id: string | null }>)
+                .map((r) => r.inbound_message_id)
+                .filter((id): id is string => Boolean(id));
+              if (ids.length) {
+                const { data: msgs } = await supabase
+                  .from("messages")
+                  .select("body")
+                  .in("id", ids)
+                  .limit(500);
+                handledElsewhere = ((msgs ?? []) as Array<{ body: string | null }>).map(
+                  (m) => m.body ?? "",
+                );
+              }
+            } catch {
+              handledElsewhere = [];
             }
-            const learn = Array.from(gaps.values())
-              .sort((a, b) => b.times - a.times)
-              .slice(0, 8);
+
+            const learn = genuineGaps(rows, { answeredQuestions, handledElsewhere });
 
             return Response.json({
               report: { since, answered, passed, cost, learn },
             });
+
           }
 
           if (action === "questions") {
