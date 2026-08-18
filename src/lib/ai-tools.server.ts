@@ -26,7 +26,15 @@ export type ToolContext = {
 };
 
 export type ToolArgs = Record<string, unknown>;
-export type ToolResult = { ok: boolean; data?: unknown; error?: string };
+export type ToolResult = {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+  /** Set by invokeTool: the activity_log row this invocation wrote. */
+  activityLogId?: string | null;
+  /** Set by invokeTool: wall-clock time of the invocation. */
+  latencyMs?: number;
+};
 
 type Handler = (ctx: ToolContext, args: ToolArgs) => Promise<ToolResult>;
 
