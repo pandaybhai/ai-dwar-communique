@@ -107,10 +107,10 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="work-heading" className="text-lg font-semibold text-foreground">
-            Everything it has done
+            Everything I've done
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Open any row to see what it read before answering and what that answer cost.
+            Open any row to see what I read before answering, and what it cost you.
           </p>
         </div>
         <div className="flex gap-2">
