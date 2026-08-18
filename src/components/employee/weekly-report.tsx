@@ -108,12 +108,19 @@ export function WeeklyReport({
             <strong>{report.passed}</strong> to you. I cost you{" "}
             <strong>{moneyText(report.cost, currency)}</strong>.
           </p>
+          <p className="mt-2 text-base leading-relaxed text-muted-foreground">
+            I handled <strong className="text-foreground">{report.answered}</strong> of{" "}
+            <strong className="text-foreground">{report.answered + report.passed}</strong>{" "}
+            {report.answered + report.passed === 1 ? "question" : "questions"} on my own. As you
+            teach me more, that number goes up.
+          </p>
 
           {report.learn.length === 0 ? (
             <p className="mt-4 text-sm text-muted-foreground">
-              There was nothing I had to give up on this week.
+              Nothing I couldn&rsquo;t handle this week.
             </p>
           ) : (
+
             <div className="mt-5">
               <p className="text-sm text-foreground">
                 {report.learn.length}{" "}
