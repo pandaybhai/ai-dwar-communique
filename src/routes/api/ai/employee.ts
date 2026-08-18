@@ -128,7 +128,7 @@ export const Route = createFileRoute("/api/ai/employee")({
               status: string;
               escalation_signal: string | null;
               task: string;
-              cost_amount: number | null;
+              billed_amount: number | null;
               cost_source: string | null;
             }>;
 
