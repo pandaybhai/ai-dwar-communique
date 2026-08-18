@@ -23,11 +23,16 @@ const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 export type AiTask = "suggest_reply" | "summarise" | "auto_tag" | "agent_reply" | "embedding";
 
 export type ResolvedBrain = {
+  /** Platform-internal. Never travels to a merchant surface. */
   provider: string;
+  /** Platform-internal. Never travels to a merchant surface. */
   model_id: string;
+  /** The merchant-facing tier key: "everyday", "careful". */
+  tier: string;
+  /** The words a merchant sees: "Everyday", "Careful". */
   display_name: string;
   supports_tools: boolean;
-  /** Where the choice came from, for the "why this brain" line. */
+  /** Where the choice came from, for the "why this tier" line. */
   origin: "task" | "agent" | "workspace" | "platform";
 };
 
@@ -49,8 +54,8 @@ export type RunOptions = {
   contactId?: string | null;
   actorUserId?: string | null;
   actingRole?: string | null;
-  /** Force a brain instead of resolving one (comparison, playground). */
-  brain?: { provider: string; model_id: string } | null;
+  /** Force a tier instead of resolving one (comparison, playground). */
+  tier?: string | null;
   /** Let the model call brokered tools. */
   useTools?: boolean;
   /** Retrieve from the knowledge base before answering. */
@@ -76,114 +81,202 @@ export type RunResult = {
     activityLogId?: string | null;
   }[];
   escalationSignal: string | null;
+  /** What the provider charges the platform. Platform-internal, never shown. */
   costAmount: number | null;
   costCurrency: string | null;
+  /** What the merchant pays: cost x markup. The only money a merchant sees. */
+  billedAmount: number | null;
+  billedCurrency: string | null;
+  markupMultiplier: number | null;
   costKnown: boolean;
   latencyMs: number;
+  /** Platform-internal. */
   provider: string;
+  /** Platform-internal. */
   model: string;
+  tier: string;
   brainName: string;
   inputTokens: number | null;
   outputTokens: number | null;
   error?: string;
 };
 
-// ------------------------------------------------------------------ brains
+// ------------------------------------------------------------------- tiers
 
-const PLATFORM_DEFAULTS: Record<AiTask, { provider: string; model_id: string }> = {
-  auto_tag: { provider: "lovable", model_id: "google/gemini-3.1-flash-lite" },
-  summarise: { provider: "lovable", model_id: "google/gemini-3.6-flash" },
-  suggest_reply: { provider: "lovable", model_id: "google/gemini-3.6-flash" },
-  agent_reply: { provider: "lovable", model_id: "openai/gpt-5.4" },
-  embedding: { provider: "lovable", model_id: "openai/text-embedding-3-small" },
+/**
+ * Merchants pick a tier; the platform decides which model sits behind it.
+ * Embeddings are never merchant-visible, so they keep a fixed model.
+ */
+const DEFAULT_TIER: Record<AiTask, string> = {
+  auto_tag: "everyday",
+  summarise: "everyday",
+  suggest_reply: "everyday",
+  agent_reply: "careful",
+  embedding: "everyday",
 };
 
-export const EMBEDDING_MODEL = PLATFORM_DEFAULTS.embedding.model_id;
+const EMBEDDING_FALLBACK = { provider: "lovable", model_id: "openai/text-embedding-3-small" };
+const TIER_FALLBACK: Record<string, { provider: string; model_id: string; display_name: string }> = {
+  everyday: { provider: "lovable", model_id: "google/gemini-3.6-flash", display_name: "Everyday" },
+  careful: { provider: "lovable", model_id: "openai/gpt-5.4", display_name: "Careful" },
+};
 
-/** per-task -> per-agent -> workspace default -> platform default. */
+export const EMBEDDING_MODEL = EMBEDDING_FALLBACK.model_id;
+
+type TierRow = {
+  key: string;
+  display_name: string;
+  provider: string;
+  model_id: string;
+  is_active: boolean;
+};
+
+async function loadTier(supabase: SupabaseClient, key: string): Promise<TierRow | null> {
+  const { data } = await supabase
+    .from("ai_tiers")
+    .select("key, display_name, provider, model_id, is_active")
+    .eq("key", key)
+    .maybeSingle();
+  const row = data as TierRow | null;
+  return row && row.is_active ? row : null;
+}
+
+/** per-task tier -> per-agent tier -> platform default tier, then BYOA override. */
 export async function resolveBrain(
   supabase: SupabaseClient,
   organizationId: string,
   task: AiTask,
   agentId?: string | null,
+  forcedTier?: string | null,
 ): Promise<ResolvedBrain> {
-  const { data: settings } = await supabase
-    .from("organization_ai_settings")
-    .select("brain_choice")
-    .eq("organization_id", organizationId)
-    .maybeSingle();
-  const manual = (settings as { brain_choice?: string } | null)?.brain_choice === "manual";
-
-  let picked: { provider: string; model_id: string } | null = null;
-  let origin: ResolvedBrain["origin"] = "platform";
-
-  if (manual) {
-    const { data: rows } = await supabase
-      .from("ai_task_models")
-      .select("provider, model_id, agent_id")
-      .eq("organization_id", organizationId)
-      .eq("task", task);
-    const list = (rows ?? []) as Array<{ provider: string; model_id: string; agent_id: string | null }>;
-    const forAgent = agentId ? list.find((r) => r.agent_id === agentId) : undefined;
-    const forOrg = list.find((r) => r.agent_id === null);
-    if (forAgent) {
-      picked = forAgent;
-      origin = "task";
-    } else if (forOrg) {
-      picked = forOrg;
-      origin = "agent";
-    }
+  if (task === "embedding") {
+    return {
+      ...EMBEDDING_FALLBACK,
+      tier: "everyday",
+      display_name: "Everyday",
+      supports_tools: false,
+      origin: "platform",
+    };
   }
 
-  if (!picked) {
-    const { data: provider } = await supabase
-      .from("ai_providers")
-      .select("provider, model")
+  let tierKey = forcedTier ?? null;
+  let origin: ResolvedBrain["origin"] = forcedTier ? "task" : "platform";
+
+  if (!tierKey) {
+    const { data: settings } = await supabase
+      .from("organization_ai_settings")
+      .select("brain_choice")
       .eq("organization_id", organizationId)
-      .eq("is_default", true)
-      .eq("status", "active")
       .maybeSingle();
-    const p = provider as { provider: string; model: string | null } | null;
-    if (p?.model) {
-      picked = { provider: p.provider, model_id: p.model };
-      origin = "workspace";
+    const manual = (settings as { brain_choice?: string } | null)?.brain_choice === "manual";
+
+    if (manual) {
+      const { data: rows } = await supabase
+        .from("ai_task_models")
+        .select("tier, agent_id")
+        .eq("organization_id", organizationId)
+        .eq("task", task);
+      const list = (rows ?? []) as Array<{ tier: string; agent_id: string | null }>;
+      const forAgent = agentId ? list.find((r) => r.agent_id === agentId) : undefined;
+      const forOrg = list.find((r) => r.agent_id === null);
+      if (forAgent) {
+        tierKey = forAgent.tier;
+        origin = "task";
+      } else if (forOrg) {
+        tierKey = forOrg.tier;
+        origin = "agent";
+      }
     }
   }
 
-  if (!picked) {
-    picked = PLATFORM_DEFAULTS[task];
+  if (!tierKey) {
+    tierKey = DEFAULT_TIER[task];
     origin = "platform";
+  }
+
+  const tier = (await loadTier(supabase, tierKey)) ?? (await loadTier(supabase, DEFAULT_TIER[task]));
+  const resolvedKey = tier?.key ?? DEFAULT_TIER[task];
+  const fallback = TIER_FALLBACK[resolvedKey] ?? TIER_FALLBACK["everyday"]!;
+
+  let provider = tier?.provider ?? fallback.provider;
+  let modelId = tier?.model_id ?? fallback.model_id;
+
+  // Enterprise bring-your-own-account: an active org provider wins over the
+  // platform's model for that vendor. Invisible to ordinary merchants.
+  const { data: byoa } = await supabase
+    .from("ai_providers")
+    .select("provider, model")
+    .eq("organization_id", organizationId)
+    .eq("is_default", true)
+    .eq("status", "active")
+    .maybeSingle();
+  const own = byoa as { provider: string; model: string | null } | null;
+  if (own?.model) {
+    provider = own.provider;
+    modelId = own.model;
+    origin = "workspace";
   }
 
   const { data: model } = await supabase
     .from("ai_models")
-    .select("display_name, supports_tools, is_available, is_deprecated")
-    .eq("provider", picked.provider)
-    .eq("model_id", picked.model_id)
+    .select("supports_tools, is_available, is_deprecated")
+    .eq("provider", provider)
+    .eq("model_id", modelId)
     .maybeSingle();
   const m = model as
-    | { display_name: string; supports_tools: boolean; is_available: boolean; is_deprecated: boolean }
+    | { supports_tools: boolean; is_available: boolean; is_deprecated: boolean }
     | null;
 
-  // A retired or unknown brain never reaches the gateway.
+  // A retired or unknown model never reaches the gateway.
   if (!m || !m.is_available || m.is_deprecated) {
-    const fallback = PLATFORM_DEFAULTS[task];
     return {
       provider: fallback.provider,
       model_id: fallback.model_id,
-      display_name: "Everyday",
+      tier: resolvedKey,
+      display_name: tier?.display_name ?? fallback.display_name,
       supports_tools: true,
       origin: "platform",
     };
   }
 
   return {
-    provider: picked.provider,
-    model_id: picked.model_id,
-    display_name: m.display_name,
+    provider,
+    model_id: modelId,
+    tier: resolvedKey,
+    display_name: tier?.display_name ?? fallback.display_name,
     supports_tools: m.supports_tools,
     origin,
   };
+}
+
+// ------------------------------------------------------------------- money
+
+/** The multiplier this workspace's bills are computed with. */
+export async function resolveMarkup(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<number> {
+  const { data: org } = await supabase
+    .from("organization_ai_settings")
+    .select("ai_markup_multiplier")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const negotiated = (org as { ai_markup_multiplier?: number | null } | null)?.ai_markup_multiplier;
+  if (typeof negotiated === "number" && negotiated >= 1) return negotiated;
+
+  const { data: platform } = await supabase
+    .from("platform_settings")
+    .select("ai_markup_multiplier")
+    .eq("id", true)
+    .maybeSingle();
+  const rate = (platform as { ai_markup_multiplier?: number } | null)?.ai_markup_multiplier;
+  return typeof rate === "number" && rate >= 1 ? rate : 3;
+}
+
+/** What the merchant pays for a run that cost the platform `cost`. */
+export function billedFromCost(cost: number | null, markup: number): number | null {
+  if (cost === null || Number.isNaN(cost)) return null;
+  return Math.round(cost * markup * 1e6) / 1e6;
 }
 
 // -------------------------------------------------------------------- keys
@@ -522,13 +615,14 @@ export async function executeRun(
     maxSteps = 4,
   } = options;
 
-  const brain = options.brain
-    ? {
-        ...(await resolveBrain(supabase, organizationId, task, agentId)),
-        provider: options.brain.provider,
-        model_id: options.brain.model_id,
-      }
-    : await resolveBrain(supabase, organizationId, task, agentId);
+  const brain = await resolveBrain(
+    supabase,
+    organizationId,
+    task,
+    agentId,
+    options.tier ?? null,
+  );
+  const markup = await resolveMarkup(supabase, organizationId);
 
   const base: RunResult = {
     runId: null,
@@ -539,10 +633,14 @@ export async function executeRun(
     escalationSignal: null,
     costAmount: null,
     costCurrency: null,
+    billedAmount: null,
+    billedCurrency: null,
+    markupMultiplier: markup,
     costKnown: false,
     latencyMs: 0,
     provider: brain.provider,
     model: brain.model_id,
+    tier: brain.tier,
     brainName: brain.display_name,
     inputTokens: null,
     outputTokens: null,
