@@ -420,9 +420,12 @@ export async function sendCampaignTemplate(
     headerValues: recipient.variables,
     buttonTokens,
     couponCodes,
+    ...(context.headerMediaUrl ? { headerMedia: { link: context.headerMediaUrl } } : {}),
+    ...(context.headerLocation ? { headerLocation: context.headerLocation } : {}),
     ...(cardValues.length ? { cards: cardValues } : {}),
     ...(offerExpirationMs ? { offerExpirationMs } : {}),
   });
+
   if (payload.error) {
     return recordFailure(
       payload.error,
