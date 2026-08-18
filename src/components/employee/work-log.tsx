@@ -18,18 +18,29 @@ import {
 } from "@/lib/employee-client";
 
 const STATUS_TEXT: Record<string, { label: string; tone: "default" | "secondary" | "destructive" }> = {
-  ok: { label: "Answered", tone: "default" },
-  escalated: { label: "Passed to your team", tone: "secondary" },
-  refused: { label: "Wouldn't answer", tone: "secondary" },
-  capped: { label: "Stopped — spending limit", tone: "destructive" },
+  ok: { label: "I answered this", tone: "default" },
+  escalated: { label: "I passed this to you", tone: "secondary" },
+  refused: { label: "I didn't answer this", tone: "secondary" },
+  capped: { label: "I've hit this month's limit", tone: "destructive" },
   error: { label: "Something went wrong", tone: "destructive" },
 };
 
 const TASK_TEXT: Record<string, string> = {
-  agent_reply: "Answered a customer",
-  suggest_reply: "Drafted a reply",
-  summarise: "Summarised a chat",
-  auto_tag: "Tagged a chat",
+  agent_reply: "I answered a customer",
+  suggest_reply: "I drafted a reply",
+  summarise: "I caught you up on a chat",
+  auto_tag: "I labelled a chat",
+};
+
+/** Why it stopped, said in one sentence, in its own voice. */
+const REASON_TEXT: Record<string, string> = {
+  no_source: "I had nothing to answer from.",
+  unsure: "I wasn't sure enough to answer.",
+  tool_failed: "A lookup didn't work, so I passed it to you.",
+  opted_out: "This customer asked not to be messaged.",
+  capped: "I've hit this month's limit.",
+  human_requested: "They asked for a person.",
+  policy: "This isn't something I'm allowed to answer.",
 };
 
 /** Every single thing it did, why, what it read, and what it cost. */
