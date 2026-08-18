@@ -33,15 +33,19 @@ export function Playground({
   models,
   currency,
   onRan,
+  onEnableAi,
 }: {
   organizationId: string;
   models: BrainModel[];
   currency: string;
   onRan: () => void | Promise<void>;
+  onEnableAi?: () => Promise<boolean>;
 }) {
   const [question, setQuestion] = useState("");
   const [running, setRunning] = useState(false);
+  const [enabling, setEnabling] = useState(false);
   const [run, setRun] = useState<PlaygroundRun | null>(null);
+
 
   const [questions, setQuestions] = useState<string[]>([]);
   const [brainA, setBrainA] = useState("default");
@@ -78,6 +82,17 @@ export function Playground({
       await onRan();
     }
   };
+
+  const enableAndRetry = async () => {
+    if (!onEnableAi) return;
+    setEnabling(true);
+    const ok = await onEnableAi();
+    setEnabling(false);
+    if (!ok) return;
+    setRun(null);
+    await ask();
+  };
+
 
   const parseBrain = (value: string) => {
     if (value === "default") return null;
@@ -176,7 +191,15 @@ export function Playground({
             ))}
           </div>
 
-          {run ? <AnswerCard run={run} currency={currency} /> : null}
+          {run ? (
+            <AnswerCard
+              run={run}
+              currency={currency}
+              {...(onEnableAi ? { onEnableAi: enableAndRetry } : {})}
+              enabling={enabling}
+            />
+          ) : null}
+
         </TabsContent>
 
         <TabsContent value="compare" className="mt-5 space-y-4">
@@ -283,7 +306,17 @@ function Sources({ sources }: { sources: RunSource[] | null | undefined }) {
   );
 }
 
-function AnswerCard({ run, currency }: { run: PlaygroundRun; currency: string }) {
+function AnswerCard({
+  run,
+  currency,
+  onEnableAi,
+  enabling,
+}: {
+  run: PlaygroundRun;
+  currency: string;
+  onEnableAi?: () => void | Promise<void>;
+  enabling?: boolean;
+}) {
   const blocked = run.status !== "ok" && !run.output;
   const blockedLabel =
     run.status === "refused"
@@ -314,10 +347,22 @@ function AnswerCard({ run, currency }: { run: PlaygroundRun; currency: string })
           "It had nothing to say."}
       </p>
       {blocked && run.status === "refused" ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Switch your AI employee on at the top of this page, then try again.
-        </p>
+        onEnableAi ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button size="sm" disabled={enabling} onClick={() => void onEnableAi()}>
+              {enabling ? "Turning on…" : "Turn AI on and retry"}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              This switches AI on for this workspace and asks again.
+            </span>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Ask an owner or admin to switch the AI employee on for this workspace.
+          </p>
+        )
       ) : null}
+
       <Sources sources={run.sources} />
     </div>
   );
