@@ -270,6 +270,7 @@ function EmployeePage() {
                 internals={overview?.tier_internals ?? null}
                 currency={currency}
                 onRan={load}
+                compareRequest={compareRequest}
                 {...(canConfigure ? { onEnableAi: enableAi } : {})}
               />
 
