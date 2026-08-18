@@ -156,15 +156,13 @@ const crawlWebsite: Connector = async ({ config }) => {
   return docs;
 };
 
-const readPdf: Connector = async ({ config }) => {
-  const url = String(config["file_url"] ?? "").trim();
-  const name = String(config["file_name"] ?? "Document");
-  if (!url) throw new Error("Upload the file first.");
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("We couldn't open that file.");
-  const buffer = new Uint8Array(await res.arrayBuffer());
+/** Pages of a PDF, one document each. */
+export async function parsePdf(
+  bytes: Uint8Array,
+  name: string,
+): Promise<KnowledgeDocument[]> {
   const { extractText, getDocumentProxy } = await import("unpdf");
-  const pdf = await getDocumentProxy(buffer);
+  const pdf = await getDocumentProxy(bytes);
   const { text } = await extractText(pdf, { mergePages: false });
   const pages = Array.isArray(text) ? text : [String(text)];
   const docs = pages
@@ -177,17 +175,15 @@ const readPdf: Connector = async ({ config }) => {
     .filter((d) => d.content.length > 40);
   if (docs.length === 0) throw new Error("That file had no readable text in it.");
   return docs;
-};
+}
 
-const readSpreadsheet: Connector = async ({ config }) => {
-  const url = String(config["file_url"] ?? "").trim();
-  const name = String(config["file_name"] ?? "Spreadsheet");
-  if (!url) throw new Error("Upload the file first.");
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("We couldn't open that file.");
-  const buffer = new Uint8Array(await res.arrayBuffer());
+/** Rows of a spreadsheet, one document each. CSV and XLSX alike. */
+export async function parseSpreadsheet(
+  bytes: Uint8Array,
+  name: string,
+): Promise<KnowledgeDocument[]> {
   const XLSX = await import("xlsx");
-  const book = XLSX.read(buffer, { type: "array" });
+  const book = XLSX.read(bytes, { type: "array" });
   const docs: KnowledgeDocument[] = [];
   for (const sheetName of book.SheetNames) {
     const sheet = book.Sheets[sheetName];
@@ -209,7 +205,30 @@ const readSpreadsheet: Connector = async ({ config }) => {
   }
   if (docs.length === 0) throw new Error("That spreadsheet had no rows we could read.");
   return docs;
+}
+
+/**
+ * Uploaded files are read once, at upload. We keep the text they contained,
+ * never the file, so there is nothing to re-fetch on a refresh.
+ */
+const rereadUpload: Connector = async ({ supabase, sourceId }) => {
+  const { data } = await supabase
+    .from("knowledge_documents")
+    .select("source_ref, title, content, metadata")
+    .eq("source_id", sourceId);
+  return ((data ?? []) as Array<{
+    source_ref: string;
+    title: string;
+    content: string;
+    metadata: Record<string, unknown>;
+  }>).map((d) => ({
+    sourceRef: d.source_ref,
+    title: d.title,
+    content: d.content,
+    metadata: d.metadata ?? {},
+  }));
 };
+
 
 /** Written answers, including corrections a merchant makes to a wrong reply. */
 const readManualQa: Connector = async ({ supabase, sourceId }) => {
