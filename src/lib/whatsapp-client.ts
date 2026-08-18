@@ -35,3 +35,32 @@ export async function callApi<T>(
   }
   return { data: json as T, error: null, raw: json };
 }
+
+/** Uploads a file to an authenticated AiDwar API route. */
+export async function uploadApi<T>(
+  path: string,
+  form: FormData,
+): Promise<{ data: T | null; error: string | null }> {
+  const { data: sessionData } = await aidwar.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { data: null, error: "Your session expired. Please sign in again." };
+
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+  if (!res.ok) {
+    const message =
+      (json && typeof json === "object" && (json as Record<string, unknown>)["error"]) ||
+      "We couldn't upload that file. Please try again.";
+    return { data: null, error: String(message) };
+  }
+  return { data: json as T, error: null };
+}
