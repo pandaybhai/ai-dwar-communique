@@ -991,8 +991,15 @@ export function decideEscalation(input: {
 }
 
 /** Trace fields are ours, not the model's — keep them out of the prompt. */
-function modelView(result: { ok: boolean; data?: unknown; error?: string }) {
-  return { ok: result.ok, ...(result.data !== undefined ? { data: result.data } : {}), ...(result.error ? { error: result.error } : {}) };
+function modelView(result: { ok: boolean; found?: boolean; data?: unknown; error?: string }) {
+  return {
+    ok: result.ok,
+    ...(result.found === false
+      ? { found: false, note: "This ran fine and found nothing. Say so plainly; do not treat it as a failure." }
+      : {}),
+    ...(result.data !== undefined ? { data: result.data } : {}),
+    ...(result.error ? { error: result.error } : {}),
+  };
 }
 
 async function runTool(
