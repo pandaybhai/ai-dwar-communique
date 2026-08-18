@@ -29,6 +29,7 @@ import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAutomationsRouteImport } from './routes/app/automations'
 import { Route as AppContactsRouteImport } from './routes/app/contacts'
+import { Route as AppEmployeeRouteImport } from './routes/app/employee'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
@@ -172,6 +173,11 @@ const AppAutomationsRoute = AppAutomationsRouteImport.update({
 const AppContactsRoute = AppContactsRouteImport.update({
   id: '/contacts',
   path: '/contacts',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppEmployeeRoute = AppEmployeeRouteImport.update({
+  id: '/employee',
+  path: '/employee',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppInboxRoute = AppInboxRouteImport.update({
@@ -429,6 +435,7 @@ export interface FileRoutesByFullPath {
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
+  '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -493,6 +500,7 @@ export interface FileRoutesByTo {
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
+  '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -560,6 +568,7 @@ export interface FileRoutesById {
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/contacts': typeof AppContactsRoute
+  '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -628,6 +637,7 @@ export interface FileRouteTypes {
     | '/app/analytics'
     | '/app/automations'
     | '/app/contacts'
+    | '/app/employee'
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
@@ -692,6 +702,7 @@ export interface FileRouteTypes {
     | '/app/analytics'
     | '/app/automations'
     | '/app/contacts'
+    | '/app/employee'
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
@@ -758,6 +769,7 @@ export interface FileRouteTypes {
     | '/app/analytics'
     | '/app/automations'
     | '/app/contacts'
+    | '/app/employee'
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
@@ -996,6 +1008,13 @@ declare module '@tanstack/react-router' {
       path: '/contacts'
       fullPath: '/app/contacts'
       preLoaderRoute: typeof AppContactsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/employee': {
+      id: '/app/employee'
+      path: '/employee'
+      fullPath: '/app/employee'
+      preLoaderRoute: typeof AppEmployeeRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/inbox': {
@@ -1333,6 +1352,7 @@ interface AppRouteRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomationsRoute: typeof AppAutomationsRoute
   AppContactsRoute: typeof AppContactsRoute
+  AppEmployeeRoute: typeof AppEmployeeRoute
   AppInboxRoute: typeof AppInboxRoute
   AppReceiptsRoute: typeof AppReceiptsRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -1348,6 +1368,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAutomationsRoute: AppAutomationsRoute,
   AppContactsRoute: AppContactsRoute,
+  AppEmployeeRoute: AppEmployeeRoute,
   AppInboxRoute: AppInboxRoute,
   AppReceiptsRoute: AppReceiptsRoute,
   AppSettingsRoute: AppSettingsRoute,
