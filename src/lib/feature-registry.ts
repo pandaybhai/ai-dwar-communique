@@ -647,12 +647,16 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "ai",
-    name: "AI assistant",
+    name: "AI employee",
     description:
-      "The AI layer: the tools a model may call on this workspace's data, and who may use them.",
+      "The AI employee: what it knows, how it behaves, the tools it may use on this workspace's data, and every answer it has given.",
     icon: "sparkles",
+    nav_path: "/app/employee",
+    nav_order: 55,
+    nav_permission: "ai.use",
     flag_key: "ai_features",
     flag_default_enabled: false,
+
     permissions: [
       {
         key: "ai.use",
