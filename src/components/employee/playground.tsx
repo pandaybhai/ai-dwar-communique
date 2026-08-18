@@ -320,9 +320,9 @@ function AnswerCard({
   const blocked = run.status !== "ok" && !run.output;
   const blockedLabel =
     run.status === "refused"
-      ? "Didn't run"
+      ? "I didn't answer this"
       : run.status === "capped"
-        ? "Spending limit reached"
+        ? "I've hit this month's limit"
         : "Something went wrong";
   return (
     <div
@@ -333,8 +333,8 @@ function AnswerCard({
           {blocked
             ? blockedLabel
             : run.escalationSignal
-              ? "Would pass to your team"
-              : "Would answer"}
+              ? "I'd pass this to you"
+              : "I'd answer this"}
         </Badge>
         <span className="text-xs text-muted-foreground">
           {run.brainName} · {Math.round(run.latencyMs / 100) / 10}s ·{" "}
@@ -344,21 +344,21 @@ function AnswerCard({
       <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
         {run.output ||
           run.error ||
-          "It had nothing to say."}
+          "I couldn't answer this one."}
       </p>
       {blocked && run.status === "refused" ? (
         onEnableAi ? (
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Button size="sm" disabled={enabling} onClick={() => void onEnableAi()}>
-              {enabling ? "Turning on…" : "Turn AI on and retry"}
+              {enabling ? "Turning me on…" : "Turn me on and ask again"}
             </Button>
             <span className="text-xs text-muted-foreground">
-              This switches AI on for this workspace and asks again.
+              This switches me on for this workspace and asks the question again.
             </span>
           </div>
         ) : (
           <p className="mt-2 text-xs text-muted-foreground">
-            Ask an owner or admin to switch the AI employee on for this workspace.
+            Ask an owner or admin to switch me on for this workspace.
           </p>
         )
       ) : null}
@@ -378,7 +378,7 @@ function SideCard({ label, side, currency }: { label: string; side: CompareSide;
         </span>
       </div>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {side.answer || (side.passedToYou ? "Passed to your team." : "—")}
+        {side.answer || (side.passedToYou ? "I'd pass this to you." : "I had nothing to say here.")}
       </p>
       <Sources sources={side.sources} />
     </div>

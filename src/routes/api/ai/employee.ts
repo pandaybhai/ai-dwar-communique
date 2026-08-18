@@ -186,6 +186,55 @@ export const Route = createFileRoute("/api/ai/employee")({
             });
           }
 
+          if (action === "weekly_report") {
+            // The employee's own account of its week, written from run data.
+            const since = new Date(Date.now() - 7 * 864e5).toISOString();
+            const { data } = await supabase
+              .from("ai_runs")
+              .select("status, escalation_signal, cost_amount, cost_source, input_summary, created_at")
+              .eq("organization_id", org)
+              .gte("created_at", since)
+              .order("created_at", { ascending: false })
+              .limit(2000);
+            const rows = (data ?? []) as Array<{
+              status: string;
+              escalation_signal: string | null;
+              cost_amount: number | null;
+              cost_source: string | null;
+              input_summary: string | null;
+              created_at: string;
+            }>;
+
+            const answered = rows.filter((r) => r.status === "ok").length;
+            const passed = rows.filter((r) => r.status === "escalated").length;
+            const cost = rows.reduce(
+              (sum, r) => sum + (r.cost_source === "unknown" ? 0 : Number(r.cost_amount ?? 0)),
+              0,
+            );
+
+            // Questions it had nothing to answer from, most-asked first.
+            const gaps = new Map<string, { question: string; times: number; last_at: string }>();
+            for (const r of rows) {
+              const unanswered =
+                r.status === "refused" ||
+                (r.status === "escalated" &&
+                  (r.escalation_signal === "no_source" || r.escalation_signal === "unsure"));
+              const question = (r.input_summary ?? "").trim();
+              if (!unanswered || !question) continue;
+              const key = question.toLowerCase();
+              const existing = gaps.get(key);
+              if (existing) existing.times += 1;
+              else gaps.set(key, { question, times: 1, last_at: r.created_at });
+            }
+            const learn = Array.from(gaps.values())
+              .sort((a, b) => b.times - a.times)
+              .slice(0, 8);
+
+            return Response.json({
+              report: { since, answered, passed, cost, learn },
+            });
+          }
+
           if (action === "questions") {
             const { recentCustomerQuestions } = await import("@/lib/ai-comparison.server");
             const questions = await recentCustomerQuestions(supabase, org, 20);

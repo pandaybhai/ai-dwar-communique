@@ -18,26 +18,47 @@ import {
 } from "@/lib/employee-client";
 
 const STATUS_TEXT: Record<string, { label: string; tone: "default" | "secondary" | "destructive" }> = {
-  ok: { label: "Answered", tone: "default" },
-  escalated: { label: "Passed to your team", tone: "secondary" },
-  refused: { label: "Wouldn't answer", tone: "secondary" },
-  capped: { label: "Stopped — spending limit", tone: "destructive" },
+  ok: { label: "I answered this", tone: "default" },
+  escalated: { label: "I passed this to you", tone: "secondary" },
+  refused: { label: "I didn't answer this", tone: "secondary" },
+  capped: { label: "I've hit this month's limit", tone: "destructive" },
   error: { label: "Something went wrong", tone: "destructive" },
 };
 
 const TASK_TEXT: Record<string, string> = {
-  agent_reply: "Answered a customer",
-  suggest_reply: "Drafted a reply",
-  summarise: "Summarised a chat",
-  auto_tag: "Tagged a chat",
+  agent_reply: "I answered a customer",
+  suggest_reply: "I drafted a reply",
+  summarise: "I caught you up on a chat",
+  auto_tag: "I labelled a chat",
+};
+
+/** Why it stopped, said in one sentence, in its own voice. */
+const REASON_TEXT: Record<string, string> = {
+  no_source: "I had nothing to answer from.",
+  unsure: "I wasn't sure enough to answer.",
+  tool_failed: "A lookup didn't work, so I passed it to you.",
+  opted_out: "This customer asked not to be messaged.",
+  capped: "I've hit this month's limit.",
+  human_requested: "They asked for a person.",
+  policy: "This isn't something I'm allowed to answer.",
 };
 
 /** Every single thing it did, why, what it read, and what it cost. */
-export function WorkLog({ organizationId, currency }: { organizationId: string; currency: string }) {
+export function WorkLog({
+  organizationId,
+  currency,
+  onRaiseLimit,
+}: {
+  organizationId: string;
+  currency: string;
+  /** Takes the merchant to where the monthly limit lives. */
+  onRaiseLimit?: () => void;
+}) {
   const [runs, setRuns] = useState<EmployeeRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [traceId, setTraceId] = useState<string | null>(null);
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -96,10 +117,10 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="work-heading" className="text-lg font-semibold text-foreground">
-            Everything it has done
+            Everything I've done
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Open any row to see what it read before answering and what that answer cost.
+            Open any row to see what I read before answering, and what it cost you.
           </p>
         </div>
         <div className="flex gap-2">
@@ -126,8 +147,8 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
         <div className="mt-4">
           <EmptyState
             icon={ClipboardList}
-            title="It hasn't done anything yet"
-            description="Once it starts drafting or answering, every single thing it does shows up here."
+            title="I haven't done anything yet"
+            description="Put me on drafting and every reply I write will show up here, with what I read and what it cost."
           />
         </div>
       ) : (
@@ -135,6 +156,12 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
           {runs.map((run) => {
             const status = STATUS_TEXT[run.status] ?? { label: run.status, tone: "secondary" as const };
             const expanded = openId === run.id;
+            const signal = run.escalation_signal;
+            const traceOpen = traceId === run.id;
+            const reason =
+              (signal ? REASON_TEXT[signal] : null) ??
+              (signal ? signal.replace(/_/g, " ") : null) ??
+              (run.status === "capped" ? REASON_TEXT["capped"]! : null);
             return (
               <li key={run.id} className="rounded-xl border border-border/70 bg-muted/20">
                 <button
@@ -161,14 +188,33 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                 {expanded ? (
                   <div className="border-t border-border/70 px-4 py-3">
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                      {run.output || "No answer was produced."}
+                      {run.output || "I didn't write anything here."}
                     </p>
-                    {run.escalation_signal ? (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Passed to your team because: {run.escalation_signal.replace(/_/g, " ")}
-                      </p>
+                    {reason ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-muted/40 p-3">
+                        <p className="min-w-0 flex-1 text-sm text-foreground">{reason}</p>
+                        {signal === "tool_failed" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setTraceId(traceOpen ? null : run.id)}
+                          >
+                            {traceOpen ? "Hide what went wrong" : "See what went wrong"}
+                          </Button>
+                        ) : null}
+                        {(signal === "no_source" || signal === "unsure") && canConfigure ? (
+                          <Button size="sm" variant="outline" onClick={() => startCorrection(run)}>
+                            Teach me the answer
+                          </Button>
+                        ) : null}
+                        {(signal === "capped" || run.status === "capped") && onRaiseLimit ? (
+                          <Button size="sm" variant="outline" onClick={onRaiseLimit}>
+                            Raise this month's limit
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
-                    {run.tool_calls && run.tool_calls.length > 0 ? (
+                    {run.tool_calls && run.tool_calls.length > 0 && (traceOpen || signal !== "tool_failed") ? (
                       <ul className="mt-3 space-y-1.5">
                         {run.tool_calls.map((t, i) => (
                           <li
@@ -179,7 +225,7 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                               variant={t.ok ? "secondary" : "destructive"}
                               className="text-[11px]"
                             >
-                              {t.ok ? "Checked" : "Failed"}: {t.tool_name.replace(/_/g, " ")}
+                              {t.ok ? "I checked" : "I couldn\u2019t reach"}: {t.tool_name.replace(/_/g, " ")}
                             </Badge>
                             {t.latency_ms ? (
                               <span className="text-muted-foreground">{t.latency_ms} ms</span>
@@ -202,7 +248,7 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                       </div>
                     ) : (
                       <p className="mt-3 text-xs text-muted-foreground">
-                        It answered without reading anything of yours.
+                        I answered this without reading anything of yours.
                       </p>
                     )}
 
@@ -247,7 +293,7 @@ export function WorkLog({ organizationId, currency }: { organizationId: string; 
                           onClick={() => startCorrection(run)}
                         >
                           <PencilLine className="mr-2 h-3.5 w-3.5" />
-                          This answer was wrong
+                          That answer was wrong
                         </Button>
                       )
                     ) : null}
