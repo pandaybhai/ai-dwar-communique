@@ -16,19 +16,22 @@ export type EmployeeSettings = {
   brain_choice: "recommended" | "manual" | string;
 };
 
-export type BrainModel = {
-  provider: string;
-  model_id: string;
+/**
+ * What the merchant chooses: how careful I should be, in words. Vendors,
+ * models and API keys are the platform's business, not theirs.
+ */
+export type AiTier = {
+  key: string;
   display_name: string;
   plain_description: string | null;
-  supports_tools: boolean;
-  recommended_for: string[] | null;
+  speed_text: string | null;
+  quality_text: string | null;
+  relative_cost_text: string | null;
 };
 
-export type TaskModel = {
+export type TaskTier = {
   task: string;
-  provider: string;
-  model_id: string;
+  tier: string;
   agent_id: string | null;
 };
 
