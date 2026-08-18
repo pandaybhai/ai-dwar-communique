@@ -863,7 +863,9 @@ export async function executeRun(
       ...base,
       status: "capped",
       output: "",
-      error: `This month's AI spending limit (${cap.currency} ${cap.cap}) has been reached.`,
+      error: cap.misconfigured
+        ? "This workspace has no valid monthly spending limit set, so I've stopped rather than spend without one. Set a limit above zero and I'll carry on."
+        : `This month's AI spending limit (${cap.currency} ${cap.cap}) has been reached.`,
     });
   }
 
