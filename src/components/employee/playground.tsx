@@ -345,11 +345,16 @@ function AnswerCard({
           {run.costKnown ? moneyText(run.billedAmount, currency) : "cost unknown"}
         </span>
       </div>
-      <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {run.output ||
-          run.error ||
-          "I couldn't answer this one."}
+      <p
+        className={`mt-3 whitespace-pre-wrap text-sm leading-relaxed ${run.status === "error" && !run.output ? "text-destructive" : "text-foreground"}`}
+      >
+        {run.output || run.error || "I couldn't answer this one."}
       </p>
+      {run.status === "error" && !run.output ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Nothing was charged for this — I never reached the AI.
+        </p>
+      ) : null}
       {blocked && run.status === "refused" ? (
         onEnableAi ? (
           <div className="mt-3 flex flex-wrap items-center gap-3">
