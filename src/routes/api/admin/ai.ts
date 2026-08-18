@@ -104,6 +104,19 @@ export const Route = createFileRoute("/api/admin/ai")({
           return Response.json({ ok: true });
         }
 
+        if (action === "set_platform_cap") {
+          const amount = Number(payload["amount"]);
+          if (!Number.isFinite(amount) || amount < 0) {
+            return jsonError("Enter a monthly ceiling of zero or more.");
+          }
+          const { error } = await supabase
+            .from("platform_settings")
+            .update({ ai_monthly_cap_amount: amount, updated_at: new Date().toISOString() })
+            .eq("id", true);
+          if (error) return jsonError("The platform ceiling could not be saved.", 500);
+          return Response.json({ ok: true });
+        }
+
         if (action === "set_provider_key") {
           const provider = String(payload["provider"] ?? "");
           const key = String(payload["key"] ?? "").trim();
