@@ -137,11 +137,6 @@ export async function runComparison(
     .maybeSingle();
   const comparisonId = (created as { id?: string } | null)?.id ?? null;
 
-  const brain = (config: CompareConfig) =>
-    config.provider && config.model_id
-      ? { provider: config.provider, model_id: config.model_id }
-      : null;
-
   const pairs: ComparePair[] = [];
   for (const question of questions) {
     // Sequential on purpose: the gateway rate limit is shared by the workspace.
@@ -149,7 +144,7 @@ export async function runComparison(
       supabase,
       common,
       question,
-      brain(configA),
+      configA.tier ?? null,
       configA.instructions ?? null,
       comparisonId,
     );
@@ -157,7 +152,7 @@ export async function runComparison(
       supabase,
       common,
       question,
-      brain(configB),
+      configB.tier ?? null,
       configB.instructions ?? null,
       comparisonId,
     );
