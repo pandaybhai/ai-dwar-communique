@@ -714,21 +714,25 @@ export async function executeRun(
       .maybeSingle();
     result.runId = (data as { id?: string } | null)?.id ?? null;
     if (result.runId) {
-      // One row per tool invocation, written only now because run_id is NOT NULL.
+      // One row per tool invocation, written through a strict database function.
+      // A run must never claim tool usage without the matching trace rows.
       if (result.toolCalls.length) {
-        const { error: traceError } = await supabase.from("ai_tool_calls").insert(
-          result.toolCalls.map((call) => ({
-            organization_id: organizationId,
-            run_id: result.runId,
-            tool_name: call.tool,
-            ok: call.ok,
-            error: call.error ?? null,
-            latency_ms: call.latencyMs ?? null,
-            activity_log_id: call.activityLogId ?? null,
-          })),
-        );
-        if (traceError) {
-          console.error("[ai-run] tool call trace not written", traceError.message);
+        const traces = result.toolCalls.map((call) => ({
+          tool_name: call.tool,
+          ok: call.ok,
+          error: call.error ?? null,
+          latency_ms: call.latencyMs ?? null,
+          activity_log_id: call.activityLogId ?? null,
+        }));
+        const { data: written, error: traceError } = await supabase.rpc("record_ai_tool_calls", {
+          p_run_id: result.runId,
+          p_organization_id: organizationId,
+          p_calls: traces,
+        });
+        if (traceError || Number(written) !== traces.length) {
+          throw new Error(
+            `I used ${traces.length} tool${traces.length === 1 ? "" : "s"}, but I couldn't save the work record. Please retry this request.`,
+          );
         }
       }
       await rollUpUsage(supabase, organizationId, task, result);
