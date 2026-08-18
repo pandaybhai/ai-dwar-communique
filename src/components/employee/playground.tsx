@@ -206,8 +206,8 @@ export function Playground({
             {questions.length === 1 ? "" : "s"} through both.
           </p>
           <div className="grid gap-4 md:grid-cols-2">
-            <BrainSelect id="brain-a" label="Setup A" value={brainA} onChange={setBrainA} models={models} />
-            <BrainSelect id="brain-b" label="Setup B" value={brainB} onChange={setBrainB} models={models} />
+            <TierSelect id="tier-a" label="Setup A" value={tierA} onChange={setTierA} tiers={tiers} />
+            <TierSelect id="tier-b" label="Setup B" value={tierB} onChange={setTierB} tiers={tiers} />
           </div>
           <Button onClick={() => void compare()} disabled={comparing}>
             {comparing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Scale className="mr-2 h-4 w-4" />}
