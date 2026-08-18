@@ -8,6 +8,7 @@ import { BrainPicker } from "@/components/employee/brain-picker";
 import { KnowledgeManager } from "@/components/employee/knowledge-manager";
 import { Playground } from "@/components/employee/playground";
 import { ToolsList } from "@/components/employee/tools-list";
+import { WeeklyReport } from "@/components/employee/weekly-report";
 import { WorkLog } from "@/components/employee/work-log";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import { useOrg } from "@/lib/org-context";
 
 
 const DESCRIPTION =
-  "Your AI employee: what it knows, how it behaves, and every answer it has given. Start it in draft, read its work, then let it reply.";
+  "Your AI employee: what I know, how I behave, and every answer I've given. Start me on drafts, read my work, then let me reply.";
 
 export const Route = createFileRoute("/app/employee")({
   head: () => ({
@@ -36,9 +37,13 @@ export const Route = createFileRoute("/app/employee")({
 });
 
 const MODES = [
-  { key: "off", label: "Not working", blurb: "It does nothing. Your team handles everything." },
-  { key: "draft", label: "Drafting for your team", blurb: "It writes replies. A person sends them." },
-  { key: "replying", label: "Replying to customers", blurb: "It answers directly and passes on anything it shouldn't handle." },
+  { key: "off", label: "Off", blurb: "I do nothing. Your team handles every message." },
+  { key: "draft", label: "Draft only", blurb: "I write replies. You read them and send them." },
+  {
+    key: "replying",
+    label: "Replying",
+    blurb: "I reply to customers myself, and pass anything I'm unsure about to you.",
+  },
 ] as const;
 
 function EmployeePage() {
@@ -48,6 +53,7 @@ function EmployeePage() {
 
   const [overview, setOverview] = useState<EmployeeOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("knows");
 
   const load = useCallback(async () => {
     if (!organizationId) return;
@@ -138,13 +144,13 @@ function EmployeePage() {
           {!aiEnabled ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
               <div>
-                <p className="text-sm font-semibold text-foreground">AI is switched off here</p>
+                <p className="text-sm font-semibold text-foreground">I'm switched off here</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Nothing will answer, draft or test until you turn it on for this workspace.
+                  I won't answer, draft or even test until you turn me on for this workspace.
                 </p>
               </div>
               <Button disabled={!canConfigure} onClick={() => void setAiEnabled(true)}>
-                Turn AI on
+                Turn me on
               </Button>
             </div>
           ) : null}
@@ -154,7 +160,7 @@ function EmployeePage() {
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 id="mode-heading" className="text-lg font-semibold text-foreground">
-                What it's doing right now
+                What I'm doing right now
               </h2>
               <Badge variant={mode === "off" ? "secondary" : "default"}>
                 {MODES.find((m) => m.key === mode)?.label ?? "Not working"}
@@ -184,24 +190,35 @@ function EmployeePage() {
               })}
             </div>
 
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+              Off: I do nothing. Draft only: I write replies, you send them. Replying: I reply to
+              customers myself, and pass anything I'm unsure about to you.
+            </p>
+
             <dl className="mt-6 grid gap-4 sm:grid-cols-3">
-              <Stat label="Answered this week" value={String(overview?.week.answered ?? 0)} />
-              <Stat label="Passed to your team" value={String(overview?.week.passed ?? 0)} />
+              <Stat label="I answered this week" value={String(overview?.week.answered ?? 0)} />
+              <Stat label="I passed to you" value={String(overview?.week.passed ?? 0)} />
               <Stat
-                label="Spent this month"
+                label="I cost you this month"
                 value={moneyText(overview?.spend_this_month ?? 0, currency)}
               />
             </dl>
 
             {!overview?.tested_recently && canConfigure ? (
               <p className="mt-5 rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">
-                You haven't tested it yet. Try it against your last 20 real customer questions before
-                letting it reply.
+                You haven't tried me yet. Ask me your last 20 real customer questions before you
+                let me reply on my own.
               </p>
             ) : null}
           </section>
 
-          <Tabs defaultValue="knows" className="space-y-6">
+          <WeeklyReport
+            organizationId={active.organization.id}
+            currency={currency}
+            canConfigure={canConfigure}
+          />
+
+          <Tabs value={tab} onValueChange={setTab} className="space-y-6">
             <TabsList className="flex w-full flex-wrap justify-start gap-1">
               <TabsTrigger value="knows">What it knows</TabsTrigger>
               <TabsTrigger value="behaviour">How it behaves</TabsTrigger>
@@ -254,13 +271,17 @@ function EmployeePage() {
             </TabsContent>
 
             <TabsContent value="work">
-              <WorkLog organizationId={active.organization.id} currency={currency} />
+              <WorkLog
+                organizationId={active.organization.id}
+                currency={currency}
+                onRaiseLimit={() => setTab("brains")}
+              />
             </TabsContent>
           </Tabs>
 
           {!canConfigure ? (
             <p className="text-sm text-muted-foreground">
-              You can see what it does. Changing it needs the "Configure AI" permission.
+              You can see everything I do. Changing how I work needs the "Configure AI" permission.
             </p>
           ) : (
             <div>
