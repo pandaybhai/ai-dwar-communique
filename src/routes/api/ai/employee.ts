@@ -141,7 +141,7 @@ export const Route = createFileRoute("/api/ai/employee")({
               agent,
               settings: settings.data ?? null,
               spend_this_month: Number(spend.data ?? 0),
-              models: models.data ?? [],
+              tiers: models.data ?? [],
               task_models: taskModels.data ?? [],
               instructions: instructions.data ?? [],
               sources: sources.data ?? [],
