@@ -26,6 +26,8 @@ export type SideResult = {
   answer: string;
   answered: boolean;
   passedToYou: boolean;
+  status: string;
+  error: string | null;
   sources: RunResult["sources"];
   tools: string[];
   /** What the merchant pays for this answer. */
@@ -79,6 +81,8 @@ function toSide(run: RunResult): SideResult {
     answer: run.output,
     answered: run.status === "ok",
     passedToYou: run.status === "escalated",
+    status: run.status,
+    error: run.error ?? null,
     sources: run.sources,
     tools: run.toolCalls.map((t) => t.tool),
     billedAmount: run.billedAmount,
