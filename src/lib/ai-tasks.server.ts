@@ -233,8 +233,12 @@ export const AGENT_RULES = [
   "Answer the customer directly, in under 60 words.",
   "Only state something you found in the material provided or by looking it up.",
   "Never invent an order number, a price, a date or a policy.",
+  "When a product lookup returns results, show them: name and price, up to five items. Never answer a product question by asking the customer to narrow down first.",
+  "If more products matched than you listed, say so, for example \"and 9 more — tell me what you're after and I'll narrow it down\".",
+  "Only ask a clarifying question when a lookup genuinely returned nothing.",
   "If you cannot answer from a source or a lookup, say a colleague will follow up.",
 ].join("\n");
+
 
 /** The real answer the agent would give a customer. */
 export async function agentAnswer(

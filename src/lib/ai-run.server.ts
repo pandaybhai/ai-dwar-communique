@@ -98,7 +98,12 @@ export type RunResult = {
     error?: string;
     latencyMs?: number;
     activityLogId?: string | null;
+    /** The arguments the model supplied, for debugging tool behaviour. */
+    args?: Record<string, unknown>;
+    /** Row count and up to five identifiers. Never a data copy. */
+    resultSummary?: Record<string, unknown>;
   }[];
+
   escalationSignal: string | null;
   /** What the provider charges the platform. Platform-internal, never shown. */
   costAmount: number | null;
@@ -825,6 +830,8 @@ export async function executeRun(
           error: call.error ?? null,
           latency_ms: call.latencyMs ?? null,
           activity_log_id: call.activityLogId ?? null,
+          arguments: call.args ?? {},
+          result_summary: call.resultSummary ?? {},
         }));
         const { data: written, error: traceError } = await supabase.rpc("record_ai_tool_calls", {
           p_run_id: result.runId,
@@ -985,6 +992,8 @@ export async function executeRun(
             ...(result.error ? { error: result.error } : {}),
             ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
             activityLogId: result.activityLogId ?? null,
+            args: result.arguments ?? {},
+            resultSummary: result.resultSummary ?? {},
           });
           sources.push({ kind: "tool", label: tc.name });
           items.push({
@@ -1016,6 +1025,8 @@ export async function executeRun(
             ...(result.error ? { error: result.error } : {}),
             ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
             activityLogId: result.activityLogId ?? null,
+            args: result.arguments ?? {},
+            resultSummary: result.resultSummary ?? {},
           });
           sources.push({ kind: "tool", label: tc.name });
           messages.push({

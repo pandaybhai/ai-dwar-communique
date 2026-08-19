@@ -40,7 +40,12 @@ export type ToolResult = {
   activityLogId?: string | null;
   /** Set by invokeTool: wall-clock time of the invocation. */
   latencyMs?: number;
+  /** Set by invokeTool: the arguments the model supplied, minus organization_id. */
+  arguments?: Record<string, unknown>;
+  /** Set by invokeTool: row count plus up to five identifiers. Never a data copy. */
+  resultSummary?: Record<string, unknown>;
 };
+
 
 type Handler = (ctx: ToolContext, args: ToolArgs) => Promise<ToolResult>;
 
@@ -322,11 +327,10 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
   async catalogSearch(ctx, args) {
     const query = str(args["query"]);
-    if (!query) return { ok: false, error: "query is required." };
     const limit = Math.min(Math.max(num(args["limit"], 10), 1), 25);
 
     const { toTsQuery, isAvailability } = await import("@/lib/catalog");
-    const tsquery = toTsQuery(query);
+    const tsquery = query ? toTsQuery(query) : "";
 
     let request = ctx.supabase
       .from("products")
@@ -334,13 +338,21 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
         "id, title, sku, brand, category, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url",
       )
       .eq("organization_id", ctx.organizationId)
+      // Hidden products never reach a customer, whether searching or browsing.
       .eq("is_visible", true)
       .limit(limit);
 
-    // Full-text when the words are searchable, a plain contains match otherwise.
-    request = tsquery
-      ? request.textSearch("search_vector", tsquery)
-      : request.ilike("title", `%${query.replace(/[%,()]/g, " ").trim()}%`);
+    if (query) {
+      // Full-text when the words are searchable, a plain contains match otherwise.
+      request = tsquery
+        ? request.textSearch("search_vector", tsquery)
+        : request.ilike("title", `%${query.replace(/[%,()]/g, " ").trim()}%`);
+    } else {
+      // Browse case: what's in stock, most recently touched first.
+      request = request
+        .order("availability", { ascending: true })
+        .order("updated_at", { ascending: false });
+    }
 
     const maxPrice = args["max_price"];
     if (typeof maxPrice === "number" && Number.isFinite(maxPrice)) {
@@ -353,9 +365,19 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
     const { data, error } = await request;
     if (error) return { ok: false, error: error.message };
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    // "in_stock" sorts before "out_of_stock"/"preorder" alphabetically except
+    // preorder, so put in_stock first explicitly for the browse case.
+    const ordered = query
+      ? rows
+      : [...rows].sort(
+          (a, b) =>
+            Number(b["availability"] === "in_stock") - Number(a["availability"] === "in_stock"),
+        );
     // A search that matches nothing still ran: ok, just empty.
-    return { ok: true, found: (data ?? []).length > 0, data: data ?? [] };
+    return { ok: true, found: ordered.length > 0, data: ordered };
   },
+
 
   async searchProducts(ctx, args) {
     const query = str(args["query"]);
@@ -445,6 +467,31 @@ export type InvokeOptions = {
 };
 
 /**
+ * A debugging fingerprint of a tool result: how many rows and up to five
+ * identifiers. Never a copy of the data, never personal details.
+ */
+function summarise(result: ToolResult): Record<string, unknown> {
+  const label = (row: unknown): string | null => {
+    if (row === null || typeof row !== "object") return null;
+    const r = row as Record<string, unknown>;
+    for (const key of ["title", "name", "order_number", "id"]) {
+      const value = r[key];
+      if (typeof value === "string" && value) return value.slice(0, 80);
+    }
+    return null;
+  };
+  const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
+  return {
+    ok: result.ok,
+    ...(result.found === false ? { found: false } : {}),
+    row_count: rows.length,
+    identifiers: rows.map(label).filter(Boolean).slice(0, 5),
+    ...(result.error ? { error: result.error.slice(0, 200) } : {}),
+  };
+}
+
+/**
+
  * Invoke one tool. Every invocation is logged to activity_log with the tool
  * name, the arguments the model supplied, the result status and whether a
  * human or an AI initiated it. Arguments never carry organization_id: it is
@@ -486,11 +533,16 @@ export async function invokeTool(
     }
   };
 
+  const { organization_id: _boundOrg, ...safeArguments } = args as Record<string, unknown>;
+
   const done = (result: ToolResult, activityLogId: string | null): ToolResult => ({
     ...result,
     activityLogId,
     latencyMs: Date.now() - startedAt,
+    arguments: safeArguments,
+    resultSummary: summarise(result),
   });
+
 
   if (!tool) {
     const logId = await log("denied", "not_available");
