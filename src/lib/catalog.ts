@@ -311,9 +311,21 @@ export type ImportRow = {
 };
 
 export type ImportError = { row: number; product: string; reason: string };
+/** A row that imported, but with a value we had to substitute. */
+export type ImportWarning = {
+  row: number;
+  product: string;
+  field: string;
+  value: string;
+  used: string;
+  reason: string;
+};
 export type ImportResults = {
   created: number;
   updated: number;
+  warned: number;
   failed: number;
   errors: ImportError[];
+  warnings: ImportWarning[];
+
 };
