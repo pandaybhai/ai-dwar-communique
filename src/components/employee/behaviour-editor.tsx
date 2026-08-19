@@ -35,6 +35,9 @@ const HOURS = [
   { value: "after_hours_only", label: "Only outside working hours" },
 ];
 
+/** What the customer hears when the employee steps back, unless reworded. */
+const DEFAULT_HANDOVER = "Let me get someone from the team to help — they'll reply here shortly.";
+
 const LANGUAGE_OPTIONS = LANGUAGES.map((l) => ({ value: l.code, label: languageLabel(l.code) }));
 
 /** How the employee behaves: who it is, what it must never do, when to fetch a human. */
@@ -58,6 +61,7 @@ export function BehaviourEditor({
   const [tone, setTone] = useState("friendly");
   const [instructions, setInstructions] = useState("");
   const [escalation, setEscalation] = useState("");
+  const [handover, setHandover] = useState("");
   const [hours, setHours] = useState("always");
   const [languages, setLanguages] = useState<string[]>(DEFAULT_LANGUAGES as string[]);
   const [saving, setSaving] = useState(false);
