@@ -35,6 +35,9 @@ const HOURS = [
   { value: "after_hours_only", label: "Only outside working hours" },
 ];
 
+/** What the customer hears when the employee steps back, unless reworded. */
+const DEFAULT_HANDOVER = "Let me get someone from the team to help — they'll reply here shortly.";
+
 const LANGUAGE_OPTIONS = LANGUAGES.map((l) => ({ value: l.code, label: languageLabel(l.code) }));
 
 /** How the employee behaves: who it is, what it must never do, when to fetch a human. */
@@ -58,6 +61,7 @@ export function BehaviourEditor({
   const [tone, setTone] = useState("friendly");
   const [instructions, setInstructions] = useState("");
   const [escalation, setEscalation] = useState("");
+  const [handover, setHandover] = useState("");
   const [hours, setHours] = useState("always");
   const [languages, setLanguages] = useState<string[]>(DEFAULT_LANGUAGES as string[]);
   const [saving, setSaving] = useState(false);
@@ -74,6 +78,7 @@ export function BehaviourEditor({
     setTone(current?.tone ?? "friendly");
     setInstructions(current?.instructions ?? "");
     setEscalation(current?.escalation_rules ?? "");
+    setHandover(current?.handover_message ?? DEFAULT_HANDOVER);
     setHours(current?.working_hours_behaviour ?? "always");
     setLanguages(current?.languages?.length ? current.languages : (DEFAULT_LANGUAGES as string[]));
   }, [current]);
@@ -87,6 +92,7 @@ export function BehaviourEditor({
       tone,
       instructions,
       escalation_rules: escalation,
+      handover_message: handover.trim() || DEFAULT_HANDOVER,
       working_hours_behaviour: hours,
       languages,
     });
@@ -191,6 +197,25 @@ export function BehaviourEditor({
           className="resize-y"
         />
       </div>
+
+      <div className="mt-5 space-y-2">
+        <Label htmlFor="handover">What I say when I fetch a person</Label>
+        <Textarea
+          id="handover"
+          rows={2}
+          value={handover}
+          disabled={!canConfigure}
+          onChange={(e) => setHandover(e.target.value)}
+          placeholder={DEFAULT_HANDOVER}
+          className="resize-y"
+        />
+        <p className="text-xs text-muted-foreground">
+          The customer gets this the moment I step back, so nobody is left waiting in silence. If
+          their 24-hour window has closed I can't send it — the chat still shows up as "Needs you"
+          in your inbox.
+        </p>
+      </div>
+
 
       <div className="mt-5 grid gap-5 md:grid-cols-2">
         <div className="space-y-2">

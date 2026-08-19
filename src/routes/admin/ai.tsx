@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
+import { PromptBlocksEditor } from "@/components/admin/prompt-blocks-editor";
 
 export const Route = createFileRoute("/admin/ai")({
   head: () => ({
@@ -206,6 +207,8 @@ function AdminAi() {
           })}
         </div>
       </section>
+
+      <PromptBlocksEditor />
     </div>
   );
 }

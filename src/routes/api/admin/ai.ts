@@ -91,6 +91,62 @@ export const Route = createFileRoute("/api/admin/ai")({
           });
         }
 
+        // The platform-wide rules every employee is briefed with. Merchants
+        // read these in the prompt preview; only a Super Admin rewrites them.
+        if (action === "prompt_blocks") {
+          const { data, error } = await supabase
+            .from("ai_prompt_blocks")
+            .select("key, name, description, content, default_content, version, updated_at")
+            .order("key");
+          if (error) return jsonError("The platform rules could not be loaded.", 500);
+          return Response.json({ blocks: data ?? [] });
+        }
+
+        if (action === "save_prompt_block") {
+          const key = String(payload["key"] ?? "").trim();
+          const content = String(payload["content"] ?? "").trim();
+          if (!key) return jsonError("Which block?");
+          if (content.length < 10) return jsonError("The rules cannot be empty.");
+          if (content.length > 20000) return jsonError("That is too long to send with every message.");
+          const { data: existing } = await supabase
+            .from("ai_prompt_blocks")
+            .select("version")
+            .eq("key", key)
+            .maybeSingle();
+          if (!existing) return jsonError("That block does not exist.");
+          const { error } = await supabase
+            .from("ai_prompt_blocks")
+            .update({
+              content,
+              version: Number((existing as { version?: number }).version ?? 1) + 1,
+              updated_by: user.id,
+            })
+            .eq("key", key);
+          if (error) return jsonError("The rules could not be saved.", 500);
+          return Response.json({ ok: true });
+        }
+
+        if (action === "reset_prompt_block") {
+          const key = String(payload["key"] ?? "").trim();
+          const { data: existing } = await supabase
+            .from("ai_prompt_blocks")
+            .select("version, default_content")
+            .eq("key", key)
+            .maybeSingle();
+          if (!existing) return jsonError("That block does not exist.");
+          const row = existing as { version?: number; default_content?: string };
+          const { error } = await supabase
+            .from("ai_prompt_blocks")
+            .update({
+              content: row.default_content ?? "",
+              version: Number(row.version ?? 1) + 1,
+              updated_by: user.id,
+            })
+            .eq("key", key);
+          if (error) return jsonError("The rules could not be reset.", 500);
+          return Response.json({ ok: true });
+        }
+
         if (action === "set_markup") {
           const multiplier = Number(payload["multiplier"]);
           if (!Number.isFinite(multiplier) || multiplier < 1 || multiplier > 100) {

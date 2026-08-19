@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, MessageSquare, Play, Scale, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { outcomeOf } from "@/lib/ai-outcome";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -345,26 +346,13 @@ function AnswerCard({
   enabling?: boolean;
 }) {
   const blocked = run.status !== "ok" && !run.output;
-  const blockedLabel =
-    run.status === "refused"
-      ? "I didn't answer this"
-      : run.status === "capped"
-        ? "I've hit this month's limit"
-        : run.status === "error"
-          ? "This setup isn't connected"
-          : "Something went wrong";
+  const outcome = outcomeOf(run.status, run.escalationSignal);
   return (
     <div
       className={`rounded-xl border p-4 ${blocked ? "border-destructive/40 bg-destructive/5" : "border-border/70 bg-muted/20"}`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={blocked ? "destructive" : run.escalationSignal ? "secondary" : "default"}>
-          {blocked
-            ? blockedLabel
-            : run.escalationSignal
-              ? "I'd pass this to you"
-              : "I'd answer this"}
-        </Badge>
+        <Badge variant={blocked ? "destructive" : outcome.tone}>{outcome.label}</Badge>
         <TierInternalBadge tier={run.tier} internals={internals} />
         <span className="text-xs text-muted-foreground">
           {run.brainName} · {Math.round(run.latencyMs / 100) / 10}s ·{" "}

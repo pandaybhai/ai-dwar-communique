@@ -17,6 +17,7 @@ import {
   GraduationCap,
   Languages,
   ThumbsDown,
+  HandHelping,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
 import { languageLabel } from "@/lib/languages";
+import { handoverReasonText } from "@/lib/ai-outcome";
 
 import {
   Select,
@@ -319,6 +321,7 @@ export function ChatThread({
   onBack,
   onAssign,
   onToggleStatus,
+  onResolveNeedsHuman,
 }: {
   conversation: ConversationRow;
   messages: MessageRow[];
@@ -336,6 +339,8 @@ export function ChatThread({
   onBack: () => void;
   onAssign: (userId: string | null) => void;
   onToggleStatus: () => void;
+  /** Clears the "Needs you" flag once a person has picked the thread up. */
+  onResolveNeedsHuman?: () => void;
 
 }) {
   const [draft, setDraft] = useState("");
@@ -522,6 +527,35 @@ export function ChatThread({
           {conversation.status === "closed" ? "Reopen" : "Close"}
         </Button>
       </header>
+
+      {conversation.needs_human ? (
+        <div className="flex flex-wrap items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
+          <HandHelping className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">
+              Needs you.{" "}
+              {handoverReasonText(conversation.needs_human_reason) ?? "I stepped back on this one."}
+            </p>
+            {conversation.needs_human_question ? (
+              <p className="mt-0.5 break-words opacity-90">
+                They asked: “{conversation.needs_human_question}”
+              </p>
+            ) : null}
+            <p className="mt-0.5 opacity-80">
+              {conversation.handover_state === "sent"
+                ? "I told them a colleague would reply here shortly."
+                : conversation.handover_state === "window_closed"
+                  ? "Their 24-hour window had closed, so I couldn't tell them — send an approved template."
+                  : "I couldn't get a message to them, so they're still waiting."}
+            </p>
+          </div>
+          {onResolveNeedsHuman ? (
+            <Button size="sm" variant="outline" className="rounded-full" onClick={onResolveNeedsHuman}>
+              Mark as handled
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {conversation.contact?.opt_in_status === "opted_out" ? (
         <div className="flex items-start gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2.5 text-xs text-destructive">
