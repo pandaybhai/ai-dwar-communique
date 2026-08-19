@@ -87,6 +87,18 @@ export type RunOptions = {
   dryRun?: boolean;
 };
 
+/** A product picture the answer can show: catalogue result, never a data copy. */
+export type RunMedia = {
+  title: string;
+  imageUrl: string;
+  price: number | null;
+  currency: string | null;
+  productUrl: string | null;
+};
+
+/** How many pictures a single answer is allowed to carry. */
+export const MAX_PRODUCT_IMAGES = 5;
+
 export type RunResult = {
   runId: string | null;
   status: "ok" | "refused" | "escalated" | "capped" | "error";
@@ -103,6 +115,8 @@ export type RunResult = {
     /** Row count and up to five identifiers. Never a data copy. */
     resultSummary?: Record<string, unknown>;
   }[];
+  /** Pictures of the products this answer talks about, in the order shown. */
+  media: RunMedia[];
 
   escalationSignal: string | null;
   /** What the provider charges the platform. Platform-internal, never shown. */
@@ -767,6 +781,7 @@ export async function executeRun(
     output: "",
     sources: [],
     toolCalls: [],
+    media: [],
     escalationSignal: null,
     costAmount: null,
     costCurrency: null,
@@ -954,6 +969,7 @@ export async function executeRun(
     : ([] as BrokeredTool[]);
 
   const toolCalls: RunResult["toolCalls"] = [];
+  const foundMedia: RunMedia[] = [];
   let anyToolFailed = false;
   let inputTokens = 0;
   let outputTokens = 0;
@@ -996,6 +1012,7 @@ export async function executeRun(
             resultSummary: result.resultSummary ?? {},
           });
           sources.push({ kind: "tool", label: tc.name });
+          collectProductMedia(tc.name, result, foundMedia);
           items.push({
             type: "function_call_output",
             call_id: tc.id,
@@ -1029,6 +1046,7 @@ export async function executeRun(
             resultSummary: result.resultSummary ?? {},
           });
           sources.push({ kind: "tool", label: tc.name });
+          collectProductMedia(tc.name, result, foundMedia);
           messages.push({
             role: "tool",
             tool_call_id: tc.id,
@@ -1046,6 +1064,7 @@ export async function executeRun(
       error: message,
       sources,
       toolCalls,
+      media: [],
       inputTokens: inputTokens || null,
       outputTokens: outputTokens || null,
       costAmount: priced.amount,
@@ -1063,6 +1082,7 @@ export async function executeRun(
     output: answer.trim(),
     sources,
     toolCalls,
+    media: pickMediaForAnswer(foundMedia, answer),
     inputTokens: inputTokens || null,
     outputTokens: outputTokens || null,
     costAmount: priced.amount,
@@ -1126,6 +1146,42 @@ export function decideEscalation(input: {
 }
 
 /** Trace fields are ours, not the model's — keep them out of the prompt. */
+/** Pull product pictures out of a catalogue lookup. Nothing else is kept. */
+export function collectProductMedia(
+  toolName: string,
+  result: { ok?: boolean; data?: unknown },
+  into: RunMedia[],
+): void {
+  if (toolName !== "catalog_search" && toolName !== "search_products") return;
+  if (result.ok === false || !Array.isArray(result.data)) return;
+  for (const row of result.data as Array<Record<string, unknown>>) {
+    const imageUrl = typeof row["image_url"] === "string" ? row["image_url"].trim() : "";
+    const title = typeof row["title"] === "string" ? row["title"].trim() : "";
+    if (!imageUrl || !/^https?:\/\//i.test(imageUrl) || !title) continue;
+    if (into.some((m) => m.imageUrl === imageUrl)) continue;
+    const price = row["price"];
+    into.push({
+      title,
+      imageUrl,
+      price: typeof price === "number" ? price : price === null || price === undefined ? null : Number(price) || null,
+      currency: typeof row["currency"] === "string" ? row["currency"] : null,
+      productUrl: typeof row["product_url"] === "string" ? row["product_url"] : null,
+    });
+  }
+}
+
+/**
+ * Show pictures for the products the answer actually names. If the wording
+ * doesn't match any title, fall back to the first few results so a browse
+ * question still gets pictures.
+ */
+export function pickMediaForAnswer(found: RunMedia[], answer: string): RunMedia[] {
+  if (found.length === 0) return [];
+  const text = answer.toLowerCase();
+  const named = found.filter((m) => m.title.length > 2 && text.includes(m.title.toLowerCase()));
+  return (named.length > 0 ? named : found).slice(0, MAX_PRODUCT_IMAGES);
+}
+
 function modelView(result: { ok: boolean; found?: boolean; data?: unknown; error?: string }) {
   return {
     ok: result.ok,

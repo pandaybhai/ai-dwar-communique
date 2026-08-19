@@ -147,6 +147,14 @@ export type EmployeeToolCall = {
   latency_ms: number | null;
 };
 
+export type RunMedia = {
+  title: string;
+  imageUrl: string;
+  price: number | null;
+  currency: string | null;
+  productUrl: string | null;
+};
+
 export type PlaygroundRun = {
   runId: string | null;
   status: string;
@@ -154,6 +162,8 @@ export type PlaygroundRun = {
   output: string;
   sources: RunSource[];
   toolCalls: { tool: string; ok: boolean; error?: string }[];
+  /** Product pictures that belong with this answer. */
+  media?: RunMedia[] | null;
   escalationSignal: string | null;
   billedAmount: number | null;
   billedCurrency: string | null;

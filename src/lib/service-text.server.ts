@@ -83,3 +83,75 @@ export async function sendServiceText(
     error: res.ok ? null : JSON.stringify(json).slice(0, 300),
   };
 }
+
+/**
+ * Sends one product picture as a session image message, with the product name
+ * (and price, when we have one) as the caption. Used when the AI answers a
+ * catalogue question — a picture says more than a line of text.
+ */
+export async function sendServiceImage(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    conversationId: string;
+    to: string;
+    imageUrl: string;
+    caption: string;
+  },
+): Promise<ServiceTextResult> {
+  if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: args.to,
+      type: "image",
+      image: { link: args.imageUrl, caption: args.caption.slice(0, 1024) },
+    }),
+  });
+
+  let json: AnyRecord = {};
+  try {
+    json = (await res.json()) as AnyRecord;
+  } catch {
+    json = {};
+  }
+  const metaMessageId =
+    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
+  const nowIso = new Date().toISOString();
+
+  const { data: inserted } = await supabase
+    .from("messages")
+    .insert({
+      organization_id: args.organizationId,
+      conversation_id: args.conversationId,
+      meta_message_id: metaMessageId,
+      direction: "outbound",
+      type: "image",
+      body: args.caption,
+      media_url: args.imageUrl,
+      status: res.ok ? "pending" : "failed",
+      status_updated_at: nowIso,
+      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
+    })
+    .select("id")
+    .maybeSingle();
+
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: nowIso })
+    .eq("id", args.conversationId);
+
+  return {
+    ok: res.ok,
+    messageId: (inserted?.id as string | undefined) ?? null,
+    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
+  };
+}
