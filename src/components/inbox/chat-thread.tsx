@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Ban,
@@ -14,6 +14,8 @@ import {
   Tags,
   UserRound,
   Wand2,
+  GraduationCap,
+  ThumbsDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
+import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
 
@@ -183,6 +186,55 @@ function MessageMedia({
       {label}
     </a>
   );
+}
+
+/** What we can say about an AI-written reply: what was asked, what taught it. */
+type AiRunNote = { question: string; taughtOn: string | null };
+
+/**
+ * Matches AI answers to the messages they produced, so a merchant can correct
+ * the exact reply they are looking at.
+ */
+function useAiRuns(organizationId: string | null, conversationId: string) {
+  const [runs, setRuns] = useState<
+    { output: string; input_summary: string | null; sources: unknown; created_at: string }[]
+  >([]);
+
+  const load = useCallback(async () => {
+    if (!organizationId) return;
+    const { data } = await aidwar
+      .from("ai_runs")
+      .select("output, input_summary, sources, created_at")
+      .eq("organization_id", organizationId)
+      .eq("conversation_id", conversationId)
+      .eq("task", "agent_reply")
+      .order("created_at", { ascending: false })
+      .limit(60);
+    setRuns((data ?? []) as typeof runs);
+  }, [organizationId, conversationId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return useMemo(() => {
+    const byOutput = new Map<string, AiRunNote>();
+    for (const run of runs) {
+      const key = (run.output ?? "").trim();
+      if (!key || byOutput.has(key)) continue;
+      const sources = Array.isArray(run.sources)
+        ? (run.sources as Array<{ sourceType?: string }>)
+        : [];
+      const taught = sources.some((s) => s?.sourceType === "manual_qa");
+      byOutput.set(key, {
+        question: run.input_summary ?? "",
+        taughtOn: taught
+          ? new Date(run.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "long" })
+          : null,
+      });
+    }
+    return byOutput;
+  }, [runs]);
 }
 
 function Bubble({
