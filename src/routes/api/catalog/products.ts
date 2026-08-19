@@ -13,6 +13,19 @@ const text = (v: unknown, max = 500): string | null => {
   return s ? s.slice(0, max) : null;
 };
 
+/** 0 is a real number. Only null, undefined and "" mean "not set". */
+const numberOrNull = (v: unknown): number | null => {
+  if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const intOrNull = (v: unknown): number | null => {
+  const n = numberOrNull(v);
+  return n === null ? null : Math.round(n);
+};
+
+
 export const Route = createFileRoute("/api/catalog/products")({
   server: {
     handlers: {
