@@ -16,14 +16,36 @@ import { normalizePhone, toWaId } from "@/lib/phone";
  *     has to say which one it means.
  */
 
+/**
+ * Who is acting. A person carries their own permissions; the agent acting on
+ * its own carries the workspace's configured AI role. There is no third case:
+ * a null principal used to mean "no permissions at all", which silently
+ * starved the agent of every tool.
+ */
+export type ToolPrincipal =
+  | { kind: "user"; userId: string }
+  | { kind: "agent" };
+
+export const agentPrincipal: ToolPrincipal = { kind: "agent" };
+export const userPrincipal = (userId: string): ToolPrincipal => ({ kind: "user", userId });
+
 export type ToolContext = {
   supabase: SupabaseClient;
   organizationId: string;
-  /** Null when the platform itself is acting. */
+  /** Null when the agent itself is acting. */
   actorUserId: string | null;
+  /** Whose permissions this call runs under. Defaults from actorUserId. */
+  principal?: ToolPrincipal;
   /** Who started this call — a person clicking, or a model deciding. */
   initiatedBy: "human" | "ai";
 };
+
+/** The principal a context runs as, falling back to its user (or the agent). */
+export function contextPrincipal(ctx: ToolContext): ToolPrincipal {
+  if (ctx.principal) return ctx.principal;
+  return ctx.actorUserId ? userPrincipal(ctx.actorUserId) : agentPrincipal;
+}
+
 
 export type ToolArgs = Record<string, unknown>;
 export type ToolResult = {
