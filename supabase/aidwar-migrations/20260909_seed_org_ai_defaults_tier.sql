@@ -39,3 +39,8 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+
+-- The table could be written but not read by merchants (missing SELECT grant),
+-- and anon held grants no policy ever allows.
+GRANT SELECT ON public.ai_task_models TO authenticated;
+REVOKE ALL ON public.ai_task_models FROM anon;
