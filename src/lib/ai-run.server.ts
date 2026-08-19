@@ -1160,16 +1160,104 @@ export async function executeRun(
   return finish(result);
 }
 
-/** "hi", "heya", "hello there" — an opening, not something to escalate. */
-export function isGreeting(question: string): boolean {
-  const q = question.toLowerCase().replace(/[^a-z\s]/g, " ").trim();
-  if (!q || q.split(/\s+/).length > 4) return false;
-  const words = q.split(/\s+/);
-  const greetings = new Set([
-    "hi", "hii", "hiii", "hey", "heya", "hello", "helo", "yo", "hola", "namaste",
-    "good", "morning", "afternoon", "evening", "there", "sir", "madam", "hey there",
-  ]);
-  return words.every((w) => greetings.has(w));
+/**
+ * Small talk in the languages our customers actually write in: greetings,
+ * thanks, acknowledgements, sign-offs. Never stripped to a-z — Devanagari,
+ * Tamil, Bengali and the rest survive intact.
+ */
+const SMALL_TALK_TOKENS = new Set([
+  // English
+  "hi", "hii", "hiii", "hey", "heya", "hello", "helo", "yo", "hola", "there",
+  "sir", "madam", "good", "morning", "afternoon", "evening", "night", "day",
+  "thanks", "thank", "thankyou", "thx", "ty", "you", "ok", "okay", "okey", "k",
+  "kk", "cool", "great", "nice", "sure", "fine", "yes", "no", "yep", "bye",
+  "welcome", "please", "got", "it", "perfect", "super", "hmm", "hm",
+  // Hinglish in Latin script
+  "namaste", "namaskar", "namaskaram", "nomoshkar", "vanakkam", "salaam",
+  "salam", "assalamualaikum", "adaab", "ram", "sat", "sri", "akal", "kem",
+  "cho", "kaise", "kaisi", "kaise", "ho", "hain", "kya", "haal", "hal", "hai",
+  "aap", "tum", "bhai", "ji", "haan", "han", "hn", "nahi", "nahin", "theek",
+  "thik", "achha", "acha", "accha", "shukriya", "dhanyavaad", "dhanyavad",
+  "bhaiya", "didi", "sab", "badhiya",
+  // Devanagari (Hindi, Marathi)
+  "नमस्ते", "नमस्कार", "हाय", "हैलो", "धन्यवाद", "शुक्रिया", "ठीक", "है", "हाँ",
+  "हां", "नहीं", "कैसे", "कैसा", "हो", "आप", "क्या", "हाल", "जी", "अच्छा",
+  // Other Indian scripts
+  "வணக்கம்", "நன்றி", "নমস্কার", "ধন্যবাদ", "કેમ", "છો", "આભાર", "నమస్కారం",
+  "ధన్యవాదాలు", "ನಮಸ್ಕಾರ", "ಧನ್ಯವಾದ",
+]);
+
+const SMALL_TALK_PHRASES = [
+  "kaise ho", "kaise hain", "kaisi ho", "kya haal", "kya haal hai", "kya hal hai",
+  "sat sri akal", "ram ram", "kem cho", "good morning", "good afternoon",
+  "good evening", "good night", "thank you", "thanks a lot", "how are you",
+  "how r u", "all good", "no problem", "got it", "ok thanks", "theek hai",
+  "thik hai", "kaise ho aap", "aap kaise ho", "कैसे हो", "क्या हाल है",
+];
+
+/**
+ * "heya", "kaise ho", "नमस्ते", "நன்றி" — an opening or a courtesy, not a
+ * question. Answerable without a single source or lookup.
+ */
+export function isSmallTalk(question: string, _language?: string | null): boolean {
+  const q = question
+    .toLowerCase()
+    .replace(/[!?.,;:'"()\u0964]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!q) return true;
+  if (SMALL_TALK_PHRASES.some((p) => q === p)) return true;
+  const words = q.split(" ");
+  if (words.length > 5) return false;
+  if (words.every((w) => SMALL_TALK_TOKENS.has(w))) return true;
+  // "hi kaise ho", "namaste ji thanks" — phrase plus courtesy tokens.
+  const phrase = SMALL_TALK_PHRASES.find((p) => q.includes(p));
+  if (!phrase) return false;
+  return q
+    .replace(phrase, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((w) => SMALL_TALK_TOKENS.has(w));
+}
+
+/** Kept for older call sites; small talk is the wider, correct test. */
+export const isGreeting = isSmallTalk;
+
+/**
+ * Words that mean the customer wants a fact we'd have to look up or read.
+ * Anything outside this — thanks, confirmations, clarifications — is
+ * answerable from the brief alone and must never be called "no source".
+ */
+const LOOKUP_WORDS = new Set([
+  "order", "orders", "parcel", "shipment", "tracking", "track", "delivery",
+  "deliver", "delivered", "ship", "shipping", "dispatch", "price", "prices",
+  "cost", "rate", "discount", "offer", "coupon", "stock", "available",
+  "availability", "size", "sizes", "color", "colour", "product", "products",
+  "item", "items", "catalogue", "catalog", "refund", "return", "exchange",
+  "warranty", "invoice", "receipt", "payment", "paid", "cod", "address",
+  "kitna", "kitne", "kimat", "keemat", "daam", "dam", "kab", "kahan", "kaunsa",
+  "kaun", "kyun", "kyu", "milega", "milegi", "bhejo", "bheja", "order",
+  "when", "where", "which", "how", "what", "why", "who", "do", "does", "can",
+  "is", "are", "will", "have", "any",
+]);
+
+function looksLikeLookup(question: string): boolean {
+  if (question.includes("?")) return true;
+  const words = question
+    .toLowerCase()
+    .replace(/[!?.,;:'"()\u0964]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  return words.some((w) => LOOKUP_WORDS.has(w));
+}
+
+/** Same question, ignoring case, spacing and trailing punctuation. */
+function normaliseQuestion(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[?!.,;:\u0964]+$/g, "")
+    .trim();
 }
 
 /** Observable signals only — never the model's own opinion of its certainty. */
@@ -1183,29 +1271,38 @@ export function decideEscalation(input: {
   anyToolFailed: boolean;
   history: { role: "user" | "assistant"; content: string }[];
   merchantRules: string;
+  /** Questions this customer already asked where the AI failed or handed over. */
+  priorFailedQuestions?: string[];
+  /** What language they wrote in, when the webhook could tell. */
+  customerLanguage?: string | null;
 }): string | null {
+  // Small talk is answerable on its own. Nothing below applies to "heya".
+  if (isSmallTalk(input.question, input.customerLanguage ?? null)) return null;
+
   if (input.anyToolFailed) return "tool_failed";
 
   // A starved agent and an unanswerable question must never look the same.
   if (input.toolsBrokered === false) return "no_tools";
 
-  // A greeting is not a question. Answer it and move on.
-  if (isGreeting(input.question)) return null;
-
   const topic = topicNeedsHuman(input.question, input.merchantRules);
   if (topic) return topic;
 
-  const asked = input.history.filter((h) => h.role === "user").map((h) => h.content.toLowerCase().trim());
-  const now = input.question.toLowerCase().trim();
-  if (asked.includes(now)) return "question_repeated";
+  // Only a repeat of something we already got wrong is worth a person's time.
+  const now = normaliseQuestion(input.question);
+  const failedBefore = (input.priorFailedQuestions ?? []).map(normaliseQuestion);
+  if (now && failedBefore.includes(now)) return "question_repeated";
 
   const frustration = ["not helpful", "useless", "speak to a human", "agent please", "this is ridiculous", "worst"];
   if (frustration.some((f) => now.includes(f))) return "customer_frustrated";
 
-  if (!input.knowledgeMatched && !input.toolUsed) return "no_source";
+  // Only when the question genuinely needed a source or a lookup.
+  if (!input.knowledgeMatched && !input.toolUsed && looksLikeLookup(input.question)) {
+    return "no_source";
+  }
 
   return null;
 }
+
 
 /** Trace fields are ours, not the model's — keep them out of the prompt. */
 /** Pull product pictures out of a catalogue lookup. Nothing else is kept. */
