@@ -26,6 +26,7 @@ export type MessageRow = {
   type: string;
   body: string | null;
   media_url: string | null;
+  media_mime: string | null;
   template_name: string | null;
   status: string;
   error_detail: string | null;
