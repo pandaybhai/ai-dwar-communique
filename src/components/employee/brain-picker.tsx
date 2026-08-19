@@ -62,8 +62,8 @@ export function BrainPicker({
     if (value === "recommended") {
       const { error } = await employeeApi({
         organization_id: organizationId,
-        action: "save_settings",
-        brain_choice: "recommended",
+        action: "clear_tier",
+        task,
       });
       if (error) toast.error(error);
       else {

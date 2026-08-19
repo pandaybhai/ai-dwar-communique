@@ -86,7 +86,7 @@ async function exprForCondition(
     case "tag": {
       const ids = await contactIdsForTag(supabase, organizationId, v);
       if (c.operator === "has") return ids.length ? `id.in.(${ids.join(",")})` : NEVER;
-      return ids.length ? `not.id.in.(${ids.join(",")})` : "id.not.is.null";
+      return ids.length ? `id.not.in.(${ids.join(",")})` : "id.not.is.null";
     }
     case "opt_in_status":
       return ["opted_in", "opted_out", "unknown"].includes(v) ? `opt_in_status.eq.${v}` : null;
