@@ -17,6 +17,7 @@ import {
   GraduationCap,
   Languages,
   ThumbsDown,
+  HandHelping,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
 import { languageLabel } from "@/lib/languages";
+import { handoverReasonText } from "@/lib/ai-outcome";
 
 import {
   Select,
