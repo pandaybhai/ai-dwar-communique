@@ -171,7 +171,61 @@ export const Route = createFileRoute("/api/ai/knowledge")({
             return Response.json({ ok: true });
           }
 
+          if (action === "corrections") {
+            const { data: source } = await auth.supabase
+              .from("knowledge_sources")
+              .select("id")
+              .eq("organization_id", auth.organizationId)
+              .eq("type", "manual_qa")
+              .limit(1)
+              .maybeSingle();
+            if (!source) return Response.json({ corrections: [] });
+            const { data } = await auth.supabase
+              .from("knowledge_documents")
+              .select("id, title, content, use_count, last_used_at, created_at")
+              .eq("organization_id", auth.organizationId)
+              .eq("source_id", (source as { id: string }).id)
+              .order("created_at", { ascending: false })
+              .limit(200);
+            const corrections = ((data ?? []) as Array<Record<string, unknown>>).map((d) => {
+              const content = String(d["content"] ?? "");
+              const answer = content.split(/\nAnswer:\s*/)[1] ?? content;
+              return {
+                id: d["id"],
+                question: d["title"],
+                answer,
+                use_count: d["use_count"] ?? 0,
+                last_used_at: d["last_used_at"] ?? null,
+                created_at: d["created_at"],
+              };
+            });
+            return Response.json({ corrections });
+          }
+
+          if (action === "update_correction") {
+            const documentId = String(payload["document_id"] ?? "");
+            const question = String(payload["question"] ?? "").trim();
+            const answer = String(payload["answer"] ?? "").trim();
+            if (!documentId || !question || !answer)
+              return jsonError("Write both the question and the answer.");
+            await auth.supabase
+              .from("knowledge_documents")
+              .delete()
+              .eq("id", documentId)
+              .eq("organization_id", auth.organizationId);
+            const result = await knowledge.saveCorrection(auth.supabase, auth.organizationId, {
+              question,
+              answer,
+              userId: auth.userId,
+            });
+            await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "ai_answer_corrected", {
+              edited: true,
+            });
+            return Response.json(result);
+          }
+
           return jsonError("Unknown action.");
+
         } catch (error) {
           const message = error instanceof Error ? error.message : "That didn't work.";
           console.error("[ai-knowledge] failed", action, message);

@@ -5,8 +5,11 @@ import { toast } from "sonner";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import { BrainPicker } from "@/components/employee/brain-picker";
+import { CorrectionsList } from "@/components/employee/corrections-list";
 import { KnowledgeManager } from "@/components/employee/knowledge-manager";
 import { Playground } from "@/components/employee/playground";
+import { PromptPreview } from "@/components/employee/prompt-preview";
+import { SkillsManager } from "@/components/employee/skills-manager";
 import { ToolsList } from "@/components/employee/tools-list";
 import { WeeklyReport } from "@/components/employee/weekly-report";
 import { WorkLog } from "@/components/employee/work-log";
@@ -233,6 +236,7 @@ function EmployeePage() {
 
           <Tabs value={tab} onValueChange={setTab} className="space-y-6">
             <TabsList className="flex w-full flex-wrap justify-start gap-1">
+              <TabsTrigger value="job">My job</TabsTrigger>
               <TabsTrigger value="knows">What I know</TabsTrigger>
               <TabsTrigger value="behaviour">How I behave</TabsTrigger>
               <TabsTrigger value="brains">My brain &amp; tools</TabsTrigger>
@@ -240,7 +244,16 @@ function EmployeePage() {
               <TabsTrigger value="work">My work</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="knows">
+            <TabsContent value="job">
+              <SkillsManager
+                organizationId={active.organization.id}
+                agentName={overview?.agent?.name ?? "Your AI employee"}
+                canConfigure={canConfigure}
+                onChanged={load}
+              />
+            </TabsContent>
+
+            <TabsContent value="knows" className="space-y-6">
               <KnowledgeManager
                 organizationId={active.organization.id}
                 sources={overview?.sources ?? []}
@@ -248,14 +261,24 @@ function EmployeePage() {
                 canConfigure={canConfigure}
                 onChanged={load}
               />
+              <CorrectionsList
+                organizationId={active.organization.id}
+                agentName={overview?.agent?.name ?? "your AI employee"}
+                canConfigure={canConfigure}
+              />
             </TabsContent>
 
-            <TabsContent value="behaviour">
+            <TabsContent value="behaviour" className="space-y-6">
               <BehaviourEditor
                 organizationId={active.organization.id}
                 versions={overview?.instructions ?? []}
                 canConfigure={canConfigure}
                 onChanged={load}
+              />
+              <PromptPreview
+                organizationId={active.organization.id}
+                agentName={overview?.agent?.name ?? "your AI employee"}
+                currency={currency}
               />
             </TabsContent>
 

@@ -30,6 +30,8 @@ export type MessageRow = {
   template_name: string | null;
   status: string;
   error_detail: string | null;
+  /** Which teammate sent it; empty when the AI or an automation did. */
+  sent_by?: string | null;
   created_at: string;
 };
 

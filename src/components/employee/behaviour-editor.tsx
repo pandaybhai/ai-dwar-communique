@@ -14,6 +14,13 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { employeeApi, whenText, type InstructionVersion } from "@/lib/employee-client";
+import {
+  DEFAULT_LANGUAGES,
+  LANGUAGES,
+  languageLabel,
+  languageName,
+  languagesMentioned,
+} from "@/lib/languages";
 
 const TONES = [
   { value: "friendly", label: "Friendly" },
@@ -28,13 +35,7 @@ const HOURS = [
   { value: "after_hours_only", label: "Only outside working hours" },
 ];
 
-const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "hi", label: "Hindi" },
-  { value: "mr", label: "Marathi" },
-  { value: "gu", label: "Gujarati" },
-  { value: "ta", label: "Tamil" },
-];
+const LANGUAGE_OPTIONS = LANGUAGES.map((l) => ({ value: l.code, label: languageLabel(l.code) }));
 
 /** How the employee behaves: who it is, what it must never do, when to fetch a human. */
 export function BehaviourEditor({
@@ -58,8 +59,15 @@ export function BehaviourEditor({
   const [instructions, setInstructions] = useState("");
   const [escalation, setEscalation] = useState("");
   const [hours, setHours] = useState("always");
-  const [languages, setLanguages] = useState<string[]>(["en"]);
+  const [languages, setLanguages] = useState<string[]>(DEFAULT_LANGUAGES as string[]);
   const [saving, setSaving] = useState(false);
+
+  // A language named in the brief but switched off is a promise I can't keep.
+  const missingLanguages = useMemo(
+    () => languagesMentioned(instructions).filter((c) => !languages.includes(c)),
+    [instructions, languages],
+  );
+
 
   useEffect(() => {
     setPersonaName(current?.persona_name ?? "");
@@ -67,7 +75,7 @@ export function BehaviourEditor({
     setInstructions(current?.instructions ?? "");
     setEscalation(current?.escalation_rules ?? "");
     setHours(current?.working_hours_behaviour ?? "always");
-    setLanguages(current?.languages?.length ? current.languages : ["en"]);
+    setLanguages(current?.languages?.length ? current.languages : (DEFAULT_LANGUAGES as string[]));
   }, [current]);
 
   const save = async () => {
@@ -203,7 +211,7 @@ export function BehaviourEditor({
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium text-foreground">Languages it may reply in</legend>
           <div className="flex flex-wrap gap-2">
-            {LANGUAGES.map((l) => {
+            {LANGUAGE_OPTIONS.map((l) => {
               const on = languages.includes(l.value);
               return (
                 <button
@@ -223,6 +231,14 @@ export function BehaviourEditor({
               );
             })}
           </div>
+          {missingLanguages.length ? (
+            <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Your instructions mention {missingLanguages.map(languageName).join(", ")}, but{" "}
+              {missingLanguages.length === 1 ? "it isn't" : "they aren't"} switched on above — so I
+              won't reply in {missingLanguages.length === 1 ? "it" : "them"}. Turn{" "}
+              {missingLanguages.length === 1 ? "it" : "them"} on, or take the mention out.
+            </p>
+          ) : null}
         </fieldset>
       </div>
 

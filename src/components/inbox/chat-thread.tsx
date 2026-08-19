@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Ban,
@@ -14,6 +14,8 @@ import {
   Tags,
   UserRound,
   Wand2,
+  GraduationCap,
+  ThumbsDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
+import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
 
@@ -185,12 +188,68 @@ function MessageMedia({
   );
 }
 
+/** What we can say about an AI-written reply: what was asked, what taught it. */
+type AiRunNote = { question: string; taughtOn: string | null };
+
+/**
+ * Matches AI answers to the messages they produced, so a merchant can correct
+ * the exact reply they are looking at.
+ */
+function useAiRuns(organizationId: string | null, conversationId: string) {
+  const [runs, setRuns] = useState<
+    { output: string; input_summary: string | null; sources: unknown; created_at: string }[]
+  >([]);
+
+  const load = useCallback(async () => {
+    if (!organizationId) return;
+    const { data } = await aidwar
+      .from("ai_runs")
+      .select("output, input_summary, sources, created_at")
+      .eq("organization_id", organizationId)
+      .eq("conversation_id", conversationId)
+      .eq("task", "agent_reply")
+      .order("created_at", { ascending: false })
+      .limit(60);
+    setRuns((data ?? []) as typeof runs);
+  }, [organizationId, conversationId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return useMemo(() => {
+    const byOutput = new Map<string, AiRunNote>();
+    for (const run of runs) {
+      const key = (run.output ?? "").trim();
+      if (!key || byOutput.has(key)) continue;
+      const sources = Array.isArray(run.sources)
+        ? (run.sources as Array<{ sourceType?: string }>)
+        : [];
+      const taught = sources.some((s) => s?.sourceType === "manual_qa");
+      byOutput.set(key, {
+        question: run.input_summary ?? "",
+        taughtOn: taught
+          ? new Date(run.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "long" })
+          : null,
+      });
+    }
+    return byOutput;
+  }, [runs]);
+}
+
 function Bubble({
   message,
   organizationId,
+  aiRun,
+  agentName,
+  onTeach,
 }: {
   message: MessageRow;
   organizationId: string | null;
+  /** The AI run behind this message, when the AI wrote it. */
+  aiRun?: AiRunNote | null;
+  agentName: string;
+  onTeach?: (question: string, said: string) => void;
 }) {
   const outbound = message.direction === "outbound";
   const text =
@@ -198,26 +257,50 @@ function Bubble({
     (message.template_name ? `Template: ${message.template_name}` : `[${message.type}]`);
   return (
     <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
-      <div
-        className={[
-          "animate-in fade-in slide-in-from-bottom-1 max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm duration-200 sm:max-w-[68%]",
-          outbound
-            ? "rounded-br-md bg-primary/12 text-foreground"
-            : "rounded-bl-md border border-border/70 bg-card text-foreground",
-        ].join(" ")}
-      >
-        {message.media_url ? (
-          <MessageMedia message={message} organizationId={organizationId} label={text} />
-        ) : null}
-        <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
-        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
-          <span>{clockTime(message.created_at)}</span>
-          {outbound ? <StatusTicks message={message} /> : null}
+      <div className="max-w-[80%] sm:max-w-[68%]">
+        <div
+          className={[
+            "animate-in fade-in slide-in-from-bottom-1 rounded-2xl px-3.5 py-2 text-sm shadow-sm duration-200",
+            outbound
+              ? "rounded-br-md bg-primary/12 text-foreground"
+              : "rounded-bl-md border border-border/70 bg-card text-foreground",
+          ].join(" ")}
+        >
+          {message.media_url ? (
+            <MessageMedia message={message} organizationId={organizationId} label={text} />
+          ) : null}
+          <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
+          <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+            <span>{clockTime(message.created_at)}</span>
+            {outbound ? <StatusTicks message={message} /> : null}
+          </div>
         </div>
+
+        {aiRun ? (
+          <div className="mt-1 flex flex-wrap items-center justify-end gap-2 text-[11px] text-muted-foreground">
+            {aiRun.taughtOn ? (
+              <span className="flex items-center gap-1">
+                <GraduationCap className="h-3 w-3 text-primary" />
+                {agentName} used something you taught him on {aiRun.taughtOn}.
+              </span>
+            ) : null}
+            {onTeach ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors duration-200 hover:bg-muted hover:text-foreground"
+                onClick={() => onTeach(aiRun.question, message.body ?? "")}
+              >
+                <ThumbsDown className="h-3 w-3" />
+                Not right
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
+
 
 export function ChatThread({
   conversation,
@@ -264,6 +347,8 @@ export function ChatThread({
   const label = contactLabel(conversation.contact);
   const { can } = usePermissions();
   const canUseAi = can("ai.use");
+  const aiRuns = useAiRuns(organizationId, conversation.id);
+  const [teaching, setTeaching] = useState<{ question: string; said: string } | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -459,7 +544,22 @@ export function ChatThread({
                       </span>
                     </div>
                   ) : null}
-                  <Bubble message={m} organizationId={organizationId} />
+                  <Bubble
+                    message={m}
+                    organizationId={organizationId}
+                    agentName="Your AI employee"
+                    aiRun={
+                      m.direction === "outbound" && !m.sent_by
+                        ? (aiRuns.get((m.body ?? "").trim()) ?? null)
+                        : null
+                    }
+                    {...(canUseAi
+                      ? {
+                          onTeach: (question: string, said: string) =>
+                            setTeaching({ question, said }),
+                        }
+                      : {})}
+                  />
                 </div>
               );
             })}
@@ -605,6 +705,18 @@ export function ChatThread({
         sending={sending}
         onSend={onSendTemplate}
       />
+
+      {organizationId ? (
+        <CorrectionDialog
+          organizationId={organizationId}
+          agentName="your AI employee"
+          open={teaching !== null}
+          customerQuestion={teaching?.question ?? ""}
+          saidInstead={teaching?.said ?? ""}
+          onOpenChange={(open) => !open && setTeaching(null)}
+        />
+      ) : null}
+
 
     </div>
   );

@@ -33,7 +33,11 @@ export const Route = createFileRoute("/api/ai/employee")({
           "save_instructions",
           "set_tier",
           "revert_instructions",
+          "save_skill",
+          "add_skill",
+          "delete_skill",
         ].includes(action);
+
         if (needsConfigure) {
           const denied = await requirePermission(auth, "ai.configure", "change the AI employee");
           if (denied) return denied;
@@ -447,9 +451,11 @@ export const Route = createFileRoute("/api/ai/employee")({
               tone: String(payload["tone"] ?? "friendly"),
               instructions: String(payload["instructions"] ?? ""),
               escalation_rules: String(payload["escalation_rules"] ?? ""),
-              languages: Array.isArray(payload["languages"])
-                ? (payload["languages"] as unknown[]).map(String)
-                : ["en"],
+              languages:
+                Array.isArray(payload["languages"]) && payload["languages"].length
+                  ? (payload["languages"] as unknown[]).map(String)
+                  : ["en", "hi"],
+
               working_hours_behaviour: String(payload["working_hours_behaviour"] ?? "always"),
               version: nextVersion,
               is_current: true,
@@ -499,7 +505,94 @@ export const Route = createFileRoute("/api/ai/employee")({
             return Response.json({ ok: true, version: nextVersion });
           }
 
+          if (action === "skills") {
+            const { listSkills } = await import("@/lib/ai-skills.server");
+            const skills = await listSkills(supabase, org);
+            return Response.json({ skills });
+          }
+
+          if (action === "save_skill") {
+            const id = String(payload["skill_id"] ?? "");
+            if (!id) return jsonError("Which job?");
+            const update: Record<string, unknown> = {};
+            if (typeof payload["enabled"] === "boolean") update["enabled"] = payload["enabled"];
+            if (typeof payload["use_when"] === "string") update["use_when"] = payload["use_when"].slice(0, 600);
+            if (typeof payload["do_not_use_when"] === "string")
+              update["do_not_use_when"] = payload["do_not_use_when"].slice(0, 600);
+            if (typeof payload["name"] === "string" && payload["name"].trim())
+              update["name"] = payload["name"].trim().slice(0, 80);
+            if (!Object.keys(update).length) return jsonError("Nothing to change.");
+            const { error } = await supabase
+              .from("ai_skills")
+              .update(update)
+              .eq("id", id)
+              .eq("organization_id", org);
+            if (error) return jsonError(error.message.replace(/^.*ERROR:\s*/, ""), 400);
+            await logServerActivity(supabase, org, auth.userId, "ai_skill_updated", {
+              skill_id: id,
+              fields: Object.keys(update),
+            });
+            return Response.json({ ok: true });
+          }
+
+          if (action === "add_skill") {
+            const name = String(payload["name"] ?? "").trim();
+            if (!name) return jsonError("Give this job a name.");
+            const key = `custom_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40)}_${Date.now()
+              .toString(36)
+              .slice(-4)}`;
+            const { error } = await supabase.from("ai_skills").insert({
+              organization_id: org,
+              key,
+              name: name.slice(0, 80),
+              use_when: String(payload["use_when"] ?? "").slice(0, 600),
+              do_not_use_when: String(payload["do_not_use_when"] ?? "").slice(0, 600),
+              is_custom: true,
+              sort_order: 200,
+            });
+            if (error) return jsonError(error.message.replace(/^.*ERROR:\s*/, ""), 400);
+            await logServerActivity(supabase, org, auth.userId, "ai_skill_added", { key });
+            return Response.json({ ok: true });
+          }
+
+          if (action === "delete_skill") {
+            const id = String(payload["skill_id"] ?? "");
+            if (!id) return jsonError("Which job?");
+            const { error } = await supabase
+              .from("ai_skills")
+              .delete()
+              .eq("id", id)
+              .eq("organization_id", org)
+              .eq("is_custom", true);
+            if (error) return jsonError(error.message.replace(/^.*ERROR:\s*/, ""), 400);
+            await logServerActivity(supabase, org, auth.userId, "ai_skill_removed", { skill_id: id });
+            return Response.json({ ok: true });
+          }
+
+          if (action === "brief") {
+            const agent = await agentRow();
+            const { assembleBrief, estimateBriefCost } = await import("@/lib/ai-brief.server");
+            const brief = await assembleBrief(supabase, org, agent?.id ?? null);
+            const cost = await estimateBriefCost(supabase, org, agent?.id ?? null, brief.characters);
+            const superAdmin = await isSuperAdmin(supabase, auth.userId);
+            return Response.json({
+              sections: brief.sections.map((s) => ({
+                ...s,
+                ...(s.key === "rules" ? { editable_by_super_admin: superAdmin } : {}),
+              })),
+              characters: brief.characters,
+              rules_version: brief.rulesVersion,
+              rules_from_database: brief.rulesFromDatabase,
+              taught_count: brief.taughtCount,
+              estimated_cost: cost.amount,
+              estimated_currency: cost.currency,
+              estimated_tokens: cost.tokens,
+              is_super_admin: superAdmin,
+            });
+          }
+
           return jsonError("Unknown action.");
+
         } catch (error) {
           const message = error instanceof Error ? error.message : "That didn't work.";
           console.error("[ai-employee] failed", action, message);

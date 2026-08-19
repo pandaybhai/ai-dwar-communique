@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { detectLanguage } from "@/lib/languages";
 import { normalizePhone, toWaId } from "@/lib/phone";
 import {
   DEFAULT_OPT_IN_KEYWORDS,
@@ -815,6 +816,8 @@ export async function processWebhookPayload(
                 status: "delivered",
                 status_updated_at: occurredAt,
                 created_at: occurredAt,
+                detected_language: detectLanguage(body),
+
               },
               { onConflict: "meta_message_id", ignoreDuplicates: true },
             )
