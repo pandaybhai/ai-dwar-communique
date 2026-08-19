@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isServiceWindowOpen } from "@/lib/service-window";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -27,6 +28,17 @@ export async function sendServiceText(
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
+
+  // Free-form messages are only allowed inside the 24-hour service window.
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("last_customer_message_at")
+    .eq("id", args.conversationId)
+    .eq("organization_id", args.organizationId)
+    .maybeSingle();
+  if (!isServiceWindowOpen(conversation)) {
+    return { ok: false, messageId: null, error: "service_window_closed" };
+  }
 
 
   const res = await fetch(
@@ -103,6 +115,17 @@ export async function sendServiceImage(
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
 
+  // Free-form messages are only allowed inside the 24-hour service window.
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("last_customer_message_at")
+    .eq("id", args.conversationId)
+    .eq("organization_id", args.organizationId)
+    .maybeSingle();
+  if (!isServiceWindowOpen(conversation)) {
+    return { ok: false, messageId: null, error: "service_window_closed" };
+  }
+
   const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
     method: "POST",
     headers: {
@@ -137,6 +160,7 @@ export async function sendServiceImage(
       type: "image",
       body: args.caption,
       media_url: args.imageUrl,
+      media_mime: "image",
       status: res.ok ? "pending" : "failed",
       status_updated_at: nowIso,
       ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
