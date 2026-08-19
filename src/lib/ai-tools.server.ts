@@ -393,13 +393,18 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     if (error) return { ok: false, error: error.message };
     const rows = (data ?? []) as Array<Record<string, unknown>>;
     // "in_stock" sorts before "out_of_stock"/"preorder" alphabetically except
-    // preorder, so put in_stock first explicitly for the browse case.
+    // preorder, so put in_stock first explicitly for the browse case, and put
+    // the ones that carry a picture ahead of the ones that don't.
+    const hasPicture = (r: Record<string, unknown>) =>
+      typeof r["image_url"] === "string" && /^https?:\/\//i.test(r["image_url"] as string);
     const ordered = query
-      ? rows
+      ? [...rows].sort((a, b) => Number(hasPicture(b)) - Number(hasPicture(a)))
       : [...rows].sort(
           (a, b) =>
-            Number(b["availability"] === "in_stock") - Number(a["availability"] === "in_stock"),
+            Number(b["availability"] === "in_stock") - Number(a["availability"] === "in_stock") ||
+            Number(hasPicture(b)) - Number(hasPicture(a)),
         );
+
     // A search that matches nothing still ran: ok, just empty.
     return { ok: true, found: ordered.length > 0, data: ordered };
   },
