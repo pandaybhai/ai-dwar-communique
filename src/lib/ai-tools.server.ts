@@ -370,11 +370,15 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
         ? request.textSearch("search_vector", tsquery)
         : request.ilike("title", `%${query.replace(/[%,()]/g, " ").trim()}%`);
     } else {
-      // Browse case: what's in stock, most recently touched first.
+      // Browse case: what's in stock, with a picture, most recently touched
+      // first. A product without a picture arrives as a bare line of text, so
+      // it should never crowd out one the customer can actually see.
       request = request
         .order("availability", { ascending: true })
+        .order("image_url", { ascending: true, nullsFirst: false })
         .order("updated_at", { ascending: false });
     }
+
 
     const maxPrice = args["max_price"];
     if (typeof maxPrice === "number" && Number.isFinite(maxPrice)) {
@@ -389,13 +393,18 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     if (error) return { ok: false, error: error.message };
     const rows = (data ?? []) as Array<Record<string, unknown>>;
     // "in_stock" sorts before "out_of_stock"/"preorder" alphabetically except
-    // preorder, so put in_stock first explicitly for the browse case.
+    // preorder, so put in_stock first explicitly for the browse case, and put
+    // the ones that carry a picture ahead of the ones that don't.
+    const hasPicture = (r: Record<string, unknown>) =>
+      typeof r["image_url"] === "string" && /^https?:\/\//i.test(r["image_url"] as string);
     const ordered = query
-      ? rows
+      ? [...rows].sort((a, b) => Number(hasPicture(b)) - Number(hasPicture(a)))
       : [...rows].sort(
           (a, b) =>
-            Number(b["availability"] === "in_stock") - Number(a["availability"] === "in_stock"),
+            Number(b["availability"] === "in_stock") - Number(a["availability"] === "in_stock") ||
+            Number(hasPicture(b)) - Number(hasPicture(a)),
         );
+
     // A search that matches nothing still ran: ok, just empty.
     return { ok: true, found: ordered.length > 0, data: ordered };
   },
