@@ -508,11 +508,16 @@ export async function invokeTool(
     }
   };
 
+  const { organization_id: _boundOrg, ...safeArguments } = args as Record<string, unknown>;
+
   const done = (result: ToolResult, activityLogId: string | null): ToolResult => ({
     ...result,
     activityLogId,
     latencyMs: Date.now() - startedAt,
+    arguments: safeArguments,
+    resultSummary: summarise(result),
   });
+
 
   if (!tool) {
     const logId = await log("denied", "not_available");
