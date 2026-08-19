@@ -67,7 +67,17 @@ export const Route = createFileRoute("/api/catalog/import")({
 
           let created = 0;
           let updated = 0;
+          let warnedRows = 0;
           const errors: { row: number; product: string; reason: string }[] = [];
+          const warnings: {
+            row: number;
+            product: string;
+            field: string;
+            value: string;
+            used: string;
+            reason: string;
+          }[] = [];
+
 
           for (const raw of rows) {
             const rowNumber = Number(raw["row_number"] ?? 0);
