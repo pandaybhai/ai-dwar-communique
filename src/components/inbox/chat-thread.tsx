@@ -347,6 +347,8 @@ export function ChatThread({
   const label = contactLabel(conversation.contact);
   const { can } = usePermissions();
   const canUseAi = can("ai.use");
+  const aiRuns = useAiRuns(organizationId, conversation.id);
+  const [teaching, setTeaching] = useState<{ question: string; said: string } | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -542,7 +544,22 @@ export function ChatThread({
                       </span>
                     </div>
                   ) : null}
-                  <Bubble message={m} organizationId={organizationId} />
+                  <Bubble
+                    message={m}
+                    organizationId={organizationId}
+                    agentName="Your AI employee"
+                    aiRun={
+                      m.direction === "outbound" && !m.sent_by
+                        ? (aiRuns.get((m.body ?? "").trim()) ?? null)
+                        : null
+                    }
+                    {...(canUseAi
+                      ? {
+                          onTeach: (question: string, said: string) =>
+                            setTeaching({ question, said }),
+                        }
+                      : {})}
+                  />
                 </div>
               );
             })}
