@@ -17,32 +17,13 @@ import {
   whenText,
   type EmployeeRun,
 } from "@/lib/employee-client";
-
-const STATUS_TEXT: Record<string, { label: string; tone: "default" | "secondary" | "destructive" }> = {
-  ok: { label: "I answered this", tone: "default" },
-  escalated: { label: "I passed this to you", tone: "secondary" },
-  refused: { label: "I didn't answer this", tone: "secondary" },
-  capped: { label: "I've hit this month's limit", tone: "destructive" },
-  error: { label: "Something went wrong", tone: "destructive" },
-};
+import { outcomeOf } from "@/lib/ai-outcome";
 
 const TASK_TEXT: Record<string, string> = {
   agent_reply: "I answered a customer",
   suggest_reply: "I drafted a reply",
   summarise: "I caught you up on a chat",
   auto_tag: "I labelled a chat",
-};
-
-/** Why it stopped, said in one sentence, in its own voice. */
-const REASON_TEXT: Record<string, string> = {
-  no_source: "I had nothing to answer from.",
-  no_tools: "I had no lookups switched on, so I couldn't check anything.",
-  unsure: "I wasn't sure enough to answer.",
-  tool_failed: "A lookup didn't work, so I passed it to you.",
-  opted_out: "This customer asked not to be messaged.",
-  capped: "I've hit this month's limit.",
-  human_requested: "They asked for a person.",
-  policy: "This isn't something I'm allowed to answer.",
 };
 
 /** Every single thing it did, why, what it read, and what it cost. */
@@ -156,14 +137,11 @@ export function WorkLog({
       ) : (
         <ul className="mt-6 space-y-2">
           {runs.map((run) => {
-            const status = STATUS_TEXT[run.status] ?? { label: run.status, tone: "secondary" as const };
+            const outcome = outcomeOf(run.status, run.escalation_signal);
             const expanded = openId === run.id;
             const signal = run.escalation_signal;
             const traceOpen = traceId === run.id;
-            const reason =
-              (signal ? REASON_TEXT[signal] : null) ??
-              (signal ? signal.replace(/_/g, " ") : null) ??
-              (run.status === "capped" ? REASON_TEXT["capped"]! : null);
+            const reason = outcome.reason;
             return (
               <li key={run.id} className="rounded-xl border border-border/70 bg-muted/20">
                 <button
@@ -181,7 +159,7 @@ export function WorkLog({
                       {run.latency_ms ? ` · ${Math.round(run.latency_ms / 100) / 10}s` : ""}
                     </p>
                   </div>
-                  <Badge variant={status.tone}>{status.label}</Badge>
+                  <Badge variant={outcome.tone}>{outcome.label}</Badge>
                   <TierInternalBadge provider={run.provider} model={run.model} route={run.route} />
                   <span className="text-xs text-muted-foreground">
                     {run.cost_source === "unknown" ? "—" : moneyText(run.billed_amount, currency)}
@@ -205,12 +183,12 @@ export function WorkLog({
                             {traceOpen ? "Hide what went wrong" : "See what went wrong"}
                           </Button>
                         ) : null}
-                        {(signal === "no_source" || signal === "unsure") && canConfigure ? (
+                        {signal === "no_source" && canConfigure ? (
                           <Button size="sm" variant="outline" onClick={() => startCorrection(run)}>
                             Teach me the answer
                           </Button>
                         ) : null}
-                        {(signal === "capped" || run.status === "capped") && onRaiseLimit ? (
+                        {run.status === "capped" && onRaiseLimit ? (
                           <Button size="sm" variant="outline" onClick={onRaiseLimit}>
                             Raise this month's limit
                           </Button>

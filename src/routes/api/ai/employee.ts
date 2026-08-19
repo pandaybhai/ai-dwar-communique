@@ -86,7 +86,7 @@ export const Route = createFileRoute("/api/ai/employee")({
               supabase
                 .from("ai_instructions")
                 .select(
-                  "id, persona_name, tone, instructions, escalation_rules, languages, working_hours_behaviour, version, is_current, updated_at",
+                  "id, persona_name, tone, instructions, escalation_rules, handover_message, languages, working_hours_behaviour, version, is_current, updated_at",
                 )
                 .eq("organization_id", org)
                 .order("version", { ascending: false })
