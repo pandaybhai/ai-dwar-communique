@@ -26,7 +26,8 @@ export type FeatureIcon =
   | "users"
   | "credit-card"
   | "shopping-bag"
-  | "sparkles";
+  | "sparkles"
+  | "package";
 
 export type PermissionManifest = {
   key: string;

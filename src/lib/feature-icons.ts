@@ -4,6 +4,7 @@ import {
   CreditCard,
   Inbox,
   Megaphone,
+  Package,
   MessageSquareText,
   Receipt,
   Settings,
@@ -31,4 +32,5 @@ export const FEATURE_ICONS: Record<FeatureIcon, LucideIcon> = {
   "credit-card": CreditCard,
   "shopping-bag": ShoppingBag,
   sparkles: Sparkles,
+  package: Package,
 };
