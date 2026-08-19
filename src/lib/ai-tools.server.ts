@@ -322,11 +322,10 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
   async catalogSearch(ctx, args) {
     const query = str(args["query"]);
-    if (!query) return { ok: false, error: "query is required." };
     const limit = Math.min(Math.max(num(args["limit"], 10), 1), 25);
 
     const { toTsQuery, isAvailability } = await import("@/lib/catalog");
-    const tsquery = toTsQuery(query);
+    const tsquery = query ? toTsQuery(query) : "";
 
     let request = ctx.supabase
       .from("products")
@@ -334,13 +333,21 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
         "id, title, sku, brand, category, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url",
       )
       .eq("organization_id", ctx.organizationId)
+      // Hidden products never reach a customer, whether searching or browsing.
       .eq("is_visible", true)
       .limit(limit);
 
-    // Full-text when the words are searchable, a plain contains match otherwise.
-    request = tsquery
-      ? request.textSearch("search_vector", tsquery)
-      : request.ilike("title", `%${query.replace(/[%,()]/g, " ").trim()}%`);
+    if (query) {
+      // Full-text when the words are searchable, a plain contains match otherwise.
+      request = tsquery
+        ? request.textSearch("search_vector", tsquery)
+        : request.ilike("title", `%${query.replace(/[%,()]/g, " ").trim()}%`);
+    } else {
+      // Browse case: what's in stock, most recently touched first.
+      request = request
+        .order("availability", { ascending: true })
+        .order("updated_at", { ascending: false });
+    }
 
     const maxPrice = args["max_price"];
     if (typeof maxPrice === "number" && Number.isFinite(maxPrice)) {
@@ -353,9 +360,19 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
     const { data, error } = await request;
     if (error) return { ok: false, error: error.message };
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    // "in_stock" sorts before "out_of_stock"/"preorder" alphabetically except
+    // preorder, so put in_stock first explicitly for the browse case.
+    const ordered = query
+      ? rows
+      : [...rows].sort(
+          (a, b) =>
+            Number(b["availability"] === "in_stock") - Number(a["availability"] === "in_stock"),
+        );
     // A search that matches nothing still ran: ok, just empty.
-    return { ok: true, found: (data ?? []).length > 0, data: data ?? [] };
+    return { ok: true, found: ordered.length > 0, data: ordered };
   },
+
 
   async searchProducts(ctx, args) {
     const query = str(args["query"]);
