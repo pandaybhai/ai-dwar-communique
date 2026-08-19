@@ -20,7 +20,7 @@ export const Route = createFileRoute("/api/catalog/import")({
           await import("@/lib/whatsapp-api.server");
         const { recordUsage } = await import("@/lib/events.server");
         const { parsePrice, parseQuantity, parseAvailability } = await import("@/lib/catalog");
-        const type ImportRowShape = never; // placeholder removed below
+        
 
         let payload: AnyRecord;
         try {
