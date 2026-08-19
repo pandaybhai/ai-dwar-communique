@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { isServiceWindowOpen, SERVICE_WINDOW_CLOSED_MESSAGE } from "@/lib/service-window";
 
 export const Route = createFileRoute("/api/whatsapp/send-message")({
   server: {
@@ -147,16 +146,8 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
         }
 
         // 24-hour customer service window — enforced server-side.
-        if (messageType === "text") {
-          const last = conversation?.last_customer_message_at
-            ? new Date(conversation.last_customer_message_at).getTime()
-            : 0;
-          if (!last || Date.now() - last > DAY_MS) {
-            return jsonError(
-              "This contact hasn't messaged you in the last 24 hours, so free-form text isn't allowed. Send an approved template instead.",
-              422,
-            );
-          }
+        if (messageType === "text" && !isServiceWindowOpen(conversation)) {
+          return jsonError(SERVICE_WINDOW_CLOSED_MESSAGE, 422);
         }
 
         const graphBody =
@@ -258,6 +249,9 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           ] as string) ?? null;
 
         const nowIso = new Date().toISOString();
+        const { headerMediaFromComponents } = await import("@/lib/templates");
+        const headerMedia =
+          messageType === "template" ? headerMediaFromComponents(templateComponents) : null;
         const { data: message } = await supabase
           .from("messages")
           .insert({
@@ -268,6 +262,9 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
             type: messageType,
             body: messageType === "text" ? body : null,
             template_name: messageType === "template" ? templateName : null,
+            ...(headerMedia
+              ? { media_url: headerMedia.url, media_mime: headerMedia.kind }
+              : {}),
             status: "pending",
             status_updated_at: nowIso,
             sent_by: userId,

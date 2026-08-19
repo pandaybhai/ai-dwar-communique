@@ -8,6 +8,7 @@ import {
   Clock,
   Loader2,
   MessageSquareText,
+  Paperclip,
   Send,
   Sparkles,
   Tags,
@@ -77,7 +78,120 @@ function StatusTicks({ message }: { message: MessageRow }) {
   return <Clock className="h-3 w-3 text-muted-foreground" aria-label="Pending" />;
 }
 
-function Bubble({ message }: { message: MessageRow }) {
+/** image / video / audio / document — never guessed from the URL alone. */
+function mediaKind(message: MessageRow): "image" | "video" | "audio" | "document" {
+  const mime = (message.media_mime ?? "").toLowerCase();
+  const type = (message.type ?? "").toLowerCase();
+  const source = mime || type;
+  if (source.startsWith("image") || source === "sticker") return "image";
+  if (source.startsWith("video")) return "video";
+  if (source.startsWith("audio")) return "audio";
+  return "document";
+}
+
+/**
+ * Shows the file the customer sent. Inbound media lives behind Meta's API as an
+ * opaque id, so we fetch it through our own authenticated route and hand the
+ * browser a blob — a customer's photo is never a public link.
+ */
+function MessageMedia({
+  message,
+  organizationId,
+  label,
+}: {
+  message: MessageRow;
+  organizationId: string | null;
+  label: string;
+}) {
+  const raw = message.media_url ?? "";
+  const isMetaRef = raw.startsWith("meta:");
+  const [src, setSrc] = useState<string | null>(isMetaRef ? null : raw);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!isMetaRef) {
+      setSrc(raw);
+      return;
+    }
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    (async () => {
+      const { data } = await aidwar.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+      const query = organizationId ? `?organization_id=${organizationId}` : "";
+      const res = await fetch(
+        `/api/whatsapp/media/${encodeURIComponent(raw.slice(5))}${query}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) {
+        if (!cancelled) setFailed(true);
+        return;
+      }
+      const blob = await res.blob();
+      objectUrl = URL.createObjectURL(blob);
+      if (cancelled) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+      setSrc(objectUrl);
+    })().catch(() => {
+      if (!cancelled) setFailed(true);
+    });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [raw, isMetaRef, organizationId]);
+
+  const kind = mediaKind(message);
+
+  if (failed) {
+    return (
+      <p className="mb-1.5 rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+        We couldn't load this file — it may have expired on WhatsApp.
+      </p>
+    );
+  }
+  if (!src) {
+    return <Skeleton className="mb-1.5 h-32 w-48 rounded-xl" />;
+  }
+
+  if (kind === "image") {
+    return (
+      <img
+        src={src}
+        alt={label}
+        loading="lazy"
+        className="mb-1.5 max-h-56 w-full rounded-xl object-cover"
+      />
+    );
+  }
+  if (kind === "video") {
+    return <video src={src} controls className="mb-1.5 max-h-56 w-full rounded-xl" />;
+  }
+  if (kind === "audio") {
+    return <audio src={src} controls className="mb-1.5 w-full" />;
+  }
+  return (
+    <a
+      href={src}
+      download={label}
+      className="mb-1.5 flex items-center gap-2 rounded-xl border border-border/70 px-3 py-2 text-xs font-medium text-primary underline-offset-2 hover:underline"
+    >
+      <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+      {label}
+    </a>
+  );
+}
+
+function Bubble({
+  message,
+  organizationId,
+}: {
+  message: MessageRow;
+  organizationId: string | null;
+}) {
   const outbound = message.direction === "outbound";
   const text =
     message.body?.trim() ||
@@ -93,12 +207,7 @@ function Bubble({ message }: { message: MessageRow }) {
         ].join(" ")}
       >
         {message.media_url ? (
-          <img
-            src={message.media_url}
-            alt={text}
-            loading="lazy"
-            className="mb-1.5 max-h-56 w-full rounded-xl object-cover"
-          />
+          <MessageMedia message={message} organizationId={organizationId} label={text} />
         ) : null}
         <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
         <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
@@ -350,7 +459,7 @@ export function ChatThread({
                       </span>
                     </div>
                   ) : null}
-                  <Bubble message={m} />
+                  <Bubble message={m} organizationId={organizationId} />
                 </div>
               );
             })}

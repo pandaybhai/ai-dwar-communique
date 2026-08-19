@@ -321,7 +321,8 @@ export async function sendCampaignTemplate(
   }
 
   // What the template itself declares — body, header and dynamic link buttons.
-  const { templateVariableSpec, buildTemplatePayloadComponents } = await import("@/lib/templates");
+  const { templateVariableSpec, buildTemplatePayloadComponents, headerMediaFromComponents } =
+    await import("@/lib/templates");
   const { emptyVariableSpec } = await import("@/lib/templates");
   const spec = template.components
     ? templateVariableSpec(template.components)
@@ -465,6 +466,7 @@ export async function sendCampaignTemplate(
       | undefined) ?? null;
 
   const nowIso = new Date().toISOString();
+  const headerMedia = headerMediaFromComponents(payload.components);
 
   const { data: message } = await supabase
     .from("messages")
@@ -475,6 +477,9 @@ export async function sendCampaignTemplate(
       direction: "outbound",
       type: "template",
       template_name: template.name,
+      ...(headerMedia
+        ? { media_url: headerMedia.url, media_mime: headerMedia.kind }
+        : {}),
       status: "pending",
       status_updated_at: nowIso,
       ...attribution,

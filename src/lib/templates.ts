@@ -1105,3 +1105,23 @@ function missingMessage(component: string, missing: number[]): string {
 function missingComponent(component: string, needs: string): string {
   return `This message can't be sent: the template's ${component} needs ${needs} and we have none.`;
 }
+
+/**
+ * The picture, video or document a built template payload actually sends, so
+ * the inbox can show the same file the customer received. Handles (`id`) are
+ * upload references, not links, so only real links are recorded.
+ */
+export function headerMediaFromComponents(
+  components: Array<Record<string, unknown>> | null | undefined,
+): { url: string; kind: "image" | "video" | "document" } | null {
+  const header = (components ?? []).find(
+    (c) => String((c as { type?: string }).type ?? "").toLowerCase() === "header",
+  ) as { parameters?: Array<Record<string, unknown>> } | undefined;
+  for (const param of header?.parameters ?? []) {
+    const kind = String(param["type"] ?? "").toLowerCase();
+    if (kind !== "image" && kind !== "video" && kind !== "document") continue;
+    const value = param[kind] as { link?: string } | undefined;
+    if (value?.link) return { url: value.link, kind };
+  }
+  return null;
+}
