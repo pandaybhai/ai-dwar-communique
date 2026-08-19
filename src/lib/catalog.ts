@@ -63,32 +63,78 @@ export function isAvailability(value: unknown): value is Availability {
   return typeof value === "string" && (AVAILABILITY_VALUES as string[]).includes(value);
 }
 
-/** "₹ 1,299.00" / "Rs. 1299" / "1 299" all mean the same number. */
-export function parsePrice(raw: unknown): number | null {
-  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
-  const text = String(raw ?? "")
+/** A parsed spreadsheet value: blank, a real value, or unreadable. */
+export type ParsedValue<T> = {
+  value: T | null;
+  /** true when the cell had content we could not understand. */
+  invalid: boolean;
+  /** the original text, kept so warnings can name it. */
+  raw: string;
+};
+
+/** Blank means "not provided". 0 and "0" are values, not blanks. */
+export function isBlankCell(raw: unknown): boolean {
+  if (raw === null || raw === undefined) return true;
+  if (typeof raw === "string") return raw.trim() === "";
+  return false;
+}
+
+/** "₹ 1,299.00" / "Rs. 1299" / "1 299" all mean the same number. "0" means 0. */
+export function readNumber(raw: unknown): ParsedValue<number> {
+  const rawText = typeof raw === "string" ? raw.trim() : raw === null || raw === undefined ? "" : String(raw);
+  if (isBlankCell(raw)) return { value: null, invalid: false, raw: rawText };
+  if (typeof raw === "number") {
+    return Number.isFinite(raw)
+      ? { value: raw, invalid: false, raw: rawText }
+      : { value: null, invalid: true, raw: rawText };
+  }
+  const text = rawText
     .replace(/₹|rs\.?|inr/gi, "")
     .replace(/[,\s]/g, "")
     .trim();
-  if (!text) return null;
+  if (text === "") return { value: null, invalid: true, raw: rawText };
   const value = Number(text);
-  return Number.isFinite(value) ? value : null;
+  return Number.isFinite(value)
+    ? { value, invalid: false, raw: rawText }
+    : { value: null, invalid: true, raw: rawText };
+}
+
+export function parsePrice(raw: unknown): number | null {
+  return readNumber(raw).value;
+}
+
+export function readQuantity(raw: unknown): ParsedValue<number> {
+  const parsed = readNumber(raw);
+  return { ...parsed, value: parsed.value === null ? null : Math.round(parsed.value) };
 }
 
 export function parseQuantity(raw: unknown): number | null {
-  const value = parsePrice(raw);
-  return value === null ? null : Math.round(value);
+  return readQuantity(raw).value;
 }
 
 /** Spreadsheets say "in stock", "yes", "0 left" — all of it means one of three states. */
-export function parseAvailability(raw: unknown, quantity: number | null): Availability {
-  const text = String(raw ?? "").trim().toLowerCase();
-  if (/pre[\s-]?order/.test(text)) return "preorder";
-  if (/out of stock|unavailable|sold out|^no$|^false$|^0$/.test(text)) return "out_of_stock";
-  if (text) return "in_stock";
-  if (quantity !== null && quantity <= 0) return "out_of_stock";
-  return "in_stock";
+export function readAvailability(
+  raw: unknown,
+  quantity: number | null,
+): { value: Availability; invalid: boolean; raw: string } {
+  const rawText = isBlankCell(raw) ? "" : String(raw).trim();
+  const text = rawText.toLowerCase();
+  const fallback: Availability = quantity !== null && quantity <= 0 ? "out_of_stock" : "in_stock";
+  if (text === "") return { value: fallback, invalid: false, raw: rawText };
+  if (/pre[\s-]?order/.test(text)) return { value: "preorder", invalid: false, raw: rawText };
+  if (/out[\s_-]?of[\s_-]?stock|unavailable|sold out|^no$|^false$|^0$/.test(text)) {
+    return { value: "out_of_stock", invalid: false, raw: rawText };
+  }
+  if (/in[\s_-]?stock|available|^yes$|^true$|^1$|ready|stocked/.test(text)) {
+    return { value: "in_stock", invalid: false, raw: rawText };
+  }
+  return { value: fallback, invalid: true, raw: rawText };
 }
+
+export function parseAvailability(raw: unknown, quantity: number | null): Availability {
+  return readAvailability(raw, quantity).value;
+}
+
 
 export function formatMoney(value: number | null | undefined, currency: string | null): string {
   if (value === null || value === undefined) return "—";
