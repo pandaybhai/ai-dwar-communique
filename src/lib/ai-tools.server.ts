@@ -40,7 +40,12 @@ export type ToolResult = {
   activityLogId?: string | null;
   /** Set by invokeTool: wall-clock time of the invocation. */
   latencyMs?: number;
+  /** Set by invokeTool: the arguments the model supplied, minus organization_id. */
+  arguments?: Record<string, unknown>;
+  /** Set by invokeTool: row count plus up to five identifiers. Never a data copy. */
+  resultSummary?: Record<string, unknown>;
 };
+
 
 type Handler = (ctx: ToolContext, args: ToolArgs) => Promise<ToolResult>;
 
