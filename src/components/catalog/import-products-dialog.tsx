@@ -11,6 +11,8 @@ import {
   type ImportError,
   type ImportField,
   type ImportResults,
+  type ImportWarning,
+
 } from "@/lib/catalog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
