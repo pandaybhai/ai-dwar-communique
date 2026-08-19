@@ -402,7 +402,7 @@ function AnswerCard({
         )
       ) : null}
 
-      <ProductPictures media={run.media} currency={currency} />
+      <ProductPictures media={run.media ?? null} currency={currency} />
       <Sources sources={run.sources} />
     </div>
   );
