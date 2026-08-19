@@ -81,15 +81,61 @@ export async function runAgentOnInbound(
   const shouldSend = run.status === "ok" && answer.length > 0;
 
   if (!shouldSend) {
+    // The customer must never be left in silence. Say a person is coming,
+    // then put the thread in front of one.
+    const { defaultAgentId, handoverMessage } = await import("@/lib/ai-tasks.server");
+    const { isServiceWindowOpen } = await import("@/lib/service-window");
+    const agentId = (agentRow as { id?: string } | null)?.id
+      ?? (await defaultAgentId(supabase, args.organizationId));
+    const text = await handoverMessage(supabase, agentId);
+
+    const { data: convo } = await supabase
+      .from("conversations")
+      .select("last_customer_message_at")
+      .eq("id", args.conversationId)
+      .maybeSingle();
+
+    let handoverState: "sent" | "window_closed" | "failed" | "not_configured" = "not_configured";
+    if (!text.trim()) {
+      handoverState = "not_configured";
+    } else if (!isServiceWindowOpen(convo as { last_customer_message_at?: string | null } | null)) {
+      handoverState = "window_closed";
+    } else {
+      const handover = await sendServiceText(supabase, {
+        organizationId: args.organizationId,
+        phoneNumberId: args.phoneNumberId,
+        accessToken: args.accessToken,
+        conversationId: args.conversationId,
+        to: args.waId,
+        body: text,
+      });
+      handoverState = handover.ok ? "sent" : "failed";
+      if (!handover.ok) {
+        log("handover_send_failed", {
+          conversation_id: args.conversationId,
+          error: handover.error,
+        });
+      }
+    }
+
     log("held_back", {
       conversation_id: args.conversationId,
       status: run.status,
       signal: run.escalationSignal,
+      handover: handoverState,
     });
+
     // Anything it wouldn't answer becomes a person's job: surface the thread.
     await supabase
       .from("conversations")
-      .update({ status: "open" })
+      .update({
+        status: "open",
+        needs_human: true,
+        needs_human_reason: run.escalationSignal ?? run.status,
+        needs_human_question: question.slice(0, 500),
+        needs_human_at: new Date().toISOString(),
+        handover_state: handoverState,
+      })
       .eq("id", args.conversationId)
       .eq("organization_id", args.organizationId);
     return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
