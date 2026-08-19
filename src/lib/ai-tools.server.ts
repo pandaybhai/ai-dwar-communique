@@ -16,14 +16,36 @@ import { normalizePhone, toWaId } from "@/lib/phone";
  *     has to say which one it means.
  */
 
+/**
+ * Who is acting. A person carries their own permissions; the agent acting on
+ * its own carries the workspace's configured AI role. There is no third case:
+ * a null principal used to mean "no permissions at all", which silently
+ * starved the agent of every tool.
+ */
+export type ToolPrincipal =
+  | { kind: "user"; userId: string }
+  | { kind: "agent" };
+
+export const agentPrincipal: ToolPrincipal = { kind: "agent" };
+export const userPrincipal = (userId: string): ToolPrincipal => ({ kind: "user", userId });
+
 export type ToolContext = {
   supabase: SupabaseClient;
   organizationId: string;
-  /** Null when the platform itself is acting. */
+  /** Null when the agent itself is acting. */
   actorUserId: string | null;
+  /** Whose permissions this call runs under. Defaults from actorUserId. */
+  principal?: ToolPrincipal;
   /** Who started this call — a person clicking, or a model deciding. */
   initiatedBy: "human" | "ai";
 };
+
+/** The principal a context runs as, falling back to its user (or the agent). */
+export function contextPrincipal(ctx: ToolContext): ToolPrincipal {
+  if (ctx.principal) return ctx.principal;
+  return ctx.actorUserId ? userPrincipal(ctx.actorUserId) : agentPrincipal;
+}
+
 
 export type ToolArgs = Record<string, unknown>;
 export type ToolResult = {
@@ -418,31 +440,74 @@ export async function enabledFlags(
 
 export type BrokeredTool = AiTool & { feature: string };
 
+/** How the workspace has configured its autonomous agent. */
+export async function agentSettings(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<{ role: string; canWrite: boolean }> {
+  const { data } = await supabase
+    .from("organization_ai_settings")
+    .select("agent_role, agent_can_write")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const row = (data ?? {}) as { agent_role?: string | null; agent_can_write?: boolean | null };
+  return { role: row.agent_role || "ai_agent", canWrite: row.agent_can_write === true };
+}
+
+/** The permission keys granted to a role preset (used for the agent role). */
+async function rolePresetKeys(
+  supabase: SupabaseClient,
+  role: string,
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from("role_permissions")
+    .select("permission_key")
+    .eq("role", role);
+  return new Set(((data ?? []) as { permission_key: string }[]).map((r) => r.permission_key));
+}
+
 /**
- * The tools this actor may actually call: feature flag on, permission held,
+ * The tools this principal may actually call: feature flag on, permission held,
  * handler implemented. Everything else is invisible to the model.
+ *
+ * The autonomous agent is read-only unless the workspace has explicitly opted
+ * into letting it change things.
  */
 export async function brokerTools(
   supabase: SupabaseClient,
   organizationId: string,
-  actorUserId: string | null,
+  principal: ToolPrincipal,
 ): Promise<BrokeredTool[]> {
-  const [flags, permissions] = await Promise.all([
-    enabledFlags(supabase, organizationId),
-    actorUserId
-      ? resolveEffectivePermissions(supabase, organizationId, actorUserId)
-      : Promise.resolve({ keys: [] as string[], role: null, isSuperAdmin: false, overrides: {} }),
-  ]);
+  const flags = await enabledFlags(supabase, organizationId);
   if (!flags.has("ai_features")) return [];
-  const held = new Set(permissions.keys);
+
+  let held: Set<string>;
+  let readOnly = false;
+
+  if (principal.kind === "user") {
+    const permissions = await resolveEffectivePermissions(
+      supabase,
+      organizationId,
+      principal.userId,
+    );
+    held = new Set(permissions.keys);
+  } else {
+    const settings = await agentSettings(supabase, organizationId);
+    held = await rolePresetKeys(supabase, settings.role);
+    readOnly = !settings.canWrite;
+  }
+
   if (!held.has("ai.use")) return [];
 
   return allAiTools()
     .filter((t) => flags.has(t.flag_key))
     .filter((t) => held.has(t.required_permission))
+    .filter((t) => (readOnly ? t.access === "read" : true))
     .filter((t) => Boolean(AI_TOOL_HANDLERS[t.handler]))
     .map(({ flag_key: _flag, ...tool }) => tool);
 }
+
+
 
 /** Write tools are capped per organization per hour; reads are unmetered. */
 const WRITE_RATE_LIMIT_PER_HOUR = 60;
@@ -504,7 +569,7 @@ export async function invokeTool(
   options: InvokeOptions = {},
 ): Promise<ToolResult> {
   const startedAt = Date.now();
-  const available = await brokerTools(ctx.supabase, ctx.organizationId, ctx.actorUserId);
+  const available = await brokerTools(ctx.supabase, ctx.organizationId, contextPrincipal(ctx));
   const tool = available.find((t) => t.name === toolName);
 
   /** Returns the activity_log row id so the caller can join a run to its trace. */

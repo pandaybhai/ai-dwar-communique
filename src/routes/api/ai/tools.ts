@@ -16,7 +16,7 @@ export const Route = createFileRoute("/api/ai/tools")({
         const { requireOrgMember, isResponse, jsonError } = await import(
           "@/lib/whatsapp-api.server"
         );
-        const { brokerTools, invokeTool } = await import("@/lib/ai-tools.server");
+        const { brokerTools, invokeTool, userPrincipal } = await import("@/lib/ai-tools.server");
 
         let payload: Record<string, unknown>;
         try {
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/api/ai/tools")({
         const action = String(payload["action"] ?? "list");
 
         if (action === "list") {
-          const tools = await brokerTools(auth.supabase, auth.organizationId, auth.userId);
+          const tools = await brokerTools(auth.supabase, auth.organizationId, userPrincipal(auth.userId));
           return Response.json({ tools });
         }
 

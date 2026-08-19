@@ -36,6 +36,7 @@ const TASK_TEXT: Record<string, string> = {
 /** Why it stopped, said in one sentence, in its own voice. */
 const REASON_TEXT: Record<string, string> = {
   no_source: "I had nothing to answer from.",
+  no_tools: "I had no lookups switched on, so I couldn't check anything.",
   unsure: "I wasn't sure enough to answer.",
   tool_failed: "A lookup didn't work, so I passed it to you.",
   opted_out: "This customer asked not to be messaged.",

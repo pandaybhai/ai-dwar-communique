@@ -109,9 +109,16 @@ export const Route = createFileRoute("/api/ai/employee")({
                 .maybeSingle(),
             ]);
 
-            const { brokerTools } = await import("@/lib/ai-tools.server");
+            // What the AI actually has in live customer conversations —
+            // its own principal, not the admin looking at this page.
+            const { brokerTools, agentPrincipal, agentSettings } = await import(
+              "@/lib/ai-tools.server"
+            );
             const { allAiTools } = await import("@/lib/feature-registry");
-            const available = await brokerTools(supabase, org, auth.userId);
+            const [available, agentConfig] = await Promise.all([
+              brokerTools(supabase, org, agentPrincipal),
+              agentSettings(supabase, org),
+            ]);
             const availableNames = new Set(available.map((t) => t.name));
             const tools = allAiTools().map((t) => ({
               name: t.name,
@@ -121,8 +128,11 @@ export const Route = createFileRoute("/api/ai/employee")({
               available: availableNames.has(t.name),
               reason: availableNames.has(t.name)
                 ? null
-                : `Needs the ${t.feature} feature switched on and the "${t.required_permission}" permission.`,
+                : t.access === "write" && !agentConfig.canWrite
+                  ? "Switched off: the AI can only look things up, never change them, until you allow it."
+                  : `Needs the ${t.feature} feature switched on and the "${t.required_permission}" permission on the AI's role.`,
             }));
+
 
             const runs = (weekRuns.data ?? []) as Array<{
               status: string;

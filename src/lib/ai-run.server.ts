@@ -16,7 +16,14 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { brokerTools, invokeTool, type BrokeredTool } from "@/lib/ai-tools.server";
+import {
+  brokerTools,
+  invokeTool,
+  userPrincipal,
+  agentPrincipal,
+  type BrokeredTool,
+  type ToolPrincipal,
+} from "@/lib/ai-tools.server";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
@@ -73,6 +80,11 @@ export type RunOptions = {
   contactId?: string | null;
   actorUserId?: string | null;
   actingRole?: string | null;
+  /**
+   * Whose permissions the tools run under. Omitted means: the acting user, or
+   * the workspace's AI role when the agent is acting on its own.
+   */
+  principal?: ToolPrincipal;
   /** Force a tier instead of resolving one (comparison, playground). */
   tier?: string | null;
   /** Let the model call brokered tools. */
@@ -964,8 +976,11 @@ export async function executeRun(
   }
   const system = systemParts.filter(Boolean).join("\n\n");
 
+  const principal: ToolPrincipal =
+    options.principal ?? (actorUserId ? userPrincipal(actorUserId) : agentPrincipal);
+
   const tools = useTools
-    ? await brokerTools(supabase, organizationId, actorUserId)
+    ? await brokerTools(supabase, organizationId, principal)
     : ([] as BrokeredTool[]);
 
   const toolCalls: RunResult["toolCalls"] = [];
@@ -1000,7 +1015,7 @@ export async function executeRun(
         // The function_call items must travel with their outputs.
         items.push(...call.items);
         for (const tc of call.toolCalls) {
-          const result = await runTool(supabase, organizationId, actorUserId, tc.name, tc.args);
+          const result = await runTool(supabase, organizationId, actorUserId, principal, tc.name, tc.args);
           if (!result.ok) anyToolFailed = true;
           toolCalls.push({
             tool: tc.name,
@@ -1034,7 +1049,7 @@ export async function executeRun(
         if (call.toolCalls.length === 0) break;
         messages.push(call.raw as ChatMessage);
         for (const tc of call.toolCalls) {
-          const result = await runTool(supabase, organizationId, actorUserId, tc.name, tc.args);
+          const result = await runTool(supabase, organizationId, actorUserId, principal, tc.name, tc.args);
           if (!result.ok) anyToolFailed = true;
           toolCalls.push({
             tool: tc.name,
@@ -1100,6 +1115,7 @@ export async function executeRun(
       answer: result.output,
       knowledgeMatched: sources.some((s) => s.kind === "knowledge"),
       toolUsed: toolCalls.length > 0,
+      toolsBrokered: !useTools || tools.length > 0,
       anyToolFailed,
       history,
       merchantRules: options.system ?? "",
@@ -1118,17 +1134,37 @@ export async function executeRun(
   return finish(result);
 }
 
+/** "hi", "heya", "hello there" — an opening, not something to escalate. */
+export function isGreeting(question: string): boolean {
+  const q = question.toLowerCase().replace(/[^a-z\s]/g, " ").trim();
+  if (!q || q.split(/\s+/).length > 4) return false;
+  const words = q.split(/\s+/);
+  const greetings = new Set([
+    "hi", "hii", "hiii", "hey", "heya", "hello", "helo", "yo", "hola", "namaste",
+    "good", "morning", "afternoon", "evening", "there", "sir", "madam", "hey there",
+  ]);
+  return words.every((w) => greetings.has(w));
+}
+
 /** Observable signals only — never the model's own opinion of its certainty. */
 export function decideEscalation(input: {
   question: string;
   answer: string;
   knowledgeMatched: boolean;
   toolUsed: boolean;
+  /** False when the run asked for tools and the broker handed it none. */
+  toolsBrokered?: boolean;
   anyToolFailed: boolean;
   history: { role: "user" | "assistant"; content: string }[];
   merchantRules: string;
 }): string | null {
   if (input.anyToolFailed) return "tool_failed";
+
+  // A starved agent and an unanswerable question must never look the same.
+  if (input.toolsBrokered === false) return "no_tools";
+
+  // A greeting is not a question. Answer it and move on.
+  if (isGreeting(input.question)) return null;
 
   const topic = topicNeedsHuman(input.question, input.merchantRules);
   if (topic) return topic;
@@ -1197,11 +1233,12 @@ async function runTool(
   supabase: SupabaseClient,
   organizationId: string,
   actorUserId: string | null,
+  principal: ToolPrincipal,
   name: string,
   args: Record<string, unknown>,
 ) {
   return invokeTool(
-    { supabase, organizationId, actorUserId, initiatedBy: "ai" },
+    { supabase, organizationId, actorUserId, principal, initiatedBy: "ai" },
     name,
     args,
   );
