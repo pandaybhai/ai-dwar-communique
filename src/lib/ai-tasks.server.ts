@@ -265,6 +265,25 @@ export async function playgroundAnswer(
  */
 export { FALLBACK_AGENT_RULES as AGENT_RULES } from "@/lib/ai-brief.server";
 
+export const DEFAULT_HANDOVER_MESSAGE =
+  "Let me get someone from the team to help — they'll reply here shortly.";
+
+/** The exact words the customer gets when the employee steps back. */
+export async function handoverMessage(
+  supabase: SupabaseClient,
+  agentId: string | null,
+): Promise<string> {
+  if (!agentId) return DEFAULT_HANDOVER_MESSAGE;
+  const { data } = await supabase
+    .from("ai_instructions")
+    .select("handover_message")
+    .eq("agent_id", agentId)
+    .eq("is_current", true)
+    .maybeSingle();
+  const text = (data as { handover_message?: string | null } | null)?.handover_message ?? "";
+  return text.trim() || DEFAULT_HANDOVER_MESSAGE;
+}
+
 /** The real answer the agent would give a customer. */
 export async function agentAnswer(
   supabase: SupabaseClient,
@@ -281,6 +300,20 @@ export async function agentAnswer(
   const { assembleBrief } = await import("@/lib/ai-brief.server");
   const brief = await assembleBrief(supabase, common.organizationId, agentId, { customerLanguage });
 
+  // A repeat only matters when the first attempt actually failed.
+  const { data: pastRuns } = await supabase
+    .from("ai_runs")
+    .select("input_summary, status")
+    .eq("organization_id", common.organizationId)
+    .eq("conversation_id", conversationId)
+    .eq("task", "agent_reply")
+    .neq("status", "ok")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const priorFailedQuestions = ((pastRuns ?? []) as Array<{ input_summary: string | null }>)
+    .map((r) => (r.input_summary ?? "").trim())
+    .filter(Boolean);
+
   return executeRun(supabase, {
     organizationId: common.organizationId,
     task: "agent_reply",
@@ -294,8 +327,11 @@ export async function agentAnswer(
     // Escalation rules are part of the assembled brief — exactly once.
     system: brief.text,
     promptRulesVersion: brief.rulesVersion,
+    customerLanguage,
+    priorFailedQuestions,
     useKnowledge: true,
     useTools: true,
   });
 }
+
 
