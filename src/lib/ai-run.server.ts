@@ -98,7 +98,12 @@ export type RunResult = {
     error?: string;
     latencyMs?: number;
     activityLogId?: string | null;
+    /** The arguments the model supplied, for debugging tool behaviour. */
+    args?: Record<string, unknown>;
+    /** Row count and up to five identifiers. Never a data copy. */
+    resultSummary?: Record<string, unknown>;
   }[];
+
   escalationSignal: string | null;
   /** What the provider charges the platform. Platform-internal, never shown. */
   costAmount: number | null;
