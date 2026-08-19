@@ -22,6 +22,7 @@ import {
   type CompareResult,
   type CompareSide,
   type PlaygroundRun,
+  type RunMedia,
   type RunSource,
   type TierInternal,
 } from "@/lib/employee-client";
@@ -401,7 +402,47 @@ function AnswerCard({
         )
       ) : null}
 
+      <ProductPictures media={run.media} currency={currency} />
       <Sources sources={run.sources} />
+    </div>
+  );
+}
+
+/** The pictures the customer would receive alongside this answer. */
+function ProductPictures({
+  media,
+  currency,
+}: {
+  media?: RunMedia[] | null;
+  currency: string;
+}) {
+  if (!media || media.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <p className="text-xs text-muted-foreground">I'd send these pictures too</p>
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {media.map((item) => (
+          <figure
+            key={item.imageUrl}
+            className="overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm transition-shadow duration-200 hover:shadow-md"
+          >
+            <img
+              src={item.imageUrl}
+              alt={item.title}
+              loading="lazy"
+              className="h-28 w-full object-cover"
+            />
+            <figcaption className="space-y-0.5 p-2">
+              <span className="block truncate text-xs font-medium text-foreground">
+                {item.title}
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                {item.price === null ? "price on request" : moneyText(item.price, item.currency || currency)}
+              </span>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
     </div>
   );
 }
