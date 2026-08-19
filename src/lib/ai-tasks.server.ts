@@ -14,7 +14,13 @@ export async function conversationTurns(
   organizationId: string,
   conversationId: string,
   limit = 30,
-): Promise<{ turns: Turn[]; contactId: string | null; contactName: string | null }> {
+): Promise<{
+  turns: Turn[];
+  contactId: string | null;
+  contactName: string | null;
+  /** The language of the customer's most recent message, when we could tell. */
+  customerLanguage: string | null;
+}> {
   const { data: convo } = await supabase
     .from("conversations")
     .select("id, contact_id, contacts(name)")
@@ -27,13 +33,21 @@ export async function conversationTurns(
 
   const { data: rows } = await supabase
     .from("messages")
-    .select("direction, body, created_at")
+    .select("direction, body, detected_language, created_at")
     .eq("organization_id", organizationId)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  const turns = ((rows ?? []) as Array<{ direction: string; body: string | null }>)
+  const all = (rows ?? []) as Array<{
+    direction: string;
+    body: string | null;
+    detected_language?: string | null;
+  }>;
+  const customerLanguage =
+    all.find((m) => m.direction === "inbound" && m.detected_language)?.detected_language ?? null;
+
+  const turns = all
     .filter((m) => (m.body ?? "").trim().length > 0)
     .reverse()
     .map<Turn>((m) => ({
@@ -41,7 +55,12 @@ export async function conversationTurns(
       content: String(m.body),
     }));
 
-  return { turns, contactId: c?.contact_id ?? null, contactName: c?.contacts?.name ?? null };
+  return {
+    turns,
+    contactId: c?.contact_id ?? null,
+    contactName: c?.contacts?.name ?? null,
+    customerLanguage,
+  };
 }
 
 /** Current persona and rules for an agent, as a system brief. */
@@ -103,8 +122,14 @@ export async function suggestReply(
   conversationId: string,
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { turns, contactId } = await conversationTurns(supabase, common.organizationId, conversationId);
+  const { turns, contactId, customerLanguage } = await conversationTurns(
+    supabase,
+    common.organizationId,
+    conversationId,
+  );
   const { brief } = await agentBrief(supabase, agentId);
+  const { customerLanguageBlock } = await import("@/lib/ai-brief.server");
+  const spoken = customerLanguageBlock(customerLanguage, []);
   const last = [...turns].reverse().find((t) => t.role === "user")?.content ?? "";
 
   return executeRun(supabase, {
@@ -119,6 +144,7 @@ export async function suggestReply(
     input: last || "Write the next reply in this conversation.",
     system: [
       brief,
+      spoken,
       "Draft the next reply for a human teammate to check and send.",
       "Keep it under 60 words, plain and specific. No greetings padding, no emoji unless the customer used one.",
       "If you do not know something, say what you would need to find out instead of guessing.",
@@ -247,9 +273,13 @@ export async function agentAnswer(
   question: string,
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { turns, contactId } = await conversationTurns(supabase, common.organizationId, conversationId);
+  const { turns, contactId, customerLanguage } = await conversationTurns(
+    supabase,
+    common.organizationId,
+    conversationId,
+  );
   const { assembleBrief } = await import("@/lib/ai-brief.server");
-  const brief = await assembleBrief(supabase, common.organizationId, agentId);
+  const brief = await assembleBrief(supabase, common.organizationId, agentId, { customerLanguage });
 
   return executeRun(supabase, {
     organizationId: common.organizationId,
