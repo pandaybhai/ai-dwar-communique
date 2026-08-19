@@ -72,6 +72,7 @@ import { Route as ApiWhatsappTemplatesRouteImport } from './routes/api/whatsapp/
 import { Route as ApiWhatsappTokenStatusRouteImport } from './routes/api/whatsapp/token-status'
 import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
 import { Route as AppCampaignsIdRouteImport } from './routes/app/campaigns.$id'
+import { Route as AppCatalogIndexRouteImport } from './routes/app/catalog.index'
 import { Route as AppFlowsIndexRouteImport } from './routes/app/flows.index'
 import { Route as AppFlowsIdRouteImport } from './routes/app/flows.$id'
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
@@ -406,6 +407,11 @@ const AppCampaignsIdRoute = AppCampaignsIdRouteImport.update({
   path: '/campaigns/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppCatalogIndexRoute = AppCatalogIndexRouteImport.update({
+  id: '/catalog/',
+  path: '/catalog/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppFlowsIndexRoute = AppFlowsIndexRouteImport.update({
   id: '/flows/',
   path: '/flows/',
@@ -518,6 +524,7 @@ export interface FileRoutesByFullPath {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
+  '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
@@ -589,6 +596,7 @@ export interface FileRoutesByTo {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
   '/app/campaigns': typeof AppCampaignsIndexRoute
+  '/app/catalog': typeof AppCatalogIndexRoute
   '/app/flows': typeof AppFlowsIndexRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
@@ -663,6 +671,7 @@ export interface FileRoutesById {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
+  '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
@@ -738,6 +747,7 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/flows/$id'
     | '/app/campaigns/'
+    | '/app/catalog/'
     | '/app/flows/'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
@@ -809,6 +819,7 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/flows/$id'
     | '/app/campaigns'
+    | '/app/catalog'
     | '/app/flows'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
@@ -882,6 +893,7 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/flows/$id'
     | '/app/campaigns/'
+    | '/app/catalog/'
     | '/app/flows/'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
@@ -1389,6 +1401,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCampaignsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/catalog/': {
+      id: '/app/catalog/'
+      path: '/catalog'
+      fullPath: '/app/catalog/'
+      preLoaderRoute: typeof AppCatalogIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/flows/': {
       id: '/app/flows/'
       path: '/flows'
@@ -1483,6 +1502,7 @@ interface AppRouteRouteChildren {
   AppCampaignsIdRoute: typeof AppCampaignsIdRoute
   AppFlowsIdRoute: typeof AppFlowsIdRoute
   AppCampaignsIndexRoute: typeof AppCampaignsIndexRoute
+  AppCatalogIndexRoute: typeof AppCatalogIndexRoute
   AppFlowsIndexRoute: typeof AppFlowsIndexRoute
 }
 
@@ -1499,6 +1519,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppCampaignsIdRoute: AppCampaignsIdRoute,
   AppFlowsIdRoute: AppFlowsIdRoute,
   AppCampaignsIndexRoute: AppCampaignsIndexRoute,
+  AppCatalogIndexRoute: AppCatalogIndexRoute,
   AppFlowsIndexRoute: AppFlowsIndexRoute,
 }
 
