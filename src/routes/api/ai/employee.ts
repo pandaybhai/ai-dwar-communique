@@ -367,6 +367,33 @@ export const Route = createFileRoute("/api/ai/employee")({
             return Response.json({ ok: true });
           }
 
+          if (action === "clear_tier") {
+            // Back to my recommendation for ONE job only — never resets the others.
+            const task = String(payload["task"] ?? "");
+            if (!task) return jsonError("Pick a job first.");
+            const { error } = await supabase
+              .from("ai_task_models")
+              .delete()
+              .eq("organization_id", org)
+              .eq("task", task)
+              .is("agent_id", null);
+            if (error) return jsonError(error.message.replace(/^.*ERROR:\s*/, ""), 400);
+            const { count } = await supabase
+              .from("ai_task_models")
+              .select("id", { count: "exact", head: true })
+              .eq("organization_id", org)
+              .is("agent_id", null);
+            await supabase.from("organization_ai_settings").upsert(
+              { organization_id: org, brain_choice: (count ?? 0) > 0 ? "manual" : "recommended" },
+              { onConflict: "organization_id" },
+            );
+            await logServerActivity(supabase, org, auth.userId, "ai_tier_changed", {
+              task,
+              tier: "recommended",
+            });
+            return Response.json({ ok: true });
+          }
+
           if (action === "set_tier") {
             const task = String(payload["task"] ?? "");
             const tier = String(payload["tier"] ?? "");
