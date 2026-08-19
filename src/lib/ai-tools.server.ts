@@ -505,6 +505,8 @@ export async function brokerTools(
     .filter((t) => (readOnly ? t.access === "read" : true))
     .filter((t) => Boolean(AI_TOOL_HANDLERS[t.handler]))
     .map(({ flag_key: _flag, ...tool }) => tool);
+}
+
 
 
 /** Write tools are capped per organization per hour; reads are unmetered. */
