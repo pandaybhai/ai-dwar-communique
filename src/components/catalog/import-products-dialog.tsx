@@ -169,14 +169,18 @@ export function ImportProductsDialog({
 
     let created = 0;
     let updated = 0;
+    let warned = 0;
     const errors: ImportError[] = [];
+    const warnings: ImportWarning[] = [];
 
     for (let i = 0; i < rows.length; i += CHUNK) {
       const chunk = rows.slice(i, i + CHUNK).map((row, offset) => rowPayload(row, i + offset));
       const { data, error } = await callApi<{
         created: number;
         updated: number;
+        warned: number;
         errors: ImportError[];
+        warnings: ImportWarning[];
       }>("/api/catalog/import", {
         body: {
           action: "chunk",
@@ -191,12 +195,14 @@ export function ImportProductsDialog({
         });
         setRunning(false);
         toast.error(error ?? "The import stopped partway. Nothing after this row was imported.");
-        setResults({ created, updated, failed: errors.length, errors });
+        setResults({ created, updated, warned, failed: errors.length, errors, warnings });
         return;
       }
       created += data.created;
       updated += data.updated;
+      warned += data.warned ?? 0;
       errors.push(...(data.errors ?? []));
+      warnings.push(...(data.warnings ?? []));
       setProgress(Math.round(Math.min(i + CHUNK, rows.length) / rows.length * 100));
     }
 
@@ -205,7 +211,7 @@ export function ImportProductsDialog({
     });
     if (finish.error) toast.error(finish.error);
 
-    setResults({ created, updated, failed: errors.length, errors });
+    setResults({ created, updated, warned, failed: errors.length, errors, warnings });
     setRunning(false);
     onImported();
   }
