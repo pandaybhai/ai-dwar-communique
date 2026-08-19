@@ -44,6 +44,7 @@ import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
 import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
+import { Route as ApiCatalogImportRouteImport } from './routes/api/catalog/import'
 import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/products'
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
@@ -252,6 +253,11 @@ const ApiCampaignsControlRoute = ApiCampaignsControlRouteImport.update({
 const ApiCampaignsLaunchRoute = ApiCampaignsLaunchRouteImport.update({
   id: '/api/campaigns/launch',
   path: '/api/campaigns/launch',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCatalogImportRoute = ApiCatalogImportRouteImport.update({
+  id: '/api/catalog/import',
+  path: '/api/catalog/import',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCatalogProductsRoute = ApiCatalogProductsRouteImport.update({
@@ -477,6 +483,7 @@ export interface FileRoutesByFullPath {
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/catalog/import': typeof ApiCatalogImportRoute
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
@@ -546,6 +553,7 @@ export interface FileRoutesByTo {
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/catalog/import': typeof ApiCatalogImportRoute
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
@@ -618,6 +626,7 @@ export interface FileRoutesById {
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/catalog/import': typeof ApiCatalogImportRoute
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
@@ -691,6 +700,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
+    | '/api/catalog/import'
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
@@ -760,6 +770,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
+    | '/api/catalog/import'
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
@@ -831,6 +842,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
+    | '/api/catalog/import'
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
@@ -888,6 +900,7 @@ export interface RootRouteChildren {
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
+  ApiCatalogImportRoute: typeof ApiCatalogImportRoute
   ApiCatalogProductsRoute: typeof ApiCatalogProductsRoute
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
@@ -1165,6 +1178,13 @@ declare module '@tanstack/react-router' {
       path: '/api/campaigns/launch'
       fullPath: '/api/campaigns/launch'
       preLoaderRoute: typeof ApiCampaignsLaunchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/catalog/import': {
+      id: '/api/catalog/import'
+      path: '/api/catalog/import'
+      fullPath: '/api/catalog/import'
+      preLoaderRoute: typeof ApiCatalogImportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/catalog/products': {
@@ -1487,6 +1507,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
+  ApiCatalogImportRoute: ApiCatalogImportRoute,
   ApiCatalogProductsRoute: ApiCatalogProductsRoute,
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
