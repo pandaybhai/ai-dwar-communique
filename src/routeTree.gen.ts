@@ -73,6 +73,7 @@ import { Route as ApiWhatsappTokenStatusRouteImport } from './routes/api/whatsap
 import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
 import { Route as AppCampaignsIdRouteImport } from './routes/app/campaigns.$id'
 import { Route as AppCatalogIndexRouteImport } from './routes/app/catalog.index'
+import { Route as AppCatalogCollectionsRouteImport } from './routes/app/catalog.collections'
 import { Route as AppFlowsIndexRouteImport } from './routes/app/flows.index'
 import { Route as AppFlowsIdRouteImport } from './routes/app/flows.$id'
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
@@ -412,6 +413,11 @@ const AppCatalogIndexRoute = AppCatalogIndexRouteImport.update({
   path: '/catalog/',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppCatalogCollectionsRoute = AppCatalogCollectionsRouteImport.update({
+  id: '/catalog/collections',
+  path: '/catalog/collections',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppFlowsIndexRoute = AppFlowsIndexRouteImport.update({
   id: '/flows/',
   path: '/flows/',
@@ -522,6 +528,7 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
+  '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/app/catalog/': typeof AppCatalogIndexRoute
@@ -594,6 +601,7 @@ export interface FileRoutesByTo {
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
+  '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
   '/app/campaigns': typeof AppCampaignsIndexRoute
   '/app/catalog': typeof AppCatalogIndexRoute
@@ -669,6 +677,7 @@ export interface FileRoutesById {
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
+  '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/app/catalog/': typeof AppCatalogIndexRoute
@@ -745,6 +754,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
+    | '/app/catalog/collections'
     | '/app/flows/$id'
     | '/app/campaigns/'
     | '/app/catalog/'
@@ -817,6 +827,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
+    | '/app/catalog/collections'
     | '/app/flows/$id'
     | '/app/campaigns'
     | '/app/catalog'
@@ -891,6 +902,7 @@ export interface FileRouteTypes {
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
+    | '/app/catalog/collections'
     | '/app/flows/$id'
     | '/app/campaigns/'
     | '/app/catalog/'
@@ -1408,6 +1420,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCatalogIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/catalog/collections': {
+      id: '/app/catalog/collections'
+      path: '/catalog/collections'
+      fullPath: '/app/catalog/collections'
+      preLoaderRoute: typeof AppCatalogCollectionsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/flows/': {
       id: '/app/flows/'
       path: '/flows'
@@ -1500,6 +1519,7 @@ interface AppRouteRouteChildren {
   AppTemplatesRoute: typeof AppTemplatesRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCampaignsIdRoute: typeof AppCampaignsIdRoute
+  AppCatalogCollectionsRoute: typeof AppCatalogCollectionsRoute
   AppFlowsIdRoute: typeof AppFlowsIdRoute
   AppCampaignsIndexRoute: typeof AppCampaignsIndexRoute
   AppCatalogIndexRoute: typeof AppCatalogIndexRoute
@@ -1517,6 +1537,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppTemplatesRoute: AppTemplatesRoute,
   AppIndexRoute: AppIndexRoute,
   AppCampaignsIdRoute: AppCampaignsIdRoute,
+  AppCatalogCollectionsRoute: AppCatalogCollectionsRoute,
   AppFlowsIdRoute: AppFlowsIdRoute,
   AppCampaignsIndexRoute: AppCampaignsIndexRoute,
   AppCatalogIndexRoute: AppCatalogIndexRoute,

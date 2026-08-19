@@ -407,7 +407,7 @@ export function CatalogView({ organizationId }: { organizationId: string }) {
       ) : error ? (
         <ErrorState message={error} />
       ) : products.length === 0 && filtersActive ? (
-        <NoResults />
+        <NoResults message="No products match those filters. Try clearing the search or the price range." />
       ) : products.length === 0 ? (
         <EmptyState
           icon={Package}
