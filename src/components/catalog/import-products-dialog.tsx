@@ -426,39 +426,86 @@ export function ImportProductsDialog({
                 <div className="rounded-2xl border border-border/70 bg-card p-6 text-center">
                   <CheckCircle2 className="mx-auto h-10 w-10 text-primary" />
                   <p className="mt-4 text-lg font-semibold text-foreground">Import finished</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
+                  <div className="mt-4 grid grid-cols-3 gap-3 text-left">
+                    <div className="rounded-xl border border-border/70 p-3">
+                      <p className="text-xl font-semibold text-foreground">
+                        {(results.created + results.updated).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">imported</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+                      <p className="text-xl font-semibold text-amber-600 dark:text-amber-400">
+                        {results.warned.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">imported with warnings</p>
+                    </div>
+                    <div className="rounded-xl border border-destructive/25 bg-destructive/5 p-3">
+                      <p className="text-xl font-semibold text-destructive">
+                        {results.failed.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">failed</p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
                     {results.created.toLocaleString()} added, {results.updated.toLocaleString()}{" "}
-                    updated
-                    {results.failed ? `, ${results.failed.toLocaleString()} couldn't be saved` : ""}
-                    .
+                    updated.
                   </p>
                 </div>
-                {results.failed ? (
+                {results.failed || results.warned ? (
                   <div className="space-y-3">
-                    <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-xs">
-                      {results.errors.slice(0, 20).map((e) => (
-                        <p key={`${e.row}-${e.product}`}>
-                          Row {e.row}: {e.product || "—"} — {e.reason}
-                        </p>
-                      ))}
-                    </div>
+                    {results.failed ? (
+                      <div className="max-h-32 space-y-1 overflow-y-auto rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-xs">
+                        {results.errors.slice(0, 20).map((e, i) => (
+                          <p key={`e-${e.row}-${i}`}>
+                            Row {e.row}: {e.product || "—"} — {e.reason}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                    {results.warnings.length ? (
+                      <div className="max-h-32 space-y-1 overflow-y-auto rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-xs">
+                        {results.warnings.slice(0, 20).map((w, i) => (
+                          <p key={`w-${w.row}-${w.field}-${i}`}>
+                            Row {w.row}: {w.product || "—"} — {w.reason}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() =>
                         downloadCsv(
-                          "product-import-errors.csv",
+                          "product-import-report.csv",
                           toCsv([
-                            ["row", "product", "reason"],
-                            ...results.errors.map((e) => [e.row, e.product, e.reason]),
+                            ["row", "product", "outcome", "field", "value", "used", "detail"],
+                            ...results.errors.map((e) => [
+                              e.row,
+                              e.product,
+                              "failed",
+                              "",
+                              "",
+                              "",
+                              e.reason,
+                            ]),
+                            ...results.warnings.map((w) => [
+                              w.row,
+                              w.product,
+                              "warning",
+                              w.field,
+                              w.value,
+                              w.used,
+                              w.reason,
+                            ]),
                           ]),
                         )
                       }
                     >
-                      <Download className="mr-2 h-4 w-4" /> Download the error report
+                      <Download className="mr-2 h-4 w-4" /> Download the import report
                     </Button>
                   </div>
                 ) : null}
+
                 <div className="flex justify-end">
                   <Button
                     onClick={() => {
