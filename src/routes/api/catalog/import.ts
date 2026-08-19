@@ -19,7 +19,7 @@ export const Route = createFileRoute("/api/catalog/import")({
         const { requireOrgMember, requirePermission, isResponse, jsonError, logServerActivity } =
           await import("@/lib/whatsapp-api.server");
         const { recordUsage } = await import("@/lib/events.server");
-        const { parsePrice, parseQuantity, parseAvailability } = await import("@/lib/catalog");
+        const { readNumber, readQuantity, readAvailability } = await import("@/lib/catalog");
         
 
         let payload: AnyRecord;
@@ -67,7 +67,17 @@ export const Route = createFileRoute("/api/catalog/import")({
 
           let created = 0;
           let updated = 0;
+          let warnedRows = 0;
           const errors: { row: number; product: string; reason: string }[] = [];
+          const warnings: {
+            row: number;
+            product: string;
+            field: string;
+            value: string;
+            used: string;
+            reason: string;
+          }[] = [];
+
 
           for (const raw of rows) {
             const rowNumber = Number(raw["row_number"] ?? 0);
@@ -80,8 +90,80 @@ export const Route = createFileRoute("/api/catalog/import")({
               continue;
             }
 
-            const price = parsePrice(raw["price"]);
-            const quantity = parseQuantity(raw["inventory_quantity"]);
+            const label = title || sku;
+            const rowWarnings: {
+              row: number;
+              product: string;
+              field: string;
+              value: string;
+              used: string;
+              reason: string;
+            }[] = [];
+
+            const priceCell = readNumber(raw["price"]);
+            const compareCell = readNumber(raw["compare_at_price"]);
+            const quantityCell = readQuantity(raw["inventory_quantity"]);
+
+            if (priceCell.value !== null && priceCell.value < 0) {
+              errors.push({
+                row: rowNumber,
+                product: label,
+                reason: `Price can't be negative — this row says "${priceCell.raw}".`,
+              });
+              continue;
+            }
+            if (compareCell.value !== null && compareCell.value < 0) {
+              errors.push({
+                row: rowNumber,
+                product: label,
+                reason: `Compare-at price can't be negative — this row says "${compareCell.raw}".`,
+              });
+              continue;
+            }
+            if (priceCell.invalid) {
+              rowWarnings.push({
+                row: rowNumber,
+                product: label,
+                field: "price",
+                value: priceCell.raw,
+                used: "no price",
+                reason: `We couldn't read the price "${priceCell.raw}", so this product was saved without one.`,
+              });
+            }
+            if (compareCell.invalid) {
+              rowWarnings.push({
+                row: rowNumber,
+                product: label,
+                field: "compare_at_price",
+                value: compareCell.raw,
+                used: "no compare-at price",
+                reason: `We couldn't read the compare-at price "${compareCell.raw}", so it was left blank.`,
+              });
+            }
+            if (quantityCell.invalid) {
+              rowWarnings.push({
+                row: rowNumber,
+                product: label,
+                field: "inventory_quantity",
+                value: quantityCell.raw,
+                used: "no stock count",
+                reason: `"${quantityCell.raw}" isn't a stock number, so this product was saved without a stock count.`,
+              });
+            }
+
+            const quantity = quantityCell.value;
+            const availabilityCell = readAvailability(raw["availability"], quantity);
+            if (availabilityCell.invalid) {
+              rowWarnings.push({
+                row: rowNumber,
+                product: label,
+                field: "availability",
+                value: availabilityCell.raw,
+                used: availabilityCell.value,
+                reason: `"${availabilityCell.raw}" isn't a stock status we recognise, so we used "${availabilityCell.value}".`,
+              });
+            }
+
             const fields = {
               organization_id: organizationId,
               title,
@@ -89,15 +171,16 @@ export const Route = createFileRoute("/api/catalog/import")({
               description: String(raw["description"] ?? "").trim().slice(0, 5000) || null,
               brand: String(raw["brand"] ?? "").trim().slice(0, 120) || null,
               category: String(raw["category"] ?? "").trim().slice(0, 120) || null,
-              price,
-              compare_at_price: parsePrice(raw["compare_at_price"]),
+              price: priceCell.value,
+              compare_at_price: compareCell.value,
               inventory_quantity: quantity,
-              availability: parseAvailability(raw["availability"], quantity),
+              availability: availabilityCell.value,
               image_url: String(raw["image_url"] ?? "").trim().slice(0, 1000) || null,
               product_url: String(raw["product_url"] ?? "").trim().slice(0, 1000) || null,
               currency: "INR",
               source: "import" as const,
             };
+
 
             try {
               let existingId: string | null = null;
@@ -139,6 +222,10 @@ export const Route = createFileRoute("/api/catalog/import")({
                 if (error) throw new Error(error.message);
                 created += 1;
               }
+              if (rowWarnings.length) {
+                warnedRows += 1;
+                warnings.push(...rowWarnings);
+              }
             } catch (caught) {
               errors.push({
                 row: rowNumber,
@@ -151,7 +238,7 @@ export const Route = createFileRoute("/api/catalog/import")({
           if (importId) {
             const { data: current } = await supabase
               .from("catalog_imports")
-              .select("rows_created, rows_updated, rows_failed, error_report")
+              .select("rows_created, rows_updated, rows_failed, rows_warned, error_report")
               .eq("id", importId)
               .eq("organization_id", organizationId)
               .maybeSingle();
@@ -165,14 +252,15 @@ export const Route = createFileRoute("/api/catalog/import")({
                 rows_created: Number(row["rows_created"] ?? 0) + created,
                 rows_updated: Number(row["rows_updated"] ?? 0) + updated,
                 rows_failed: Number(row["rows_failed"] ?? 0) + errors.length,
-                error_report: [...previousErrors, ...errors].slice(0, 500),
+                rows_warned: Number(row["rows_warned"] ?? 0) + warnedRows,
+                error_report: [...previousErrors, ...errors, ...warnings].slice(0, 500),
               })
               .eq("id", importId)
               .eq("organization_id", organizationId);
             if (updateError) return jsonError(updateError.message, 500);
           }
 
-          return Response.json({ created, updated, errors });
+          return Response.json({ created, updated, errors, warnings, warned: warnedRows });
         }
 
         // ---------------- finish ----------------
@@ -184,7 +272,7 @@ export const Route = createFileRoute("/api/catalog/import")({
             .update({ status: "completed", completed_at: new Date().toISOString() })
             .eq("id", importId)
             .eq("organization_id", organizationId)
-            .select("filename, total_rows, rows_created, rows_updated, rows_failed")
+            .select("filename, total_rows, rows_created, rows_updated, rows_failed, rows_warned")
             .maybeSingle();
           if (error) return jsonError(error.message, 500);
           const summary = (data ?? {}) as AnyRecord;
@@ -201,6 +289,7 @@ export const Route = createFileRoute("/api/catalog/import")({
             created: summary["rows_created"],
             updated: summary["rows_updated"],
             failed: summary["rows_failed"],
+            warned: summary["rows_warned"],
           });
           return Response.json({ summary });
         }

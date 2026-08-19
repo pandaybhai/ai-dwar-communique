@@ -13,6 +13,19 @@ const text = (v: unknown, max = 500): string | null => {
   return s ? s.slice(0, max) : null;
 };
 
+/** 0 is a real number. Only null, undefined and "" mean "not set". */
+const numberOrNull = (v: unknown): number | null => {
+  if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const intOrNull = (v: unknown): number | null => {
+  const n = numberOrNull(v);
+  return n === null ? null : Math.round(n);
+};
+
+
 export const Route = createFileRoute("/api/catalog/products")({
   server: {
     handlers: {
@@ -48,17 +61,12 @@ export const Route = createFileRoute("/api/catalog/products")({
             sku: text(payload["sku"], 100),
             brand: text(payload["brand"], 120),
             category: text(payload["category"], 120),
-            price: payload["price"] === null ? null : Number(payload["price"] ?? 0) || null,
-            compare_at_price:
-              payload["compare_at_price"] === null
-                ? null
-                : Number(payload["compare_at_price"] ?? 0) || null,
+            price: numberOrNull(payload["price"]),
+            compare_at_price: numberOrNull(payload["compare_at_price"]),
             currency: text(payload["currency"], 8) ?? "INR",
             availability: isAvailability(availabilityRaw) ? availabilityRaw : "in_stock",
-            inventory_quantity:
-              payload["inventory_quantity"] === null || payload["inventory_quantity"] === ""
-                ? null
-                : Number(payload["inventory_quantity"]) || 0,
+            inventory_quantity: intOrNull(payload["inventory_quantity"]),
+
             image_url: text(payload["image_url"], 1000),
             additional_image_urls: Array.isArray(payload["additional_image_urls"])
               ? (payload["additional_image_urls"] as unknown[])
