@@ -52,6 +52,8 @@ export type InstructionVersion = {
   tone: string;
   instructions: string;
   escalation_rules: string;
+  /** What the customer hears when the employee steps back. */
+  handover_message: string;
   languages: string[];
   working_hours_behaviour: string;
   version: number;

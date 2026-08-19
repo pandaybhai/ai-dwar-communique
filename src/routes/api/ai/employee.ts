@@ -451,6 +451,9 @@ export const Route = createFileRoute("/api/ai/employee")({
               tone: String(payload["tone"] ?? "friendly"),
               instructions: String(payload["instructions"] ?? ""),
               escalation_rules: String(payload["escalation_rules"] ?? ""),
+              handover_message:
+                String(payload["handover_message"] ?? "").trim() ||
+                "Let me get someone from the team to help — they'll reply here shortly.",
               languages:
                 Array.isArray(payload["languages"]) && payload["languages"].length
                   ? (payload["languages"] as unknown[]).map(String)
@@ -496,6 +499,7 @@ export const Route = createFileRoute("/api/ai/employee")({
               tone: source["tone"],
               instructions: source["instructions"],
               escalation_rules: source["escalation_rules"],
+              handover_message: source["handover_message"],
               languages: source["languages"],
               working_hours_behaviour: source["working_hours_behaviour"],
               version: nextVersion,

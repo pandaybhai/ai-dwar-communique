@@ -78,6 +78,7 @@ export function BehaviourEditor({
     setTone(current?.tone ?? "friendly");
     setInstructions(current?.instructions ?? "");
     setEscalation(current?.escalation_rules ?? "");
+    setHandover(current?.handover_message ?? DEFAULT_HANDOVER);
     setHours(current?.working_hours_behaviour ?? "always");
     setLanguages(current?.languages?.length ? current.languages : (DEFAULT_LANGUAGES as string[]));
   }, [current]);
@@ -91,6 +92,7 @@ export function BehaviourEditor({
       tone,
       instructions,
       escalation_rules: escalation,
+      handover_message: handover.trim() || DEFAULT_HANDOVER,
       working_hours_behaviour: hours,
       languages,
     });
