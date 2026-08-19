@@ -1003,11 +1003,15 @@ export const FEATURES: readonly FeatureManifest[] = [
       {
         name: "catalog_search",
         description:
-          "Search this workspace's product catalogue by words in the title, description, SKU, brand or category. Optionally narrow by maximum price, availability or category. Returns title, price, availability and product URL.",
+          "Search this workspace's product catalogue by words in the title, description, SKU, brand or category. Optionally narrow by maximum price, availability or category. Omit query to list what's currently available. Returns title, price, availability and product URL.",
         parameters: {
           type: "object",
           properties: {
-            query: { type: "string", description: "Words to search for across the catalogue." },
+            query: {
+              type: "string",
+              description:
+                "Words to search for across the catalogue. Leave this out to browse what is available.",
+            },
             max_price: { type: "number", description: "Only return products at or below this price." },
             availability: {
               type: "string",
@@ -1016,7 +1020,8 @@ export const FEATURES: readonly FeatureManifest[] = [
             category: { type: "string", description: "Only return products in this category." },
             limit: { type: "number", description: "How many products to return, default 10, max 25." },
           },
-          required: ["query"],
+          required: [],
+
           additionalProperties: false,
         },
         required_permission: "catalog.view",
