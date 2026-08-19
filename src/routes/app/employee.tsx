@@ -249,6 +249,7 @@ function EmployeePage() {
                 organizationId={active.organization.id}
                 agentName={overview?.agent?.name ?? "Your AI employee"}
                 canConfigure={canConfigure}
+                onChanged={load}
               />
             </TabsContent>
 
@@ -277,6 +278,7 @@ function EmployeePage() {
               <PromptPreview
                 organizationId={active.organization.id}
                 agentName={overview?.agent?.name ?? "your AI employee"}
+                currency={currency}
               />
             </TabsContent>
 
