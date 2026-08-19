@@ -569,7 +569,7 @@ export async function invokeTool(
   options: InvokeOptions = {},
 ): Promise<ToolResult> {
   const startedAt = Date.now();
-  const available = await brokerTools(ctx.supabase, ctx.organizationId, ctx.actorUserId);
+  const available = await brokerTools(ctx.supabase, ctx.organizationId, contextPrincipal(ctx));
   const tool = available.find((t) => t.name === toolName);
 
   /** Returns the activity_log row id so the caller can join a run to its trace. */
