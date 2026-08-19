@@ -14,7 +14,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentAnswer, suggestReply } from "@/lib/ai-tasks.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
-import { sendServiceText } from "@/lib/service-text.server";
+import { sendServiceImage, sendServiceText } from "@/lib/service-text.server";
 
 export type AgentInboundArgs = {
   organizationId: string;
@@ -104,7 +104,35 @@ export async function runAgentOnInbound(
     body: answer,
   });
 
+  // Catalogue answers travel with pictures: one image per product named,
+  // sent after the text so the words arrive first.
+  let picturesSent = 0;
+  if (sent.ok && run.media.length > 0) {
+    for (const item of run.media) {
+      const price =
+        item.price === null
+          ? ""
+          : ` — ${new Intl.NumberFormat("en-IN", {
+              style: "currency",
+              currency: item.currency || "INR",
+              maximumFractionDigits: 0,
+            }).format(item.price)}`;
+      const picture = await sendServiceImage(supabase, {
+        organizationId: args.organizationId,
+        phoneNumberId: args.phoneNumberId,
+        accessToken: args.accessToken,
+        conversationId: args.conversationId,
+        to: args.waId,
+        imageUrl: item.imageUrl,
+        caption: `${item.title}${price}`,
+      });
+      if (picture.ok) picturesSent += 1;
+      else log("picture_failed", { conversation_id: args.conversationId, error: picture.error });
+    }
+  }
+
   log(sent.ok ? "replied" : "send_failed", {
+    pictures: picturesSent,
     conversation_id: args.conversationId,
     run_id: run.runId,
     error: sent.error,
