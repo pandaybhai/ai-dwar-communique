@@ -14,10 +14,10 @@ export function ToolsList({ tools }: { tools: ToolRow[] }) {
         <div>
           <h2 id="tools-heading" className="flex items-center gap-2 text-lg font-semibold text-foreground">
             <Wrench className="h-5 w-5 text-primary" />
-            What it can look up
+            What it can look up in live chats
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            It can only use what's switched on here. Anything greyed out, it simply cannot touch.
+            This is what the AI itself can reach when it answers a customer — not what you can see. Anything greyed out, it simply cannot touch.
           </p>
         </div>
         <Badge variant="secondary">{available.length} of {tools.length} available</Badge>
