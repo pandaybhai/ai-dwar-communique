@@ -44,6 +44,7 @@ import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
 import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
+import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/products'
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
@@ -251,6 +252,11 @@ const ApiCampaignsControlRoute = ApiCampaignsControlRouteImport.update({
 const ApiCampaignsLaunchRoute = ApiCampaignsLaunchRouteImport.update({
   id: '/api/campaigns/launch',
   path: '/api/campaigns/launch',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCatalogProductsRoute = ApiCatalogProductsRouteImport.update({
+  id: '/api/catalog/products',
+  path: '/api/catalog/products',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiContactsEvaluateSegmentRoute =
@@ -471,6 +477,7 @@ export interface FileRoutesByFullPath {
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
@@ -539,6 +546,7 @@ export interface FileRoutesByTo {
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
@@ -610,6 +618,7 @@ export interface FileRoutesById {
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
@@ -682,6 +691,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
+    | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
@@ -750,6 +760,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
+    | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
@@ -820,6 +831,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
+    | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
@@ -876,6 +888,7 @@ export interface RootRouteChildren {
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
+  ApiCatalogProductsRoute: typeof ApiCatalogProductsRoute
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
@@ -1152,6 +1165,13 @@ declare module '@tanstack/react-router' {
       path: '/api/campaigns/launch'
       fullPath: '/api/campaigns/launch'
       preLoaderRoute: typeof ApiCampaignsLaunchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/catalog/products': {
+      id: '/api/catalog/products'
+      path: '/api/catalog/products'
+      fullPath: '/api/catalog/products'
+      preLoaderRoute: typeof ApiCatalogProductsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/contacts/evaluate-segment': {
@@ -1467,6 +1487,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
+  ApiCatalogProductsRoute: ApiCatalogProductsRoute,
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
