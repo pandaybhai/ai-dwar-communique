@@ -48,17 +48,12 @@ export const Route = createFileRoute("/api/catalog/products")({
             sku: text(payload["sku"], 100),
             brand: text(payload["brand"], 120),
             category: text(payload["category"], 120),
-            price: payload["price"] === null ? null : Number(payload["price"] ?? 0) || null,
-            compare_at_price:
-              payload["compare_at_price"] === null
-                ? null
-                : Number(payload["compare_at_price"] ?? 0) || null,
+            price: numberOrNull(payload["price"]),
+            compare_at_price: numberOrNull(payload["compare_at_price"]),
             currency: text(payload["currency"], 8) ?? "INR",
             availability: isAvailability(availabilityRaw) ? availabilityRaw : "in_stock",
-            inventory_quantity:
-              payload["inventory_quantity"] === null || payload["inventory_quantity"] === ""
-                ? null
-                : Number(payload["inventory_quantity"]) || 0,
+            inventory_quantity: intOrNull(payload["inventory_quantity"]),
+
             image_url: text(payload["image_url"], 1000),
             additional_image_urls: Array.isArray(payload["additional_image_urls"])
               ? (payload["additional_image_urls"] as unknown[])
