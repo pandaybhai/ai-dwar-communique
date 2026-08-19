@@ -103,6 +103,10 @@ export type RunOptions = {
   dryRun?: boolean;
   /** Which version of the platform rules produced this answer. */
   promptRulesVersion?: number | null;
+  /** The language the customer wrote in, when the webhook could tell. */
+  customerLanguage?: string | null;
+  /** Earlier questions in this chat where the AI failed or handed over. */
+  priorFailedQuestions?: string[];
 };
 
 
@@ -1145,6 +1149,8 @@ export async function executeRun(
       anyToolFailed,
       history,
       merchantRules: options.system ?? "",
+      priorFailedQuestions: options.priorFailedQuestions ?? [],
+      customerLanguage: options.customerLanguage ?? null,
     });
     if (signal) {
       result.status = "escalated";
