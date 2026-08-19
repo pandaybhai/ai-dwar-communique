@@ -15,6 +15,7 @@ import {
   UserRound,
   Wand2,
   GraduationCap,
+  Languages,
   ThumbsDown,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
+import { languageLabel } from "@/lib/languages";
 
 import {
   Select,
@@ -348,6 +350,14 @@ export function ChatThread({
   const { can } = usePermissions();
   const canUseAi = can("ai.use");
   const aiRuns = useAiRuns(organizationId, conversation.id);
+  // What the customer actually writes in, from their most recent message.
+  const customerLanguage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const m = messages[i];
+      if (m && m.direction === "inbound" && m.detected_language) return m.detected_language;
+    }
+    return null;
+  }, [messages]);
   const [teaching, setTeaching] = useState<{ question: string; said: string } | null>(null);
 
   useEffect(() => {
@@ -469,6 +479,17 @@ export function ChatThread({
             {fromNumber ? <span className="opacity-70"> · via {fromNumber}</span> : null}
           </p>
         </div>
+
+        {customerLanguage ? (
+          <Badge
+            variant="outline"
+            className="hidden rounded-full font-normal sm:inline-flex"
+            title="Your AI employee replies in this language"
+          >
+            <Languages className="mr-1 h-3 w-3" />
+            {customerLanguage === "hi-Latn" ? "Hinglish" : languageLabel(customerLanguage)}
+          </Badge>
+        ) : null}
 
         <Badge
           variant="secondary"

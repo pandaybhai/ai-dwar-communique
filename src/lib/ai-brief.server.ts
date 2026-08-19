@@ -91,6 +91,31 @@ export function languageBlock(languages: string[]): string {
   ].join(" ");
 }
 
+/**
+ * What to do about the language this particular customer just wrote in.
+ * Empty when we could not tell, so the general language rule stands alone.
+ */
+export function customerLanguageBlock(
+  detected: string | null,
+  allowed: string[],
+): string {
+  if (!detected) return "";
+  const codes = allowed.length ? allowed : [...DEFAULT_LANGUAGES];
+  const fallback = languageName(codes[0] ?? "en");
+
+  if (detected === "hi-Latn") {
+    return codes.includes("hi")
+      ? "This customer writes Hinglish — Hindi typed in English letters. Reply the same way: Hindi words in English letters, never in Devanagari script."
+      : `This customer writes Hinglish — Hindi typed in English letters. You are not set up for Hindi, so reply in simple ${fallback}.`;
+  }
+
+  const name = languageName(detected);
+  if (codes.includes(detected)) {
+    return `This customer writes in ${name}. Reply in ${name}, in the script they used.`;
+  }
+  return `This customer writes in ${name}, which you are not set up for. Reply in ${fallback} and keep the wording simple.`;
+}
+
 export type BriefSection = { key: string; label: string; text: string; note?: string };
 
 export type AssembledBrief = {
@@ -128,7 +153,7 @@ export async function assembleBrief(
   supabase: SupabaseClient,
   organizationId: string,
   agentId: string | null,
-  options: { instructionsOverride?: string | null } = {},
+  options: { instructionsOverride?: string | null; customerLanguage?: string | null } = {},
 ): Promise<AssembledBrief> {
   const [rules, instructions, skills, taught] = await Promise.all([
     promptRules(supabase),
@@ -150,11 +175,15 @@ export async function assembleBrief(
     .join(" ");
 
   const jobs = skillsBlock(skills);
+  const spoken = customerLanguageBlock(options.customerLanguage ?? null, instructions.languages);
   const escalation = instructions.escalationRules.trim();
 
   const sections: BriefSection[] = [
     { key: "rules", label: "Platform rules", text: rules.content },
     { key: "who", label: "Who he is", text: who },
+    ...(spoken
+      ? [{ key: "spoken", label: "The language this customer writes in", text: spoken }]
+      : []),
     {
       key: "jobs",
       label: "His jobs",
