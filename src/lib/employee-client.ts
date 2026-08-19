@@ -208,6 +208,48 @@ export type CompareResult = {
   summaryB: CompareSummary;
 };
 
+export type EmployeeSkill = {
+  id: string;
+  key: string;
+  name: string;
+  use_when: string;
+  do_not_use_when: string;
+  enabled: boolean;
+  is_custom: boolean;
+  ready: boolean;
+  /** Plain words for what is missing, and where to go and fix it. */
+  missing: { text: string; href?: string; action?: string }[];
+  locked: boolean;
+};
+
+export type BriefSection = {
+  key: string;
+  title: string;
+  body: string;
+  editable_by_super_admin?: boolean;
+};
+
+export type BriefPreview = {
+  sections: BriefSection[];
+  characters: number;
+  rules_version: number | null;
+  rules_from_database: boolean;
+  taught_count: number;
+  estimated_cost: number | null;
+  estimated_currency: string;
+  estimated_tokens: number;
+  is_super_admin: boolean;
+};
+
+export type Correction = {
+  id: string;
+  question: string;
+  answer: string;
+  use_count: number;
+  last_used_at: string | null;
+  created_at: string;
+};
+
 export const employeeApi = <T,>(body: Record<string, unknown>) =>
   callApi<T>("/api/ai/employee", { body });
 

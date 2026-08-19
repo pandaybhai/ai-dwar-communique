@@ -67,7 +67,11 @@ export type RunSource = {
   label: string;
   ref?: string;
   similarity?: number;
+  /** Knowledge only: where the material came from ("manual_qa" = taught). */
+  sourceType?: string;
+  documentId?: string;
 };
+
 
 export type RunOptions = {
   organizationId: string;
@@ -97,7 +101,10 @@ export type RunOptions = {
   maxSteps?: number;
   /** Skip writing an ai_runs row (never used by product surfaces). */
   dryRun?: boolean;
+  /** Which version of the platform rules produced this answer. */
+  promptRulesVersion?: number | null;
 };
+
 
 /** A product picture the answer can show: catalogue result, never a data copy. */
 export type RunMedia = {
@@ -843,6 +850,8 @@ export async function executeRun(
         status: result.status,
         error: result.error ?? null,
         comparison_id: comparisonId,
+        prompt_rules_version: options.promptRulesVersion ?? null,
+
       })
       .select("id")
       .maybeSingle();
@@ -944,6 +953,8 @@ export async function executeRun(
           p_min_similarity: 0.35,
         });
         const rows = (matches ?? []) as Array<{
+          document_id: string;
+          source_type: string;
           source_name: string;
           source_ref: string;
           title: string;
@@ -956,12 +967,27 @@ export async function executeRun(
             label: row.title || row.source_name,
             ref: row.source_ref,
             similarity: Number(row.similarity),
+            sourceType: row.source_type,
+            documentId: row.document_id,
           });
         }
         knowledgeBlock = rows
           .map((r, i) => `[${i + 1}] ${r.title || r.source_name}\n${r.text}`)
           .join("\n\n");
+
+        // Something the merchant wrote themselves counts as used, so they can
+        // see their corrections doing work.
+        const taught = rows
+          .filter((r) => r.source_type === "manual_qa")
+          .map((r) => r.document_id);
+        if (taught.length) {
+          void supabase.rpc("record_knowledge_use", {
+            p_org: organizationId,
+            p_document_ids: taught,
+          });
+        }
       }
+
     } catch {
       // Retrieval failing is itself a reason to hand over, handled below.
     }

@@ -212,7 +212,10 @@ export async function playgroundAnswer(
   comparisonId?: string | null,
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { brief } = await agentBrief(supabase, agentId);
+  const { assembleBrief } = await import("@/lib/ai-brief.server");
+  const brief = await assembleBrief(supabase, common.organizationId, agentId, {
+    instructionsOverride: instructionsOverride ?? null,
+  });
 
   return executeRun(supabase, {
     organizationId: common.organizationId,
@@ -221,7 +224,8 @@ export async function playgroundAnswer(
     actorUserId: common.actorUserId,
     actingRole: common.actingRole ?? null,
     input: question,
-    system: [instructionsOverride?.trim() || brief, AGENT_RULES].filter(Boolean).join("\n"),
+    system: brief.text,
+    promptRulesVersion: brief.rulesVersion,
     tier: tier ?? null,
     comparisonId: comparisonId ?? null,
     useKnowledge: true,
@@ -229,18 +233,11 @@ export async function playgroundAnswer(
   });
 }
 
-export const AGENT_RULES = [
-  "Answer the customer directly, in under 60 words.",
-  "Only state something you found in the material provided or by looking it up.",
-  "Never invent an order number, a price, a date or a policy.",
-  "When a product lookup returns results, show them: name and price, up to five items. Never answer a product question by asking the customer to narrow down first.",
-  "If more products matched than you listed, say so, for example \"and 9 more — tell me what you're after and I'll narrow it down\".",
-  "Only ask a clarifying question when a lookup genuinely returned nothing.",
-  "Product pictures are attached for you automatically — name each product plainly and never paste an image link.",
-
-  "If you cannot answer from a source or a lookup, say a colleague will follow up.",
-].join("\n");
-
+/**
+ * Kept only as the last line of defence: the live rules live in
+ * ai_prompt_blocks and are read through assembleBrief.
+ */
+export { FALLBACK_AGENT_RULES as AGENT_RULES } from "@/lib/ai-brief.server";
 
 /** The real answer the agent would give a customer. */
 export async function agentAnswer(
@@ -251,7 +248,8 @@ export async function agentAnswer(
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
   const { turns, contactId } = await conversationTurns(supabase, common.organizationId, conversationId);
-  const { brief, escalationRules } = await agentBrief(supabase, agentId);
+  const { assembleBrief } = await import("@/lib/ai-brief.server");
+  const brief = await assembleBrief(supabase, common.organizationId, agentId);
 
   return executeRun(supabase, {
     organizationId: common.organizationId,
@@ -263,8 +261,11 @@ export async function agentAnswer(
     actingRole: common.actingRole ?? null,
     history: turns.slice(0, -1),
     input: question,
-    system: [brief, AGENT_RULES, escalationRules].filter(Boolean).join("\n"),
+    // Escalation rules are part of the assembled brief — exactly once.
+    system: brief.text,
+    promptRulesVersion: brief.rulesVersion,
     useKnowledge: true,
     useTools: true,
   });
 }
+
