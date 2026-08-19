@@ -321,7 +321,8 @@ export async function sendCampaignTemplate(
   }
 
   // What the template itself declares — body, header and dynamic link buttons.
-  const { templateVariableSpec, buildTemplatePayloadComponents } = await import("@/lib/templates");
+  const { templateVariableSpec, buildTemplatePayloadComponents, headerMediaFromComponents } =
+    await import("@/lib/templates");
   const { emptyVariableSpec } = await import("@/lib/templates");
   const spec = template.components
     ? templateVariableSpec(template.components)
