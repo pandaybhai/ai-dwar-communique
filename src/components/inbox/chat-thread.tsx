@@ -188,9 +188,16 @@ function MessageMedia({
 function Bubble({
   message,
   organizationId,
+  aiRun,
+  agentName,
+  onTeach,
 }: {
   message: MessageRow;
   organizationId: string | null;
+  /** The AI run behind this message, when the AI wrote it. */
+  aiRun?: AiRunNote | null;
+  agentName: string;
+  onTeach?: (question: string, said: string) => void;
 }) {
   const outbound = message.direction === "outbound";
   const text =
@@ -198,26 +205,50 @@ function Bubble({
     (message.template_name ? `Template: ${message.template_name}` : `[${message.type}]`);
   return (
     <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
-      <div
-        className={[
-          "animate-in fade-in slide-in-from-bottom-1 max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm duration-200 sm:max-w-[68%]",
-          outbound
-            ? "rounded-br-md bg-primary/12 text-foreground"
-            : "rounded-bl-md border border-border/70 bg-card text-foreground",
-        ].join(" ")}
-      >
-        {message.media_url ? (
-          <MessageMedia message={message} organizationId={organizationId} label={text} />
-        ) : null}
-        <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
-        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
-          <span>{clockTime(message.created_at)}</span>
-          {outbound ? <StatusTicks message={message} /> : null}
+      <div className="max-w-[80%] sm:max-w-[68%]">
+        <div
+          className={[
+            "animate-in fade-in slide-in-from-bottom-1 rounded-2xl px-3.5 py-2 text-sm shadow-sm duration-200",
+            outbound
+              ? "rounded-br-md bg-primary/12 text-foreground"
+              : "rounded-bl-md border border-border/70 bg-card text-foreground",
+          ].join(" ")}
+        >
+          {message.media_url ? (
+            <MessageMedia message={message} organizationId={organizationId} label={text} />
+          ) : null}
+          <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
+          <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+            <span>{clockTime(message.created_at)}</span>
+            {outbound ? <StatusTicks message={message} /> : null}
+          </div>
         </div>
+
+        {aiRun ? (
+          <div className="mt-1 flex flex-wrap items-center justify-end gap-2 text-[11px] text-muted-foreground">
+            {aiRun.taughtOn ? (
+              <span className="flex items-center gap-1">
+                <GraduationCap className="h-3 w-3 text-primary" />
+                {agentName} used something you taught him on {aiRun.taughtOn}.
+              </span>
+            ) : null}
+            {onTeach ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors duration-200 hover:bg-muted hover:text-foreground"
+                onClick={() => onTeach(aiRun.question, message.body ?? "")}
+              >
+                <ThumbsDown className="h-3 w-3" />
+                Not right
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
+
 
 export function ChatThread({
   conversation,
