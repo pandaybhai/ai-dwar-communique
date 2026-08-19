@@ -44,6 +44,9 @@ import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
 import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
+import { Route as ApiCatalogImageRouteImport } from './routes/api/catalog/image'
+import { Route as ApiCatalogImportRouteImport } from './routes/api/catalog/import'
+import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/products'
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
@@ -69,6 +72,8 @@ import { Route as ApiWhatsappTemplatesRouteImport } from './routes/api/whatsapp/
 import { Route as ApiWhatsappTokenStatusRouteImport } from './routes/api/whatsapp/token-status'
 import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
 import { Route as AppCampaignsIdRouteImport } from './routes/app/campaigns.$id'
+import { Route as AppCatalogIndexRouteImport } from './routes/app/catalog.index'
+import { Route as AppCatalogCollectionsRouteImport } from './routes/app/catalog.collections'
 import { Route as AppFlowsIndexRouteImport } from './routes/app/flows.index'
 import { Route as AppFlowsIdRouteImport } from './routes/app/flows.$id'
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
@@ -253,6 +258,21 @@ const ApiCampaignsLaunchRoute = ApiCampaignsLaunchRouteImport.update({
   path: '/api/campaigns/launch',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCatalogImageRoute = ApiCatalogImageRouteImport.update({
+  id: '/api/catalog/image',
+  path: '/api/catalog/image',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCatalogImportRoute = ApiCatalogImportRouteImport.update({
+  id: '/api/catalog/import',
+  path: '/api/catalog/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCatalogProductsRoute = ApiCatalogProductsRouteImport.update({
+  id: '/api/catalog/products',
+  path: '/api/catalog/products',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiContactsEvaluateSegmentRoute =
   ApiContactsEvaluateSegmentRouteImport.update({
     id: '/api/contacts/evaluate-segment',
@@ -388,6 +408,16 @@ const AppCampaignsIdRoute = AppCampaignsIdRouteImport.update({
   path: '/campaigns/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppCatalogIndexRoute = AppCatalogIndexRouteImport.update({
+  id: '/catalog/',
+  path: '/catalog/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppCatalogCollectionsRoute = AppCatalogCollectionsRouteImport.update({
+  id: '/catalog/collections',
+  path: '/catalog/collections',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppFlowsIndexRoute = AppFlowsIndexRouteImport.update({
   id: '/flows/',
   path: '/flows/',
@@ -471,6 +501,9 @@ export interface FileRoutesByFullPath {
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/catalog/image': typeof ApiCatalogImageRoute
+  '/api/catalog/import': typeof ApiCatalogImportRoute
+  '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
@@ -495,8 +528,10 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
+  '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
+  '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
@@ -539,6 +574,9 @@ export interface FileRoutesByTo {
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/catalog/image': typeof ApiCatalogImageRoute
+  '/api/catalog/import': typeof ApiCatalogImportRoute
+  '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
@@ -563,8 +601,10 @@ export interface FileRoutesByTo {
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
+  '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
   '/app/campaigns': typeof AppCampaignsIndexRoute
+  '/app/catalog': typeof AppCatalogIndexRoute
   '/app/flows': typeof AppFlowsIndexRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
@@ -610,6 +650,9 @@ export interface FileRoutesById {
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/catalog/image': typeof ApiCatalogImageRoute
+  '/api/catalog/import': typeof ApiCatalogImportRoute
+  '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
@@ -634,8 +677,10 @@ export interface FileRoutesById {
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
+  '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
+  '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
@@ -682,6 +727,9 @@ export interface FileRouteTypes {
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
+    | '/api/catalog/image'
+    | '/api/catalog/import'
+    | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
@@ -706,8 +754,10 @@ export interface FileRouteTypes {
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
+    | '/app/catalog/collections'
     | '/app/flows/$id'
     | '/app/campaigns/'
+    | '/app/catalog/'
     | '/app/flows/'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
@@ -750,6 +800,9 @@ export interface FileRouteTypes {
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
+    | '/api/catalog/image'
+    | '/api/catalog/import'
+    | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
@@ -774,8 +827,10 @@ export interface FileRouteTypes {
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
+    | '/app/catalog/collections'
     | '/app/flows/$id'
     | '/app/campaigns'
+    | '/app/catalog'
     | '/app/flows'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
@@ -820,6 +875,9 @@ export interface FileRouteTypes {
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
+    | '/api/catalog/image'
+    | '/api/catalog/import'
+    | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/integrations/shopify'
@@ -844,8 +902,10 @@ export interface FileRouteTypes {
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
+    | '/app/catalog/collections'
     | '/app/flows/$id'
     | '/app/campaigns/'
+    | '/app/catalog/'
     | '/app/flows/'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
@@ -876,6 +936,9 @@ export interface RootRouteChildren {
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
+  ApiCatalogImageRoute: typeof ApiCatalogImageRoute
+  ApiCatalogImportRoute: typeof ApiCatalogImportRoute
+  ApiCatalogProductsRoute: typeof ApiCatalogProductsRoute
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
@@ -1154,6 +1217,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCampaignsLaunchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/catalog/image': {
+      id: '/api/catalog/image'
+      path: '/api/catalog/image'
+      fullPath: '/api/catalog/image'
+      preLoaderRoute: typeof ApiCatalogImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/catalog/import': {
+      id: '/api/catalog/import'
+      path: '/api/catalog/import'
+      fullPath: '/api/catalog/import'
+      preLoaderRoute: typeof ApiCatalogImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/catalog/products': {
+      id: '/api/catalog/products'
+      path: '/api/catalog/products'
+      fullPath: '/api/catalog/products'
+      preLoaderRoute: typeof ApiCatalogProductsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/contacts/evaluate-segment': {
       id: '/api/contacts/evaluate-segment'
       path: '/api/contacts/evaluate-segment'
@@ -1329,6 +1413,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCampaignsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/catalog/': {
+      id: '/app/catalog/'
+      path: '/catalog'
+      fullPath: '/app/catalog/'
+      preLoaderRoute: typeof AppCatalogIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/catalog/collections': {
+      id: '/app/catalog/collections'
+      path: '/catalog/collections'
+      fullPath: '/app/catalog/collections'
+      preLoaderRoute: typeof AppCatalogCollectionsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/flows/': {
       id: '/app/flows/'
       path: '/flows'
@@ -1421,8 +1519,10 @@ interface AppRouteRouteChildren {
   AppTemplatesRoute: typeof AppTemplatesRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCampaignsIdRoute: typeof AppCampaignsIdRoute
+  AppCatalogCollectionsRoute: typeof AppCatalogCollectionsRoute
   AppFlowsIdRoute: typeof AppFlowsIdRoute
   AppCampaignsIndexRoute: typeof AppCampaignsIndexRoute
+  AppCatalogIndexRoute: typeof AppCatalogIndexRoute
   AppFlowsIndexRoute: typeof AppFlowsIndexRoute
 }
 
@@ -1437,8 +1537,10 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppTemplatesRoute: AppTemplatesRoute,
   AppIndexRoute: AppIndexRoute,
   AppCampaignsIdRoute: AppCampaignsIdRoute,
+  AppCatalogCollectionsRoute: AppCatalogCollectionsRoute,
   AppFlowsIdRoute: AppFlowsIdRoute,
   AppCampaignsIndexRoute: AppCampaignsIndexRoute,
+  AppCatalogIndexRoute: AppCatalogIndexRoute,
   AppFlowsIndexRoute: AppFlowsIndexRoute,
 }
 
@@ -1467,6 +1569,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
+  ApiCatalogImageRoute: ApiCatalogImageRoute,
+  ApiCatalogImportRoute: ApiCatalogImportRoute,
+  ApiCatalogProductsRoute: ApiCatalogProductsRoute,
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,

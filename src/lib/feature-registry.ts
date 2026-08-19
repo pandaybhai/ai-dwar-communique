@@ -26,7 +26,8 @@ export type FeatureIcon =
   | "users"
   | "credit-card"
   | "shopping-bag"
-  | "sparkles";
+  | "sparkles"
+  | "package";
 
 export type PermissionManifest = {
   key: string;
@@ -951,6 +952,80 @@ export const FEATURES: readonly FeatureManifest[] = [
     activity_actions: [],
     settings_path: "/app/settings",
     data_tables: [],
+  },
+  {
+    key: "catalog",
+    name: "Catalogue",
+    description:
+      "One product list the business can actually use: synced from the store, uploaded from a file, or added by hand.",
+    icon: "package",
+    nav_path: "/app/catalog",
+    nav_order: 45,
+    nav_permission: "catalog.view",
+    flag_key: "catalogs",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "catalog.view",
+        name: "View catalogue",
+        description: "Browse products and collections in this workspace.",
+        min_role: "agent",
+      },
+      {
+        key: "catalog.manage",
+        name: "Manage catalogue",
+        description: "Add, edit, hide and delete products, and organise collections.",
+        min_role: "marketer",
+      },
+      {
+        key: "catalog.import",
+        name: "Import products",
+        description: "Upload a spreadsheet of products into the catalogue.",
+        min_role: "marketer",
+      },
+    ],
+    analytics: none,
+    activity_actions: [
+      "catalog_product_created",
+      "catalog_product_updated",
+      "catalog_product_deleted",
+      "catalog_product_unlinked",
+      "catalog_products_hidden",
+      "catalog_imported",
+      "catalog_collection_created",
+      "catalog_collection_updated",
+      "catalog_collection_deleted",
+    ],
+    usage_meters: [
+      { key: "catalog_imports", name: "Products imported", unit: "products" },
+    ],
+    ai_tools: [
+      {
+        name: "catalog_search",
+        description:
+          "Search this workspace's product catalogue by words in the title, description, SKU, brand or category. Optionally narrow by maximum price, availability or category. Returns title, price, availability and product URL.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Words to search for across the catalogue." },
+            max_price: { type: "number", description: "Only return products at or below this price." },
+            availability: {
+              type: "string",
+              description: "Filter by availability: in_stock, out_of_stock or preorder.",
+            },
+            category: { type: "string", description: "Only return products in this category." },
+            limit: { type: "number", description: "How many products to return, default 10, max 25." },
+          },
+          required: ["query"],
+          additionalProperties: false,
+        },
+        required_permission: "catalog.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "catalogSearch",
+      },
+    ],
+    data_tables: ["products", "product_collections", "product_collection_items", "catalog_imports"],
   },
 ] as const;
 

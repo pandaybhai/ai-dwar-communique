@@ -320,6 +320,43 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     return { ok: true, data };
   },
 
+  async catalogSearch(ctx, args) {
+    const query = str(args["query"]);
+    if (!query) return { ok: false, error: "query is required." };
+    const limit = Math.min(Math.max(num(args["limit"], 10), 1), 25);
+
+    const { toTsQuery, isAvailability } = await import("@/lib/catalog");
+    const tsquery = toTsQuery(query);
+
+    let request = ctx.supabase
+      .from("products")
+      .select(
+        "id, title, sku, brand, category, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url",
+      )
+      .eq("organization_id", ctx.organizationId)
+      .eq("is_visible", true)
+      .limit(limit);
+
+    // Full-text when the words are searchable, a plain contains match otherwise.
+    request = tsquery
+      ? request.textSearch("search_vector", tsquery)
+      : request.ilike("title", `%${query.replace(/[%,()]/g, " ").trim()}%`);
+
+    const maxPrice = args["max_price"];
+    if (typeof maxPrice === "number" && Number.isFinite(maxPrice)) {
+      request = request.lte("price", maxPrice);
+    }
+    const availability = args["availability"];
+    if (isAvailability(availability)) request = request.eq("availability", availability);
+    const category = str(args["category"]);
+    if (category) request = request.ilike("category", `%${category}%`);
+
+    const { data, error } = await request;
+    if (error) return { ok: false, error: error.message };
+    // A search that matches nothing still ran: ok, just empty.
+    return { ok: true, found: (data ?? []).length > 0, data: data ?? [] };
+  },
+
   async searchProducts(ctx, args) {
     const query = str(args["query"]);
     if (!query) return { ok: false, error: "query is required." };
