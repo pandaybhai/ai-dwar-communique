@@ -68,11 +68,12 @@ export function ImportProductsDialog({
   );
 
   const validation = useMemo(() => {
-    if (titleColumn === null) return { valid: 0, blank: 0, badPrice: 0 };
+    if (titleColumn === null) return { valid: 0, blank: 0, badPrice: 0, negativePrice: 0 };
     const priceColumn = Object.entries(mapping).find(([, f]) => f === "price")?.[0] ?? null;
     let valid = 0;
     let blank = 0;
     let badPrice = 0;
+    let negativePrice = 0;
     for (const row of rows) {
       const title = (row[Number(titleColumn)] ?? "").trim();
       if (!title) {
@@ -82,10 +83,14 @@ export function ImportProductsDialog({
       valid += 1;
       if (priceColumn !== null) {
         const raw = (row[Number(priceColumn)] ?? "").trim();
-        if (raw && parsePrice(raw) === null) badPrice += 1;
+        if (raw) {
+          const parsed = parsePrice(raw);
+          if (parsed === null) badPrice += 1;
+          else if (parsed < 0) negativePrice += 1;
+        }
       }
     }
-    return { valid, blank, badPrice };
+    return { valid, blank, badPrice, negativePrice };
   }, [rows, mapping, titleColumn]);
 
   function reset() {
@@ -365,6 +370,11 @@ export function ImportProductsDialog({
               <SummaryCard label="Ready to import" value={validation.valid} tone="good" />
               <SummaryCard label="Blank rows skipped" value={validation.blank} tone="muted" />
               <SummaryCard label="Prices we couldn't read" value={validation.badPrice} tone="warn" />
+              <SummaryCard
+                label="Negative prices (these rows will fail)"
+                value={validation.negativePrice}
+                tone="warn"
+              />
             </div>
             <div className="overflow-x-auto rounded-xl border border-border/70">
               <table className="w-full text-left text-sm">
