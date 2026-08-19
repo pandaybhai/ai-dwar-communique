@@ -440,31 +440,72 @@ export async function enabledFlags(
 
 export type BrokeredTool = AiTool & { feature: string };
 
+/** How the workspace has configured its autonomous agent. */
+export async function agentSettings(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<{ role: string; canWrite: boolean }> {
+  const { data } = await supabase
+    .from("organization_ai_settings")
+    .select("agent_role, agent_can_write")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const row = (data ?? {}) as { agent_role?: string | null; agent_can_write?: boolean | null };
+  return { role: row.agent_role || "ai_agent", canWrite: row.agent_can_write === true };
+}
+
+/** The permission keys granted to a role preset (used for the agent role). */
+async function rolePresetKeys(
+  supabase: SupabaseClient,
+  role: string,
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from("role_permissions")
+    .select("permission_key")
+    .eq("role", role);
+  return new Set(((data ?? []) as { permission_key: string }[]).map((r) => r.permission_key));
+}
+
 /**
- * The tools this actor may actually call: feature flag on, permission held,
+ * The tools this principal may actually call: feature flag on, permission held,
  * handler implemented. Everything else is invisible to the model.
+ *
+ * The autonomous agent is read-only unless the workspace has explicitly opted
+ * into letting it change things.
  */
 export async function brokerTools(
   supabase: SupabaseClient,
   organizationId: string,
-  actorUserId: string | null,
+  principal: ToolPrincipal,
 ): Promise<BrokeredTool[]> {
-  const [flags, permissions] = await Promise.all([
-    enabledFlags(supabase, organizationId),
-    actorUserId
-      ? resolveEffectivePermissions(supabase, organizationId, actorUserId)
-      : Promise.resolve({ keys: [] as string[], role: null, isSuperAdmin: false, overrides: {} }),
-  ]);
+  const flags = await enabledFlags(supabase, organizationId);
   if (!flags.has("ai_features")) return [];
-  const held = new Set(permissions.keys);
+
+  let held: Set<string>;
+  let readOnly = false;
+
+  if (principal.kind === "user") {
+    const permissions = await resolveEffectivePermissions(
+      supabase,
+      organizationId,
+      principal.userId,
+    );
+    held = new Set(permissions.keys);
+  } else {
+    const settings = await agentSettings(supabase, organizationId);
+    held = await rolePresetKeys(supabase, settings.role);
+    readOnly = !settings.canWrite;
+  }
+
   if (!held.has("ai.use")) return [];
 
   return allAiTools()
     .filter((t) => flags.has(t.flag_key))
     .filter((t) => held.has(t.required_permission))
+    .filter((t) => (readOnly ? t.access === "read" : true))
     .filter((t) => Boolean(AI_TOOL_HANDLERS[t.handler]))
     .map(({ flag_key: _flag, ...tool }) => tool);
-}
+
 
 /** Write tools are capped per organization per hour; reads are unmetered. */
 const WRITE_RATE_LIMIT_PER_HOUR = 60;
