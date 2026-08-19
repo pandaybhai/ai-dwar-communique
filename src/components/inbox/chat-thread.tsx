@@ -706,6 +706,18 @@ export function ChatThread({
         onSend={onSendTemplate}
       />
 
+      {organizationId ? (
+        <CorrectionDialog
+          organizationId={organizationId}
+          agentName="your AI employee"
+          open={teaching !== null}
+          customerQuestion={teaching?.question ?? ""}
+          saidInstead={teaching?.said ?? ""}
+          onOpenChange={(open) => !open && setTeaching(null)}
+        />
+      ) : null}
+
+
     </div>
   );
 }
