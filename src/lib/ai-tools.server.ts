@@ -467,6 +467,31 @@ export type InvokeOptions = {
 };
 
 /**
+ * A debugging fingerprint of a tool result: how many rows and up to five
+ * identifiers. Never a copy of the data, never personal details.
+ */
+function summarise(result: ToolResult): Record<string, unknown> {
+  const label = (row: unknown): string | null => {
+    if (row === null || typeof row !== "object") return null;
+    const r = row as Record<string, unknown>;
+    for (const key of ["title", "name", "order_number", "id"]) {
+      const value = r[key];
+      if (typeof value === "string" && value) return value.slice(0, 80);
+    }
+    return null;
+  };
+  const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
+  return {
+    ok: result.ok,
+    ...(result.found === false ? { found: false } : {}),
+    row_count: rows.length,
+    identifiers: rows.map(label).filter(Boolean).slice(0, 5),
+    ...(result.error ? { error: result.error.slice(0, 200) } : {}),
+  };
+}
+
+/**
+
  * Invoke one tool. Every invocation is logged to activity_log with the tool
  * name, the arguments the model supplied, the result status and whether a
  * human or an AI initiated it. Arguments never carry organization_id: it is
