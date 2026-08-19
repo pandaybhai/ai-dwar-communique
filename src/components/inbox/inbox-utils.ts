@@ -32,6 +32,8 @@ export type MessageRow = {
   error_detail: string | null;
   /** Which teammate sent it; empty when the AI or an automation did. */
   sent_by?: string | null;
+  /** Best guess at the language the customer wrote in. */
+  detected_language?: string | null;
   created_at: string;
 };
 
