@@ -92,6 +92,14 @@ function Bubble({ message }: { message: MessageRow }) {
             : "rounded-bl-md border border-border/70 bg-card text-foreground",
         ].join(" ")}
       >
+        {message.media_url ? (
+          <img
+            src={message.media_url}
+            alt={text}
+            loading="lazy"
+            className="mb-1.5 max-h-56 w-full rounded-xl object-cover"
+          />
+        ) : null}
         <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
         <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
           <span>{clockTime(message.created_at)}</span>

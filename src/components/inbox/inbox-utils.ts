@@ -25,6 +25,7 @@ export type MessageRow = {
   direction: "inbound" | "outbound";
   type: string;
   body: string | null;
+  media_url: string | null;
   template_name: string | null;
   status: string;
   error_detail: string | null;
