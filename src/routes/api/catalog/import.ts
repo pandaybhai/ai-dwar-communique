@@ -80,8 +80,80 @@ export const Route = createFileRoute("/api/catalog/import")({
               continue;
             }
 
-            const price = parsePrice(raw["price"]);
-            const quantity = parseQuantity(raw["inventory_quantity"]);
+            const label = title || sku;
+            const rowWarnings: {
+              row: number;
+              product: string;
+              field: string;
+              value: string;
+              used: string;
+              reason: string;
+            }[] = [];
+
+            const priceCell = readNumber(raw["price"]);
+            const compareCell = readNumber(raw["compare_at_price"]);
+            const quantityCell = readQuantity(raw["inventory_quantity"]);
+
+            if (priceCell.value !== null && priceCell.value < 0) {
+              errors.push({
+                row: rowNumber,
+                product: label,
+                reason: `Price can't be negative — this row says "${priceCell.raw}".`,
+              });
+              continue;
+            }
+            if (compareCell.value !== null && compareCell.value < 0) {
+              errors.push({
+                row: rowNumber,
+                product: label,
+                reason: `Compare-at price can't be negative — this row says "${compareCell.raw}".`,
+              });
+              continue;
+            }
+            if (priceCell.invalid) {
+              rowWarnings.push({
+                row: rowNumber,
+                product: label,
+                field: "price",
+                value: priceCell.raw,
+                used: "no price",
+                reason: `We couldn't read the price "${priceCell.raw}", so this product was saved without one.`,
+              });
+            }
+            if (compareCell.invalid) {
+              rowWarnings.push({
+                row: rowNumber,
+                product: label,
+                field: "compare_at_price",
+                value: compareCell.raw,
+                used: "no compare-at price",
+                reason: `We couldn't read the compare-at price "${compareCell.raw}", so it was left blank.`,
+              });
+            }
+            if (quantityCell.invalid) {
+              rowWarnings.push({
+                row: rowNumber,
+                product: label,
+                field: "inventory_quantity",
+                value: quantityCell.raw,
+                used: "no stock count",
+                reason: `"${quantityCell.raw}" isn't a stock number, so this product was saved without a stock count.`,
+              });
+            }
+
+            const quantity = quantityCell.value;
+            const availabilityCell = readAvailability(raw["availability"], quantity);
+            if (availabilityCell.invalid) {
+              rowWarnings.push({
+                row: rowNumber,
+                product: label,
+                field: "availability",
+                value: availabilityCell.raw,
+                used: availabilityCell.value,
+                reason: `"${availabilityCell.raw}" isn't a stock status we recognise, so we used "${availabilityCell.value}".`,
+              });
+            }
+
             const fields = {
               organization_id: organizationId,
               title,
@@ -89,15 +161,16 @@ export const Route = createFileRoute("/api/catalog/import")({
               description: String(raw["description"] ?? "").trim().slice(0, 5000) || null,
               brand: String(raw["brand"] ?? "").trim().slice(0, 120) || null,
               category: String(raw["category"] ?? "").trim().slice(0, 120) || null,
-              price,
-              compare_at_price: parsePrice(raw["compare_at_price"]),
+              price: priceCell.value,
+              compare_at_price: compareCell.value,
               inventory_quantity: quantity,
-              availability: parseAvailability(raw["availability"], quantity),
+              availability: availabilityCell.value,
               image_url: String(raw["image_url"] ?? "").trim().slice(0, 1000) || null,
               product_url: String(raw["product_url"] ?? "").trim().slice(0, 1000) || null,
               currency: "INR",
               source: "import" as const,
             };
+
 
             try {
               let existingId: string | null = null;
