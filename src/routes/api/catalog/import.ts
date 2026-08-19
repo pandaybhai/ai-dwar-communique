@@ -19,7 +19,7 @@ export const Route = createFileRoute("/api/catalog/import")({
         const { requireOrgMember, requirePermission, isResponse, jsonError, logServerActivity } =
           await import("@/lib/whatsapp-api.server");
         const { recordUsage } = await import("@/lib/events.server");
-        const { parsePrice, parseQuantity, parseAvailability } = await import("@/lib/catalog");
+        const { readNumber, readQuantity, readAvailability } = await import("@/lib/catalog");
         
 
         let payload: AnyRecord;
@@ -222,6 +222,10 @@ export const Route = createFileRoute("/api/catalog/import")({
                 if (error) throw new Error(error.message);
                 created += 1;
               }
+              if (rowWarnings.length) {
+                warnedRows += 1;
+                warnings.push(...rowWarnings);
+              }
             } catch (caught) {
               errors.push({
                 row: rowNumber,
@@ -234,7 +238,7 @@ export const Route = createFileRoute("/api/catalog/import")({
           if (importId) {
             const { data: current } = await supabase
               .from("catalog_imports")
-              .select("rows_created, rows_updated, rows_failed, error_report")
+              .select("rows_created, rows_updated, rows_failed, rows_warned, error_report")
               .eq("id", importId)
               .eq("organization_id", organizationId)
               .maybeSingle();
@@ -248,14 +252,15 @@ export const Route = createFileRoute("/api/catalog/import")({
                 rows_created: Number(row["rows_created"] ?? 0) + created,
                 rows_updated: Number(row["rows_updated"] ?? 0) + updated,
                 rows_failed: Number(row["rows_failed"] ?? 0) + errors.length,
-                error_report: [...previousErrors, ...errors].slice(0, 500),
+                rows_warned: Number(row["rows_warned"] ?? 0) + warnedRows,
+                error_report: [...previousErrors, ...errors, ...warnings].slice(0, 500),
               })
               .eq("id", importId)
               .eq("organization_id", organizationId);
             if (updateError) return jsonError(updateError.message, 500);
           }
 
-          return Response.json({ created, updated, errors });
+          return Response.json({ created, updated, errors, warnings, warned: warnedRows });
         }
 
         // ---------------- finish ----------------
@@ -267,7 +272,7 @@ export const Route = createFileRoute("/api/catalog/import")({
             .update({ status: "completed", completed_at: new Date().toISOString() })
             .eq("id", importId)
             .eq("organization_id", organizationId)
-            .select("filename, total_rows, rows_created, rows_updated, rows_failed")
+            .select("filename, total_rows, rows_created, rows_updated, rows_failed, rows_warned")
             .maybeSingle();
           if (error) return jsonError(error.message, 500);
           const summary = (data ?? {}) as AnyRecord;
@@ -284,6 +289,7 @@ export const Route = createFileRoute("/api/catalog/import")({
             created: summary["rows_created"],
             updated: summary["rows_updated"],
             failed: summary["rows_failed"],
+            warned: summary["rows_warned"],
           });
           return Response.json({ summary });
         }
