@@ -31,10 +31,11 @@ import {
   type MessageRow,
 } from "./inbox-utils";
 
-type Filter = "all" | "open" | "closed" | "mine";
+type Filter = "all" | "needs_human" | "open" | "closed" | "mine";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
+  { key: "needs_human", label: "Needs you" },
   { key: "open", label: "Open" },
   { key: "closed", label: "Closed" },
   { key: "mine", label: "Assigned to me" },
@@ -71,7 +72,7 @@ export function InboxView() {
     const { data, error: err } = await aidwar
       .from("conversations")
       .select(
-        "id, status, assigned_to, whatsapp_account_id, last_message_at, last_customer_message_at, unread_count, contact:contacts(id, name, phone, opt_in_status), preview:messages(body, type, direction, created_at)",
+        "id, status, assigned_to, whatsapp_account_id, last_message_at, last_customer_message_at, unread_count, needs_human, needs_human_reason, needs_human_question, needs_human_at, handover_state, contact:contacts(id, name, phone, opt_in_status), preview:messages(body, type, direction, created_at)",
       )
       .eq("organization_id", orgId)
       .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -193,6 +194,7 @@ export function InboxView() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return conversations.filter((c) => {
+      if (filter === "needs_human" && !c.needs_human) return false;
       if (filter === "open" && c.status !== "open") return false;
       if (filter === "closed" && c.status !== "closed") return false;
       if (filter === "mine" && c.assigned_to !== userId) return false;
@@ -294,6 +296,26 @@ export function InboxView() {
       whatsappAccountId: activeConversation.whatsapp_account_id ?? null,
       properties: { assigned_to: assignee },
     });
+  };
+
+  const handleResolveNeedsHuman = async () => {
+    if (!activeConversation) return;
+    const { error: err } = await aidwar
+      .from("conversations")
+      .update({ needs_human: false, needs_human_reason: null, handover_state: null })
+      .eq("id", activeConversation.id);
+    if (err) {
+      toast.error("We couldn't clear this. Please try again.");
+      return;
+    }
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeConversation.id
+          ? { ...c, needs_human: false, needs_human_reason: null, handover_state: null }
+          : c,
+      ),
+    );
+    toast.success("Marked as handled.");
   };
 
   const handleToggleStatus = async () => {
@@ -433,6 +455,14 @@ export function InboxView() {
                           <p className="truncate text-xs text-muted-foreground">
                             {previewText(c)}
                           </p>
+                          {c.needs_human ? (
+                            <Badge
+                              variant="secondary"
+                              className="ml-auto h-5 shrink-0 rounded-full px-2 text-[10px]"
+                            >
+                              Needs you
+                            </Badge>
+                          ) : null}
                           {(c.unread_count ?? 0) > 0 ? (
                             <Badge className="ml-auto h-5 shrink-0 rounded-full px-2 text-[10px]">
                               {c.unread_count}
@@ -493,6 +523,7 @@ export function InboxView() {
               onBack={() => setActiveId(null)}
               onAssign={(id) => void handleAssign(id)}
               onToggleStatus={() => void handleToggleStatus()}
+              onResolveNeedsHuman={() => void handleResolveNeedsHuman()}
             />
           </div>
         ) : (

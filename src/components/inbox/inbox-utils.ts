@@ -9,6 +9,13 @@ export type ConversationRow = {
   last_message_at: string | null;
   last_customer_message_at: string | null;
   unread_count: number | null;
+  /** True when the AI stepped back and a person has to pick this up. */
+  needs_human?: boolean | null;
+  needs_human_reason?: string | null;
+  needs_human_question?: string | null;
+  needs_human_at?: string | null;
+  /** Whether the customer actually received the handover message. */
+  handover_state?: string | null;
   contact: {
     id: string;
     name: string | null;
