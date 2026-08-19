@@ -184,6 +184,15 @@ export async function runAgentOnInbound(
     error: sent.error,
   });
 
+  if (sent.ok) {
+    // Answered cleanly: this thread no longer needs a person.
+    await supabase
+      .from("conversations")
+      .update({ needs_human: false, needs_human_reason: null, handover_state: null })
+      .eq("id", args.conversationId)
+      .eq("organization_id", args.organizationId);
+  }
+
   return {
     acted: true,
     mode: "replying",

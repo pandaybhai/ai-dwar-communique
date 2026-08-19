@@ -192,6 +192,25 @@ export function BehaviourEditor({
         />
       </div>
 
+      <div className="mt-5 space-y-2">
+        <Label htmlFor="handover">What I say when I fetch a person</Label>
+        <Textarea
+          id="handover"
+          rows={2}
+          value={handover}
+          disabled={!canConfigure}
+          onChange={(e) => setHandover(e.target.value)}
+          placeholder={DEFAULT_HANDOVER}
+          className="resize-y"
+        />
+        <p className="text-xs text-muted-foreground">
+          The customer gets this the moment I step back, so nobody is left waiting in silence. If
+          their 24-hour window has closed I can't send it — the chat still shows up as "Needs you"
+          in your inbox.
+        </p>
+      </div>
+
+
       <div className="mt-5 grid gap-5 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="hours">When it's allowed to work</Label>
