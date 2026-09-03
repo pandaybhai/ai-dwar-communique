@@ -51,6 +51,8 @@ export function TemplatePickerDialog({
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<number, string>>({});
+  const [headerMediaUrl, setHeaderMediaUrl] = useState<string | null>(null);
+  const [cardMediaUrls, setCardMediaUrls] = useState<Record<number, string>>({});
 
   useEffect(() => {
     if (!open || !organizationId) return;
