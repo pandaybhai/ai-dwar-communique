@@ -314,6 +314,12 @@ export function CampaignWizard({
         variable_mappings: mappings,
         scheduled_at: scheduledAt,
         whatsapp_account_id: accountId || null,
+        send_settings: {
+          ...(needsHeaderMedia && headerMedia.url ? { header_media_url: headerMedia.url } : {}),
+          ...(cards.length
+            ? { cards: cards.map((_, i) => ({ media_url: cardMedia[i] ?? null })) }
+            : {}),
+        },
       },
     });
 
