@@ -1,7 +1,7 @@
 import { applyScope, useAdminScope } from "@/lib/admin-scope";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Building2, Loader2, PauseCircle, PlayCircle, Search, ToggleRight } from "lucide-react";
+import { Building2, CreditCard, Loader2, PauseCircle, PlayCircle, Search, ToggleRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
