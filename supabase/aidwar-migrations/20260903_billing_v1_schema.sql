@@ -1,0 +1,8 @@
+-- Billing v1 schema was applied directly to the external AiDwar backend
+-- (billing_accounts, plans, plan_versions, organization_billing_settings,
+-- rate_cards, credit_packs, coupons, wallet_ledger, wallet_balances, payments,
+-- subscriptions, invoices, invoice_lines, invoice_sequences, topup_tasks,
+-- meta_prepaid_ledger, bsp_accounts, billing_notifications) together with
+-- wallet_apply, client_rate_for, org_flag_enabled, ai_answers_allowance,
+-- next_invoice_number, meta_consume and meta_balance_estimate.
+-- This file is a marker so the history shows when the money core landed.
