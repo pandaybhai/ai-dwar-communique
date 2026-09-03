@@ -60,6 +60,7 @@ import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/imp
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-run'
 import { Route as ApiInternalBillingNotifyRouteImport } from './routes/api/internal/billing-notify'
+import { Route as ApiInternalBillingSweepRouteImport } from './routes/api/internal/billing-sweep'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
@@ -351,6 +352,11 @@ const ApiInternalBillingNotifyRoute =
     path: '/api/internal/billing-notify',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiInternalBillingSweepRoute = ApiInternalBillingSweepRouteImport.update({
+  id: '/api/internal/billing-sweep',
+  path: '/api/internal/billing-sweep',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalCampaignWorkerRoute =
   ApiInternalCampaignWorkerRouteImport.update({
     id: '/api/internal/campaign-worker',
@@ -585,6 +591,7 @@ export interface FileRoutesByFullPath {
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
+  '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
@@ -669,6 +676,7 @@ export interface FileRoutesByTo {
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
+  '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
@@ -756,6 +764,7 @@ export interface FileRoutesById {
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
+  '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
@@ -844,6 +853,7 @@ export interface FileRouteTypes {
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
     | '/api/internal/billing-notify'
+    | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
@@ -928,6 +938,7 @@ export interface FileRouteTypes {
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
     | '/api/internal/billing-notify'
+    | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
@@ -1014,6 +1025,7 @@ export interface FileRouteTypes {
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
     | '/api/internal/billing-notify'
+    | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
@@ -1085,6 +1097,7 @@ export interface RootRouteChildren {
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalAiRunRoute: typeof ApiInternalAiRunRoute
   ApiInternalBillingNotifyRoute: typeof ApiInternalBillingNotifyRoute
+  ApiInternalBillingSweepRoute: typeof ApiInternalBillingSweepRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
@@ -1473,6 +1486,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalBillingNotifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/billing-sweep': {
+      id: '/api/internal/billing-sweep'
+      path: '/api/internal/billing-sweep'
+      fullPath: '/api/internal/billing-sweep'
+      preLoaderRoute: typeof ApiInternalBillingSweepRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/campaign-worker': {
       id: '/api/internal/campaign-worker'
       path: '/api/internal/campaign-worker'
@@ -1807,6 +1827,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalAiRunRoute: ApiInternalAiRunRoute,
   ApiInternalBillingNotifyRoute: ApiInternalBillingNotifyRoute,
+  ApiInternalBillingSweepRoute: ApiInternalBillingSweepRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
