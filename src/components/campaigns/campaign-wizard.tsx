@@ -104,13 +104,32 @@ function StepDots({ step }: { step: number }) {
   );
 }
 
-function ChatPreview({ body, footer }: { body: string; footer: string }) {
+function ChatPreview({
+  body,
+  footer,
+  imageUrl,
+  mediaLabel,
+}: {
+  body: string;
+  footer: string;
+  imageUrl?: string | undefined;
+  mediaLabel?: string | undefined;
+}) {
   return (
     <div className="rounded-2xl bg-[#ECE5DD] p-4 dark:bg-muted">
-      <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-[#DCF8C6] px-3.5 py-2.5 text-sm text-[#111B21] shadow-sm dark:bg-primary/20 dark:text-foreground">
-        <p className="whitespace-pre-wrap leading-relaxed">{body || "Your message preview"}</p>
-        {footer ? <p className="mt-2 text-[11px] opacity-60">{footer}</p> : null}
-        <p className="mt-1 text-right text-[10px] opacity-50">now</p>
+      <div className="ml-auto max-w-[85%] overflow-hidden rounded-2xl rounded-tr-sm bg-[#DCF8C6] text-sm text-[#111B21] shadow-sm dark:bg-primary/20 dark:text-foreground">
+        {imageUrl ? (
+          <img src={imageUrl} alt="Template header" className="max-h-48 w-full object-cover" />
+        ) : mediaLabel ? (
+          <div className="flex h-24 items-center justify-center bg-black/10 text-xs opacity-70 dark:bg-black/20">
+            {mediaLabel}
+          </div>
+        ) : null}
+        <div className="px-3.5 py-2.5">
+          <p className="whitespace-pre-wrap leading-relaxed">{body || "Your message preview"}</p>
+          {footer ? <p className="mt-2 text-[11px] opacity-60">{footer}</p> : null}
+          <p className="mt-1 text-right text-[10px] opacity-50">now</p>
+        </div>
       </div>
     </div>
   );
@@ -582,6 +601,18 @@ export function CampaignWizard({
                     <ChatPreview
                       body={renderTemplate(bodyText, previewValues)}
                       footer={footerText}
+                      imageUrl={
+                        needsHeaderMedia && headerMediaFormat === "IMAGE"
+                          ? effectiveHeaderMedia || undefined
+                          : undefined
+                      }
+                      mediaLabel={
+                        needsHeaderMedia && headerMediaFormat !== "IMAGE"
+                          ? headerMediaFormat === "VIDEO"
+                            ? "Video attached"
+                            : "Document attached"
+                          : undefined
+                      }
                     />
                   </div>
                 )}
@@ -680,7 +711,22 @@ export function CampaignWizard({
                     ))}
                   </dl>
                 </div>
-                <ChatPreview body={renderTemplate(bodyText, previewValues)} footer={footerText} />
+                <ChatPreview
+                  body={renderTemplate(bodyText, previewValues)}
+                  footer={footerText}
+                  imageUrl={
+                    needsHeaderMedia && headerMediaFormat === "IMAGE"
+                      ? effectiveHeaderMedia || undefined
+                      : undefined
+                  }
+                  mediaLabel={
+                    needsHeaderMedia && headerMediaFormat !== "IMAGE"
+                      ? headerMediaFormat === "VIDEO"
+                        ? "Video attached"
+                        : "Document attached"
+                      : undefined
+                  }
+                />
               </div>
             )}
           </div>

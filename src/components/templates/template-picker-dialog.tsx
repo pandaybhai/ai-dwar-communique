@@ -14,12 +14,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  buildTemplatePayloadComponents,
   extractVariables,
   renderTemplate,
   templateBodyText,
   templateFooterText,
+  templateVariableSpec,
   type TemplateRow,
 } from "@/lib/templates";
+import { MediaUploader } from "@/components/templates/media-uploader";
+import { toast } from "sonner";
 
 export type TemplateSendPayload = {
   template_name: string;
@@ -47,6 +51,8 @@ export function TemplatePickerDialog({
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<number, string>>({});
+  const [headerMediaUrl, setHeaderMediaUrl] = useState<string | null>(null);
+  const [cardMediaUrls, setCardMediaUrls] = useState<Record<number, string>>({});
 
   useEffect(() => {
     if (!open || !organizationId) return;
@@ -74,26 +80,54 @@ export function TemplatePickerDialog({
   const body = selected ? templateBodyText(selected.components) : "";
   const footer = selected ? templateFooterText(selected.components) : "";
   const variables = useMemo(() => extractVariables(body), [body]);
-  const ready = Boolean(selected) && variables.every((v) => values[v]?.trim());
+  const spec = useMemo(
+    () => (selected ? templateVariableSpec(selected.components) : null),
+    [selected],
+  );
+  const headerMediaFormat =
+    spec?.headerMedia && spec.headerMedia.format !== "LOCATION" ? spec.headerMedia.format : null;
+  const effectiveHeaderMedia = headerMediaUrl ?? spec?.headerMedia?.url ?? null;
+  const effectiveCardMedia = (i: number) =>
+    cardMediaUrls[i] ?? spec?.cards[i]?.mediaUrl ?? null;
+  const mediaReady = Boolean(
+    spec &&
+      (!headerMediaFormat || effectiveHeaderMedia) &&
+      spec.cards.every((_, i) => effectiveCardMedia(i)),
+  );
+  const ready =
+    Boolean(selected) && variables.every((v) => values[v]?.trim()) && mediaReady;
 
   const submit = async () => {
-    if (!selected || !ready) return;
-    const components = variables.length
-      ? [
-          {
-            type: "body",
-            parameters: variables.map((v) => ({ type: "text", text: (values[v] ?? "").trim() })),
-          },
-        ]
-      : [];
+    if (!selected || !ready || !spec) return;
+    const built = buildTemplatePayloadComponents({
+      spec,
+      values: Object.fromEntries(
+        Object.entries(values).map(([k, v]) => [k, v.trim()]),
+      ),
+      ...(effectiveHeaderMedia ? { headerMedia: { link: effectiveHeaderMedia } } : {}),
+      ...(spec.cards.length
+        ? {
+            cards: spec.cards.map((_, i) => {
+              const link = effectiveCardMedia(i);
+              return link ? { media: { link } } : {};
+            }),
+          }
+        : {}),
+    });
+    if (!built.components) {
+      toast.error(built.error);
+      return;
+    }
     const ok = await onSend({
       template_name: selected.name,
       template_language: selected.language,
-      template_components: components,
+      template_components: built.components,
     });
     if (ok) {
       setSelectedId(null);
       setValues({});
+      setHeaderMediaUrl(null);
+      setCardMediaUrls({});
       onOpenChange(false);
     }
   };
@@ -131,6 +165,8 @@ export function TemplatePickerDialog({
                   onClick={() => {
                     setSelectedId(t.id);
                     setValues({});
+                    setHeaderMediaUrl(null);
+                    setCardMediaUrls({});
                   }}
                   className={[
                     "w-full rounded-xl border px-4 py-3 text-left transition-colors duration-150",
@@ -167,14 +203,70 @@ export function TemplatePickerDialog({
                   </div>
                 ) : null}
 
+                {headerMediaFormat && organizationId ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">
+                      {headerMediaFormat === "IMAGE"
+                        ? "Header image"
+                        : headerMediaFormat === "VIDEO"
+                          ? "Header video"
+                          : "Header document"}
+                    </Label>
+                    <MediaUploader
+                      organizationId={organizationId}
+                      slot={`inbox-header:${selected.id}`}
+                      format={headerMediaFormat}
+                      fileName=""
+                      mediaUrl={effectiveHeaderMedia ?? ""}
+                      onUploaded={(r) => setHeaderMediaUrl(r.media_url)}
+                      onCleared={() => setHeaderMediaUrl("")}
+                    />
+                  </div>
+                ) : null}
+
+                {spec && spec.cards.length > 0 && organizationId ? (
+                  <div className="space-y-2">
+                    <Label className="text-xs">Carousel cards</Label>
+                    {spec.cards.map((card, i) => (
+                      <div key={i} className="space-y-1">
+                        <p className="text-[11px] text-muted-foreground">
+                          Card {i + 1} — {card.format === "VIDEO" ? "video" : "image"}
+                        </p>
+                        <MediaUploader
+                          organizationId={organizationId}
+                          slot={`inbox-card:${selected.id}:${i}`}
+                          format={card.format}
+                          fileName=""
+                          mediaUrl={effectiveCardMedia(i) ?? ""}
+                          onUploaded={(r) =>
+                            setCardMediaUrls((p) => ({ ...p, [i]: r.media_url }))
+                          }
+                          onCleared={() =>
+                            setCardMediaUrls((p) => ({ ...p, [i]: "" }))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
                 <div className="rounded-2xl bg-muted/40 p-3">
-                  <div className="rounded-2xl rounded-br-md bg-primary/12 px-3.5 py-2.5 text-sm shadow-sm">
-                    <p className="whitespace-pre-wrap break-words leading-relaxed">
-                      {renderTemplate(body, values)}
-                    </p>
-                    {footer ? (
-                      <p className="mt-2 text-[11px] text-muted-foreground">{footer}</p>
+                  <div className="overflow-hidden rounded-2xl rounded-br-md bg-primary/12 text-sm shadow-sm">
+                    {effectiveHeaderMedia && headerMediaFormat === "IMAGE" ? (
+                      <img
+                        src={effectiveHeaderMedia}
+                        alt="Template header"
+                        className="max-h-44 w-full object-cover"
+                      />
                     ) : null}
+                    <div className="px-3.5 py-2.5">
+                      <p className="whitespace-pre-wrap break-words leading-relaxed">
+                        {renderTemplate(body, values)}
+                      </p>
+                      {footer ? (
+                        <p className="mt-2 text-[11px] text-muted-foreground">{footer}</p>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>
