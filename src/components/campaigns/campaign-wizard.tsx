@@ -336,9 +336,26 @@ export function CampaignWizard({
   /** The code a given card actually sends: its own, else the main one. */
   const effectiveCardCoupon = (index: number) =>
     (cardCoupons[index] ?? "").trim() || couponCode.trim();
+  /** Cards whose own code collides with another card's own code. */
+  const duplicateCouponCards = useMemo(() => {
+    const seen = new Map<string, number>();
+    const dupes = new Set<number>();
+    for (const card of couponCards) {
+      const own = (cardCoupons[card.index] ?? "").trim();
+      if (!own) continue;
+      if (seen.has(own)) {
+        dupes.add(seen.get(own)!);
+        dupes.add(card.index);
+      } else {
+        seen.set(own, card.index);
+      }
+    }
+    return dupes;
+  }, [couponCards, cardCoupons]);
   const couponsReady =
     (!needsMainCoupon || couponCode.trim().length > 0) &&
-    couponCards.every((c) => effectiveCardCoupon(c.index).length > 0);
+    couponCards.every((c) => effectiveCardCoupon(c.index).length > 0) &&
+    duplicateCouponCards.size === 0;
   const needsOfferExpiry = spec.offerExpiration;
   const offerExpiresAt = useMemo(() => {
     if (!needsOfferExpiry || !offerDate) return null;
@@ -677,28 +694,46 @@ export function CampaignWizard({
                           Running a different discount on each card? Give that card its own
                           code. Leave it blank to use the code above.
                         </p>
-                        {couponCards.map((card) => (
-                          <div key={card.index} className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">
-                              Card {card.index + 1}
-                              {cards[card.index]?.body
-                                ? ` · ${cards[card.index]!.body.slice(0, 40)}`
-                                : ""}
-                            </Label>
-                            <Input
-                              value={cardCoupons[card.index] ?? ""}
-                              onChange={(e) =>
-                                setCardCoupons((prev) => ({
-                                  ...prev,
-                                  [card.index]: e.target.value.toUpperCase(),
-                                }))
-                              }
-                              placeholder={couponCode.trim() || "SHOES20"}
-                              maxLength={15}
-                            />
-                          </div>
-                        ))}
-                        {!couponsReady && (
+                        {couponCards.map((card) => {
+                          const isDupe = duplicateCouponCards.has(card.index);
+                          const isEmpty =
+                            effectiveCardCoupon(card.index).length === 0;
+                          return (
+                            <div key={card.index} className="space-y-1">
+                              <Label className="text-[11px] text-muted-foreground">
+                                Card {card.index + 1}
+                                {cards[card.index]?.body
+                                  ? ` · ${cards[card.index]!.body.slice(0, 40)}`
+                                  : ""}
+                              </Label>
+                              <Input
+                                value={cardCoupons[card.index] ?? ""}
+                                aria-invalid={isDupe || isEmpty}
+                                className={cn(
+                                  (isDupe || isEmpty) &&
+                                    "border-destructive focus-visible:ring-destructive",
+                                )}
+                                onChange={(e) =>
+                                  setCardCoupons((prev) => ({
+                                    ...prev,
+                                    [card.index]: e.target.value.toUpperCase(),
+                                  }))
+                                }
+                                placeholder={couponCode.trim() || "SHOES20"}
+                                maxLength={15}
+                              />
+                              {isDupe && (
+                                <p className="text-xs text-destructive">
+                                  Another card already uses this code — each card needs its
+                                  own.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {couponCards.some(
+                          (c) => effectiveCardCoupon(c.index).length === 0,
+                        ) && (
                           <p className="text-xs text-destructive">
                             Every card with a copy-code button needs a code — either its own
                             or the shared one above.
@@ -947,13 +982,6 @@ export function CampaignWizard({
                       ...(needsMainCoupon && couponCode.trim()
                         ? [["Coupon code", couponCode.trim()] as [string, string]]
                         : []),
-                      ...couponCards.map(
-                        (c) =>
-                          [`Card ${c.index + 1} code`, effectiveCardCoupon(c.index)] as [
-                            string,
-                            string,
-                          ],
-                      ),
                       ...(offerExpiresAt
                         ? [["Offer ends", formatInZone(offerExpiresAt, timezone)] as [string, string]]
                         : []),
@@ -964,6 +992,35 @@ export function CampaignWizard({
                       </div>
                     ))}
                   </dl>
+                  {couponCards.length > 0 && (
+                    <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Offer on each card
+                      </p>
+                      {couponCards.map((card) => (
+                        <div
+                          key={card.index}
+                          className="space-y-0.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs"
+                        >
+                          <p className="font-medium">
+                            Card {card.index + 1}
+                            {cards[card.index]?.body
+                              ? ` — ${cards[card.index]!.body}`
+                              : ""}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Code{" "}
+                            <span className="font-mono font-medium text-foreground">
+                              {effectiveCardCoupon(card.index)}
+                            </span>
+                            {offerExpiresAt
+                              ? ` · ends ${formatInZone(offerExpiresAt, timezone)}`
+                              : ""}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {needsCoupon || needsOfferExpiry ? (
                   <div className="rounded-2xl bg-[#ECE5DD] p-4 dark:bg-muted">
@@ -1012,7 +1069,7 @@ export function CampaignWizard({
               Continue <ArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
           ) : (
-            <Button className="rounded-full" disabled={launching || offerIssue?.level === "error"} onClick={() => void launch()}>
+            <Button className="rounded-full" disabled={launching || !offerReady || offerIssue?.level === "error"} onClick={() => void launch()}>
               {launching ? (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
               ) : (
