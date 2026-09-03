@@ -52,6 +52,21 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         );
         if (cards.some(Boolean)) sendSettings["cards"] = cards.map((media_url) => ({ media_url }));
 
+        // Offer details: the coupon a copy-code button copies, and when a
+        // limited-time offer's countdown runs out.
+        const coupon =
+          typeof rawSettings["coupon_code"] === "string"
+            ? (rawSettings["coupon_code"] as string).trim().slice(0, 15)
+            : "";
+        if (coupon) sendSettings["coupon_code"] = coupon;
+        const expiresRaw =
+          typeof rawSettings["offer_expires_at"] === "string"
+            ? (rawSettings["offer_expires_at"] as string)
+            : "";
+        if (expiresRaw && !Number.isNaN(new Date(expiresRaw).getTime())) {
+          sendSettings["offer_expires_at"] = new Date(expiresRaw).toISOString();
+        }
+
         if (!name) return jsonError("Give your campaign a name.");
         if (!templateName) return jsonError("Pick an approved template.");
 

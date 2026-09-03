@@ -53,6 +53,10 @@ export function TemplatePickerDialog({
   const [values, setValues] = useState<Record<number, string>>({});
   const [headerMediaUrl, setHeaderMediaUrl] = useState<string | null>(null);
   const [cardMediaUrls, setCardMediaUrls] = useState<Record<number, string>>({});
+  // Offer details: the coupon a copy-code button copies, and when a
+  // limited-time offer's countdown ends.
+  const [couponCode, setCouponCode] = useState("");
+  const [offerEndsAt, setOfferEndsAt] = useState("");
 
   useEffect(() => {
     if (!open || !organizationId) return;
@@ -94,22 +98,46 @@ export function TemplatePickerDialog({
       (!headerMediaFormat || effectiveHeaderMedia) &&
       spec.cards.every((_, i) => effectiveCardMedia(i)),
   );
+  const couponButtons = spec?.copyCodeButtons ?? [];
+  const needsCoupon =
+    couponButtons.length > 0 || Boolean(spec?.cards.some((c) => c.copyCodeButtons.length > 0));
+  const needsOfferExpiry = Boolean(spec?.offerExpiration);
+  const offerExpirationMs = offerEndsAt ? new Date(offerEndsAt).getTime() : NaN;
+  const offerReady =
+    (!needsCoupon || couponCode.trim().length > 0) &&
+    (!needsOfferExpiry || !Number.isNaN(offerExpirationMs));
   const ready =
-    Boolean(selected) && variables.every((v) => values[v]?.trim()) && mediaReady;
+    Boolean(selected) &&
+    variables.every((v) => values[v]?.trim()) &&
+    mediaReady &&
+    offerReady;
 
   const submit = async () => {
     if (!selected || !ready || !spec) return;
+    const code = couponCode.trim();
+    const codes = code
+      ? Object.fromEntries(couponButtons.map((index) => [index, code]))
+      : {};
     const built = buildTemplatePayloadComponents({
       spec,
       values: Object.fromEntries(
         Object.entries(values).map(([k, v]) => [k, v.trim()]),
       ),
       ...(effectiveHeaderMedia ? { headerMedia: { link: effectiveHeaderMedia } } : {}),
+      ...(Object.keys(codes).length ? { couponCodes: codes } : {}),
+      ...(needsOfferExpiry && !Number.isNaN(offerExpirationMs) ? { offerExpirationMs } : {}),
       ...(spec.cards.length
         ? {
-            cards: spec.cards.map((_, i) => {
+            cards: spec.cards.map((card, i) => {
               const link = effectiveCardMedia(i);
-              return link ? { media: { link } } : {};
+              const cardCodes =
+                code && card.copyCodeButtons.length
+                  ? Object.fromEntries(card.copyCodeButtons.map((index) => [index, code]))
+                  : null;
+              return {
+                ...(link ? { media: { link } } : {}),
+                ...(cardCodes ? { couponCodes: cardCodes } : {}),
+              };
             }),
           }
         : {}),
@@ -128,6 +156,8 @@ export function TemplatePickerDialog({
       setValues({});
       setHeaderMediaUrl(null);
       setCardMediaUrls({});
+      setCouponCode("");
+      setOfferEndsAt("");
       onOpenChange(false);
     }
   };
@@ -247,6 +277,32 @@ export function TemplatePickerDialog({
                         />
                       </div>
                     ))}
+                  </div>
+                ) : null}
+
+                {needsCoupon || needsOfferExpiry ? (
+                  <div className="space-y-2">
+                    {needsCoupon ? (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Coupon code</Label>
+                        <Input
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          placeholder="SAVE20"
+                          maxLength={15}
+                        />
+                      </div>
+                    ) : null}
+                    {needsOfferExpiry ? (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Offer ends</Label>
+                        <Input
+                          type="datetime-local"
+                          value={offerEndsAt}
+                          onChange={(e) => setOfferEndsAt(e.target.value)}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 

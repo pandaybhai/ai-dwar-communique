@@ -87,6 +87,9 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
                 mediaUrl: c?.media_url ?? null,
               }))
             : [];
+          // Offer details chosen when the campaign was created.
+          const couponCode = (settings["coupon_code"] as string | null) ?? null;
+          const offerExpiresAt = (settings["offer_expires_at"] as string | null) ?? null;
 
           const { data: claimed } = await supabase.rpc("claim_campaign_recipients", {
             p_campaign_id: campaignId,
@@ -123,6 +126,8 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
                 category: templateCategory,
                 ...(headerMediaUrl ? { headerMediaUrl } : {}),
                 ...(settingCards.length ? { cards: settingCards } : {}),
+                ...(couponCode ? { couponCode } : {}),
+                ...(offerExpiresAt ? { offerExpiresAt } : {}),
               },
             );
 

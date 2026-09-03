@@ -29,6 +29,8 @@ import {
   templateCards,
   templateFooterText,
   templateHeader,
+  templateOffer,
+  templateVariableSpec,
   type TemplateRow,
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
@@ -170,6 +172,11 @@ export function CampaignWizard({
     fileName: "",
   });
   const [cardMedia, setCardMedia] = useState<Record<number, string>>({});
+  // Offer details: the coupon a copy-code button copies, and when a
+  // limited-time offer's countdown runs out.
+  const [couponCode, setCouponCode] = useState("");
+  const [offerDate, setOfferDate] = useState("");
+  const [offerTime, setOfferTime] = useState("");
 
   // A campaign always sends from one number. Default is the workspace default.
   const { numbers, defaultNumber, multiple } = useWhatsAppNumbers();
@@ -189,12 +196,18 @@ export function CampaignWizard({
     setTime("");
     setHeaderMedia({ url: "", fileName: "" });
     setCardMedia({});
+    setCouponCode("");
+    setOfferDate("");
+    setOfferTime("");
   }, [open]);
 
   // A different template means different slots — start its media clean.
   useEffect(() => {
     setHeaderMedia({ url: "", fileName: "" });
     setCardMedia({});
+    setCouponCode("");
+    setOfferDate("");
+    setOfferTime("");
   }, [templateName]);
 
   useEffect(() => {
@@ -291,6 +304,22 @@ export function CampaignWizard({
     (!needsHeaderMedia || Boolean(effectiveHeaderMedia)) &&
     cards.every((_, i) => Boolean(effectiveCardMedia(i)));
 
+  // Offers: a copy-code button needs a coupon, and a limited-time offer with a
+  // countdown needs the moment it expires.
+  const spec = useMemo(() => templateVariableSpec(template?.components), [template]);
+  const offer = useMemo(() => templateOffer(template?.components), [template]);
+  const needsCoupon =
+    spec.copyCodeButtons.length > 0 || spec.cards.some((c) => c.copyCodeButtons.length > 0);
+  const needsOfferExpiry = spec.offerExpiration;
+  const offerExpiresAt = useMemo(() => {
+    if (!needsOfferExpiry || !offerDate) return null;
+    const d = new Date(`${offerDate}T${offerTime || "23:59"}`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }, [needsOfferExpiry, offerDate, offerTime]);
+  const offerReady =
+    (!needsCoupon || couponCode.trim().length > 0) &&
+    (!needsOfferExpiry || Boolean(offerExpiresAt));
+
   const previewValues = useMemo(() => {
     const out: Record<number, string> = {};
     for (const n of variables) out[n] = resolveVariable(mappings[String(n)], sample);
@@ -316,6 +345,7 @@ export function CampaignWizard({
       return (
         Boolean(template) &&
         mediaReady &&
+        offerReady &&
         variables.every((n) => mappingIsComplete(mappings[String(n)]))
       );
     if (step === 3) return sendNow || Boolean(scheduledAt);
@@ -338,6 +368,8 @@ export function CampaignWizard({
           ...(cards.length
             ? { cards: cards.map((_, i) => ({ media_url: cardMedia[i] ?? null })) }
             : {}),
+          ...(needsCoupon && couponCode.trim() ? { coupon_code: couponCode.trim() } : {}),
+          ...(offerExpiresAt ? { offer_expires_at: offerExpiresAt } : {}),
         },
       },
     });
@@ -534,6 +566,49 @@ export function CampaignWizard({
                         />
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {(needsCoupon || needsOfferExpiry) && (
+                  <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-3">
+                    <Label className="text-xs">
+                      {offer ? offer.text : "Offer details"}
+                    </Label>
+                    {needsCoupon && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Coupon code</Label>
+                        <Input
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          placeholder="SAVE20"
+                          maxLength={15}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          This is the code customers copy with one tap. Everyone in this
+                          campaign gets the same code.
+                        </p>
+                      </div>
+                    )}
+                    {needsOfferExpiry && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Offer ends</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            type="date"
+                            value={offerDate}
+                            onChange={(e) => setOfferDate(e.target.value)}
+                          />
+                          <Input
+                            type="time"
+                            value={offerTime}
+                            onChange={(e) => setOfferTime(e.target.value)}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          The countdown in the message ticks down to this moment.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
