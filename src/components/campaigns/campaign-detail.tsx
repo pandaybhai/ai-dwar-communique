@@ -188,6 +188,11 @@ export function CampaignDetail({
   );
   const progress = percent(campaign.sent_count + campaign.failed_count, campaign.total_recipients);
   const running = campaign.status === "sending" || campaign.status === "scheduled";
+  const sendSettings = (campaign.send_settings ?? {}) as Record<string, unknown>;
+  const couponCode = String(sendSettings["coupon_code"] ?? "").trim();
+  const offerEndsAt = String(sendSettings["offer_expires_at"] ?? "").trim() || null;
+
+
 
   return (
     <div className="space-y-5">
