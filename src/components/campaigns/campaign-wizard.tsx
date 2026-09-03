@@ -23,11 +23,15 @@ import {
 } from "@/lib/campaigns";
 import {
   extractVariables,
+  isMediaHeader,
   renderTemplate,
   templateBodyText,
+  templateCards,
   templateFooterText,
+  templateHeader,
   type TemplateRow,
 } from "@/lib/templates";
+import { MediaUploader } from "@/components/templates/media-uploader";
 import type { SegmentRow } from "@/lib/segments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
