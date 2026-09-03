@@ -944,9 +944,16 @@ export function CampaignWizard({
                             ? formatInZone(scheduledAt, timezone)
                             : "—",
                       ],
-                      ...(needsCoupon && couponCode.trim()
+                      ...(needsMainCoupon && couponCode.trim()
                         ? [["Coupon code", couponCode.trim()] as [string, string]]
                         : []),
+                      ...couponCards.map(
+                        (c) =>
+                          [`Card ${c.index + 1} code`, effectiveCardCoupon(c.index)] as [
+                            string,
+                            string,
+                          ],
+                      ),
                       ...(offerExpiresAt
                         ? [["Offer ends", formatInZone(offerExpiresAt, timezone)] as [string, string]]
                         : []),
