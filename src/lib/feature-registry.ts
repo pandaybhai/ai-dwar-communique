@@ -112,6 +112,7 @@ const none: AnalyticsManifest = { event_types: [], metrics: [], dashboard_sectio
 export const FEATURES: readonly FeatureManifest[] = [
   {
     key: "inbox",
+    depends_on: [],
     name: "Shared Inbox",
     description: "One shared place for the team to reply, assign and close conversations.",
     icon: "inbox",
@@ -189,6 +190,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "contacts",
+    depends_on: [],
     name: "Contacts",
     description: "Your audience — contacts, tags, imports and saved segments.",
     icon: "contact",
@@ -316,6 +318,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "campaigns",
+    depends_on: ["templates", "contacts"],
     name: "Campaigns",
     description: "Broadcast an approved template to a segment of opted-in contacts.",
     icon: "megaphone",
@@ -377,6 +380,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "templates",
+    depends_on: [],
     name: "Message Templates",
     description: "Pre-approved messages you can send at any time.",
     icon: "message-square-text",
@@ -426,6 +430,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "automations",
+    depends_on: ["inbox"],
     name: "Automations",
     description: "Welcome messages, keyword replies and off-hours cover.",
     icon: "workflow",
@@ -472,6 +477,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "analytics",
+    depends_on: ["campaigns"],
     name: "Analytics",
     description: "Delivery, audience, response time and automation performance.",
     icon: "bar-chart",
@@ -501,6 +507,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "compliance",
+    depends_on: ["contacts"],
     name: "Opt-out & compliance",
     description: "Opt-out keywords, consent state and number quality monitoring.",
     icon: "shield-check",
@@ -556,6 +563,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "settings",
+    depends_on: [],
     name: "Settings",
     description: "Workspace details and the connection that powers your messaging.",
     icon: "settings",
@@ -625,6 +633,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "team",
+    depends_on: [],
     name: "Team",
     description: "Teammates, roles, invitations and permission overrides.",
     icon: "users",
@@ -653,6 +662,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "ai",
+    depends_on: ["inbox"],
     name: "AI employee",
     description:
       "The AI employee: what it knows, how it behaves, the tools it may use on this workspace's data, and every answer it has given.",
@@ -710,6 +720,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "shopify",
+    depends_on: [],
     name: "Shopify",
     description:
       "Connect Shopify stores and keep orders, products, checkouts and customers in sync.",
@@ -840,6 +851,7 @@ export const FEATURES: readonly FeatureManifest[] = [
 
   {
     key: "flows",
+    depends_on: ["templates", "contacts"],
     name: "Flows",
     description:
       "Scheduled messaging: turn store events into WhatsApp messages with delays, quiet hours and frequency caps.",
@@ -898,6 +910,7 @@ export const FEATURES: readonly FeatureManifest[] = [
 
   {
     key: "revenue_attribution",
+    depends_on: ["shopify", "campaigns"],
     name: "Sales from messages",
     description:
       "Links orders back to the last promotional message the customer received, and shows honestly which sales could not be linked.",
@@ -1004,6 +1017,7 @@ export const FEATURES: readonly FeatureManifest[] = [
   },
   {
     key: "catalog",
+    depends_on: ["templates"],
     name: "Catalogue",
     description:
       "One product list the business can actually use: synced from the store, uploaded from a file, or added by hand.",
