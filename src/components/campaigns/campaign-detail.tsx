@@ -245,6 +245,46 @@ export function CampaignDetail({
         <Stat label="Failed" value={campaign.failed_count} icon={AlertTriangle} tone="danger" />
       </div>
 
+      {couponCode && (
+        <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Offer performance</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Code{" "}
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono">{couponCode}</span>
+                {offerEndsAt ? ` · ends ${new Date(offerEndsAt).toLocaleString()}` : ""}
+              </p>
+            </div>
+            {offerEndsAt && (
+              <span
+                className={cn(
+                  "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                  new Date(offerEndsAt).getTime() > Date.now()
+                    ? "border-primary/30 bg-primary/10 text-primary"
+                    : "border-border bg-muted text-muted-foreground",
+                )}
+              >
+                {new Date(offerEndsAt).getTime() > Date.now() ? "Live" : "Ended"}
+              </span>
+            )}
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <Stat label="Received" value={offer.received} icon={Send} />
+            <Stat label="Took the code" value={offer.tapped} icon={Ticket} />
+            <Stat label="Used it" value={offer.redeemed} icon={BadgeCheck} />
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            {offer.received === 0
+              ? "Nothing to measure yet — the numbers fill in once the campaign starts sending."
+              : offer.tapped === 0
+                ? "No one has come back with the code yet. Give it a day before reading anything into it."
+                : `${percent(offer.redeemed, offer.received)}% of everyone who got this message has placed an order with the code.`}
+          </p>
+        </div>
+      )}
+
+
       <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
