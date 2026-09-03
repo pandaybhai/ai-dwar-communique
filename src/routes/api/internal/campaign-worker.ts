@@ -82,11 +82,18 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
           // file the template itself was authored with.
           const settings = (campaign["send_settings"] ?? {}) as Record<string, unknown>;
           const headerMediaUrl = (settings["header_media_url"] as string | null) ?? null;
+          // A carousel card can carry its own coupon — "20% off shoes" on one
+          // card, "buy one get one" on the next — so codes travel per card.
           const settingCards = Array.isArray(settings["cards"])
-            ? (settings["cards"] as Array<{ media_url?: string | null }>).map((c) => ({
+            ? (settings["cards"] as Array<{
+                media_url?: string | null;
+                coupon_code?: string | null;
+              }>).map((c) => ({
                 mediaUrl: c?.media_url ?? null,
+                couponCode: c?.coupon_code ?? null,
               }))
             : [];
+
           // Offer details chosen when the campaign was created.
           const couponCode = (settings["coupon_code"] as string | null) ?? null;
           const offerExpiresAt = (settings["offer_expires_at"] as string | null) ?? null;
