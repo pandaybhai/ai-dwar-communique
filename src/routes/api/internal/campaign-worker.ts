@@ -77,6 +77,17 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
             templateBodyText((template?.components ?? []) as never),
           );
 
+          // Media chosen when the campaign was created — the header file and
+          // one file per carousel card. Anything left blank falls back to the
+          // file the template itself was authored with.
+          const settings = (campaign["send_settings"] ?? {}) as Record<string, unknown>;
+          const headerMediaUrl = (settings["header_media_url"] as string | null) ?? null;
+          const settingCards = Array.isArray(settings["cards"])
+            ? (settings["cards"] as Array<{ media_url?: string | null }>).map((c) => ({
+                mediaUrl: c?.media_url ?? null,
+              }))
+            : [];
+
           const { data: claimed } = await supabase.rpc("claim_campaign_recipients", {
             p_campaign_id: campaignId,
             p_limit: CLAIM_LIMIT,
