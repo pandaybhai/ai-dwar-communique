@@ -389,6 +389,7 @@ export function CampaignWizard({
       cards: model.cards.map((card, i) => ({
         ...card,
         mediaUrl: effectiveCardMedia(i) || card.mediaUrl,
+        couponCode: effectiveCardCoupon(i) || null,
       })),
       offer: model.offer ? { ...model.offer, expiresAt: offerExpiresAt } : null,
       couponCode: couponCode.trim() || null,
@@ -402,6 +403,7 @@ export function CampaignWizard({
     cardMedia,
     offerExpiresAt,
     couponCode,
+    cardCoupons,
   ]);
 
   const canNext = () => {
@@ -434,7 +436,12 @@ export function CampaignWizard({
         send_settings: {
           ...(needsHeaderMedia && headerMedia.url ? { header_media_url: headerMedia.url } : {}),
           ...(cards.length
-            ? { cards: cards.map((_, i) => ({ media_url: cardMedia[i] ?? null })) }
+            ? {
+                cards: cards.map((_, i) => ({
+                  media_url: cardMedia[i] ?? null,
+                  coupon_code: effectiveCardCoupon(i) || null,
+                })),
+              }
             : {}),
           ...(needsCoupon && couponCode.trim() ? { coupon_code: couponCode.trim() } : {}),
           ...(offerExpiresAt ? { offer_expires_at: offerExpiresAt } : {}),
