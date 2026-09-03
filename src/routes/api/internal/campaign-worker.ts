@@ -126,6 +126,8 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
                 category: templateCategory,
                 ...(headerMediaUrl ? { headerMediaUrl } : {}),
                 ...(settingCards.length ? { cards: settingCards } : {}),
+                ...(couponCode ? { couponCode } : {}),
+                ...(offerExpiresAt ? { offerExpiresAt } : {}),
               },
             );
 
