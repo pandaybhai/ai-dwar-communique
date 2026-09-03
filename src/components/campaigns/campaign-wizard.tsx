@@ -569,6 +569,49 @@ export function CampaignWizard({
                   </div>
                 )}
 
+                {(needsCoupon || needsOfferExpiry) && (
+                  <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-3">
+                    <Label className="text-xs">
+                      {offer ? offer.text : "Offer details"}
+                    </Label>
+                    {needsCoupon && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Coupon code</Label>
+                        <Input
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          placeholder="SAVE20"
+                          maxLength={15}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          This is the code customers copy with one tap. Everyone in this
+                          campaign gets the same code.
+                        </p>
+                      </div>
+                    )}
+                    {needsOfferExpiry && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Offer ends</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            type="date"
+                            value={offerDate}
+                            onChange={(e) => setOfferDate(e.target.value)}
+                          />
+                          <Input
+                            type="time"
+                            value={offerTime}
+                            onChange={(e) => setOfferTime(e.target.value)}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          The countdown in the message ticks down to this moment.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {variables.map((n) => {
                   const m = mappings[String(n)];
                   return (
