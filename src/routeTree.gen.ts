@@ -21,6 +21,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminActivityRouteImport } from './routes/admin/activity'
 import { Route as AdminAiRouteImport } from './routes/admin/ai'
+import { Route as AdminBillingRouteImport } from './routes/admin/billing'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
@@ -39,6 +40,7 @@ import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as RTokenRouteImport } from './routes/r.$token'
 import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
+import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
 import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
@@ -58,6 +60,8 @@ import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/con
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-run'
+import { Route as ApiInternalBillingNotifyRouteImport } from './routes/api/internal/billing-notify'
+import { Route as ApiInternalBillingSweepRouteImport } from './routes/api/internal/billing-sweep'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
 import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
@@ -66,6 +70,7 @@ import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/int
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
+import { Route as ApiPublicPlansRouteImport } from './routes/api/public/plans'
 import { Route as ApiPublicRazorpayWebhookRouteImport } from './routes/api/public/razorpay-webhook'
 import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
 import { Route as ApiPublicShopifyWebhookRouteImport } from './routes/api/public/shopify-webhook'
@@ -150,6 +155,11 @@ const AdminActivityRoute = AdminActivityRouteImport.update({
 const AdminAiRoute = AdminAiRouteImport.update({
   id: '/ai',
   path: '/ai',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminBillingRoute = AdminBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminFlagsRoute = AdminFlagsRouteImport.update({
@@ -240,6 +250,11 @@ const RTokenRoute = RTokenRouteImport.update({
 const ApiAdminAiRoute = ApiAdminAiRouteImport.update({
   id: '/api/admin/ai',
   path: '/api/admin/ai',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminBillingRoute = ApiAdminBillingRouteImport.update({
+  id: '/api/admin/billing',
+  path: '/api/admin/billing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAiEmployeeRoute = ApiAiEmployeeRouteImport.update({
@@ -338,6 +353,17 @@ const ApiInternalAiRunRoute = ApiInternalAiRunRouteImport.update({
   path: '/api/internal/ai-run',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalBillingNotifyRoute =
+  ApiInternalBillingNotifyRouteImport.update({
+    id: '/api/internal/billing-notify',
+    path: '/api/internal/billing-notify',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiInternalBillingSweepRoute = ApiInternalBillingSweepRouteImport.update({
+  id: '/api/internal/billing-sweep',
+  path: '/api/internal/billing-sweep',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalCampaignWorkerRoute =
   ApiInternalCampaignWorkerRouteImport.update({
     id: '/api/internal/campaign-worker',
@@ -381,6 +407,11 @@ const ApiInternalShopifySyncWorkerRoute =
 const ApiInternalVersionRoute = ApiInternalVersionRouteImport.update({
   id: '/api/internal/version',
   path: '/api/internal/version',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicPlansRoute = ApiPublicPlansRouteImport.update({
+  id: '/api/public/plans',
+  path: '/api/public/plans',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicRazorpayWebhookRoute =
@@ -532,6 +563,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -551,6 +583,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
+  '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -570,6 +603,8 @@ export interface FileRoutesByFullPath {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
+  '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
+  '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
@@ -578,6 +613,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
@@ -614,6 +650,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -633,6 +670,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
+  '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -652,6 +690,8 @@ export interface FileRoutesByTo {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
+  '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
+  '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
@@ -660,6 +700,7 @@ export interface FileRoutesByTo {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
@@ -699,6 +740,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -718,6 +760,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
+  '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -737,6 +780,8 @@ export interface FileRoutesById {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
+  '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
+  '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
@@ -745,6 +790,7 @@ export interface FileRoutesById {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
@@ -785,6 +831,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/activity'
     | '/admin/ai'
+    | '/admin/billing'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -804,6 +851,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/app/'
     | '/api/admin/ai'
+    | '/api/admin/billing'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -823,6 +871,8 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
+    | '/api/internal/billing-notify'
+    | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
@@ -831,6 +881,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
@@ -867,6 +918,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/activity'
     | '/admin/ai'
+    | '/admin/billing'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -886,6 +938,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/api/admin/ai'
+    | '/api/admin/billing'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -905,6 +958,8 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
+    | '/api/internal/billing-notify'
+    | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
@@ -913,6 +968,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
@@ -951,6 +1007,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/activity'
     | '/admin/ai'
+    | '/admin/billing'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -970,6 +1027,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/app/'
     | '/api/admin/ai'
+    | '/api/admin/billing'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -989,6 +1047,8 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
+    | '/api/internal/billing-notify'
+    | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
@@ -997,6 +1057,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
@@ -1039,6 +1100,7 @@ export interface RootRouteChildren {
   JoinTokenRoute: typeof JoinTokenRoute
   RTokenRoute: typeof RTokenRoute
   ApiAdminAiRoute: typeof ApiAdminAiRoute
+  ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
   ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
@@ -1058,6 +1120,8 @@ export interface RootRouteChildren {
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalAiRunRoute: typeof ApiInternalAiRunRoute
+  ApiInternalBillingNotifyRoute: typeof ApiInternalBillingNotifyRoute
+  ApiInternalBillingSweepRoute: typeof ApiInternalBillingSweepRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
   ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
@@ -1066,6 +1130,7 @@ export interface RootRouteChildren {
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
+  ApiPublicPlansRoute: typeof ApiPublicPlansRoute
   ApiPublicRazorpayWebhookRoute: typeof ApiPublicRazorpayWebhookRoute
   ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
   ApiPublicShopifyWebhookRoute: typeof ApiPublicShopifyWebhookRoute
@@ -1171,6 +1236,13 @@ declare module '@tanstack/react-router' {
       path: '/ai'
       fullPath: '/admin/ai'
       preLoaderRoute: typeof AdminAiRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/billing': {
+      id: '/admin/billing'
+      path: '/billing'
+      fullPath: '/admin/billing'
+      preLoaderRoute: typeof AdminBillingRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/flags': {
@@ -1297,6 +1369,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/ai'
       fullPath: '/api/admin/ai'
       preLoaderRoute: typeof ApiAdminAiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/billing': {
+      id: '/api/admin/billing'
+      path: '/api/admin/billing'
+      fullPath: '/api/admin/billing'
+      preLoaderRoute: typeof ApiAdminBillingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/employee': {
@@ -1432,6 +1511,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalAiRunRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/billing-notify': {
+      id: '/api/internal/billing-notify'
+      path: '/api/internal/billing-notify'
+      fullPath: '/api/internal/billing-notify'
+      preLoaderRoute: typeof ApiInternalBillingNotifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/billing-sweep': {
+      id: '/api/internal/billing-sweep'
+      path: '/api/internal/billing-sweep'
+      fullPath: '/api/internal/billing-sweep'
+      preLoaderRoute: typeof ApiInternalBillingSweepRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/campaign-worker': {
       id: '/api/internal/campaign-worker'
       path: '/api/internal/campaign-worker'
@@ -1486,6 +1579,13 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/version'
       fullPath: '/api/internal/version'
       preLoaderRoute: typeof ApiInternalVersionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/plans': {
+      id: '/api/public/plans'
+      path: '/api/public/plans'
+      fullPath: '/api/public/plans'
+      preLoaderRoute: typeof ApiPublicPlansRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/razorpay-webhook': {
@@ -1669,6 +1769,7 @@ declare module '@tanstack/react-router' {
 interface AdminRouteRouteChildren {
   AdminActivityRoute: typeof AdminActivityRoute
   AdminAiRoute: typeof AdminAiRoute
+  AdminBillingRoute: typeof AdminBillingRoute
   AdminFlagsRoute: typeof AdminFlagsRoute
   AdminOrganizationsRoute: typeof AdminOrganizationsRoute
   AdminUsersRoute: typeof AdminUsersRoute
@@ -1678,6 +1779,7 @@ interface AdminRouteRouteChildren {
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminActivityRoute: AdminActivityRoute,
   AdminAiRoute: AdminAiRoute,
+  AdminBillingRoute: AdminBillingRoute,
   AdminFlagsRoute: AdminFlagsRoute,
   AdminOrganizationsRoute: AdminOrganizationsRoute,
   AdminUsersRoute: AdminUsersRoute,
@@ -1745,6 +1847,7 @@ const rootRouteChildren: RootRouteChildren = {
   JoinTokenRoute: JoinTokenRoute,
   RTokenRoute: RTokenRoute,
   ApiAdminAiRoute: ApiAdminAiRoute,
+  ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
   ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,
@@ -1764,6 +1867,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalAiRunRoute: ApiInternalAiRunRoute,
+  ApiInternalBillingNotifyRoute: ApiInternalBillingNotifyRoute,
+  ApiInternalBillingSweepRoute: ApiInternalBillingSweepRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
   ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
@@ -1772,6 +1877,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
+  ApiPublicPlansRoute: ApiPublicPlansRoute,
   ApiPublicRazorpayWebhookRoute: ApiPublicRazorpayWebhookRoute,
   ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
   ApiPublicShopifyWebhookRoute: ApiPublicShopifyWebhookRoute,
