@@ -101,7 +101,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
 
         // 2. Verify the number before anything is written.
         const check = await graphFetch(phoneNumberId, accessToken, {
-          query: { fields: "id,display_phone_number,verified_name,quality_rating" },
+          query: { fields: "id,display_phone_number,verified_name,quality_rating,messaging_limit_tier" },
         });
         if (!check.ok) {
           return stepError(graphErrorMessage(check.body), "token_exchanged", 400);
@@ -173,6 +173,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
               display_phone_number: (check.body["display_phone_number"] as string) ?? null,
               verified_name: (check.body["verified_name"] as string) ?? null,
               quality_rating: (check.body["quality_rating"] as string) ?? "UNKNOWN",
+              messaging_tier: (check.body["messaging_limit_tier"] as string | null) ?? null,
               status: "active",
               connected_at: new Date().toISOString(),
             },
