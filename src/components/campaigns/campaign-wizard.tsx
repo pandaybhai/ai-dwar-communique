@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
+import { money, type CampaignCostEstimate } from "@/lib/billing";
 import {
   VARIABLE_SOURCE_LABELS,
   mappingIsComplete,
