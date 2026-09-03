@@ -1,5 +1,6 @@
 -- Plan fees and the dunning ladder run once a day, early, before anyone is
--- likely to be sending. Both steps are idempotent per billing period.
+-- likely to be sending. Both steps are idempotent per billing period, and the
+-- cron secret is read from the Vault like every other worker.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
@@ -10,9 +11,12 @@ SELECT cron.schedule(
   'aidwar-plan-billing',
   '30 3 * * *',
   $$
-  SELECT net.http_post(
-    url := 'https://project--51455eca-09ce-4838-a463-2f6ecd0c72cd.lovable.app/api/internal/plan-billing',
-    headers := '{"Content-Type": "application/json", "x-cron-secret": "<CRON_SECRET>"}'::jsonb,
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/plan-billing',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
     body := '{}'::jsonb
   );
   $$
