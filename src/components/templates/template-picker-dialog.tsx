@@ -156,6 +156,8 @@ export function TemplatePickerDialog({
       setValues({});
       setHeaderMediaUrl(null);
       setCardMediaUrls({});
+      setCouponCode("");
+      setOfferEndsAt("");
       onOpenChange(false);
     }
   };
