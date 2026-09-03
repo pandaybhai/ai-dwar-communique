@@ -368,6 +368,8 @@ export function CampaignWizard({
           ...(cards.length
             ? { cards: cards.map((_, i) => ({ media_url: cardMedia[i] ?? null })) }
             : {}),
+          ...(needsCoupon && couponCode.trim() ? { coupon_code: couponCode.trim() } : {}),
+          ...(offerExpiresAt ? { offer_expires_at: offerExpiresAt } : {}),
         },
       },
     });
