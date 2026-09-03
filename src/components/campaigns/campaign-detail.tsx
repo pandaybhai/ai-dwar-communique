@@ -104,6 +104,7 @@ export function CampaignDetail({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [offer, setOffer] = useState({ received: 0, tapped: 0, redeemed: 0 });
 
   const load = useCallback(async () => {
     const [{ data: c, error: cErr }, { data: r, count }] = await Promise.all([
@@ -127,7 +128,35 @@ export function CampaignDetail({
     setRecipients((r ?? []) as CampaignRecipientRow[]);
     setTotal(count ?? 0);
     setLoading(false);
+
+    // Offer numbers only matter when this campaign actually carried a coupon.
+    const settings = ((c as CampaignRow | null)?.send_settings ?? {}) as Record<string, unknown>;
+    if (String(settings["coupon_code"] ?? "").trim()) {
+      const [received, tapped, redeemed] = await Promise.all([
+        aidwar
+          .from("campaign_recipients")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId)
+          .in("status", ["sent", "delivered", "read", "replied"]),
+        aidwar
+          .from("campaign_offer_events")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId)
+          .eq("event", "tapped"),
+        aidwar
+          .from("campaign_offer_events")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId)
+          .eq("event", "redeemed"),
+      ]);
+      setOffer({
+        received: received.count ?? 0,
+        tapped: tapped.count ?? 0,
+        redeemed: redeemed.count ?? 0,
+      });
+    }
   }, [campaignId, organizationId, page]);
+
 
   useEffect(() => {
     void load();
