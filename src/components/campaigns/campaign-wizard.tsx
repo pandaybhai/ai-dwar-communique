@@ -336,9 +336,26 @@ export function CampaignWizard({
   /** The code a given card actually sends: its own, else the main one. */
   const effectiveCardCoupon = (index: number) =>
     (cardCoupons[index] ?? "").trim() || couponCode.trim();
+  /** Cards whose own code collides with another card's own code. */
+  const duplicateCouponCards = useMemo(() => {
+    const seen = new Map<string, number>();
+    const dupes = new Set<number>();
+    for (const card of couponCards) {
+      const own = (cardCoupons[card.index] ?? "").trim();
+      if (!own) continue;
+      if (seen.has(own)) {
+        dupes.add(seen.get(own)!);
+        dupes.add(card.index);
+      } else {
+        seen.set(own, card.index);
+      }
+    }
+    return dupes;
+  }, [couponCards, cardCoupons]);
   const couponsReady =
     (!needsMainCoupon || couponCode.trim().length > 0) &&
-    couponCards.every((c) => effectiveCardCoupon(c.index).length > 0);
+    couponCards.every((c) => effectiveCardCoupon(c.index).length > 0) &&
+    duplicateCouponCards.size === 0;
   const needsOfferExpiry = spec.offerExpiration;
   const offerExpiresAt = useMemo(() => {
     if (!needsOfferExpiry || !offerDate) return null;
