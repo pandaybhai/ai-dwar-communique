@@ -299,6 +299,32 @@ export function CampaignWizard({
     return () => clearTimeout(t);
   }, [open, step, loadAudience]);
 
+  // What this send costs, and whether there's enough in the wallet.
+  useEffect(() => {
+    if (!open || step !== 1) return;
+    const recipients = audience?.eligible ?? 0;
+    if (!recipients) {
+      setEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await callApi<CostEstimate>("/api/campaigns/estimate", {
+        body: {
+          organization_id: organizationId,
+          recipients,
+          category: templateCategory,
+          whatsapp_account_id: accountId || null,
+        },
+      });
+      if (!cancelled) setEstimate(data && data.enabled ? data : null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, step, organizationId, audience?.eligible, templateCategory, accountId]);
+
+
 
   const template = useMemo(
     () => templates.find((t) => t.name === templateName) ?? null,
