@@ -108,11 +108,10 @@ export function TemplatePickerDialog({
         ? { link: effectiveHeaderMedia }
         : undefined,
       cards: spec.cards.length
-        ? spec.cards.map((_, i) => ({
-            media: effectiveCardMedia(i)
-              ? { link: effectiveCardMedia(i) as string }
-              : undefined,
-          }))
+        ? spec.cards.map((_, i) => {
+            const link = effectiveCardMedia(i);
+            return link ? { media: { link } } : {};
+          })
         : undefined,
     });
     if (!built.components) {
