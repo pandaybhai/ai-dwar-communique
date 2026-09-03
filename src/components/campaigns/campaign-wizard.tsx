@@ -982,13 +982,9 @@ export function CampaignWizard({
                       ...(needsMainCoupon && couponCode.trim()
                         ? [["Coupon code", couponCode.trim()] as [string, string]]
                         : []),
-                      ...couponCards.map(
-                        (c) =>
-                          [`Card ${c.index + 1} code`, effectiveCardCoupon(c.index)] as [
-                            string,
-                            string,
-                          ],
-                      ),
+                      ...(couponCards.length === 0 && needsMainCoupon && couponCode.trim()
+                        ? []
+                        : []),
                       ...(offerExpiresAt
                         ? [["Offer ends", formatInZone(offerExpiresAt, timezone)] as [string, string]]
                         : []),
@@ -1047,7 +1043,7 @@ export function CampaignWizard({
               Continue <ArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
           ) : (
-            <Button className="rounded-full" disabled={launching || offerIssue?.level === "error"} onClick={() => void launch()}>
+            <Button className="rounded-full" disabled={launching || !offerReady || offerIssue?.level === "error"} onClick={() => void launch()}>
               {launching ? (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
               ) : (
