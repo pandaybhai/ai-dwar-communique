@@ -982,9 +982,6 @@ export function CampaignWizard({
                       ...(needsMainCoupon && couponCode.trim()
                         ? [["Coupon code", couponCode.trim()] as [string, string]]
                         : []),
-                      ...(couponCards.length === 0 && needsMainCoupon && couponCode.trim()
-                        ? []
-                        : []),
                       ...(offerExpiresAt
                         ? [["Offer ends", formatInZone(offerExpiresAt, timezone)] as [string, string]]
                         : []),
@@ -995,6 +992,35 @@ export function CampaignWizard({
                       </div>
                     ))}
                   </dl>
+                  {couponCards.length > 0 && (
+                    <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Offer on each card
+                      </p>
+                      {couponCards.map((card) => (
+                        <div
+                          key={card.index}
+                          className="space-y-0.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs"
+                        >
+                          <p className="font-medium">
+                            Card {card.index + 1}
+                            {cards[card.index]?.body
+                              ? ` — ${cards[card.index]!.body}`
+                              : ""}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Code{" "}
+                            <span className="font-mono font-medium text-foreground">
+                              {effectiveCardCoupon(card.index)}
+                            </span>
+                            {offerExpiresAt
+                              ? ` · ends ${formatInZone(offerExpiresAt, timezone)}`
+                              : ""}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {needsCoupon || needsOfferExpiry ? (
                   <div className="rounded-2xl bg-[#ECE5DD] p-4 dark:bg-muted">
