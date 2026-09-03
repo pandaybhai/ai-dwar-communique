@@ -462,7 +462,13 @@ export function CampaignWizard({
 
   const canNext = () => {
     if (step === 0) return name.trim().length >= 2;
-    if (step === 1) return Boolean(accountId) && (audience?.eligible ?? 0) > 0;
+    if (step === 1)
+      return (
+        Boolean(accountId) &&
+        (audience?.eligible ?? 0) > 0 &&
+        (estimate ? estimate.can_send : true)
+      );
+
     if (step === 2)
       return (
         Boolean(template) &&
