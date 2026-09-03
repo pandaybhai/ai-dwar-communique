@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
+import { formatCountdown } from "@/lib/offers";
 import {
+
   Copy,
   ExternalLink,
   FileText,
@@ -40,8 +43,11 @@ export type PreviewModel = {
     body: string;
     buttons: PreviewButton[];
   }>;
-  offer: { text: string; hasExpiration: boolean } | null;
+  offer: { text: string; hasExpiration: boolean; expiresAt?: string | null } | null;
+  /** The code a copy-code button hands the customer, when it's known. */
+  couponCode?: string | null;
 };
+
 
 /** Fills {{1}}-style placeholders with the merchant's example values. */
 function fill(text: string, examples: Record<number | string, string>): string {
@@ -130,16 +136,30 @@ const BUTTON_ICON: Record<string, typeof Reply> = {
   OTP: Copy,
 };
 
-function ButtonRow({ button }: { button: PreviewButton }) {
+function ButtonRow({
+  button,
+  couponCode,
+}: {
+  button: PreviewButton;
+  couponCode?: string | null;
+}) {
   const type = String(button["type"] ?? "QUICK_REPLY").toUpperCase();
   const Icon = BUTTON_ICON[type] ?? Reply;
   const label = String(button["text"] ?? "Button");
+  const code =
+    (type === "COPY_CODE" || type === "OTP") && couponCode ? couponCode : null;
   return (
     <div className="flex items-center justify-center gap-1.5 border-t border-border/60 py-2 text-[13px] font-medium text-primary">
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       <span className="truncate">{label}</span>
+      {code ? (
+        <span className="ml-1 rounded-md bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] tracking-wide">
+          {code}
+        </span>
+      ) : null}
     </div>
   );
+
 }
 
 function MediaBlock({
@@ -188,6 +208,21 @@ function MediaBlock({
   );
 }
 
+/** Ticks down the same way the countdown on the customer's phone does. */
+function OfferCountdown({ expiresAt }: { expiresAt: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!expiresAt) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [expiresAt]);
+  if (!expiresAt) return <>Ends in 11:59:00</>;
+  const end = new Date(expiresAt).getTime();
+  if (Number.isNaN(end)) return <>Ends in 11:59:00</>;
+  const left = end - now;
+  return <>{left > 0 ? `Ends in ${formatCountdown(left)}` : "Offer ended"}</>;
+}
+
 export function TemplatePreview({
   model,
   className = "",
@@ -196,6 +231,8 @@ export function TemplatePreview({
   className?: string;
 }) {
   const { header, body, footer, buttons, cards, offer } = model;
+  const couponCode = model.couponCode ?? null;
+
 
   return (
     <div className={`max-w-sm ${className}`}>
@@ -218,9 +255,14 @@ export function TemplatePreview({
             <div className="flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
               <Timer className="h-3.5 w-3.5" aria-hidden="true" />
               <span className="truncate">{offer.text}</span>
-              {offer.hasExpiration ? <span className="ml-auto shrink-0">Ends in 11:59:00</span> : null}
+              {offer.hasExpiration ? (
+                <span className="ml-auto shrink-0 tabular-nums">
+                  <OfferCountdown expiresAt={offer.expiresAt ?? null} />
+                </span>
+              ) : null}
             </div>
           ) : null}
+
 
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
             {body || "Your message preview appears here."}
@@ -232,7 +274,7 @@ export function TemplatePreview({
         {buttons.length > 0 ? (
           <div className="px-3 pb-1">
             {buttons.map((button, index) => (
-              <ButtonRow key={index} button={button} />
+              <ButtonRow key={index} button={button} couponCode={couponCode} />
             ))}
           </div>
         ) : null}
@@ -254,7 +296,7 @@ export function TemplatePreview({
               {card.buttons.length > 0 ? (
                 <div className="px-2 pb-1">
                   {card.buttons.map((button, i) => (
-                    <ButtonRow key={i} button={button} />
+                    <ButtonRow key={i} button={button} couponCode={couponCode} />
                   ))}
                 </div>
               ) : null}

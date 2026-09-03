@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
+
   ArrowRight,
   CalendarClock,
   Check,
@@ -34,6 +36,16 @@ import {
   type TemplateRow,
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
+import {
+  TemplatePreview,
+  componentsToPreview,
+} from "@/components/templates/template-preview";
+import {
+  formatInZone,
+  offerTimingIssue,
+  zonedToUtcIso,
+} from "@/lib/offers";
+
 import type { SegmentRow } from "@/lib/segments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -313,12 +325,12 @@ export function CampaignWizard({
   const needsOfferExpiry = spec.offerExpiration;
   const offerExpiresAt = useMemo(() => {
     if (!needsOfferExpiry || !offerDate) return null;
-    const d = new Date(`${offerDate}T${offerTime || "23:59"}`);
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
-  }, [needsOfferExpiry, offerDate, offerTime]);
+    return zonedToUtcIso(offerDate, offerTime || "23:59", timezone);
+  }, [needsOfferExpiry, offerDate, offerTime, timezone]);
   const offerReady =
     (!needsCoupon || couponCode.trim().length > 0) &&
     (!needsOfferExpiry || Boolean(offerExpiresAt));
+
 
   const previewValues = useMemo(() => {
     const out: Record<number, string> = {};
@@ -334,9 +346,48 @@ export function CampaignWizard({
 
   const scheduledAt = useMemo(() => {
     if (sendNow || !date) return null;
-    const iso = new Date(`${date}T${time || "09:00"}`);
-    return Number.isNaN(iso.getTime()) ? null : iso.toISOString();
-  }, [sendNow, date, time]);
+    // The time the merchant typed is wall-clock time in the workspace
+    // timezone, not the timezone of the device they're on.
+    return zonedToUtcIso(date, time || "09:00", timezone);
+  }, [sendNow, date, time, timezone]);
+
+  // Does the offer end at a moment that still makes sense once it lands?
+  const offerIssue = useMemo(
+    () => offerTimingIssue({ expiresAt: offerExpiresAt, sendAt: scheduledAt, timeZone: timezone }),
+    [offerExpiresAt, scheduledAt, timezone],
+  );
+
+  /** Exactly what the customer sees, coupon and countdown included. */
+  const previewModel = useMemo(() => {
+    const model = componentsToPreview(template?.components, previewValues);
+    return {
+      ...model,
+      header: model.header
+        ? {
+            ...model.header,
+            mediaUrl:
+              needsHeaderMedia && effectiveHeaderMedia
+                ? effectiveHeaderMedia
+                : model.header.mediaUrl,
+          }
+        : null,
+      cards: model.cards.map((card, i) => ({
+        ...card,
+        mediaUrl: effectiveCardMedia(i) || card.mediaUrl,
+      })),
+      offer: model.offer ? { ...model.offer, expiresAt: offerExpiresAt } : null,
+      couponCode: couponCode.trim() || null,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    template,
+    previewValues,
+    needsHeaderMedia,
+    effectiveHeaderMedia,
+    cardMedia,
+    offerExpiresAt,
+    couponCode,
+  ]);
 
   const canNext = () => {
     if (step === 0) return name.trim().length >= 2;
@@ -346,11 +397,13 @@ export function CampaignWizard({
         Boolean(template) &&
         mediaReady &&
         offerReady &&
+        offerIssue?.level !== "error" &&
         variables.every((n) => mappingIsComplete(mappings[String(n)]))
       );
-    if (step === 3) return sendNow || Boolean(scheduledAt);
+    if (step === 3) return (sendNow || Boolean(scheduledAt)) && offerIssue?.level !== "error";
     return true;
   };
+
 
   const launch = async () => {
     setLaunching(true);
@@ -591,7 +644,9 @@ export function CampaignWizard({
                     )}
                     {needsOfferExpiry && (
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">Offer ends</Label>
+                        <Label className="text-xs font-medium">
+                          Offer ends ({timezone})
+                        </Label>
                         <div className="flex gap-2">
                           <Input
                             type="date"
@@ -605,12 +660,44 @@ export function CampaignWizard({
                           />
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          The countdown in the message ticks down to this moment.
+                          {offerExpiresAt
+                            ? `The countdown ends ${formatInZone(offerExpiresAt, timezone)} — your workspace time.`
+                            : "The countdown in the message ticks down to this moment, read in your workspace timezone."}
                         </p>
+                      </div>
+                    )}
+                    {offerIssue && (
+                      <div
+                        role="status"
+                        className={cn(
+                          "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
+                          offerIssue.level === "error"
+                            ? "border-destructive/40 bg-destructive/10 text-destructive"
+                            : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                        )}
+                      >
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span>{offerIssue.message}</span>
                       </div>
                     )}
                   </div>
                 )}
+
+                {(needsCoupon || needsOfferExpiry) && template && (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">
+                      Exactly what the customer sees
+                    </Label>
+                    <div className="rounded-2xl bg-[#ECE5DD] p-4 dark:bg-muted">
+                      <TemplatePreview model={previewModel} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      The countdown is live — it ticks down here the same way it will on their
+                      phone.
+                    </p>
+                  </div>
+                )}
+
 
                 {variables.map((n) => {
                   const m = mappings[String(n)];
@@ -749,6 +836,22 @@ export function CampaignWizard({
                     </div>
                   </div>
                 )}
+
+                {offerIssue && (
+                  <div
+                    role="status"
+                    className={cn(
+                      "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
+                      offerIssue.level === "error"
+                        ? "border-destructive/40 bg-destructive/10 text-destructive"
+                        : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                    )}
+                  >
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>{offerIssue.message}</span>
+                  </div>
+                )}
+
               </div>
             )}
 
@@ -773,11 +876,16 @@ export function CampaignWizard({
                         "Sending",
                         sendNow
                           ? "Immediately"
-                          : new Date(scheduledAt ?? "").toLocaleString(undefined, {
-                              dateStyle: "medium",
-                              timeStyle: "short",
-                            }),
+                          : scheduledAt
+                            ? formatInZone(scheduledAt, timezone)
+                            : "—",
                       ],
+                      ...(needsCoupon && couponCode.trim()
+                        ? [["Coupon code", couponCode.trim()] as [string, string]]
+                        : []),
+                      ...(offerExpiresAt
+                        ? [["Offer ends", formatInZone(offerExpiresAt, timezone)] as [string, string]]
+                        : []),
                     ].map(([k, v]) => (
                       <div key={k} className="flex justify-between gap-4">
                         <dt className="text-muted-foreground">{k}</dt>
@@ -786,22 +894,29 @@ export function CampaignWizard({
                     ))}
                   </dl>
                 </div>
-                <ChatPreview
-                  body={renderTemplate(bodyText, previewValues)}
-                  footer={footerText}
-                  imageUrl={
-                    needsHeaderMedia && headerMediaFormat === "IMAGE"
-                      ? effectiveHeaderMedia || undefined
-                      : undefined
-                  }
-                  mediaLabel={
-                    needsHeaderMedia && headerMediaFormat !== "IMAGE"
-                      ? headerMediaFormat === "VIDEO"
-                        ? "Video attached"
-                        : "Document attached"
-                      : undefined
-                  }
-                />
+                {needsCoupon || needsOfferExpiry ? (
+                  <div className="rounded-2xl bg-[#ECE5DD] p-4 dark:bg-muted">
+                    <TemplatePreview model={previewModel} />
+                  </div>
+                ) : (
+                  <ChatPreview
+                    body={renderTemplate(bodyText, previewValues)}
+                    footer={footerText}
+                    imageUrl={
+                      needsHeaderMedia && headerMediaFormat === "IMAGE"
+                        ? effectiveHeaderMedia || undefined
+                        : undefined
+                    }
+                    mediaLabel={
+                      needsHeaderMedia && headerMediaFormat !== "IMAGE"
+                        ? headerMediaFormat === "VIDEO"
+                          ? "Video attached"
+                          : "Document attached"
+                        : undefined
+                    }
+                  />
+                )}
+
               </div>
             )}
           </div>
@@ -826,7 +941,7 @@ export function CampaignWizard({
               Continue <ArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
           ) : (
-            <Button className="rounded-full" disabled={launching} onClick={() => void launch()}>
+            <Button className="rounded-full" disabled={launching || offerIssue?.level === "error"} onClick={() => void launch()}>
               {launching ? (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
               ) : (
