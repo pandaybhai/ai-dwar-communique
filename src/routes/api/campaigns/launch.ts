@@ -36,6 +36,22 @@ export const Route = createFileRoute("/api/campaigns/launch")({
           { source: "name" | "phone" | "attribute" | "static"; key?: string; value?: string }
         >;
 
+        // Media the sender chose for this campaign: the header picture/clip/file
+        // and one file per carousel card. Only https links are kept.
+        const rawSettings = (payload["send_settings"] ?? {}) as Record<string, unknown>;
+        const httpsOrNull = (v: unknown): string | null => {
+          const s = typeof v === "string" ? v.trim() : "";
+          return s.startsWith("https://") ? s : null;
+        };
+        const sendSettings: Record<string, unknown> = {};
+        const headerMedia = httpsOrNull(rawSettings["header_media_url"]);
+        if (headerMedia) sendSettings["header_media_url"] = headerMedia;
+        const cardsRaw = Array.isArray(rawSettings["cards"]) ? rawSettings["cards"] : [];
+        const cards = cardsRaw.map((c) =>
+          httpsOrNull((c as Record<string, unknown> | null)?.["media_url"]),
+        );
+        if (cards.some(Boolean)) sendSettings["cards"] = cards.map((media_url) => ({ media_url }));
+
         if (!name) return jsonError("Give your campaign a name.");
         if (!templateName) return jsonError("Pick an approved template.");
 
