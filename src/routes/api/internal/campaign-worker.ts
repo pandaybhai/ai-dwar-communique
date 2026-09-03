@@ -43,6 +43,16 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
               .eq("id", campaignId);
           }
 
+          // Reserve the credits before the first message leaves.
+          const { holdCampaign } = await import("@/lib/campaign-billing.server");
+          const hold = await holdCampaign(supabase, orgId, campaignId);
+          if (!hold.ok) {
+            await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
+            report.push({ campaign_id: campaignId, paused: "insufficient_credits" });
+            continue;
+          }
+
+
           const templateName = (campaign["template_name"] as string | null) ?? "";
           if (!templateName) {
             await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaignId);
@@ -190,8 +200,12 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
                   failed_count: finished[0]!.failed_count ?? null,
                 },
               });
+              // Charge for what went out; the unused reservation goes back.
+              const { settleCampaignSpend } = await import("@/lib/campaign-billing.server");
+              await settleCampaignSpend(supabase, orgId, campaignId);
             }
           }
+
 
           report.push({ campaign_id: campaignId, sent, failed, remaining: remaining ?? 0 });
         }

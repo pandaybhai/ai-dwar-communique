@@ -14,6 +14,9 @@ import {
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
+import { useNavigate } from "@tanstack/react-router";
+import { usePermissions } from "@/hooks/use-permissions";
+import { money, type CampaignCostEstimate } from "@/lib/billing";
 import {
   VARIABLE_SOURCE_LABELS,
   mappingIsComplete,
@@ -162,6 +165,8 @@ export function CampaignWizard({
   timezone: string;
   onLaunched: (campaignId: string) => void;
 }) {
+  const { can } = usePermissions();
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [segmentId, setSegmentId] = useState<string>("all");
@@ -172,6 +177,8 @@ export function CampaignWizard({
   const [mappings, setMappings] = useState<VariableMappings>({});
   const [audience, setAudience] = useState<AudienceSummary | null>(null);
   const [audienceLoading, setAudienceLoading] = useState(false);
+  const [estimate, setEstimate] = useState<CampaignCostEstimate | null>(null);
+
   const [sendNow, setSendNow] = useState(true);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
@@ -299,6 +306,36 @@ export function CampaignWizard({
     return () => clearTimeout(t);
   }, [open, step, loadAudience]);
 
+  // What this send costs, and whether there's enough in the wallet.
+  useEffect(() => {
+    if (!open || step !== 1) return;
+    const recipients = audience?.eligible ?? 0;
+    if (!recipients) {
+      setEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    const category = (
+      templates.find((t) => t.name === templateName)?.category ?? "marketing"
+    ).toLowerCase();
+    void (async () => {
+      const { data } = await callApi<CampaignCostEstimate>("/api/campaigns/estimate", {
+        body: {
+          organization_id: organizationId,
+          recipients,
+          category,
+          whatsapp_account_id: accountId || null,
+        },
+      });
+      if (!cancelled) setEstimate(data && data.enabled ? data : null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, step, organizationId, audience?.eligible, templates, templateName, accountId]);
+
+
+
 
   const template = useMemo(
     () => templates.find((t) => t.name === templateName) ?? null,
@@ -425,7 +462,13 @@ export function CampaignWizard({
 
   const canNext = () => {
     if (step === 0) return name.trim().length >= 2;
-    if (step === 1) return Boolean(accountId) && (audience?.eligible ?? 0) > 0;
+    if (step === 1)
+      return (
+        Boolean(accountId) &&
+        (audience?.eligible ?? 0) > 0 &&
+        (estimate ? estimate.can_send : true)
+      );
+
     if (step === 2)
       return (
         Boolean(template) &&
@@ -576,6 +619,70 @@ export function CampaignWizard({
                     </>
                   )}
                 </div>
+
+                {estimate ? (
+                  <div
+                    className={cn(
+                      "rounded-2xl border p-5 shadow-sm",
+                      estimate.can_send
+                        ? "border-border/70 bg-card"
+                        : "border-destructive/40 bg-destructive/5",
+                    )}
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-sm text-muted-foreground">This send costs about</span>
+                      <span className="text-lg font-semibold tabular-nums">
+                        {money(estimate.estimate, estimate.currency)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {money(estimate.rate, estimate.currency)} per message · you have{" "}
+                      {money(estimate.available, estimate.currency)} in credits
+                    </p>
+                    {!estimate.can_send && (
+                      <div className="mt-3 space-y-2">
+                        <p className="text-sm text-destructive">
+                          You&apos;re short {money(estimate.shortfall, estimate.currency)}. Add
+                          credits to send this campaign.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {can("billing.pay") && (
+                            <Button
+                              size="sm"
+                              className="rounded-full"
+                              onClick={() => navigate({ to: "/app/billing" })}
+                            >
+                              Buy credits
+                            </Button>
+                          )}
+                          {can("billing.request") && !can("billing.pay") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-full"
+                              onClick={() => navigate({ to: "/app/billing" })}
+                            >
+                              Request a top-up
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {estimate.can_send && estimate.needs_approval && (
+                      <p className="mt-3 text-sm text-amber-600 dark:text-amber-500">
+                        This is above your approval limit, so it will wait for an owner to approve
+                        it before anything sends.
+                      </p>
+                    )}
+                    {estimate.over_daily_limit && (
+                      <p className="mt-3 text-sm text-amber-600 dark:text-amber-500">
+                        Your number can message {estimate.daily_limit} people a day right now, so
+                        this will spread over about {estimate.days_needed} days.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+
               </div>
             )}
 

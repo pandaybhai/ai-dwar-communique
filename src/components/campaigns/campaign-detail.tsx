@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
+import { money } from "@/lib/billing";
 import { callApi } from "@/lib/whatsapp-client";
 import {
   CAMPAIGN_STATUS_CLASSES,
@@ -167,7 +168,7 @@ export function CampaignDetail({
     return () => clearInterval(t);
   }, [load]);
 
-  const control = async (action: "pause" | "resume" | "cancel") => {
+  const control = async (action: "pause" | "resume" | "cancel" | "approve") => {
     setBusy(true);
     const { error: err } = await callApi("/api/campaigns/control", {
       body: { organization_id: organizationId, campaign_id: campaignId, action },
@@ -176,11 +177,18 @@ export function CampaignDetail({
     if (err) toast.error(err);
     else {
       toast.success(
-        action === "pause" ? "Campaign paused." : action === "resume" ? "Campaign resumed." : "Campaign cancelled.",
+        action === "pause"
+          ? "Campaign paused."
+          : action === "resume"
+            ? "Campaign resumed."
+            : action === "approve"
+              ? "Approved — sending starts now."
+              : "Campaign cancelled.",
       );
       void load();
     }
   };
+
 
   if (loading) return <TableSkeleton />;
   if (error || !campaign) return <ErrorState message={error ?? "Campaign not found."} />;
@@ -191,6 +199,8 @@ export function CampaignDetail({
   );
   const progress = percent(campaign.sent_count + campaign.failed_count, campaign.total_recipients);
   const running = campaign.status === "sending" || campaign.status === "scheduled";
+  const hasSpend =
+    Number(campaign.estimated_cost ?? 0) > 0 || Number(campaign.charged_amount ?? 0) > 0;
   const sendSettings = (campaign.send_settings ?? {}) as Record<string, unknown>;
   const couponCode = String(sendSettings["coupon_code"] ?? "").trim();
   const offerEndsAt = String(sendSettings["offer_expires_at"] ?? "").trim() || null;
@@ -228,6 +238,16 @@ export function CampaignDetail({
 
           {isAdmin && (
             <div className="flex flex-wrap gap-2">
+              {campaign.status === "awaiting_approval" && (
+                <Button
+                  className="rounded-full"
+                  disabled={busy}
+                  onClick={() => void control("approve")}
+                >
+                  <Play className="mr-1.5 h-4 w-4" /> Approve and send
+                </Button>
+              )}
+
               {running && (
                 <Button
                   variant="outline"
@@ -281,6 +301,33 @@ export function CampaignDetail({
         <Stat label="Read" value={campaign.read_count} icon={Eye} />
         <Stat label="Failed" value={campaign.failed_count} icon={AlertTriangle} tone="danger" />
       </div>
+
+      {hasSpend && (
+        <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+          <h2 className="text-sm font-semibold">What this campaign cost</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Estimated</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {money(campaign.estimated_cost ?? 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Charged</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {money(campaign.charged_amount ?? 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Returned to credits</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {money(campaign.returned_amount ?? 0)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {couponCode && (
         <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">

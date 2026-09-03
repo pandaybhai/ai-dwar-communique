@@ -24,6 +24,59 @@ import {
 const MONTH_MS = 30 * 864e5;
 
 export type ActorContext = { organizationId: string; userId: string };
+export type Actor = { userId: string };
+
+/**
+ * Thrown when the caller isn't allowed to do this. Routes map it to 403 —
+ * money surfaces never fail open, and never rely on the caller having
+ * checked first.
+ */
+export class PermissionError extends Error {
+  readonly permission: string;
+  constructor(permission: string, message?: string) {
+    super(message ?? "You don't have permission to do this.");
+    this.name = "PermissionError";
+    this.permission = permission;
+  }
+}
+
+export function isPermissionError(value: unknown): value is PermissionError {
+  return value instanceof PermissionError || (value as Error)?.name === "PermissionError";
+}
+
+async function isSuperAdmin(supabase: SupabaseClient, userId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("is_super_admin")
+    .eq("id", userId)
+    .maybeSingle();
+  return (data as { is_super_admin?: boolean } | null)?.is_super_admin === true;
+}
+
+/**
+ * These functions run on the service client, which bypasses RLS, so
+ * public.has_permission (which reads auth.uid()) can't be used directly —
+ * resolveEffectivePermissions is its server-side mirror, resolved in the
+ * same order: super admin -> owner -> member override -> role preset.
+ */
+async function requirePerm(
+  supabase: SupabaseClient,
+  organizationId: string,
+  actor: Actor,
+  permission: string,
+): Promise<void> {
+  const { hasPermission } = await import("@/lib/permissions.server");
+  if (!actor?.userId) throw new PermissionError(permission);
+  const allowed = await hasPermission(supabase, organizationId, actor.userId, permission);
+  if (!allowed) throw new PermissionError(permission);
+}
+
+async function requireSuperAdmin(supabase: SupabaseClient, actor: Actor): Promise<void> {
+  if (!actor?.userId || !(await isSuperAdmin(supabase, actor.userId))) {
+    throw new PermissionError("super_admin", "This is a platform-owner action.");
+  }
+}
+
 
 export async function billingEnabled(
   supabase: SupabaseClient,
@@ -75,9 +128,20 @@ async function ensureWallet(supabase: SupabaseClient, organizationId: string) {
 export async function clientRates(
   supabase: SupabaseClient,
   organizationId: string,
+  actor: Actor,
+  country = "IN",
+): Promise<ClientRate[]> {
+  await requirePerm(supabase, organizationId, actor, "billing.view");
+  return clientRatesUnchecked(supabase, organizationId, country);
+}
+
+async function clientRatesUnchecked(
+  supabase: SupabaseClient,
+  organizationId: string,
   country = "IN",
 ): Promise<ClientRate[]> {
   const rows = await Promise.all(
+
     MESSAGE_CATEGORIES.map(async (category) => {
       const { data } = await supabase.rpc("client_rate_for", {
         p_org: organizationId,
@@ -156,7 +220,18 @@ async function usageBuckets(
 export async function getClientBillingSummary(
   supabase: SupabaseClient,
   organizationId: string,
+  actor: Actor,
 ): Promise<BillingSummary> {
+  await requirePerm(supabase, organizationId, actor, "billing.view");
+  return summaryUnchecked(supabase, organizationId);
+}
+
+/** Same read without the gate — for callers that already checked. */
+async function summaryUnchecked(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<BillingSummary> {
+
   const { start, end } = monthWindow();
   const [enabled, wallet, settings] = await Promise.all([
     billingEnabled(supabase, organizationId),
@@ -172,7 +247,7 @@ export async function getClientBillingSummary(
       )
       .eq("id", organizationId)
       .maybeSingle(),
-    clientRates(supabase, organizationId),
+    clientRatesUnchecked(supabase, organizationId),
     usageBuckets(supabase, organizationId, start, end),
     supabase
       .from("credit_packs")
@@ -265,8 +340,11 @@ export async function getClientBillingSummary(
 export async function listLedger(
   supabase: SupabaseClient,
   organizationId: string,
+  actor: Actor,
   { limit = 50, before }: { limit?: number; before?: string | null } = {},
 ) {
+  await requirePerm(supabase, organizationId, actor, "billing.view");
+
   let query = supabase
     .from("wallet_ledger")
     .select("id, entry_type, amount, balance_after, currency, description, reference_type, created_at")
@@ -278,12 +356,44 @@ export async function listLedger(
   return (data ?? []) as Record<string, unknown>[];
 }
 
+
+/** Invoices and payment attempts — the paperwork behind the ledger. */
+export async function listBillingDocuments(
+  supabase: SupabaseClient,
+  organizationId: string,
+  actor: Actor,
+  kind: "invoices" | "payments",
+): Promise<Record<string, unknown>[]> {
+  await requirePerm(supabase, organizationId, actor, "billing.view");
+
+  if (kind === "invoices") {
+    const { data } = await supabase
+      .from("invoices")
+      .select("id, invoice_number, kind, status, issue_date, total, currency, pdf_path")
+      .eq("organization_id", organizationId)
+      .order("issue_date", { ascending: false })
+      .limit(100);
+    return (data ?? []) as Record<string, unknown>[];
+  }
+
+  const { data } = await supabase
+    .from("payments")
+    .select("id, provider, status, amount, currency, purpose, method, paid_at, created_at")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  return (data ?? []) as Record<string, unknown>[];
+}
+
+
 // ---------------------------------------------------------------- purchases
 
 export async function createCreditPurchase(
   supabase: SupabaseClient,
   input: ActorContext & { packId: string; couponCode?: string | null; origin: string },
 ): Promise<{ url: string; payment_id: string } | { error: string }> {
+  await requirePerm(supabase, input.organizationId, { userId: input.userId }, "billing.pay");
+
   const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } = await import(
     "@/lib/razorpay.server"
   );
@@ -540,6 +650,8 @@ export async function completeTopupTask(
   supabase: SupabaseClient,
   input: { taskId: string; amount: number; metaTxnRef: string | null; actorId: string },
 ): Promise<{ ok: true } | { error: string }> {
+  await requireSuperAdmin(supabase, { userId: input.actorId });
+
   const { data: task } = await supabase
     .from("topup_tasks")
     .select("id, organization_id, whatsapp_account_id, status")
@@ -583,6 +695,8 @@ export async function requestTopup(
   supabase: SupabaseClient,
   input: ActorContext & { amount: number | null; note: string | null },
 ): Promise<{ ok: true }> {
+  await requirePerm(supabase, input.organizationId, { userId: input.userId }, "billing.request");
+
   await notify(supabase, {
     organizationId: input.organizationId,
     audience: "client",
@@ -633,7 +747,12 @@ export async function notify(
 export async function recommendPlan(
   supabase: SupabaseClient,
   organizationId: string,
+  actor: Actor,
 ): Promise<{ plan_key: string | null; reason: string }> {
+  if (!(await isSuperAdmin(supabase, actor.userId))) {
+    await requirePerm(supabase, organizationId, actor, "billing.manage");
+  }
+
   const [{ count: members }, { count: numbers }, { data: versions }] = await Promise.all([
     supabase
       .from("organization_members")
@@ -685,6 +804,8 @@ export async function assignPlan(
   supabase: SupabaseClient,
   input: { organizationId: string; planKey: string; actorId: string; status?: string },
 ): Promise<{ ok: true } | { error: string }> {
+  await requireSuperAdmin(supabase, { userId: input.actorId });
+
   const { data: version } = await supabase
     .from("plan_versions")
     .select("id, features, plans:plan_id(key)")
@@ -748,7 +869,10 @@ export async function featureImpact(
   supabase: SupabaseClient,
   organizationId: string,
   featureKey: string,
+  actor: Actor,
 ): Promise<FeatureImpact> {
+  await requireSuperAdmin(supabase, actor);
+
   const feature = FEATURES.find((f) => f.key === featureKey);
   const dependents = FEATURES.filter((f) => f.depends_on.includes(featureKey)).map((f) => ({
     key: f.key,
@@ -808,12 +932,16 @@ export async function setFeatureOverride(
     actorId: string;
   },
 ): Promise<{ ok: true } | { impact: FeatureImpact } | { error: string }> {
+  await requireSuperAdmin(supabase, { userId: input.actorId });
   const feature = FEATURES.find((f) => f.key === input.featureKey);
   if (!feature) return { error: "Unknown feature." };
 
   if (!input.enabled) {
-    const impact = await featureImpact(supabase, input.organizationId, input.featureKey);
+    const impact = await featureImpact(supabase, input.organizationId, input.featureKey, {
+      userId: input.actorId,
+    });
     if (impact.blocking && input.force !== true) return { impact };
+
     if (input.force === true) await pauseDependents(supabase, input.organizationId, input.featureKey);
   }
 
@@ -877,10 +1005,13 @@ export async function estimateCampaignCost(
     recipients: number;
     category?: MessageCategory;
     whatsappAccountId?: string | null;
+    actorId: string;
   },
 ): Promise<CampaignCostEstimate> {
+  await requirePerm(supabase, input.organizationId, { userId: input.actorId }, "campaigns.send");
   const category = input.category ?? "marketing";
   const enabled = await billingEnabled(supabase, input.organizationId);
+
   const [{ rate, currency }, wallet, settings] = await Promise.all([
     rateFor(supabase, input.organizationId, category),
     ensureWallet(supabase, input.organizationId),
@@ -929,9 +1060,15 @@ export async function estimateCampaignCost(
 /** Holds the estimate so two campaigns can't spend the same credits. */
 export async function holdCampaignSpend(
   supabase: SupabaseClient,
-  input: { organizationId: string; campaignId: string; amount: number; actorId: string },
+  input: { organizationId: string; campaignId: string; amount: number; actorId: string | null },
 ): Promise<{ ok: true } | { error: string }> {
+  // The dispatch worker holds on behalf of whoever launched the campaign; a
+  // null actor means the platform itself and is only reachable from workers.
+  if (input.actorId) {
+    await requirePerm(supabase, input.organizationId, { userId: input.actorId }, "campaigns.send");
+  }
   if (input.amount <= 0) return { ok: true };
+
   const { error } = await supabase.rpc("wallet_apply", {
     p_org: input.organizationId,
     p_type: "hold",
@@ -971,7 +1108,9 @@ export async function releaseCampaignHold(
 
 // --------------------------------------------------------------- admin view
 
-export async function adminBillingOverview(supabase: SupabaseClient) {
+export async function adminBillingOverview(supabase: SupabaseClient, actor: Actor) {
+  await requireSuperAdmin(supabase, actor);
+
   const [{ data: orgs }, { data: wallets }, { data: tasks }, { data: numbers }, { data: meta }] =
     await Promise.all([
       supabase
@@ -1045,10 +1184,16 @@ export async function adminBillingOverview(supabase: SupabaseClient) {
   return { rows, tasks: (tasks ?? []) as Record<string, unknown>[] };
 }
 
-export async function adminOrgBilling(supabase: SupabaseClient, organizationId: string) {
+export async function adminOrgBilling(
+  supabase: SupabaseClient,
+  organizationId: string,
+  actor: Actor,
+) {
+  await requireSuperAdmin(supabase, actor);
   const [summary, { data: settings }, { data: rateCards }, { data: ledger }, { data: overrides }, { data: metaRates }] =
     await Promise.all([
-      getClientBillingSummary(supabase, organizationId),
+      summaryUnchecked(supabase, organizationId),
+
       supabase.from("organization_billing_settings").select("*").eq("organization_id", organizationId).maybeSingle(),
       supabase
         .from("rate_cards")
@@ -1071,7 +1216,7 @@ export async function adminOrgBilling(supabase: SupabaseClient, organizationId: 
         .order("effective_from", { ascending: false }),
     ]);
 
-  const recommendation = await recommendPlan(supabase, organizationId);
+  const recommendation = await recommendPlan(supabase, organizationId, actor);
   const { data: plans } = await supabase
     .from("plan_versions")
     .select("id, price_monthly, limits, plans:plan_id(key, name, is_active)")

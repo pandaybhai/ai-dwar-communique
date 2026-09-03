@@ -1,6 +1,7 @@
 export type CampaignStatus =
   | "draft"
   | "scheduled"
+  | "awaiting_approval"
   | "sending"
   | "paused"
   | "completed"
@@ -49,6 +50,13 @@ export type CampaignRow = {
   created_at: string;
   /** Send-time extras: coupon_code, offer_expires_at, media handles. */
   send_settings?: Record<string, unknown> | null;
+  /** Money, present only when billing is switched on for the workspace. */
+  estimated_cost?: number | null;
+  held_amount?: number | null;
+  charged_amount?: number | null;
+  returned_amount?: number | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
 };
 
 
@@ -65,6 +73,7 @@ export type CampaignRecipientRow = {
 export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
   draft: "Draft",
   scheduled: "Scheduled",
+  awaiting_approval: "Waiting for approval",
   sending: "Sending",
   paused: "Paused",
   completed: "Completed",
@@ -75,6 +84,7 @@ export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
 export const CAMPAIGN_STATUS_CLASSES: Record<CampaignStatus, string> = {
   draft: "border-border bg-muted text-muted-foreground",
   scheduled: "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-400",
+  awaiting_approval: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
   sending: "border-primary/25 bg-primary/10 text-primary",
   paused: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
   completed: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",

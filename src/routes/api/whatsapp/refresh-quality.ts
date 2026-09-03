@@ -48,7 +48,7 @@ export const Route = createFileRoute("/api/whatsapp/refresh-quality")({
           .maybeSingle();
 
         const result = await graphFetch(connection.phoneNumberId, connection.accessToken, {
-          query: { fields: "quality_rating,name_status" },
+          query: { fields: "quality_rating,name_status,messaging_limit_tier" },
         });
         if (!result.ok) return jsonError(graphErrorMessage(result.body), 400);
 
@@ -59,7 +59,11 @@ export const Route = createFileRoute("/api/whatsapp/refresh-quality")({
 
         const { error: updateErr } = await supabase
           .from("whatsapp_accounts")
-          .update({ quality_rating: rating, quality_updated_at: nowIso })
+          .update({
+            quality_rating: rating,
+            quality_updated_at: nowIso,
+            messaging_tier: (result.body["messaging_limit_tier"] as string | null) ?? null,
+          })
           .eq("id", connection.accountId);
         if (updateErr) return jsonError("We couldn't save the latest quality rating.", 500);
 
