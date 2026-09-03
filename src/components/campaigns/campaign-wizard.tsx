@@ -172,6 +172,8 @@ export function CampaignWizard({
   const [mappings, setMappings] = useState<VariableMappings>({});
   const [audience, setAudience] = useState<AudienceSummary | null>(null);
   const [audienceLoading, setAudienceLoading] = useState(false);
+  const [estimate, setEstimate] = useState<CampaignCostEstimate | null>(null);
+
   const [sendNow, setSendNow] = useState(true);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
