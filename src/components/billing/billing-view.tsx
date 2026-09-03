@@ -10,6 +10,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { InvoicesPanel } from "@/components/billing/invoices-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -235,6 +236,8 @@ export function BillingView({ organizationId }: { organizationId: string }) {
         </Card>
       </div>
 
+      <InvoicesPanel organizationId={organizationId} />
+
       <HistoryTabs organizationId={organizationId} currency={wallet.currency} />
 
       <BuyCreditsDialog
@@ -342,7 +345,6 @@ function HistoryTabs({
           <TabsList className="mb-4">
             <TabsTrigger value="ledger">Credits</TabsTrigger>
             <TabsTrigger value="payments">Payments</TabsTrigger>
-            <TabsTrigger value="invoices">Invoices</TabsTrigger>
           </TabsList>
 
           <TabsContent value={tab} className="mt-0">
@@ -356,7 +358,7 @@ function HistoryTabs({
               <EmptyState
                 icon={FileText}
                 title="Nothing here yet"
-                description="Once credits move, payments are made or invoices are raised, they'll appear here."
+                description="Once credits move, payments are made, they'll appear here."
               />
             ) : tab === "ledger" ? (
               <LedgerTable rows={rows as unknown as LedgerEntry[]} currency={currency} />

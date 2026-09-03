@@ -995,7 +995,11 @@ export const FEATURES: readonly FeatureManifest[] = [
       "billing_settings_updated",
       "billing_credits_added",
       "billing_adjustment",
+      "autopay_setup",
+      "autopay_cancelled",
+      "dunning_advanced",
     ],
+
     settings_path: "/app/settings",
     usage_meters: [
       { key: "credits_consumed", name: "Credits used", unit: "currency" },
