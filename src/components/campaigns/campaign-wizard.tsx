@@ -459,6 +459,65 @@ export function CampaignWizard({
                   )}
                 </div>
 
+                {needsHeaderMedia && (
+                  <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
+                    <Label className="text-xs">
+                      {headerMediaFormat === "IMAGE"
+                        ? "Picture at the top"
+                        : headerMediaFormat === "VIDEO"
+                          ? "Clip at the top"
+                          : "File at the top"}
+                    </Label>
+                    <MediaUploader
+                      organizationId={organizationId}
+                      whatsappAccountId={accountId || null}
+                      slot="campaign-header"
+                      format={headerMediaFormat}
+                      fileName={headerMedia.fileName}
+                      mediaUrl={effectiveHeaderMedia}
+                      onUploaded={(r) =>
+                        setHeaderMedia({ url: r.media_url, fileName: r.file_name })
+                      }
+                      onCleared={() => setHeaderMedia({ url: "", fileName: "" })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {headerMedia.url
+                        ? "This campaign sends the file you just uploaded."
+                        : header?.mediaUrl
+                          ? "Using the file this template was built with — upload another to replace it for this campaign."
+                          : "This template needs a file. Upload one before you continue."}
+                    </p>
+                  </div>
+                )}
+
+                {cards.length > 0 && (
+                  <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-3">
+                    <Label className="text-xs">Carousel cards</Label>
+                    {cards.map((card, i) => (
+                      <div key={i} className="space-y-1.5">
+                        <p className="text-xs font-medium">
+                          Card {i + 1}
+                          {card.body ? ` · ${card.body.slice(0, 40)}` : ""}
+                        </p>
+                        <MediaUploader
+                          organizationId={organizationId}
+                          whatsappAccountId={accountId || null}
+                          slot={`campaign-card:${i}`}
+                          format={card.format}
+                          fileName=""
+                          mediaUrl={effectiveCardMedia(i)}
+                          onUploaded={(r) =>
+                            setCardMedia((prev) => ({ ...prev, [i]: r.media_url }))
+                          }
+                          onCleared={() =>
+                            setCardMedia((prev) => ({ ...prev, [i]: "" }))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {variables.map((n) => {
                   const m = mappings[String(n)];
                   return (
