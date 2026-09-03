@@ -601,6 +601,18 @@ export function CampaignWizard({
                     <ChatPreview
                       body={renderTemplate(bodyText, previewValues)}
                       footer={footerText}
+                      imageUrl={
+                        needsHeaderMedia && headerMediaFormat === "IMAGE"
+                          ? effectiveHeaderMedia || undefined
+                          : undefined
+                      }
+                      mediaLabel={
+                        needsHeaderMedia && headerMediaFormat !== "IMAGE"
+                          ? headerMediaFormat === "VIDEO"
+                            ? "Video attached"
+                            : "Document attached"
+                          : undefined
+                      }
                     />
                   </div>
                 )}
