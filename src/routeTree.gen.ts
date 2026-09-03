@@ -69,6 +69,7 @@ import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/int
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
+import { Route as ApiPublicPlansRouteImport } from './routes/api/public/plans'
 import { Route as ApiPublicRazorpayWebhookRouteImport } from './routes/api/public/razorpay-webhook'
 import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
 import { Route as ApiPublicShopifyWebhookRouteImport } from './routes/api/public/shopify-webhook'
@@ -402,6 +403,11 @@ const ApiInternalVersionRoute = ApiInternalVersionRouteImport.update({
   path: '/api/internal/version',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicPlansRoute = ApiPublicPlansRouteImport.update({
+  id: '/api/public/plans',
+  path: '/api/public/plans',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicRazorpayWebhookRoute =
   ApiPublicRazorpayWebhookRouteImport.update({
     id: '/api/public/razorpay-webhook',
@@ -600,6 +606,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
@@ -685,6 +692,7 @@ export interface FileRoutesByTo {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
@@ -773,6 +781,7 @@ export interface FileRoutesById {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
@@ -862,6 +871,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
@@ -947,6 +957,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
@@ -1034,6 +1045,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
@@ -1106,6 +1118,7 @@ export interface RootRouteChildren {
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
+  ApiPublicPlansRoute: typeof ApiPublicPlansRoute
   ApiPublicRazorpayWebhookRoute: typeof ApiPublicRazorpayWebhookRoute
   ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
   ApiPublicShopifyWebhookRoute: typeof ApiPublicShopifyWebhookRoute
@@ -1549,6 +1562,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalVersionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/plans': {
+      id: '/api/public/plans'
+      path: '/api/public/plans'
+      fullPath: '/api/public/plans'
+      preLoaderRoute: typeof ApiPublicPlansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/razorpay-webhook': {
       id: '/api/public/razorpay-webhook'
       path: '/api/public/razorpay-webhook'
@@ -1836,6 +1856,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
+  ApiPublicPlansRoute: ApiPublicPlansRoute,
   ApiPublicRazorpayWebhookRoute: ApiPublicRazorpayWebhookRoute,
   ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
   ApiPublicShopifyWebhookRoute: ApiPublicShopifyWebhookRoute,
