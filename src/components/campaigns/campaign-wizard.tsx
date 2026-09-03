@@ -168,7 +168,15 @@ export function CampaignWizard({
     setSendNow(true);
     setDate("");
     setTime("");
+    setHeaderMedia({ url: "", fileName: "" });
+    setCardMedia({});
   }, [open]);
+
+  // A different template means different slots — start its media clean.
+  useEffect(() => {
+    setHeaderMedia({ url: "", fileName: "" });
+    setCardMedia({});
+  }, [templateName]);
 
   useEffect(() => {
     if (!open) return;
