@@ -167,7 +167,7 @@ export function CampaignDetail({
     return () => clearInterval(t);
   }, [load]);
 
-  const control = async (action: "pause" | "resume" | "cancel") => {
+  const control = async (action: "pause" | "resume" | "cancel" | "approve") => {
     setBusy(true);
     const { error: err } = await callApi("/api/campaigns/control", {
       body: { organization_id: organizationId, campaign_id: campaignId, action },
@@ -176,11 +176,18 @@ export function CampaignDetail({
     if (err) toast.error(err);
     else {
       toast.success(
-        action === "pause" ? "Campaign paused." : action === "resume" ? "Campaign resumed." : "Campaign cancelled.",
+        action === "pause"
+          ? "Campaign paused."
+          : action === "resume"
+            ? "Campaign resumed."
+            : action === "approve"
+              ? "Approved — sending starts now."
+              : "Campaign cancelled.",
       );
       void load();
     }
   };
+
 
   if (loading) return <TableSkeleton />;
   if (error || !campaign) return <ErrorState message={error ?? "Campaign not found."} />;
