@@ -41,6 +41,11 @@ import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
 import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
+import { Route as ApiBillingLedgerRouteImport } from './routes/api/billing/ledger'
+import { Route as ApiBillingPurchaseRouteImport } from './routes/api/billing/purchase'
+import { Route as ApiBillingRazorpayKeyRouteImport } from './routes/api/billing/razorpay-key'
+import { Route as ApiBillingRequestTopupRouteImport } from './routes/api/billing/request-topup'
+import { Route as ApiBillingSummaryRouteImport } from './routes/api/billing/summary'
 import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
@@ -59,6 +64,7 @@ import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/int
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
+import { Route as ApiPublicRazorpayWebhookRouteImport } from './routes/api/public/razorpay-webhook'
 import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
 import { Route as ApiPublicShopifyWebhookRouteImport } from './routes/api/public/shopify-webhook'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
@@ -244,6 +250,31 @@ const ApiAiToolsRoute = ApiAiToolsRouteImport.update({
   path: '/api/ai/tools',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBillingLedgerRoute = ApiBillingLedgerRouteImport.update({
+  id: '/api/billing/ledger',
+  path: '/api/billing/ledger',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBillingPurchaseRoute = ApiBillingPurchaseRouteImport.update({
+  id: '/api/billing/purchase',
+  path: '/api/billing/purchase',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBillingRazorpayKeyRoute = ApiBillingRazorpayKeyRouteImport.update({
+  id: '/api/billing/razorpay-key',
+  path: '/api/billing/razorpay-key',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBillingRequestTopupRoute = ApiBillingRequestTopupRouteImport.update({
+  id: '/api/billing/request-topup',
+  path: '/api/billing/request-topup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBillingSummaryRoute = ApiBillingSummaryRouteImport.update({
+  id: '/api/billing/summary',
+  path: '/api/billing/summary',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCampaignsAudienceRoute = ApiCampaignsAudienceRouteImport.update({
   id: '/api/campaigns/audience',
   path: '/api/campaigns/audience',
@@ -340,6 +371,12 @@ const ApiInternalVersionRoute = ApiInternalVersionRouteImport.update({
   path: '/api/internal/version',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicRazorpayWebhookRoute =
+  ApiPublicRazorpayWebhookRouteImport.update({
+    id: '/api/public/razorpay-webhook',
+    path: '/api/public/razorpay-webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicShopifyCallbackRoute =
   ApiPublicShopifyCallbackRouteImport.update({
     id: '/api/public/shopify-callback',
@@ -504,6 +541,11 @@ export interface FileRoutesByFullPath {
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
+  '/api/billing/ledger': typeof ApiBillingLedgerRoute
+  '/api/billing/purchase': typeof ApiBillingPurchaseRoute
+  '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
+  '/api/billing/request-topup': typeof ApiBillingRequestTopupRoute
+  '/api/billing/summary': typeof ApiBillingSummaryRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
@@ -522,6 +564,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
@@ -578,6 +621,11 @@ export interface FileRoutesByTo {
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
+  '/api/billing/ledger': typeof ApiBillingLedgerRoute
+  '/api/billing/purchase': typeof ApiBillingPurchaseRoute
+  '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
+  '/api/billing/request-topup': typeof ApiBillingRequestTopupRoute
+  '/api/billing/summary': typeof ApiBillingSummaryRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
@@ -596,6 +644,7 @@ export interface FileRoutesByTo {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
@@ -655,6 +704,11 @@ export interface FileRoutesById {
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
+  '/api/billing/ledger': typeof ApiBillingLedgerRoute
+  '/api/billing/purchase': typeof ApiBillingPurchaseRoute
+  '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
+  '/api/billing/request-topup': typeof ApiBillingRequestTopupRoute
+  '/api/billing/summary': typeof ApiBillingSummaryRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
@@ -673,6 +727,7 @@ export interface FileRoutesById {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
@@ -733,6 +788,11 @@ export interface FileRouteTypes {
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
+    | '/api/billing/ledger'
+    | '/api/billing/purchase'
+    | '/api/billing/razorpay-key'
+    | '/api/billing/request-topup'
+    | '/api/billing/summary'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
@@ -751,6 +811,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
     | '/api/public/whatsapp-webhook'
@@ -807,6 +868,11 @@ export interface FileRouteTypes {
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
+    | '/api/billing/ledger'
+    | '/api/billing/purchase'
+    | '/api/billing/razorpay-key'
+    | '/api/billing/request-topup'
+    | '/api/billing/summary'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
@@ -825,6 +891,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
     | '/api/public/whatsapp-webhook'
@@ -883,6 +950,11 @@ export interface FileRouteTypes {
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
+    | '/api/billing/ledger'
+    | '/api/billing/purchase'
+    | '/api/billing/razorpay-key'
+    | '/api/billing/request-topup'
+    | '/api/billing/summary'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
     | '/api/campaigns/launch'
@@ -901,6 +973,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
     | '/api/public/whatsapp-webhook'
@@ -945,6 +1018,11 @@ export interface RootRouteChildren {
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
   ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
+  ApiBillingLedgerRoute: typeof ApiBillingLedgerRoute
+  ApiBillingPurchaseRoute: typeof ApiBillingPurchaseRoute
+  ApiBillingRazorpayKeyRoute: typeof ApiBillingRazorpayKeyRoute
+  ApiBillingRequestTopupRoute: typeof ApiBillingRequestTopupRoute
+  ApiBillingSummaryRoute: typeof ApiBillingSummaryRoute
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
@@ -963,6 +1041,7 @@ export interface RootRouteChildren {
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
+  ApiPublicRazorpayWebhookRoute: typeof ApiPublicRazorpayWebhookRoute
   ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
   ApiPublicShopifyWebhookRoute: typeof ApiPublicShopifyWebhookRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
@@ -1209,6 +1288,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiToolsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/billing/ledger': {
+      id: '/api/billing/ledger'
+      path: '/api/billing/ledger'
+      fullPath: '/api/billing/ledger'
+      preLoaderRoute: typeof ApiBillingLedgerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/billing/purchase': {
+      id: '/api/billing/purchase'
+      path: '/api/billing/purchase'
+      fullPath: '/api/billing/purchase'
+      preLoaderRoute: typeof ApiBillingPurchaseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/billing/razorpay-key': {
+      id: '/api/billing/razorpay-key'
+      path: '/api/billing/razorpay-key'
+      fullPath: '/api/billing/razorpay-key'
+      preLoaderRoute: typeof ApiBillingRazorpayKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/billing/request-topup': {
+      id: '/api/billing/request-topup'
+      path: '/api/billing/request-topup'
+      fullPath: '/api/billing/request-topup'
+      preLoaderRoute: typeof ApiBillingRequestTopupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/billing/summary': {
+      id: '/api/billing/summary'
+      path: '/api/billing/summary'
+      fullPath: '/api/billing/summary'
+      preLoaderRoute: typeof ApiBillingSummaryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/campaigns/audience': {
       id: '/api/campaigns/audience'
       path: '/api/campaigns/audience'
@@ -1333,6 +1447,13 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/version'
       fullPath: '/api/internal/version'
       preLoaderRoute: typeof ApiInternalVersionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/razorpay-webhook': {
+      id: '/api/public/razorpay-webhook'
+      path: '/api/public/razorpay-webhook'
+      fullPath: '/api/public/razorpay-webhook'
+      preLoaderRoute: typeof ApiPublicRazorpayWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/shopify-callback': {
@@ -1586,6 +1707,11 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
   ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,
+  ApiBillingLedgerRoute: ApiBillingLedgerRoute,
+  ApiBillingPurchaseRoute: ApiBillingPurchaseRoute,
+  ApiBillingRazorpayKeyRoute: ApiBillingRazorpayKeyRoute,
+  ApiBillingRequestTopupRoute: ApiBillingRequestTopupRoute,
+  ApiBillingSummaryRoute: ApiBillingSummaryRoute,
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
@@ -1604,6 +1730,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
+  ApiPublicRazorpayWebhookRoute: ApiPublicRazorpayWebhookRoute,
   ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
   ApiPublicShopifyWebhookRoute: ApiPublicShopifyWebhookRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
