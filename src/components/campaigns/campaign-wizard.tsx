@@ -345,6 +345,7 @@ export function CampaignWizard({
       return (
         Boolean(template) &&
         mediaReady &&
+        offerReady &&
         variables.every((n) => mappingIsComplete(mappings[String(n)]))
       );
     if (step === 3) return sendNow || Boolean(scheduledAt);
