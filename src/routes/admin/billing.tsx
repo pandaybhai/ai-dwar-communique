@@ -10,33 +10,32 @@ import { money } from "@/lib/billing";
 
 type Row = {
   organization_id: string;
-  organization_name: string;
+  name: string;
   plan_name: string | null;
   plan_status: string | null;
   funding_model: string | null;
   available: number;
   held: number;
   low_credit_threshold: number;
-  meta_balance_estimate: number | null;
-  meta_float_target: number | null;
+  meta_float: number | null;
+  meta_float_target: number;
   mtd_consumed: number;
   mtd_meta_cost: number;
   mtd_margin: number;
-  messages_sent: number;
-  messages_delivered: number;
-  messages_failed: number;
-  quality: string | null;
-  messaging_tier: string | null;
+  sent: number;
+  delivered: number;
+  failed: number;
+  numbers: { display: string | null; quality: string | null; tier: number | null }[];
   pending_topups: number;
-  last_activity_at: string | null;
+  last_activity: string | null;
 };
 
 type SortKey =
-  | "organization_name"
+  | "name"
   | "available"
   | "mtd_consumed"
   | "mtd_margin"
-  | "messages_sent"
+  | "sent"
   | "pending_topups";
 
 export const Route = createFileRoute("/admin/billing")({
@@ -166,14 +165,14 @@ function AdminBilling() {
           <table className="w-full min-w-[1100px] text-sm">
             <thead className="border-b border-border/70 bg-muted/40">
               <tr>
-                <Th label="Workspace" sortKey="organization_name" />
+                <Th label="Workspace" sortKey="name" />
                 <Th label="Plan" />
                 <Th label="Funding" />
                 <Th label="Available" sortKey="available" />
                 <Th label="Meta estimate" />
                 <Th label="Spent (MTD)" sortKey="mtd_consumed" />
                 <Th label="Margin (MTD)" sortKey="mtd_margin" />
-                <Th label="Messages" sortKey="messages_sent" />
+                <Th label="Messages" sortKey="sent" />
                 <Th label="Number" />
                 <Th label="Top-ups" sortKey="pending_topups" />
               </tr>
@@ -182,9 +181,8 @@ function AdminBilling() {
               {sorted.map((row) => {
                 const lowCredits = row.available < Number(row.low_credit_threshold ?? 0);
                 const lowFloat =
-                  row.meta_balance_estimate !== null &&
-                  row.meta_float_target !== null &&
-                  row.meta_balance_estimate < row.meta_float_target;
+                  row.meta_float !== null && row.meta_float < Number(row.meta_float_target ?? 0);
+                const number = row.numbers[0] ?? null;
                 return (
                   <tr
                     key={row.organization_id}
@@ -193,14 +191,13 @@ function AdminBilling() {
                     <td className="px-3 py-3">
                       <Link
                         to="/admin/organizations"
-                        search={{ org: row.organization_id }}
                         className="font-medium text-foreground hover:text-primary"
                       >
-                        {row.organization_name}
+                        {row.name}
                       </Link>
                       <p className="text-xs text-muted-foreground">
-                        {row.last_activity_at
-                          ? `Active ${new Date(row.last_activity_at).toLocaleDateString("en-IN")}`
+                        {row.last_activity
+                          ? `Active ${new Date(row.last_activity).toLocaleDateString("en-IN")}`
                           : "No activity yet"}
                       </p>
                     </td>
@@ -232,19 +229,19 @@ function AdminBilling() {
                     <td
                       className={`px-3 py-3 ${lowFloat ? "text-destructive font-semibold" : "text-muted-foreground"}`}
                     >
-                      {row.meta_balance_estimate === null
-                        ? "—"
-                        : money(row.meta_balance_estimate)}
+                      {row.meta_float === null ? "—" : money(row.meta_float)}
                     </td>
                     <td className="px-3 py-3">{money(row.mtd_consumed)}</td>
                     <td className="px-3 py-3 text-primary">{money(row.mtd_margin)}</td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
-                      <span className="text-foreground">{row.messages_sent}</span> sent ·{" "}
-                      {row.messages_delivered} delivered · {row.messages_failed} failed
+                      <span className="text-foreground">{row.sent}</span> sent ·{" "}
+                      {row.delivered} delivered · {row.failed} failed
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {row.quality ? `${row.quality} · ` : ""}
-                      {row.messaging_tier ?? "Tier unknown"}
+                      {number?.quality ? `${number.quality} · ` : ""}
+                      {number?.tier === null || number?.tier === undefined
+                        ? "Tier unknown"
+                        : `Tier ${number.tier}`}
                     </td>
                     <td className="px-3 py-3">
                       {row.pending_topups > 0 ? (
