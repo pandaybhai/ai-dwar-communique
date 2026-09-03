@@ -187,11 +187,11 @@ async function recipientFor(
   row: Record<string, unknown>,
 ): Promise<string | null> {
   const explicit = (row["recipient"] as string | null) ?? null;
-  if (explicit) return normalizePhone(explicit).e164;
+  if (explicit) return normalizePhone(explicit);
 
   if (row["audience"] === "admin") {
     const admin = process.env["BILLING_ADMIN_WHATSAPP"];
-    return admin ? normalizePhone(admin).e164 : null;
+    return admin ? normalizePhone(admin) : null;
   }
 
   const orgId = row["organization_id"] as string | null;
@@ -205,7 +205,7 @@ async function recipientFor(
     | Record<string, unknown>
     | null;
   const phone = (account?.["billing_whatsapp"] as string) ?? null;
-  return phone ? normalizePhone(phone).e164 : null;
+  return phone ? normalizePhone(phone) : null;
 }
 
 /** Sends up to `limit` queued notices. One bad notice never stops the rest. */
