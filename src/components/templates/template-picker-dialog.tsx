@@ -280,6 +280,32 @@ export function TemplatePickerDialog({
                   </div>
                 ) : null}
 
+                {needsCoupon || needsOfferExpiry ? (
+                  <div className="space-y-2">
+                    {needsCoupon ? (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Coupon code</Label>
+                        <Input
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          placeholder="SAVE20"
+                          maxLength={15}
+                        />
+                      </div>
+                    ) : null}
+                    {needsOfferExpiry ? (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Offer ends</Label>
+                        <Input
+                          type="datetime-local"
+                          value={offerEndsAt}
+                          onChange={(e) => setOfferEndsAt(e.target.value)}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <div className="rounded-2xl bg-muted/40 p-3">
                   <div className="overflow-hidden rounded-2xl rounded-br-md bg-primary/12 text-sm shadow-sm">
                     {effectiveHeaderMedia && headerMediaFormat === "IMAGE" ? (
