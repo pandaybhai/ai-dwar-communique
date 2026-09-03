@@ -1,6 +1,16 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Activity, Bot, Building2, Flag, LogOut, Menu, ShieldCheck, Users } from "lucide-react";
+import {
+  Activity,
+  Bot,
+  Building2,
+  CreditCard,
+  Flag,
+  LogOut,
+  Menu,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -8,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { to: "/admin/organizations", label: "Organizations", icon: Building2 },
+  { to: "/admin/billing", label: "Billing", icon: CreditCard },
   { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/flags", label: "Feature Flags", icon: Flag },
   { to: "/admin/ai", label: "AI operations", icon: Bot },
