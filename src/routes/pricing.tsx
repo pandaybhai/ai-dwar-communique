@@ -143,7 +143,7 @@ function PricingPage() {
                 const price = annual ? plan.price_annual : plan.price_monthly;
                 const custom = price === null || price === 0;
                 return (
-                  <Reveal key={plan.key} delay={index * 60}>
+                  <Reveal key={plan.key} delay={index * 60} className="h-full">
                     <div
                       className={`flex h-full flex-col rounded-2xl border p-6 transition-shadow duration-200 ${
                         featured

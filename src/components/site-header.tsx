@@ -14,6 +14,12 @@ export function SiteHeader() {
         </Link>
         <nav className="flex items-center gap-1 sm:gap-3">
           <Link
+            to="/pricing"
+            className="hidden rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+          >
+            Pricing
+          </Link>
+          <Link
             to="/privacy"
             className="hidden rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
           >

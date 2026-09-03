@@ -14,6 +14,9 @@ export function SiteFooter() {
             </p>
           </div>
           <div className="flex flex-col gap-3 text-sm sm:items-end">
+            <Link to="/pricing" className="text-muted-foreground hover:text-foreground">
+              Pricing
+            </Link>
             <Link to="/privacy" className="text-muted-foreground hover:text-foreground">
               Privacy Policy
             </Link>
