@@ -14,12 +14,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  buildTemplatePayloadComponents,
   extractVariables,
   renderTemplate,
   templateBodyText,
   templateFooterText,
+  templateVariableSpec,
   type TemplateRow,
 } from "@/lib/templates";
+import { MediaUploader } from "@/components/templates/media-uploader";
+import { toast } from "sonner";
 
 export type TemplateSendPayload = {
   template_name: string;
