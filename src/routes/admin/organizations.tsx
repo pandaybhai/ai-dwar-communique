@@ -11,6 +11,7 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { cn } from "@/lib/utils";
 import { qualityClass, qualityLabel } from "@/lib/opt-out";
 import { OrgFeaturesSheet } from "@/components/admin/org-features-sheet";
+import { OrgBillingSheet } from "@/components/admin/org-billing-sheet";
 
 export const Route = createFileRoute("/admin/organizations")({
   head: () => ({
@@ -71,6 +72,7 @@ function AdminOrganizations() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [featuresFor, setFeaturesFor] = useState<Org | null>(null);
+  const [billingFor, setBillingFor] = useState<Org | null>(null);
 
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
@@ -303,6 +305,15 @@ function AdminOrganizations() {
                       </Button>
                       <Button
                         size="sm"
+                        variant="ghost"
+                        className="mr-2 rounded-full"
+                        onClick={() => setBillingFor(o)}
+                      >
+                        <CreditCard className="mr-2 h-3.5 w-3.5" />
+                        Billing
+                      </Button>
+                      <Button
+                        size="sm"
                         variant="outline"
                         className="rounded-full"
                         disabled={busy === o.id}
@@ -330,6 +341,15 @@ function AdminOrganizations() {
           )}
         </div>
       )}
+
+      {billingFor ? (
+        <OrgBillingSheet
+          organizationId={billingFor.id}
+          organizationName={billingFor.name}
+          open
+          onClose={() => setBillingFor(null)}
+        />
+      ) : null}
 
       {featuresFor ? (
         <OrgFeaturesSheet
