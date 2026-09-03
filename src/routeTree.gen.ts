@@ -44,6 +44,7 @@ import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
 import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
+import { Route as ApiBillingInvoicesRouteImport } from './routes/api/billing/invoices'
 import { Route as ApiBillingLedgerRouteImport } from './routes/api/billing/ledger'
 import { Route as ApiBillingPurchaseRouteImport } from './routes/api/billing/purchase'
 import { Route as ApiBillingRazorpayKeyRouteImport } from './routes/api/billing/razorpay-key'
@@ -66,6 +67,7 @@ import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/inte
 import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
 import { Route as ApiInternalKnowledgeRefreshRouteImport } from './routes/api/internal/knowledge-refresh'
+import { Route as ApiInternalPlanBillingRouteImport } from './routes/api/internal/plan-billing'
 import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/internal/reconcile-events'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
@@ -272,6 +274,11 @@ const ApiAiToolsRoute = ApiAiToolsRouteImport.update({
   path: '/api/ai/tools',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBillingInvoicesRoute = ApiBillingInvoicesRouteImport.update({
+  id: '/api/billing/invoices',
+  path: '/api/billing/invoices',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBillingLedgerRoute = ApiBillingLedgerRouteImport.update({
   id: '/api/billing/ledger',
   path: '/api/billing/ledger',
@@ -386,6 +393,11 @@ const ApiInternalKnowledgeRefreshRoute =
     path: '/api/internal/knowledge-refresh',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiInternalPlanBillingRoute = ApiInternalPlanBillingRouteImport.update({
+  id: '/api/internal/plan-billing',
+  path: '/api/internal/plan-billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalReconcileEventsRoute =
   ApiInternalReconcileEventsRouteImport.update({
     id: '/api/internal/reconcile-events',
@@ -587,6 +599,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
+  '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
   '/api/billing/purchase': typeof ApiBillingPurchaseRoute
   '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
@@ -609,6 +622,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
+  '/api/internal/plan-billing': typeof ApiInternalPlanBillingRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
@@ -674,6 +688,7 @@ export interface FileRoutesByTo {
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
+  '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
   '/api/billing/purchase': typeof ApiBillingPurchaseRoute
   '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
@@ -696,6 +711,7 @@ export interface FileRoutesByTo {
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
+  '/api/internal/plan-billing': typeof ApiInternalPlanBillingRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
@@ -764,6 +780,7 @@ export interface FileRoutesById {
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
+  '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
   '/api/billing/purchase': typeof ApiBillingPurchaseRoute
   '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
@@ -786,6 +803,7 @@ export interface FileRoutesById {
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
+  '/api/internal/plan-billing': typeof ApiInternalPlanBillingRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
@@ -855,6 +873,7 @@ export interface FileRouteTypes {
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
+    | '/api/billing/invoices'
     | '/api/billing/ledger'
     | '/api/billing/purchase'
     | '/api/billing/razorpay-key'
@@ -877,6 +896,7 @@ export interface FileRouteTypes {
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/knowledge-refresh'
+    | '/api/internal/plan-billing'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
@@ -942,6 +962,7 @@ export interface FileRouteTypes {
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
+    | '/api/billing/invoices'
     | '/api/billing/ledger'
     | '/api/billing/purchase'
     | '/api/billing/razorpay-key'
@@ -964,6 +985,7 @@ export interface FileRouteTypes {
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/knowledge-refresh'
+    | '/api/internal/plan-billing'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
@@ -1031,6 +1053,7 @@ export interface FileRouteTypes {
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
+    | '/api/billing/invoices'
     | '/api/billing/ledger'
     | '/api/billing/purchase'
     | '/api/billing/razorpay-key'
@@ -1053,6 +1076,7 @@ export interface FileRouteTypes {
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/knowledge-refresh'
+    | '/api/internal/plan-billing'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
@@ -1104,6 +1128,7 @@ export interface RootRouteChildren {
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
   ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
+  ApiBillingInvoicesRoute: typeof ApiBillingInvoicesRoute
   ApiBillingLedgerRoute: typeof ApiBillingLedgerRoute
   ApiBillingPurchaseRoute: typeof ApiBillingPurchaseRoute
   ApiBillingRazorpayKeyRoute: typeof ApiBillingRazorpayKeyRoute
@@ -1126,6 +1151,7 @@ export interface RootRouteChildren {
   ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
   ApiInternalKnowledgeRefreshRoute: typeof ApiInternalKnowledgeRefreshRoute
+  ApiInternalPlanBillingRoute: typeof ApiInternalPlanBillingRoute
   ApiInternalReconcileEventsRoute: typeof ApiInternalReconcileEventsRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
@@ -1399,6 +1425,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiToolsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/billing/invoices': {
+      id: '/api/billing/invoices'
+      path: '/api/billing/invoices'
+      fullPath: '/api/billing/invoices'
+      preLoaderRoute: typeof ApiBillingInvoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/billing/ledger': {
       id: '/api/billing/ledger'
       path: '/api/billing/ledger'
@@ -1551,6 +1584,13 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/knowledge-refresh'
       fullPath: '/api/internal/knowledge-refresh'
       preLoaderRoute: typeof ApiInternalKnowledgeRefreshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/plan-billing': {
+      id: '/api/internal/plan-billing'
+      path: '/api/internal/plan-billing'
+      fullPath: '/api/internal/plan-billing'
+      preLoaderRoute: typeof ApiInternalPlanBillingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/internal/reconcile-events': {
@@ -1851,6 +1891,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
   ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,
+  ApiBillingInvoicesRoute: ApiBillingInvoicesRoute,
   ApiBillingLedgerRoute: ApiBillingLedgerRoute,
   ApiBillingPurchaseRoute: ApiBillingPurchaseRoute,
   ApiBillingRazorpayKeyRoute: ApiBillingRazorpayKeyRoute,
@@ -1873,6 +1914,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
   ApiInternalKnowledgeRefreshRoute: ApiInternalKnowledgeRefreshRoute,
+  ApiInternalPlanBillingRoute: ApiInternalPlanBillingRoute,
   ApiInternalReconcileEventsRoute: ApiInternalReconcileEventsRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,

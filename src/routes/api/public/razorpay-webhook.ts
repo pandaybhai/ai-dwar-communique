@@ -111,24 +111,20 @@ async function handleEvent(
   }
 
   if (event.startsWith("subscription.")) {
-    // Recurring billing lands in Prompt 2; the raw event is kept against the
-    // payment so nothing is lost in the meantime.
     const subscription = entity(body, "subscription");
-    const paymentId = ourPaymentId(subscription, payment, link);
+    if (!subscription) return;
+    const { applySubscriptionEvent } = await import("@/lib/subscriptions.server");
+    await applySubscriptionEvent(supabase, event, subscription, payment, body);
+    return;
+  }
+
+  if (event === "payment.failed") {
+    const paymentId = ourPaymentId(link, payment);
     if (!paymentId) return;
-    const { data: row } = await supabase
-      .from("payments")
-      .select("id, raw")
-      .eq("id", paymentId)
-      .maybeSingle();
-    if (!row) return;
-    const existing = (row.raw ?? {}) as AnyRecord;
-    const log = Array.isArray(existing["subscription_events"])
-      ? (existing["subscription_events"] as unknown[])
-      : [];
     await supabase
       .from("payments")
-      .update({ raw: { ...existing, subscription_events: [...log, body].slice(-25) } })
-      .eq("id", row.id);
+      .update({ status: "failed", raw: body })
+      .eq("id", paymentId)
+      .eq("status", "created");
   }
 }

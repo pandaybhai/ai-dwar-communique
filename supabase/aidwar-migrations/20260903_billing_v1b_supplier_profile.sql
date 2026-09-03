@@ -1,0 +1,22 @@
+-- ALREADY APPLIED DIRECTLY TO THE aidwar-mumbai PROJECT. Marker only.
+--
+-- Billing v1b — supplier profile, invoice numbering, invoice storage.
+--
+-- platform_settings gained:
+--   supplier_legal_name, supplier_brand_name, supplier_gstin, supplier_pan,
+--   supplier_state_code, supplier_address jsonb, supplier_email,
+--   supplier_website, supplier_logo_url, invoice_series (default 'AD'),
+--   invoice_due_days (7), sac_platform ('998315'), sac_messaging ('998415'),
+--   invoice_footer, bank_details jsonb, dunning_pause_campaigns_days (10),
+--   dunning_suspend_days (30).
+--
+-- A trigger forces the 'billing' feature on whenever
+-- organizations.plan_version_id changes. assignPlan mirrors that: it never
+-- writes billing = false.
+--
+-- Private storage bucket 'invoices' holds <org_id>/<invoice_number>.pdf.
+-- Downloads are served as 10-minute signed URLs through billing.view.
+--
+-- next_invoice_number(p_series text, p_date date) returns a sequential
+-- per-financial-year number such as AD/2026-27/00007. It is called only at
+-- the moment an invoice is issued; drafts never hold a number.

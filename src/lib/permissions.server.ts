@@ -12,7 +12,34 @@ export type EffectivePermissions = {
   isSuperAdmin: boolean;
   keys: string[];
   overrides: Record<string, boolean>;
+  /** True when the plan has fewer seats than the team: read-only, never removed. */
+  planLocked?: boolean;
 };
+
+/**
+ * A teammate beyond the plan's seat count keeps their account and can still
+ * read everything they could before — they simply can't change anything.
+ */
+function readOnly(keys: string[]): string[] {
+  return keys.filter((key) => key.endsWith(".view") || key.endsWith(".read"));
+}
+
+async function isPlanLocked(
+  supabase: SupabaseClient,
+  organizationId: string,
+  userId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("organization_billing_settings")
+    .select("limits_override")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const overrides = ((data ?? {}) as Record<string, unknown>)["limits_override"] as
+    | Record<string, unknown>
+    | undefined;
+  const locked = overrides?.["_locked_members"];
+  return Array.isArray(locked) && locked.includes(userId);
+}
 
 export async function resolveEffectivePermissions(
   supabase: SupabaseClient,
@@ -69,6 +96,10 @@ export async function resolveEffectivePermissions(
   const keys = everyKey.filter((key) =>
     key in overrides ? overrides[key] === true : preset.has(key),
   );
+
+  if (await isPlanLocked(supabase, organizationId, userId)) {
+    return { role, isSuperAdmin: false, keys: readOnly(keys), overrides, planLocked: true };
+  }
 
   return { role, isSuperAdmin: false, keys, overrides };
 }

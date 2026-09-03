@@ -108,3 +108,111 @@ export function verifyWebhookSignature(rawBody: string, signature: string, secre
 export async function razorpayWebhookSecret(supabase: SupabaseClient): Promise<string | null> {
   return vault(supabase, "razorpay_webhook_secret");
 }
+
+// ------------------------------------------------------------ subscriptions
+
+async function rzp(
+  keys: RazorpayKeys,
+  path: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<{ ok: boolean; body: Record<string, unknown>; error: string | null }> {
+  const auth = Buffer.from(`${keys.keyId}:${keys.keySecret}`).toString("base64");
+  let res: Response;
+  try {
+    res = await fetch(`https://api.razorpay.com/v1${path}`, {
+      method: init.method ?? "GET",
+      headers: { Authorization: `Basic ${auth}`, "content-type": "application/json" },
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+    });
+  } catch {
+    return { ok: false, body: {}, error: "We couldn't reach the payment provider." };
+  }
+  const body = ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+  if (!res.ok) {
+    const description =
+      ((body["error"] as Record<string, unknown> | undefined)?.["description"] as string) ?? "";
+    return {
+      ok: false,
+      body,
+      error: description
+        ? `The payment provider refused this: ${description}`
+        : "The payment provider couldn't complete that.",
+    };
+  }
+  return { ok: true, body, error: null };
+}
+
+/** A recurring plan at the provider. Amount is rupees INCLUDING GST. */
+export async function createPlan(
+  keys: RazorpayKeys,
+  input: { period: "monthly" | "yearly"; amount: number; name: string; description?: string },
+) {
+  return rzp(keys, "/plans", {
+    method: "POST",
+    body: {
+      period: input.period,
+      interval: 1,
+      item: {
+        name: input.name.slice(0, 100),
+        amount: Math.round(input.amount * 100),
+        currency: "INR",
+        description: (input.description ?? input.name).slice(0, 255),
+      },
+    },
+  });
+}
+
+export async function createSubscription(
+  keys: RazorpayKeys,
+  input: {
+    planId: string;
+    cycle: "monthly" | "annual";
+    organizationId: string;
+    notes?: Record<string, string>;
+    customerNotify?: boolean;
+  },
+) {
+  return rzp(keys, "/subscriptions", {
+    method: "POST",
+    body: {
+      plan_id: input.planId,
+      total_count: input.cycle === "annual" ? 10 : 120,
+      customer_notify: input.customerNotify === true ? 1 : 0,
+      notes: { org_id: input.organizationId, ...(input.notes ?? {}) },
+    },
+  });
+}
+
+/** A one-off charge on top of the mandate — how usage overage is collected. */
+export async function addAddon(
+  keys: RazorpayKeys,
+  subscriptionId: string,
+  input: { name: string; amount: number; quantity?: number },
+) {
+  return rzp(keys, `/subscriptions/${subscriptionId}/addons`, {
+    method: "POST",
+    body: {
+      item: {
+        name: input.name.slice(0, 100),
+        amount: Math.round(input.amount * 100),
+        currency: "INR",
+      },
+      quantity: input.quantity ?? 1,
+    },
+  });
+}
+
+export async function cancelSubscription(
+  keys: RazorpayKeys,
+  subscriptionId: string,
+  atPeriodEnd = true,
+) {
+  return rzp(keys, `/subscriptions/${subscriptionId}/cancel`, {
+    method: "POST",
+    body: { cancel_at_cycle_end: atPeriodEnd ? 1 : 0 },
+  });
+}
+
+export async function fetchSubscription(keys: RazorpayKeys, subscriptionId: string) {
+  return rzp(keys, `/subscriptions/${subscriptionId}`);
+}
