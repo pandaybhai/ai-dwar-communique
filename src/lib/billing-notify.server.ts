@@ -18,7 +18,7 @@ export type BillingTemplateSpec = {
 };
 
 /**
- * The six notices, all UTILITY, all with the same three variables so one
+ * The notices, all UTILITY, all with the same three variables so one
  * parameter builder covers every kind: who/what, an amount, and a link or
  * balance.
  */
@@ -53,6 +53,21 @@ export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
     body: "A campaign on {{1}} is waiting for your approval. It will cost about {{2}}. Review it here: {{3}}",
     examples: ["Sharma Textiles", "₹4,500", "https://aidwar.in/app/campaigns"],
   },
+  {
+    name: "client_invoice_issued",
+    body: "{{1}}: your invoice for {{2}} is ready. You can view and download it here: {{3}}",
+    examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
+  },
+  {
+    name: "client_invoice_overdue",
+    body: "{{1}}: an invoice for {{2}} is still unpaid. Please settle it here to keep everything running: {{3}}",
+    examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
+  },
+  {
+    name: "client_payment_failed",
+    body: "{{1}}: your auto-pay of {{2}} didn't go through. You can pay it here: {{3}}",
+    examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
+  },
 ];
 
 /** audience:kind -> template name. Anything unmapped stays an in-app notice. */
@@ -64,6 +79,9 @@ const TEMPLATE_FOR: Record<string, string> = {
   "client:low_credits": "client_low_credits",
   "admin:float_low": "admin_float_low",
   "client:campaign_approval": "client_campaign_approval",
+  "client:invoice_issued": "client_invoice_issued",
+  "client:invoice_overdue": "client_invoice_overdue",
+  "client:payment_failed": "client_payment_failed",
 };
 
 /**
@@ -175,6 +193,11 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
       return [orgName, money(Number(payload["available"] ?? 0)), link];
     case "float_low":
       return [orgName, money(Number(payload["estimate"] ?? 0)), money(Number(payload["target"] ?? 0))];
+    case "invoice_issued":
+    case "invoice_overdue":
+      return [orgName, money(Number(payload["amount"] ?? 0)), link];
+    case "payment_failed":
+      return [orgName, money(Number(payload["amount"] ?? 0)), link];
     case "campaign_approval":
       return [orgName, money(Number(payload["estimate"] ?? 0)), link];
     default:

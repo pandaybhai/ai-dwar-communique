@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { FEATURES } from "@/lib/feature-registry";
 import {
   MESSAGE_CATEGORIES,
+  money,
   round2,
   round4,
   withGst,
@@ -577,22 +578,45 @@ export async function settlePayment(
     payload: { amount: credits, bonus },
   });
 
-  // Prompt 2 turns this draft into a numbered tax invoice.
-  await supabase.from("invoices").insert({
-    organization_id: payment.organization_id,
-    payment_id: payment.id,
-    series: "AD",
-    kind: "tax_invoice",
-    purpose: "credit_purchase",
-    status: "draft",
-    issue_date: new Date().toISOString().slice(0, 10),
-    currency: payment.currency ?? "INR",
-    subtotal: credits,
-    taxable_value: credits,
-    total: Number(payment.amount ?? 0),
-    amount_paid: Number(payment.amount ?? 0),
-    buyer_snapshot: {},
-  });
+  // A numbered tax invoice, issued and marked paid in one go. A failure here
+  // must never un-credit the wallet, so it is contained.
+  try {
+    const { loadSupplier, buildInvoice, issueInvoice, markPaid } = await import(
+      "@/lib/invoices.server"
+    );
+    const supplier = await loadSupplier(supabase);
+    const lines: import("@/lib/invoices.server").InvoiceLineInput[] = [
+      {
+        line_type: "credits" as const,
+        description: `Prepaid messaging credits${stored["pack_name"] ? ` — ${String(stored["pack_name"])}` : ""}`,
+        sac_code: supplier.sac_messaging,
+        unit_price: credits,
+        metadata: { pack_id: payment.credit_pack_id ?? null },
+      },
+    ];
+    if (bonus > 0) {
+      lines.push({
+        line_type: "credits" as const,
+        description: `Bonus credits ${money(bonus)} (no charge)`,
+        sac_code: supplier.sac_messaging,
+        unit_price: 0,
+        metadata: { bonus: true },
+      });
+    }
+    const built = await buildInvoice(supabase, payment.organization_id as string, {
+      kind: "tax_invoice",
+      purpose: "credit_purchase",
+      lines,
+      payment_id: payment.id as string,
+    });
+    if (!("error" in built)) {
+      await issueInvoice(supabase, built.invoice_id);
+      await markPaid(supabase, built.invoice_id, payment.id as string, Number(payment.amount ?? 0));
+    }
+  } catch {
+    // the credits are already in the wallet; the invoice can be re-issued
+  }
+
 
   return { credited: true };
 }
@@ -800,42 +824,84 @@ export async function recommendPlan(
   };
 }
 
+export type PlanAssignmentResult = {
+  ok: true;
+  locked: {
+    members: { user_id: string; name: string | null }[];
+    numbers: { id: string; label: string }[];
+    features: string[];
+  };
+};
+
+/**
+ * Moving a workspace onto a plan. A downgrade never deletes anything: people
+ * beyond the seat count go read-only, numbers beyond the count stop sending,
+ * and features the plan doesn't carry are switched off. All of it reverses
+ * the moment a bigger plan is assigned.
+ */
 export async function assignPlan(
   supabase: SupabaseClient,
-  input: { organizationId: string; planKey: string; actorId: string; status?: string },
-): Promise<{ ok: true } | { error: string }> {
+  input: {
+    organizationId: string;
+    planKey: string;
+    actorId: string;
+    status?: string;
+    trialDays?: number | null;
+  },
+): Promise<PlanAssignmentResult | { error: string }> {
   await requireSuperAdmin(supabase, { userId: input.actorId });
 
   const { data: version } = await supabase
     .from("plan_versions")
-    .select("id, features, plans:plan_id(key)")
+    .select("id, features, limits, plans:plan_id(key)")
     .eq("is_current", true);
   const row = ((version ?? []) as Record<string, unknown>[]).find(
     (v) => ((v["plans"] ?? {}) as Record<string, unknown>)["key"] === input.planKey,
   );
   if (!row) return { error: "That plan doesn't have a current version." };
 
+  const status = input.status ?? "active";
+  const trialDays = Number(input.trialDays ?? 0);
+  const trialEndsAt =
+    status === "trial" && trialDays > 0
+      ? new Date(Date.now() + trialDays * 864e5).toISOString()
+      : status === "trial"
+        ? undefined
+        : null;
+
   const { error } = await supabase
     .from("organizations")
     .update({
       plan_version_id: row["id"],
-      plan_status: input.status ?? "active",
+      plan_status: status,
+      ...(trialEndsAt === undefined ? {} : { trial_ends_at: trialEndsAt }),
     })
     .eq("id", input.organizationId);
   if (error) return { error: "We couldn't change the plan. Please try again." };
 
-  // A plan carries a set of features. Manual super-admin decisions are kept.
+  // A plan carries a set of features. Manual super-admin decisions are kept,
+  // and billing itself is always on once a plan exists.
   const settings = await ensureSettings(supabase, input.organizationId);
   const overrides = (settings["limits_override"] ?? {}) as Record<string, unknown>;
   const manual = (overrides["_manual_flags"] ?? {}) as Record<string, boolean>;
 
   const planFeatures = (row["features"] ?? []) as string[];
-
+  const lockedFeatures: string[] = [];
 
   if (planFeatures.length > 0) {
     for (const feature of FEATURES) {
+      if (feature.key === "billing") {
+        await supabase
+          .from("organization_feature_overrides")
+          .upsert(
+            { organization_id: input.organizationId, flag_key: feature.flag_key, enabled: true },
+            { onConflict: "organization_id,flag_key" },
+          );
+        continue;
+      }
       if (feature.key in manual) continue;
       const enabled = planFeatures.includes(feature.key);
+      if (!enabled) lockedFeatures.push(feature.key);
       await supabase
         .from("organization_feature_overrides")
         .upsert(
@@ -845,15 +911,88 @@ export async function assignPlan(
     }
   }
 
+  const limits = (row["limits"] ?? {}) as Record<string, number>;
+  const locked = await applyPlanLimits(supabase, input.organizationId, limits, overrides);
+
   await supabase.from("activity_log").insert({
     organization_id: input.organizationId,
     user_id: input.actorId,
     action: "plan_changed",
-    details: { plan: input.planKey },
+    details: {
+      plan: input.planKey,
+      status,
+      locked_members: locked.members.length,
+      locked_numbers: locked.numbers.length,
+    },
   });
 
-  return { ok: true };
+  return { ok: true, locked: { ...locked, features: lockedFeatures } };
 }
+
+/**
+ * Enforces seat and number counts without destroying anything. Locked people
+ * are recorded on limits_override._locked_members and read back by the
+ * permission layer; locked numbers move to status paused_plan.
+ */
+async function applyPlanLimits(
+  supabase: SupabaseClient,
+  organizationId: string,
+  limits: Record<string, number>,
+  overrides: Record<string, unknown>,
+): Promise<{ members: { user_id: string; name: string | null }[]; numbers: { id: string; label: string }[] }> {
+  const memberLimit = Number(limits["members"] ?? -1);
+  const numberLimit = Number(limits["numbers"] ?? -1);
+
+  const { data: members } = await supabase
+    .from("organization_members")
+    .select("user_id, role, created_at, profiles:user_id(full_name)")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: true });
+
+  const rows = (members ?? []) as Record<string, unknown>[];
+  const lockedMembers =
+    memberLimit === -1 || rows.length <= memberLimit
+      ? []
+      : rows
+          .filter((m) => m["role"] !== "owner")
+          .slice(Math.max(memberLimit - 1, 0))
+          .map((m) => ({
+            user_id: String(m["user_id"]),
+            name:
+              (((m["profiles"] ?? {}) as Record<string, unknown>)["full_name"] as string | null) ??
+              null,
+          }));
+
+  const { data: numbers } = await supabase
+    .from("whatsapp_accounts")
+    .select("id, display_phone_number, verified_name, created_at")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: true });
+
+  // whatsapp_accounts.status only accepts pending/active/disconnected, so a
+  // plan lock is recorded alongside the member locks instead of inventing a
+  // new status. The send paths read _locked_numbers before dispatching.
+  const numberRows = (numbers ?? []) as Record<string, unknown>[];
+  const keep = numberLimit === -1 ? numberRows.length : numberLimit;
+  const lockedNumbers = numberRows.slice(keep).map((account) => ({
+    id: String(account["id"]),
+    label: String(account["display_phone_number"] ?? account["verified_name"] ?? "Number"),
+  }));
+
+  await supabase
+    .from("organization_billing_settings")
+    .update({
+      limits_override: {
+        ...overrides,
+        _locked_members: lockedMembers.map((m) => m.user_id),
+        _locked_numbers: lockedNumbers.map((n) => n.id),
+      },
+    })
+    .eq("organization_id", organizationId);
+
+  return { members: lockedMembers, numbers: lockedNumbers };
+}
+
 
 export type FeatureImpact = {
   flag_key: string;
