@@ -694,28 +694,46 @@ export function CampaignWizard({
                           Running a different discount on each card? Give that card its own
                           code. Leave it blank to use the code above.
                         </p>
-                        {couponCards.map((card) => (
-                          <div key={card.index} className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">
-                              Card {card.index + 1}
-                              {cards[card.index]?.body
-                                ? ` · ${cards[card.index]!.body.slice(0, 40)}`
-                                : ""}
-                            </Label>
-                            <Input
-                              value={cardCoupons[card.index] ?? ""}
-                              onChange={(e) =>
-                                setCardCoupons((prev) => ({
-                                  ...prev,
-                                  [card.index]: e.target.value.toUpperCase(),
-                                }))
-                              }
-                              placeholder={couponCode.trim() || "SHOES20"}
-                              maxLength={15}
-                            />
-                          </div>
-                        ))}
-                        {!couponsReady && (
+                        {couponCards.map((card) => {
+                          const isDupe = duplicateCouponCards.has(card.index);
+                          const isEmpty =
+                            effectiveCardCoupon(card.index).length === 0;
+                          return (
+                            <div key={card.index} className="space-y-1">
+                              <Label className="text-[11px] text-muted-foreground">
+                                Card {card.index + 1}
+                                {cards[card.index]?.body
+                                  ? ` · ${cards[card.index]!.body.slice(0, 40)}`
+                                  : ""}
+                              </Label>
+                              <Input
+                                value={cardCoupons[card.index] ?? ""}
+                                aria-invalid={isDupe || isEmpty}
+                                className={cn(
+                                  (isDupe || isEmpty) &&
+                                    "border-destructive focus-visible:ring-destructive",
+                                )}
+                                onChange={(e) =>
+                                  setCardCoupons((prev) => ({
+                                    ...prev,
+                                    [card.index]: e.target.value.toUpperCase(),
+                                  }))
+                                }
+                                placeholder={couponCode.trim() || "SHOES20"}
+                                maxLength={15}
+                              />
+                              {isDupe && (
+                                <p className="text-xs text-destructive">
+                                  Another card already uses this code — each card needs its
+                                  own.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {couponCards.some(
+                          (c) => effectiveCardCoupon(c.index).length === 0,
+                        ) && (
                           <p className="text-xs text-destructive">
                             Every card with a copy-code button needs a code — either its own
                             or the shared one above.
