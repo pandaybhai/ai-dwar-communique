@@ -884,6 +884,25 @@ export async function processWebhookPayload(
             });
           }
 
+          // A customer who sends the coupon code back has taken the offer.
+          // Only new messages count, so a redelivered webhook can't inflate it.
+          if (inserted && inserted.length > 0 && !isSystemEcho) {
+            const { recordOfferTap } = await import("@/lib/offers.server");
+            const interactiveTap = msg["interactive"] as AnyRecord | undefined;
+            await recordOfferTap(supabase, {
+              organizationId: orgId,
+              contactId: contact.id as string,
+              body,
+              payload:
+                ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
+                ((interactiveTap?.["button_reply"] as AnyRecord | undefined)?.["id"] as
+                  | string
+                  | undefined) ??
+                null,
+            });
+          }
+
+
           // Automations run last, and never for a message that was an opt-out /
           // opt-in keyword or a cash-on-delivery answer. Inbound only — our own
           // outbound sends (including opt-out confirmations and automation

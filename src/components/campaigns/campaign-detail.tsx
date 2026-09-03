@@ -3,6 +3,9 @@ import { Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ArrowLeft,
+  BadgeCheck,
+  Ticket,
+
   CheckCheck,
   Eye,
   Loader2,
@@ -104,6 +107,7 @@ export function CampaignDetail({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [offer, setOffer] = useState({ received: 0, tapped: 0, redeemed: 0 });
 
   const load = useCallback(async () => {
     const [{ data: c, error: cErr }, { data: r, count }] = await Promise.all([
@@ -127,7 +131,35 @@ export function CampaignDetail({
     setRecipients((r ?? []) as CampaignRecipientRow[]);
     setTotal(count ?? 0);
     setLoading(false);
+
+    // Offer numbers only matter when this campaign actually carried a coupon.
+    const settings = ((c as CampaignRow | null)?.send_settings ?? {}) as Record<string, unknown>;
+    if (String(settings["coupon_code"] ?? "").trim()) {
+      const [received, tapped, redeemed] = await Promise.all([
+        aidwar
+          .from("campaign_recipients")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId)
+          .in("status", ["sent", "delivered", "read", "replied"]),
+        aidwar
+          .from("campaign_offer_events")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId)
+          .eq("event", "tapped"),
+        aidwar
+          .from("campaign_offer_events")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId)
+          .eq("event", "redeemed"),
+      ]);
+      setOffer({
+        received: received.count ?? 0,
+        tapped: tapped.count ?? 0,
+        redeemed: redeemed.count ?? 0,
+      });
+    }
   }, [campaignId, organizationId, page]);
+
 
   useEffect(() => {
     void load();
@@ -159,6 +191,11 @@ export function CampaignDetail({
   );
   const progress = percent(campaign.sent_count + campaign.failed_count, campaign.total_recipients);
   const running = campaign.status === "sending" || campaign.status === "scheduled";
+  const sendSettings = (campaign.send_settings ?? {}) as Record<string, unknown>;
+  const couponCode = String(sendSettings["coupon_code"] ?? "").trim();
+  const offerEndsAt = String(sendSettings["offer_expires_at"] ?? "").trim() || null;
+
+
 
   return (
     <div className="space-y-5">
@@ -244,6 +281,46 @@ export function CampaignDetail({
         <Stat label="Read" value={campaign.read_count} icon={Eye} />
         <Stat label="Failed" value={campaign.failed_count} icon={AlertTriangle} tone="danger" />
       </div>
+
+      {couponCode && (
+        <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Offer performance</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Code{" "}
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono">{couponCode}</span>
+                {offerEndsAt ? ` · ends ${new Date(offerEndsAt).toLocaleString()}` : ""}
+              </p>
+            </div>
+            {offerEndsAt && (
+              <span
+                className={cn(
+                  "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                  new Date(offerEndsAt).getTime() > Date.now()
+                    ? "border-primary/30 bg-primary/10 text-primary"
+                    : "border-border bg-muted text-muted-foreground",
+                )}
+              >
+                {new Date(offerEndsAt).getTime() > Date.now() ? "Live" : "Ended"}
+              </span>
+            )}
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <Stat label="Received" value={offer.received} icon={Send} />
+            <Stat label="Took the code" value={offer.tapped} icon={Ticket} />
+            <Stat label="Used it" value={offer.redeemed} icon={BadgeCheck} />
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            {offer.received === 0
+              ? "Nothing to measure yet — the numbers fill in once the campaign starts sending."
+              : offer.tapped === 0
+                ? "No one has come back with the code yet. Give it a day before reading anything into it."
+                : `${percent(offer.redeemed, offer.received)}% of everyone who got this message has placed an order with the code.`}
+          </p>
+        </div>
+      )}
+
 
       <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
         <div className="overflow-x-auto">

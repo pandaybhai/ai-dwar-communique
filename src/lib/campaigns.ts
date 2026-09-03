@@ -47,7 +47,10 @@ export type CampaignRow = {
   replied_count: number;
   created_by: string | null;
   created_at: string;
+  /** Send-time extras: coupon_code, offer_expires_at, media handles. */
+  send_settings?: Record<string, unknown> | null;
 };
+
 
 export type CampaignRecipientRow = {
   id: string;

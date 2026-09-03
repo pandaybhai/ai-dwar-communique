@@ -267,6 +267,17 @@ export async function upsertOrder(
     );
   }
 
+  // An order carrying a campaign's coupon closes the loop on that offer.
+  const { recordOfferRedemption } = await import("@/lib/offers.server");
+  await recordOfferRedemption(ctx.supabase, {
+    organizationId: ctx.organizationId,
+    contactId: match.contactId,
+    orderId,
+    order,
+  });
+
+
+
   if (options.emit !== false) {
     const dimensions = {
       order_id: orderId,
