@@ -133,8 +133,10 @@ export const Route = createFileRoute("/api/whatsapp/template-media")({
         const uploadRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${sessionId}`, {
           method: "POST",
           headers: {
-            // Resumable uploads use Meta's own scheme, not a bearer token.
-            Authorization: `OA ${connection.accessToken}`,
+            // The resumable upload step authenticates with the same bearer
+            // token that opened the session. Meta's older "OA <token>" scheme
+            // is rejected here with NotAuthorizedError.
+            Authorization: `Bearer ${connection.accessToken}`,
             file_offset: "0",
             "content-type": "application/octet-stream",
           },
@@ -144,9 +146,16 @@ export const Route = createFileRoute("/api/whatsapp/template-media")({
         const handle = uploadBody["h"] as string | undefined;
         if (!uploadRes.ok || !handle) {
           const { graphErrorMessage } = await import("@/lib/whatsapp-api.server");
+          // Resumable-upload failures come back as { debug_info: { message } },
+          // not the usual { error: { message } } envelope.
+          const debug = uploadBody["debug_info"] as Record<string, unknown> | undefined;
+          const reason =
+            (typeof debug?.["message"] === "string" ? (debug["message"] as string) : null) ??
+            graphErrorMessage(uploadBody);
           await supabase.storage.from("template-media").remove([path]);
-          return jsonError(`Meta wouldn't accept the file: ${graphErrorMessage(uploadBody)}`, 400);
+          return jsonError(`Meta wouldn't accept the file: ${reason}`, 400);
         }
+
 
         const { data: asset } = await supabase
           .from("template_media_assets")
