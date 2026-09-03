@@ -24,7 +24,7 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
         const { data: campaigns } = await supabase
           .from("campaigns")
           .select(
-            "id, organization_id, whatsapp_account_id, status, template_name, template_language, scheduled_at, started_at",
+            "id, organization_id, whatsapp_account_id, status, template_name, template_language, scheduled_at, started_at, send_settings",
           )
           .or(`status.eq.sending,and(status.eq.scheduled,scheduled_at.lte.${nowIso})`)
           .order("created_at", { ascending: true })
