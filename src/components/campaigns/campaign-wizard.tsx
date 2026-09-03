@@ -260,6 +260,18 @@ export function CampaignWizard({
   const variables = useMemo(() => extractVariables(bodyText), [bodyText]);
   const sample = audience?.sample ?? FALLBACK_SAMPLE;
 
+  const header = useMemo(() => templateHeader(template?.components), [template]);
+  const cards = useMemo(() => templateCards(template?.components), [template]);
+  const needsHeaderMedia = Boolean(header && isMediaHeader(header.format));
+  const headerMediaFormat = (header?.format ?? "IMAGE") as "IMAGE" | "VIDEO" | "DOCUMENT";
+  /** What actually goes out for each slot: this campaign's file, else the template's. */
+  const effectiveHeaderMedia = headerMedia.url || header?.mediaUrl || "";
+  const effectiveCardMedia = (index: number) =>
+    cardMedia[index] || cards[index]?.mediaUrl || "";
+  const mediaReady =
+    (!needsHeaderMedia || Boolean(effectiveHeaderMedia)) &&
+    cards.every((_, i) => Boolean(effectiveCardMedia(i)));
+
   const previewValues = useMemo(() => {
     const out: Record<number, string> = {};
     for (const n of variables) out[n] = resolveVariable(mappings[String(n)], sample);
