@@ -112,6 +112,44 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         const isFuture = Boolean(scheduledAt && scheduledAt.getTime() > Date.now() + 30_000);
         const nowIso = new Date().toISOString();
 
+        // Money check. Workspaces without billing switched on are untouched:
+        // the estimate comes back disabled and nothing is blocked or held.
+        const { estimateCampaignCost } = await import("@/lib/billing.server");
+        const { data: templateMeta } = await supabase
+          .from("message_templates")
+          .select("category")
+          .eq("organization_id", organizationId)
+          .eq("waba_id", connection.wabaId)
+          .eq("name", templateName)
+          .limit(1)
+          .maybeSingle();
+        const category = String(
+          (templateMeta as { category?: string } | null)?.category ?? "marketing",
+        ).toLowerCase();
+
+        const estimate = await estimateCampaignCost(supabase, {
+          organizationId,
+          recipients: contacts.length,
+          category: (["marketing", "utility", "authentication", "service"].includes(category)
+            ? category
+            : "marketing") as "marketing" | "utility" | "authentication" | "service",
+          whatsappAccountId: connection.accountId,
+          actorId: userId,
+        });
+
+        if (estimate.enabled && !estimate.can_send) {
+          return Response.json(
+            {
+              error: `This campaign costs about ${estimate.estimate.toFixed(2)} and you have ${estimate.available.toFixed(2)} in credits. Add credits and try again.`,
+              estimate,
+            },
+            { status: 402 },
+          );
+        }
+
+        const needsApproval = estimate.enabled && estimate.needs_approval;
+        const status = needsApproval ? "awaiting_approval" : isFuture ? "scheduled" : "sending";
+
         const { data: campaign, error: campaignErr } = await supabase
           .from("campaigns")
           .insert({
@@ -123,15 +161,18 @@ export const Route = createFileRoute("/api/campaigns/launch")({
             variable_mappings: mappings,
             send_settings: sendSettings,
             segment_id: segmentId,
-            status: isFuture ? "scheduled" : "sending",
+            status,
             scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
-            started_at: isFuture ? null : nowIso,
+            started_at: status === "sending" ? nowIso : null,
             total_recipients: contacts.length,
+            estimated_cost: estimate.enabled ? estimate.estimate : null,
             created_by: userId,
           })
 
           .select("id, status")
           .single();
+
+
 
         if (campaignErr || !campaign) {
           return jsonError("We couldn't create this campaign. Please try again.", 500);
