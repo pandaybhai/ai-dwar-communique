@@ -116,8 +116,14 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
                 name: templateName,
                 language: (campaign["template_language"] as string) ?? "en_US",
                 variableOrder,
+                components: (template?.components ?? null) as never,
               },
-              { campaignId, category: templateCategory },
+              {
+                campaignId,
+                category: templateCategory,
+                ...(headerMediaUrl ? { headerMediaUrl } : {}),
+                ...(settingCards.length ? { cards: settingCards } : {}),
+              },
             );
 
             if (outcome.error) {
