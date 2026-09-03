@@ -651,7 +651,11 @@ export function CampaignWizard({
                     </Label>
                     {needsCoupon && (
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">Coupon code</Label>
+                        <Label className="text-xs font-medium">
+                          {couponCards.length > 0 && !needsMainCoupon
+                            ? "Coupon code for every card"
+                            : "Coupon code"}
+                        </Label>
                         <Input
                           value={couponCode}
                           onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
@@ -659,9 +663,47 @@ export function CampaignWizard({
                           maxLength={15}
                         />
                         <p className="text-xs text-muted-foreground">
-                          This is the code customers copy with one tap. Everyone in this
-                          campaign gets the same code.
+                          {couponCards.length > 0
+                            ? "The code customers copy with one tap. Every card uses this unless you give that card its own code below."
+                            : "This is the code customers copy with one tap. Everyone in this campaign gets the same code."}
                         </p>
+                      </div>
+                    )}
+
+                    {couponCards.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium">Codes per card</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Running a different discount on each card? Give that card its own
+                          code. Leave it blank to use the code above.
+                        </p>
+                        {couponCards.map((card) => (
+                          <div key={card.index} className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">
+                              Card {card.index + 1}
+                              {cards[card.index]?.body
+                                ? ` · ${cards[card.index]!.body.slice(0, 40)}`
+                                : ""}
+                            </Label>
+                            <Input
+                              value={cardCoupons[card.index] ?? ""}
+                              onChange={(e) =>
+                                setCardCoupons((prev) => ({
+                                  ...prev,
+                                  [card.index]: e.target.value.toUpperCase(),
+                                }))
+                              }
+                              placeholder={couponCode.trim() || "SHOES20"}
+                              maxLength={15}
+                            />
+                          </div>
+                        ))}
+                        {!couponsReady && (
+                          <p className="text-xs text-destructive">
+                            Every card with a copy-code button needs a code — either its own
+                            or the shared one above.
+                          </p>
+                        )}
                       </div>
                     )}
                     {needsOfferExpiry && (
