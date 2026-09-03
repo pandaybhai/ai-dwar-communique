@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowUpDown, Building2, RefreshCw, Wallet } from "lucide-react";
+import { ArrowUpDown, Building2, FileText, RefreshCw, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
@@ -142,6 +142,23 @@ function AdminBilling() {
           <Button variant="outline" onClick={() => setDrawer(true)}>
             <Wallet className="mr-2 h-4 w-4" />
             Top-ups due ({tasks.length})
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={async () => {
+              const result = await callApi<{ created?: string[]; error?: string }>(
+                "/api/admin/billing",
+                { body: { action: "create_billing_templates" } },
+              );
+              if (result.error || result.data?.error) {
+                setError(result.error ?? result.data?.error ?? "We couldn't create the templates.");
+                return;
+              }
+              setError(null);
+            }}
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Billing templates
           </Button>
           <Button variant="ghost" onClick={() => void load()}>
             <RefreshCw className="mr-2 h-4 w-4" />
