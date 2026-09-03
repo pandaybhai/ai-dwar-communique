@@ -231,11 +231,31 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         });
 
 
+        // Big spend: the campaign waits, and the owner is told it needs a nod.
+        if (needsApproval) {
+          await supabase.from("billing_notifications").insert({
+            organization_id: organizationId,
+            audience: "client",
+            kind: "campaign_approval_needed",
+            channel: "inapp",
+            payload: {
+              campaign_id: campaign.id as string,
+              campaign_name: name,
+              recipients: rows.length,
+              estimated_cost: estimate.estimate,
+              requested_by: userId,
+            },
+          });
+        }
+
         return Response.json({
           campaign_id: campaign.id,
           status: campaign.status,
           total_recipients: rows.length,
+          needs_approval: needsApproval,
+          estimated_cost: estimate.enabled ? estimate.estimate : null,
         });
+
       },
     },
   },
