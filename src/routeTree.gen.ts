@@ -39,6 +39,7 @@ import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as RTokenRouteImport } from './routes/r.$token'
 import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
+import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
 import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
@@ -240,6 +241,11 @@ const RTokenRoute = RTokenRouteImport.update({
 const ApiAdminAiRoute = ApiAdminAiRouteImport.update({
   id: '/api/admin/ai',
   path: '/api/admin/ai',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminBillingRoute = ApiAdminBillingRouteImport.update({
+  id: '/api/admin/billing',
+  path: '/api/admin/billing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAiEmployeeRoute = ApiAiEmployeeRouteImport.update({
@@ -551,6 +557,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
+  '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -633,6 +640,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
+  '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -718,6 +726,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
+  '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -804,6 +813,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/app/'
     | '/api/admin/ai'
+    | '/api/admin/billing'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -886,6 +896,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/api/admin/ai'
+    | '/api/admin/billing'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -970,6 +981,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/app/'
     | '/api/admin/ai'
+    | '/api/admin/billing'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -1039,6 +1051,7 @@ export interface RootRouteChildren {
   JoinTokenRoute: typeof JoinTokenRoute
   RTokenRoute: typeof RTokenRoute
   ApiAdminAiRoute: typeof ApiAdminAiRoute
+  ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
   ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
@@ -1297,6 +1310,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/ai'
       fullPath: '/api/admin/ai'
       preLoaderRoute: typeof ApiAdminAiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/billing': {
+      id: '/api/admin/billing'
+      path: '/api/admin/billing'
+      fullPath: '/api/admin/billing'
+      preLoaderRoute: typeof ApiAdminBillingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/employee': {
@@ -1745,6 +1765,7 @@ const rootRouteChildren: RootRouteChildren = {
   JoinTokenRoute: JoinTokenRoute,
   RTokenRoute: RTokenRoute,
   ApiAdminAiRoute: ApiAdminAiRoute,
+  ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
   ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,

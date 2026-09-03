@@ -111,7 +111,7 @@ export const Route = createFileRoute("/api/admin/billing")({
                   organizationId: orgId,
                   planKey: String(payload["plan_key"] ?? ""),
                   actorId,
-                  status: (payload["status"] as string) || undefined,
+                  ...(payload["status"] ? { status: String(payload["status"]) } : {}),
                 }),
               );
 
