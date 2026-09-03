@@ -172,6 +172,11 @@ export function CampaignWizard({
     fileName: "",
   });
   const [cardMedia, setCardMedia] = useState<Record<number, string>>({});
+  // Offer details: the coupon a copy-code button copies, and when a
+  // limited-time offer's countdown runs out.
+  const [couponCode, setCouponCode] = useState("");
+  const [offerDate, setOfferDate] = useState("");
+  const [offerTime, setOfferTime] = useState("");
 
   // A campaign always sends from one number. Default is the workspace default.
   const { numbers, defaultNumber, multiple } = useWhatsAppNumbers();
