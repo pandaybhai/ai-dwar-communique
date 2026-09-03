@@ -2,7 +2,16 @@
 
 Verified against the live database before writing this: all billing tables (billing_accounts, plans, plan_versions, organization_billing_settings, rate_cards, credit_packs, coupons, wallet_ledger, wallet_balances, payments, subscriptions, invoices, invoice_lines, invoice_sequences, topup_tasks, meta_prepaid_ledger, bsp_accounts, billing_notifications) exist, all seven functions exist (wallet_apply, client_rate_for, org_flag_enabled, ai_answers_allowance, next_invoice_number, meta_consume, meta_balance_estimate), the new columns on organizations / whatsapp_accounts / feature_registry.depends_on exist, the `billing` flag exists with default off, and plans/rate_cards/credit_packs already hold seed rows. No schema work will be done.
 
-One prerequisite: the Vault currently holds only `aidwar_cron_secret` and `platform_ai_openai`. The three Razorpay secrets (`razorpay_key_id`, `razorpay_key_secret`, `razorpay_webhook_secret`) need to be added before payment links or webhooks can work. Everything else is built and testable without them; payment calls will return a clear "payments not configured" message until they exist.
+Confirmed: `read_vault_secret` does exist, so the Razorpay secrets will be read through it — no fallback query needed. But the Vault currently holds only `aidwar_cron_secret` and `platform_ai_openai`. The three Razorpay secrets (`razorpay_key_id`, `razorpay_key_secret`, `razorpay_webhook_secret`) need to be added before payment links or webhooks can work. Everything else is built and testable without them; payment calls will return a clear "payments not configured" message until they exist.
+
+## Feature registry — database is the source of truth
+
+The registry sync currently only knows what the code manifest declares, so it would blank values the database already holds. Fixing that first:
+
+- Add `depends_on` to the manifest type and set it to exactly the current database values: ai → inbox; analytics → campaigns; automations → inbox; campaigns → templates, contacts; catalog → templates; compliance → contacts; flows → templates, contacts; revenue_attribution → shopify, campaigns; all others empty.
+- Add a `billing` manifest entry matching the existing row exactly: icon credit-card, nav `/app/billing` at order 95, nav permission `billing.view`, the four permissions (view/admin, pay/owner, request/marketer, manage/owner) with their existing wording, usage meters `credits_consumed` and `credits_purchased`, and the eighteen billing data tables.
+- Make the sync protective: before generating SQL it compares the manifest against the live rows and **fails with a printed diff** if `depends_on`, `permissions` or `data_tables` would be emptied or changed. Nothing is silently overwritten.
+
 
 ## What gets built
 
