@@ -80,26 +80,55 @@ export function TemplatePickerDialog({
   const body = selected ? templateBodyText(selected.components) : "";
   const footer = selected ? templateFooterText(selected.components) : "";
   const variables = useMemo(() => extractVariables(body), [body]);
-  const ready = Boolean(selected) && variables.every((v) => values[v]?.trim());
+  const spec = useMemo(
+    () => (selected ? templateVariableSpec(selected.components) : null),
+    [selected],
+  );
+  const headerMediaFormat =
+    spec?.headerMedia && spec.headerMedia.format !== "LOCATION" ? spec.headerMedia.format : null;
+  const effectiveHeaderMedia = headerMediaUrl ?? spec?.headerMedia?.url ?? null;
+  const effectiveCardMedia = (i: number) =>
+    cardMediaUrls[i] ?? spec?.cards[i]?.mediaUrl ?? null;
+  const mediaReady = Boolean(
+    spec &&
+      (!headerMediaFormat || effectiveHeaderMedia) &&
+      spec.cards.every((_, i) => effectiveCardMedia(i)),
+  );
+  const ready =
+    Boolean(selected) && variables.every((v) => values[v]?.trim()) && mediaReady;
 
   const submit = async () => {
-    if (!selected || !ready) return;
-    const components = variables.length
-      ? [
-          {
-            type: "body",
-            parameters: variables.map((v) => ({ type: "text", text: (values[v] ?? "").trim() })),
-          },
-        ]
-      : [];
+    if (!selected || !ready || !spec) return;
+    const built = buildTemplatePayloadComponents({
+      spec,
+      values: Object.fromEntries(
+        Object.entries(values).map(([k, v]) => [k, v.trim()]),
+      ),
+      headerMedia: effectiveHeaderMedia
+        ? { link: effectiveHeaderMedia }
+        : undefined,
+      cards: spec.cards.length
+        ? spec.cards.map((_, i) => ({
+            media: effectiveCardMedia(i)
+              ? { link: effectiveCardMedia(i) as string }
+              : undefined,
+          }))
+        : undefined,
+    });
+    if (!built.components) {
+      toast.error(built.error);
+      return;
+    }
     const ok = await onSend({
       template_name: selected.name,
       template_language: selected.language,
-      template_components: components,
+      template_components: built.components,
     });
     if (ok) {
       setSelectedId(null);
       setValues({});
+      setHeaderMediaUrl(null);
+      setCardMediaUrls({});
       onOpenChange(false);
     }
   };
