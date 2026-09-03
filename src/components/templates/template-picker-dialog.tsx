@@ -165,6 +165,8 @@ export function TemplatePickerDialog({
                   onClick={() => {
                     setSelectedId(t.id);
                     setValues({});
+                    setHeaderMediaUrl(null);
+                    setCardMediaUrls({});
                   }}
                   className={[
                     "w-full rounded-xl border px-4 py-3 text-left transition-colors duration-150",
