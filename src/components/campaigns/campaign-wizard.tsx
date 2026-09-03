@@ -310,12 +310,15 @@ export function CampaignWizard({
       return;
     }
     let cancelled = false;
+    const category = (
+      templates.find((t) => t.name === templateName)?.category ?? "marketing"
+    ).toLowerCase();
     void (async () => {
-      const { data } = await callApi<CostEstimate>("/api/campaigns/estimate", {
+      const { data } = await callApi<CampaignCostEstimate>("/api/campaigns/estimate", {
         body: {
           organization_id: organizationId,
           recipients,
-          category: templateCategory,
+          category,
           whatsapp_account_id: accountId || null,
         },
       });
@@ -324,7 +327,8 @@ export function CampaignWizard({
     return () => {
       cancelled = true;
     };
-  }, [open, step, organizationId, audience?.eligible, templateCategory, accountId]);
+  }, [open, step, organizationId, audience?.eligible, templates, templateName, accountId]);
+
 
 
 
