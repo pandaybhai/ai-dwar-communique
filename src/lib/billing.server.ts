@@ -713,7 +713,7 @@ export async function assignPlan(
     .select("features")
     .eq("id", row["id"] as string)
     .maybeSingle();
-  const planFeatures = ((full?.["features"] ?? []) as string[]) ?? [];
+  const planFeatures = (full?.["features"] ?? []) as string[];
 
   if (planFeatures.length > 0) {
     for (const feature of FEATURES) {
