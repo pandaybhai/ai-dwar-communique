@@ -1,6 +1,7 @@
 export type CampaignStatus =
   | "draft"
   | "scheduled"
+  | "awaiting_approval"
   | "sending"
   | "paused"
   | "completed"
