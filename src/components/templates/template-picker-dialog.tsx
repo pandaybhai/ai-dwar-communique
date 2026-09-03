@@ -104,15 +104,15 @@ export function TemplatePickerDialog({
       values: Object.fromEntries(
         Object.entries(values).map(([k, v]) => [k, v.trim()]),
       ),
-      headerMedia: effectiveHeaderMedia
-        ? { link: effectiveHeaderMedia }
-        : undefined,
-      cards: spec.cards.length
-        ? spec.cards.map((_, i) => {
-            const link = effectiveCardMedia(i);
-            return link ? { media: { link } } : {};
-          })
-        : undefined,
+      ...(effectiveHeaderMedia ? { headerMedia: { link: effectiveHeaderMedia } } : {}),
+      ...(spec.cards.length
+        ? {
+            cards: spec.cards.map((_, i) => {
+              const link = effectiveCardMedia(i);
+              return link ? { media: { link } } : {};
+            }),
+          }
+        : {}),
     });
     if (!built.components) {
       toast.error(built.error);
