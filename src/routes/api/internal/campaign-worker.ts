@@ -24,7 +24,7 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
         const { data: campaigns } = await supabase
           .from("campaigns")
           .select(
-            "id, organization_id, whatsapp_account_id, status, template_name, template_language, scheduled_at, started_at",
+            "id, organization_id, whatsapp_account_id, status, template_name, template_language, scheduled_at, started_at, send_settings",
           )
           .or(`status.eq.sending,and(status.eq.scheduled,scheduled_at.lte.${nowIso})`)
           .order("created_at", { ascending: true })
@@ -77,6 +77,17 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
             templateBodyText((template?.components ?? []) as never),
           );
 
+          // Media chosen when the campaign was created — the header file and
+          // one file per carousel card. Anything left blank falls back to the
+          // file the template itself was authored with.
+          const settings = (campaign["send_settings"] ?? {}) as Record<string, unknown>;
+          const headerMediaUrl = (settings["header_media_url"] as string | null) ?? null;
+          const settingCards = Array.isArray(settings["cards"])
+            ? (settings["cards"] as Array<{ media_url?: string | null }>).map((c) => ({
+                mediaUrl: c?.media_url ?? null,
+              }))
+            : [];
+
           const { data: claimed } = await supabase.rpc("claim_campaign_recipients", {
             p_campaign_id: campaignId,
             p_limit: CLAIM_LIMIT,
@@ -105,8 +116,14 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
                 name: templateName,
                 language: (campaign["template_language"] as string) ?? "en_US",
                 variableOrder,
+                components: (template?.components ?? null) as never,
               },
-              { campaignId, category: templateCategory },
+              {
+                campaignId,
+                category: templateCategory,
+                ...(headerMediaUrl ? { headerMediaUrl } : {}),
+                ...(settingCards.length ? { cards: settingCards } : {}),
+              },
             );
 
             if (outcome.error) {

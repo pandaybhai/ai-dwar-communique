@@ -23,11 +23,15 @@ import {
 } from "@/lib/campaigns";
 import {
   extractVariables,
+  isMediaHeader,
   renderTemplate,
   templateBodyText,
+  templateCards,
   templateFooterText,
+  templateHeader,
   type TemplateRow,
 } from "@/lib/templates";
+import { MediaUploader } from "@/components/templates/media-uploader";
 import type { SegmentRow } from "@/lib/segments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,6 +144,13 @@ export function CampaignWizard({
   const [time, setTime] = useState("");
   const [launching, setLaunching] = useState(false);
   const [loadingLists, setLoadingLists] = useState(true);
+  // Media this campaign sends: the header picture/clip/file, and one per
+  // carousel card. Blank means "use the file the template was built with".
+  const [headerMedia, setHeaderMedia] = useState<{ url: string; fileName: string }>({
+    url: "",
+    fileName: "",
+  });
+  const [cardMedia, setCardMedia] = useState<Record<number, string>>({});
 
   // A campaign always sends from one number. Default is the workspace default.
   const { numbers, defaultNumber, multiple } = useWhatsAppNumbers();
@@ -157,7 +168,15 @@ export function CampaignWizard({
     setSendNow(true);
     setDate("");
     setTime("");
+    setHeaderMedia({ url: "", fileName: "" });
+    setCardMedia({});
   }, [open]);
+
+  // A different template means different slots — start its media clean.
+  useEffect(() => {
+    setHeaderMedia({ url: "", fileName: "" });
+    setCardMedia({});
+  }, [templateName]);
 
   useEffect(() => {
     if (!open) return;
@@ -241,6 +260,18 @@ export function CampaignWizard({
   const variables = useMemo(() => extractVariables(bodyText), [bodyText]);
   const sample = audience?.sample ?? FALLBACK_SAMPLE;
 
+  const header = useMemo(() => templateHeader(template?.components), [template]);
+  const cards = useMemo(() => templateCards(template?.components), [template]);
+  const needsHeaderMedia = Boolean(header && isMediaHeader(header.format));
+  const headerMediaFormat = (header?.format ?? "IMAGE") as "IMAGE" | "VIDEO" | "DOCUMENT";
+  /** What actually goes out for each slot: this campaign's file, else the template's. */
+  const effectiveHeaderMedia = headerMedia.url || header?.mediaUrl || "";
+  const effectiveCardMedia = (index: number) =>
+    cardMedia[index] || cards[index]?.mediaUrl || "";
+  const mediaReady =
+    (!needsHeaderMedia || Boolean(effectiveHeaderMedia)) &&
+    cards.every((_, i) => Boolean(effectiveCardMedia(i)));
+
   const previewValues = useMemo(() => {
     const out: Record<number, string> = {};
     for (const n of variables) out[n] = resolveVariable(mappings[String(n)], sample);
@@ -263,7 +294,11 @@ export function CampaignWizard({
     if (step === 0) return name.trim().length >= 2;
     if (step === 1) return Boolean(accountId) && (audience?.eligible ?? 0) > 0;
     if (step === 2)
-      return Boolean(template) && variables.every((n) => mappingIsComplete(mappings[String(n)]));
+      return (
+        Boolean(template) &&
+        mediaReady &&
+        variables.every((n) => mappingIsComplete(mappings[String(n)]))
+      );
     if (step === 3) return sendNow || Boolean(scheduledAt);
     return true;
   };
@@ -279,6 +314,12 @@ export function CampaignWizard({
         variable_mappings: mappings,
         scheduled_at: scheduledAt,
         whatsapp_account_id: accountId || null,
+        send_settings: {
+          ...(needsHeaderMedia && headerMedia.url ? { header_media_url: headerMedia.url } : {}),
+          ...(cards.length
+            ? { cards: cards.map((_, i) => ({ media_url: cardMedia[i] ?? null })) }
+            : {}),
+        },
       },
     });
 
@@ -417,6 +458,65 @@ export function CampaignWizard({
                     </p>
                   )}
                 </div>
+
+                {needsHeaderMedia && (
+                  <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
+                    <Label className="text-xs">
+                      {headerMediaFormat === "IMAGE"
+                        ? "Picture at the top"
+                        : headerMediaFormat === "VIDEO"
+                          ? "Clip at the top"
+                          : "File at the top"}
+                    </Label>
+                    <MediaUploader
+                      organizationId={organizationId}
+                      whatsappAccountId={accountId || null}
+                      slot="campaign-header"
+                      format={headerMediaFormat}
+                      fileName={headerMedia.fileName}
+                      mediaUrl={effectiveHeaderMedia}
+                      onUploaded={(r) =>
+                        setHeaderMedia({ url: r.media_url, fileName: r.file_name })
+                      }
+                      onCleared={() => setHeaderMedia({ url: "", fileName: "" })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {headerMedia.url
+                        ? "This campaign sends the file you just uploaded."
+                        : header?.mediaUrl
+                          ? "Using the file this template was built with — upload another to replace it for this campaign."
+                          : "This template needs a file. Upload one before you continue."}
+                    </p>
+                  </div>
+                )}
+
+                {cards.length > 0 && (
+                  <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-3">
+                    <Label className="text-xs">Carousel cards</Label>
+                    {cards.map((card, i) => (
+                      <div key={i} className="space-y-1.5">
+                        <p className="text-xs font-medium">
+                          Card {i + 1}
+                          {card.body ? ` · ${card.body.slice(0, 40)}` : ""}
+                        </p>
+                        <MediaUploader
+                          organizationId={organizationId}
+                          whatsappAccountId={accountId || null}
+                          slot={`campaign-card:${i}`}
+                          format={card.format}
+                          fileName=""
+                          mediaUrl={effectiveCardMedia(i)}
+                          onUploaded={(r) =>
+                            setCardMedia((prev) => ({ ...prev, [i]: r.media_url }))
+                          }
+                          onCleared={() =>
+                            setCardMedia((prev) => ({ ...prev, [i]: "" }))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {variables.map((n) => {
                   const m = mappings[String(n)];
