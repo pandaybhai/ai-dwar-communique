@@ -299,6 +299,33 @@ export function CampaignDetail({
         <Stat label="Failed" value={campaign.failed_count} icon={AlertTriangle} tone="danger" />
       </div>
 
+      {hasSpend && (
+        <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+          <h2 className="text-sm font-semibold">What this campaign cost</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Estimated</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {money(campaign.estimated_cost ?? 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Charged</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {money(campaign.charged_amount ?? 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Returned to credits</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {money(campaign.returned_amount ?? 0)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {couponCode && (
         <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
