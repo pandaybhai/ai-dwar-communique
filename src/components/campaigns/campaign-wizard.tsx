@@ -294,7 +294,11 @@ export function CampaignWizard({
     if (step === 0) return name.trim().length >= 2;
     if (step === 1) return Boolean(accountId) && (audience?.eligible ?? 0) > 0;
     if (step === 2)
-      return Boolean(template) && variables.every((n) => mappingIsComplete(mappings[String(n)]));
+      return (
+        Boolean(template) &&
+        mediaReady &&
+        variables.every((n) => mappingIsComplete(mappings[String(n)]))
+      );
     if (step === 3) return sendNow || Boolean(scheduledAt);
     return true;
   };
