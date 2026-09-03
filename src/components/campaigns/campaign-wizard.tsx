@@ -29,6 +29,8 @@ import {
   templateCards,
   templateFooterText,
   templateHeader,
+  templateOffer,
+  templateVariableSpec,
   type TemplateRow,
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
