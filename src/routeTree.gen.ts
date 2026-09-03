@@ -49,6 +49,7 @@ import { Route as ApiBillingRequestTopupRouteImport } from './routes/api/billing
 import { Route as ApiBillingSummaryRouteImport } from './routes/api/billing/summary'
 import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns/audience'
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
+import { Route as ApiCampaignsEstimateRouteImport } from './routes/api/campaigns/estimate'
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
 import { Route as ApiCatalogImageRouteImport } from './routes/api/catalog/image'
 import { Route as ApiCatalogImportRouteImport } from './routes/api/catalog/import'
@@ -289,6 +290,11 @@ const ApiCampaignsAudienceRoute = ApiCampaignsAudienceRouteImport.update({
 const ApiCampaignsControlRoute = ApiCampaignsControlRouteImport.update({
   id: '/api/campaigns/control',
   path: '/api/campaigns/control',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCampaignsEstimateRoute = ApiCampaignsEstimateRouteImport.update({
+  id: '/api/campaigns/estimate',
+  path: '/api/campaigns/estimate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCampaignsLaunchRoute = ApiCampaignsLaunchRouteImport.update({
@@ -555,6 +561,7 @@ export interface FileRoutesByFullPath {
   '/api/billing/summary': typeof ApiBillingSummaryRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
+  '/api/campaigns/estimate': typeof ApiCampaignsEstimateRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/catalog/image': typeof ApiCatalogImageRoute
   '/api/catalog/import': typeof ApiCatalogImportRoute
@@ -636,6 +643,7 @@ export interface FileRoutesByTo {
   '/api/billing/summary': typeof ApiBillingSummaryRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
+  '/api/campaigns/estimate': typeof ApiCampaignsEstimateRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/catalog/image': typeof ApiCatalogImageRoute
   '/api/catalog/import': typeof ApiCatalogImportRoute
@@ -720,6 +728,7 @@ export interface FileRoutesById {
   '/api/billing/summary': typeof ApiBillingSummaryRoute
   '/api/campaigns/audience': typeof ApiCampaignsAudienceRoute
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
+  '/api/campaigns/estimate': typeof ApiCampaignsEstimateRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
   '/api/catalog/image': typeof ApiCatalogImageRoute
   '/api/catalog/import': typeof ApiCatalogImportRoute
@@ -805,6 +814,7 @@ export interface FileRouteTypes {
     | '/api/billing/summary'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
+    | '/api/campaigns/estimate'
     | '/api/campaigns/launch'
     | '/api/catalog/image'
     | '/api/catalog/import'
@@ -886,6 +896,7 @@ export interface FileRouteTypes {
     | '/api/billing/summary'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
+    | '/api/campaigns/estimate'
     | '/api/campaigns/launch'
     | '/api/catalog/image'
     | '/api/catalog/import'
@@ -969,6 +980,7 @@ export interface FileRouteTypes {
     | '/api/billing/summary'
     | '/api/campaigns/audience'
     | '/api/campaigns/control'
+    | '/api/campaigns/estimate'
     | '/api/campaigns/launch'
     | '/api/catalog/image'
     | '/api/catalog/import'
@@ -1037,6 +1049,7 @@ export interface RootRouteChildren {
   ApiBillingSummaryRoute: typeof ApiBillingSummaryRoute
   ApiCampaignsAudienceRoute: typeof ApiCampaignsAudienceRoute
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
+  ApiCampaignsEstimateRoute: typeof ApiCampaignsEstimateRoute
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
   ApiCatalogImageRoute: typeof ApiCatalogImageRoute
   ApiCatalogImportRoute: typeof ApiCatalogImportRoute
@@ -1354,6 +1367,13 @@ declare module '@tanstack/react-router' {
       path: '/api/campaigns/control'
       fullPath: '/api/campaigns/control'
       preLoaderRoute: typeof ApiCampaignsControlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/campaigns/estimate': {
+      id: '/api/campaigns/estimate'
+      path: '/api/campaigns/estimate'
+      fullPath: '/api/campaigns/estimate'
+      preLoaderRoute: typeof ApiCampaignsEstimateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/campaigns/launch': {
@@ -1735,6 +1755,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiBillingSummaryRoute: ApiBillingSummaryRoute,
   ApiCampaignsAudienceRoute: ApiCampaignsAudienceRoute,
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
+  ApiCampaignsEstimateRoute: ApiCampaignsEstimateRoute,
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
   ApiCatalogImageRoute: ApiCatalogImageRoute,
   ApiCatalogImportRoute: ApiCatalogImportRoute,
