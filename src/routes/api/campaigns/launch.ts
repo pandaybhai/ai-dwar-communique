@@ -106,6 +106,7 @@ export const Route = createFileRoute("/api/campaigns/launch")({
             template_name: template.name,
             template_language: template.language,
             variable_mappings: mappings,
+            send_settings: sendSettings,
             segment_id: segmentId,
             status: isFuture ? "scheduled" : "sending",
             scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
