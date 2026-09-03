@@ -112,8 +112,8 @@ function ChatPreview({
 }: {
   body: string;
   footer: string;
-  imageUrl?: string;
-  mediaLabel?: string;
+  imageUrl?: string | undefined;
+  mediaLabel?: string | undefined;
 }) {
   return (
     <div className="rounded-2xl bg-[#ECE5DD] p-4 dark:bg-muted">
