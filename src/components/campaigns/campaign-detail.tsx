@@ -235,6 +235,16 @@ export function CampaignDetail({
 
           {isAdmin && (
             <div className="flex flex-wrap gap-2">
+              {campaign.status === "awaiting_approval" && (
+                <Button
+                  className="rounded-full"
+                  disabled={busy}
+                  onClick={() => void control("approve")}
+                >
+                  <Play className="mr-1.5 h-4 w-4" /> Approve and send
+                </Button>
+              )}
+
               {running && (
                 <Button
                   variant="outline"
