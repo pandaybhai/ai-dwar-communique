@@ -21,6 +21,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminActivityRouteImport } from './routes/admin/activity'
 import { Route as AdminAiRouteImport } from './routes/admin/ai'
+import { Route as AdminBillingRouteImport } from './routes/admin/billing'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
@@ -154,6 +155,11 @@ const AdminActivityRoute = AdminActivityRouteImport.update({
 const AdminAiRoute = AdminAiRouteImport.update({
   id: '/ai',
   path: '/ai',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminBillingRoute = AdminBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminFlagsRoute = AdminFlagsRouteImport.update({
@@ -557,6 +563,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -643,6 +650,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -732,6 +740,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/billing': typeof AdminBillingRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -822,6 +831,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/activity'
     | '/admin/ai'
+    | '/admin/billing'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -908,6 +918,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/activity'
     | '/admin/ai'
+    | '/admin/billing'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -996,6 +1007,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/activity'
     | '/admin/ai'
+    | '/admin/billing'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -1224,6 +1236,13 @@ declare module '@tanstack/react-router' {
       path: '/ai'
       fullPath: '/admin/ai'
       preLoaderRoute: typeof AdminAiRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/billing': {
+      id: '/admin/billing'
+      path: '/billing'
+      fullPath: '/admin/billing'
+      preLoaderRoute: typeof AdminBillingRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/flags': {
@@ -1750,6 +1769,7 @@ declare module '@tanstack/react-router' {
 interface AdminRouteRouteChildren {
   AdminActivityRoute: typeof AdminActivityRoute
   AdminAiRoute: typeof AdminAiRoute
+  AdminBillingRoute: typeof AdminBillingRoute
   AdminFlagsRoute: typeof AdminFlagsRoute
   AdminOrganizationsRoute: typeof AdminOrganizationsRoute
   AdminUsersRoute: typeof AdminUsersRoute
@@ -1759,6 +1779,7 @@ interface AdminRouteRouteChildren {
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminActivityRoute: AdminActivityRoute,
   AdminAiRoute: AdminAiRoute,
+  AdminBillingRoute: AdminBillingRoute,
   AdminFlagsRoute: AdminFlagsRoute,
   AdminOrganizationsRoute: AdminOrganizationsRoute,
   AdminUsersRoute: AdminUsersRoute,
