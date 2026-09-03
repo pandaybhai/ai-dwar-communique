@@ -100,6 +100,11 @@ export type FeatureManifest = {
   ai_tools?: AiTool[];
   /** Tables holding this feature's data — used for offboarding and deletion. */
   data_tables: string[];
+  /**
+   * Feature keys this feature needs in order to work. Turning off a
+   * dependency must warn about everything downstream before it happens.
+   */
+  depends_on: string[];
 };
 
 const none: AnalyticsManifest = { event_types: [], metrics: [], dashboard_section: false };
