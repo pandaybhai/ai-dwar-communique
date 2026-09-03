@@ -988,7 +988,14 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: none,
-    activity_actions: ["plan_changed"],
+    activity_actions: [
+      "plan_changed",
+      "billing_account_updated",
+      "billing_rate_updated",
+      "billing_settings_updated",
+      "billing_credits_added",
+      "billing_adjustment",
+    ],
     settings_path: "/app/settings",
     usage_meters: [
       { key: "credits_consumed", name: "Credits used", unit: "currency" },
