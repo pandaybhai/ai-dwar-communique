@@ -604,6 +604,54 @@ export function draftToComponents(draft: TemplateDraft): TemplateComponent[] {
  * handle — but the send path needs a link it can still fetch months later,
  * long after the handle has expired.
  */
+/**
+ * Meta never gives our own media links back when we sync a template — it only
+ * returns its own short-lived upload handle. Overwriting the stored components
+ * with Meta's copy therefore erased the picture, clip or file we send with, and
+ * every later send failed with "we have none". This carries our links across a
+ * sync: Meta stays the source of truth for the template, we stay the source of
+ * truth for the artwork.
+ */
+export function preserveMediaUrls(
+  incoming: TemplateComponent[],
+  existing: TemplateComponent[] | null | undefined,
+): TemplateComponent[] {
+  const previous = (existing ?? []) as TemplateComponent[];
+  if (previous.length === 0) return incoming;
+
+  const previousHeaderUrl = templateHeader(previous)?.mediaUrl ?? null;
+  const previousCardUrls = templateCards(previous).map((c) => c.mediaUrl);
+
+  return incoming.map((component) => {
+    const type = String(component.type).toUpperCase();
+
+    if (type === "HEADER" && isMediaHeader(component.format) && previousHeaderUrl) {
+      return {
+        ...component,
+        example: { ...(component.example ?? {}), aidwar_media_url: previousHeaderUrl },
+      };
+    }
+
+    if (type === "CAROUSEL") {
+      return {
+        ...component,
+        cards: (component.cards ?? []).map((card, index) => {
+          const url = previousCardUrls[index];
+          if (!url) return card;
+          const parts = ((card["components"] as TemplateComponent[] | undefined) ?? []).map((part) =>
+            String(part.type).toUpperCase() === "HEADER"
+              ? { ...part, example: { ...(part.example ?? {}), aidwar_media_url: url } }
+              : part,
+          );
+          return { ...card, components: parts };
+        }),
+      };
+    }
+
+    return component;
+  });
+}
+
 export function annotateStoredComponents(
   components: TemplateComponent[],
   draft: TemplateDraft,

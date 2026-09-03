@@ -82,20 +82,48 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
 
             const rows = (result.body["data"] as AnyRecord[] | undefined) ?? [];
             total += rows.length;
+
+            // What we already hold for this WABA. Meta hands back its own
+            // expiring upload handle and nothing else, so we re-attach the
+            // media links we stored when the template was built — otherwise a
+            // sync quietly strips the picture off every media template.
+            const { preserveMediaUrls } = await import("@/lib/templates");
+            const { data: storedRows } = await supabase
+              .from("message_templates")
+              .select("name, language, components")
+              .eq("organization_id", organizationId)
+              .eq("waba_id", target.wabaId);
+            const stored = new Map<string, unknown>(
+              ((storedRows as Array<AnyRecord> | null) ?? []).map((r) => [
+                `${String(r["name"])}|${String(r["language"])}`,
+                r["components"],
+              ]),
+            );
+
             for (const t of rows) {
               const name = String(t["name"] ?? "");
               if (!name) continue;
+              const language = String(t["language"] ?? "en_US");
               const rejected = t["rejected_reason"] as string | undefined;
+              const incoming = ((t["components"] as unknown) ?? []) as Parameters<
+                typeof preserveMediaUrls
+              >[0];
+              const merged = preserveMediaUrls(
+                incoming,
+                (stored.get(`${name}|${language}`) ?? null) as Parameters<
+                  typeof preserveMediaUrls
+                >[1],
+              );
               const { error } = await supabase.from("message_templates").upsert(
                 {
                   organization_id: organizationId,
                   waba_id: target.wabaId,
                   meta_template_id: String(t["id"] ?? "") || null,
                   name,
-                  language: String(t["language"] ?? "en_US"),
+                  language,
                   category: (t["category"] as string) ?? null,
                   status: String(t["status"] ?? "PENDING").toUpperCase(),
-                  components: (t["components"] as unknown) ?? [],
+                  components: merged,
                   rejection_reason: rejected && rejected !== "NONE" ? String(rejected) : null,
                   updated_at: nowIso,
                 },
