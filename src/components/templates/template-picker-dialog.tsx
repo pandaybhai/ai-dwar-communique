@@ -218,7 +218,7 @@ export function TemplatePickerDialog({
                       format={headerMediaFormat}
                       fileName=""
                       mediaUrl={effectiveHeaderMedia ?? ""}
-                      onUploaded={(r) => setHeaderMediaUrl(r.mediaUrl)}
+                      onUploaded={(r) => setHeaderMediaUrl(r.media_url)}
                       onCleared={() => setHeaderMediaUrl("")}
                     />
                   </div>
@@ -239,7 +239,7 @@ export function TemplatePickerDialog({
                           fileName=""
                           mediaUrl={effectiveCardMedia(i) ?? ""}
                           onUploaded={(r) =>
-                            setCardMediaUrls((p) => ({ ...p, [i]: r.mediaUrl }))
+                            setCardMediaUrls((p) => ({ ...p, [i]: r.media_url }))
                           }
                           onCleared={() =>
                             setCardMediaUrls((p) => ({ ...p, [i]: "" }))
