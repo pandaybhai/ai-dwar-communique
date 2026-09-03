@@ -14,6 +14,8 @@ import {
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
+import { useNavigate } from "@tanstack/react-router";
+import { usePermissions } from "@/hooks/use-permissions";
 import { money, type CampaignCostEstimate } from "@/lib/billing";
 import {
   VARIABLE_SOURCE_LABELS,
@@ -163,6 +165,8 @@ export function CampaignWizard({
   timezone: string;
   onLaunched: (campaignId: string) => void;
 }) {
+  const { can } = usePermissions();
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [segmentId, setSegmentId] = useState<string>("all");
