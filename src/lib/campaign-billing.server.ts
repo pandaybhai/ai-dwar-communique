@@ -70,7 +70,8 @@ export async function settleCampaignSpend(
   organizationId: string,
   campaignId: string,
 ): Promise<void> {
-  const { billingEnabled, rateFor, round2 } = await import("@/lib/billing.server");
+  const { billingEnabled, rateFor } = await import("@/lib/billing.server");
+  const { round2 } = await import("@/lib/billing");
   if (!(await billingEnabled(supabase, organizationId))) return;
 
   const campaign = await loadCampaign(supabase, organizationId, campaignId);
