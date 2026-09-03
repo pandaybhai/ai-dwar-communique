@@ -196,12 +196,18 @@ export function CampaignWizard({
     setTime("");
     setHeaderMedia({ url: "", fileName: "" });
     setCardMedia({});
+    setCouponCode("");
+    setOfferDate("");
+    setOfferTime("");
   }, [open]);
 
   // A different template means different slots — start its media clean.
   useEffect(() => {
     setHeaderMedia({ url: "", fileName: "" });
     setCardMedia({});
+    setCouponCode("");
+    setOfferDate("");
+    setOfferTime("");
   }, [templateName]);
 
   useEffect(() => {
