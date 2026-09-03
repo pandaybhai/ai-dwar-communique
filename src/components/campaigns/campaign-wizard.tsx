@@ -304,6 +304,22 @@ export function CampaignWizard({
     (!needsHeaderMedia || Boolean(effectiveHeaderMedia)) &&
     cards.every((_, i) => Boolean(effectiveCardMedia(i)));
 
+  // Offers: a copy-code button needs a coupon, and a limited-time offer with a
+  // countdown needs the moment it expires.
+  const spec = useMemo(() => templateVariableSpec(template?.components), [template]);
+  const offer = useMemo(() => templateOffer(template?.components), [template]);
+  const needsCoupon =
+    spec.copyCodeButtons.length > 0 || spec.cards.some((c) => c.copyCodeButtons.length > 0);
+  const needsOfferExpiry = spec.offerExpiration;
+  const offerExpiresAt = useMemo(() => {
+    if (!needsOfferExpiry || !offerDate) return null;
+    const d = new Date(`${offerDate}T${offerTime || "23:59"}`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }, [needsOfferExpiry, offerDate, offerTime]);
+  const offerReady =
+    (!needsCoupon || couponCode.trim().length > 0) &&
+    (!needsOfferExpiry || Boolean(offerExpiresAt));
+
   const previewValues = useMemo(() => {
     const out: Record<number, string> = {};
     for (const n of variables) out[n] = resolveVariable(mappings[String(n)], sample);
