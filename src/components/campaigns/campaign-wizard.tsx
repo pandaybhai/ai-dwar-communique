@@ -144,6 +144,13 @@ export function CampaignWizard({
   const [time, setTime] = useState("");
   const [launching, setLaunching] = useState(false);
   const [loadingLists, setLoadingLists] = useState(true);
+  // Media this campaign sends: the header picture/clip/file, and one per
+  // carousel card. Blank means "use the file the template was built with".
+  const [headerMedia, setHeaderMedia] = useState<{ url: string; fileName: string }>({
+    url: "",
+    fileName: "",
+  });
+  const [cardMedia, setCardMedia] = useState<Record<number, string>>({});
 
   // A campaign always sends from one number. Default is the workspace default.
   const { numbers, defaultNumber, multiple } = useWhatsAppNumbers();
