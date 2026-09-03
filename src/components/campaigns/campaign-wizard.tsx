@@ -325,16 +325,26 @@ export function CampaignWizard({
   // countdown needs the moment it expires.
   const spec = useMemo(() => templateVariableSpec(template?.components), [template]);
   const offer = useMemo(() => templateOffer(template?.components), [template]);
-  const needsCoupon =
-    spec.copyCodeButtons.length > 0 || spec.cards.some((c) => c.copyCodeButtons.length > 0);
+  /** Copy-code buttons on the message itself (outside any carousel). */
+  const needsMainCoupon = spec.copyCodeButtons.length > 0;
+  /** Cards that copy a code — each can run its own discount. */
+  const couponCards = useMemo(
+    () => spec.cards.filter((c) => c.copyCodeButtons.length > 0),
+    [spec],
+  );
+  const needsCoupon = needsMainCoupon || couponCards.length > 0;
+  /** The code a given card actually sends: its own, else the main one. */
+  const effectiveCardCoupon = (index: number) =>
+    (cardCoupons[index] ?? "").trim() || couponCode.trim();
+  const couponsReady =
+    (!needsMainCoupon || couponCode.trim().length > 0) &&
+    couponCards.every((c) => effectiveCardCoupon(c.index).length > 0);
   const needsOfferExpiry = spec.offerExpiration;
   const offerExpiresAt = useMemo(() => {
     if (!needsOfferExpiry || !offerDate) return null;
     return zonedToUtcIso(offerDate, offerTime || "23:59", timezone);
   }, [needsOfferExpiry, offerDate, offerTime, timezone]);
-  const offerReady =
-    (!needsCoupon || couponCode.trim().length > 0) &&
-    (!needsOfferExpiry || Boolean(offerExpiresAt));
+  const offerReady = couponsReady && (!needsOfferExpiry || Boolean(offerExpiresAt));
 
 
   const previewValues = useMemo(() => {
