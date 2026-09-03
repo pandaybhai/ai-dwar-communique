@@ -53,6 +53,10 @@ export function TemplatePickerDialog({
   const [values, setValues] = useState<Record<number, string>>({});
   const [headerMediaUrl, setHeaderMediaUrl] = useState<string | null>(null);
   const [cardMediaUrls, setCardMediaUrls] = useState<Record<number, string>>({});
+  // Offer details: the coupon a copy-code button copies, and when a
+  // limited-time offer's countdown ends.
+  const [couponCode, setCouponCode] = useState("");
+  const [offerEndsAt, setOfferEndsAt] = useState("");
 
   useEffect(() => {
     if (!open || !organizationId) return;
