@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
+import { money } from "@/lib/billing";
 import { callApi } from "@/lib/whatsapp-client";
 import {
   CAMPAIGN_STATUS_CLASSES,
@@ -198,6 +199,8 @@ export function CampaignDetail({
   );
   const progress = percent(campaign.sent_count + campaign.failed_count, campaign.total_recipients);
   const running = campaign.status === "sending" || campaign.status === "scheduled";
+  const hasSpend =
+    Number(campaign.estimated_cost ?? 0) > 0 || Number(campaign.charged_amount ?? 0) > 0;
   const sendSettings = (campaign.send_settings ?? {}) as Record<string, unknown>;
   const couponCode = String(sendSettings["coupon_code"] ?? "").trim();
   const offerEndsAt = String(sendSettings["offer_expires_at"] ?? "").trim() || null;
