@@ -687,7 +687,7 @@ export async function assignPlan(
 ): Promise<{ ok: true } | { error: string }> {
   const { data: version } = await supabase
     .from("plan_versions")
-    .select("id, plans:plan_id(key)")
+    .select("id, features, plans:plan_id(key)")
     .eq("is_current", true);
   const row = ((version ?? []) as Record<string, unknown>[]).find(
     (v) => ((v["plans"] ?? {}) as Record<string, unknown>)["key"] === input.planKey,
@@ -708,12 +708,8 @@ export async function assignPlan(
   const overrides = (settings["limits_override"] ?? {}) as Record<string, unknown>;
   const manual = (overrides["_manual_flags"] ?? {}) as Record<string, boolean>;
 
-  const { data: full } = await supabase
-    .from("plan_versions")
-    .select("features")
-    .eq("id", row["id"] as string)
-    .maybeSingle();
-  const planFeatures = (full?.["features"] ?? []) as string[];
+  const planFeatures = (row["features"] ?? []) as string[];
+
 
   if (planFeatures.length > 0) {
     for (const feature of FEATURES) {
