@@ -39,8 +39,16 @@ async function recentOfferCampaigns(
 
   const out: Array<{ campaignId: string; coupon: string }> = [];
   for (const row of (data ?? []) as unknown as Sent[]) {
-    const coupon = String(row.campaigns?.send_settings?.["coupon_code"] ?? "").trim();
-    if (coupon) out.push({ campaignId: row.campaign_id, coupon });
+    const settings = row.campaigns?.send_settings ?? {};
+    // A carousel can run a different code per card, so all of them count.
+    const codes = new Set<string>();
+    const main = String(settings["coupon_code"] ?? "").trim();
+    if (main) codes.add(main);
+    for (const card of Array.isArray(settings["cards"]) ? (settings["cards"] as AnyRecord[]) : []) {
+      const code = String(card?.["coupon_code"] ?? "").trim();
+      if (code) codes.add(code);
+    }
+    for (const coupon of codes) out.push({ campaignId: row.campaign_id, coupon });
   }
   return out;
 }

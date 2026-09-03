@@ -42,6 +42,8 @@ export type PreviewModel = {
     mediaUrl: string | null;
     body: string;
     buttons: PreviewButton[];
+    /** This card's own coupon, when a carousel runs a different deal per card. */
+    couponCode?: string | null;
   }>;
   offer: { text: string; hasExpiration: boolean; expiresAt?: string | null } | null;
   /** The code a copy-code button hands the customer, when it's known. */
@@ -296,7 +298,11 @@ export function TemplatePreview({
               {card.buttons.length > 0 ? (
                 <div className="px-2 pb-1">
                   {card.buttons.map((button, i) => (
-                    <ButtonRow key={i} button={button} couponCode={couponCode} />
+                    <ButtonRow
+                      key={i}
+                      button={button}
+                      couponCode={card.couponCode ?? couponCode}
+                    />
                   ))}
                 </div>
               ) : null}

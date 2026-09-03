@@ -187,6 +187,9 @@ export function CampaignWizard({
   // Offer details: the coupon a copy-code button copies, and when a
   // limited-time offer's countdown runs out.
   const [couponCode, setCouponCode] = useState("");
+  // A carousel can run a different discount on every card, so each card with a
+  // copy-code button keeps its own code. Blank means "use the main code".
+  const [cardCoupons, setCardCoupons] = useState<Record<number, string>>({});
   const [offerDate, setOfferDate] = useState("");
   const [offerTime, setOfferTime] = useState("");
 
@@ -209,6 +212,7 @@ export function CampaignWizard({
     setHeaderMedia({ url: "", fileName: "" });
     setCardMedia({});
     setCouponCode("");
+    setCardCoupons({});
     setOfferDate("");
     setOfferTime("");
   }, [open]);
@@ -218,6 +222,7 @@ export function CampaignWizard({
     setHeaderMedia({ url: "", fileName: "" });
     setCardMedia({});
     setCouponCode("");
+    setCardCoupons({});
     setOfferDate("");
     setOfferTime("");
   }, [templateName]);
@@ -320,16 +325,26 @@ export function CampaignWizard({
   // countdown needs the moment it expires.
   const spec = useMemo(() => templateVariableSpec(template?.components), [template]);
   const offer = useMemo(() => templateOffer(template?.components), [template]);
-  const needsCoupon =
-    spec.copyCodeButtons.length > 0 || spec.cards.some((c) => c.copyCodeButtons.length > 0);
+  /** Copy-code buttons on the message itself (outside any carousel). */
+  const needsMainCoupon = spec.copyCodeButtons.length > 0;
+  /** Cards that copy a code — each can run its own discount. */
+  const couponCards = useMemo(
+    () => spec.cards.filter((c) => c.copyCodeButtons.length > 0),
+    [spec],
+  );
+  const needsCoupon = needsMainCoupon || couponCards.length > 0;
+  /** The code a given card actually sends: its own, else the main one. */
+  const effectiveCardCoupon = (index: number) =>
+    (cardCoupons[index] ?? "").trim() || couponCode.trim();
+  const couponsReady =
+    (!needsMainCoupon || couponCode.trim().length > 0) &&
+    couponCards.every((c) => effectiveCardCoupon(c.index).length > 0);
   const needsOfferExpiry = spec.offerExpiration;
   const offerExpiresAt = useMemo(() => {
     if (!needsOfferExpiry || !offerDate) return null;
     return zonedToUtcIso(offerDate, offerTime || "23:59", timezone);
   }, [needsOfferExpiry, offerDate, offerTime, timezone]);
-  const offerReady =
-    (!needsCoupon || couponCode.trim().length > 0) &&
-    (!needsOfferExpiry || Boolean(offerExpiresAt));
+  const offerReady = couponsReady && (!needsOfferExpiry || Boolean(offerExpiresAt));
 
 
   const previewValues = useMemo(() => {
@@ -374,6 +389,7 @@ export function CampaignWizard({
       cards: model.cards.map((card, i) => ({
         ...card,
         mediaUrl: effectiveCardMedia(i) || card.mediaUrl,
+        couponCode: effectiveCardCoupon(i) || null,
       })),
       offer: model.offer ? { ...model.offer, expiresAt: offerExpiresAt } : null,
       couponCode: couponCode.trim() || null,
@@ -387,6 +403,7 @@ export function CampaignWizard({
     cardMedia,
     offerExpiresAt,
     couponCode,
+    cardCoupons,
   ]);
 
   const canNext = () => {
@@ -419,7 +436,12 @@ export function CampaignWizard({
         send_settings: {
           ...(needsHeaderMedia && headerMedia.url ? { header_media_url: headerMedia.url } : {}),
           ...(cards.length
-            ? { cards: cards.map((_, i) => ({ media_url: cardMedia[i] ?? null })) }
+            ? {
+                cards: cards.map((_, i) => ({
+                  media_url: cardMedia[i] ?? null,
+                  coupon_code: effectiveCardCoupon(i) || null,
+                })),
+              }
             : {}),
           ...(needsCoupon && couponCode.trim() ? { coupon_code: couponCode.trim() } : {}),
           ...(offerExpiresAt ? { offer_expires_at: offerExpiresAt } : {}),
@@ -629,7 +651,11 @@ export function CampaignWizard({
                     </Label>
                     {needsCoupon && (
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">Coupon code</Label>
+                        <Label className="text-xs font-medium">
+                          {couponCards.length > 0 && !needsMainCoupon
+                            ? "Coupon code for every card"
+                            : "Coupon code"}
+                        </Label>
                         <Input
                           value={couponCode}
                           onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
@@ -637,9 +663,47 @@ export function CampaignWizard({
                           maxLength={15}
                         />
                         <p className="text-xs text-muted-foreground">
-                          This is the code customers copy with one tap. Everyone in this
-                          campaign gets the same code.
+                          {couponCards.length > 0
+                            ? "The code customers copy with one tap. Every card uses this unless you give that card its own code below."
+                            : "This is the code customers copy with one tap. Everyone in this campaign gets the same code."}
                         </p>
+                      </div>
+                    )}
+
+                    {couponCards.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium">Codes per card</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Running a different discount on each card? Give that card its own
+                          code. Leave it blank to use the code above.
+                        </p>
+                        {couponCards.map((card) => (
+                          <div key={card.index} className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">
+                              Card {card.index + 1}
+                              {cards[card.index]?.body
+                                ? ` · ${cards[card.index]!.body.slice(0, 40)}`
+                                : ""}
+                            </Label>
+                            <Input
+                              value={cardCoupons[card.index] ?? ""}
+                              onChange={(e) =>
+                                setCardCoupons((prev) => ({
+                                  ...prev,
+                                  [card.index]: e.target.value.toUpperCase(),
+                                }))
+                              }
+                              placeholder={couponCode.trim() || "SHOES20"}
+                              maxLength={15}
+                            />
+                          </div>
+                        ))}
+                        {!couponsReady && (
+                          <p className="text-xs text-destructive">
+                            Every card with a copy-code button needs a code — either its own
+                            or the shared one above.
+                          </p>
+                        )}
                       </div>
                     )}
                     {needsOfferExpiry && (
@@ -880,9 +944,16 @@ export function CampaignWizard({
                             ? formatInZone(scheduledAt, timezone)
                             : "—",
                       ],
-                      ...(needsCoupon && couponCode.trim()
+                      ...(needsMainCoupon && couponCode.trim()
                         ? [["Coupon code", couponCode.trim()] as [string, string]]
                         : []),
+                      ...couponCards.map(
+                        (c) =>
+                          [`Card ${c.index + 1} code`, effectiveCardCoupon(c.index)] as [
+                            string,
+                            string,
+                          ],
+                      ),
                       ...(offerExpiresAt
                         ? [["Offer ends", formatInZone(offerExpiresAt, timezone)] as [string, string]]
                         : []),
