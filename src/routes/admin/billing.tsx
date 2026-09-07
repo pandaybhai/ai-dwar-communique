@@ -365,6 +365,7 @@ function AdminBilling() {
   }
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader
