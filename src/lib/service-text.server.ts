@@ -97,6 +97,110 @@ export async function sendServiceText(
 }
 
 /**
+ * Sends one message with up to three tap-to-reply buttons, and optionally a
+ * picture above the words. Same 24-hour rule as any other session message: a
+ * button message is still free-form, not a template.
+ */
+export async function sendServiceButtons(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    conversationId: string;
+    to: string;
+    body: string;
+    buttons: Array<{ id: string; title: string }>;
+    imageUrl?: string | null;
+  },
+): Promise<ServiceTextResult> {
+  if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
+
+  const buttons = args.buttons.slice(0, 3);
+  for (const button of buttons) {
+    if (button.title.length > 20) {
+      throw new Error(`Button title too long for WhatsApp (max 20): "${button.title}"`);
+    }
+  }
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("last_customer_message_at")
+    .eq("id", args.conversationId)
+    .eq("organization_id", args.organizationId)
+    .maybeSingle();
+  if (!isServiceWindowOpen(conversation)) {
+    return { ok: false, messageId: null, error: "service_window_closed" };
+  }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: args.to,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        ...(args.imageUrl
+          ? { header: { type: "image", image: { link: args.imageUrl } } }
+          : {}),
+        body: { text: args.body },
+        action: {
+          buttons: buttons.map((b) => ({
+            type: "reply",
+            reply: { id: b.id, title: b.title },
+          })),
+        },
+      },
+    }),
+  });
+
+  let json: AnyRecord = {};
+  try {
+    json = (await res.json()) as AnyRecord;
+  } catch {
+    json = {};
+  }
+  const metaMessageId =
+    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
+  const nowIso = new Date().toISOString();
+  const recordedBody = `${args.body} [buttons: ${buttons.map((b) => b.title).join(", ")}]`;
+
+  const { data: inserted } = await supabase
+    .from("messages")
+    .insert({
+      organization_id: args.organizationId,
+      conversation_id: args.conversationId,
+      meta_message_id: metaMessageId,
+      direction: "outbound",
+      type: args.imageUrl ? "image" : "text",
+      body: recordedBody,
+      ...(args.imageUrl ? { media_url: args.imageUrl, media_mime: "image" } : {}),
+      status: res.ok ? "pending" : "failed",
+      status_updated_at: nowIso,
+      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
+    })
+    .select("id")
+    .maybeSingle();
+
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: nowIso })
+    .eq("id", args.conversationId);
+
+  return {
+    ok: res.ok,
+    messageId: (inserted?.id as string | undefined) ?? null,
+    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
+  };
+}
+
+
+/**
  * Sends one product picture as a session image message, with the product name
  * (and price, when we have one) as the caption. Used when the AI answers a
  * catalogue question — a picture says more than a line of text.

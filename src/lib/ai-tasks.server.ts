@@ -380,13 +380,20 @@ export async function merchantAnswer(
     }));
 
   const { assembleBrief } = await import("@/lib/ai-brief.server");
-  const brief = await assembleBrief(supabase, organizationId, agentId, {
-    audience: "merchant",
-    businessName: args.session.business_name ?? null,
-    ownerName: args.session.owner_name ?? null,
-  });
-
   const { userPrincipal } = await import("@/lib/ai-tools.server");
+
+  // The brief and the retrieval probe don't need each other, so the owner
+  // waits for the slower of the two rather than for both in turn. The probe
+  // also decides how hard we think: nothing found means there is nothing to be
+  // careful with, so the quick brain answers.
+  const [brief, hasSources] = await Promise.all([
+    assembleBrief(supabase, organizationId, agentId, {
+      audience: "merchant",
+      businessName: args.session.business_name ?? null,
+      ownerName: args.session.owner_name ?? null,
+    }),
+    hasKnowledgeMatch(supabase, organizationId, agentId, args.question),
+  ]);
 
   return executeRun(supabase, {
     organizationId,
@@ -400,6 +407,7 @@ export async function merchantAnswer(
     input: args.question,
     system: brief.text,
     promptRulesVersion: brief.rulesVersion,
+    tier: hasSources ? "careful" : "everyday",
     useKnowledge: true,
     useTools: true,
     metadata: { channel: "onboarding", session_id: args.session.id },
@@ -407,4 +415,100 @@ export async function merchantAnswer(
     channel: "onboarding",
   });
 }
+
+/** Is there anything in the knowledge base worth being careful about here? */
+async function hasKnowledgeMatch(
+  supabase: SupabaseClient,
+  organizationId: string,
+  agentId: string | null,
+  question: string,
+): Promise<boolean> {
+  try {
+    const { embedTexts, EMBEDDING_MODEL } = await import("@/lib/ai-run.server");
+    const [vector] = await embedTexts([question]);
+    if (!vector) return false;
+    const { data } = await supabase.rpc("match_knowledge_chunks", {
+      p_org: organizationId,
+      p_embedding: JSON.stringify(vector),
+      p_embedding_model: EMBEDDING_MODEL,
+      p_agent: agentId,
+      p_limit: 1,
+      p_min_similarity: 0.35,
+    });
+    return ((data ?? []) as unknown[]).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Straight after the crawl: three plain facts about the business and three
+ * questions a customer might actually ask, taken only from what was read.
+ * Used for the "here's what I learned" card on day one.
+ */
+export async function merchantFirstBrief(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    userId: string;
+    sourceId: string;
+    businessName: string;
+  },
+): Promise<{ facts: string[]; questions: string[] }> {
+  const fallback = {
+    facts: [] as string[],
+    questions: ["What do you sell?", "What does it cost?", "Delivery kitna time?"],
+  };
+
+  try {
+    const { data } = await supabase
+      .from("knowledge_chunks")
+      .select("text")
+      .eq("organization_id", args.organizationId)
+      .eq("source_id", args.sourceId)
+      .order("chunk_index", { ascending: true })
+      .limit(12);
+    const material = ((data ?? []) as Array<{ text: string }>)
+      .map((r) => r.text)
+      .join("\n\n")
+      .slice(0, 12000);
+    if (!material.trim()) return fallback;
+
+    const run = await executeRun(supabase, {
+      organizationId: args.organizationId,
+      task: "agent_reply",
+      actorUserId: args.userId,
+      tier: "everyday",
+      input: `Material read from the website of ${args.businessName || "this business"}:\n\n${material}`,
+      system:
+        'Reply with JSON only, no prose, in this exact shape: {"facts":["...","...","..."],"questions":["...","...","..."]}. ' +
+        "facts: three one-sentence facts about this business, each at most 110 characters, taken only from the material — never invented. " +
+        "questions: three short questions a customer of this business might ask, each at most 20 characters, and write the third one in Hinglish.",
+      metadata: { channel: "onboarding", purpose: "first_brief" },
+      billingExempt: true,
+      channel: "onboarding",
+    });
+
+    const raw = (run.output ?? "").replace(/```json|```/g, "").trim();
+    const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    const parsed = JSON.parse(json) as { facts?: unknown; questions?: unknown };
+    const clean = (value: unknown, max: number): string[] =>
+      Array.isArray(value)
+        ? value
+            .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+            .map((v) => v.trim().slice(0, max))
+            .slice(0, 3)
+        : [];
+
+    const facts = clean(parsed.facts, 110);
+    const questions = clean(parsed.questions, 20);
+    return {
+      facts,
+      questions: questions.length === 3 ? questions : fallback.questions,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 
