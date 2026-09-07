@@ -47,28 +47,19 @@ export const Route = createFileRoute("/api/whatsapp/refresh-quality")({
           .eq("id", connection.accountId)
           .maybeSingle();
 
-        const result = await graphFetch(connection.phoneNumberId, connection.accessToken, {
-          query: { fields: "quality_rating,messaging_limit_tier,name_status,display_phone_number" },
+        const { refreshPhoneNumberQuality } = await import("@/server/whatsapp-quality.server");
+        const refreshed = await refreshPhoneNumberQuality(supabase, {
+          whatsappAccountId: connection.accountId,
+          organizationId,
+          phoneNumberId: connection.phoneNumberId,
+          accessToken: connection.accessToken,
         });
-        if (!result.ok) return jsonError(graphErrorMessage(result.body), 400);
-
-        console.info("[refresh-quality]", JSON.stringify(result.body));
+        if (!refreshed.ok) return jsonError(refreshed.error ?? "Meta rejected the request.", 400);
 
         const previous = (account?.quality_rating as string | null) ?? null;
-        const rating = (result.body["quality_rating"] as string) ?? "UNKNOWN";
-        const nameStatus = (result.body["name_status"] as string) ?? null;
-        const nowIso = new Date().toISOString();
-
-        const { error: updateErr } = await supabase
-          .from("whatsapp_accounts")
-          .update({
-            quality_rating: rating,
-            quality_updated_at: nowIso,
-            messaging_tier: (result.body["messaging_limit_tier"] as string | undefined) ?? "NOT_AVAILABLE",
-            messaging_tier_updated_at: nowIso,
-          })
-          .eq("id", connection.accountId);
-        if (updateErr) return jsonError("We couldn't save the latest quality rating.", 500);
+        const rating = refreshed.qualityRating ?? "UNKNOWN";
+        const nameStatus = refreshed.nameStatus ?? null;
+        const nowIso = refreshed.updatedAt ?? new Date().toISOString();
 
         // Append to the quality timeline — the account row only holds current state.
         await supabase.from("whatsapp_quality_history").insert({
