@@ -854,6 +854,29 @@ export async function processWebhookPayload(
             });
           }
 
+          // The onboarding number is a different conversation entirely: the
+          // person writing is a business owner, not a customer. Nothing that
+          // follows (opt-out keywords, COD, automations, the customer AI)
+          // applies to them.
+          if (onboardingAccountId && accountId === onboardingAccountId) {
+            if (!isSystemEcho && inserted && inserted.length > 0) {
+              const { handleMerchantInbound } = await import("@/lib/merchant-channel.server");
+              await handleMerchantInbound(supabase, {
+                organizationId: orgId,
+                accountId,
+                phoneNumberId,
+                accessToken,
+                waId,
+                conversationId: conversation.id as string,
+                contactId: contact.id as string,
+                body,
+              });
+            }
+            continue;
+          }
+
+
+
           // Opt-out / opt-in runs on EVERY inbound text, independent of whether
           // the message row was new — it is idempotent (no-op when the status
           // already matches), so duplicate deliveries cannot swallow a "STOP".
