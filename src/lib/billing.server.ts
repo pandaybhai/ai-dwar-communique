@@ -79,7 +79,6 @@ async function requireSuperAdmin(supabase: SupabaseClient, actor: Actor): Promis
   }
 }
 
-
 export async function billingEnabled(
   supabase: SupabaseClient,
   organizationId: string,
@@ -143,16 +142,16 @@ async function clientRatesUnchecked(
   country = "IN",
 ): Promise<ClientRate[]> {
   const rows = await Promise.all(
-
     MESSAGE_CATEGORIES.map(async (category) => {
       const { data } = await supabase.rpc("client_rate_for", {
         p_org: organizationId,
         p_country: country,
         p_category: category,
       });
-      const row = (Array.isArray(data) ? data[0] : null) as
-        | { rate: number | null; currency: string | null }
-        | null;
+      const row = (Array.isArray(data) ? data[0] : null) as {
+        rate: number | null;
+        currency: string | null;
+      } | null;
       return {
         category,
         rate: row?.rate === null || row?.rate === undefined ? null : Number(row.rate),
@@ -175,9 +174,10 @@ export async function rateFor(
     p_country: country,
     p_category: category,
   });
-  const row = (Array.isArray(data) ? data[0] : null) as
-    | { rate: number | null; currency: string | null }
-    | null;
+  const row = (Array.isArray(data) ? data[0] : null) as {
+    rate: number | null;
+    currency: string | null;
+  } | null;
   return { rate: Number(row?.rate ?? 0), currency: row?.currency ?? "INR" };
 }
 
@@ -196,7 +196,11 @@ async function usageBuckets(
     .gte("created_at", start)
     .lt("created_at", end);
 
-  const rows = (data ?? []) as { entry_type: string; amount: number; metadata: Record<string, unknown> }[];
+  const rows = (data ?? []) as {
+    entry_type: string;
+    amount: number;
+    metadata: Record<string, unknown>;
+  }[];
   const seed: Record<UsageBucket["category"], UsageBucket> = {
     messaging: { category: "messaging", label: "Campaigns & broadcasts", amount: 0, count: 0 },
     automation: { category: "automation", label: "Automations & flows", amount: 0, count: 0 },
@@ -233,7 +237,6 @@ async function summaryUnchecked(
   supabase: SupabaseClient,
   organizationId: string,
 ): Promise<BillingSummary> {
-
   const { start, end } = monthWindow();
   const [enabled, wallet, settings] = await Promise.all([
     billingEnabled(supabase, organizationId),
@@ -349,7 +352,9 @@ export async function listLedger(
 
   let query = supabase
     .from("wallet_ledger")
-    .select("id, entry_type, amount, balance_after, currency, description, reference_type, created_at")
+    .select(
+      "id, entry_type, amount, balance_after, currency, description, reference_type, created_at",
+    )
     .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
     .limit(Math.min(Math.max(limit, 1), 200));
@@ -357,7 +362,6 @@ export async function listLedger(
   const { data } = await query;
   return (data ?? []) as Record<string, unknown>[];
 }
-
 
 /** Invoices and payment attempts — the paperwork behind the ledger. */
 export async function listBillingDocuments(
@@ -387,7 +391,6 @@ export async function listBillingDocuments(
   return (data ?? []) as Record<string, unknown>[];
 }
 
-
 // ---------------------------------------------------------------- purchases
 
 export async function createCreditPurchase(
@@ -396,16 +399,16 @@ export async function createCreditPurchase(
 ): Promise<{ url: string; payment_id: string } | { error: string }> {
   await requirePerm(supabase, input.organizationId, { userId: input.userId }, "billing.pay");
 
-  const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } = await import(
-    "@/lib/razorpay.server"
-  );
+  const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } =
+    await import("@/lib/razorpay.server");
 
   const { data: pack } = await supabase
     .from("credit_packs")
     .select("id, name, amount, bonus_amount, currency, is_active")
     .eq("id", input.packId)
     .maybeSingle();
-  if (!pack || pack.is_active !== true) return { error: "That credit pack is no longer available." };
+  if (!pack || pack.is_active !== true)
+    return { error: "That credit pack is no longer available." };
 
   let coupon: Record<string, unknown> | null = null;
   if (input.couponCode?.trim()) {
@@ -434,12 +437,15 @@ export async function createCreditPurchase(
 
   const { data: org } = await supabase
     .from("organizations")
-    .select("name, billing_account_id, billing_accounts:billing_account_id(billing_email, billing_whatsapp, name)")
+    .select(
+      "name, billing_account_id, billing_accounts:billing_account_id(billing_email, billing_whatsapp, name)",
+    )
     .eq("id", input.organizationId)
     .maybeSingle();
-  const account = ((org ?? {}) as Record<string, unknown>)["billing_accounts"] as
-    | Record<string, unknown>
-    | null;
+  const account = ((org ?? {}) as Record<string, unknown>)["billing_accounts"] as Record<
+    string,
+    unknown
+  > | null;
 
   // One live link per workspace: older unpaid attempts are closed off so a
   // stale link can never be paid days later against the wrong pack.
@@ -449,7 +455,7 @@ export async function createCreditPurchase(
     .eq("organization_id", input.organizationId)
     .eq("purpose", "credit_purchase")
     .in("status", ["created", "pending"]);
-  for (const old of ((stale ?? []) as Record<string, unknown>[])) {
+  for (const old of (stale ?? []) as Record<string, unknown>[]) {
     await supabase
       .from("payments")
       .update({
@@ -493,7 +499,9 @@ export async function createCreditPurchase(
     description: `${pack.name} credits for ${String(((org ?? {}) as Record<string, unknown>)["name"] ?? "your workspace")}`,
     reference: payment.id as string,
     customer: {
-      name: (account?.["name"] as string) ?? (((org ?? {}) as Record<string, unknown>)["name"] as string),
+      name:
+        (account?.["name"] as string) ??
+        (((org ?? {}) as Record<string, unknown>)["name"] as string),
       email: (account?.["billing_email"] as string) ?? null,
       contact: (account?.["billing_whatsapp"] as string) ?? null,
     },
@@ -516,7 +524,11 @@ export async function createCreditPurchase(
       provider_link_id: link.id,
       status: "pending",
       // Merge, never replace: the pack figures are what settlement runs on.
-      raw: { ...packRaw, expires_at: new Date(Date.now() + 24 * 3600e3).toISOString(), link: link.raw },
+      raw: {
+        ...packRaw,
+        expires_at: new Date(Date.now() + 24 * 3600e3).toISOString(),
+        link: link.raw,
+      },
     })
     .eq("id", payment.id);
 
@@ -532,18 +544,37 @@ export async function settlePayment(
 ): Promise<{ credited: boolean }> {
   const { data: payment } = await supabase
     .from("payments")
-    .select("id, organization_id, status, amount, currency, credit_pack_id, coupon_id, purpose, raw")
+    .select(
+      "id, organization_id, status, amount, currency, credit_pack_id, coupon_id, purpose, raw",
+    )
     .eq("id", paymentId)
     .maybeSingle();
   if (!payment) return { credited: false };
   if (payment.status === "paid") return { credited: false }; // already settled
 
-  const entity = ((raw["payload"] as Record<string, unknown> | undefined)?.["payment"] as
-    | Record<string, unknown>
-    | undefined)?.["entity"] as Record<string, unknown> | undefined;
+  const entity = (
+    (raw["payload"] as Record<string, unknown> | undefined)?.["payment"] as
+      Record<string, unknown> | undefined
+  )?.["entity"] as Record<string, unknown> | undefined;
 
   // The paid flag is claimed conditionally: a replayed webhook finds no row
   // left to flip and stops here, so nothing is ever credited twice.
+  // What Razorpay actually collected, spelled out on the payment itself so a
+  // receipt or a reconciliation never has to re-derive it.
+  const priorRaw = (payment.raw ?? {}) as Record<string, unknown>;
+  const grossPaise = Number(entity?.["amount"] ?? 0);
+  const grossAmount =
+    grossPaise > 0 ? round2(grossPaise / 100) : Number(priorRaw["gross"] ?? payment.amount ?? 0);
+  const gstAmount = round2(grossAmount - Number(payment.amount ?? 0));
+  // Razorpay reports the family in `method` and the instrument alongside it
+  // ('upi' + vpa, 'wallet' + wallet name, 'card' + network).
+  const methodDetail =
+    (entity?.["vpa"] as string | undefined) ??
+    (entity?.["wallet"] as string | undefined) ??
+    (entity?.["bank"] as string | undefined) ??
+    (entity?.["card_id"] as string | undefined) ??
+    null;
+
   const { data: claimed } = await supabase
     .from("payments")
     .update({
@@ -552,11 +583,18 @@ export async function settlePayment(
       ...(entity?.["order_id"] ? { provider_order_id: String(entity["order_id"]) } : {}),
       ...(entity?.["method"] ? { method: String(entity["method"]) } : {}),
       paid_at: new Date().toISOString(),
-      raw: { ...(payment.raw as Record<string, unknown>), webhook: raw },
+      raw: {
+        ...priorRaw,
+        gst_amount: gstAmount,
+        gross_amount: grossAmount,
+        ...(methodDetail ? { method_detail: methodDetail } : {}),
+        webhook: raw,
+      },
     })
     .eq("id", payment.id)
     .neq("status", "paid")
     .select("id");
+
   if (!claimed || claimed.length === 0) return { credited: false };
 
   if (payment.purpose !== "credit_purchase" || !payment.organization_id) return { credited: false };
@@ -598,7 +636,6 @@ export async function settlePayment(
     });
     return { credited: false };
   }
-
 
   await supabase.rpc("wallet_apply", {
     p_org: payment.organization_id,
@@ -664,9 +701,8 @@ export async function settlePayment(
   // A numbered tax invoice, issued and marked paid in one go. A failure here
   // must never un-credit the wallet, so it is contained.
   try {
-    const { loadSupplier, buildInvoice, issueInvoice, markPaid } = await import(
-      "@/lib/invoices.server"
-    );
+    const { loadSupplier, buildInvoice, issueInvoice, markPaid } =
+      await import("@/lib/invoices.server");
     const supplier = await loadSupplier(supabase);
     const lines: import("@/lib/invoices.server").InvoiceLineInput[] = [
       {
@@ -703,7 +739,6 @@ export async function settlePayment(
   } catch {
     // the credits are already in the wallet; the invoice can be re-issued
   }
-
 
   return { credited: true };
 }
@@ -1026,7 +1061,10 @@ async function applyPlanLimits(
   organizationId: string,
   limits: Record<string, number>,
   overrides: Record<string, unknown>,
-): Promise<{ members: { user_id: string; name: string | null }[]; numbers: { id: string; label: string }[] }> {
+): Promise<{
+  members: { user_id: string; name: string | null }[];
+  numbers: { id: string; label: string }[];
+}> {
   const memberLimit = Number(limits["members"] ?? -1);
   const numberLimit = Number(limits["numbers"] ?? -1);
 
@@ -1080,7 +1118,6 @@ async function applyPlanLimits(
   return { members: lockedMembers, numbers: lockedNumbers };
 }
 
-
 export type FeatureImpact = {
   flag_key: string;
   feature_key: string;
@@ -1112,7 +1149,10 @@ export async function featureImpact(
   };
 
   const scoped = (table: string) =>
-    supabase.from(table).select("id", { count: "exact", head: true }).eq("organization_id", organizationId);
+    supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId);
 
   if (featureKey === "shopify") {
     await add("connected stores", scoped("shopify_stores"));
@@ -1123,7 +1163,10 @@ export async function featureImpact(
     await add("messages waiting to go out", scoped("scheduled_sends").eq("status", "pending"));
   }
   if (featureKey === "campaigns") {
-    await add("campaigns sending or scheduled", scoped("campaigns").in("status", ["sending", "scheduled"]));
+    await add(
+      "campaigns sending or scheduled",
+      scoped("campaigns").in("status", ["sending", "scheduled"]),
+    );
   }
   if (featureKey === "ai") {
     await add("conversations the AI is handling", scoped("conversations").eq("status", "open"));
@@ -1168,7 +1211,8 @@ export async function setFeatureOverride(
     });
     if (impact.blocking && input.force !== true) return { impact };
 
-    if (input.force === true) await pauseDependents(supabase, input.organizationId, input.featureKey);
+    if (input.force === true)
+      await pauseDependents(supabase, input.organizationId, input.featureKey);
   }
 
   const { error } = await supabase
@@ -1185,12 +1229,14 @@ export async function setFeatureOverride(
   const manual = { ...((overrides["_manual_flags"] ?? {}) as Record<string, boolean>) };
   manual[feature.key] = input.enabled;
   overrides["_manual_flags"] = manual;
-  await supabase
-    .from("organization_billing_settings")
-    .upsert(
-      { organization_id: input.organizationId, limits_override: overrides, updated_by: input.actorId },
-      { onConflict: "organization_id" },
-    );
+  await supabase.from("organization_billing_settings").upsert(
+    {
+      organization_id: input.organizationId,
+      limits_override: overrides,
+      updated_by: input.actorId,
+    },
+    { onConflict: "organization_id" },
+  );
 
   return { ok: true };
 }
@@ -1279,7 +1325,8 @@ export async function estimateCampaignCost(
     approval_threshold: threshold,
     daily_limit: dailyLimit,
     over_daily_limit: dailyLimit !== null && input.recipients > dailyLimit,
-    days_needed: dailyLimit !== null && dailyLimit > 0 ? Math.ceil(input.recipients / dailyLimit) : 1,
+    days_needed:
+      dailyLimit !== null && dailyLimit > 0 ? Math.ceil(input.recipients / dailyLimit) : 1,
   };
 }
 
@@ -1341,17 +1388,25 @@ export async function adminBillingOverview(supabase: SupabaseClient, actor: Acto
     await Promise.all([
       supabase
         .from("organizations")
-        .select("id, name, status, plan_status, funding_model, plan_version_id, plan_versions:plan_version_id(price_monthly, plans:plan_id(key, name))")
+        .select(
+          "id, name, status, plan_status, funding_model, plan_version_id, plan_versions:plan_version_id(price_monthly, plans:plan_id(key, name))",
+        )
         .order("name"),
-      supabase.from("wallet_balances").select("organization_id, balance, held, currency, lifetime_purchased, lifetime_consumed"),
+      supabase
+        .from("wallet_balances")
+        .select("organization_id, balance, held, currency, lifetime_purchased, lifetime_consumed"),
       supabase
         .from("topup_tasks")
-        .select("id, organization_id, trigger, credits_amount, meta_amount, margin_amount, status, due_at, created_at")
+        .select(
+          "id, organization_id, trigger, credits_amount, meta_amount, margin_amount, status, due_at, created_at",
+        )
         .eq("status", "pending")
         .order("due_at"),
       supabase
         .from("whatsapp_accounts")
-        .select("id, organization_id, display_phone_number, quality_rating, messaging_tier, status"),
+        .select(
+          "id, organization_id, display_phone_number, quality_rating, messaging_tier, status",
+        ),
       supabase
         .from("meta_prepaid_ledger")
         .select("organization_id, balance_after, created_at")
@@ -1394,7 +1449,8 @@ export async function adminBillingOverview(supabase: SupabaseClient, actor: Acto
       status: String(org["status"] ?? ""),
       plan_status: (org["plan_status"] as string) ?? null,
       plan_name: (plan?.["name"] as string) ?? null,
-      plan_fee: version?.["price_monthly"] === undefined ? null : Number(version?.["price_monthly"]),
+      plan_fee:
+        version?.["price_monthly"] === undefined ? null : Number(version?.["price_monthly"]),
       funding_model: (org["funding_model"] as string) ?? null,
       balance: round2(Number(wallet["balance"] ?? 0)),
       held: round2(Number(wallet["held"] ?? 0)),
@@ -1416,31 +1472,45 @@ export async function adminOrgBilling(
   actor: Actor,
 ) {
   await requireSuperAdmin(supabase, actor);
-  const [summary, { data: settings }, { data: rateCards }, { data: ledger }, { data: overrides }, { data: metaRates }] =
-    await Promise.all([
-      summaryUnchecked(supabase, organizationId),
+  const [
+    summary,
+    { data: settings },
+    { data: rateCards },
+    { data: ledger },
+    { data: overrides },
+    { data: metaRates },
+  ] = await Promise.all([
+    summaryUnchecked(supabase, organizationId),
 
-      supabase.from("organization_billing_settings").select("*").eq("organization_id", organizationId).maybeSingle(),
-      supabase
-        .from("rate_cards")
-        .select("id, organization_id, country_code, category, mode, markup_percent, fixed_rate, currency, effective_from, effective_to")
-        .or(`organization_id.eq.${organizationId},organization_id.is.null`)
-        .order("effective_from", { ascending: false }),
-      supabase
-        .from("wallet_ledger")
-        .select("id, entry_type, amount, balance_after, currency, description, reference_type, created_at")
-        .eq("organization_id", organizationId)
-        .order("created_at", { ascending: false })
-        .limit(50),
-      supabase
-        .from("organization_feature_overrides")
-        .select("flag_key, enabled")
-        .eq("organization_id", organizationId),
-      supabase
-        .from("message_rates")
-        .select("country_code, category, rate, currency, effective_from")
-        .order("effective_from", { ascending: false }),
-    ]);
+    supabase
+      .from("organization_billing_settings")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .maybeSingle(),
+    supabase
+      .from("rate_cards")
+      .select(
+        "id, organization_id, country_code, category, mode, markup_percent, fixed_rate, currency, effective_from, effective_to",
+      )
+      .or(`organization_id.eq.${organizationId},organization_id.is.null`)
+      .order("effective_from", { ascending: false }),
+    supabase
+      .from("wallet_ledger")
+      .select(
+        "id, entry_type, amount, balance_after, currency, description, reference_type, created_at",
+      )
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("organization_feature_overrides")
+      .select("flag_key, enabled")
+      .eq("organization_id", organizationId),
+    supabase
+      .from("message_rates")
+      .select("country_code, category, rate, currency, effective_from")
+      .order("effective_from", { ascending: false }),
+  ]);
 
   const recommendation = await recommendPlan(supabase, organizationId, actor);
   const { data: plans } = await supabase

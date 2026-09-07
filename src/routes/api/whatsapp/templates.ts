@@ -14,8 +14,14 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           graphErrorMessage,
           logServerActivity,
         } = await import("@/lib/whatsapp-api.server");
-        const { slugifyTemplateName, extractVariables, validateDraft, draftToComponents, annotateStoredComponents, emptyDraft } =
-          await import("@/lib/templates");
+        const {
+          slugifyTemplateName,
+          extractVariables,
+          validateDraft,
+          draftToComponents,
+          annotateStoredComponents,
+          emptyDraft,
+        } = await import("@/lib/templates");
 
         let payload: AnyRecord;
         try {
@@ -24,16 +30,22 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           return jsonError("Invalid request.");
         }
 
-        const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
+        const auth = await requireOrgMember(
+          request,
+          (payload["organization_id"] as string) ?? null,
+        );
         if (isResponse(auth)) return auth;
         const { requirePermission } = await import("@/lib/whatsapp-api.server");
-        const denied = await requirePermission(auth, "templates.manage", "manage message templates");
+        const denied = await requirePermission(
+          auth,
+          "templates.manage",
+          "manage message templates",
+        );
         if (denied) return denied;
         const { supabase, organizationId, userId } = auth;
 
-        const { getWhatsAppConnection, listWabaConnections } = await import(
-          "@/lib/whatsapp-numbers.server"
-        );
+        const { getWhatsAppConnection, listWabaConnections } =
+          await import("@/lib/whatsapp-numbers.server");
         // Templates live inside a WABA, not inside a workspace. An org with two
         // business accounts has two separate libraries.
         const requestedAccountId = (payload["whatsapp_account_id"] as string | undefined) || null;
@@ -146,13 +158,6 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
 
         // ---------------- create ----------------
         if (action === "create") {
-          const { connection, error: connectionError } = await getWhatsAppConnection(
-            supabase,
-            organizationId,
-            requestedAccountId,
-          );
-          if (!connection) return jsonError(connectionError ?? "No connected number.", 400);
-
           // The builder sends the whole draft. Older callers send just a body
           // and a footer, so both shapes are accepted and validated the same way.
           const incoming = (payload["draft"] as AnyRecord | undefined) ?? null;
@@ -173,105 +178,24 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
                 ),
               };
 
-          draft.name = slugifyTemplateName(draft.name);
-          draft.category = String(draft.category).toUpperCase();
-          if (!["MARKETING", "UTILITY", "AUTHENTICATION"].includes(draft.category)) {
-            return jsonError("Choose a valid category.");
-          }
-
-          // The same rules the builder enforces, applied again here — a request
-          // that skips the UI can't create something Meta will reject.
-          const problems = validateDraft(draft);
-          if (problems.length > 0) return jsonError(problems[0] as string);
-
-          const name = draft.name;
-          const language = draft.language;
-          const category = draft.category;
-          const components = draftToComponents(draft);
-
-          const result = await graphFetch(
-            `${connection.wabaId}/message_templates`,
-            connection.accessToken,
-            { method: "POST", body: { name, language, category, components } },
-          );
-          if (!result.ok) {
+          const { createTemplateFromDraft } = await import("@/lib/template-create.server");
+          const created = await createTemplateFromDraft(supabase, {
+            organizationId,
+            userId,
+            draft: draft as Parameters<typeof createTemplateFromDraft>[1]["draft"],
+            whatsappAccountId: requestedAccountId,
+          });
+          if (!created.ok) {
             return Response.json(
-              { error: graphErrorMessage(result.body), provider_response: result.body },
+              { error: created.error, provider_response: created.providerResponse ?? null },
               { status: 400 },
             );
           }
-
-          const metaId = (result.body["id"] as string) ?? null;
-          const status = String(result.body["status"] ?? "PENDING").toUpperCase();
-
-          const { data: saved, error: saveErr } = await supabase
-            .from("message_templates")
-            .upsert(
-              {
-                organization_id: organizationId,
-                waba_id: connection.wabaId,
-                meta_template_id: metaId,
-                name,
-                language,
-                category,
-                status: ["PENDING", "APPROVED", "REJECTED", "PAUSED"].includes(status)
-                  ? status
-                  : "PENDING",
-                // Stored with the media URLs attached, so sends keep working
-                // after Meta's upload handles expire.
-                components: annotateStoredComponents(components, draft),
-                rejection_reason: null,
-                updated_at: nowIso,
-              },
-              { onConflict: "organization_id,waba_id,name,language" },
-            )
-            .select("id")
-            .single();
-
-          if (saveErr) {
-            return jsonError("Submitted to review, but we couldn't save it locally. Try syncing.", 500);
-          }
-
-          // Tie the uploaded files to the template they belong to, so a deleted
-          // template takes its artwork with it.
-          const handles = [
-            draft.headerHandle,
-            ...draft.cards.map((c) => c.mediaHandle),
-          ].filter(Boolean);
-          if (saved?.id && handles.length > 0) {
-            await supabase
-              .from("template_media_assets")
-              .update({ message_template_id: saved.id })
-              .eq("organization_id", organizationId)
-              .in("meta_handle", handles);
-          }
-
-          const { emitEvent } = await import("@/lib/events.server");
-          await emitEvent(supabase, "template.created", {
-            organizationId,
-            actorUserId: userId,
-            whatsappAccountId: connection.accountId,
-            entityType: "message_template",
-            entityId: saved?.id ?? null,
-            properties: {
-              template_name: name,
-              language,
-              category,
-              waba_id: connection.wabaId,
-              header_format: draft.headerFormat,
-              button_count: draft.buttons.length,
-              card_count: draft.cards.length,
-            },
+          return Response.json({
+            id: created.id,
+            meta_template_id: created.metaTemplateId,
+            status: created.status,
           });
-
-          await logServerActivity(supabase, organizationId, userId, "template_created", {
-            template_name: name,
-            language,
-            category,
-            whatsapp_account_id: connection.accountId,
-          });
-
-          return Response.json({ id: saved?.id ?? null, meta_template_id: metaId, status });
         }
 
         // -------- create the two cash-on-delivery messages in one go --------
@@ -294,8 +218,7 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           const specs = [
             {
               name: "cod_confirm",
-              body:
-                "Hi {{1}}, please confirm your cash-on-delivery order {{2}} for {{3}} from {{4}}. We'll only ship once you confirm.",
+              body: "Hi {{1}}, please confirm your cash-on-delivery order {{2}} for {{3}} from {{4}}. We'll only ship once you confirm.",
               examples: ["Priya", "#1024", "INR 1499", "Kurta House"],
             },
             {
@@ -405,8 +328,7 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
             },
             {
               name: "reorder_reminder",
-              body:
-                "Hi {{1}}, running low? You ordered {{2}} from {{3}} a while back — reorder in one tap.",
+              body: "Hi {{1}}, running low? You ordered {{2}} from {{3}} a while back — reorder in one tap.",
               examples: ["Priya", "Cotton Kurta", "Kurta House"],
               button: "Reorder",
             },
@@ -479,9 +401,6 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
         }
 
         return jsonError("Unsupported action.");
-
-
-
       },
     },
   },

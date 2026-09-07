@@ -79,7 +79,15 @@ function Field({
   );
 }
 
-function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -122,7 +130,9 @@ export function OrgBillingSheet({
     }
     const d = result.data;
     setData(d);
-    setPlanKey(String((d.summary["plan"] as AnyRow | undefined)?.["key"] ?? d.recommendation.plan_key ?? ""));
+    setPlanKey(
+      String((d.summary["plan"] as AnyRow | undefined)?.["key"] ?? d.recommendation.plan_key ?? ""),
+    );
     setPlanStatus(String((d.organization?.["plan_status"] as string) ?? "active"));
     setFunding(String((d.organization?.["funding_model"] as string) ?? "meta_direct"));
     const acc: Record<string, string> = {};
@@ -134,7 +144,11 @@ export function OrgBillingSheet({
     for (const field of SETTINGS_FIELDS) {
       const value = d.settings?.[field.key];
       s[field.key] =
-        field.type === "switch" ? value === true : value === null || value === undefined ? "" : String(value);
+        field.type === "switch"
+          ? value === true
+          : value === null || value === undefined
+            ? ""
+            : String(value);
     }
     setSettings(s);
   }, [organizationId]);
@@ -245,7 +259,14 @@ export function OrgBillingSheet({
 
                 <Button
                   disabled={!planKey || busy === "plan"}
-                  onClick={() => void act("assign_plan", { plan_key: planKey, status: planStatus }, "plan", "Plan assigned.")}
+                  onClick={() =>
+                    void act(
+                      "assign_plan",
+                      { plan_key: planKey, status: planStatus },
+                      "plan",
+                      "Plan assigned.",
+                    )
+                  }
                 >
                   {busy === "plan" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Assign plan
@@ -255,7 +276,10 @@ export function OrgBillingSheet({
 
             {/* b) Features */}
             <TabsContent value="features" className="mt-4 space-y-4">
-              <Section title="Features" description="Anything switched off disappears cleanly from their workspace.">
+              <Section
+                title="Features"
+                description="Anything switched off disappears cleanly from their workspace."
+              >
                 <OrgFeatureControls
                   organizationId={organizationId}
                   compact
@@ -269,10 +293,16 @@ export function OrgBillingSheet({
               <Section title="Billing account" description="Who the invoice is made out to.">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Name">
-                    <Input value={account["name"] ?? ""} onChange={(e) => setAccount((p) => ({ ...p, name: e.target.value }))} />
+                    <Input
+                      value={account["name"] ?? ""}
+                      onChange={(e) => setAccount((p) => ({ ...p, name: e.target.value }))}
+                    />
                   </Field>
                   <Field label="Legal name">
-                    <Input value={account["legal_name"] ?? ""} onChange={(e) => setAccount((p) => ({ ...p, legal_name: e.target.value }))} />
+                    <Input
+                      value={account["legal_name"] ?? ""}
+                      onChange={(e) => setAccount((p) => ({ ...p, legal_name: e.target.value }))}
+                    />
                   </Field>
                   <Field
                     label="GSTIN"
@@ -284,7 +314,9 @@ export function OrgBillingSheet({
                   >
                     <Input
                       value={account["gstin"] ?? ""}
-                      onChange={(e) => setAccount((p) => ({ ...p, gstin: e.target.value.toUpperCase() }))}
+                      onChange={(e) =>
+                        setAccount((p) => ({ ...p, gstin: e.target.value.toUpperCase() }))
+                      }
                     />
                   </Field>
                   <Field label="State">
@@ -302,16 +334,30 @@ export function OrgBillingSheet({
                     </select>
                   </Field>
                   <Field label="Country">
-                    <Input value={account["country"] ?? "IN"} onChange={(e) => setAccount((p) => ({ ...p, country: e.target.value }))} />
+                    <Input
+                      value={account["country"] ?? "IN"}
+                      onChange={(e) => setAccount((p) => ({ ...p, country: e.target.value }))}
+                    />
                   </Field>
                   <Field label="Currency">
-                    <Input value={account["currency"] ?? "INR"} onChange={(e) => setAccount((p) => ({ ...p, currency: e.target.value }))} />
+                    <Input
+                      value={account["currency"] ?? "INR"}
+                      onChange={(e) => setAccount((p) => ({ ...p, currency: e.target.value }))}
+                    />
                   </Field>
                   <Field label="Billing email">
-                    <Input value={account["billing_email"] ?? ""} onChange={(e) => setAccount((p) => ({ ...p, billing_email: e.target.value }))} />
+                    <Input
+                      value={account["billing_email"] ?? ""}
+                      onChange={(e) => setAccount((p) => ({ ...p, billing_email: e.target.value }))}
+                    />
                   </Field>
                   <Field label="Billing number" hint="Where money notices go">
-                    <Input value={account["billing_whatsapp"] ?? ""} onChange={(e) => setAccount((p) => ({ ...p, billing_whatsapp: e.target.value }))} />
+                    <Input
+                      value={account["billing_whatsapp"] ?? ""}
+                      onChange={(e) =>
+                        setAccount((p) => ({ ...p, billing_whatsapp: e.target.value }))
+                      }
+                    />
                   </Field>
                 </div>
                 <Field label="Address">
@@ -325,7 +371,9 @@ export function OrgBillingSheet({
                   <span className="text-sm text-foreground">TDS applicable</span>
                   <Switch
                     checked={account["tds_applicable"] === "true"}
-                    onCheckedChange={(v) => setAccount((p) => ({ ...p, tds_applicable: v ? "true" : "false" }))}
+                    onCheckedChange={(v) =>
+                      setAccount((p) => ({ ...p, tds_applicable: v ? "true" : "false" }))
+                    }
                   />
                 </div>
 
@@ -337,7 +385,10 @@ export function OrgBillingSheet({
                         "save_billing_account",
                         {
                           account_id: data.billing_account?.["id"] ?? null,
-                          account: { ...account, tds_applicable: account["tds_applicable"] === "true" },
+                          account: {
+                            ...account,
+                            tds_applicable: account["tds_applicable"] === "true",
+                          },
                         },
                         "account",
                         "Billing account saved.",
@@ -351,7 +402,12 @@ export function OrgBillingSheet({
                     <select
                       onChange={(e) =>
                         e.target.value &&
-                        void act("link_billing_account", { account_id: e.target.value }, "link", "Linked.")
+                        void act(
+                          "link_billing_account",
+                          { account_id: e.target.value },
+                          "link",
+                          "Linked.",
+                        )
                       }
                       defaultValue=""
                       className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
@@ -370,7 +426,10 @@ export function OrgBillingSheet({
 
             {/* d) Rates */}
             <TabsContent value="rates" className="mt-4 space-y-4">
-              <Section title="Rates · India" description="What we pay Meta, and what this workspace pays us.">
+              <Section
+                title="Rates · India"
+                description="What we pay Meta, and what this workspace pays us."
+              >
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="border-b border-border/70">
@@ -403,53 +462,106 @@ export function OrgBillingSheet({
                             : meta === null || draft.value === ""
                               ? null
                               : meta * (1 + Number(draft.value) / 100);
+                        const belowCost = computed !== null && meta !== null && computed < meta;
+                        const invalid =
+                          draft.value === "" || !Number.isFinite(Number(draft.value))
+                            ? "Enter a number."
+                            : draft.mode === "markup" &&
+                                (Number(draft.value) < 0 || Number(draft.value) > 200)
+                              ? "Markup must be 0–200%."
+                              : draft.mode === "fixed" &&
+                                  (Number(draft.value) < 0 || Number(draft.value) > 50)
+                                ? "A fixed rate must be ₹0–₹50."
+                                : null;
                         return (
-                          <tr key={category} className="border-b border-border/50 last:border-0">
+                          <tr
+                            key={category}
+                            className="border-b border-border/50 last:border-0 align-top"
+                          >
                             <td className="py-2 capitalize">{category}</td>
                             <td className="py-2 text-muted-foreground">{rateMoney(meta)}</td>
                             <td className="py-2">
                               <select
                                 value={draft.mode}
                                 onChange={(e) =>
-                                  setRateDraft((p) => ({ ...p, [category]: { ...draft, mode: e.target.value } }))
+                                  setRateDraft((p) => ({
+                                    ...p,
+                                    [category]: { ...draft, mode: e.target.value },
+                                  }))
                                 }
                                 className="h-9 rounded-lg border border-input bg-background px-2 text-sm"
                               >
                                 <option value="markup">Markup %</option>
-                                <option value="fixed">Fixed</option>
+                                <option value="fixed">Fixed ₹</option>
                               </select>
                             </td>
                             <td className="py-2">
-                              <Input
-                                className="h-9 w-24"
-                                inputMode="decimal"
-                                value={draft.value}
-                                onChange={(e) =>
-                                  setRateDraft((p) => ({ ...p, [category]: { ...draft, value: e.target.value } }))
-                                }
-                              />
+                              <div className="flex items-center gap-1">
+                                {draft.mode === "fixed" ? (
+                                  <span className="text-muted-foreground">₹</span>
+                                ) : null}
+                                <Input
+                                  className="h-9 w-24"
+                                  inputMode="decimal"
+                                  aria-label={
+                                    draft.mode === "fixed"
+                                      ? `Fixed rupees per ${category} message`
+                                      : `Markup percent on ${category}`
+                                  }
+                                  value={draft.value}
+                                  onChange={(e) =>
+                                    setRateDraft((p) => ({
+                                      ...p,
+                                      [category]: { ...draft, value: e.target.value },
+                                    }))
+                                  }
+                                />
+                                <span className="text-muted-foreground">
+                                  {draft.mode === "fixed" ? "per message" : "%"}
+                                </span>
+                              </div>
+                              {invalid ? (
+                                <p className="mt-1 text-xs text-destructive">{invalid}</p>
+                              ) : null}
                             </td>
-                            <td className="py-2 font-medium">{rateMoney(computed)}</td>
+                            <td className="py-2">
+                              <span className="font-medium">
+                                {computed === null
+                                  ? "—"
+                                  : `Client pays ${rateMoney(computed)} per message`}
+                              </span>
+                              {belowCost ? (
+                                <p className="mt-1 text-xs text-amber-600">Below Meta's cost.</p>
+                              ) : null}
+                            </td>
                             <td className="py-2">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                disabled={busy === `rate_${category}`}
-                                onClick={() =>
+                                disabled={busy === `rate_${category}` || invalid !== null}
+                                onClick={() => {
+                                  if (
+                                    belowCost &&
+                                    !window.confirm("You would sell below cost — continue?")
+                                  ) {
+                                    return;
+                                  }
                                   void act(
                                     "save_rate",
                                     {
                                       country_code: "IN",
                                       category,
                                       mode: draft.mode,
-                                      markup_percent: draft.mode === "markup" ? Number(draft.value || 0) : null,
-                                      fixed_rate: draft.mode === "fixed" ? Number(draft.value || 0) : null,
+                                      markup_percent:
+                                        draft.mode === "markup" ? Number(draft.value || 0) : null,
+                                      fixed_rate:
+                                        draft.mode === "fixed" ? Number(draft.value || 0) : null,
                                       effective_from: new Date().toISOString().slice(0, 10),
                                     },
                                     `rate_${category}`,
                                     "New rate saved.",
-                                  )
-                                }
+                                  );
+                                }}
                               >
                                 Save
                               </Button>
@@ -461,14 +573,18 @@ export function OrgBillingSheet({
                   </table>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Saving adds a new rate from today. Old rates stay on the record.
+                  Saving sets today's rate. Saving again today replaces it; earlier days stay on the
+                  record.
                 </p>
               </Section>
             </TabsContent>
 
             {/* e) Settings */}
             <TabsContent value="settings" className="mt-4 space-y-4">
-              <Section title="Money settings" description="Thresholds, caps and how Meta gets paid.">
+              <Section
+                title="Money settings"
+                description="Thresholds, caps and how Meta gets paid."
+              >
                 <Field label="Funding">
                   <select
                     value={funding}
@@ -501,7 +617,9 @@ export function OrgBillingSheet({
                         <Input
                           inputMode={field.type === "number" ? "decimal" : "text"}
                           value={String(settings[field.key] ?? "")}
-                          onChange={(e) => setSettings((p) => ({ ...p, [field.key]: e.target.value }))}
+                          onChange={(e) =>
+                            setSettings((p) => ({ ...p, [field.key]: e.target.value }))
+                          }
                         />
                       </Field>
                     ),
@@ -530,20 +648,32 @@ export function OrgBillingSheet({
               <Section title="Wallet" description="Their balance, and how to correct it by hand.">
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    ["Balance", Number((data.summary["wallet"] as AnyRow | undefined)?.["balance"] ?? 0)],
+                    [
+                      "Balance",
+                      Number((data.summary["wallet"] as AnyRow | undefined)?.["balance"] ?? 0),
+                    ],
                     ["Held", Number((data.summary["wallet"] as AnyRow | undefined)?.["held"] ?? 0)],
-                    ["Available", Number((data.summary["wallet"] as AnyRow | undefined)?.["available"] ?? 0)],
+                    [
+                      "Available",
+                      Number((data.summary["wallet"] as AnyRow | undefined)?.["available"] ?? 0),
+                    ],
                   ].map(([label, value]) => (
                     <div key={String(label)} className="rounded-xl border border-border/70 p-4">
                       <p className="text-xs text-muted-foreground">{label}</p>
-                      <p className="mt-1 text-lg font-semibold text-foreground">{money(Number(value))}</p>
+                      <p className="mt-1 text-lg font-semibold text-foreground">
+                        {money(Number(value))}
+                      </p>
                     </div>
                   ))}
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Amount">
-                    <Input inputMode="decimal" value={walletAmount} onChange={(e) => setWalletAmount(e.target.value)} />
+                    <Input
+                      inputMode="decimal"
+                      value={walletAmount}
+                      onChange={(e) => setWalletAmount(e.target.value)}
+                    />
                   </Field>
                   <Field label="Reason" hint="Required — it lands on the record.">
                     <Input value={walletReason} onChange={(e) => setWalletReason(e.target.value)} />
@@ -556,7 +686,11 @@ export function OrgBillingSheet({
                     onClick={() =>
                       void act(
                         "add_credits",
-                        { amount: Number(walletAmount || 0), method: "bank_transfer", reason: walletReason },
+                        {
+                          amount: Number(walletAmount || 0),
+                          method: "bank_transfer",
+                          reason: walletReason,
+                        },
                         "add_credits",
                         "Credits added.",
                       )
@@ -611,7 +745,10 @@ export function OrgBillingSheet({
                     </thead>
                     <tbody>
                       {data.ledger.map((entry) => (
-                        <tr key={String(entry["id"])} className="border-b border-border/50 last:border-0">
+                        <tr
+                          key={String(entry["id"])}
+                          className="border-b border-border/50 last:border-0"
+                        >
                           <td className="py-2 text-xs text-muted-foreground">
                             {new Date(String(entry["created_at"])).toLocaleString("en-IN")}
                           </td>
@@ -640,7 +777,10 @@ export function OrgBillingSheet({
                     </thead>
                     <tbody>
                       {data.payments.map((p) => (
-                        <tr key={String(p["id"])} className="border-b border-border/50 last:border-0">
+                        <tr
+                          key={String(p["id"])}
+                          className="border-b border-border/50 last:border-0"
+                        >
                           <td className="py-2 text-xs text-muted-foreground">
                             {new Date(String(p["created_at"])).toLocaleString("en-IN")}
                           </td>
@@ -656,7 +796,6 @@ export function OrgBillingSheet({
             </TabsContent>
           </Tabs>
         )}
-
       </SheetContent>
     </Sheet>
   );

@@ -30,13 +30,7 @@ type Row = {
   last_activity: string | null;
 };
 
-type SortKey =
-  | "name"
-  | "available"
-  | "mtd_consumed"
-  | "mtd_margin"
-  | "sent"
-  | "pending_topups";
+type SortKey = "name" | "available" | "mtd_consumed" | "mtd_margin" | "sent" | "pending_topups";
 
 export const Route = createFileRoute("/admin/billing")({
   component: AdminBilling,
@@ -64,11 +58,16 @@ const FUNDING_LABEL: Record<string, string> = {
   bsp: "Through a partner",
 };
 
+type TemplateRow = { name: string; status: string | null; language: string; error: string | null };
+
 function AdminBilling() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [tasks, setTasks] = useState<TopupTask[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState(false);
+  const [templates, setTemplates] = useState<TemplateRow[] | null>(null);
+  const [templateNote, setTemplateNote] = useState<string | null>(null);
+  const [templatesBusy, setTemplatesBusy] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "mtd_consumed",
     dir: "desc",
@@ -76,9 +75,12 @@ function AdminBilling() {
 
   const load = useCallback(async () => {
     setError(null);
-    const [overview, topups] = await Promise.all([
+    const [overview, topups, tmpl] = await Promise.all([
       callApi<{ rows: Row[] }>("/api/admin/billing", { body: { action: "overview" } }),
       callApi<{ tasks: TopupTask[] }>("/api/admin/billing", { body: { action: "topup_tasks" } }),
+      callApi<{ templates: TemplateRow[] }>("/api/admin/billing", {
+        body: { action: "billing_templates" },
+      }),
     ]);
     if (overview.error) {
       setError(overview.error);
@@ -87,6 +89,7 @@ function AdminBilling() {
     }
     setRows(overview.data?.rows ?? []);
     setTasks(topups.data?.tasks ?? []);
+    setTemplates(tmpl.data?.templates ?? []);
   }, []);
 
   useEffect(() => void load(), [load]);
@@ -145,21 +148,34 @@ function AdminBilling() {
           </Button>
           <Button
             variant="ghost"
+            disabled={templatesBusy}
             onClick={async () => {
-              const result = await callApi<{ created?: string[]; error?: string }>(
-                "/api/admin/billing",
-                { body: { action: "create_billing_templates" } },
-              );
+              setTemplatesBusy(true);
+              setTemplateNote(null);
+              const result = await callApi<{
+                created?: string[];
+                skipped?: string[];
+                failed?: { name: string; error: string }[];
+                templates?: TemplateRow[];
+                error?: string;
+              }>("/api/admin/billing", { body: { action: "create_billing_templates" } });
+              setTemplatesBusy(false);
               if (result.error || result.data?.error) {
                 setError(result.error ?? result.data?.error ?? "We couldn't create the templates.");
                 return;
               }
               setError(null);
+              const d = result.data;
+              setTemplateNote(
+                `Created ${d?.created?.length ?? 0} · Skipped ${d?.skipped?.length ?? 0} · Failed ${d?.failed?.length ?? 0}`,
+              );
+              if (d?.templates) setTemplates(d.templates);
             }}
           >
             <FileText className="mr-2 h-4 w-4" />
-            Billing templates
+            {templatesBusy ? "Creating…" : "Billing templates"}
           </Button>
+
           <Button
             variant="ghost"
             onClick={async () => {
@@ -186,6 +202,41 @@ function AdminBilling() {
           </Button>
         </div>
       </div>
+
+      {templates ? (
+        <div className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="font-semibold text-foreground">Billing notice messages</h3>
+            {templateNote ? (
+              <span className="text-xs text-muted-foreground">{templateNote}</span>
+            ) : null}
+          </div>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {templates.map((t) => (
+              <li
+                key={t.name}
+                className="rounded-xl border border-border/60 px-3 py-2 text-sm transition-colors duration-150 hover:bg-muted/30"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium text-foreground">{t.name}</span>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      t.status === "APPROVED"
+                        ? "bg-primary/10 text-primary"
+                        : t.status
+                          ? "bg-amber-500/10 text-amber-600"
+                          : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {t.status ?? "Not created"}
+                  </span>
+                </div>
+                {t.error ? <p className="mt-1 text-xs text-destructive">{t.error}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {error ? <ErrorState message={error} /> : null}
 
@@ -271,8 +322,8 @@ function AdminBilling() {
                     <td className="px-3 py-3">{money(row.mtd_consumed)}</td>
                     <td className="px-3 py-3 text-primary">{money(row.mtd_margin)}</td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
-                      <span className="text-foreground">{row.sent}</span> sent ·{" "}
-                      {row.delivered} delivered · {row.failed} failed
+                      <span className="text-foreground">{row.sent}</span> sent · {row.delivered}{" "}
+                      delivered · {row.failed} failed
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {number?.quality ? `${number.quality} · ` : ""}
