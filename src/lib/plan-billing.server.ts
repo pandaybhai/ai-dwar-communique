@@ -223,6 +223,7 @@ async function createPlanPaymentLink(
     invoiceId: string;
     invoiceNumber: string;
     amount: number;
+    gross: number;
     orgName: string;
     billingAccountId: string | null;
   },
@@ -241,7 +242,11 @@ async function createPlanPaymentLink(
       amount: round2(input.amount),
       currency: "INR",
       status: "created",
-      raw: { invoice_id: input.invoiceId },
+      raw: {
+        invoice_id: input.invoiceId,
+        gst_amount: round2(input.gross - input.amount),
+        gross_amount: round2(input.gross),
+      },
     })
     .select("id")
     .maybeSingle();
@@ -256,7 +261,7 @@ async function createPlanPaymentLink(
     : { data: null };
 
   const { link } = await createPaymentLink(keys, {
-    amount: round2(input.amount),
+    amount: round2(input.gross),
     currency: "INR",
     description: `AiDwar plan fee — invoice ${input.invoiceNumber}`,
     reference: String(payment["id"]),
@@ -276,7 +281,15 @@ async function createPlanPaymentLink(
 
   await supabase
     .from("payments")
-    .update({ provider_payment_id: null, raw: { invoice_id: input.invoiceId, link: link.raw } })
+    .update({
+      provider_payment_id: null,
+      raw: {
+        invoice_id: input.invoiceId,
+        gst_amount: round2(input.gross - input.amount),
+        gross_amount: round2(input.gross),
+        link: link.raw,
+      },
+    })
     .eq("id", payment["id"] as string);
   await supabase.from("invoices").update({ payment_id: payment["id"] }).eq("id", input.invoiceId);
 
