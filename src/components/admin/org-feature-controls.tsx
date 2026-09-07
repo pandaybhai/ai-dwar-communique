@@ -230,6 +230,36 @@ export function OrgFeatureControls({
           </div>
         );
       })}
+
+      <AlertDialog
+        open={confirmOff !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmOff(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Switch off {confirmOff?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              These also stop working for this workspace:{" "}
+              {confirmOff?.dependents.join(", ")}. They will disappear from the
+              workspace until you switch {confirmOff?.name} back on.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it on</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const target = confirmOff;
+                setConfirmOff(null);
+                if (target) void setOverride(target.flagKey, false);
+              }}
+            >
+              Switch off
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
