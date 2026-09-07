@@ -828,7 +828,11 @@ export async function executeRun(
 
   const finish = async (result: RunResult): Promise<RunResult> => {
     result.latencyMs = Date.now() - started;
+    // Platform-paid runs (the owner's onboarding chat) must never reach the
+    // wallet: the billing trigger fires on billed_amount, so zero means free.
+    if (options.billingExempt) result.billedAmount = 0;
     if (options.dryRun) return result;
+
     const { data } = await supabase
       .from("ai_runs")
       .insert({
