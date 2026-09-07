@@ -60,6 +60,7 @@ const MODES = [
 ] as const;
 
 function EmployeePage() {
+  const navigate = useNavigate();
   const { active, loading: orgLoading } = useOrg();
   const { can, loading: permsLoading } = usePermissions();
   const organizationId = active?.organization.id ?? null;
