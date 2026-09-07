@@ -1003,6 +1003,170 @@ export type PlanAssignmentResult = {
  * and features the plan doesn't carry are switched off. All of it reverses
  * the moment a bigger plan is assigned.
  */
+export type PlanChangePreview = {
+  plan_key: string;
+  plan_name: string;
+  features_off: { key: string; name: string; live: { label: string; count: number }[] }[];
+  locked_members: { user_id: string; name: string | null }[];
+  locked_numbers: { id: string; label: string }[];
+  subscription: {
+    mismatch: boolean;
+    current_plan_name: string | null;
+    status: string | null;
+    cycle: string | null;
+    current_period_end: string | null;
+  } | null;
+  requires_confirmation: boolean;
+};
+
+/**
+ * What assigning this plan would actually do to a live workspace: which
+ * features switch off, what data they carry right now, who goes read-only,
+ * and whether the auto-pay mandate is on a different plan.
+ */
+export async function planChangePreview(
+  supabase: SupabaseClient,
+  input: { organizationId: string; planKey: string; actorId: string },
+): Promise<PlanChangePreview | { error: string }> {
+  await requireSuperAdmin(supabase, { userId: input.actorId });
+
+  const { data: versions } = await supabase
+    .from("plan_versions")
+    .select("id, features, limits, plans:plan_id(key, name)")
+    .eq("is_current", true);
+  const row = ((versions ?? []) as Record<string, unknown>[]).find(
+    (v) => ((v["plans"] ?? {}) as Record<string, unknown>)["key"] === input.planKey,
+  );
+  if (!row) return { error: "That plan doesn't have a current version." };
+  const planName =
+    (((row["plans"] ?? {}) as Record<string, unknown>)["name"] as string) ?? input.planKey;
+  const planFeatures = (row["features"] ?? []) as string[];
+
+  const settings = await ensureSettings(supabase, input.organizationId);
+  const overrides = (settings["limits_override"] ?? {}) as Record<string, unknown>;
+  const manual = (overrides["_manual_flags"] ?? {}) as Record<string, boolean>;
+
+  const { data: overrideRows } = await supabase
+    .from("organization_feature_overrides")
+    .select("flag_key, enabled")
+    .eq("organization_id", input.organizationId);
+  const current = new Map(
+    ((overrideRows ?? []) as Record<string, unknown>[]).map((r) => [
+      String(r["flag_key"]),
+      r["enabled"] === true,
+    ]),
+  );
+
+  const featuresOff: PlanChangePreview["features_off"] = [];
+  if (planFeatures.length > 0) {
+    for (const feature of FEATURES) {
+      if (feature.key === "billing" || feature.key in manual) continue;
+      const willBeOn =
+        planFeatures.includes(feature.key) || planFeatures.includes(feature.flag_key);
+      if (willBeOn) continue;
+      const isOn = current.get(feature.flag_key) ?? feature.flag_default_enabled === true;
+      if (!isOn) continue;
+      const impact = await featureImpact(supabase, input.organizationId, feature.key, {
+        userId: input.actorId,
+      });
+      featuresOff.push({ key: feature.key, name: feature.name, live: impact.live });
+    }
+  }
+
+  const limits = (row["limits"] ?? {}) as Record<string, number>;
+  const locked = await previewPlanLimits(supabase, input.organizationId, limits);
+
+  const { data: subRow } = await supabase
+    .from("subscriptions")
+    .select("plan_version_id, status, billing_cycle, current_period_end")
+    .eq("organization_id", input.organizationId)
+    .in("status", ["created", "authenticated", "active", "pending", "halted"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let subscription: PlanChangePreview["subscription"] = null;
+  if (subRow) {
+    const subPlanVersion = (subRow["plan_version_id"] as string | null) ?? null;
+    let currentPlanName: string | null = null;
+    if (subPlanVersion) {
+      const { data: subVersion } = await supabase
+        .from("plan_versions")
+        .select("plans:plan_id(name)")
+        .eq("id", subPlanVersion)
+        .maybeSingle();
+      currentPlanName =
+        (((subVersion?.["plans"] ?? {}) as Record<string, unknown>)["name"] as string) ?? null;
+    }
+    subscription = {
+      mismatch: subPlanVersion !== (row["id"] as string),
+      current_plan_name: currentPlanName,
+      status: String(subRow["status"] ?? ""),
+      cycle: (subRow["billing_cycle"] as string | null) ?? null,
+      current_period_end: (subRow["current_period_end"] as string | null) ?? null,
+    };
+  }
+
+  return {
+    plan_key: input.planKey,
+    plan_name: planName,
+    features_off: featuresOff,
+    locked_members: locked.members,
+    locked_numbers: locked.numbers,
+    subscription,
+    requires_confirmation:
+      featuresOff.length > 0 ||
+      locked.members.length > 0 ||
+      locked.numbers.length > 0 ||
+      subscription?.mismatch === true,
+  };
+}
+
+/** Who would be locked out by these limits — read-only, changes nothing. */
+async function previewPlanLimits(
+  supabase: SupabaseClient,
+  organizationId: string,
+  limits: Record<string, number>,
+): Promise<{
+  members: { user_id: string; name: string | null }[];
+  numbers: { id: string; label: string }[];
+}> {
+  const memberLimit = Number(limits["members"] ?? -1);
+  const numberLimit = Number(limits["numbers"] ?? -1);
+
+  const { data: members } = await supabase
+    .from("organization_members")
+    .select("user_id, created_at, profiles:user_id(full_name)")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: true });
+  const memberRows = (members ?? []) as Record<string, unknown>[];
+  const lockedMembers =
+    memberLimit === -1 || memberRows.length <= memberLimit
+      ? []
+      : memberRows.slice(memberLimit).map((m) => ({
+          user_id: String(m["user_id"]),
+          name:
+            (((m["profiles"] ?? {}) as Record<string, unknown>)["full_name"] as string | null) ??
+            null,
+        }));
+
+  const { data: numbers } = await supabase
+    .from("whatsapp_numbers")
+    .select("id, display_name, phone_number, created_at")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: true });
+  const numberRows = (numbers ?? []) as Record<string, unknown>[];
+  const lockedNumbers =
+    numberLimit === -1 || numberRows.length <= numberLimit
+      ? []
+      : numberRows.slice(numberLimit).map((n) => ({
+          id: String(n["id"]),
+          label: String(n["display_name"] ?? n["phone_number"] ?? "Number"),
+        }));
+
+  return { members: lockedMembers, numbers: lockedNumbers };
+}
+
 export async function assignPlan(
   supabase: SupabaseClient,
   input: {
@@ -1011,9 +1175,25 @@ export async function assignPlan(
     actorId: string;
     status?: string;
     trialDays?: number | null;
+    confirm?: boolean;
   },
-): Promise<PlanAssignmentResult | { error: string }> {
+): Promise<
+  | PlanAssignmentResult
+  | { preview: PlanChangePreview }
+  | { error: string }
+> {
   await requireSuperAdmin(supabase, { userId: input.actorId });
+
+  if (input.confirm !== true) {
+    const preview = await planChangePreview(supabase, {
+      organizationId: input.organizationId,
+      planKey: input.planKey,
+      actorId: input.actorId,
+    });
+    if ("error" in preview) return preview;
+    if (preview.requires_confirmation) return { preview };
+  }
+
 
   const { data: version } = await supabase
     .from("plan_versions")
