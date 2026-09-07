@@ -255,6 +255,24 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           token_expiry_missing: !info.expires_at && !info.expires_never,
         });
 
+        // If this owner is still being set up over WhatsApp, close that loop:
+        // Aiden reports for duty in the onboarding chat. Never blocks connect.
+        try {
+          const { handleNumberConnected } = await import("@/lib/merchant-channel.server");
+          await handleNumberConnected(supabase, {
+            organizationId,
+            accountId: (saved as { id: string }).id,
+            displayNumber:
+              ((saved as { display_phone_number?: string | null }).display_phone_number ?? null),
+          });
+        } catch (error) {
+          console.error(
+            "[onboarding] on-duty message failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+
+
         return Response.json({
           account: saved,
           registered,

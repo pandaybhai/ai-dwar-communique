@@ -722,6 +722,26 @@ export async function processWebhookPayload(
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
           const waId = toWaId(msg["from"] as string | undefined);
           if (!waId) continue;
+
+          // On the onboarding number the owner is watching the chat, so mark
+          // the message read and start the typing dots before anything else.
+          // Fire-and-forget: it must never delay or block the reply.
+          if (onboardingAccountId && accountId === onboardingAccountId && accessToken) {
+            void fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({
+                messaging_product: "whatsapp",
+                status: "read",
+                message_id: String(msg["id"] ?? ""),
+                typing_indicator: { type: "text" },
+              }),
+            }).catch(() => {});
+          }
+
           // Our own number appearing as the sender means this is an echo of a
           // message we sent (confirmation, automation reply). Never automate on it.
           const selfWaId = toWaId(metadata["display_phone_number"] as string | undefined);
