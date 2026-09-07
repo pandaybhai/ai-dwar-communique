@@ -24,7 +24,7 @@ import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
 import { AiRunsDialog } from "@/components/admin/ai-runs-dialog";
 import { callApi } from "@/lib/whatsapp-client";
 import { downloadCsv } from "@/lib/csv";
-import { money } from "@/lib/billing";
+import { fineMoney, money } from "@/lib/billing";
 
 /** Plain-English meaning of every AI economics column, shown on hover and focus. */
 const DEFINITIONS: Record<string, string> = {
@@ -81,6 +81,7 @@ type Row = {
   plan_name: string | null;
   plan_status: string | null;
   funding_model: string | null;
+  billing_on: boolean;
   available: number;
   held: number;
   low_credit_threshold: number;
@@ -92,22 +93,34 @@ type Row = {
   sent: number;
   delivered: number;
   failed: number;
-  numbers: { display: string | null; quality: string | null; tier: number | null }[];
+  numbers: {
+    id: string;
+    display: string | null;
+    quality: string | null;
+    tier: string | null;
+    tier_label: string;
+  }[];
   pending_topups: number;
   last_activity: string | null;
   ai: AiEconomics;
 };
 
 type Totals = {
+  month: string;
   plan_fees: number;
+  plan_fees_gross: number;
   ai_billed: number;
   ai_provider_cost: number;
   ai_margin: number;
+  internal_ai_cost: number;
+  internal_ai_orgs: string[];
   messaging_consumed: number;
   messaging_meta_cost: number;
   messaging_margin: number;
-  total_margin: number;
+  revenue: number;
+  gross_margin: number;
 };
+
 
 type ReconcileRow = {
   organization_id: string;
@@ -170,7 +183,7 @@ type TemplateRow = { name: string; status: string | null; language: string; erro
 /** Margin reads green when we earned, red when the month cost us more than it made. */
 function Margin({ value }: { value: number }) {
   return (
-    <span className={value < 0 ? "text-destructive" : "text-primary"}>{money(value)}</span>
+    <span className={value < 0 ? "text-destructive" : "text-primary"}>{fineMoney(value)}</span>
   );
 }
 
@@ -275,13 +288,16 @@ function AdminBilling() {
     key: "mtd_consumed",
     dir: "desc",
   });
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  // The overview reads Indian months, the same boundary the AI totals are frozen on.
+  const thisMonth = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 7);
+  const [month, setMonth] = useState(thisMonth);
+  const [syncing, setSyncing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     const [overview, topups, tmpl] = await Promise.all([
       callApi<{ rows: Row[]; totals: Totals }>("/api/admin/billing", {
-        body: { action: "overview" },
+        body: { action: "overview", month },
       }),
       callApi<{ tasks: TopupTask[] }>("/api/admin/billing", { body: { action: "topup_tasks" } }),
       callApi<{ templates: TemplateRow[] }>("/api/admin/billing", {
@@ -297,9 +313,28 @@ function AdminBilling() {
     setTotals(overview.data?.totals ?? null);
     setTasks(topups.data?.tasks ?? []);
     setTemplates(tmpl.data?.templates ?? []);
-  }, []);
+  }, [month]);
 
   useEffect(() => void load(), [load]);
+
+  /** Ask Meta for this number's live quality and sending tier, then store it. */
+  const syncNumber = useCallback(
+    async (accountId: string) => {
+      setSyncing(accountId);
+      const result = await callApi<{ ok?: boolean; error?: string }>("/api/admin/billing", {
+        body: { action: "sync_number", whatsapp_account_id: accountId },
+      });
+      setSyncing(null);
+      if (result.error || result.data?.error) {
+        setError(result.error ?? result.data?.error ?? "We couldn't reach Meta for that number.");
+        return;
+      }
+      setError(null);
+      void load();
+    },
+    [load],
+  );
+
 
   const loadReconcile = useCallback(async () => {
     setReconcileLoading(true);
@@ -434,34 +469,68 @@ function AdminBilling() {
         </div>
       </div>
 
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <label className="text-xs text-muted-foreground" htmlFor="overview-month">
+          Month
+        </label>
+        <Input
+          id="overview-month"
+          type="month"
+          value={month}
+          max={thisMonth}
+          className="h-9 w-[160px]"
+          onChange={(event) => setMonth(event.target.value || thisMonth)}
+        />
+        <span className="text-xs text-muted-foreground">
+          Indian months — a month runs midnight to midnight, India time.
+        </span>
+      </div>
+
       {totals ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard label="Plan fees this month" value={money(totals.plan_fees)} hint="Collected, ex-GST" />
           <StatCard
-            label="AI billed"
-            value={money(totals.ai_billed)}
-            hint={`Provider cost ${money(totals.ai_provider_cost)}`}
+            label="Revenue"
+            value={money(totals.revenue)}
+            hint={`Plan fees ${money(totals.plan_fees)} · Messaging ${fineMoney(totals.messaging_consumed)} · AI ${fineMoney(totals.ai_billed)}`}
           />
           <StatCard
-            label="AI margin"
-            value={money(totals.ai_margin)}
-            tone={totals.ai_margin < 0 ? "negative" : "positive"}
-            hint="Negative while answers sit inside allowances"
+            label="Gross margin"
+            value={fineMoney(totals.gross_margin)}
+            tone={totals.gross_margin < 0 ? "negative" : "positive"}
+            hint="Plan fees + messaging margin + AI margin − our own AI cost"
           />
           <StatCard
             label="Messaging margin"
-            value={money(totals.messaging_margin)}
+            value={fineMoney(totals.messaging_margin)}
             tone={totals.messaging_margin < 0 ? "negative" : "positive"}
-            hint={`${money(totals.messaging_consumed)} consumed · ${money(totals.messaging_meta_cost)} Meta cost`}
+            hint={`${fineMoney(totals.messaging_consumed)} consumed · ${fineMoney(totals.messaging_meta_cost)} Meta cost`}
           />
           <StatCard
-            label="Total margin"
-            value={money(totals.total_margin)}
-            tone={totals.total_margin < 0 ? "negative" : "positive"}
-            hint="Plan fees + AI margin + messaging margin"
+            label="AI margin"
+            value={fineMoney(totals.ai_margin)}
+            tone={totals.ai_margin < 0 ? "negative" : "positive"}
+            hint={`Billed ${fineMoney(totals.ai_billed)} · Provider cost ${fineMoney(totals.ai_provider_cost)}`}
+          />
+          <StatCard
+            label="Our own AI cost"
+            value={fineMoney(totals.internal_ai_cost)}
+            {...(totals.internal_ai_cost > 0 ? { tone: "negative" as const } : {})}
+            hint={
+              totals.internal_ai_orgs.length > 0
+                ? `Workspaces we don't bill: ${totals.internal_ai_orgs.join(", ")}`
+                : "Every workspace with AI use is billed"
+            }
           />
         </div>
       ) : null}
+
+      {totals && totals.plan_fees_gross > totals.plan_fees ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Plan fees are shown without GST. Clients paid {money(totals.plan_fees_gross)} including
+          tax.
+        </p>
+      ) : null}
+
 
       {templates ? (
         <div className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
@@ -601,7 +670,7 @@ function AdminBilling() {
                         >
                           {row.meta_float === null ? "—" : money(row.meta_float)}
                         </td>
-                        <td className="px-3 py-3">{money(row.mtd_consumed)}</td>
+                        <td className="px-3 py-3">{fineMoney(row.mtd_consumed)}</td>
                         <td className="px-3 py-3">
                           <Margin value={row.mtd_margin} />
                         </td>
@@ -612,7 +681,7 @@ function AdminBilling() {
                               setDrill({
                                 id: row.organization_id,
                                 name: row.name,
-                                month: thisMonth,
+                                month,
                               })
                             }
                             className="text-foreground underline-offset-2 transition-colors duration-150 hover:text-primary hover:underline"
@@ -624,14 +693,26 @@ function AdminBilling() {
                           </span>
                         </td>
                         <td className="px-3 py-3">
-                          {money(row.ai.provider_cost)}
+                          {fineMoney(row.ai.provider_cost)}
                           <span className="block text-xs text-muted-foreground">
-                            {money(row.ai.avg_cost_per_answer)} / answer
+                            {fineMoney(row.ai.avg_cost_per_answer)} / answer
                           </span>
                         </td>
-                        <td className="px-3 py-3">{money(row.ai.billed)}</td>
                         <td className="px-3 py-3">
-                          <Margin value={row.ai.margin} />
+                          {row.billing_on ? (
+                            fineMoney(row.ai.billed)
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              Not billed — our cost
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          {row.billing_on ? (
+                            <Margin value={row.ai.margin} />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="px-3 py-3 text-xs text-muted-foreground">
                           {row.ai.answers === 0
@@ -643,11 +724,22 @@ function AdminBilling() {
                           {row.delivered} delivered · {row.failed} failed
                         </td>
                         <td className="px-3 py-3 text-xs text-muted-foreground">
-                          {number?.quality ? `${number.quality} · ` : ""}
-                          {number?.tier === null || number?.tier === undefined
-                            ? "Tier unknown"
-                            : `Tier ${number.tier}`}
+                          <span className="block">
+                            {number?.quality ? `${number.quality} · ` : ""}
+                            {number?.tier_label ?? "Not synced"}
+                          </span>
+                          {number ? (
+                            <button
+                              type="button"
+                              disabled={syncing === number.id}
+                              onClick={() => void syncNumber(number.id)}
+                              className="mt-1 text-xs text-primary underline-offset-2 transition-colors duration-150 hover:underline disabled:opacity-60"
+                            >
+                              {syncing === number.id ? "Syncing…" : "Sync now"}
+                            </button>
+                          ) : null}
                         </td>
+
                         <td className="px-3 py-3">
                           {row.pending_topups > 0 ? (
                             <button
@@ -762,8 +854,8 @@ function AdminBilling() {
                     >
                       <td className="px-3 py-3 text-muted-foreground">{r.month}</td>
                       <td className="px-3 py-3 font-medium text-foreground">{r.name}</td>
-                      <td className="px-3 py-3">{money(r.messaging_consumed)}</td>
-                      <td className="px-3 py-3 text-muted-foreground">{money(r.meta_cost)}</td>
+                      <td className="px-3 py-3">{fineMoney(r.messaging_consumed)}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{fineMoney(r.meta_cost)}</td>
                       <td className="px-3 py-3">
                         <Margin value={r.messaging_margin} />
                       </td>
@@ -781,14 +873,14 @@ function AdminBilling() {
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_within_allowance}</td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_over_allowance}</td>
                       <td className="px-3 py-3 text-muted-foreground">
-                        {money(r.ai_provider_cost)}
+                        {fineMoney(r.ai_provider_cost)}
                       </td>
-                      <td className="px-3 py-3">{money(r.ai_billed)}</td>
+                      <td className="px-3 py-3">{fineMoney(r.ai_billed)}</td>
                       <td className="px-3 py-3">
                         <Margin value={r.ai_margin} />
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">
-                        {money(r.ai_avg_cost_per_answer)}
+                        {fineMoney(r.ai_avg_cost_per_answer)}
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_everyday_pct}%</td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_careful_pct}%</td>

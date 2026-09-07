@@ -1,16 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { round2 } from "@/lib/billing";
+import { round2, round4 } from "@/lib/billing";
 
 /**
  * AI economics for the platform owner.
  *
- * Everything here is read-only: it reads what was stored on ai_runs at the time
- * the answer was produced (cost_amount, billed_amount, markup, model) and the
- * debit_ai rows that actually took money from a wallet. Nothing is recomputed —
- * if a price changed since, the history still shows what really happened.
+ * The month totals are read from ai_usage_months, which the database trigger
+ * freezes as each answer happens: the allowance that applied at the time, how
+ * many answers went past it, what the provider charged and what we billed.
+ * Nothing here recomputes an allowance from today's settings — if a plan
+ * changed since, history still shows what really happened.
  *
- * Margin is shown honestly: while an organization is inside its included
- * allowance nothing is billed, so the margin on those answers is negative.
+ * Months are Asia/Kolkata months, the same boundary the trigger uses.
  */
 
 export type OrgAiEconomics = {
@@ -39,165 +39,124 @@ export const emptyAiEconomics = (): OrgAiEconomics => ({
   careful_pct: 0,
 });
 
-/** The included AI answers per organization: hand-set override, else the plan. */
-export async function aiAllowances(supabase: SupabaseClient): Promise<Map<string, number>> {
-  const [{ data: settings }, { data: orgs }] = await Promise.all([
-    supabase
-      .from("organization_billing_settings")
-      .select("organization_id, ai_answers_included_override"),
-    supabase.from("organizations").select("id, plan_versions:plan_version_id(limits)"),
-  ]);
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
-  const allowances = new Map<string, number>();
-  for (const org of (orgs ?? []) as Record<string, unknown>[]) {
-    const limits = ((org["plan_versions"] as Record<string, unknown> | null)?.["limits"] ??
-      {}) as Record<string, unknown>;
-    allowances.set(String(org["id"]), Number(limits["ai_answers"] ?? 0));
-  }
-  for (const row of (settings ?? []) as Record<string, unknown>[]) {
-    const override = row["ai_answers_included_override"];
-    if (override === null || override === undefined) continue;
-    allowances.set(String(row["organization_id"]), Number(override));
-  }
-  return allowances;
+/** The YYYY-MM an instant falls in, read in Asia/Kolkata. */
+export function istMonthKey(iso: string | Date): string {
+  const at = typeof iso === "string" ? new Date(iso) : iso;
+  return new Date(at.getTime() + IST_OFFSET_MS).toISOString().slice(0, 7);
 }
 
-type Bucket = {
-  answers: number;
-  provider_cost: number;
-  billed: number;
-  everyday: number;
-  careful: number;
-};
+/** The current YYYY-MM in Asia/Kolkata. */
+export const currentIstMonth = (): string => istMonthKey(new Date());
 
-const newBucket = (): Bucket => ({
-  answers: 0,
-  provider_cost: 0,
-  billed: 0,
-  everyday: 0,
-  careful: 0,
-});
-
-function finish(bucket: Bucket, allowance: number): OrgAiEconomics {
-  const unlimited = allowance === -1;
-  const within = unlimited ? bucket.answers : Math.min(bucket.answers, Math.max(allowance, 0));
-  const over = Math.max(bucket.answers - within, 0);
-  const providerCost = round2(bucket.provider_cost);
-  const billed = round2(bucket.billed);
-  const tiered = bucket.everyday + bucket.careful;
+/**
+ * The instants that bound an Asia/Kolkata month: midnight IST on the 1st of
+ * that month, and midnight IST on the 1st of the next one.
+ */
+export function istMonthWindow(month: string): { fromIso: string; toIso: string; monthDate: string } {
+  const [year, mon] = month.split("-").map(Number) as [number, number];
+  const from = new Date(Date.UTC(year, mon - 1, 1) - IST_OFFSET_MS);
+  const to = new Date(Date.UTC(year, mon, 1) - IST_OFFSET_MS);
   return {
-    answers: bucket.answers,
-    within_allowance: within,
-    over_allowance: over,
-    allowance,
-    provider_cost: providerCost,
-    billed,
-    margin: round2(billed - providerCost),
-    avg_cost_per_answer: bucket.answers > 0 ? round2(bucket.provider_cost / bucket.answers) : 0,
-    everyday_pct: tiered > 0 ? Math.round((bucket.everyday / tiered) * 100) : 0,
-    careful_pct: tiered > 0 ? Math.round((bucket.careful / tiered) * 100) : 0,
+    fromIso: from.toISOString(),
+    toIso: to.toISOString(),
+    monthDate: `${month}-01`,
   };
 }
 
-/** Which runs actually took money from a wallet — the only ones we billed for. */
-async function billedRunIds(
+/** Which model handled each answer — the only thing still counted from ai_runs. */
+async function tierMix(
   supabase: SupabaseClient,
   fromIso: string,
   toIso: string,
-): Promise<Set<string>> {
+): Promise<Map<string, { everyday: number; careful: number }>> {
   const { data } = await supabase
-    .from("wallet_ledger")
-    .select("reference_id")
-    .eq("entry_type", "debit_ai")
-    .eq("reference_type", "ai_run")
+    .from("ai_runs")
+    .select("organization_id, tier, created_at")
+    .eq("status", "ok")
     .gte("created_at", fromIso)
     .lt("created_at", toIso)
-    .limit(50_000);
-  const ids = new Set<string>();
-  for (const row of (data ?? []) as Record<string, unknown>[]) {
-    const id = row["reference_id"];
-    if (typeof id === "string") ids.add(id);
+    .limit(100_000);
+
+  const mix = new Map<string, { everyday: number; careful: number }>();
+  for (const run of (data ?? []) as Record<string, unknown>[]) {
+    const key = `${String(run["organization_id"])}|${istMonthKey(String(run["created_at"]))}`;
+    const bucket = mix.get(key) ?? { everyday: 0, careful: 0 };
+    if (String(run["tier"] ?? "") === "careful") bucket.careful += 1;
+    else bucket.everyday += 1;
+    mix.set(key, bucket);
   }
-  return ids;
+  return mix;
 }
 
-const isCareful = (run: Record<string, unknown>) => String(run["tier"] ?? "") === "careful";
+function toEconomics(
+  row: Record<string, unknown>,
+  mix: { everyday: number; careful: number } | undefined,
+): OrgAiEconomics {
+  const answers = Number(row["answers"] ?? 0);
+  const over = Number(row["over_answers"] ?? 0);
+  const providerCost = round4(Number(row["provider_cost"] ?? 0));
+  const billed = round4(Number(row["billed_amount"] ?? 0));
+  const tiered = (mix?.everyday ?? 0) + (mix?.careful ?? 0);
+  return {
+    answers,
+    within_allowance: Math.max(answers - over, 0),
+    over_allowance: over,
+    allowance: Number(row["allowance"] ?? 0),
+    provider_cost: providerCost,
+    billed,
+    margin: round4(billed - providerCost),
+    avg_cost_per_answer: answers > 0 ? round4(providerCost / answers) : 0,
+    everyday_pct: tiered > 0 ? Math.round(((mix?.everyday ?? 0) / tiered) * 100) : 0,
+    careful_pct: tiered > 0 ? Math.round(((mix?.careful ?? 0) / tiered) * 100) : 0,
+  };
+}
 
-/** AI economics per organization for one window. */
-export async function aiEconomicsByOrg(
+/**
+ * Frozen AI economics per organization and Asia/Kolkata month, keyed
+ * `organizationId|YYYY-MM`, for an inclusive range of months.
+ */
+export async function aiUsageByOrgMonth(
   supabase: SupabaseClient,
-  fromIso: string,
-  toIso: string,
-  allowances: Map<string, number>,
+  monthFrom: string,
+  monthTo: string,
 ): Promise<Map<string, OrgAiEconomics>> {
-  const [{ data: runs }, billed] = await Promise.all([
+  const start = istMonthWindow(monthFrom);
+  const end = istMonthWindow(monthTo);
+  const [{ data: usage }, mix] = await Promise.all([
     supabase
-      .from("ai_runs")
-      .select("id, organization_id, cost_amount, billed_amount, tier, created_at")
-      .eq("status", "ok")
-      .gte("created_at", fromIso)
-      .lt("created_at", toIso)
-      .limit(100_000),
-    billedRunIds(supabase, fromIso, toIso),
+      .from("ai_usage_months")
+      .select("organization_id, month, allowance, answers, over_answers, billed_amount, provider_cost")
+      .gte("month", start.monthDate)
+      .lte("month", end.monthDate)
+      .limit(20_000),
+    tierMix(supabase, start.fromIso, end.toIso),
   ]);
 
-  const buckets = new Map<string, Bucket>();
-  for (const run of (runs ?? []) as Record<string, unknown>[]) {
-    const org = String(run["organization_id"]);
-    const bucket = buckets.get(org) ?? newBucket();
-    bucket.answers += 1;
-    bucket.provider_cost += Number(run["cost_amount"] ?? 0);
-    if (billed.has(String(run["id"]))) bucket.billed += Number(run["billed_amount"] ?? 0);
-    if (isCareful(run)) bucket.careful += 1;
-    else bucket.everyday += 1;
-    buckets.set(org, bucket);
-  }
-
   const out = new Map<string, OrgAiEconomics>();
-  for (const [org, bucket] of buckets) {
-    out.set(org, finish(bucket, allowances.get(org) ?? 0));
+  for (const row of (usage ?? []) as Record<string, unknown>[]) {
+    const month = String(row["month"]).slice(0, 7);
+    const key = `${String(row["organization_id"])}|${month}`;
+    out.set(key, toEconomics(row, mix.get(key)));
   }
   return out;
 }
 
-/** AI economics per organization, per calendar month, for a window. */
-export async function aiEconomicsByOrgMonth(
+/** Frozen AI economics per organization for one Asia/Kolkata month. */
+export async function aiUsageByOrg(
   supabase: SupabaseClient,
-  fromIso: string,
-  toIso: string,
-  allowances: Map<string, number>,
+  month: string,
 ): Promise<Map<string, OrgAiEconomics>> {
-  const [{ data: runs }, billed] = await Promise.all([
-    supabase
-      .from("ai_runs")
-      .select("id, organization_id, cost_amount, billed_amount, tier, created_at")
-      .eq("status", "ok")
-      .gte("created_at", fromIso)
-      .lt("created_at", toIso)
-      .limit(100_000),
-    billedRunIds(supabase, fromIso, toIso),
-  ]);
-
-  const buckets = new Map<string, Bucket>();
-  for (const run of (runs ?? []) as Record<string, unknown>[]) {
-    const month = String(run["created_at"]).slice(0, 7);
-    const key = `${String(run["organization_id"])}|${month}`;
-    const bucket = buckets.get(key) ?? newBucket();
-    bucket.answers += 1;
-    bucket.provider_cost += Number(run["cost_amount"] ?? 0);
-    if (billed.has(String(run["id"]))) bucket.billed += Number(run["billed_amount"] ?? 0);
-    if (isCareful(run)) bucket.careful += 1;
-    else bucket.everyday += 1;
-    buckets.set(key, bucket);
-  }
-
+  const byMonth = await aiUsageByOrgMonth(supabase, month, month);
   const out = new Map<string, OrgAiEconomics>();
-  for (const [key, bucket] of buckets) {
-    const org = key.split("|")[0] ?? "";
-    out.set(key, finish(bucket, allowances.get(org) ?? 0));
+  for (const [key, value] of byMonth) {
+    const [org = "", key_month = ""] = key.split("|");
+    if (key_month === month) out.set(org, value);
   }
   return out;
 }
+
 
 /** One AI answer, as it was priced when it happened, with the wallet debit beside it. */
 export type AiRunDetailRow = {

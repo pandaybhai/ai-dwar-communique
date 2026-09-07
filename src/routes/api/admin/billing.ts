@@ -41,9 +41,19 @@ export const Route = createFileRoute("/api/admin/billing")({
 
           switch (action) {
             case "overview": {
-              const data = await admin.adminOverview(supabase, actorId);
+              const data = await admin.adminOverview(supabase, actorId, {
+                month: (payload["month"] as string) || null,
+              });
               return Response.json(data);
             }
+            case "sync_number":
+              return Response.json(
+                await admin.adminSyncNumber(supabase, {
+                  actorId,
+                  whatsappAccountId: String(payload["whatsapp_account_id"] ?? ""),
+                }),
+              );
+
             case "reconcile":
               return Response.json(
                 await admin.adminReconcile(supabase, actorId, {

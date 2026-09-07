@@ -138,6 +138,45 @@ export function round4(value: number): number {
   return Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
 }
 
+/**
+ * Small amounts (a fraction of a rupee of AI or message cost) would read as
+ * ₹0.00 at two decimals, so they keep four.
+ */
+export function fineMoney(value: number | null | undefined, currency = "INR"): string {
+  const amount = Number(value ?? 0);
+  if (amount !== 0 && Math.abs(amount) < 1) return rateMoney(amount, currency);
+  return money(amount, currency);
+}
+
+/** Meta's sending tier, spelled the way a person reads it. */
+export const MESSAGING_TIER_LABELS: Record<string, string> = {
+  TIER_50: "50/day",
+  TIER_250: "250/day",
+  TIER_1K: "1K/day",
+  TIER_1000: "1K/day",
+  TIER_10K: "10K/day",
+  TIER_10000: "10K/day",
+  TIER_100K: "100K/day",
+  TIER_100000: "100K/day",
+  TIER_UNLIMITED: "Unlimited",
+};
+
+export function messagingTierLabel(tier: string | null | undefined): string {
+  if (!tier) return "Not synced";
+  return MESSAGING_TIER_LABELS[tier] ?? tier.replace(/^TIER_/, "").toLowerCase();
+}
+
+/** The numeric daily cap behind a tier string, when there is one. */
+export function messagingTierLimit(tier: string | null | undefined): number | null {
+  if (!tier) return null;
+  if (tier === "TIER_UNLIMITED") return null;
+  const digits = /^TIER_(\d+)(K)?$/i.exec(tier);
+  if (!digits) return null;
+  const base = Number(digits[1]);
+  return digits[2] ? base * 1000 : base;
+}
+
+
 /** Plain-language ledger labels — the client never sees an entry_type string. */
 export const LEDGER_LABELS: Record<string, string> = {
   credit_purchase: "Credits bought",
