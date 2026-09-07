@@ -195,7 +195,8 @@ export async function invoicePlanFee(
     organizationId,
     invoiceId: built.invoice_id,
     invoiceNumber: issued.invoice_number,
-    amount: gross,
+    amount: Number(base),
+    gross,
     orgName: String(org["name"] ?? "your workspace"),
     billingAccountId: (org["billing_account_id"] as string | null) ?? null,
   });
