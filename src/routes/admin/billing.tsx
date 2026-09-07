@@ -24,7 +24,7 @@ import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
 import { AiRunsDialog } from "@/components/admin/ai-runs-dialog";
 import { callApi } from "@/lib/whatsapp-client";
 import { downloadCsv } from "@/lib/csv";
-import { money } from "@/lib/billing";
+import { fineMoney, money } from "@/lib/billing";
 
 /** Plain-English meaning of every AI economics column, shown on hover and focus. */
 const DEFINITIONS: Record<string, string> = {
@@ -183,7 +183,7 @@ type TemplateRow = { name: string; status: string | null; language: string; erro
 /** Margin reads green when we earned, red when the month cost us more than it made. */
 function Margin({ value }: { value: number }) {
   return (
-    <span className={value < 0 ? "text-destructive" : "text-primary"}>{money(value)}</span>
+    <span className={value < 0 ? "text-destructive" : "text-primary"}>{fineMoney(value)}</span>
   );
 }
 
@@ -514,7 +514,7 @@ function AdminBilling() {
           <StatCard
             label="Our own AI cost"
             value={fineMoney(totals.internal_ai_cost)}
-            tone={totals.internal_ai_cost > 0 ? "negative" : undefined}
+            {...(totals.internal_ai_cost > 0 ? { tone: "negative" as const } : {})}
             hint={
               totals.internal_ai_orgs.length > 0
                 ? `Workspaces we don't bill: ${totals.internal_ai_orgs.join(", ")}`
