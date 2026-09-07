@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { APP_PUBLIC_URL } from "@/lib/app-url";
 import { FEATURES } from "@/lib/feature-registry";
 import {
   MESSAGE_CATEGORIES,
@@ -440,6 +441,32 @@ export async function createCreditPurchase(
     | Record<string, unknown>
     | null;
 
+  // One live link per workspace: older unpaid attempts are closed off so a
+  // stale link can never be paid days later against the wrong pack.
+  const { data: stale } = await supabase
+    .from("payments")
+    .select("id, raw")
+    .eq("organization_id", input.organizationId)
+    .eq("purpose", "credit_purchase")
+    .in("status", ["created", "pending"]);
+  for (const old of ((stale ?? []) as Record<string, unknown>[])) {
+    await supabase
+      .from("payments")
+      .update({
+        status: "failed",
+        raw: { ...((old["raw"] ?? {}) as Record<string, unknown>), reason: "superseded" },
+      })
+      .eq("id", old["id"] as string);
+  }
+
+  const packRaw = {
+    pack_amount: base,
+    gst,
+    gross: total,
+    bonus: Number(pack.bonus_amount ?? 0),
+    pack_name: pack.name,
+  };
+
   const { data: payment, error: payErr } = await supabase
     .from("payments")
     .insert({
@@ -449,10 +476,11 @@ export async function createCreditPurchase(
       purpose: "credit_purchase",
       credit_pack_id: pack.id,
       coupon_id: coupon ? (coupon["id"] as string) : null,
-      amount: total,
+      // Stored ex-GST; the gross that Razorpay collects lives in raw.
+      amount: base,
       currency: pack.currency ?? "INR",
       status: "created",
-      raw: { pack_amount: base, gst, bonus: Number(pack.bonus_amount ?? 0) },
+      raw: packRaw,
       created_by: input.userId,
     })
     .select("id")
@@ -469,18 +497,27 @@ export async function createCreditPurchase(
       email: (account?.["billing_email"] as string) ?? null,
       contact: (account?.["billing_whatsapp"] as string) ?? null,
     },
-    callbackUrl: `${input.origin}/app/billing?payment=${payment.id}`,
+    callbackUrl: `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
+    expireBy: Math.floor(Date.now() / 1000) + 24 * 3600,
     notes: { organization_id: input.organizationId, payment_id: payment.id as string },
   });
 
   if (!link || error) {
-    await supabase.from("payments").update({ status: "failed", raw: { error } }).eq("id", payment.id);
+    await supabase
+      .from("payments")
+      .update({ status: "failed", raw: { ...packRaw, error } })
+      .eq("id", payment.id);
     return { error: error ?? "We couldn't create the payment link. Please try again." };
   }
 
   await supabase
     .from("payments")
-    .update({ provider_link_id: link.id, status: "pending", raw: link.raw })
+    .update({
+      provider_link_id: link.id,
+      status: "pending",
+      // Merge, never replace: the pack figures are what settlement runs on.
+      raw: { ...packRaw, expires_at: new Date(Date.now() + 24 * 3600e3).toISOString(), link: link.raw },
+    })
     .eq("id", payment.id);
 
   return { url: link.short_url, payment_id: payment.id as string };
@@ -501,21 +538,67 @@ export async function settlePayment(
   if (!payment) return { credited: false };
   if (payment.status === "paid") return { credited: false }; // already settled
 
-  await supabase
+  const entity = ((raw["payload"] as Record<string, unknown> | undefined)?.["payment"] as
+    | Record<string, unknown>
+    | undefined)?.["entity"] as Record<string, unknown> | undefined;
+
+  // The paid flag is claimed conditionally: a replayed webhook finds no row
+  // left to flip and stops here, so nothing is ever credited twice.
+  const { data: claimed } = await supabase
     .from("payments")
     .update({
       status: "paid",
       provider_payment_id: providerPaymentId,
+      ...(entity?.["order_id"] ? { provider_order_id: String(entity["order_id"]) } : {}),
+      ...(entity?.["method"] ? { method: String(entity["method"]) } : {}),
       paid_at: new Date().toISOString(),
       raw: { ...(payment.raw as Record<string, unknown>), webhook: raw },
     })
-    .eq("id", payment.id);
+    .eq("id", payment.id)
+    .neq("status", "paid")
+    .select("id");
+  if (!claimed || claimed.length === 0) return { credited: false };
 
   if (payment.purpose !== "credit_purchase" || !payment.organization_id) return { credited: false };
 
   const stored = (payment.raw ?? {}) as Record<string, unknown>;
-  const credits = Number(stored["pack_amount"] ?? 0);
-  const bonus = Number(stored["bonus"] ?? 0);
+
+  // The pack is the truth about how much to credit. Fall back to the figures
+  // frozen on the payment, and if neither is there, stop and tell a human —
+  // money taken with nothing credited must never pass quietly.
+  let credits = 0;
+  let bonus = 0;
+  let packName = (stored["pack_name"] as string | null) ?? null;
+  if (payment.credit_pack_id) {
+    const { data: pack } = await supabase
+      .from("credit_packs")
+      .select("name, amount, bonus_amount")
+      .eq("id", payment.credit_pack_id)
+      .maybeSingle();
+    if (pack) {
+      credits = Number(pack["amount"] ?? 0);
+      bonus = Number(pack["bonus_amount"] ?? 0);
+      packName = String(pack["name"] ?? packName ?? "");
+    }
+  }
+  if (credits <= 0) {
+    credits = Number(stored["pack_amount"] ?? 0);
+    bonus = Number(stored["bonus"] ?? 0);
+  }
+  if (credits <= 0) {
+    await notify(supabase, {
+      organizationId: payment.organization_id as string,
+      audience: "admin",
+      kind: "settle_failed",
+      payload: {
+        payment_id: payment.id,
+        amount: Number(payment.amount ?? 0),
+        reason: "no credit pack on the payment",
+      },
+    });
+    return { credited: false };
+  }
+
 
   await supabase.rpc("wallet_apply", {
     p_org: payment.organization_id,
@@ -588,7 +671,7 @@ export async function settlePayment(
     const lines: import("@/lib/invoices.server").InvoiceLineInput[] = [
       {
         line_type: "credits" as const,
-        description: `Prepaid messaging credits${stored["pack_name"] ? ` — ${String(stored["pack_name"])}` : ""}`,
+        description: `Prepaid messaging credits${packName ? ` — ${packName}` : ""}`,
         sac_code: supplier.sac_messaging,
         unit_price: credits,
         metadata: { pack_id: payment.credit_pack_id ?? null },
@@ -610,8 +693,12 @@ export async function settlePayment(
       payment_id: payment.id as string,
     });
     if (!("error" in built)) {
-      await issueInvoice(supabase, built.invoice_id);
-      await markPaid(supabase, built.invoice_id, payment.id as string, Number(payment.amount ?? 0));
+      const issued = await issueInvoice(supabase, built.invoice_id);
+      if (!("error" in issued)) {
+        // The invoice is paid in full by the gross the customer actually paid.
+        const gross = Number(stored["gross"] ?? 0) || withGst(credits).total;
+        await markPaid(supabase, built.invoice_id, payment.id as string, gross);
+      }
     }
   } catch {
     // the credits are already in the wallet; the invoice can be re-issued

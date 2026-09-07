@@ -73,13 +73,25 @@ export type CampaignRecipientRow = {
 export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
   draft: "Draft",
   scheduled: "Scheduled",
-  awaiting_approval: "Waiting for approval",
+  awaiting_approval: "Awaiting approval",
   sending: "Sending",
   paused: "Paused",
   completed: "Completed",
   cancelled: "Cancelled",
   failed: "Failed",
 };
+
+/** The order statuses are offered in the campaign list filter. */
+export const CAMPAIGN_STATUS_ORDER: CampaignStatus[] = [
+  "draft",
+  "scheduled",
+  "awaiting_approval",
+  "sending",
+  "paused",
+  "completed",
+  "cancelled",
+  "failed",
+];
 
 export const CAMPAIGN_STATUS_CLASSES: Record<CampaignStatus, string> = {
   draft: "border-border bg-muted text-muted-foreground",

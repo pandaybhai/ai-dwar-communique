@@ -5,6 +5,7 @@ import { aidwar } from "@/integrations/aidwar/client";
 import {
   CAMPAIGN_STATUS_CLASSES,
   CAMPAIGN_STATUS_LABELS,
+  CAMPAIGN_STATUS_ORDER,
   percent,
   type CampaignRow,
 } from "@/lib/campaigns";
@@ -33,6 +34,7 @@ export function CampaignsView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const load = useCallback(async () => {
     setError(null);
@@ -52,13 +54,39 @@ export function CampaignsView({
     return () => clearInterval(t);
   }, [load]);
 
+  const visible =
+    statusFilter === "all" ? rows : rows.filter((r) => r.status === statusFilter);
+
   if (loading) return <TableSkeleton />;
   if (error) return <ErrorState message={error} />;
 
   return (
     <>
       <QualityBanner organizationId={organizationId} className="mb-4" />
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-1.5">
+          {(["all", ...CAMPAIGN_STATUS_ORDER] as const).map((key) => {
+            const label = key === "all" ? "All" : CAMPAIGN_STATUS_LABELS[key];
+            const count =
+              key === "all" ? rows.length : rows.filter((r) => r.status === key).length;
+            if (key !== "all" && count === 0 && statusFilter !== key) return null;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStatusFilter(key)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-150",
+                  statusFilter === key
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {label} <span className="tabular-nums opacity-70">{count}</span>
+              </button>
+            );
+          })}
+        </div>
         {isAdmin && (
           <Button className="rounded-full" onClick={() => setWizardOpen(true)}>
             <Plus className="mr-1.5 h-4 w-4" /> Create campaign
@@ -66,13 +94,17 @@ export function CampaignsView({
         )}
       </div>
 
-      {rows.length === 0 ? (
+      {visible.length === 0 ? (
         <EmptyState
           icon={Megaphone}
-          title="No campaigns yet"
-          description="Pick an audience, choose an approved template, and reach every opted-in customer in one go."
+          title={rows.length === 0 ? "No campaigns yet" : "Nothing in this list"}
+          description={
+            rows.length === 0
+              ? "Pick an audience, choose an approved template, and reach every opted-in customer in one go."
+              : "No campaign is in that state right now. Try another one above."
+          }
           action={
-            isAdmin ? (
+            isAdmin && rows.length === 0 ? (
               <Button className="rounded-full" onClick={() => setWizardOpen(true)}>
                 <Plus className="mr-1.5 h-4 w-4" /> Create your first campaign
               </Button>
@@ -95,7 +127,7 @@ export function CampaignsView({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((c) => (
+                {visible.map((c) => (
                   <tr key={c.id} className="border-b border-border/50 transition-colors last:border-0 hover:bg-muted/40">
                     <td className="px-4 py-3">
                       <Link

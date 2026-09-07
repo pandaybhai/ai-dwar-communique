@@ -54,6 +54,16 @@ export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
     examples: ["Sharma Textiles", "₹4,500", "https://aidwar.in/app/campaigns"],
   },
   {
+    name: "admin_topup_due",
+    body: "{{1}} needs a Meta float top-up of {{2}}. Credits sold: {{3}}.",
+    examples: ["Sharma Textiles", "₹4,200", "₹5,000"],
+  },
+  {
+    name: "admin_settle_failed",
+    body: "A payment for {{1}} of {{2}} could not be credited automatically. Please check it: {{3}}",
+    examples: ["Sharma Textiles", "₹2,000", "https://aidwar.in/admin/billing"],
+  },
+  {
     name: "client_invoice_issued",
     body: "{{1}}: your invoice for {{2}} is ready. You can view and download it here: {{3}}",
     examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
@@ -78,6 +88,8 @@ const TEMPLATE_FOR: Record<string, string> = {
   "admin:topup_requested": "client_topup_requested",
   "client:low_credits": "client_low_credits",
   "admin:float_low": "admin_float_low",
+  "admin:topup_due": "admin_topup_due",
+  "admin:settle_failed": "admin_settle_failed",
   "client:campaign_approval": "client_campaign_approval",
   "client:invoice_issued": "client_invoice_issued",
   "client:invoice_overdue": "client_invoice_overdue",
@@ -110,7 +122,7 @@ export async function resolvePlatformOrg(supabase: SupabaseClient): Promise<stri
   return (membership as { organization_id?: string } | null)?.organization_id ?? null;
 }
 
-/** Creates all nine notice templates on the platform number for Meta review. */
+/** Creates every notice template on the platform number for Meta review. */
 export async function ensureBillingTemplates(
   supabase: SupabaseClient,
   actorId: string,
@@ -191,6 +203,10 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
       return [orgName, amount === null || amount === undefined ? "some credits" : money(Number(amount)), link];
     case "low_credits":
       return [orgName, money(Number(payload["available"] ?? 0)), link];
+    case "topup_due":
+      return [orgName, money(Number(payload["meta_amount"] ?? 0)), money(Number(payload["credits"] ?? 0))];
+    case "settle_failed":
+      return [orgName, money(Number(payload["amount"] ?? 0)), "https://aidwar.in/admin/billing"];
     case "float_low":
       return [orgName, money(Number(payload["estimate"] ?? 0)), money(Number(payload["target"] ?? 0))];
     case "invoice_issued":
@@ -288,7 +304,7 @@ export async function drainBillingNotifications(
     ? await getWhatsAppConnection(supabase, platformOrgId)
     : { connection: null, error: "no_platform_org" as string | null };
 
-  const mark = async (id: string, status: "sent" | "failed", error?: string) => {
+  const mark = async (id: string, status: "sent" | "failed" | "skipped", error?: string) => {
     await supabase
       .from("billing_notifications")
       .update({ status, error: error ?? null, sent_at: new Date().toISOString() })
@@ -300,8 +316,9 @@ export async function drainBillingNotifications(
     try {
       const templateName = TEMPLATE_FOR[`${String(row["audience"])}:${String(row["kind"])}`];
       if (!templateName || row["channel"] === "inapp") {
-        // Nothing to send over WhatsApp: it stays an in-app record.
-        await mark(id, "sent");
+        // Nothing to send over WhatsApp: it stays an in-app record. 'sent' is
+        // reserved for a message that actually left the platform number.
+        await mark(id, "skipped", templateName ? "in_app_only" : "no_template_for_kind");
         counts.skipped += 1;
         continue;
       }

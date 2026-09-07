@@ -80,8 +80,43 @@ function featureRegistryGuard(): Plugin {
   };
 }
 
+/**
+ * Applies the feature manifests to the database on every build: merge-only
+ * upserts, never a blanking write. Without database access (local builds,
+ * previews) it steps aside quietly; a real failure stops the build.
+ */
+function featureRegistrySync(): Plugin {
+  return {
+    name: "aidwar-feature-registry-sync",
+    apply: "build",
+    async buildStart() {
+      const url = process.env["AIDWAR_MUMBAI_DB_URL"];
+      if (!url) return;
+
+      const { spawnSync } = await import("node:child_process");
+      const generated = spawnSync("bun", ["run", "scripts/sync-feature-registry.ts"], {
+        encoding: "utf8",
+        env: process.env,
+      });
+      if (generated.status !== 0) {
+        this.error(`Feature registry sync could not be generated:\n${generated.stderr}`);
+        return;
+      }
+
+      const applied = spawnSync("psql", [url, "-v", "ON_ERROR_STOP=1", "-q", "-f", "-"], {
+        encoding: "utf8",
+        input: generated.stdout,
+        env: process.env,
+      });
+      if (applied.status !== 0) {
+        this.error(`Feature registry sync failed to apply:\n${applied.stderr}`);
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  vite: { plugins: [buildInfoGenerator(), featureRegistryGuard()] },
+  vite: { plugins: [buildInfoGenerator(), featureRegistryGuard(), featureRegistrySync()] },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this

@@ -8,16 +8,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,8 +16,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { callApi } from "@/lib/whatsapp-client";
-import { FEATURES } from "@/lib/feature-registry";
+import { OrgFeatureControls } from "@/components/admin/org-feature-controls";
 import { MESSAGE_CATEGORIES, money, rateMoney, ledgerLabel } from "@/lib/billing";
+import { GST_STATES, gstinStateMismatch } from "@/lib/gst-states";
 
 type AnyRow = Record<string, unknown>;
 
@@ -68,19 +59,6 @@ const FUNDING_MODELS = [
   { value: "meta_direct", label: "Client pays Meta directly" },
   { value: "aidwar_prepaid", label: "We fund Meta for them" },
   { value: "bsp", label: "Through a partner (BSP)" },
-];
-
-const STATE_CODES = [
-  "27 Maharashtra",
-  "07 Delhi",
-  "29 Karnataka",
-  "33 Tamil Nadu",
-  "24 Gujarat",
-  "36 Telangana",
-  "19 West Bengal",
-  "09 Uttar Pradesh",
-  "08 Rajasthan",
-  "32 Kerala",
 ];
 
 function Field({
@@ -132,7 +110,6 @@ export function OrgBillingSheet({
   const [rateDraft, setRateDraft] = useState<Record<string, { mode: string; value: string }>>({});
   const [walletAmount, setWalletAmount] = useState("");
   const [walletReason, setWalletReason] = useState("");
-  const [impact, setImpact] = useState<{ featureKey: string; lines: string[] } | null>(null);
 
   const load = useCallback(async () => {
     setData(null);
@@ -179,36 +156,6 @@ export function OrgBillingSheet({
     toast.success(done);
     await load();
     return true;
-  }
-
-  const effective = (key: string): boolean => {
-    const override = data?.overrides.find((o) => o.flag_key === key);
-    if (override) return override.enabled;
-    return false;
-  };
-
-  async function toggleFeature(featureKey: string, enabled: boolean) {
-    if (!enabled) {
-      setBusy(featureKey);
-      const result = await callApi<{ dependents?: string[]; live?: Record<string, number> }>(
-        "/api/admin/billing",
-        { body: { action: "feature_impact", organization_id: organizationId, feature_key: featureKey } },
-      );
-      setBusy(null);
-      const dependents = result.data?.dependents ?? [];
-      const live = result.data?.live ?? {};
-      const lines = [
-        ...dependents.map((d) => `${d} will be switched off too`),
-        ...Object.entries(live)
-          .filter(([, count]) => Number(count) > 0)
-          .map(([label, count]) => `${count} ${label.replace(/_/g, " ")} will stop`),
-      ];
-      if (lines.length > 0) {
-        setImpact({ featureKey, lines });
-        return;
-      }
-    }
-    await act("set_feature", { feature_key: featureKey, enabled }, featureKey, "Feature updated.");
   }
 
   const metaRateFor = (category: string): number | null => {
@@ -309,27 +256,11 @@ export function OrgBillingSheet({
             {/* b) Features */}
             <TabsContent value="features" className="mt-4 space-y-4">
               <Section title="Features" description="Anything switched off disappears cleanly from their workspace.">
-                <div className="divide-y divide-border/60">
-                  {FEATURES.map((feature) => {
-                    const on = effective(feature.key);
-                    const override = data.overrides.find((o) => o.flag_key === feature.key);
-                    return (
-                      <div key={feature.key} className="flex items-center justify-between gap-4 py-3">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{feature.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {override ? "Set by hand — differs from the plan" : "Following the plan"}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={on}
-                          disabled={busy === feature.key}
-                          onCheckedChange={(v) => void toggleFeature(feature.key, v)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                <OrgFeatureControls
+                  organizationId={organizationId}
+                  compact
+                  onChanged={() => void load()}
+                />
               </Section>
             </TabsContent>
 
@@ -343,7 +274,14 @@ export function OrgBillingSheet({
                   <Field label="Legal name">
                     <Input value={account["legal_name"] ?? ""} onChange={(e) => setAccount((p) => ({ ...p, legal_name: e.target.value }))} />
                   </Field>
-                  <Field label="GSTIN" hint="15 characters, like 27AAAAA0000A1Z5">
+                  <Field
+                    label="GSTIN"
+                    hint={
+                      gstinStateMismatch(account["gstin"] ?? "", account["state_code"] ?? "")
+                        ? "Heads up: this GSTIN starts with a different state code than the state chosen below. Save anyway if that's right."
+                        : "15 characters, like 27AAAAA0000A1Z5"
+                    }
+                  >
                     <Input
                       value={account["gstin"] ?? ""}
                       onChange={(e) => setAccount((p) => ({ ...p, gstin: e.target.value.toUpperCase() }))}
@@ -356,9 +294,9 @@ export function OrgBillingSheet({
                       className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
                     >
                       <option value="">Choose a state</option>
-                      {STATE_CODES.map((s) => (
-                        <option key={s} value={s.slice(0, 2)}>
-                          {s}
+                      {GST_STATES.map((st) => (
+                        <option key={st.code} value={st.code}>
+                          {st.code} {st.name}
                         </option>
                       ))}
                     </select>
@@ -719,35 +657,6 @@ export function OrgBillingSheet({
           </Tabs>
         )}
 
-        <AlertDialog open={impact !== null} onOpenChange={(v) => !v && setImpact(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Switch this off?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Here's what happens to {organizationName} the moment you do:
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-              {(impact?.lines ?? []).map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Keep it on</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  const key = impact?.featureKey;
-                  setImpact(null);
-                  if (key) {
-                    void act("set_feature", { feature_key: key, enabled: false, force: true }, key, "Feature switched off.");
-                  }
-                }}
-              >
-                Switch it off
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </SheetContent>
     </Sheet>
   );

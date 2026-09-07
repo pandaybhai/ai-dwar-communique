@@ -113,6 +113,17 @@ export async function buildInvoice(
   const buyerCountry = String(buyer["country_code"] ?? "IN");
   const isExport = buyerCountry !== "IN";
   const isInterstate = !isExport && Boolean(buyerState) && buyerState !== supplier.state_code;
+  // Where the buyer's state is unknown, the place of supply is the supplier's
+  // own state (an unregistered buyer at the supplier's location).
+  const placeOfSupply = isExport ? buyerState : (buyerState ?? supplier.state_code);
+
+  if (input.lines.length === 0) return { error: "An invoice needs at least one line." };
+  if (!supplier.state_code) {
+    return { error: "Set the supplier state on the platform billing settings first." };
+  }
+  if (!isExport && !placeOfSupply) {
+    return { error: "We couldn't work out the place of supply for this invoice." };
+  }
 
   const buyerSnapshot = {
     name: (buyer["name"] as string | null) ?? (org["name"] as string),
@@ -179,7 +190,7 @@ export async function buildInvoice(
       issue_date: new Date().toISOString().slice(0, 10),
       period_start: input.period?.start ?? null,
       period_end: input.period?.end ?? null,
-      place_of_supply: buyerState,
+      place_of_supply: placeOfSupply,
       supplier_state_code: supplier.state_code,
       is_interstate: isInterstate,
       is_export: isExport,
@@ -202,12 +213,72 @@ export async function buildInvoice(
 
   if (error || !invoice) return { error: "We couldn't prepare the invoice." };
 
-  await supabase
+  const { error: lineError } = await supabase
     .from("invoice_lines")
     .insert(prepared.map((line) => ({ ...line, invoice_id: invoice.id as string })));
 
+  // An invoice with no lines is not an invoice. If the lines fail, the shell
+  // goes with them rather than sitting around waiting to be issued.
+  if (lineError) {
+    await supabase.from("invoices").delete().eq("id", invoice.id as string);
+    return { error: "We couldn't record the invoice lines." };
+  }
+
   return { invoice_id: invoice.id as string };
 }
+
+/**
+ * The last gate before a number is drawn. Everything here is arithmetic that
+ * must already be true; a failure means the invoice was built wrong, and a
+ * wrong invoice must never consume a number.
+ */
+export function checkInvoiceIssuable(
+  invoice: Record<string, unknown>,
+  lines: Record<string, unknown>[],
+): string | null {
+  const n = (v: unknown) => round2(Number(v ?? 0));
+  const money = lines.filter((l) => (l["metadata"] as Record<string, unknown> | null)?.["informational"] !== true);
+
+  if (lines.length === 0) return "the invoice has no lines";
+  if (money.length === 0) return "the invoice has no chargeable lines";
+
+  const taxable = n(invoice["taxable_value"]);
+  const lineSum = round2(money.reduce((sum, l) => sum + Number(l["amount"] ?? 0), 0));
+  if (Math.abs(taxable - lineSum) > 0.01) {
+    return `taxable value ${taxable} does not match the lines (${lineSum})`;
+  }
+
+  const isExport = invoice["is_export"] === true;
+  const isInterstate = invoice["is_interstate"] === true;
+  const cgst = n(invoice["cgst"]);
+  const sgst = n(invoice["sgst"]);
+  const igst = n(invoice["igst"]);
+  const expectedTax = isExport ? 0 : round2((taxable * TAX_RATE) / 100);
+
+  if (isExport) {
+    if (cgst || sgst || igst) return "an export invoice must be zero-rated";
+  } else if (isInterstate) {
+    if (cgst || sgst) return "an inter-state invoice carries IGST only";
+    if (Math.abs(igst - expectedTax) > 0.02) return `IGST ${igst} should be ${expectedTax}`;
+  } else {
+    if (igst) return "an intra-state invoice carries CGST and SGST only";
+    const half = round2(expectedTax / 2);
+    if (Math.abs(cgst - half) > 0.02 || Math.abs(sgst - half) > 0.02) {
+      return `CGST/SGST ${cgst}/${sgst} should be ${half} each`;
+    }
+  }
+
+  if (!invoice["place_of_supply"] && !isExport) return "place of supply is missing";
+  if (!invoice["supplier_state_code"]) return "supplier state is missing";
+
+  const total = n(invoice["total"]);
+  const expectedTotal = round2(taxable + cgst + sgst + igst);
+  if (Math.abs(total - expectedTotal) > 0.02) {
+    return `total ${total} should be ${expectedTotal}`;
+  }
+  return null;
+}
+
 
 /**
  * Draws the number, renders the PDF, files it and queues the notices.
@@ -231,9 +302,22 @@ export async function issueInvoice(
     };
   }
 
+  const { data: draftLines } = await supabase
+    .from("invoice_lines")
+    .select("*")
+    .eq("invoice_id", invoiceId)
+    .order("line_no");
+
+  const problem = checkInvoiceIssuable(
+    invoice as Record<string, unknown>,
+    (draftLines ?? []) as Record<string, unknown>[],
+  );
+  if (problem) return { error: `This invoice can't be issued — ${problem}.` };
+
   const supplier = await loadSupplier(supabase);
   const issueDate = String(invoice["issue_date"] ?? new Date().toISOString().slice(0, 10));
   const series = String(invoice["series"] ?? supplier.invoice_series);
+
 
   const { data: numberData, error: numberError } = await supabase.rpc("next_invoice_number", {
     p_series: series,
@@ -517,4 +601,89 @@ export async function issuePendingInvoices(
   }
 
   return { issued, failed };
+}
+
+/**
+ * Repair: voids an invoice that should never have been issued and rebuilds a
+ * correct one from the payment behind it. The old number is retired for good —
+ * numbers are never reused — and the replacement passes the issue guard or
+ * nothing is written at all.
+ */
+export async function voidAndReissueInvoice(
+  supabase: SupabaseClient,
+  invoiceId: string,
+  note: string,
+): Promise<{ invoice_number: string; invoice_id: string } | { error: string }> {
+  const { data: invoice } = await supabase
+    .from("invoices")
+    .select("*")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (!invoice) return { error: "That invoice no longer exists." };
+
+  const paymentId = (invoice["payment_id"] as string | null) ?? null;
+  if (!paymentId) return { error: "This invoice has no payment behind it to rebuild from." };
+
+  const { data: payment } = await supabase
+    .from("payments")
+    .select("id, organization_id, amount, status, credit_pack_id, raw")
+    .eq("id", paymentId)
+    .maybeSingle();
+  if (!payment) return { error: "The payment behind this invoice is missing." };
+
+  const raw = ((payment["raw"] ?? {}) as Record<string, unknown>);
+  let base = round2(Number(raw["pack_amount"] ?? 0));
+  let packName = String(raw["pack_name"] ?? "");
+  const packId = (payment["credit_pack_id"] as string | null) ?? null;
+  if (packId) {
+    const { data: pack } = await supabase
+      .from("credit_packs")
+      .select("name, amount")
+      .eq("id", packId)
+      .maybeSingle();
+    if (pack) {
+      base = round2(Number((pack as Record<string, unknown>)["amount"] ?? base));
+      packName = String((pack as Record<string, unknown>)["name"] ?? packName);
+    }
+  }
+  if (base <= 0) base = round2(Number(payment["amount"] ?? 0));
+  if (base <= 0) return { error: "We couldn't work out what this payment was for." };
+
+  const organizationId = String(payment["organization_id"]);
+  const built = await buildInvoice(supabase, organizationId, {
+    kind: "tax_invoice",
+    purpose: ((invoice["purpose"] as InvoicePurpose | null) ?? "credit_purchase"),
+    payment_id: paymentId,
+    related_invoice_id: invoiceId,
+    lines: [
+      {
+        line_type: "credits",
+        description: packName ? `Message credits — ${packName}` : "Message credits",
+        sac_code: "998314",
+        quantity: 1,
+        unit_price: base,
+      },
+    ],
+  });
+  if ("error" in built) return built;
+
+  const issued = await issueInvoice(supabase, built.invoice_id);
+  if ("error" in issued) {
+    await supabase.from("invoices").delete().eq("id", built.invoice_id);
+    return issued;
+  }
+
+  await markPaid(supabase, built.invoice_id, paymentId, round2(Number(payment["amount"] ?? 0)) || base);
+
+  const oldNotes = (invoice["notes"] as string | null) ?? null;
+  await supabase
+    .from("invoices")
+    .update({
+      status: "void",
+      notes: oldNotes ? `${oldNotes} · ${note}` : note,
+      amount_paid: 0,
+    })
+    .eq("id", invoiceId);
+
+  return { invoice_number: issued.invoice_number, invoice_id: built.invoice_id };
 }

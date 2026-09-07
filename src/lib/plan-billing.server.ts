@@ -36,8 +36,13 @@ export async function runPlanBilling(supabase: SupabaseClient): Promise<Counts> 
 
   const { data: orgs } = await supabase
     .from("organizations")
-    .select("id, name, billing_day, plan_status, plan_version_id, trial_ends_at, billing_account_id")
+    .select(
+      "id, name, billing_day, plan_status, plan_version_id, trial_ends_at, billing_account_id, billing_enabled_at",
+    )
+    // Only a workspace that is actually on a plan with billing switched on is
+    // eligible. Everyone else is left completely alone.
     .not("plan_version_id", "is", null)
+    .not("billing_enabled_at", "is", null)
     .in("plan_status", ["trial", "active", "past_due", "paused"])
     .limit(1000);
 
@@ -47,8 +52,13 @@ export async function runPlanBilling(supabase: SupabaseClient): Promise<Counts> 
     const organizationId = String(row["id"]);
 
     // Trial ending in three days: one friendly heads-up, once.
-    const trialEnds = row["trial_ends_at"] as string | null;
-    if (row["plan_status"] === "trial" && trialEnds) {
+    // No trial end date means the trial has no end — never treat it as expired.
+    const trialEnds = (row["trial_ends_at"] as string | null) ?? null;
+    if (row["plan_status"] === "trial") {
+      if (trialEnds === null) {
+        counts.skipped += 1;
+        continue;
+      }
       const days = Math.ceil((new Date(trialEnds).getTime() - now.getTime()) / 864e5);
       if (days === 3) {
         await notify(supabase, {
