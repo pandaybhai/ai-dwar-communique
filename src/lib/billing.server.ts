@@ -995,7 +995,13 @@ export type PlanAssignmentResult = {
     numbers: { id: string; label: string }[];
     features: string[];
   };
+  mandate?: {
+    changed: boolean;
+    note: string;
+    needs_new_mandate?: boolean;
+  };
 };
+
 
 /**
  * Moving a workspace onto a plan. A downgrade never deletes anything: people
