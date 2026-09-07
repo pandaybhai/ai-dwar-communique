@@ -38,6 +38,11 @@ export function OrgFeatureControls({
   const [planFeatures, setPlanFeatures] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [confirmOff, setConfirmOff] = useState<{
+    flagKey: string;
+    name: string;
+    dependents: string[];
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
