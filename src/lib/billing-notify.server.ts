@@ -535,7 +535,17 @@ export async function drainBillingNotifications(
         : { data: null };
       const orgName = ((org as { name?: string } | null)?.name ?? "your workspace") as string;
       const payload = (row["payload"] ?? {}) as Record<string, unknown>;
-      const params = paramsFor(String(row["kind"]), orgName, payload);
+      if ((kind === "topup_due" || kind === "topup_reminder") && payload["task_id"]) {
+        // Amounts come from the task as it stands now, not as it stood when
+        // the notice was queued.
+        const { data: task } = await supabase
+          .from("topup_tasks")
+          .select("meta_amount, margin_amount, credits_amount")
+          .eq("id", payload["task_id"] as string)
+          .maybeSingle();
+        if (task) Object.assign(payload, task as Record<string, unknown>);
+      }
+      const params = paramsFor(kind, orgName, payload);
 
       // Inside the 24-hour window a plain message is friendlier and cheaper.
       // Numbers are stored with and without the leading +, so match both.
