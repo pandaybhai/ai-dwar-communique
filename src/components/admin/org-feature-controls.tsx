@@ -142,8 +142,13 @@ export function OrgFeatureControls({
             ? fromPlan
             : globalDefault;
 
+        const baseline = fromPlan !== null ? fromPlan : globalDefault;
         const source = hasOverride
-          ? `Set by hand — ${enabled ? "on" : "off"}`
+          ? `Set by hand — ${enabled ? "on" : "off"}${
+              enabled === baseline
+                ? ""
+                : ` (differs from ${fromPlan !== null ? "plan" : "default"})`
+            }`
           : fromPlan !== null
             ? `From plan — ${fromPlan ? "on" : "off"}`
             : `Global default — ${globalDefault ? "on" : "off"}`;
