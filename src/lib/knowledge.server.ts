@@ -399,6 +399,47 @@ export async function upsertDocument(
   }
 }
 
+
+/**
+ * Add a website as something the employee reads, then read it. One
+ * implementation, shared by the knowledge screen and the owner's chat with
+ * Aiden, so both behave identically.
+ */
+export async function addWebsiteSource(
+  supabase: SupabaseClient,
+  organizationId: string,
+  url: string,
+  createdBy: string | null,
+): Promise<{ ok: boolean; sourceId: string | null; itemCount: number; error?: string }> {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return { ok: false, sourceId: null, itemCount: 0, error: "That isn't a full web address." };
+  }
+
+  const { data, error } = await supabase
+    .from("knowledge_sources")
+    .insert({
+      organization_id: organizationId,
+      type: "website",
+      name: hostname,
+      config: { url, page_cap: 40 },
+      refresh_days: 7,
+      created_by: createdBy,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    return { ok: false, sourceId: null, itemCount: 0, error: "We couldn't add that website." };
+  }
+
+  const sourceId = (data as { id: string }).id;
+  const result = await syncSource(supabase, sourceId);
+  return { ok: result.ok, sourceId, itemCount: result.itemCount, ...(result.error ? { error: result.error } : {}) };
+}
+
+
 /** A merchant's correction becomes a written answer, attributed and dated. */
 export async function saveCorrection(
   supabase: SupabaseClient,

@@ -107,7 +107,12 @@ export type RunOptions = {
   customerLanguage?: string | null;
   /** Earlier questions in this chat where the AI failed or handed over. */
   priorFailedQuestions?: string[];
+  /** Where this run came from, e.g. the owner's onboarding chat. */
+  metadata?: Record<string, unknown> | null;
+  /** The platform pays for this one: nothing is billed to the workspace. */
+  billingExempt?: boolean;
 };
+
 
 
 /** A product picture the answer can show: catalogue result, never a data copy. */
@@ -823,7 +828,11 @@ export async function executeRun(
 
   const finish = async (result: RunResult): Promise<RunResult> => {
     result.latencyMs = Date.now() - started;
+    // Platform-paid runs (the owner's onboarding chat) must never reach the
+    // wallet: the billing trigger fires on billed_amount, so zero means free.
+    if (options.billingExempt) result.billedAmount = 0;
     if (options.dryRun) return result;
+
     const { data } = await supabase
       .from("ai_runs")
       .insert({
@@ -854,6 +863,8 @@ export async function executeRun(
         status: result.status,
         error: result.error ?? null,
         comparison_id: comparisonId,
+        metadata: options.metadata ?? {},
+
         prompt_rules_version: options.promptRulesVersion ?? null,
 
       })

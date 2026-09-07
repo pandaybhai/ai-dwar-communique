@@ -334,4 +334,74 @@ export async function agentAnswer(
   });
 }
 
+/**
+ * The answer the owner gets while Aiden is being set up on WhatsApp.
+ *
+ * The chat itself lives in the platform organization's inbox (that is the
+ * number the owner writes to), but everything that matters — retrieval, the
+ * ai_runs row, the cost — belongs to the owner's own workspace. So
+ * `conversation_id` on the run points at a conversation in the platform org.
+ * That is deliberate.
+ */
+export async function merchantAnswer(
+  supabase: SupabaseClient,
+  common: Common,
+  args: {
+    /** The platform-org conversation the owner is writing in. */
+    conversationId: string;
+    question: string;
+    session: {
+      id: string;
+      organization_id: string;
+      user_id: string;
+      business_name?: string | null;
+      owner_name?: string | null;
+    };
+  },
+): Promise<RunResult> {
+  const organizationId = args.session.organization_id;
+  const agentId = await defaultAgentId(supabase, organizationId);
+
+  // History comes from the platform-org thread, labelled for the owner.
+  const { data: rows } = await supabase
+    .from("messages")
+    .select("direction, body, created_at")
+    .eq("conversation_id", args.conversationId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const turns = ((rows ?? []) as Array<{ direction: string; body: string | null }>)
+    .filter((m) => (m.body ?? "").trim().length > 0)
+    .reverse()
+    .map<Turn>((m) => ({
+      role: m.direction === "inbound" ? "user" : "assistant",
+      content: `${m.direction === "inbound" ? "Owner" : "Aiden"}: ${String(m.body)}`,
+    }));
+
+  const { assembleBrief } = await import("@/lib/ai-brief.server");
+  const brief = await assembleBrief(supabase, organizationId, agentId, {
+    audience: "merchant",
+    businessName: args.session.business_name ?? null,
+    ownerName: args.session.owner_name ?? null,
+  });
+
+  const { userPrincipal } = await import("@/lib/ai-tools.server");
+
+  return executeRun(supabase, {
+    organizationId,
+    task: "agent_reply",
+    agentId,
+    conversationId: args.conversationId,
+    actorUserId: args.session.user_id,
+    actingRole: common.actingRole ?? null,
+    principal: userPrincipal(args.session.user_id),
+    history: turns.slice(0, -1),
+    input: args.question,
+    system: brief.text,
+    promptRulesVersion: brief.rulesVersion,
+    useKnowledge: true,
+    useTools: true,
+    metadata: { channel: "onboarding", session_id: args.session.id },
+    billingExempt: true,
+  });
+}
 

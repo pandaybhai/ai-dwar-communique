@@ -50,6 +50,21 @@ function SignupPage() {
       setError("Password must be at least 8 characters.");
       return;
     }
+    // Aiden recognises the owner by this number when they message him, so a
+    // 10-digit Indian mobile becomes +91 and anything else must be full E.164.
+    const raw = String(form.get("phone") ?? "").trim();
+    const digits = raw.replace(/\D/g, "");
+    const phone = raw.startsWith("+")
+      ? `+${digits}`
+      : digits.length === 10
+        ? `+91${digits}`
+        : digits
+          ? `+${digits}`
+          : "";
+    if (!/^\+\d{10,15}$/.test(phone)) {
+      setError("Enter your WhatsApp number — 10 digits for India, or with the country code.");
+      return;
+    }
     setPending(true);
     setError(null);
     const { data, error: err } = await aidwar.auth.signUp({
@@ -57,7 +72,7 @@ function SignupPage() {
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/login`,
-        data: { full_name: String(form.get("full_name") ?? "").trim() },
+        data: { full_name: String(form.get("full_name") ?? "").trim(), phone },
       },
     });
     setPending(false);
@@ -71,6 +86,7 @@ function SignupPage() {
     }
     setCheckEmail(true);
   }
+
 
   return (
     <AuthShell
@@ -100,6 +116,22 @@ function SignupPage() {
             <Input id="full_name" name="full_name" required autoComplete="name" placeholder="Raghav Sharma" />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="phone">WhatsApp number</Label>
+            <Input
+              id="phone"
+              name="phone"
+              type="tel"
+              required
+              autoComplete="tel"
+              inputMode="tel"
+              placeholder="98765 43210"
+            />
+            <p className="text-xs text-muted-foreground">
+              This is how Aiden knows it's you when you message him.
+            </p>
+          </div>
+          <div className="space-y-2">
+
             <Label htmlFor="email">Work email</Label>
             <Input id="email" name="email" type="email" required autoComplete="email" placeholder="you@company.com" />
           </div>

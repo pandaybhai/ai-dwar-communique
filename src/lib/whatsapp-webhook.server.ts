@@ -513,7 +513,17 @@ export async function processWebhookPayload(
     const automationCache = new Map<string, AutomationRow[]>();
     const timezoneCache = new Map<string, string>();
     const tokenCache = new Map<string, string>();
+    // The number owners write to while Aiden is being set up. Never hardcoded.
+    const { data: onboardingSetting } = await supabase
+      .from("platform_settings")
+      .select("onboarding_whatsapp_account_id")
+      .maybeSingle();
+    const onboardingAccountId =
+      (onboardingSetting as { onboarding_whatsapp_account_id?: string | null } | null)
+        ?.onboarding_whatsapp_account_id ?? null;
+
     let routedAny = false;
+
 
     for (const entry of entries) {
       for (const change of (entry["changes"] as AnyRecord[] | undefined) ?? []) {
@@ -738,8 +748,17 @@ export async function processWebhookPayload(
                 phone: normalizePhone(waId),
                 wa_id: waId,
                 ...(profileName ? { name: profileName } : {}),
-                source: attribution.source,
-                source_detail: attribution.source_detail,
+                // Everyone on the onboarding number is a business owner, not a
+                // lead, and is filed that way for good.
+                source:
+                  onboardingAccountId && accountId === onboardingAccountId
+                    ? "onboarding"
+                    : attribution.source,
+                source_detail:
+                  onboardingAccountId && accountId === onboardingAccountId
+                    ? null
+                    : attribution.source_detail,
+
                 updated_at: new Date().toISOString(),
               },
               { onConflict: "organization_id,phone" },
@@ -843,6 +862,30 @@ export async function processWebhookPayload(
               properties: { message_type: type, conversation_id: conversation.id },
             });
           }
+
+          // The onboarding number is a different conversation entirely: the
+          // person writing is a business owner, not a customer. Nothing that
+          // follows (opt-out keywords, COD, automations, the customer AI)
+          // applies to them.
+          if (onboardingAccountId && accountId === onboardingAccountId) {
+            if (!isSystemEcho && inserted && inserted.length > 0) {
+              const { handleMerchantInbound } = await import("@/lib/merchant-channel.server");
+              await handleMerchantInbound(supabase, {
+                organizationId: orgId,
+                accountId,
+                phoneNumberId,
+                accessToken,
+                waId,
+                conversationId: conversation.id as string,
+                contactId: contact.id as string,
+                body: body ?? "",
+
+              });
+            }
+            continue;
+          }
+
+
 
           // Opt-out / opt-in runs on EVERY inbound text, independent of whether
           // the message row was new — it is idempotent (no-op when the status
