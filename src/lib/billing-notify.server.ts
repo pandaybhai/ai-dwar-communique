@@ -500,25 +500,26 @@ export async function drainBillingNotifications(
         continue;
       }
 
-      const templateName = TEMPLATE_FOR[`${String(row["audience"])}:${String(row["kind"])}`];
+      const kind = String(row["kind"]);
+      const templateName = TEMPLATE_FOR[`${String(row["audience"])}:${kind}`];
       if (!templateName) {
         // Nothing to send over WhatsApp: it stays an in-app record. 'sent' is
         // reserved for a message that actually left the platform number.
-        await mark(id, "skipped", templateName ? "in_app_only" : "no_template_for_kind");
+        await mark(row, "skipped", "no_template_for_kind");
         counts.skipped += 1;
         continue;
       }
 
       const connection = connectionResult.connection;
       if (!connection || !platformOrgId) {
-        await mark(id, "failed", connectionResult.error ?? "platform_number_not_connected");
+        await mark(row, "failed", connectionResult.error ?? "platform_number_not_connected");
         counts.failed += 1;
         continue;
       }
 
       const to = await recipientFor(supabase, row);
       if (!to) {
-        await mark(id, "failed", "no_recipient");
+        await mark(row, "failed", "no_recipient");
         counts.failed += 1;
         continue;
       }
