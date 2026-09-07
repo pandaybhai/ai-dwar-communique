@@ -652,12 +652,12 @@ export async function voidAndReissueInvoice(
   const organizationId = String(payment["organization_id"]);
   const built = await buildInvoice(supabase, organizationId, {
     kind: "tax_invoice",
-    purpose: String(invoice["purpose"] ?? "credit_purchase"),
+    purpose: ((invoice["purpose"] as InvoicePurpose | null) ?? "credit_purchase"),
     payment_id: paymentId,
     related_invoice_id: invoiceId,
     lines: [
       {
-        line_type: "credit_pack",
+        line_type: "credits",
         description: packName ? `Message credits — ${packName}` : "Message credits",
         sac_code: "998314",
         quantity: 1,
