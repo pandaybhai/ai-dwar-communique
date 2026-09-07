@@ -538,21 +538,67 @@ export async function settlePayment(
   if (!payment) return { credited: false };
   if (payment.status === "paid") return { credited: false }; // already settled
 
-  await supabase
+  const entity = ((raw["payload"] as Record<string, unknown> | undefined)?.["payment"] as
+    | Record<string, unknown>
+    | undefined)?.["entity"] as Record<string, unknown> | undefined;
+
+  // The paid flag is claimed conditionally: a replayed webhook finds no row
+  // left to flip and stops here, so nothing is ever credited twice.
+  const { data: claimed } = await supabase
     .from("payments")
     .update({
       status: "paid",
       provider_payment_id: providerPaymentId,
+      ...(entity?.["order_id"] ? { provider_order_id: String(entity["order_id"]) } : {}),
+      ...(entity?.["method"] ? { method: String(entity["method"]) } : {}),
       paid_at: new Date().toISOString(),
       raw: { ...(payment.raw as Record<string, unknown>), webhook: raw },
     })
-    .eq("id", payment.id);
+    .eq("id", payment.id)
+    .neq("status", "paid")
+    .select("id");
+  if (!claimed || claimed.length === 0) return { credited: false };
 
   if (payment.purpose !== "credit_purchase" || !payment.organization_id) return { credited: false };
 
   const stored = (payment.raw ?? {}) as Record<string, unknown>;
-  const credits = Number(stored["pack_amount"] ?? 0);
-  const bonus = Number(stored["bonus"] ?? 0);
+
+  // The pack is the truth about how much to credit. Fall back to the figures
+  // frozen on the payment, and if neither is there, stop and tell a human —
+  // money taken with nothing credited must never pass quietly.
+  let credits = 0;
+  let bonus = 0;
+  let packName = (stored["pack_name"] as string | null) ?? null;
+  if (payment.credit_pack_id) {
+    const { data: pack } = await supabase
+      .from("credit_packs")
+      .select("name, amount, bonus_amount")
+      .eq("id", payment.credit_pack_id)
+      .maybeSingle();
+    if (pack) {
+      credits = Number(pack["amount"] ?? 0);
+      bonus = Number(pack["bonus_amount"] ?? 0);
+      packName = String(pack["name"] ?? packName ?? "");
+    }
+  }
+  if (credits <= 0) {
+    credits = Number(stored["pack_amount"] ?? 0);
+    bonus = Number(stored["bonus"] ?? 0);
+  }
+  if (credits <= 0) {
+    await notify(supabase, {
+      organizationId: payment.organization_id as string,
+      audience: "admin",
+      kind: "settle_failed",
+      payload: {
+        payment_id: payment.id,
+        amount: Number(payment.amount ?? 0),
+        reason: "no credit pack on the payment",
+      },
+    });
+    return { credited: false };
+  }
+
 
   await supabase.rpc("wallet_apply", {
     p_org: payment.organization_id,
