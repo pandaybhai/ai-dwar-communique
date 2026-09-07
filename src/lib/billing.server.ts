@@ -1254,7 +1254,16 @@ export async function assignPlan(
     },
   });
 
-  return { ok: true, locked: { ...locked, features: lockedFeatures } };
+  // The mandate must never charge for a plan the workspace is no longer on.
+  const { alignSubscriptionToPlan } = await import("@/lib/subscriptions.server");
+  const mandate = await alignSubscriptionToPlan(supabase, {
+    organizationId: input.organizationId,
+    planVersionId: String(row["id"]),
+    actorId: input.actorId,
+  });
+
+  return { ok: true, locked: { ...locked, features: lockedFeatures }, mandate };
+
 }
 
 /**
