@@ -691,11 +691,23 @@ export async function settlePayment(
     paymentId: payment.id as string,
   });
 
+  // The balance AFTER everything landed — the merchant is told what they now
+  // actually hold, never the size of the purchase.
+  const { data: walletAfter } = await supabase
+    .from("wallet_balances")
+    .select("balance")
+    .eq("organization_id", payment.organization_id as string)
+    .maybeSingle();
+
   await notify(supabase, {
     organizationId: payment.organization_id as string,
     audience: "client",
     kind: "credits_added",
-    payload: { amount: credits, bonus },
+    payload: {
+      amount: credits,
+      bonus,
+      balance: round2(Number((walletAfter as { balance?: number } | null)?.balance ?? 0)),
+    },
   });
 
   // A numbered tax invoice, issued and marked paid in one go. A failure here
