@@ -767,7 +767,17 @@ function AdminBilling() {
                       <td className="px-3 py-3">
                         <Margin value={r.messaging_margin} />
                       </td>
-                      <td className="px-3 py-3">{r.ai_answers}</td>
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDrill({ id: r.organization_id, name: r.name, month: r.month })
+                          }
+                          className="text-foreground underline-offset-2 transition-colors duration-150 hover:text-primary hover:underline"
+                        >
+                          {r.ai_answers}
+                        </button>
+                      </td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_within_allowance}</td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_over_allowance}</td>
                       <td className="px-3 py-3 text-muted-foreground">
@@ -785,6 +795,32 @@ function AdminBilling() {
                       <td className="px-3 py-3">{money(r.plan_fees)}</td>
                       <td className="px-3 py-3">
                         <Margin value={r.total_margin} />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setDrill({ id: r.organization_id, name: r.name, month: r.month })
+                            }
+                          >
+                            View answers
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Export AI economics for ${r.name}, ${r.month}`}
+                            onClick={() =>
+                              downloadCsv(
+                                `aidwar-ai-${r.name.replace(/\W+/g, "-").toLowerCase()}-${r.month}.csv`,
+                                reconcileCsv([r]),
+                              )
+                            }
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
