@@ -32,12 +32,16 @@ export type PromptRules = { content: string; version: number | null; fromDatabas
 
 
 /** The platform's rules. A missing or empty row must never strip them. */
-export async function promptRules(supabase: SupabaseClient): Promise<PromptRules> {
+export async function promptRules(
+  supabase: SupabaseClient,
+  key: "agent_rules" | "merchant_rules" = "agent_rules",
+): Promise<PromptRules> {
+  const fallback = key === "merchant_rules" ? FALLBACK_MERCHANT_RULES : FALLBACK_AGENT_RULES;
   try {
     const { data } = await supabase
       .from("ai_prompt_blocks")
       .select("content, version")
-      .eq("key", "agent_rules")
+      .eq("key", key)
       .maybeSingle();
     const row = data as { content?: string; version?: number } | null;
     const content = (row?.content ?? "").trim();
@@ -45,8 +49,9 @@ export async function promptRules(supabase: SupabaseClient): Promise<PromptRules
   } catch {
     // fall through to the constant
   }
-  return { content: FALLBACK_AGENT_RULES, version: null, fromDatabase: false };
+  return { content: fallback, version: null, fromDatabase: false };
 }
+
 
 export type Instructions = {
   personaName: string;
