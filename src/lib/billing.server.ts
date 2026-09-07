@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { APP_PUBLIC_URL } from "@/lib/app-url";
 import { FEATURES } from "@/lib/feature-registry";
 import {
   MESSAGE_CATEGORIES,
@@ -514,9 +515,8 @@ export async function createCreditPurchase(
     .update({
       provider_link_id: link.id,
       status: "pending",
-      expires_at: new Date(Date.now() + 24 * 3600e3).toISOString(),
       // Merge, never replace: the pack figures are what settlement runs on.
-      raw: { ...packRaw, link: link.raw },
+      raw: { ...packRaw, expires_at: new Date(Date.now() + 24 * 3600e3).toISOString(), link: link.raw },
     })
     .eq("id", payment.id);
 
