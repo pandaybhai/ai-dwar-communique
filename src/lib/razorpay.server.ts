@@ -39,6 +39,8 @@ type PaymentLinkInput = {
   customer: { name?: string | null; email?: string | null; contact?: string | null };
   callbackUrl: string;
   notes: Record<string, string>;
+  /** Unix seconds after which the link stops working. */
+  expireBy?: number;
 };
 
 export type PaymentLink = { id: string; short_url: string; raw: Record<string, unknown> };
@@ -68,6 +70,7 @@ export async function createPaymentLink(
         reminder_enable: true,
         callback_url: input.callbackUrl,
         callback_method: "get",
+        ...(input.expireBy ? { expire_by: input.expireBy } : {}),
         notes: input.notes,
       }),
     });
