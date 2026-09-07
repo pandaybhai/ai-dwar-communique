@@ -275,13 +275,16 @@ function AdminBilling() {
     key: "mtd_consumed",
     dir: "desc",
   });
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  // The overview reads Indian months, the same boundary the AI totals are frozen on.
+  const thisMonth = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 7);
+  const [month, setMonth] = useState(thisMonth);
+  const [syncing, setSyncing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     const [overview, topups, tmpl] = await Promise.all([
       callApi<{ rows: Row[]; totals: Totals }>("/api/admin/billing", {
-        body: { action: "overview" },
+        body: { action: "overview", month },
       }),
       callApi<{ tasks: TopupTask[] }>("/api/admin/billing", { body: { action: "topup_tasks" } }),
       callApi<{ templates: TemplateRow[] }>("/api/admin/billing", {
@@ -297,9 +300,28 @@ function AdminBilling() {
     setTotals(overview.data?.totals ?? null);
     setTasks(topups.data?.tasks ?? []);
     setTemplates(tmpl.data?.templates ?? []);
-  }, []);
+  }, [month]);
 
   useEffect(() => void load(), [load]);
+
+  /** Ask Meta for this number's live quality and sending tier, then store it. */
+  const syncNumber = useCallback(
+    async (accountId: string) => {
+      setSyncing(accountId);
+      const result = await callApi<{ ok?: boolean; error?: string }>("/api/admin/billing", {
+        body: { action: "sync_number", whatsapp_account_id: accountId },
+      });
+      setSyncing(null);
+      if (result.error || result.data?.error) {
+        setError(result.error ?? result.data?.error ?? "We couldn't reach Meta for that number.");
+        return;
+      }
+      setError(null);
+      void load();
+    },
+    [load],
+  );
+
 
   const loadReconcile = useCallback(async () => {
     setReconcileLoading(true);
