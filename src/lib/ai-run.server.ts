@@ -111,6 +111,8 @@ export type RunOptions = {
   metadata?: Record<string, unknown> | null;
   /** The platform pays for this one: nothing is billed to the workspace. */
   billingExempt?: boolean;
+  /** Merchant onboarding chats are platform-paid and bypass workspace kill switches. */
+  channel?: "onboarding" | null;
 };
 
 
@@ -901,30 +903,35 @@ export async function executeRun(
   };
 
   // ------------------------------------------------------------ kill switch
-  const { data: settings } = await supabase
-    .from("organization_ai_settings")
-    .select("ai_enabled")
-    .eq("organization_id", organizationId)
-    .maybeSingle();
-  if (!(settings as { ai_enabled?: boolean } | null)?.ai_enabled) {
-    return finish({
-      ...base,
-      status: "refused",
-      output: "",
-      error: "AI is switched off for this workspace.",
-    });
-  }
+  // Merchant onboarding chats are paid by the platform, so workspace AI kill
+  // switches (ai_enabled, per-org cap) do not apply. The platform cap still does.
+  const isMerchantOnboarding = options.channel === "onboarding";
+  if (!isMerchantOnboarding) {
+    const { data: settings } = await supabase
+      .from("organization_ai_settings")
+      .select("ai_enabled")
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (!(settings as { ai_enabled?: boolean } | null)?.ai_enabled) {
+      return finish({
+        ...base,
+        status: "refused",
+        output: "",
+        error: "AI is switched off for this workspace.",
+      });
+    }
 
-  const cap = await overCap(supabase, organizationId);
-  if (cap.over) {
-    return finish({
-      ...base,
-      status: "capped",
-      output: "",
-      error: cap.misconfigured
-        ? "This workspace has no valid monthly spending limit set, so I've stopped rather than spend without one. Set a limit above zero and I'll carry on."
-        : `This month's AI spending limit (${cap.currency} ${cap.cap}) has been reached.`,
-    });
+    const cap = await overCap(supabase, organizationId);
+    if (cap.over) {
+      return finish({
+        ...base,
+        status: "capped",
+        output: "",
+        error: cap.misconfigured
+          ? "This workspace has no valid monthly spending limit set, so I've stopped rather than spend without one. Set a limit above zero and I'll carry on."
+          : `This month's AI spending limit (${cap.currency} ${cap.cap}) has been reached.`,
+      });
+    }
   }
 
   // Every workspace can be inside its own limit while the platform as a whole

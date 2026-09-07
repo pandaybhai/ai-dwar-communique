@@ -402,6 +402,7 @@ export async function merchantAnswer(
     useTools: true,
     metadata: { channel: "onboarding", session_id: args.session.id },
     billingExempt: true,
+    channel: "onboarding",
   });
 }
 
