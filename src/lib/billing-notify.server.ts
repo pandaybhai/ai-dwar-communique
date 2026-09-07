@@ -110,7 +110,7 @@ export async function resolvePlatformOrg(supabase: SupabaseClient): Promise<stri
   return (membership as { organization_id?: string } | null)?.organization_id ?? null;
 }
 
-/** Creates the six notice templates on the platform number for Meta review. */
+/** Creates all nine notice templates on the platform number for Meta review. */
 export async function ensureBillingTemplates(
   supabase: SupabaseClient,
   actorId: string,
@@ -205,6 +205,42 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
   }
 }
 
+/**
+ * The one place that decides where a platform-owner notice goes, so every
+ * audience=admin kind resolves identically: the pinned number first, then the
+ * platform's own billing account.
+ */
+export async function resolveAdminRecipient(supabase: SupabaseClient): Promise<string | null> {
+  const pinned = process.env["BILLING_ADMIN_WHATSAPP"];
+  if (pinned) {
+    const normalized = normalizePhone(pinned);
+    if (normalized) return normalized;
+  }
+
+  const { data: settings } = await supabase
+    .from("platform_settings")
+    .select("billing_admin_whatsapp")
+    .eq("id", true)
+    .maybeSingle();
+  const fromSettings = (settings as { billing_admin_whatsapp?: string | null } | null)
+    ?.billing_admin_whatsapp;
+  if (fromSettings) {
+    const normalized = normalizePhone(fromSettings);
+    if (normalized) return normalized;
+  }
+
+  const { data: account } = await supabase
+    .from("billing_accounts")
+    .select("billing_whatsapp")
+    .eq("owner_scope", "platform")
+    .not("billing_whatsapp", "is", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const fromAccount = (account as { billing_whatsapp?: string | null } | null)?.billing_whatsapp;
+  return fromAccount ? normalizePhone(fromAccount) : null;
+}
+
 async function recipientFor(
   supabase: SupabaseClient,
   row: Record<string, unknown>,
@@ -212,10 +248,7 @@ async function recipientFor(
   const explicit = (row["recipient"] as string | null) ?? null;
   if (explicit) return normalizePhone(explicit);
 
-  if (row["audience"] === "admin") {
-    const admin = process.env["BILLING_ADMIN_WHATSAPP"];
-    return admin ? normalizePhone(admin) : null;
-  }
+  if (row["audience"] === "admin") return resolveAdminRecipient(supabase);
 
   const orgId = row["organization_id"] as string | null;
   if (!orgId) return null;
@@ -230,6 +263,7 @@ async function recipientFor(
   const phone = (account?.["billing_whatsapp"] as string) ?? null;
   return phone ? normalizePhone(phone) : null;
 }
+
 
 /** Sends up to `limit` queued notices. One bad notice never stops the rest. */
 export async function drainBillingNotifications(

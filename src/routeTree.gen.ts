@@ -62,6 +62,7 @@ import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/con
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-run'
+import { Route as ApiInternalBillingMonthlyRouteImport } from './routes/api/internal/billing-monthly'
 import { Route as ApiInternalBillingNotifyRouteImport } from './routes/api/internal/billing-notify'
 import { Route as ApiInternalBillingSweepRouteImport } from './routes/api/internal/billing-sweep'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
@@ -366,6 +367,12 @@ const ApiInternalAiRunRoute = ApiInternalAiRunRouteImport.update({
   path: '/api/internal/ai-run',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalBillingMonthlyRoute =
+  ApiInternalBillingMonthlyRouteImport.update({
+    id: '/api/internal/billing-monthly',
+    path: '/api/internal/billing-monthly',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInternalBillingNotifyRoute =
   ApiInternalBillingNotifyRouteImport.update({
     id: '/api/internal/billing-notify',
@@ -623,6 +630,7 @@ export interface FileRoutesByFullPath {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
+  '/api/internal/billing-monthly': typeof ApiInternalBillingMonthlyRoute
   '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
   '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
@@ -713,6 +721,7 @@ export interface FileRoutesByTo {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
+  '/api/internal/billing-monthly': typeof ApiInternalBillingMonthlyRoute
   '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
   '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
@@ -806,6 +815,7 @@ export interface FileRoutesById {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
+  '/api/internal/billing-monthly': typeof ApiInternalBillingMonthlyRoute
   '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
   '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
@@ -900,6 +910,7 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
+    | '/api/internal/billing-monthly'
     | '/api/internal/billing-notify'
     | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
@@ -990,6 +1001,7 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
+    | '/api/internal/billing-monthly'
     | '/api/internal/billing-notify'
     | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
@@ -1082,6 +1094,7 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
+    | '/api/internal/billing-monthly'
     | '/api/internal/billing-notify'
     | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
@@ -1158,6 +1171,7 @@ export interface RootRouteChildren {
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalAiRunRoute: typeof ApiInternalAiRunRoute
+  ApiInternalBillingMonthlyRoute: typeof ApiInternalBillingMonthlyRoute
   ApiInternalBillingNotifyRoute: typeof ApiInternalBillingNotifyRoute
   ApiInternalBillingSweepRoute: typeof ApiInternalBillingSweepRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
@@ -1564,6 +1578,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalAiRunRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/billing-monthly': {
+      id: '/api/internal/billing-monthly'
+      path: '/api/internal/billing-monthly'
+      fullPath: '/api/internal/billing-monthly'
+      preLoaderRoute: typeof ApiInternalBillingMonthlyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/billing-notify': {
       id: '/api/internal/billing-notify'
       path: '/api/internal/billing-notify'
@@ -1929,6 +1950,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalAiRunRoute: ApiInternalAiRunRoute,
+  ApiInternalBillingMonthlyRoute: ApiInternalBillingMonthlyRoute,
   ApiInternalBillingNotifyRoute: ApiInternalBillingNotifyRoute,
   ApiInternalBillingSweepRoute: ApiInternalBillingSweepRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
