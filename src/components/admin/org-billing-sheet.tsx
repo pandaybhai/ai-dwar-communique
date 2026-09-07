@@ -118,6 +118,8 @@ export function OrgBillingSheet({
   const [rateDraft, setRateDraft] = useState<Record<string, { mode: string; value: string }>>({});
   const [walletAmount, setWalletAmount] = useState("");
   const [walletReason, setWalletReason] = useState("");
+  const [planPreview, setPlanPreview] = useState<PlanChangePreview | null>(null);
+
 
   const load = useCallback(async () => {
     setData(null);
