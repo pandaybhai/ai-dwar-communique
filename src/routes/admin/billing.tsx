@@ -606,7 +606,19 @@ function AdminBilling() {
                           <Margin value={row.mtd_margin} />
                         </td>
                         <td className="px-3 py-3">
-                          <span className="text-foreground">{row.ai.answers}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDrill({
+                                id: row.organization_id,
+                                name: row.name,
+                                month: thisMonth,
+                              })
+                            }
+                            className="text-foreground underline-offset-2 transition-colors duration-150 hover:text-primary hover:underline"
+                          >
+                            {row.ai.answers}
+                          </button>
                           <span className="block text-xs text-muted-foreground">
                             {row.ai.within_allowance} included · {row.ai.over_allowance} over
                           </span>
