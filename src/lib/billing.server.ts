@@ -1700,9 +1700,12 @@ export async function estimateCampaignCost(
       .select("messaging_tier")
       .eq("id", input.whatsappAccountId)
       .maybeSingle();
-    const tier = Number((account as { messaging_tier?: number } | null)?.messaging_tier ?? 0);
-    dailyLimit = tier > 0 ? tier : null;
+    const { messagingTierLimit } = await import("@/lib/billing");
+    dailyLimit = messagingTierLimit(
+      (account as { messaging_tier?: string | null } | null)?.messaging_tier ?? null,
+    );
   }
+
 
   return {
     enabled,

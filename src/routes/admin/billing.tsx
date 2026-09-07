@@ -601,7 +601,7 @@ function AdminBilling() {
                         >
                           {row.meta_float === null ? "—" : money(row.meta_float)}
                         </td>
-                        <td className="px-3 py-3">{money(row.mtd_consumed)}</td>
+                        <td className="px-3 py-3">{fineMoney(row.mtd_consumed)}</td>
                         <td className="px-3 py-3">
                           <Margin value={row.mtd_margin} />
                         </td>
@@ -612,7 +612,7 @@ function AdminBilling() {
                               setDrill({
                                 id: row.organization_id,
                                 name: row.name,
-                                month: thisMonth,
+                                month,
                               })
                             }
                             className="text-foreground underline-offset-2 transition-colors duration-150 hover:text-primary hover:underline"
@@ -624,14 +624,26 @@ function AdminBilling() {
                           </span>
                         </td>
                         <td className="px-3 py-3">
-                          {money(row.ai.provider_cost)}
+                          {fineMoney(row.ai.provider_cost)}
                           <span className="block text-xs text-muted-foreground">
-                            {money(row.ai.avg_cost_per_answer)} / answer
+                            {fineMoney(row.ai.avg_cost_per_answer)} / answer
                           </span>
                         </td>
-                        <td className="px-3 py-3">{money(row.ai.billed)}</td>
                         <td className="px-3 py-3">
-                          <Margin value={row.ai.margin} />
+                          {row.billing_on ? (
+                            fineMoney(row.ai.billed)
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              Not billed — our cost
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          {row.billing_on ? (
+                            <Margin value={row.ai.margin} />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="px-3 py-3 text-xs text-muted-foreground">
                           {row.ai.answers === 0
@@ -643,11 +655,22 @@ function AdminBilling() {
                           {row.delivered} delivered · {row.failed} failed
                         </td>
                         <td className="px-3 py-3 text-xs text-muted-foreground">
-                          {number?.quality ? `${number.quality} · ` : ""}
-                          {number?.tier === null || number?.tier === undefined
-                            ? "Tier unknown"
-                            : `Tier ${number.tier}`}
+                          <span className="block">
+                            {number?.quality ? `${number.quality} · ` : ""}
+                            {number?.tier_label ?? "Not synced"}
+                          </span>
+                          {number ? (
+                            <button
+                              type="button"
+                              disabled={syncing === number.id}
+                              onClick={() => void syncNumber(number.id)}
+                              className="mt-1 text-xs text-primary underline-offset-2 transition-colors duration-150 hover:underline disabled:opacity-60"
+                            >
+                              {syncing === number.id ? "Syncing…" : "Sync now"}
+                            </button>
+                          ) : null}
                         </td>
+
                         <td className="px-3 py-3">
                           {row.pending_topups > 0 ? (
                             <button
