@@ -462,3 +462,48 @@ export async function ensureInvoicePdf(
     return null;
   }
 }
+
+/**
+ * Backfill: any tax invoice still sitting in draft whose payment has actually
+ * been paid gets numbered, rendered and filed. Safe to run repeatedly — an
+ * already-numbered invoice is returned untouched by issueInvoice.
+ */
+export async function issuePendingInvoices(
+  supabase: SupabaseClient,
+  limit = 100,
+): Promise<{ issued: string[]; failed: { invoice_id: string; error: string }[] }> {
+  const issued: string[] = [];
+  const failed: { invoice_id: string; error: string }[] = [];
+
+  const { data: drafts } = await supabase
+    .from("invoices")
+    .select("id, payment_id, kind, status")
+    .eq("status", "draft")
+    .eq("kind", "tax_invoice")
+    .is("invoice_number", null)
+    .order("created_at", { ascending: true })
+    .limit(Math.min(Math.max(limit, 1), 200));
+
+  for (const row of ((drafts ?? []) as Record<string, unknown>[])) {
+    const invoiceId = String(row["id"]);
+    const paymentId = (row["payment_id"] as string | null) ?? null;
+    if (!paymentId) continue;
+
+    const { data: payment } = await supabase
+      .from("payments")
+      .select("id, status, amount")
+      .eq("id", paymentId)
+      .maybeSingle();
+    if ((payment as { status?: string } | null)?.status !== "paid") continue;
+
+    const result = await issueInvoice(supabase, invoiceId);
+    if ("error" in result) {
+      failed.push({ invoice_id: invoiceId, error: result.error });
+      continue;
+    }
+    await markPaid(supabase, invoiceId, paymentId, Number((payment as { amount?: number }).amount ?? 0));
+    issued.push(result.invoice_number);
+  }
+
+  return { issued, failed };
+}
