@@ -127,23 +127,47 @@ export async function handleMerchantInbound(
     })
     .eq("id", session.id);
 
+  // If a previous inbound is still being crawled, don't start a second crawl
+  // or ask the model questions until it finishes.
+  if (session.status === "learning") {
+    await reply("Still reading — one moment.");
+    return;
+  }
+
   // A website link is the fastest way to teach him, so it is handled plainly
   // rather than left to the model.
   const link = body.match(/https?:\/\/[^\s]+/i)?.[0] ?? null;
   if (link && !session.source_id) {
+    // Mark learning immediately so any concurrent inbound gets the "still reading" reply
+    // while the crawl is in progress.
+    await supabase
+      .from("onboarding_sessions")
+      .update({ status: "learning", updated_at: new Date().toISOString() })
+      .eq("id", session.id);
+
     const { addWebsiteSource } = await import("@/lib/knowledge.server");
     const added = await addWebsiteSource(supabase, session.organization_id, link, session.user_id);
-    if (added.sourceId) {
+
+    if (added.ok && added.sourceId) {
       await supabase
         .from("onboarding_sessions")
-        .update({ source_id: added.sourceId, status: "learning", updated_at: new Date().toISOString() })
+        .update({ source_id: added.sourceId, status: "ready", updated_at: new Date().toISOString() })
         .eq("id", session.id);
+      await reply(
+        `Got it — I've read ${added.itemCount} page${added.itemCount === 1 ? "" : "s"} from your website. Ask me something a customer would ask and I'll answer from it.`,
+      );
+    } else {
+      // Crawl failed: leave the session bound so they can send the link again.
+      await supabase
+        .from("onboarding_sessions")
+        .update({ status: "bound", updated_at: new Date().toISOString() })
+        .eq("id", session.id);
+      await reply(
+        added.error && added.error.length > 0
+          ? added.error.slice(0, 300)
+          : "I couldn't read that page. Send me the link again, or tell me about your business in your own words.",
+      );
     }
-    await reply(
-      added.ok
-        ? `Got it — I've read ${added.itemCount} page${added.itemCount === 1 ? "" : "s"} from your website. Ask me something a customer would ask and I'll answer from it.`
-        : "I couldn't read that page. Send me the link again, or tell me about your business in your own words.",
-    );
     return;
   }
 
