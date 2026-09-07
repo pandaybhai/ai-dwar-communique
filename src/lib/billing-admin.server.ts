@@ -294,11 +294,13 @@ export async function adminReconcile(
         .select("organization_id, amount, entry_type, created_at")
         .in("entry_type", ["debit_message", "debit_addon"])
         .gte("created_at", fromIso)
+        .lt("created_at", toIso)
         .limit(100_000),
       supabase
         .from("meta_prepaid_ledger")
         .select("organization_id, amount, entry_type, created_at")
         .gte("created_at", fromIso)
+        .lt("created_at", toIso)
         .limit(100_000),
       supabase
         .from("payments")
@@ -306,6 +308,7 @@ export async function adminReconcile(
         .eq("purpose", "plan_fee")
         .eq("status", "paid")
         .gte("paid_at", fromIso)
+        .lt("paid_at", toIso)
         .limit(20_000),
       aiEconomicsByOrgMonth(supabase, fromIso, toIso, allowances),
     ]);
