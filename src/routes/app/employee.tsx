@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Bot, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
@@ -60,6 +60,7 @@ const MODES = [
 ] as const;
 
 function EmployeePage() {
+  const navigate = useNavigate();
   const { active, loading: orgLoading } = useOrg();
   const { can, loading: permsLoading } = usePermissions();
   const organizationId = active?.organization.id ?? null;
@@ -98,8 +99,14 @@ function EmployeePage() {
       setGate({ mode, message: (raw as { message: string }).message });
       return;
     }
-    if (error) toast.error(error);
-    else {
+    if (error) {
+      const billing = (raw as { billing?: boolean } | null)?.billing === true;
+      if (billing) {
+        toast.error(error, {
+          action: { label: "Go to billing", onClick: () => navigate({ to: "/app/billing" }) },
+        });
+      } else toast.error(error);
+    } else {
       toast.success("Saved.");
       void load();
     }

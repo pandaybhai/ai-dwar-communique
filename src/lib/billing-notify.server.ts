@@ -83,6 +83,11 @@ export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
     body: "Hello {{1}} — your auto-pay of {{2}} didn't go through. You can pay it here: {{3}} — thank you.",
     examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
   },
+  {
+    name: "client_trial_ending",
+    body: "Your AiDwar trial for {{1}} ends in {{2}} days. Choose a plan at {{3}} to keep Aiden working — nothing is deleted.",
+    examples: ["Sharma Textiles", "3", "aidwar.in/app/billing"],
+  },
 ];
 
 /** audience:kind -> template name. Anything unmapped stays an in-app notice. */
@@ -100,6 +105,7 @@ const TEMPLATE_FOR: Record<string, string> = {
   "client:invoice_issued": "client_invoice_issued",
   "client:invoice_overdue": "client_invoice_overdue",
   "client:payment_failed": "client_payment_failed",
+  "client:trial_ending": "client_trial_ending",
 };
 
 /**
@@ -329,6 +335,8 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
       return [orgName, money(Number(payload["amount"] ?? 0)), link];
     case "payment_failed":
       return [orgName, money(Number(payload["amount"] ?? 0)), link];
+    case "trial_ending":
+      return [orgName, String(payload["days"] ?? 3), "aidwar.in/app/billing"];
     case "campaign_approval":
       return [orgName, money(Number(payload["estimate"] ?? 0)), link];
     default:
@@ -393,7 +401,26 @@ async function recipientFor(
     unknown
   > | null;
   const phone = (account?.["billing_whatsapp"] as string) ?? null;
-  return phone ? normalizePhone(phone) : null;
+  if (phone) return normalizePhone(phone);
+
+  // No billing number on file: the workspace owner is the right person.
+  const { data: owners } = await supabase
+    .from("organization_members")
+    .select("user_id")
+    .eq("organization_id", orgId)
+    .eq("role", "owner")
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const ownerId = (owners as { user_id: string }[] | null)?.[0]?.user_id ?? null;
+  if (!ownerId) return null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("phone")
+    .eq("id", ownerId)
+    .maybeSingle();
+  const ownerPhone = (profile as { phone?: string | null } | null)?.phone ?? null;
+  return ownerPhone ? normalizePhone(ownerPhone) : null;
 }
 
 /** How many times a failed notice is retried before it is left alone. */

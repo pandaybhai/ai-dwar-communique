@@ -346,7 +346,22 @@ export const Route = createFileRoute("/api/ai/employee")({
               }
             }
 
-            await supabase.from("ai_agents").update({ mode }).eq("id", agent.id);
+            const { error: modeError } = await supabase
+              .from("ai_agents")
+              .update({ mode })
+              .eq("id", agent.id);
+            if (modeError) {
+              // The database refuses to switch Aiden on without a plan or
+              // credits, and says why. Pass its words straight through.
+              const message = String(modeError.message ?? "");
+              if (message.includes("AI_GUARD:")) {
+                return Response.json(
+                  { error: message.split("AI_GUARD:")[1]?.trim() || message, billing: true },
+                  { status: 402 },
+                );
+              }
+              return jsonError("We couldn't change that. Please try again.");
+            }
             await logServerActivity(supabase, org, auth.userId, "ai_mode_changed", { mode });
             return Response.json({ ok: true, mode });
           }

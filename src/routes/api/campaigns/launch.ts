@@ -26,6 +26,19 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         const denied = await requirePermission(auth, "campaigns.send", "launch campaigns");
         if (denied) return denied;
 
+        // A locked or paused workspace spends nothing until a plan is chosen.
+        {
+          const { data: orgRow } = await supabase
+            .from("organizations")
+            .select("plan_status")
+            .eq("id", organizationId)
+            .maybeSingle();
+          const planStatus = (orgRow as { plan_status?: string | null } | null)?.plan_status ?? null;
+          if (planStatus === "locked" || planStatus === "paused") {
+            return jsonError("This workspace is locked — choose a plan to continue.", 402);
+          }
+        }
+
         const name = String(payload["name"] ?? "").trim();
         const templateName = String(payload["template_name"] ?? "").trim();
         const segmentId = (payload["segment_id"] as string | null) || null;

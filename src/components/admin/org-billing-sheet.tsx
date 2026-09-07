@@ -142,6 +142,7 @@ export function OrgBillingSheet({
   const [account, setAccount] = useState<Record<string, string>>({});
   const [settings, setSettings] = useState<Record<string, string | boolean>>({});
   const [funding, setFunding] = useState("meta_direct");
+  const [trialDays, setTrialDays] = useState("14");
   const [rateDraft, setRateDraft] = useState<Record<string, { mode: string; value: string }>>({});
   const [showRateHistory, setShowRateHistory] = useState(false);
   const [walletAmount, setWalletAmount] = useState("");
@@ -239,6 +240,8 @@ export function OrgBillingSheet({
         plan_key: planKey,
         status: planStatus,
         confirm: true,
+        ...(planStatus === "trial" ? { trial_days: Number(trialDays) || 14 } : {}),
+        funding_model: funding,
       },
     });
     setBusy(null);
@@ -376,9 +379,31 @@ export function OrgBillingSheet({
                       className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
                     >
                       <option value="active">Active</option>
-                      <option value="trialing">Trial</option>
+                      <option value="trial">Trial</option>
                       <option value="past_due">Past due</option>
                       <option value="cancelled">Cancelled</option>
+                    </select>
+                  </Field>
+                  {planStatus === "trial" ? (
+                    <Field label="Trial days">
+                      <Input
+                        inputMode="numeric"
+                        value={trialDays}
+                        onChange={(e) => setTrialDays(e.target.value)}
+                      />
+                    </Field>
+                  ) : null}
+                  <Field label="Funding model">
+                    <select
+                      value={funding}
+                      onChange={(e) => setFunding(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                    >
+                      {FUNDING_MODELS.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
                     </select>
                   </Field>
                 </div>

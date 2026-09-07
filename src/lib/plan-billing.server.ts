@@ -10,7 +10,13 @@ import { round2, withGst } from "@/lib/billing";
  * the trial ends rather than a surprise charge.
  */
 
-type Counts = { invoiced: number; skipped: number; trial_notices: number; failed: number };
+type Counts = {
+  invoiced: number;
+  skipped: number;
+  trial_notices: number;
+  failed: number;
+  trials_locked: number;
+};
 
 function today(): Date {
   return new Date();
@@ -31,8 +37,16 @@ function periodFor(date: Date): { start: string; end: string } {
 }
 
 export async function runPlanBilling(supabase: SupabaseClient): Promise<Counts> {
-  const counts: Counts = { invoiced: 0, skipped: 0, trial_notices: 0, failed: 0 };
+  const counts: Counts = {
+    invoiced: 0,
+    skipped: 0,
+    trial_notices: 0,
+    failed: 0,
+    trials_locked: 0,
+  };
   const now = today();
+
+  await sweepTrials(supabase, now, counts);
 
   const { data: orgs } = await supabase
     .from("organizations")
@@ -294,4 +308,70 @@ async function createPlanPaymentLink(
   await supabase.from("invoices").update({ payment_id: payment["id"] }).eq("id", input.invoiceId);
 
   return link.short_url || null;
+}
+
+/**
+ * Every workspace still on a trial, whether or not it has a plan yet.
+ * Three days out they get one heads-up; on the day it ends, and with no
+ * mandate in place, the workspace is locked until they choose a plan.
+ */
+async function sweepTrials(supabase: SupabaseClient, now: Date, counts: Counts): Promise<void> {
+  const { notify } = await import("@/lib/billing.server");
+  const { lockWorkspace } = await import("@/lib/dunning.server");
+
+  const { data: trials } = await supabase
+    .from("organizations")
+    .select("id, trial_ends_at, plan_version_id")
+    .eq("plan_status", "trial")
+    .not("trial_ends_at", "is", null)
+    .limit(1000);
+
+  for (const row of (trials ?? []) as Record<string, unknown>[]) {
+    const organizationId = String(row["id"]);
+    const endsAt = String(row["trial_ends_at"]);
+    const days = Math.ceil((new Date(endsAt).getTime() - now.getTime()) / 864e5);
+
+    if (days === 3) {
+      // One heads-up only: a notice for this workspace in the last week is enough.
+      const since = new Date(now.getTime() - 7 * 864e5).toISOString();
+      const { data: recent } = await supabase
+        .from("billing_notifications")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("kind", "trial_ending")
+        .in("status", ["queued", "sent"])
+        .gte("created_at", since)
+        .limit(1);
+      if (!((recent as { id: string }[] | null)?.length)) {
+        await notify(supabase, {
+          organizationId,
+          audience: "client",
+          kind: "trial_ending",
+          payload: { days, ends_at: endsAt },
+        });
+        counts.trial_notices += 1;
+      }
+      continue;
+    }
+
+    if (days > 0) continue;
+
+    const { data: mandate } = await supabase
+      .from("subscriptions")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .in("status", ["authenticated", "active"])
+      .limit(1)
+      .maybeSingle();
+    if (mandate) continue;
+
+    await lockWorkspace(supabase, organizationId);
+    await supabase.from("activity_log").insert({
+      organization_id: organizationId,
+      user_id: null,
+      action: "trial_expired",
+      details: { ends_at: endsAt, had_plan: row["plan_version_id"] !== null },
+    });
+    counts.trials_locked += 1;
+  }
 }
