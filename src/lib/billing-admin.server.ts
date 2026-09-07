@@ -48,19 +48,44 @@ export type AdminOverviewRow = {
   numbers: { display: string | null; quality: string | null; tier: number | null }[];
   pending_topups: number;
   last_activity: string | null;
+  ai: import("@/lib/billing-ai-economics.server").OrgAiEconomics;
 };
+
+export type PlatformTotals = {
+  plan_fees: number;
+  ai_billed: number;
+  ai_provider_cost: number;
+  ai_margin: number;
+  messaging_consumed: number;
+  messaging_meta_cost: number;
+  messaging_margin: number;
+  total_margin: number;
+};
+
 
 /** The cross-organization money table behind /admin/billing. */
 export async function adminOverview(
   supabase: SupabaseClient,
   actorId: string,
-): Promise<{ rows: AdminOverviewRow[]; tasks: Record<string, unknown>[] }> {
+): Promise<{
+  rows: AdminOverviewRow[];
+  tasks: Record<string, unknown>[];
+  totals: PlatformTotals;
+  period_start: string;
+}> {
   await requireSuper(supabase, actorId);
   const { adminBillingOverview } = await import("@/lib/billing.server");
+  const { aiAllowances, aiEconomicsByOrg, emptyAiEconomics } = await import(
+    "@/lib/billing-ai-economics.server"
+  );
   const base = await adminBillingOverview(supabase, { userId: actorId });
   const start = monthStart();
+  const nowIso = new Date().toISOString();
+  const allowances = await aiAllowances(supabase);
+  const aiByOrg = await aiEconomicsByOrg(supabase, start, nowIso, allowances);
 
   const [{ data: settings }, { data: ledger }, { data: metaLedger }] = await Promise.all([
+
     supabase
       .from("organization_billing_settings")
       .select("organization_id, low_credit_threshold, meta_float_target"),
@@ -156,12 +181,188 @@ export async function adminOverview(
         })),
         pending_topups: row.pending_topups,
         last_activity: (activity.data as { created_at?: string } | null)?.created_at ?? null,
+        ai: aiByOrg.get(id) ?? { ...emptyAiEconomics(), allowance: allowances.get(id) ?? 0 },
       } satisfies AdminOverviewRow;
     }),
   );
 
-  return { rows, tasks: base.tasks };
+  const { data: planPayments } = await supabase
+    .from("payments")
+    .select("amount, paid_at")
+    .eq("purpose", "plan_fee")
+    .eq("status", "paid")
+    .gte("paid_at", start)
+    .limit(5000);
+
+  const planFees = round2(
+    ((planPayments ?? []) as Record<string, unknown>[]).reduce(
+      (sum, p) => sum + Number(p["amount"] ?? 0),
+      0,
+    ),
+  );
+  const aiBilled = round2(rows.reduce((sum, r) => sum + r.ai.billed, 0));
+  const aiCost = round2(rows.reduce((sum, r) => sum + r.ai.provider_cost, 0));
+  const consumed = round2(rows.reduce((sum, r) => sum + r.mtd_consumed, 0));
+  const metaCost = round2(rows.reduce((sum, r) => sum + r.mtd_meta_cost, 0));
+  const aiMargin = round2(aiBilled - aiCost);
+  const messagingMargin = round2(consumed - metaCost);
+
+  const totals: PlatformTotals = {
+    plan_fees: planFees,
+    ai_billed: aiBilled,
+    ai_provider_cost: aiCost,
+    ai_margin: aiMargin,
+    messaging_consumed: consumed,
+    messaging_meta_cost: metaCost,
+    messaging_margin: messagingMargin,
+    total_margin: round2(planFees + aiMargin + messagingMargin),
+  };
+
+  return { rows, tasks: base.tasks, totals, period_start: start };
 }
+
+// ------------------------------------------------------------- reconciliation
+
+export type ReconcileMonthRow = {
+  organization_id: string;
+  name: string;
+  month: string;
+  messaging_consumed: number;
+  meta_cost: number;
+  messaging_margin: number;
+  ai_answers: number;
+  ai_within_allowance: number;
+  ai_over_allowance: number;
+  ai_provider_cost: number;
+  ai_billed: number;
+  ai_margin: number;
+  ai_avg_cost_per_answer: number;
+  ai_everyday_pct: number;
+  ai_careful_pct: number;
+  plan_fees: number;
+  total_margin: number;
+};
+
+const monthKey = (iso: string) => String(iso).slice(0, 7);
+
+/**
+ * Month-by-month reconciliation across every workspace: what clients consumed,
+ * what Meta and the AI providers actually cost us, and what the month earned.
+ */
+export async function adminReconcile(
+  supabase: SupabaseClient,
+  actorId: string,
+  options: { months?: number } = {},
+): Promise<{ rows: ReconcileMonthRow[]; months: string[] }> {
+  await requireSuper(supabase, actorId);
+  const months = Math.min(Math.max(options.months ?? 6, 1), 24);
+  const now = new Date();
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
+  const fromIso = from.toISOString();
+  const toIso = new Date().toISOString();
+
+  const { aiAllowances, aiEconomicsByOrgMonth, emptyAiEconomics } = await import(
+    "@/lib/billing-ai-economics.server"
+  );
+  const allowances = await aiAllowances(supabase);
+
+  const [{ data: orgs }, { data: ledger }, { data: metaLedger }, { data: planPayments }, ai] =
+    await Promise.all([
+      supabase.from("organizations").select("id, name").limit(1000),
+      supabase
+        .from("wallet_ledger")
+        .select("organization_id, amount, entry_type, created_at")
+        .in("entry_type", ["debit_message", "debit_addon"])
+        .gte("created_at", fromIso)
+        .limit(100_000),
+      supabase
+        .from("meta_prepaid_ledger")
+        .select("organization_id, amount, entry_type, created_at")
+        .gte("created_at", fromIso)
+        .limit(100_000),
+      supabase
+        .from("payments")
+        .select("organization_id, amount, paid_at")
+        .eq("purpose", "plan_fee")
+        .eq("status", "paid")
+        .gte("paid_at", fromIso)
+        .limit(20_000),
+      aiEconomicsByOrgMonth(supabase, fromIso, toIso, allowances),
+    ]);
+
+  const names = new Map<string, string>();
+  for (const org of (orgs ?? []) as Record<string, unknown>[]) {
+    names.set(String(org["id"]), String(org["name"] ?? "—"));
+  }
+
+  const consumed = new Map<string, number>();
+  const metaCost = new Map<string, number>();
+  const fees = new Map<string, number>();
+  const keys = new Set<string>();
+
+  const add = (map: Map<string, number>, key: string, value: number) => {
+    map.set(key, (map.get(key) ?? 0) + value);
+    keys.add(key);
+  };
+
+  for (const row of (ledger ?? []) as Record<string, unknown>[]) {
+    add(
+      consumed,
+      `${String(row["organization_id"])}|${monthKey(String(row["created_at"]))}`,
+      Math.abs(Number(row["amount"] ?? 0)),
+    );
+  }
+  for (const row of (metaLedger ?? []) as Record<string, unknown>[]) {
+    if (String(row["entry_type"]) === "topup") continue;
+    add(
+      metaCost,
+      `${String(row["organization_id"])}|${monthKey(String(row["created_at"]))}`,
+      Math.abs(Number(row["amount"] ?? 0)),
+    );
+  }
+  for (const row of (planPayments ?? []) as Record<string, unknown>[]) {
+    add(
+      fees,
+      `${String(row["organization_id"])}|${monthKey(String(row["paid_at"]))}`,
+      Number(row["amount"] ?? 0),
+    );
+  }
+  for (const key of ai.keys()) keys.add(key);
+
+  const rows: ReconcileMonthRow[] = [];
+  for (const key of keys) {
+    const [organization_id = "", month = ""] = key.split("|");
+    const economics = ai.get(key) ?? emptyAiEconomics();
+    const messagingConsumed = round2(consumed.get(key) ?? 0);
+    const meta = round2(metaCost.get(key) ?? 0);
+    const planFee = round2(fees.get(key) ?? 0);
+    const messagingMargin = round2(messagingConsumed - meta);
+    rows.push({
+      organization_id,
+      name: names.get(organization_id) ?? "—",
+      month,
+      messaging_consumed: messagingConsumed,
+      meta_cost: meta,
+      messaging_margin: messagingMargin,
+      ai_answers: economics.answers,
+      ai_within_allowance: economics.within_allowance,
+      ai_over_allowance: economics.over_allowance,
+      ai_provider_cost: economics.provider_cost,
+      ai_billed: economics.billed,
+      ai_margin: economics.margin,
+      ai_avg_cost_per_answer: economics.avg_cost_per_answer,
+      ai_everyday_pct: economics.everyday_pct,
+      ai_careful_pct: economics.careful_pct,
+      plan_fees: planFee,
+      total_margin: round2(planFee + economics.margin + messagingMargin),
+    });
+  }
+
+  rows.sort((a, b) => (a.month === b.month ? a.name.localeCompare(b.name) : b.month.localeCompare(a.month)));
+  const monthList = [...new Set(rows.map((r) => r.month))].sort().reverse();
+  return { rows, months: monthList };
+}
+
 
 /** Top-ups the platform still owes Meta, oldest first. */
 export async function listTopupTasks(supabase: SupabaseClient, actorId: string) {
