@@ -496,12 +496,23 @@ export async function issuePendingInvoices(
       .maybeSingle();
     if ((payment as { status?: string } | null)?.status !== "paid") continue;
 
+    const { data: before } = await supabase
+      .from("invoices")
+      .select("total, amount_paid")
+      .eq("id", invoiceId)
+      .maybeSingle();
+
     const result = await issueInvoice(supabase, invoiceId);
     if ("error" in result) {
       failed.push({ invoice_id: invoiceId, error: result.error });
       continue;
     }
-    await markPaid(supabase, invoiceId, paymentId, Number((payment as { amount?: number }).amount ?? 0));
+
+    // Only settle what is still outstanding — never bank the same rupee twice.
+    const total = Number((before as Record<string, unknown> | null)?.["total"] ?? 0);
+    const already = Number((before as Record<string, unknown> | null)?.["amount_paid"] ?? 0);
+    const outstanding = round2(Math.min(Number((payment as { amount?: number }).amount ?? 0), total - already));
+    if (outstanding > 0) await markPaid(supabase, invoiceId, paymentId, outstanding);
     issued.push(result.invoice_number);
   }
 
