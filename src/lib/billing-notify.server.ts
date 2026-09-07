@@ -428,9 +428,10 @@ export async function drainBillingNotifications(
     const id = String(row["id"]);
     try {
       const channel = String(row["channel"] ?? "whatsapp");
-      if (channel === "email") {
-        // Email isn't built yet. These rows wait their turn rather than being
-        // recorded as a failure of a channel we never attempted.
+      if (channel !== "whatsapp") {
+        // Only WhatsApp rows ever touch the WhatsApp path. Email rows wait
+        // their turn (the email sender isn't built yet) and in-app rows are
+        // records, not messages — neither is a failure.
         counts.skipped += 1;
         continue;
       }
