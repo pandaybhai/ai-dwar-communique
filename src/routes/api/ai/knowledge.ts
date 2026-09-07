@@ -59,26 +59,24 @@ export const Route = createFileRoute("/api/ai/knowledge")({
           if (action === "add_website") {
             const url = String(payload["url"] ?? "").trim();
             if (!/^https?:\/\//i.test(url)) return jsonError("Enter a full web address.");
-            const { data, error } = await auth.supabase
-              .from("knowledge_sources")
-              .insert({
-                organization_id: auth.organizationId,
-                type: "website",
-                name: new URL(url).hostname,
-                config: { url, page_cap: 40 },
-                refresh_days: 7,
-                created_by: auth.userId,
-              })
-              .select("id")
-              .maybeSingle();
-            if (error || !data) return jsonError("We couldn't add that website.");
-            const sourceId = (data as { id: string }).id;
-            const result = await knowledge.syncSource(auth.supabase, sourceId);
+            const added = await knowledge.addWebsiteSource(
+              auth.supabase,
+              auth.organizationId,
+              url,
+              auth.userId,
+            );
+            if (!added.sourceId) return jsonError(added.error ?? "We couldn't add that website.");
             await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "ai_knowledge_added", {
               type: "website",
             });
-            return Response.json({ source_id: sourceId, ...result });
+            return Response.json({
+              source_id: added.sourceId,
+              ok: added.ok,
+              itemCount: added.itemCount,
+              ...(added.error ? { error: added.error } : {}),
+            });
           }
+
 
           if (action === "add_file") {
             const fileName = String(payload["file_name"] ?? "").trim();
