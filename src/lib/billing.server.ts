@@ -1078,6 +1078,175 @@ export async function assignPlan(
 }
 
 /**
+ * Writes the plan's feature set onto a workspace. Features a person decided by
+ * hand (_manual_flags) are never touched, billing stays on while a plan exists,
+ * and every switch-off is written to the activity log with its old value so a
+ * feature can never disappear quietly.
+ */
+async function applyPlanFeatures(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    actorId: string;
+    planFeatures: string[];
+    overrides: Record<string, unknown>;
+    source: "plan_changed" | "plan_features_resynced";
+  },
+): Promise<{ on: string[]; off: string[]; kept_manual: string[]; turned_off: string[] }> {
+  const manual = (input.overrides["_manual_flags"] ?? {}) as Record<string, boolean>;
+  const on: string[] = [];
+  const off: string[] = [];
+  const keptManual: string[] = [];
+  const turnedOff: string[] = [];
+  if (input.planFeatures.length === 0) return { on, off, kept_manual: keptManual, turned_off: turnedOff };
+
+  const { data: existingRows } = await supabase
+    .from("organization_feature_overrides")
+    .select("flag_key, enabled")
+    .eq("organization_id", input.organizationId);
+  const existing = new Map(
+    ((existingRows ?? []) as Record<string, unknown>[]).map((r) => [
+      String(r["flag_key"]),
+      r["enabled"] === true,
+    ]),
+  );
+
+  for (const feature of FEATURES) {
+    if (feature.key === "billing") {
+      await supabase
+        .from("organization_feature_overrides")
+        .upsert(
+          { organization_id: input.organizationId, flag_key: feature.flag_key, enabled: true },
+          { onConflict: "organization_id,flag_key" },
+        );
+      continue;
+    }
+    if (feature.key in manual) {
+      keptManual.push(feature.key);
+      continue;
+    }
+    const enabled = input.planFeatures.includes(feature.key);
+    (enabled ? on : off).push(feature.key);
+
+    const before = existing.get(feature.flag_key);
+    await supabase
+      .from("organization_feature_overrides")
+      .upsert(
+        { organization_id: input.organizationId, flag_key: feature.flag_key, enabled },
+        { onConflict: "organization_id,flag_key" },
+      );
+
+    // Only a real transition to off is worth a line in the log.
+    if (!enabled && before !== false) {
+      turnedOff.push(feature.key);
+      await supabase.from("activity_log").insert({
+        organization_id: input.organizationId,
+        user_id: input.actorId,
+        action: "feature_disabled",
+        details: {
+          feature: feature.key,
+          flag_key: feature.flag_key,
+          old_value: before === undefined ? null : before,
+          new_value: false,
+          source: input.source,
+        },
+      });
+    }
+  }
+
+  return { on, off, kept_manual: keptManual, turned_off: turnedOff };
+}
+
+/**
+ * Recomputes a workspace's feature overrides from the plan it is on, keeping
+ * every by-hand decision. Used after a bad sync wrote features the plan does
+ * in fact include.
+ */
+export async function resyncPlanFeatures(
+  supabase: SupabaseClient,
+  input: { organizationId: string; actorId: string },
+): Promise<
+  { ok: true; plan: string; on: string[]; off: string[]; kept_manual: string[]; turned_off: string[] }
+  | { error: string }
+> {
+  await requireSuperAdmin(supabase, { userId: input.actorId });
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("id, plan_version_id")
+    .eq("id", input.organizationId)
+    .maybeSingle();
+  if (!org?.["plan_version_id"]) return { error: "This workspace isn't on a plan." };
+
+  const { data: version } = await supabase
+    .from("plan_versions")
+    .select("features, plans:plan_id(key, name)")
+    .eq("id", org["plan_version_id"] as string)
+    .maybeSingle();
+  if (!version) return { error: "That plan version no longer exists." };
+
+  const settings = await ensureSettings(supabase, input.organizationId);
+  const overrides = (settings["limits_override"] ?? {}) as Record<string, unknown>;
+  const planName =
+    (((version["plans"] ?? {}) as Record<string, unknown>)["name"] as string) ??
+    (((version["plans"] ?? {}) as Record<string, unknown>)["key"] as string) ??
+    "plan";
+
+  const applied = await applyPlanFeatures(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    planFeatures: (version["features"] ?? []) as string[],
+    overrides,
+    source: "plan_features_resynced",
+  });
+
+  await supabase.from("activity_log").insert({
+    organization_id: input.organizationId,
+    user_id: input.actorId,
+    action: "plan_features_resynced",
+    details: {
+      plan: planName,
+      enabled: applied.on,
+      disabled: applied.off,
+      kept_manual: applied.kept_manual,
+      turned_off: applied.turned_off,
+    },
+  });
+
+  return { ok: true, plan: planName, ...applied };
+}
+
+/** The same re-sync across every workspace that has a plan assigned. */
+export async function resyncAllPlanFeatures(
+  supabase: SupabaseClient,
+  actorId: string,
+): Promise<{ ok: true; synced: number; failed: number; turned_off: number }> {
+  await requireSuperAdmin(supabase, { userId: actorId });
+
+  const { data: orgs } = await supabase
+    .from("organizations")
+    .select("id")
+    .not("plan_version_id", "is", null);
+
+  let synced = 0;
+  let failed = 0;
+  let turnedOff = 0;
+  for (const org of (orgs ?? []) as Record<string, unknown>[]) {
+    const result = await resyncPlanFeatures(supabase, {
+      organizationId: String(org["id"]),
+      actorId,
+    });
+    if ("error" in result) failed += 1;
+    else {
+      synced += 1;
+      turnedOff += result.turned_off.length;
+    }
+  }
+  return { ok: true, synced, failed, turned_off: turnedOff };
+}
+
+
+/**
  * Enforces seat and number counts without destroying anything. Locked people
  * are recorded on limits_override._locked_members and read back by the
  * permission layer; locked numbers move to status paused_plan.
