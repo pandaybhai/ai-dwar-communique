@@ -302,9 +302,22 @@ export async function issueInvoice(
     };
   }
 
+  const { data: draftLines } = await supabase
+    .from("invoice_lines")
+    .select("*")
+    .eq("invoice_id", invoiceId)
+    .order("line_no");
+
+  const problem = checkInvoiceIssuable(
+    invoice as Record<string, unknown>,
+    (draftLines ?? []) as Record<string, unknown>[],
+  );
+  if (problem) return { error: `This invoice can't be issued — ${problem}.` };
+
   const supplier = await loadSupplier(supabase);
   const issueDate = String(invoice["issue_date"] ?? new Date().toISOString().slice(0, 10));
   const series = String(invoice["series"] ?? supplier.invoice_series);
+
 
   const { data: numberData, error: numberError } = await supabase.rpc("next_invoice_number", {
     p_series: series,
