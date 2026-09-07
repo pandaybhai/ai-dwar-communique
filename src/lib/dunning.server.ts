@@ -132,14 +132,32 @@ export async function runDunning(
     .select("id, organization_id, invoice_number, total, due_date")
     .eq("status", "issued")
     .eq("purpose", "plan_fee")
+    .not("due_date", "is", null)
     .lt("due_date", new Date().toISOString().slice(0, 10))
     .limit(500);
 
   const { notify } = await import("@/lib/billing.server");
 
+  // Only workspaces on a plan with billing switched on can be chased.
+  const orgIds = [
+    ...new Set(((invoices ?? []) as Record<string, unknown>[]).map((r) => String(r["organization_id"]))),
+  ];
+  const { data: eligibleOrgs } = orgIds.length
+    ? await supabase
+        .from("organizations")
+        .select("id")
+        .in("id", orgIds)
+        .not("plan_version_id", "is", null)
+        .not("billing_enabled_at", "is", null)
+    : { data: [] as { id: string }[] };
+  const eligible = new Set(((eligibleOrgs ?? []) as { id: string }[]).map((o) => o.id));
+
   for (const row of (invoices ?? []) as Record<string, unknown>[]) {
     const organizationId = String(row["organization_id"]);
-    const overdue = daysSince(String(row["due_date"]));
+    if (!eligible.has(organizationId)) continue;
+    const dueDate = (row["due_date"] as string | null) ?? null;
+    if (!dueDate) continue;
+    const overdue = daysSince(dueDate);
 
     const { data: settings } = await supabase
       .from("organization_billing_settings")
