@@ -115,6 +115,17 @@ export const Route = createFileRoute("/api/admin/billing")({
                 }),
               );
 
+            case "resync_plan_features":
+              return Response.json(
+                await core.resyncPlanFeatures(supabase, {
+                  organizationId: orgId,
+                  actorId,
+                }),
+              );
+
+            case "resync_plan_features_all":
+              return Response.json(await core.resyncAllPlanFeatures(supabase, actorId));
+
             case "recommend_plan":
               return Response.json(await core.recommendPlan(supabase, orgId, { userId: actorId }));
 

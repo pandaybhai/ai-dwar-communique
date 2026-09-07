@@ -990,6 +990,8 @@ export const FEATURES: readonly FeatureManifest[] = [
     analytics: none,
     activity_actions: [
       "plan_changed",
+      "plan_features_resynced",
+      "feature_disabled",
       "billing_account_updated",
       "billing_rate_updated",
       "billing_settings_updated",
