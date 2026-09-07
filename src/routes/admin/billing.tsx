@@ -49,7 +49,7 @@ const DEFINITIONS: Record<string, string> = {
 };
 
 /** A column heading with its definition one hover away. */
-function Info Hint({ text }: { text: string }) {
+function InfoHint({ text }: { text: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
