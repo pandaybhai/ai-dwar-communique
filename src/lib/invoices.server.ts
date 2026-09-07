@@ -602,3 +602,88 @@ export async function issuePendingInvoices(
 
   return { issued, failed };
 }
+
+/**
+ * Repair: voids an invoice that should never have been issued and rebuilds a
+ * correct one from the payment behind it. The old number is retired for good —
+ * numbers are never reused — and the replacement passes the issue guard or
+ * nothing is written at all.
+ */
+export async function voidAndReissueInvoice(
+  supabase: SupabaseClient,
+  invoiceId: string,
+  note: string,
+): Promise<{ invoice_number: string; invoice_id: string } | { error: string }> {
+  const { data: invoice } = await supabase
+    .from("invoices")
+    .select("*")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (!invoice) return { error: "That invoice no longer exists." };
+
+  const paymentId = (invoice["payment_id"] as string | null) ?? null;
+  if (!paymentId) return { error: "This invoice has no payment behind it to rebuild from." };
+
+  const { data: payment } = await supabase
+    .from("payments")
+    .select("id, organization_id, amount, status, credit_pack_id, raw")
+    .eq("id", paymentId)
+    .maybeSingle();
+  if (!payment) return { error: "The payment behind this invoice is missing." };
+
+  const raw = ((payment["raw"] ?? {}) as Record<string, unknown>);
+  let base = round2(Number(raw["pack_amount"] ?? 0));
+  let packName = String(raw["pack_name"] ?? "");
+  const packId = (payment["credit_pack_id"] as string | null) ?? null;
+  if (packId) {
+    const { data: pack } = await supabase
+      .from("credit_packs")
+      .select("name, amount")
+      .eq("id", packId)
+      .maybeSingle();
+    if (pack) {
+      base = round2(Number((pack as Record<string, unknown>)["amount"] ?? base));
+      packName = String((pack as Record<string, unknown>)["name"] ?? packName);
+    }
+  }
+  if (base <= 0) base = round2(Number(payment["amount"] ?? 0));
+  if (base <= 0) return { error: "We couldn't work out what this payment was for." };
+
+  const organizationId = String(payment["organization_id"]);
+  const built = await buildInvoice(supabase, organizationId, {
+    kind: "tax_invoice",
+    purpose: String(invoice["purpose"] ?? "credit_purchase"),
+    payment_id: paymentId,
+    related_invoice_id: invoiceId,
+    lines: [
+      {
+        line_type: "credit_pack",
+        description: packName ? `Message credits — ${packName}` : "Message credits",
+        sac_code: "998314",
+        quantity: 1,
+        unit_price: base,
+      },
+    ],
+  });
+  if ("error" in built) return built;
+
+  const issued = await issueInvoice(supabase, built.invoice_id);
+  if ("error" in issued) {
+    await supabase.from("invoices").delete().eq("id", built.invoice_id);
+    return issued;
+  }
+
+  await markPaid(supabase, built.invoice_id, paymentId, round2(Number(invoice["total"] ?? 0)) || undefined);
+
+  const oldNotes = (invoice["notes"] as string | null) ?? null;
+  await supabase
+    .from("invoices")
+    .update({
+      status: "void",
+      notes: oldNotes ? `${oldNotes} · ${note}` : note,
+      amount_paid: 0,
+    })
+    .eq("id", invoiceId);
+
+  return { invoice_number: issued.invoice_number, invoice_id: built.invoice_id };
+}
