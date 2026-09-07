@@ -898,6 +898,21 @@ export async function notify(
   },
 ): Promise<void> {
   try {
+    // Warnings that describe a standing state (not an event) go out at most
+    // once a day per workspace, whatever else triggers them.
+    if (ONCE_A_DAY_KINDS.has(input.kind) && input.organizationId) {
+      const since = new Date(Date.now() - 864e5).toISOString();
+      const { data: recent } = await supabase
+        .from("billing_notifications")
+        .select("id")
+        .eq("organization_id", input.organizationId)
+        .eq("kind", input.kind)
+        .in("status", ["queued", "sent"])
+        .gte("created_at", since)
+        .limit(1);
+      if ((recent as { id: string }[] | null)?.length) return;
+    }
+
     await supabase.from("billing_notifications").insert({
       organization_id: input.organizationId,
       audience: input.audience,
