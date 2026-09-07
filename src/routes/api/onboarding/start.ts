@@ -35,7 +35,8 @@ export const Route = createFileRoute("/api/onboarding/start")({
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
 
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+        const supabaseAdmin = getServiceClient();
 
         // The number the owner gave us at sign-up is where Aiden expects them
         // to write from.
@@ -83,7 +84,7 @@ export const Route = createFileRoute("/api/onboarding/start")({
           .limit(1)
           .maybeSingle();
 
-        let code = (existing as { code?: string } | null)?.code ?? null;
+        let code = (existing as unknown as { code?: string } | null)?.code ?? null;
         if (!code) {
           // A collision on the unique code is possible but rare; try a few.
           for (let attempt = 0; attempt < 5 && !code; attempt += 1) {
@@ -101,7 +102,7 @@ export const Route = createFileRoute("/api/onboarding/start")({
           await supabaseAdmin
             .from("onboarding_sessions")
             .update({ phone, updated_at: new Date().toISOString() })
-            .eq("id", (existing as { id: string }).id);
+            .eq("id", (existing as unknown as { id: string }).id);
         }
 
         if (!code) return jsonError("We couldn't start your setup. Please try again.");
