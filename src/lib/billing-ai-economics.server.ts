@@ -198,3 +198,96 @@ export async function aiEconomicsByOrgMonth(
   }
   return out;
 }
+
+/** One AI answer, as it was priced when it happened, with the wallet debit beside it. */
+export type AiRunDetailRow = {
+  id: string;
+  created_at: string;
+  task: string | null;
+  tier: string | null;
+  model: string | null;
+  status: string | null;
+  cost_amount: number;
+  billed_amount: number;
+  markup_multiplier: number | null;
+  conversation_id: string | null;
+  billed: boolean;
+  debit_amount: number | null;
+};
+
+/**
+ * The underlying answers behind one workspace/month total: every ok run in the
+ * window and the debit_ai wallet entry (if any) that charged for it.
+ */
+export async function aiRunDetail(
+  supabase: SupabaseClient,
+  input: { organizationId: string; fromIso: string; toIso: string },
+): Promise<{ runs: AiRunDetailRow[]; totals: { answers: number; provider_cost: number; billed: number; margin: number } }> {
+  const [{ data: runs }, { data: debits }] = await Promise.all([
+    supabase
+      .from("ai_runs")
+      .select(
+        "id, created_at, task, tier, model, status, cost_amount, billed_amount, markup_multiplier, conversation_id",
+      )
+      .eq("organization_id", input.organizationId)
+      .eq("status", "ok")
+      .gte("created_at", input.fromIso)
+      .lt("created_at", input.toIso)
+      .order("created_at", { ascending: false })
+      .limit(2000),
+    supabase
+      .from("wallet_ledger")
+      .select("reference_id, amount")
+      .eq("organization_id", input.organizationId)
+      .eq("entry_type", "debit_ai")
+      .eq("reference_type", "ai_run")
+      .gte("created_at", input.fromIso)
+      .lt("created_at", input.toIso)
+      .limit(50_000),
+  ]);
+
+  const debitByRun = new Map<string, number>();
+  for (const row of (debits ?? []) as Record<string, unknown>[]) {
+    const id = row["reference_id"];
+    if (typeof id !== "string") continue;
+    debitByRun.set(id, (debitByRun.get(id) ?? 0) + Math.abs(Number(row["amount"] ?? 0)));
+  }
+
+  let providerCost = 0;
+  let billedTotal = 0;
+  const out: AiRunDetailRow[] = [];
+  for (const run of (runs ?? []) as Record<string, unknown>[]) {
+    const id = String(run["id"]);
+    const debit = debitByRun.get(id) ?? null;
+    const cost = Number(run["cost_amount"] ?? 0);
+    providerCost += cost;
+    if (debit !== null) billedTotal += Number(run["billed_amount"] ?? 0);
+    out.push({
+      id,
+      created_at: String(run["created_at"]),
+      task: (run["task"] as string) ?? null,
+      tier: (run["tier"] as string) ?? null,
+      model: (run["model"] as string) ?? null,
+      status: (run["status"] as string) ?? null,
+      cost_amount: round2(cost),
+      billed_amount: round2(Number(run["billed_amount"] ?? 0)),
+      markup_multiplier:
+        run["markup_multiplier"] === null || run["markup_multiplier"] === undefined
+          ? null
+          : Number(run["markup_multiplier"]),
+      conversation_id: (run["conversation_id"] as string) ?? null,
+      billed: debit !== null,
+      debit_amount: debit === null ? null : round2(debit),
+    });
+  }
+
+  return {
+    runs: out,
+    totals: {
+      answers: out.length,
+      provider_cost: round2(providerCost),
+      billed: round2(billedTotal),
+      margin: round2(billedTotal - providerCost),
+    },
+  };
+}
