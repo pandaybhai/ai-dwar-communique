@@ -291,6 +291,24 @@ export function OrgBillingSheet({
       (r) => r["category"] === category && r["organization_id"] === organizationId,
     ) ?? null;
 
+  // The Meta rate in force on a given date: the latest message_rates row whose
+  // effective_from is on or before that date. Used to show what the client
+  // actually paid on past days, not what today's Meta rate would imply.
+  const metaRateAsOf = (category: string, date: string): number | null => {
+    const rows = (data?.meta_rates ?? []).filter(
+      (r) =>
+        r["category"] === category &&
+        (r["country_code"] ?? "IN") === "IN" &&
+        String(r["effective_from"] ?? "") <= date,
+    );
+    const row = rows[0] ?? null; // already ordered effective_from desc
+    return row ? Number(row["rate"]) : metaRateFor(category);
+  };
+
+  const historyRows = (data?.rate_cards ?? [])
+    .filter((r) => (r["country_code"] ?? "IN") === "IN")
+    .slice(0, 100);
+
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
