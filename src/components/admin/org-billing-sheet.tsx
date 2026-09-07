@@ -132,7 +132,6 @@ export function OrgBillingSheet({
   const [rateDraft, setRateDraft] = useState<Record<string, { mode: string; value: string }>>({});
   const [walletAmount, setWalletAmount] = useState("");
   const [walletReason, setWalletReason] = useState("");
-  const [impact, setImpact] = useState<{ featureKey: string; lines: string[] } | null>(null);
 
   const load = useCallback(async () => {
     setData(null);
@@ -179,36 +178,6 @@ export function OrgBillingSheet({
     toast.success(done);
     await load();
     return true;
-  }
-
-  const effective = (key: string): boolean => {
-    const override = data?.overrides.find((o) => o.flag_key === key);
-    if (override) return override.enabled;
-    return false;
-  };
-
-  async function toggleFeature(featureKey: string, enabled: boolean) {
-    if (!enabled) {
-      setBusy(featureKey);
-      const result = await callApi<{ dependents?: string[]; live?: Record<string, number> }>(
-        "/api/admin/billing",
-        { body: { action: "feature_impact", organization_id: organizationId, feature_key: featureKey } },
-      );
-      setBusy(null);
-      const dependents = result.data?.dependents ?? [];
-      const live = result.data?.live ?? {};
-      const lines = [
-        ...dependents.map((d) => `${d} will be switched off too`),
-        ...Object.entries(live)
-          .filter(([, count]) => Number(count) > 0)
-          .map(([label, count]) => `${count} ${label.replace(/_/g, " ")} will stop`),
-      ];
-      if (lines.length > 0) {
-        setImpact({ featureKey, lines });
-        return;
-      }
-    }
-    await act("set_feature", { feature_key: featureKey, enabled }, featureKey, "Feature updated.");
   }
 
   const metaRateFor = (category: string): number | null => {
@@ -703,35 +672,6 @@ export function OrgBillingSheet({
           </Tabs>
         )}
 
-        <AlertDialog open={impact !== null} onOpenChange={(v) => !v && setImpact(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Switch this off?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Here's what happens to {organizationName} the moment you do:
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-              {(impact?.lines ?? []).map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Keep it on</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  const key = impact?.featureKey;
-                  setImpact(null);
-                  if (key) {
-                    void act("set_feature", { feature_key: key, enabled: false, force: true }, key, "Feature switched off.");
-                  }
-                }}
-              >
-                Switch it off
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </SheetContent>
     </Sheet>
   );
