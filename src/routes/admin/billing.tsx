@@ -160,6 +160,26 @@ function AdminBilling() {
             <FileText className="mr-2 h-4 w-4" />
             Billing templates
           </Button>
+          <Button
+            variant="ghost"
+            onClick={async () => {
+              const result = await callApi<{
+                issued?: string[];
+                failed?: { invoice_id: string; error: string }[];
+                error?: string;
+              }>("/api/admin/billing", { body: { action: "issue_pending_invoices" } });
+              if (result.error || result.data?.error) {
+                setError(result.error ?? result.data?.error ?? "We couldn't issue the invoices.");
+                return;
+              }
+              setError(null);
+              void load();
+            }}
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Issue pending invoices
+          </Button>
+
           <Button variant="ghost" onClick={() => void load()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
