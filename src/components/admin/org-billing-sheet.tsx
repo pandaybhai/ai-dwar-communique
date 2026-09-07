@@ -172,6 +172,35 @@ export function OrgBillingSheet({
     return true;
   }
 
+  // A bad sync can leave a workspace with features switched off that its plan
+  // does include. This recomputes them from the plan, leaving by-hand
+  // decisions exactly as they are.
+  async function resyncFeatures() {
+    setBusy("resync");
+    const result = await callApi<{
+      ok?: boolean;
+      error?: string;
+      plan?: string;
+      on?: string[];
+      off?: string[];
+      kept_manual?: string[];
+    }>("/api/admin/billing", {
+      body: { action: "resync_plan_features", organization_id: organizationId },
+    });
+    setBusy(null);
+    if (result.error || result.data?.error) {
+      toast.error(result.error ?? result.data?.error ?? "That didn't work.");
+      return;
+    }
+    const d = result.data;
+    toast.success(
+      `Re-synced from ${d?.plan ?? "the plan"} — ${d?.on?.length ?? 0} on, ${
+        d?.off?.length ?? 0
+      } off, ${d?.kept_manual?.length ?? 0} left as set by hand.`,
+    );
+    await load();
+  }
+
   const metaRateFor = (category: string): number | null => {
     const row = (data?.meta_rates ?? []).find(
       (r) => r["category"] === category && (r["country_code"] ?? "IN") === "IN",
@@ -285,6 +314,24 @@ export function OrgBillingSheet({
                   compact
                   onChanged={() => void load()}
                 />
+                <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                  <Button
+                    variant="outline"
+                    disabled={busy === "resync"}
+                    onClick={() => void resyncFeatures()}
+                  >
+                    {busy === "resync" ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Re-sync plan features
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Puts every feature back to what the plan includes. Anything you set by hand
+                    stays exactly as it is.
+                  </p>
+                </div>
               </Section>
             </TabsContent>
 
