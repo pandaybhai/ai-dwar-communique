@@ -397,6 +397,8 @@ export async function upsertDocument(
   for (let i = 0; i < rows.length; i += 50) {
     await supabase.from("knowledge_chunks").insert(rows.slice(i, i + 50));
   }
+}
+
 
 /**
  * Add a website as something the employee reads, then read it. One
