@@ -428,15 +428,16 @@ export async function drainBillingNotifications(
     const id = String(row["id"]);
     try {
       const channel = String(row["channel"] ?? "whatsapp");
-      if (channel === "email") {
-        // Email isn't built yet. These rows wait their turn rather than being
-        // recorded as a failure of a channel we never attempted.
+      if (channel !== "whatsapp") {
+        // Only WhatsApp rows ever touch the WhatsApp path. Email rows wait
+        // their turn (the email sender isn't built yet) and in-app rows are
+        // records, not messages — neither is a failure.
         counts.skipped += 1;
         continue;
       }
 
       const templateName = TEMPLATE_FOR[`${String(row["audience"])}:${String(row["kind"])}`];
-      if (!templateName || channel === "inapp") {
+      if (!templateName) {
         // Nothing to send over WhatsApp: it stays an in-app record. 'sent' is
         // reserved for a message that actually left the platform number.
         await mark(id, "skipped", templateName ? "in_app_only" : "no_template_for_kind");
