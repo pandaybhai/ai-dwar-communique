@@ -304,7 +304,7 @@ function AdminBilling() {
   const loadReconcile = useCallback(async () => {
     setReconcileLoading(true);
     const result = await callApi<{ rows: ReconcileRow[] }>("/api/admin/billing", {
-      body: { action: "reconcile", months: 6 },
+      body: { action: "reconcile", from: range.from, to: range.to },
     });
     setReconcileLoading(false);
     if (result.error) {
@@ -313,7 +313,7 @@ function AdminBilling() {
       return;
     }
     setReconcile(result.data?.rows ?? []);
-  }, []);
+  }, [range.from, range.to]);
 
   const sorted = useMemo(() => {
     if (!rows) return null;
