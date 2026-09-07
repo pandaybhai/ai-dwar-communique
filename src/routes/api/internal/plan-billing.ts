@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-/** Daily: plan-fee invoices for workspaces without auto-pay, then dunning. */
+/** Alias of /api/internal/billing-monthly, kept for existing schedules. */
 export const Route = createFileRoute("/api/internal/plan-billing")({
   server: {
     handlers: {
@@ -13,13 +13,8 @@ export const Route = createFileRoute("/api/internal/plan-billing")({
         }
 
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
-        const { runPlanBilling } = await import("@/lib/plan-billing.server");
-        const { runDunning } = await import("@/lib/dunning.server");
-
-        const supabase = getServiceClient();
-        const billing = await runPlanBilling(supabase);
-        const dunning = await runDunning(supabase);
-        return Response.json({ ok: true, billing, dunning });
+        const { runMonthlyBilling } = await import("@/lib/billing-monthly.server");
+        return Response.json({ ok: true, alias_of: "billing-monthly", ...(await runMonthlyBilling(getServiceClient())) });
       },
     },
   },
