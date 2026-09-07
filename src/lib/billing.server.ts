@@ -1047,33 +1047,17 @@ export async function assignPlan(
   // and billing itself is always on once a plan exists.
   const settings = await ensureSettings(supabase, input.organizationId);
   const overrides = (settings["limits_override"] ?? {}) as Record<string, unknown>;
-  const manual = (overrides["_manual_flags"] ?? {}) as Record<string, boolean>;
 
   const planFeatures = (row["features"] ?? []) as string[];
-  const lockedFeatures: string[] = [];
+  const applied = await applyPlanFeatures(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    planFeatures,
+    overrides,
+    source: "plan_changed",
+  });
+  const lockedFeatures = applied.off;
 
-  if (planFeatures.length > 0) {
-    for (const feature of FEATURES) {
-      if (feature.key === "billing") {
-        await supabase
-          .from("organization_feature_overrides")
-          .upsert(
-            { organization_id: input.organizationId, flag_key: feature.flag_key, enabled: true },
-            { onConflict: "organization_id,flag_key" },
-          );
-        continue;
-      }
-      if (feature.key in manual) continue;
-      const enabled = planFeatures.includes(feature.key);
-      if (!enabled) lockedFeatures.push(feature.key);
-      await supabase
-        .from("organization_feature_overrides")
-        .upsert(
-          { organization_id: input.organizationId, flag_key: feature.flag_key, enabled },
-          { onConflict: "organization_id,flag_key" },
-        );
-    }
-  }
 
   const limits = (row["limits"] ?? {}) as Record<string, number>;
   const locked = await applyPlanLimits(supabase, input.organizationId, limits, overrides);
