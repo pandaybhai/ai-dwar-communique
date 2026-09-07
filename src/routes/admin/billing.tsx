@@ -1,14 +1,66 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowUpDown, Building2, Download, FileText, RefreshCw, Wallet } from "lucide-react";
+import {
+  ArrowUpDown,
+  Building2,
+  Download,
+  FileText,
+  Info,
+  RefreshCw,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
 import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
+import { AiRunsDialog } from "@/components/admin/ai-runs-dialog";
 import { callApi } from "@/lib/whatsapp-client";
 import { downloadCsv } from "@/lib/csv";
 import { money } from "@/lib/billing";
+
+/** Plain-English meaning of every AI economics column, shown on hover and focus. */
+const DEFINITIONS: Record<string, string> = {
+  "AI answers":
+    "Every answer the AI employee completed successfully this period. 'Included' are the ones covered by the workspace's plan allowance; 'over' are the ones beyond it.",
+  "Within allowance":
+    "Answers covered by the plan's included AI answers. The client pays nothing extra for these, so they cost us money.",
+  "Over allowance":
+    "Answers beyond the included allowance. These are the only ones charged to the client's credits.",
+  "AI cost":
+    "What the AI provider charged us for these answers, exactly as recorded when each answer was produced. Never recalculated.",
+  "AI provider cost":
+    "What the AI provider charged us for these answers, exactly as recorded when each answer was produced. Never recalculated.",
+  "AI billed":
+    "What we actually took from the client's credits — only over-allowance answers that produced a wallet charge.",
+  "AI margin":
+    "Billed to client minus provider cost. It reads negative while the workspace is still inside its included allowance, because we pay and they don't.",
+  "Avg cost per answer": "Provider cost divided by the number of answers in the period.",
+  "Model mix": "Share of answers handled on the everyday model versus the careful (slower, pricier) one.",
+  "Everyday %": "Share of answers handled on the everyday model.",
+  "Careful %": "Share of answers handled on the careful (slower, pricier) model.",
+};
+
+/** A column heading with its definition one hover away. */
+function Info Hint({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" aria-label={text} className="text-muted-foreground/70 hover:text-foreground">
+          <Info className="h-3 w-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs text-xs leading-relaxed">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 type AiEconomics = {
   answers: number;
