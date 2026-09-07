@@ -513,7 +513,22 @@ export async function processWebhookPayload(
     const automationCache = new Map<string, AutomationRow[]>();
     const timezoneCache = new Map<string, string>();
     const tokenCache = new Map<string, string>();
+    // The number owners write to while Aiden is being set up. Never hardcoded.
+    const { data: onboardingSetting } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", "onboarding_whatsapp_account_id")
+      .maybeSingle();
+    const onboardingAccountId = (() => {
+      const v = (onboardingSetting as { value?: unknown } | null)?.value;
+      if (typeof v === "string") return v || null;
+      if (v && typeof v === "object" && typeof (v as Record<string, unknown>)["id"] === "string") {
+        return String((v as Record<string, unknown>)["id"]) || null;
+      }
+      return null;
+    })();
     let routedAny = false;
+
 
     for (const entry of entries) {
       for (const change of (entry["changes"] as AnyRecord[] | undefined) ?? []) {
