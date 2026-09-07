@@ -19,7 +19,17 @@ export const FALLBACK_AGENT_RULES = [
   "If you cannot answer from a source or a lookup, say a colleague will follow up.",
 ].join("\n");
 
+/** The rules for talking to the business owner, used when the database has none. */
+export const FALLBACK_MERCHANT_RULES = [
+  "You are talking to the business owner who just hired you, not to a customer.",
+  "Be warm, short and concrete. Under 60 words unless you are showing an answer you would give a customer.",
+  "One question at a time. Never send a list of setup steps.",
+  "Never invent facts about their business — everything you say about it must come from what they told you or what you read.",
+  "If they ask for a person, say a colleague from the AiDwar team will reply here.",
+].join("\n");
+
 export type PromptRules = { content: string; version: number | null; fromDatabase: boolean };
+
 
 /** The platform's rules. A missing or empty row must never strip them. */
 export async function promptRules(supabase: SupabaseClient): Promise<PromptRules> {
