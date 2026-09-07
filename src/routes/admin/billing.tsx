@@ -265,10 +265,17 @@ function AdminBilling() {
   const [templatesBusy, setTemplatesBusy] = useState(false);
   const [reconcile, setReconcile] = useState<ReconcileRow[] | null>(null);
   const [reconcileLoading, setReconcileLoading] = useState(false);
+  const [range, setRange] = useState<{ from: string; to: string }>(() => {
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
+    return { from: start.toISOString().slice(0, 7), to: now.toISOString().slice(0, 7) };
+  });
+  const [drill, setDrill] = useState<{ id: string; name: string; month: string } | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "mtd_consumed",
     dir: "desc",
   });
+  const thisMonth = new Date().toISOString().slice(0, 7);
 
   const load = useCallback(async () => {
     setError(null);
