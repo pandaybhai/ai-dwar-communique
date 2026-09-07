@@ -134,7 +134,7 @@ export function OrgFeatureControls({
       {FEATURES.map((feature) => {
         const Icon = FEATURE_ICONS[feature.icon];
         const hasOverride = feature.flag_key in overrides;
-        const fromPlan = planFeatures ? planFeatures.includes(feature.key) : null;
+        const fromPlan = planFeatures ? planFeatures.includes(feature.flag_key) : null;
         const globalDefault = Boolean(defaults[feature.flag_key]);
         const enabled = hasOverride
           ? Boolean(overrides[feature.flag_key])
