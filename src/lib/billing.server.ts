@@ -886,6 +886,9 @@ export async function requestTopup(
   return { ok: true };
 }
 
+/** Standing-state warnings: at most one per workspace per 24 hours. */
+const ONCE_A_DAY_KINDS = new Set(["float_low", "low_credits"]);
+
 export async function notify(
   supabase: SupabaseClient,
   input: {
