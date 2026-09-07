@@ -869,7 +869,8 @@ export async function processWebhookPayload(
                 waId,
                 conversationId: conversation.id as string,
                 contactId: contact.id as string,
-                body,
+                body: body ?? "",
+
               });
             }
             continue;
