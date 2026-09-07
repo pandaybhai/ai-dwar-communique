@@ -10,6 +10,8 @@ import {
   type RecipientRow,
 } from "@/lib/analytics";
 import { Badge } from "@/components/ui/badge";
+import { CAMPAIGN_STATUS_CLASSES, CAMPAIGN_STATUS_LABELS, type CampaignStatus } from "@/lib/campaigns";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -127,6 +129,9 @@ export function AnalyticsCampaigns({
               <TableRow>
                 {header("name", "Campaign", "left")}
                 {header("date", "Date", "left")}
+                <TableHead className="text-left text-xs font-medium text-muted-foreground">
+                  Status
+                </TableHead>
                 {header("recipients", "Recipients")}
                 {header("delivered", "Delivered")}
                 {header("read", "Read")}
@@ -144,6 +149,17 @@ export function AnalyticsCampaigns({
                   <TableCell className="font-medium text-foreground">{row.name}</TableCell>
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                     {dateLabel(row, timezone)}
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={cn(
+                        "inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                        CAMPAIGN_STATUS_CLASSES[row.status as CampaignStatus] ??
+                          "border-border bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {CAMPAIGN_STATUS_LABELS[row.status as CampaignStatus] ?? row.status}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right">{row.recipients.toLocaleString()}</TableCell>
                   <TableCell>
