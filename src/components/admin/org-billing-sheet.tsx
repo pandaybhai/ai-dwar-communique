@@ -901,6 +901,85 @@ export function OrgBillingSheet({
           </Tabs>
         )}
       </SheetContent>
+
+      <AlertDialog open={planPreview !== null} onOpenChange={(o) => !o && setPlanPreview(null)}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Move {organizationName} to {planPreview?.plan_name}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Here's exactly what changes for them. Nothing is deleted — it all comes back on a
+              bigger plan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="max-h-80 space-y-4 overflow-y-auto text-sm">
+            {planPreview?.features_off.length ? (
+              <div>
+                <p className="font-medium">These switch off</p>
+                <ul className="mt-1 space-y-1 text-muted-foreground">
+                  {planPreview.features_off.map((f) => (
+                    <li key={f.key}>
+                      {f.name}
+                      {f.live.length > 0 ? (
+                        <span className="text-destructive">
+                          {" "}
+                          — pauses {f.live.map((l) => `${l.count} ${l.label}`).join(", ")}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {planPreview?.locked_members.length ? (
+              <div>
+                <p className="font-medium">These teammates go read-only</p>
+                <p className="mt-1 text-muted-foreground">
+                  {planPreview.locked_members.map((m) => m.name ?? "Teammate").join(", ")}
+                </p>
+              </div>
+            ) : null}
+
+            {planPreview?.locked_numbers.length ? (
+              <div>
+                <p className="font-medium">These numbers stop sending</p>
+                <p className="mt-1 text-muted-foreground">
+                  {planPreview.locked_numbers.map((n) => n.label).join(", ")}
+                </p>
+              </div>
+            ) : null}
+
+            {planPreview?.subscription?.mismatch ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                <p className="font-medium text-destructive">Auto-pay is on a different plan</p>
+                <p className="mt-1 text-muted-foreground">
+                  Their mandate currently charges{" "}
+                  {planPreview.subscription.current_plan_name ?? "another plan"} (
+                  {planPreview.subscription.cycle ?? "monthly"}
+                  {planPreview.subscription.current_period_end
+                    ? `, next cycle ${new Date(
+                        planPreview.subscription.current_period_end,
+                      ).toLocaleDateString("en-IN")}`
+                    : ""}
+                  ). On confirm we move it to {planPreview.plan_name} from the next cycle, or stop
+                  it at the end of this period if the provider won't move it.
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Leave it</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmAssignPlan()}>
+              Yes, change the plan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
+
   );
 }
