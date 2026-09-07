@@ -168,10 +168,19 @@ export async function assembleBrief(
   supabase: SupabaseClient,
   organizationId: string,
   agentId: string | null,
-  options: { instructionsOverride?: string | null; customerLanguage?: string | null } = {},
+  options: {
+    instructionsOverride?: string | null;
+    customerLanguage?: string | null;
+    /** Who is being spoken to: a customer (default) or the business owner. */
+    audience?: "customer" | "merchant";
+    /** The owner's business and name, used only for the merchant audience. */
+    businessName?: string | null;
+    ownerName?: string | null;
+  } = {},
 ): Promise<AssembledBrief> {
+  const merchant = options.audience === "merchant";
   const [rules, instructions, skills, taught] = await Promise.all([
-    promptRules(supabase),
+    promptRules(supabase, merchant ? "merchant_rules" : "agent_rules"),
     currentInstructions(supabase, agentId),
     listSkills(supabase, organizationId).catch(() => [] as SkillState[]),
     taughtCount(supabase, organizationId).catch(() => 0),
@@ -179,19 +188,29 @@ export async function assembleBrief(
 
   const merchantInstructions = (options.instructionsOverride ?? instructions.instructions ?? "").trim();
 
-  const who = [
-    instructions.personaName
-      ? `You are ${instructions.personaName}, answering on behalf of this business.`
-      : "You answer on behalf of this business.",
-    instructions.tone ? `Tone: ${instructions.tone}.` : "",
-    languageBlock(instructions.languages),
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const business = (options.businessName ?? "").trim() || "this business";
+  const owner = (options.ownerName ?? "").trim();
+  const who = merchant
+    ? [
+        `You are Aiden, hired by ${business}.`,
+        owner ? `You are talking to the owner, ${owner}.` : "You are talking to the owner.",
+        languageBlock(instructions.languages),
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : [
+        instructions.personaName
+          ? `You are ${instructions.personaName}, answering on behalf of this business.`
+          : "You answer on behalf of this business.",
+        instructions.tone ? `Tone: ${instructions.tone}.` : "",
+        languageBlock(instructions.languages),
+      ]
+        .filter(Boolean)
+        .join(" ");
 
-  const jobs = skillsBlock(skills);
+  const jobs = merchant ? "" : skillsBlock(skills);
   const spoken = customerLanguageBlock(options.customerLanguage ?? null, instructions.languages);
-  const escalation = instructions.escalationRules.trim();
+  const escalation = merchant ? "" : instructions.escalationRules.trim();
 
   const sections: BriefSection[] = [
     { key: "rules", label: "Platform rules", text: rules.content },
@@ -199,26 +218,36 @@ export async function assembleBrief(
     ...(spoken
       ? [{ key: "spoken", label: "The language this customer writes in", text: spoken }]
       : []),
-    {
-      key: "jobs",
-      label: "His jobs",
-      text: jobs,
-      ...(jobs ? {} : { note: "No job is both switched on and ready yet, so he hands everything to a person." }),
-    },
+    ...(merchant
+      ? []
+      : [
+          {
+            key: "jobs",
+            label: "His jobs",
+            text: jobs,
+            ...(jobs
+              ? {}
+              : { note: "No job is both switched on and ready yet, so he hands everything to a person." }),
+          },
+        ]),
     {
       key: "instructions",
       label: "Your instructions",
       text: merchantInstructions,
       ...(merchantInstructions ? {} : { note: "You haven't written any yet." }),
     },
-    {
-      key: "escalation",
-      label: "When to fetch a person",
-      text: escalation ? `Hand these to a person instead of answering: ${escalation}` : "",
-      ...(escalation
-        ? {}
-        : { note: "You haven't set any. Brian only escalates when the system decides to." }),
-    },
+    ...(merchant
+      ? []
+      : [
+          {
+            key: "escalation",
+            label: "When to fetch a person",
+            text: escalation ? `Hand these to a person instead of answering: ${escalation}` : "",
+            ...(escalation
+              ? {}
+              : { note: "You haven't set any. Brian only escalates when the system decides to." }),
+          },
+        ]),
     {
       key: "taught",
       label: "What he's been taught",
@@ -227,6 +256,7 @@ export async function assembleBrief(
         : "",
       ...(taught ? {} : { note: "Nothing yet. Correct an answer in the inbox and he will remember it." }),
     },
+
     {
       key: "knowledge",
       label: "Knowledge",
