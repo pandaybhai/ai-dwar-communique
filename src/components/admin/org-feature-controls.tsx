@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -28,6 +38,11 @@ export function OrgFeatureControls({
   const [planFeatures, setPlanFeatures] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [confirmOff, setConfirmOff] = useState<{
+    flagKey: string;
+    name: string;
+    dependents: string[];
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -119,7 +134,7 @@ export function OrgFeatureControls({
       {FEATURES.map((feature) => {
         const Icon = FEATURE_ICONS[feature.icon];
         const hasOverride = feature.flag_key in overrides;
-        const fromPlan = planFeatures ? planFeatures.includes(feature.key) : null;
+        const fromPlan = planFeatures ? planFeatures.includes(feature.flag_key) : null;
         const globalDefault = Boolean(defaults[feature.flag_key]);
         const enabled = hasOverride
           ? Boolean(overrides[feature.flag_key])
@@ -127,8 +142,13 @@ export function OrgFeatureControls({
             ? fromPlan
             : globalDefault;
 
+        const baseline = fromPlan !== null ? fromPlan : globalDefault;
         const source = hasOverride
-          ? `Set by hand — ${enabled ? "on" : "off"}`
+          ? `Set by hand — ${enabled ? "on" : "off"}${
+              enabled === baseline
+                ? ""
+                : ` (differs from ${fromPlan !== null ? "plan" : "default"})`
+            }`
           : fromPlan !== null
             ? `From plan — ${fromPlan ? "on" : "off"}`
             : `Global default — ${globalDefault ? "on" : "off"}`;
@@ -149,7 +169,22 @@ export function OrgFeatureControls({
           ) : (
             <Switch
               checked={enabled}
-              onCheckedChange={(v) => void setOverride(feature.flag_key, v)}
+              onCheckedChange={(v) => {
+                if (!v) {
+                  const dependents = FEATURES.filter((f) =>
+                    f.depends_on.includes(feature.key),
+                  ).map((f) => f.name);
+                  if (dependents.length > 0) {
+                    setConfirmOff({
+                      flagKey: feature.flag_key,
+                      name: feature.name,
+                      dependents,
+                    });
+                    return;
+                  }
+                }
+                void setOverride(feature.flag_key, v);
+              }}
             />
           );
 
@@ -195,6 +230,36 @@ export function OrgFeatureControls({
           </div>
         );
       })}
+
+      <AlertDialog
+        open={confirmOff !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmOff(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Switch off {confirmOff?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              These also stop working for this workspace:{" "}
+              {confirmOff?.dependents.join(", ")}. They will disappear from the
+              workspace until you switch {confirmOff?.name} back on.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it on</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const target = confirmOff;
+                setConfirmOff(null);
+                if (target) void setOverride(target.flagKey, false);
+              }}
+            >
+              Switch off
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
