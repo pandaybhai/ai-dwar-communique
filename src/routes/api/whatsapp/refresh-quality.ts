@@ -8,14 +8,9 @@ export const Route = createFileRoute("/api/whatsapp/refresh-quality")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const {
-          requireOrgMember,
-          isResponse,
-          jsonError,
-          graphFetch,
-          graphErrorMessage,
-          logServerActivity,
-        } = await import("@/lib/whatsapp-api.server");
+        const { requireOrgMember, isResponse, jsonError, logServerActivity } = await import(
+          "@/lib/whatsapp-api.server"
+        );
 
         let payload: Record<string, unknown> = {};
         try {
