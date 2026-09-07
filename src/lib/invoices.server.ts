@@ -190,7 +190,7 @@ export async function buildInvoice(
       issue_date: new Date().toISOString().slice(0, 10),
       period_start: input.period?.start ?? null,
       period_end: input.period?.end ?? null,
-      place_of_supply: buyerState,
+      place_of_supply: placeOfSupply,
       supplier_state_code: supplier.state_code,
       is_interstate: isInterstate,
       is_export: isExport,
