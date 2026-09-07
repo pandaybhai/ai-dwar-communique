@@ -81,6 +81,7 @@ type Row = {
   plan_name: string | null;
   plan_status: string | null;
   funding_model: string | null;
+  billing_on: boolean;
   available: number;
   held: number;
   low_credit_threshold: number;
@@ -92,22 +93,34 @@ type Row = {
   sent: number;
   delivered: number;
   failed: number;
-  numbers: { display: string | null; quality: string | null; tier: number | null }[];
+  numbers: {
+    id: string;
+    display: string | null;
+    quality: string | null;
+    tier: string | null;
+    tier_label: string;
+  }[];
   pending_topups: number;
   last_activity: string | null;
   ai: AiEconomics;
 };
 
 type Totals = {
+  month: string;
   plan_fees: number;
+  plan_fees_gross: number;
   ai_billed: number;
   ai_provider_cost: number;
   ai_margin: number;
+  internal_ai_cost: number;
+  internal_ai_orgs: string[];
   messaging_consumed: number;
   messaging_meta_cost: number;
   messaging_margin: number;
-  total_margin: number;
+  revenue: number;
+  gross_margin: number;
 };
+
 
 type ReconcileRow = {
   organization_id: string;
