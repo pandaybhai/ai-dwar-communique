@@ -314,7 +314,7 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
       return [
         orgName,
         money(Number(payload["meta_amount"] ?? 0)),
-        money(Number(payload["credits"] ?? 0)),
+        money(Number(payload["credits_amount"] ?? payload["credits"] ?? 0)),
       ];
     case "settle_failed":
       return [orgName, money(Number(payload["amount"] ?? 0)), "https://aidwar.in/admin/billing"];
