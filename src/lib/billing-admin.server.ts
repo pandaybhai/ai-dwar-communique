@@ -282,9 +282,9 @@ export async function adminSyncNumber(
   tier_label?: string;
 }> {
   await requireSuper(supabase, input.actorId);
-  const { graphFetch, graphErrorMessage } = await import("@/lib/whatsapp-api.server");
   const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
   const { messagingTierLabel } = await import("@/lib/billing");
+  const { refreshPhoneNumberQuality } = await import("@/server/whatsapp-quality.server");
 
   const { data: account } = await supabase
     .from("whatsapp_accounts")
@@ -300,24 +300,18 @@ export async function adminSyncNumber(
   );
   if (!connection) return { ok: false, error: error ?? "That number isn't connected." };
 
-  const result = await graphFetch(connection.phoneNumberId, connection.accessToken, {
-    query: { fields: "quality_rating,messaging_limit_tier" },
+  // The one shared fetch+write — same fields, logging, and NOT_AVAILABLE
+  // handling as the workspace-side refresh.
+  const refreshed = await refreshPhoneNumberQuality(supabase, {
+    whatsappAccountId: String(account.id),
+    organizationId: String(account.organization_id),
+    phoneNumberId: connection.phoneNumberId,
+    accessToken: connection.accessToken,
   });
-  if (!result.ok) return { ok: false, error: graphErrorMessage(result.body) };
+  if (!refreshed.ok) return { ok: false, error: refreshed.error ?? "Meta rejected the request." };
 
-  const rating = (result.body["quality_rating"] as string) ?? "UNKNOWN";
-  const tier = (result.body["messaging_limit_tier"] as string | null) ?? null;
-  const nowIso = new Date().toISOString();
-  await supabase
-    .from("whatsapp_accounts")
-    .update({
-      quality_rating: rating,
-      quality_updated_at: nowIso,
-      messaging_tier: tier,
-      messaging_tier_updated_at: nowIso,
-    })
-    .eq("id", account.id);
-
+  const rating = refreshed.qualityRating ?? "UNKNOWN";
+  const tier = refreshed.messagingTier ?? null;
   return {
     ok: true,
     quality_rating: rating,
