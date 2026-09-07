@@ -116,6 +116,22 @@ function SignupPage() {
             <Input id="full_name" name="full_name" required autoComplete="name" placeholder="Raghav Sharma" />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="phone">WhatsApp number</Label>
+            <Input
+              id="phone"
+              name="phone"
+              type="tel"
+              required
+              autoComplete="tel"
+              inputMode="tel"
+              placeholder="98765 43210"
+            />
+            <p className="text-xs text-muted-foreground">
+              This is how Aiden knows it's you when you message him.
+            </p>
+          </div>
+          <div className="space-y-2">
+
             <Label htmlFor="email">Work email</Label>
             <Input id="email" name="email" type="email" required autoComplete="email" placeholder="you@company.com" />
           </div>
