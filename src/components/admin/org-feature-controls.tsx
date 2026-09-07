@@ -169,7 +169,22 @@ export function OrgFeatureControls({
           ) : (
             <Switch
               checked={enabled}
-              onCheckedChange={(v) => void setOverride(feature.flag_key, v)}
+              onCheckedChange={(v) => {
+                if (!v) {
+                  const dependents = FEATURES.filter((f) =>
+                    f.depends_on.includes(feature.key),
+                  ).map((f) => f.name);
+                  if (dependents.length > 0) {
+                    setConfirmOff({
+                      flagKey: feature.flag_key,
+                      name: feature.name,
+                      dependents,
+                    });
+                    return;
+                  }
+                }
+                void setOverride(feature.flag_key, v);
+              }}
             />
           );
 
