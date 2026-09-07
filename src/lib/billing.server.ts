@@ -1181,6 +1181,7 @@ export async function assignPlan(
     actorId: string;
     status?: string;
     trialDays?: number | null;
+    fundingModel?: "meta_direct" | "aidwar_prepaid" | "bsp";
     confirm?: boolean;
   },
 ): Promise<
@@ -1211,20 +1212,19 @@ export async function assignPlan(
   if (!row) return { error: "That plan doesn't have a current version." };
 
   const status = input.status ?? "active";
-  const trialDays = Number(input.trialDays ?? 0);
+  // A trial always has an end date: fourteen days unless a different length
+  // is asked for. Never leave a trial open-ended.
+  const trialDays = status === "trial" ? Number(input.trialDays ?? 0) || 14 : 0;
   const trialEndsAt =
-    status === "trial" && trialDays > 0
-      ? new Date(Date.now() + trialDays * 864e5).toISOString()
-      : status === "trial"
-        ? undefined
-        : null;
+    status === "trial" ? new Date(Date.now() + trialDays * 864e5).toISOString() : null;
 
   const { error } = await supabase
     .from("organizations")
     .update({
       plan_version_id: row["id"],
       plan_status: status,
-      ...(trialEndsAt === undefined ? {} : { trial_ends_at: trialEndsAt }),
+      trial_ends_at: trialEndsAt,
+      ...(input.fundingModel ? { funding_model: input.fundingModel } : {}),
     })
     .eq("id", input.organizationId);
   if (error) return { error: "We couldn't change the plan. Please try again." };

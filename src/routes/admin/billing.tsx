@@ -167,7 +167,7 @@ export const Route = createFileRoute("/admin/billing")({
 
 function statusTone(status: string | null): string {
   if (status === "active") return "bg-primary/10 text-primary";
-  if (status === "trialing") return "bg-amber-500/10 text-amber-600";
+  if (status === "trial") return "bg-amber-500/10 text-amber-600";
   if (status === "past_due" || status === "cancelled") return "bg-destructive/10 text-destructive";
   return "bg-muted text-muted-foreground";
 }

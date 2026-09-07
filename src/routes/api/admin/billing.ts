@@ -157,6 +157,17 @@ export const Route = createFileRoute("/api/admin/billing")({
                   actorId,
                   confirm: payload["confirm"] === true,
                   ...(payload["status"] ? { status: String(payload["status"]) } : {}),
+                  ...(payload["trial_days"] === undefined
+                    ? {}
+                    : { trialDays: Number(payload["trial_days"]) }),
+                  ...(payload["funding_model"]
+                    ? {
+                        fundingModel: String(payload["funding_model"]) as
+                          | "meta_direct"
+                          | "aidwar_prepaid"
+                          | "bsp",
+                      }
+                    : {}),
                 }),
               );
 
