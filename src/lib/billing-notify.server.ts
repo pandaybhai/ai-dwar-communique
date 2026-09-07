@@ -94,6 +94,7 @@ const TEMPLATE_FOR: Record<string, string> = {
   "client:low_credits": "client_low_credits",
   "admin:float_low": "admin_float_low",
   "admin:topup_due": "admin_topup_due",
+  "admin:topup_reminder": "admin_topup_due",
   "admin:settle_failed": "admin_settle_failed",
   "client:campaign_approval": "client_campaign_approval",
   "client:invoice_issued": "client_invoice_issued",
@@ -309,6 +310,7 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
     case "low_credits":
       return [orgName, money(Number(payload["available"] ?? 0)), link];
     case "topup_due":
+    case "topup_reminder":
       return [
         orgName,
         money(Number(payload["meta_amount"] ?? 0)),
