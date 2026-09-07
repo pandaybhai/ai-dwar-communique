@@ -189,6 +189,112 @@ export async function cancelAutoPay(
   return { ok: true };
 }
 
+/**
+ * Keeps the auto-pay mandate and the assigned plan in step. The provider is
+ * asked to move the mandate onto the new plan from the next cycle; if it
+ * refuses, the mandate is cancelled at the end of the period so nothing is
+ * ever charged for a plan the workspace has left.
+ */
+export async function alignSubscriptionToPlan(
+  supabase: SupabaseClient,
+  input: { organizationId: string; planVersionId: string; actorId: string },
+): Promise<{ changed: boolean; note: string; needs_new_mandate?: boolean }> {
+  const { data: row } = await supabase
+    .from("subscriptions")
+    .select("id, provider_subscription_id, plan_version_id, billing_cycle")
+    .eq("organization_id", input.organizationId)
+    .in("status", ACTIVE_STATES)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!row) return { changed: false, note: "No auto-pay mandate for this workspace." };
+  if ((row["plan_version_id"] as string | null) === input.planVersionId) {
+    return { changed: false, note: "Auto-pay already matches this plan." };
+  }
+
+  const {
+    razorpayKeys,
+    createPlan,
+    updateSubscriptionPlan,
+    cancelSubscription,
+    PAYMENTS_NOT_CONFIGURED,
+  } = await import("@/lib/razorpay.server");
+  const keys = await razorpayKeys(supabase);
+  if (!keys) return { changed: false, note: PAYMENTS_NOT_CONFIGURED };
+
+  const cycle = String(row["billing_cycle"] ?? "monthly") === "annual" ? "annual" : "monthly";
+  const { data: version } = await supabase
+    .from("plan_versions")
+    .select("price_monthly, price_annual, plans:plan_id(name)")
+    .eq("id", input.planVersionId)
+    .maybeSingle();
+  const base =
+    cycle === "annual"
+      ? (version?.["price_annual"] as number | null)
+      : (version?.["price_monthly"] as number | null);
+  const planName =
+    ((version?.["plans"] as unknown as Record<string, unknown>)?.["name"] as string) ?? "plan";
+
+  const subscriptionId = String(row["provider_subscription_id"]);
+  const fail = async (note: string) => {
+    const cancelled = await cancelSubscription(keys, subscriptionId, true);
+    if (cancelled.ok) {
+      await supabase
+        .from("subscriptions")
+        .update({ cancel_at_period_end: true, updated_at: new Date().toISOString() })
+        .eq("id", row["id"] as string);
+    }
+    await supabase.from("activity_log").insert({
+      organization_id: input.organizationId,
+      user_id: input.actorId,
+      action: "autopay_plan_changed",
+      details: { plan: planName, outcome: "cancelled_at_period_end", reason: note },
+    });
+    return {
+      changed: true,
+      needs_new_mandate: true,
+      note: `${note} Auto-pay will stop at the end of this period — set up a fresh mandate on ${planName}.`,
+    };
+  };
+
+  if (base === null || base === undefined) {
+    return fail(`The ${planName} plan has no ${cycle} price.`);
+  }
+  const gross = withGst(Number(base)).total;
+
+  const plan = await createPlan(keys, {
+    period: cycle === "annual" ? "yearly" : "monthly",
+    amount: gross,
+    name: `AiDwar ${planName} (${cycle})`,
+    description: `AiDwar ${planName} plan fee, inclusive of 18% GST`,
+  });
+  if (!plan.ok) return fail(plan.error ?? "The payment provider couldn't create the new plan.");
+
+  const updated = await updateSubscriptionPlan(keys, subscriptionId, String(plan.body["id"]));
+  if (!updated.ok) return fail(updated.error ?? "The mandate couldn't be moved to the new plan.");
+
+  await supabase
+    .from("subscriptions")
+    .update({
+      plan_version_id: input.planVersionId,
+      provider_plan_id: String(plan.body["id"]),
+      mandate_max_amount: round2(gross),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", row["id"] as string);
+
+  await supabase.from("activity_log").insert({
+    organization_id: input.organizationId,
+    user_id: input.actorId,
+    action: "autopay_plan_changed",
+    details: { plan: planName, cycle, outcome: "updated_from_next_cycle" },
+  });
+
+  return { changed: true, note: `Auto-pay moves to ${planName} from the next cycle.` };
+}
+
+
+
 // ------------------------------------------------------------- webhook side
 
 function iso(seconds: unknown): string | null {
