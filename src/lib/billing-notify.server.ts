@@ -490,7 +490,6 @@ export async function drainBillingNotifications(
   };
 
   for (const row of queued) {
-    const id = String(row["id"]);
     try {
       const channel = String(row["channel"] ?? "whatsapp");
       if (channel !== "whatsapp") {
