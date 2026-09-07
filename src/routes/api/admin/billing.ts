@@ -44,8 +44,16 @@ export const Route = createFileRoute("/api/admin/billing")({
               const data = await admin.adminOverview(supabase, actorId);
               return Response.json(data);
             }
+            case "reconcile":
+              return Response.json(
+                await admin.adminReconcile(supabase, actorId, {
+                  months: Number(payload["months"] ?? 6),
+                }),
+              );
+
             case "topup_tasks":
               return Response.json({ tasks: await admin.listTopupTasks(supabase, actorId) });
+
 
             case "complete_topup":
               return Response.json(

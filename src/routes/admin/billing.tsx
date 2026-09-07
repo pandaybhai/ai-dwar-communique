@@ -1,12 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowUpDown, Building2, FileText, RefreshCw, Wallet } from "lucide-react";
+import { ArrowUpDown, Building2, Download, FileText, RefreshCw, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
 import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
 import { callApi } from "@/lib/whatsapp-client";
+import { downloadCsv } from "@/lib/csv";
 import { money } from "@/lib/billing";
+
+type AiEconomics = {
+  answers: number;
+  within_allowance: number;
+  over_allowance: number;
+  allowance: number;
+  provider_cost: number;
+  billed: number;
+  margin: number;
+  avg_cost_per_answer: number;
+  everyday_pct: number;
+  careful_pct: number;
+};
 
 type Row = {
   organization_id: string;
@@ -28,9 +43,49 @@ type Row = {
   numbers: { display: string | null; quality: string | null; tier: number | null }[];
   pending_topups: number;
   last_activity: string | null;
+  ai: AiEconomics;
 };
 
-type SortKey = "name" | "available" | "mtd_consumed" | "mtd_margin" | "sent" | "pending_topups";
+type Totals = {
+  plan_fees: number;
+  ai_billed: number;
+  ai_provider_cost: number;
+  ai_margin: number;
+  messaging_consumed: number;
+  messaging_meta_cost: number;
+  messaging_margin: number;
+  total_margin: number;
+};
+
+type ReconcileRow = {
+  organization_id: string;
+  name: string;
+  month: string;
+  messaging_consumed: number;
+  meta_cost: number;
+  messaging_margin: number;
+  ai_answers: number;
+  ai_within_allowance: number;
+  ai_over_allowance: number;
+  ai_provider_cost: number;
+  ai_billed: number;
+  ai_margin: number;
+  ai_avg_cost_per_answer: number;
+  ai_everyday_pct: number;
+  ai_careful_pct: number;
+  plan_fees: number;
+  total_margin: number;
+};
+
+type SortKey =
+  | "name"
+  | "available"
+  | "mtd_consumed"
+  | "mtd_margin"
+  | "sent"
+  | "pending_topups"
+  | "ai_answers"
+  | "ai_margin";
 
 export const Route = createFileRoute("/admin/billing")({
   component: AdminBilling,
@@ -39,7 +94,7 @@ export const Route = createFileRoute("/admin/billing")({
       { title: "Billing overview · AiDwar Super Admin" },
       {
         name: "description",
-        content: "Wallets, margins and Meta top-ups across every AiDwar workspace.",
+        content: "Wallets, AI economics, margins and Meta top-ups across every AiDwar workspace.",
       },
     ],
   }),
@@ -60,14 +115,104 @@ const FUNDING_LABEL: Record<string, string> = {
 
 type TemplateRow = { name: string; status: string | null; language: string; error: string | null };
 
+/** Margin reads green when we earned, red when the month cost us more than it made. */
+function Margin({ value }: { value: number }) {
+  return (
+    <span className={value < 0 ? "text-destructive" : "text-primary"}>{money(value)}</span>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "positive" | "negative";
+}) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p
+        className={`mt-1 text-2xl font-semibold ${
+          tone === "negative"
+            ? "text-destructive"
+            : tone === "positive"
+              ? "text-primary"
+              : "text-foreground"
+        }`}
+      >
+        {value}
+      </p>
+      {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
+
+const RECONCILE_HEADERS = [
+  "Month",
+  "Workspace",
+  "Messaging consumed",
+  "Meta cost",
+  "Messaging margin",
+  "AI answers",
+  "Within allowance",
+  "Over allowance",
+  "AI provider cost",
+  "AI billed",
+  "AI margin",
+  "Avg cost per answer",
+  "Everyday %",
+  "Careful %",
+  "Plan fees",
+  "Total margin",
+];
+
+const escapeCell = (value: string | number) => {
+  const text = String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+function reconcileCsv(rows: ReconcileRow[]): string {
+  const body = rows.map((r) =>
+    [
+      r.month,
+      r.name,
+      r.messaging_consumed,
+      r.meta_cost,
+      r.messaging_margin,
+      r.ai_answers,
+      r.ai_within_allowance,
+      r.ai_over_allowance,
+      r.ai_provider_cost,
+      r.ai_billed,
+      r.ai_margin,
+      r.ai_avg_cost_per_answer,
+      r.ai_everyday_pct,
+      r.ai_careful_pct,
+      r.plan_fees,
+      r.total_margin,
+    ]
+      .map(escapeCell)
+      .join(","),
+  );
+  return [RECONCILE_HEADERS.join(","), ...body].join("\n");
+}
+
 function AdminBilling() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [totals, setTotals] = useState<Totals | null>(null);
   const [tasks, setTasks] = useState<TopupTask[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [templates, setTemplates] = useState<TemplateRow[] | null>(null);
   const [templateNote, setTemplateNote] = useState<string | null>(null);
   const [templatesBusy, setTemplatesBusy] = useState(false);
+  const [reconcile, setReconcile] = useState<ReconcileRow[] | null>(null);
+  const [reconcileLoading, setReconcileLoading] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "mtd_consumed",
     dir: "desc",
@@ -76,7 +221,9 @@ function AdminBilling() {
   const load = useCallback(async () => {
     setError(null);
     const [overview, topups, tmpl] = await Promise.all([
-      callApi<{ rows: Row[] }>("/api/admin/billing", { body: { action: "overview" } }),
+      callApi<{ rows: Row[]; totals: Totals }>("/api/admin/billing", {
+        body: { action: "overview" },
+      }),
       callApi<{ tasks: TopupTask[] }>("/api/admin/billing", { body: { action: "topup_tasks" } }),
       callApi<{ templates: TemplateRow[] }>("/api/admin/billing", {
         body: { action: "billing_templates" },
@@ -88,18 +235,38 @@ function AdminBilling() {
       return;
     }
     setRows(overview.data?.rows ?? []);
+    setTotals(overview.data?.totals ?? null);
     setTasks(topups.data?.tasks ?? []);
     setTemplates(tmpl.data?.templates ?? []);
   }, []);
 
   useEffect(() => void load(), [load]);
 
+  const loadReconcile = useCallback(async () => {
+    setReconcileLoading(true);
+    const result = await callApi<{ rows: ReconcileRow[] }>("/api/admin/billing", {
+      body: { action: "reconcile", months: 6 },
+    });
+    setReconcileLoading(false);
+    if (result.error) {
+      setError(result.error);
+      setReconcile([]);
+      return;
+    }
+    setReconcile(result.data?.rows ?? []);
+  }, []);
+
   const sorted = useMemo(() => {
     if (!rows) return null;
+    const value = (row: Row, key: SortKey): string | number => {
+      if (key === "ai_answers") return row.ai.answers;
+      if (key === "ai_margin") return row.ai.margin;
+      return row[key as Exclude<SortKey, "ai_answers" | "ai_margin">];
+    };
     const copy = [...rows];
     copy.sort((a, b) => {
-      const av = a[sort.key];
-      const bv = b[sort.key];
+      const av = value(a, sort.key);
+      const bv = value(b, sort.key);
       const cmp =
         typeof av === "string" || typeof bv === "string"
           ? String(av ?? "").localeCompare(String(bv ?? ""))
@@ -203,6 +370,35 @@ function AdminBilling() {
         </div>
       </div>
 
+      {totals ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <StatCard label="Plan fees this month" value={money(totals.plan_fees)} hint="Collected, ex-GST" />
+          <StatCard
+            label="AI billed"
+            value={money(totals.ai_billed)}
+            hint={`Provider cost ${money(totals.ai_provider_cost)}`}
+          />
+          <StatCard
+            label="AI margin"
+            value={money(totals.ai_margin)}
+            tone={totals.ai_margin < 0 ? "negative" : "positive"}
+            hint="Negative while answers sit inside allowances"
+          />
+          <StatCard
+            label="Messaging margin"
+            value={money(totals.messaging_margin)}
+            tone={totals.messaging_margin < 0 ? "negative" : "positive"}
+            hint={`${money(totals.messaging_consumed)} consumed · ${money(totals.messaging_meta_cost)} Meta cost`}
+          />
+          <StatCard
+            label="Total margin"
+            value={money(totals.total_margin)}
+            tone={totals.total_margin < 0 ? "negative" : "positive"}
+            hint="Plan fees + AI margin + messaging margin"
+          />
+        </div>
+      ) : null}
+
       {templates ? (
         <div className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -240,117 +436,254 @@ function AdminBilling() {
 
       {error ? <ErrorState message={error} /> : null}
 
-      {!sorted ? (
-        <TableSkeleton rows={8} />
-      ) : sorted.length === 0 && !error ? (
-        <EmptyState
-          icon={Building2}
-          title="No billing-enabled workspaces yet"
-          description="Turn billing on for a workspace and its wallet, usage and margin will appear here."
-        />
-      ) : (
-        <div className="overflow-x-auto rounded-2xl border border-border/70 bg-card shadow-sm">
-          <table className="w-full min-w-[1100px] text-sm">
-            <thead className="border-b border-border/70 bg-muted/40">
-              <tr>
-                <Th label="Workspace" sortKey="name" />
-                <Th label="Plan" />
-                <Th label="Funding" />
-                <Th label="Available" sortKey="available" />
-                <Th label="Meta estimate" />
-                <Th label="Spent (MTD)" sortKey="mtd_consumed" />
-                <Th label="Margin (MTD)" sortKey="mtd_margin" />
-                <Th label="Messages" sortKey="sent" />
-                <Th label="Number" />
-                <Th label="Top-ups" sortKey="pending_topups" />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((row) => {
-                const lowCredits = row.available < Number(row.low_credit_threshold ?? 0);
-                const lowFloat =
-                  row.meta_float !== null && row.meta_float < Number(row.meta_float_target ?? 0);
-                const number = row.numbers[0] ?? null;
-                return (
-                  <tr
-                    key={row.organization_id}
-                    className="border-b border-border/50 last:border-0 transition-colors duration-150 hover:bg-muted/30"
-                  >
-                    <td className="px-3 py-3">
-                      <Link
-                        to="/admin/organizations"
-                        className="font-medium text-foreground hover:text-primary"
-                      >
-                        {row.name}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {row.last_activity
-                          ? `Active ${new Date(row.last_activity).toLocaleDateString("en-IN")}`
-                          : "No activity yet"}
-                      </p>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className="font-medium text-foreground">{row.plan_name ?? "—"}</span>
-                      {row.plan_status ? (
-                        <span
-                          className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${statusTone(row.plan_status)}`}
-                        >
-                          {row.plan_status.replace(/_/g, " ")}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                        {FUNDING_LABEL[row.funding_model ?? ""] ?? "—"}
-                      </span>
-                    </td>
-                    <td
-                      className={`px-3 py-3 ${lowCredits ? "text-amber-600 font-semibold" : "text-foreground"}`}
-                    >
-                      {money(row.available)}
-                      {row.held > 0 ? (
-                        <span className="block text-xs text-muted-foreground">
-                          {money(row.held)} held
-                        </span>
-                      ) : null}
-                    </td>
-                    <td
-                      className={`px-3 py-3 ${lowFloat ? "text-destructive font-semibold" : "text-muted-foreground"}`}
-                    >
-                      {row.meta_float === null ? "—" : money(row.meta_float)}
-                    </td>
-                    <td className="px-3 py-3">{money(row.mtd_consumed)}</td>
-                    <td className="px-3 py-3 text-primary">{money(row.mtd_margin)}</td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      <span className="text-foreground">{row.sent}</span> sent · {row.delivered}{" "}
-                      delivered · {row.failed} failed
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {number?.quality ? `${number.quality} · ` : ""}
-                      {number?.tier === null || number?.tier === undefined
-                        ? "Tier unknown"
-                        : `Tier ${number.tier}`}
-                    </td>
-                    <td className="px-3 py-3">
-                      {row.pending_topups > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => setDrawer(true)}
-                          className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600"
-                        >
-                          {row.pending_topups} due
-                        </button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
+      <Tabs
+        defaultValue="workspaces"
+        className="mt-6"
+        onValueChange={(value) => {
+          if (value === "reconcile" && reconcile === null && !reconcileLoading) {
+            void loadReconcile();
+          }
+        }}
+      >
+        <TabsList>
+          <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
+          <TabsTrigger value="reconcile">Reconcile</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="workspaces" className="mt-4">
+          {!sorted ? (
+            <TableSkeleton rows={8} />
+          ) : sorted.length === 0 && !error ? (
+            <EmptyState
+              icon={Building2}
+              title="No billing-enabled workspaces yet"
+              description="Turn billing on for a workspace and its wallet, usage and margin will appear here."
+            />
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-border/70 bg-card shadow-sm">
+              <table className="w-full min-w-[1500px] text-sm">
+                <thead className="border-b border-border/70 bg-muted/40">
+                  <tr>
+                    <Th label="Workspace" sortKey="name" />
+                    <Th label="Plan" />
+                    <Th label="Funding" />
+                    <Th label="Available" sortKey="available" />
+                    <Th label="Meta estimate" />
+                    <Th label="Spent (MTD)" sortKey="mtd_consumed" />
+                    <Th label="Margin (MTD)" sortKey="mtd_margin" />
+                    <Th label="AI answers" sortKey="ai_answers" />
+                    <Th label="AI cost" />
+                    <Th label="AI billed" />
+                    <Th label="AI margin" sortKey="ai_margin" />
+                    <Th label="Model mix" />
+                    <Th label="Messages" sortKey="sent" />
+                    <Th label="Number" />
+                    <Th label="Top-ups" sortKey="pending_topups" />
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {sorted.map((row) => {
+                    const lowCredits = row.available < Number(row.low_credit_threshold ?? 0);
+                    const lowFloat =
+                      row.meta_float !== null && row.meta_float < Number(row.meta_float_target ?? 0);
+                    const number = row.numbers[0] ?? null;
+                    return (
+                      <tr
+                        key={row.organization_id}
+                        className="border-b border-border/50 last:border-0 transition-colors duration-150 hover:bg-muted/30"
+                      >
+                        <td className="px-3 py-3">
+                          <Link
+                            to="/admin/organizations"
+                            className="font-medium text-foreground hover:text-primary"
+                          >
+                            {row.name}
+                          </Link>
+                          <p className="text-xs text-muted-foreground">
+                            {row.last_activity
+                              ? `Active ${new Date(row.last_activity).toLocaleDateString("en-IN")}`
+                              : "No activity yet"}
+                          </p>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className="font-medium text-foreground">
+                            {row.plan_name ?? "—"}
+                          </span>
+                          {row.plan_status ? (
+                            <span
+                              className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${statusTone(row.plan_status)}`}
+                            >
+                              {row.plan_status.replace(/_/g, " ")}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                            {FUNDING_LABEL[row.funding_model ?? ""] ?? "—"}
+                          </span>
+                        </td>
+                        <td
+                          className={`px-3 py-3 ${lowCredits ? "text-amber-600 font-semibold" : "text-foreground"}`}
+                        >
+                          {money(row.available)}
+                          {row.held > 0 ? (
+                            <span className="block text-xs text-muted-foreground">
+                              {money(row.held)} held
+                            </span>
+                          ) : null}
+                        </td>
+                        <td
+                          className={`px-3 py-3 ${lowFloat ? "text-destructive font-semibold" : "text-muted-foreground"}`}
+                        >
+                          {row.meta_float === null ? "—" : money(row.meta_float)}
+                        </td>
+                        <td className="px-3 py-3">{money(row.mtd_consumed)}</td>
+                        <td className="px-3 py-3">
+                          <Margin value={row.mtd_margin} />
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className="text-foreground">{row.ai.answers}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {row.ai.within_allowance} included · {row.ai.over_allowance} over
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          {money(row.ai.provider_cost)}
+                          <span className="block text-xs text-muted-foreground">
+                            {money(row.ai.avg_cost_per_answer)} / answer
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">{money(row.ai.billed)}</td>
+                        <td className="px-3 py-3">
+                          <Margin value={row.ai.margin} />
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          {row.ai.answers === 0
+                            ? "—"
+                            : `Everyday ${row.ai.everyday_pct}% · Careful ${row.ai.careful_pct}%`}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          <span className="text-foreground">{row.sent}</span> sent ·{" "}
+                          {row.delivered} delivered · {row.failed} failed
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          {number?.quality ? `${number.quality} · ` : ""}
+                          {number?.tier === null || number?.tier === undefined
+                            ? "Tier unknown"
+                            : `Tier ${number.tier}`}
+                        </td>
+                        <td className="px-3 py-3">
+                          {row.pending_topups > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setDrawer(true)}
+                              className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600"
+                            >
+                              {row.pending_topups} due
+                            </button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="reconcile" className="mt-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              Month by month, per workspace: what clients consumed, what Meta and the AI providers
+              actually cost us, and what the month earned.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={() => void loadReconcile()}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!reconcile || reconcile.length === 0}
+                onClick={() =>
+                  downloadCsv(
+                    `aidwar-reconcile-${new Date().toISOString().slice(0, 10)}.csv`,
+                    reconcileCsv(reconcile ?? []),
+                  )
+                }
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+            </div>
+          </div>
+
+          {reconcileLoading || reconcile === null ? (
+            <TableSkeleton rows={6} />
+          ) : reconcile.length === 0 ? (
+            <EmptyState
+              icon={Building2}
+              title="Nothing to reconcile yet"
+              description="Once workspaces send messages or use the AI employee, each month appears here with its true cost of goods."
+            />
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-border/70 bg-card shadow-sm">
+              <table className="w-full min-w-[1400px] text-sm">
+                <thead className="border-b border-border/70 bg-muted/40">
+                  <tr>
+                    {RECONCILE_HEADERS.map((h) => (
+                      <th
+                        key={h}
+                        className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold text-muted-foreground"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconcile.map((r) => (
+                    <tr
+                      key={`${r.organization_id}-${r.month}`}
+                      className="border-b border-border/50 last:border-0 transition-colors duration-150 hover:bg-muted/30"
+                    >
+                      <td className="px-3 py-3 text-muted-foreground">{r.month}</td>
+                      <td className="px-3 py-3 font-medium text-foreground">{r.name}</td>
+                      <td className="px-3 py-3">{money(r.messaging_consumed)}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{money(r.meta_cost)}</td>
+                      <td className="px-3 py-3">
+                        <Margin value={r.messaging_margin} />
+                      </td>
+                      <td className="px-3 py-3">{r.ai_answers}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{r.ai_within_allowance}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{r.ai_over_allowance}</td>
+                      <td className="px-3 py-3 text-muted-foreground">
+                        {money(r.ai_provider_cost)}
+                      </td>
+                      <td className="px-3 py-3">{money(r.ai_billed)}</td>
+                      <td className="px-3 py-3">
+                        <Margin value={r.ai_margin} />
+                      </td>
+                      <td className="px-3 py-3 text-muted-foreground">
+                        {money(r.ai_avg_cost_per_answer)}
+                      </td>
+                      <td className="px-3 py-3 text-muted-foreground">{r.ai_everyday_pct}%</td>
+                      <td className="px-3 py-3 text-muted-foreground">{r.ai_careful_pct}%</td>
+                      <td className="px-3 py-3">{money(r.plan_fees)}</td>
+                      <td className="px-3 py-3">
+                        <Margin value={r.total_margin} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       <TopupsDrawer
         open={drawer}
