@@ -105,12 +105,22 @@ export const Route = createFileRoute("/api/admin/billing")({
               });
             }
 
+            case "plan_change_preview":
+              return Response.json(
+                await core.planChangePreview(supabase, {
+                  organizationId: orgId,
+                  planKey: String(payload["plan_key"] ?? ""),
+                  actorId,
+                }),
+              );
+
             case "assign_plan":
               return Response.json(
                 await core.assignPlan(supabase, {
                   organizationId: orgId,
                   planKey: String(payload["plan_key"] ?? ""),
                   actorId,
+                  confirm: payload["confirm"] === true,
                   ...(payload["status"] ? { status: String(payload["status"]) } : {}),
                 }),
               );

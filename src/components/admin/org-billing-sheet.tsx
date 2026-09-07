@@ -8,7 +8,18 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -21,6 +32,22 @@ import { MESSAGE_CATEGORIES, money, rateMoney, ledgerLabel } from "@/lib/billing
 import { GST_STATES, gstinStateMismatch } from "@/lib/gst-states";
 
 type AnyRow = Record<string, unknown>;
+
+type PlanChangePreview = {
+  plan_key: string;
+  plan_name: string;
+  features_off: { key: string; name: string; live: { label: string; count: number }[] }[];
+  locked_members: { user_id: string; name: string | null }[];
+  locked_numbers: { id: string; label: string }[];
+  subscription: {
+    mismatch: boolean;
+    current_plan_name: string | null;
+    status: string | null;
+    cycle: string | null;
+    current_period_end: string | null;
+  } | null;
+  requires_confirmation: boolean;
+};
 
 type OrgBilling = {
   summary: AnyRow;
@@ -118,6 +145,8 @@ export function OrgBillingSheet({
   const [rateDraft, setRateDraft] = useState<Record<string, { mode: string; value: string }>>({});
   const [walletAmount, setWalletAmount] = useState("");
   const [walletReason, setWalletReason] = useState("");
+  const [planPreview, setPlanPreview] = useState<PlanChangePreview | null>(null);
+
 
   const load = useCallback(async () => {
     setData(null);
@@ -170,6 +199,55 @@ export function OrgBillingSheet({
     toast.success(done);
     await load();
     return true;
+  }
+
+  // Never move a workspace onto another plan blind: ask what switches off and
+  // whether the auto-pay mandate disagrees, and make a person confirm it.
+  async function startAssignPlan() {
+    setBusy("plan");
+    const result = await callApi<PlanChangePreview & { error?: string }>("/api/admin/billing", {
+      body: {
+        action: "plan_change_preview",
+        organization_id: organizationId,
+        plan_key: planKey,
+      },
+    });
+    setBusy(null);
+    if (result.error || result.data?.error || !result.data) {
+      toast.error(result.error ?? result.data?.error ?? "We couldn't check that plan.");
+      return;
+    }
+    if (result.data.requires_confirmation) {
+      setPlanPreview(result.data);
+      return;
+    }
+    await confirmAssignPlan();
+  }
+
+  async function confirmAssignPlan() {
+    setPlanPreview(null);
+    setBusy("plan");
+    const result = await callApi<{
+      ok?: boolean;
+      error?: string;
+      mandate?: { changed: boolean; note: string };
+    }>("/api/admin/billing", {
+      body: {
+        action: "assign_plan",
+        organization_id: organizationId,
+        plan_key: planKey,
+        status: planStatus,
+        confirm: true,
+      },
+    });
+    setBusy(null);
+    if (result.error || result.data?.error) {
+      toast.error(result.error ?? result.data?.error ?? "That didn't work.");
+      return;
+    }
+    const note = result.data?.mandate?.changed ? ` ${result.data.mandate.note}` : "";
+    toast.success(`Plan assigned.${note}`);
+    await load();
   }
 
   // A bad sync can leave a workspace with features switched off that its plan
@@ -286,17 +364,7 @@ export function OrgBillingSheet({
                   </Field>
                 </div>
 
-                <Button
-                  disabled={!planKey || busy === "plan"}
-                  onClick={() =>
-                    void act(
-                      "assign_plan",
-                      { plan_key: planKey, status: planStatus },
-                      "plan",
-                      "Plan assigned.",
-                    )
-                  }
-                >
+                <Button disabled={!planKey || busy === "plan"} onClick={() => void startAssignPlan()}>
                   {busy === "plan" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Assign plan
                 </Button>
@@ -844,6 +912,85 @@ export function OrgBillingSheet({
           </Tabs>
         )}
       </SheetContent>
+
+      <AlertDialog open={planPreview !== null} onOpenChange={(o) => !o && setPlanPreview(null)}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Move {organizationName} to {planPreview?.plan_name}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Here's exactly what changes for them. Nothing is deleted — it all comes back on a
+              bigger plan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="max-h-80 space-y-4 overflow-y-auto text-sm">
+            {planPreview?.features_off.length ? (
+              <div>
+                <p className="font-medium">These switch off</p>
+                <ul className="mt-1 space-y-1 text-muted-foreground">
+                  {planPreview.features_off.map((f) => (
+                    <li key={f.key}>
+                      {f.name}
+                      {f.live.length > 0 ? (
+                        <span className="text-destructive">
+                          {" "}
+                          — pauses {f.live.map((l) => `${l.count} ${l.label}`).join(", ")}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {planPreview?.locked_members.length ? (
+              <div>
+                <p className="font-medium">These teammates go read-only</p>
+                <p className="mt-1 text-muted-foreground">
+                  {planPreview.locked_members.map((m) => m.name ?? "Teammate").join(", ")}
+                </p>
+              </div>
+            ) : null}
+
+            {planPreview?.locked_numbers.length ? (
+              <div>
+                <p className="font-medium">These numbers stop sending</p>
+                <p className="mt-1 text-muted-foreground">
+                  {planPreview.locked_numbers.map((n) => n.label).join(", ")}
+                </p>
+              </div>
+            ) : null}
+
+            {planPreview?.subscription?.mismatch ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                <p className="font-medium text-destructive">Auto-pay is on a different plan</p>
+                <p className="mt-1 text-muted-foreground">
+                  Their mandate currently charges{" "}
+                  {planPreview.subscription.current_plan_name ?? "another plan"} (
+                  {planPreview.subscription.cycle ?? "monthly"}
+                  {planPreview.subscription.current_period_end
+                    ? `, next cycle ${new Date(
+                        planPreview.subscription.current_period_end,
+                      ).toLocaleDateString("en-IN")}`
+                    : ""}
+                  ). On confirm we move it to {planPreview.plan_name} from the next cycle, or stop
+                  it at the end of this period if the provider won't move it.
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Leave it</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmAssignPlan()}>
+              Yes, change the plan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
+
   );
 }
