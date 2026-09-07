@@ -621,7 +621,7 @@ export async function drainBillingNotifications(
         .eq("name", templateName)
         .maybeSingle();
       if (!template) {
-        await mark(id, "failed", "template_missing");
+        await mark(row, "failed", "template_missing");
         counts.failed += 1;
         continue;
       }
@@ -653,16 +653,16 @@ export async function drainBillingNotifications(
       );
 
       if (res.ok) {
-        await mark(id, "sent");
+        await mark(row, "sent");
         counts.sent += 1;
       } else {
         const text = (await res.text()).slice(0, 300);
-        await mark(id, "failed", text || "send_failed");
+        await mark(row, "failed", text || "send_failed");
         counts.failed += 1;
       }
     } catch (error) {
       try {
-        await mark(id, "failed", String((error as Error)?.message ?? error).slice(0, 300));
+        await mark(row, "failed", String((error as Error)?.message ?? error).slice(0, 300));
       } catch {
         // a notice that can't even be marked must not stop the drain
       }
