@@ -50,6 +50,21 @@ function SignupPage() {
       setError("Password must be at least 8 characters.");
       return;
     }
+    // Aiden recognises the owner by this number when they message him, so a
+    // 10-digit Indian mobile becomes +91 and anything else must be full E.164.
+    const raw = String(form.get("phone") ?? "").trim();
+    const digits = raw.replace(/\D/g, "");
+    const phone = raw.startsWith("+")
+      ? `+${digits}`
+      : digits.length === 10
+        ? `+91${digits}`
+        : digits
+          ? `+${digits}`
+          : "";
+    if (!/^\+\d{10,15}$/.test(phone)) {
+      setError("Enter your WhatsApp number — 10 digits for India, or with the country code.");
+      return;
+    }
     setPending(true);
     setError(null);
     const { data, error: err } = await aidwar.auth.signUp({
@@ -57,7 +72,7 @@ function SignupPage() {
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/login`,
-        data: { full_name: String(form.get("full_name") ?? "").trim() },
+        data: { full_name: String(form.get("full_name") ?? "").trim(), phone },
       },
     });
     setPending(false);
@@ -71,6 +86,7 @@ function SignupPage() {
     }
     setCheckEmail(true);
   }
+
 
   return (
     <AuthShell
