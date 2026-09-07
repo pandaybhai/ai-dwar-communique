@@ -97,10 +97,14 @@ export function CampaignsView({
       {visible.length === 0 ? (
         <EmptyState
           icon={Megaphone}
-          title="No campaigns yet"
-          description="Pick an audience, choose an approved template, and reach every opted-in customer in one go."
+          title={rows.length === 0 ? "No campaigns yet" : "Nothing in this list"}
+          description={
+            rows.length === 0
+              ? "Pick an audience, choose an approved template, and reach every opted-in customer in one go."
+              : "No campaign is in that state right now. Try another one above."
+          }
           action={
-            isAdmin ? (
+            isAdmin && rows.length === 0 ? (
               <Button className="rounded-full" onClick={() => setWizardOpen(true)}>
                 <Plus className="mr-1.5 h-4 w-4" /> Create your first campaign
               </Button>
