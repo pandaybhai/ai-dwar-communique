@@ -176,12 +176,4 @@ export async function handleMerchantInbound(
     text ||
       "I'm having trouble thinking just now. Give me a minute and ask me again — someone from the AiDwar team is watching this chat too.",
   );
-
-  if (!session.first_sourced_run_id && run.id) {
-    await supabase
-      .from("onboarding_sessions")
-      .update({ first_sourced_run_id: run.id, updated_at: new Date().toISOString() })
-      .eq("id", session.id)
-      .is("first_sourced_run_id", null);
-  }
 }
