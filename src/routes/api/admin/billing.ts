@@ -48,8 +48,25 @@ export const Route = createFileRoute("/api/admin/billing")({
               return Response.json(
                 await admin.adminReconcile(supabase, actorId, {
                   months: Number(payload["months"] ?? 6),
+                  from: (payload["from"] as string) || null,
+                  to: (payload["to"] as string) || null,
                 }),
               );
+
+            case "ai_runs_detail": {
+              if (!orgId) return jsonError("Which workspace?");
+              const month = String(payload["month"] ?? "");
+              if (!/^\d{4}-\d{2}$/.test(month)) return jsonError("Which month?");
+              const [year, mon] = month.split("-").map(Number) as [number, number];
+              const { aiRunDetail } = await import("@/lib/billing-ai-economics.server");
+              return Response.json(
+                await aiRunDetail(supabase, {
+                  organizationId: orgId,
+                  fromIso: new Date(Date.UTC(year, mon - 1, 1)).toISOString(),
+                  toIso: new Date(Date.UTC(year, mon, 1)).toISOString(),
+                }),
+              );
+            }
 
             case "topup_tasks":
               return Response.json({ tasks: await admin.listTopupTasks(supabase, actorId) });
