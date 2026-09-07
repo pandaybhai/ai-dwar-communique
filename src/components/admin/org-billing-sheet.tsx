@@ -26,7 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { callApi } from "@/lib/whatsapp-client";
-import { FEATURES } from "@/lib/feature-registry";
+import { OrgFeatureControls } from "@/components/admin/org-feature-controls";
 import { MESSAGE_CATEGORIES, money, rateMoney, ledgerLabel } from "@/lib/billing";
 
 type AnyRow = Record<string, unknown>;
@@ -309,27 +309,11 @@ export function OrgBillingSheet({
             {/* b) Features */}
             <TabsContent value="features" className="mt-4 space-y-4">
               <Section title="Features" description="Anything switched off disappears cleanly from their workspace.">
-                <div className="divide-y divide-border/60">
-                  {FEATURES.map((feature) => {
-                    const on = effective(feature.key);
-                    const override = data.overrides.find((o) => o.flag_key === feature.key);
-                    return (
-                      <div key={feature.key} className="flex items-center justify-between gap-4 py-3">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{feature.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {override ? "Set by hand — differs from the plan" : "Following the plan"}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={on}
-                          disabled={busy === feature.key}
-                          onCheckedChange={(v) => void toggleFeature(feature.key, v)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                <OrgFeatureControls
+                  organizationId={organizationId}
+                  compact
+                  onChanged={() => void load()}
+                />
               </Section>
             </TabsContent>
 
