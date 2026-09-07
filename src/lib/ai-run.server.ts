@@ -863,6 +863,8 @@ export async function executeRun(
         status: result.status,
         error: result.error ?? null,
         comparison_id: comparisonId,
+        metadata: options.metadata ?? {},
+
         prompt_rules_version: options.promptRulesVersion ?? null,
 
       })
