@@ -784,23 +784,35 @@ export async function queueTopupTask(
   const ratio = rate.rate > 0 && metaRate > 0 ? metaRate / rate.rate : 1;
   const metaAmount = round2(input.metaAmount ?? credits * ratio);
 
-  await supabase.from("topup_tasks").insert({
-    organization_id: input.organizationId,
-    whatsapp_account_id: input.whatsappAccountId ?? null,
-    trigger: input.trigger,
-    credits_amount: credits,
-    meta_amount: metaAmount,
-    margin_amount: round2(credits - metaAmount),
-    status: "pending",
-    due_at: new Date(Date.now() + 12 * 3600e3).toISOString(),
-    payment_id: input.paymentId ?? null,
-  });
+  const { data: task } = await supabase
+    .from("topup_tasks")
+    .insert({
+      organization_id: input.organizationId,
+      whatsapp_account_id: input.whatsappAccountId ?? null,
+      trigger: input.trigger,
+      credits_amount: credits,
+      meta_amount: metaAmount,
+      margin_amount: round2(credits - metaAmount),
+      status: "pending",
+      due_at: new Date(Date.now() + 12 * 3600e3).toISOString(),
+      payment_id: input.paymentId ?? null,
+    })
+    .select("id")
+    .maybeSingle();
 
+  // The notice carries the task id, not the numbers: the amounts are read from
+  // the task when the message actually goes out, so a corrected task is
+  // reflected in the message rather than a figure frozen at queue time.
   await notify(supabase, {
     organizationId: input.organizationId,
     audience: "admin",
     kind: "topup_due",
-    payload: { credits, meta_amount: metaAmount, trigger: input.trigger },
+    payload: {
+      task_id: (task as { id?: string } | null)?.id ?? null,
+      credits,
+      meta_amount: metaAmount,
+      trigger: input.trigger,
+    },
   });
 }
 
