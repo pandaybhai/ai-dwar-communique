@@ -440,6 +440,32 @@ export async function createCreditPurchase(
     | Record<string, unknown>
     | null;
 
+  // One live link per workspace: older unpaid attempts are closed off so a
+  // stale link can never be paid days later against the wrong pack.
+  const { data: stale } = await supabase
+    .from("payments")
+    .select("id, raw")
+    .eq("organization_id", input.organizationId)
+    .eq("purpose", "credit_purchase")
+    .in("status", ["created", "pending"]);
+  for (const old of ((stale ?? []) as Record<string, unknown>[])) {
+    await supabase
+      .from("payments")
+      .update({
+        status: "failed",
+        raw: { ...((old["raw"] ?? {}) as Record<string, unknown>), reason: "superseded" },
+      })
+      .eq("id", old["id"] as string);
+  }
+
+  const packRaw = {
+    pack_amount: base,
+    gst,
+    gross: total,
+    bonus: Number(pack.bonus_amount ?? 0),
+    pack_name: pack.name,
+  };
+
   const { data: payment, error: payErr } = await supabase
     .from("payments")
     .insert({
@@ -449,10 +475,11 @@ export async function createCreditPurchase(
       purpose: "credit_purchase",
       credit_pack_id: pack.id,
       coupon_id: coupon ? (coupon["id"] as string) : null,
-      amount: total,
+      // Stored ex-GST; the gross that Razorpay collects lives in raw.
+      amount: base,
       currency: pack.currency ?? "INR",
       status: "created",
-      raw: { pack_amount: base, gst, bonus: Number(pack.bonus_amount ?? 0) },
+      raw: packRaw,
       created_by: input.userId,
     })
     .select("id")
@@ -469,18 +496,28 @@ export async function createCreditPurchase(
       email: (account?.["billing_email"] as string) ?? null,
       contact: (account?.["billing_whatsapp"] as string) ?? null,
     },
-    callbackUrl: `${input.origin}/app/billing?payment=${payment.id}`,
+    callbackUrl: `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
+    expireBy: Math.floor(Date.now() / 1000) + 24 * 3600,
     notes: { organization_id: input.organizationId, payment_id: payment.id as string },
   });
 
   if (!link || error) {
-    await supabase.from("payments").update({ status: "failed", raw: { error } }).eq("id", payment.id);
+    await supabase
+      .from("payments")
+      .update({ status: "failed", raw: { ...packRaw, error } })
+      .eq("id", payment.id);
     return { error: error ?? "We couldn't create the payment link. Please try again." };
   }
 
   await supabase
     .from("payments")
-    .update({ provider_link_id: link.id, status: "pending", raw: link.raw })
+    .update({
+      provider_link_id: link.id,
+      status: "pending",
+      expires_at: new Date(Date.now() + 24 * 3600e3).toISOString(),
+      // Merge, never replace: the pack figures are what settlement runs on.
+      raw: { ...packRaw, link: link.raw },
+    })
     .eq("id", payment.id);
 
   return { url: link.short_url, payment_id: payment.id as string };
