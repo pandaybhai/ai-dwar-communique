@@ -32,6 +32,19 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
         const denied = await requirePermission(auth, "inbox.reply", "reply to conversations");
         if (denied) return denied;
 
+        // A locked or paused workspace spends nothing until a plan is chosen.
+        {
+          const { data: orgRow } = await supabase
+            .from("organizations")
+            .select("plan_status")
+            .eq("id", organizationId)
+            .maybeSingle();
+          const planStatus = (orgRow as { plan_status?: string | null } | null)?.plan_status ?? null;
+          if (planStatus === "locked" || planStatus === "paused") {
+            return jsonError("This workspace is locked — choose a plan to continue.", 402);
+          }
+        }
+
         const messageType = String(payload["message_type"] ?? "text");
         const conversationId = (payload["conversation_id"] as string) ?? null;
         const rawPhone = String(payload["phone"] ?? "").trim();

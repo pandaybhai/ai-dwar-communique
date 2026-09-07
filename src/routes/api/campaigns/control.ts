@@ -29,6 +29,20 @@ export const Route = createFileRoute("/api/campaigns/control")({
           return jsonError("Unknown action.");
         }
 
+        // Starting or restarting spend needs an unlocked workspace; pausing
+        // and cancelling stay open so a locked workspace can still stop work.
+        if (action === "resume" || action === "approve") {
+          const { data: orgRow } = await supabase
+            .from("organizations")
+            .select("plan_status")
+            .eq("id", organizationId)
+            .maybeSingle();
+          const planStatus = (orgRow as { plan_status?: string | null } | null)?.plan_status ?? null;
+          if (planStatus === "locked" || planStatus === "paused") {
+            return jsonError("This workspace is locked — choose a plan to continue.", 402);
+          }
+        }
+
         const { data: campaign } = await supabase
           .from("campaigns")
           .select("id, status, scheduled_at, held_amount, charged_amount")

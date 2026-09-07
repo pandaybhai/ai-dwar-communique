@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentAnswer, suggestReply } from "@/lib/ai-tasks.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
 import { sendServiceImage, sendServiceText } from "@/lib/service-text.server";
+import { isServiceWindowOpen } from "@/lib/service-window";
 
 export type AgentInboundArgs = {
   organizationId: string;
@@ -66,6 +67,34 @@ export async function runAgentOnInbound(
     .maybeSingle();
   if ((settings as { ai_enabled?: boolean } | null)?.ai_enabled === false) {
     return { acted: false, reason: "ai_disabled" };
+  }
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("assigned_to, needs_human, handover_state, last_customer_message_at, status")
+    .eq("id", args.conversationId)
+    .maybeSingle();
+  const convo = (conversation ?? null) as {
+    assigned_to?: string | null;
+    needs_human?: boolean | null;
+    last_customer_message_at?: string | null;
+  } | null;
+
+  // A thread a person owns, or one already waiting on a person, is theirs.
+  // And we never pay for an answer WhatsApp wouldn't let us send.
+  if (mode === "replying") {
+    if (convo?.assigned_to) {
+      log("skipped", { conversation_id: args.conversationId, reason: "assigned_to_human" });
+      return { acted: false, reason: "assigned_to_human" };
+    }
+    if (convo?.needs_human === true) {
+      log("skipped", { conversation_id: args.conversationId, reason: "awaiting_human" });
+      return { acted: false, reason: "awaiting_human" };
+    }
+    if (!isServiceWindowOpen(convo)) {
+      log("skipped", { conversation_id: args.conversationId, reason: "window_closed" });
+      return { acted: false, reason: "window_closed" };
+    }
   }
 
   const common = { organizationId: args.organizationId, actorUserId: null, actingRole: null };
