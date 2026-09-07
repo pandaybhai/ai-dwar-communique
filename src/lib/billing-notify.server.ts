@@ -562,12 +562,41 @@ export async function drainBillingNotifications(
       }
 
       if (conversationId) {
+        // Inside the window an invoice goes out as the document itself — the
+        // link belongs only to the template fallback.
+        if (kind === "invoice_issued" && payload["pdf_path"]) {
+          const { invoiceDownloadUrl } = await import("@/lib/invoices.server");
+          const url = await invoiceDownloadUrl(supabase, String(payload["pdf_path"]));
+          if (url) {
+            const { sendServiceDocument } = await import("@/lib/service-text.server");
+            const number = String(payload["invoice_number"] ?? "invoice");
+            const docResult = await sendServiceDocument(supabase, {
+              organizationId: platformOrgId,
+              phoneNumberId: connection.phoneNumberId,
+              accessToken: connection.accessToken,
+              conversationId,
+              to,
+              documentUrl: url,
+              fileName: `${number.replace(/\//g, "-")}.pdf`,
+              caption: `Your invoice ${number} for ${money(Number(payload["amount"] ?? 0))} — thank you.`,
+            });
+            if (docResult.ok) {
+              await mark(row, "sent");
+              counts.sent += 1;
+              continue;
+            }
+          }
+        }
+
         const { sendServiceText } = await import("@/lib/service-text.server");
         const spec = BILLING_TEMPLATES.find((t) => t.name === templateName);
-        const body = (spec?.body ?? "{{1}} {{2}} {{3}}")
-          .replace("{{1}}", params[0] ?? "")
-          .replace("{{2}}", params[1] ?? "")
-          .replace("{{3}}", params[2] ?? "");
+        const body =
+          kind === "topup_due" || kind === "topup_reminder"
+            ? await topupText(supabase, orgName, payload)
+            : (spec?.body ?? "{{1}} {{2}} {{3}}")
+                .replace("{{1}}", params[0] ?? "")
+                .replace("{{2}}", params[1] ?? "")
+                .replace("{{3}}", params[2] ?? "");
         const result = await sendServiceText(supabase, {
           organizationId: platformOrgId,
           phoneNumberId: connection.phoneNumberId,
@@ -577,7 +606,7 @@ export async function drainBillingNotifications(
           body,
         });
         if (result.ok) {
-          await mark(id, "sent");
+          await mark(row, "sent");
           counts.sent += 1;
           continue;
         }
