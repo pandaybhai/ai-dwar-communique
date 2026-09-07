@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Bot, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
