@@ -673,7 +673,7 @@ export async function voidAndReissueInvoice(
     return issued;
   }
 
-  await markPaid(supabase, built.invoice_id, paymentId, round2(Number(invoice["total"] ?? 0)) || undefined);
+  await markPaid(supabase, built.invoice_id, paymentId, round2(Number(payment["amount"] ?? 0)) || base);
 
   const oldNotes = (invoice["notes"] as string | null) ?? null;
   await supabase
