@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { callApi } from "@/lib/whatsapp-client";
 import { OrgFeatureControls } from "@/components/admin/org-feature-controls";
 import { MESSAGE_CATEGORIES, money, rateMoney, ledgerLabel } from "@/lib/billing";
+import { GST_STATES, gstinStateMismatch } from "@/lib/gst-states";
 
 type AnyRow = Record<string, unknown>;
 
@@ -60,19 +61,6 @@ const FUNDING_MODELS = [
   { value: "meta_direct", label: "Client pays Meta directly" },
   { value: "aidwar_prepaid", label: "We fund Meta for them" },
   { value: "bsp", label: "Through a partner (BSP)" },
-];
-
-const STATE_CODES = [
-  "27 Maharashtra",
-  "07 Delhi",
-  "29 Karnataka",
-  "33 Tamil Nadu",
-  "24 Gujarat",
-  "36 Telangana",
-  "19 West Bengal",
-  "09 Uttar Pradesh",
-  "08 Rajasthan",
-  "32 Kerala",
 ];
 
 function Field({
@@ -288,7 +276,14 @@ export function OrgBillingSheet({
                   <Field label="Legal name">
                     <Input value={account["legal_name"] ?? ""} onChange={(e) => setAccount((p) => ({ ...p, legal_name: e.target.value }))} />
                   </Field>
-                  <Field label="GSTIN" hint="15 characters, like 27AAAAA0000A1Z5">
+                  <Field
+                    label="GSTIN"
+                    hint={
+                      gstinStateMismatch(account["gstin"] ?? "", account["state_code"] ?? "")
+                        ? "Heads up: this GSTIN starts with a different state code than the state chosen below. Save anyway if that's right."
+                        : "15 characters, like 27AAAAA0000A1Z5"
+                    }
+                  >
                     <Input
                       value={account["gstin"] ?? ""}
                       onChange={(e) => setAccount((p) => ({ ...p, gstin: e.target.value.toUpperCase() }))}
@@ -301,9 +296,9 @@ export function OrgBillingSheet({
                       className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
                     >
                       <option value="">Choose a state</option>
-                      {STATE_CODES.map((s) => (
-                        <option key={s} value={s.slice(0, 2)}>
-                          {s}
+                      {GST_STATES.map((st) => (
+                        <option key={st.code} value={st.code}>
+                          {st.code} {st.name}
                         </option>
                       ))}
                     </select>
