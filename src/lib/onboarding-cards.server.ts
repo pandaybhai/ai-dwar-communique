@@ -58,7 +58,7 @@ function fill(template: string, vars: Record<string, string | number>): string {
  * lands at 1080x1350. We render the card itself and let the rasteriser do the
  * scaling, which is sharper and avoids relying on transform support.
  */
-export function cardMarkup(template: string): string {
+function cardMarkup(template: string): string {
   const body = template.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? template;
   const withoutScaler = body.replace(/<div style="transform:scale\(2\)[^"]*">/i, "<div>");
   return withoutScaler.replace(/<style>[\s\S]*?<\/style>/gi, "").trim();
@@ -159,7 +159,7 @@ function parseStyle(value: string): Record<string, string> {
  * Satori wants React-shaped elements, not HTML. This is a deliberately small
  * converter for our own templates: inline styles, plain divs and inline SVG.
  */
-export function toVNode(node: ParsedNode): unknown {
+function toVNode(node: ParsedNode): unknown {
   if (node.type === TEXT) return node.value ?? "";
   // Comments and doctype carry nothing satori can draw.
   if (node.type !== ELEMENT && node.type !== DOCUMENT) return null;
