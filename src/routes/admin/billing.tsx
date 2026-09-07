@@ -676,17 +676,44 @@ function AdminBilling() {
               Month by month, per workspace: what clients consumed, what Meta and the AI providers
               actually cost us, and what the month earned.
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-xs text-muted-foreground" htmlFor="reconcile-from">
+                From
+              </label>
+              <Input
+                id="reconcile-from"
+                type="month"
+                value={range.from}
+                max={range.to}
+                className="h-9 w-[150px]"
+                onChange={(event) =>
+                  setRange((prev) => ({ ...prev, from: event.target.value || prev.from }))
+                }
+              />
+              <label className="text-xs text-muted-foreground" htmlFor="reconcile-to">
+                To
+              </label>
+              <Input
+                id="reconcile-to"
+                type="month"
+                value={range.to}
+                min={range.from}
+                max={thisMonth}
+                className="h-9 w-[150px]"
+                onChange={(event) =>
+                  setRange((prev) => ({ ...prev, to: event.target.value || prev.to }))
+                }
+              />
               <Button variant="ghost" onClick={() => void loadReconcile()}>
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh
+                Apply
               </Button>
               <Button
                 variant="outline"
                 disabled={!reconcile || reconcile.length === 0}
                 onClick={() =>
                   downloadCsv(
-                    `aidwar-reconcile-${new Date().toISOString().slice(0, 10)}.csv`,
+                    `aidwar-reconcile-${range.from}-to-${range.to}.csv`,
                     reconcileCsv(reconcile ?? []),
                   )
                 }
@@ -696,6 +723,7 @@ function AdminBilling() {
               </Button>
             </div>
           </div>
+
 
           {reconcileLoading || reconcile === null ? (
             <TableSkeleton rows={6} />
