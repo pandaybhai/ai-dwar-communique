@@ -671,7 +671,7 @@ export async function settlePayment(
     const lines: import("@/lib/invoices.server").InvoiceLineInput[] = [
       {
         line_type: "credits" as const,
-        description: `Prepaid messaging credits${stored["pack_name"] ? ` — ${String(stored["pack_name"])}` : ""}`,
+        description: `Prepaid messaging credits${packName ? ` — ${packName}` : ""}`,
         sac_code: supplier.sac_messaging,
         unit_price: credits,
         metadata: { pack_id: payment.credit_pack_id ?? null },
@@ -693,8 +693,12 @@ export async function settlePayment(
       payment_id: payment.id as string,
     });
     if (!("error" in built)) {
-      await issueInvoice(supabase, built.invoice_id);
-      await markPaid(supabase, built.invoice_id, payment.id as string, Number(payment.amount ?? 0));
+      const issued = await issueInvoice(supabase, built.invoice_id);
+      if (!("error" in issued)) {
+        // The invoice is paid in full by the gross the customer actually paid.
+        const gross = Number(stored["gross"] ?? 0) || withGst(credits).total;
+        await markPaid(supabase, built.invoice_id, payment.id as string, gross);
+      }
     }
   } catch {
     // the credits are already in the wallet; the invoice can be re-issued
