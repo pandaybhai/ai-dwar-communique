@@ -270,8 +270,9 @@ async function unpauseForPayment(supabase: SupabaseClient, organizationId: strin
 }
 
 /**
- * A successful mandate charge: one payment row, one numbered tax invoice
- * carrying the plan fee plus the month's usage as informational lines.
+ * A successful mandate charge: one payment row, one numbered tax invoice.
+ * The mandate charges the plan fee only — usage is never added on to it; it
+ * is debited from prepaid credits and only stated on the invoice.
  */
 async function recordPlanCharge(
   supabase: SupabaseClient,
@@ -320,12 +321,14 @@ async function recordPlanCharge(
       provider: "razorpay",
       provider_payment_id: providerPaymentId,
       purpose: "plan_fee",
-      amount: gross,
+      // Same convention as credit purchases: the payment carries the ex-GST
+      // amount, with the tax and what was actually collected alongside it.
+      amount: base,
       currency: "INR",
       method: "mandate",
       status: "paid",
       paid_at: new Date().toISOString(),
-      raw: input.raw,
+      raw: { ...input.raw, gst_amount: round2(gross - base), gross_amount: gross },
     })
     .select("id")
     .maybeSingle();
