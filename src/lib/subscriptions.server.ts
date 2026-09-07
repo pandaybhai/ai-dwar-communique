@@ -311,7 +311,7 @@ async function recordPlanCharge(
       ? (version?.["price_annual"] as number | null)
       : (version?.["price_monthly"] as number | null);
   // The mandate charges GST-inclusive; the invoice states the base.
-  const base = listed === null || listed === undefined ? round2(gross / 1.18) : Number(listed);
+  const base = listed === null || listed === undefined ? round2(gross / 1.18) : round2(Number(listed));
 
   const { data: paymentRow } = await supabase
     .from("payments")
