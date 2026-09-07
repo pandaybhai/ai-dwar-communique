@@ -342,20 +342,24 @@ function AdminBilling() {
   }
 
   function Th({ label, sortKey }: { label: string; sortKey?: SortKey }) {
+    const definition = DEFINITIONS[label];
     return (
       <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
-        {sortKey ? (
-          <button
-            type="button"
-            onClick={() => toggleSort(sortKey)}
-            className="inline-flex items-center gap-1 transition-colors duration-150 hover:text-foreground"
-          >
-            {label}
-            <ArrowUpDown className="h-3 w-3" />
-          </button>
-        ) : (
-          label
-        )}
+        <span className="inline-flex items-center gap-1">
+          {sortKey ? (
+            <button
+              type="button"
+              onClick={() => toggleSort(sortKey)}
+              className="inline-flex items-center gap-1 transition-colors duration-150 hover:text-foreground"
+            >
+              {label}
+              <ArrowUpDown className="h-3 w-3" />
+            </button>
+          ) : (
+            label
+          )}
+          {definition ? <InfoHint text={definition} /> : null}
+        </span>
       </th>
     );
   }
