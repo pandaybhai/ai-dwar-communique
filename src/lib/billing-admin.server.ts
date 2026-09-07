@@ -308,13 +308,15 @@ export async function adminSyncNumber(
     phoneNumberId: connection.phoneNumberId,
     accessToken: connection.accessToken,
   });
-  if (!refreshed.ok) return { ok: false, error: refreshed.error };
+  if (!refreshed.ok) return { ok: false, error: refreshed.error ?? "Meta rejected the request." };
 
+  const rating = refreshed.qualityRating ?? "UNKNOWN";
+  const tier = refreshed.messagingTier ?? null;
   return {
     ok: true,
-    quality_rating: refreshed.qualityRating,
-    messaging_tier: refreshed.messagingTier,
-    tier_label: messagingTierLabel(refreshed.messagingTier ?? null),
+    quality_rating: rating,
+    messaging_tier: tier,
+    tier_label: messagingTierLabel(tier),
   };
 }
 
