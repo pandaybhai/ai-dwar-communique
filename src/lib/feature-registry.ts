@@ -1002,6 +1002,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "autopay_plan_changed",
       "dunning_advanced",
       "billing_templates_created",
+      "trial_expired",
 
     ],
 
