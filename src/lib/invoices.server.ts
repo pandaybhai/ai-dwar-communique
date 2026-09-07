@@ -113,6 +113,17 @@ export async function buildInvoice(
   const buyerCountry = String(buyer["country_code"] ?? "IN");
   const isExport = buyerCountry !== "IN";
   const isInterstate = !isExport && Boolean(buyerState) && buyerState !== supplier.state_code;
+  // Where the buyer's state is unknown, the place of supply is the supplier's
+  // own state (an unregistered buyer at the supplier's location).
+  const placeOfSupply = isExport ? buyerState : (buyerState ?? supplier.state_code);
+
+  if (input.lines.length === 0) return { error: "An invoice needs at least one line." };
+  if (!supplier.state_code) {
+    return { error: "Set the supplier state on the platform billing settings first." };
+  }
+  if (!isExport && !placeOfSupply) {
+    return { error: "We couldn't work out the place of supply for this invoice." };
+  }
 
   const buyerSnapshot = {
     name: (buyer["name"] as string | null) ?? (org["name"] as string),
