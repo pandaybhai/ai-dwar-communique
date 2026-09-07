@@ -743,9 +743,15 @@ function AdminBilling() {
                         key={h}
                         className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold text-muted-foreground"
                       >
-                        {h}
+                        <span className="inline-flex items-center gap-1">
+                          {h}
+                          {DEFINITIONS[h] ? <InfoHint text={DEFINITIONS[h]} /> : null}
+                        </span>
                       </th>
                     ))}
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
+                      AI detail
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
