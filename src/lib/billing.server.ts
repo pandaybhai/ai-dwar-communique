@@ -1125,7 +1125,11 @@ async function applyPlanFeatures(
       keptManual.push(feature.key);
       continue;
     }
-    const enabled = input.planFeatures.includes(feature.key);
+    // Plans list features by either name — the registry key ("ai") or the
+    // flag key ("ai_features"). Matching only one of them is what silently
+    // switched features off that the plan does include.
+    const enabled =
+      input.planFeatures.includes(feature.key) || input.planFeatures.includes(feature.flag_key);
     (enabled ? on : off).push(feature.key);
 
     const before = existing.get(feature.flag_key);
