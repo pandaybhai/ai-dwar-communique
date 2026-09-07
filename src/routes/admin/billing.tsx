@@ -755,6 +755,15 @@ function AdminBilling() {
         onClose={() => setDrawer(false)}
         onDone={() => void load()}
       />
+
+      <AiRunsDialog
+        open={drill !== null}
+        organizationId={drill?.id ?? null}
+        organizationName={drill?.name ?? ""}
+        month={drill?.month ?? null}
+        onClose={() => setDrill(null)}
+      />
     </div>
+    </TooltipProvider>
   );
 }
