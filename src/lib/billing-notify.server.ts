@@ -110,7 +110,7 @@ export async function resolvePlatformOrg(supabase: SupabaseClient): Promise<stri
   return (membership as { organization_id?: string } | null)?.organization_id ?? null;
 }
 
-/** Creates the six notice templates on the platform number for Meta review. */
+/** Creates all nine notice templates on the platform number for Meta review. */
 export async function ensureBillingTemplates(
   supabase: SupabaseClient,
   actorId: string,

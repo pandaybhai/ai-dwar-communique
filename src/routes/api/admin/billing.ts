@@ -225,6 +225,11 @@ export const Route = createFileRoute("/api/admin/billing")({
                 }),
               );
 
+            case "issue_pending_invoices": {
+              const { issuePendingInvoices } = await import("@/lib/invoices.server");
+              return Response.json(await issuePendingInvoices(supabase));
+            }
+
             case "create_billing_templates": {
               const { ensureBillingTemplates } = await import("@/lib/billing-notify.server");
               return Response.json(await ensureBillingTemplates(supabase, actorId));
