@@ -98,8 +98,14 @@ function EmployeePage() {
       setGate({ mode, message: (raw as { message: string }).message });
       return;
     }
-    if (error) toast.error(error);
-    else {
+    if (error) {
+      const billing = (raw as { billing?: boolean } | null)?.billing === true;
+      if (billing) {
+        toast.error(error, {
+          action: { label: "Go to billing", onClick: () => navigate({ to: "/app/billing" }) },
+        });
+      } else toast.error(error);
+    } else {
       toast.success("Saved.");
       void load();
     }
