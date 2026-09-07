@@ -179,3 +179,91 @@ export async function sendServiceImage(
     error: res.ok ? null : JSON.stringify(json).slice(0, 300),
   };
 }
+
+/**
+ * Sends one PDF as a session document message — used for an invoice inside the
+ * 24-hour window, where the merchant gets the document itself instead of a
+ * link to go and fetch it.
+ */
+export async function sendServiceDocument(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    conversationId: string;
+    to: string;
+    documentUrl: string;
+    fileName: string;
+    caption: string;
+  },
+): Promise<ServiceTextResult> {
+  if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("last_customer_message_at")
+    .eq("id", args.conversationId)
+    .eq("organization_id", args.organizationId)
+    .maybeSingle();
+  if (!isServiceWindowOpen(conversation)) {
+    return { ok: false, messageId: null, error: "service_window_closed" };
+  }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: args.to,
+      type: "document",
+      document: {
+        link: args.documentUrl,
+        filename: args.fileName,
+        caption: args.caption.slice(0, 1024),
+      },
+    }),
+  });
+
+  let json: AnyRecord = {};
+  try {
+    json = (await res.json()) as AnyRecord;
+  } catch {
+    json = {};
+  }
+  const metaMessageId =
+    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
+  const nowIso = new Date().toISOString();
+
+  const { data: inserted } = await supabase
+    .from("messages")
+    .insert({
+      organization_id: args.organizationId,
+      conversation_id: args.conversationId,
+      meta_message_id: metaMessageId,
+      direction: "outbound",
+      type: "document",
+      body: args.caption,
+      media_url: args.documentUrl,
+      media_mime: "application/pdf",
+      status: res.ok ? "pending" : "failed",
+      status_updated_at: nowIso,
+      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
+    })
+    .select("id")
+    .maybeSingle();
+
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: nowIso })
+    .eq("id", args.conversationId);
+
+  return {
+    ok: res.ok,
+    messageId: (inserted?.id as string | undefined) ?? null,
+    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
+  };
+}

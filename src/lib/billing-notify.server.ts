@@ -94,6 +94,7 @@ const TEMPLATE_FOR: Record<string, string> = {
   "client:low_credits": "client_low_credits",
   "admin:float_low": "admin_float_low",
   "admin:topup_due": "admin_topup_due",
+  "admin:topup_reminder": "admin_topup_due",
   "admin:settle_failed": "admin_settle_failed",
   "client:campaign_approval": "client_campaign_approval",
   "client:invoice_issued": "client_invoice_issued",
@@ -309,10 +310,11 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
     case "low_credits":
       return [orgName, money(Number(payload["available"] ?? 0)), link];
     case "topup_due":
+    case "topup_reminder":
       return [
         orgName,
         money(Number(payload["meta_amount"] ?? 0)),
-        money(Number(payload["credits"] ?? 0)),
+        money(Number(payload["credits_amount"] ?? payload["credits"] ?? 0)),
       ];
     case "settle_failed":
       return [orgName, money(Number(payload["amount"] ?? 0)), "https://aidwar.in/admin/billing"];
@@ -394,21 +396,73 @@ async function recipientFor(
   return phone ? normalizePhone(phone) : null;
 }
 
-/** Sends up to `limit` queued notices. One bad notice never stops the rest. */
+/** How many times a failed notice is retried before it is left alone. */
+const MAX_ATTEMPTS = 3;
+
+/**
+ * The live wording for a top-up notice: read from the task itself at send
+ * time, so a corrected task is what the owner sees.
+ */
+async function topupText(
+  supabase: SupabaseClient,
+  orgName: string,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  let meta = Number(payload["meta_amount"] ?? 0);
+  let margin = Number(payload["margin_amount"] ?? 0);
+  let credits = Number(payload["credits"] ?? 0);
+  let number: string | null = null;
+
+  const taskId = (payload["task_id"] as string | null) ?? null;
+  if (taskId) {
+    const { data: task } = await supabase
+      .from("topup_tasks")
+      .select("meta_amount, margin_amount, credits_amount, whatsapp_account_id")
+      .eq("id", taskId)
+      .maybeSingle();
+    if (task) {
+      const t = task as Record<string, unknown>;
+      meta = Number(t["meta_amount"] ?? meta);
+      margin = Number(t["margin_amount"] ?? margin);
+      credits = Number(t["credits_amount"] ?? credits);
+      if (t["whatsapp_account_id"]) {
+        const { data: account } = await supabase
+          .from("whatsapp_accounts")
+          .select("display_phone_number, waba_id")
+          .eq("id", t["whatsapp_account_id"] as string)
+          .maybeSingle();
+        const a = (account ?? {}) as Record<string, unknown>;
+        number = (a["display_phone_number"] as string) ?? (a["waba_id"] as string) ?? null;
+      }
+    }
+  }
+  if (margin === 0 && credits > 0) margin = Math.round((credits - meta) * 100) / 100;
+
+  const on = number ? ` on WABA ${number}` : "";
+  return `Top up ${money(meta)}${on} for ${orgName} · credits sold ${money(credits)} · your margin ${money(margin)}.`;
+}
+
+/** Sends up to `limit` pending notices. One bad notice never stops the rest. */
 export async function drainBillingNotifications(
   supabase: SupabaseClient,
   limit = 50,
 ): Promise<{ sent: number; failed: number; skipped: number }> {
   const counts = { sent: 0, failed: 0, skipped: 0 };
 
+  // Only work that is still pending: a notice already marked 'sent' is never
+  // sent a second time, and a failed one is retried a limited number of times.
   const { data: rows } = await supabase
     .from("billing_notifications")
-    .select("id, organization_id, audience, kind, channel, recipient, payload")
-    .eq("status", "queued")
+    .select("id, organization_id, audience, kind, channel, recipient, payload, status")
+    .in("status", ["queued", "failed"])
     .order("created_at", { ascending: true })
     .limit(Math.min(Math.max(limit, 1), 50));
 
-  const queued = (rows ?? []) as Record<string, unknown>[];
+  const queued = ((rows ?? []) as Record<string, unknown>[]).filter((row) => {
+    if (row["status"] !== "failed") return true;
+    const attempts = Number(((row["payload"] ?? {}) as Record<string, unknown>)["attempts"] ?? 0);
+    return attempts < MAX_ATTEMPTS;
+  });
   if (queued.length === 0) return counts;
 
   const platformOrgId = await resolvePlatformOrg(supabase);
@@ -417,15 +471,27 @@ export async function drainBillingNotifications(
     ? await getWhatsAppConnection(supabase, platformOrgId)
     : { connection: null, error: "no_platform_org" as string | null };
 
-  const mark = async (id: string, status: "sent" | "failed" | "skipped", error?: string) => {
+  const mark = async (
+    row: Record<string, unknown>,
+    status: "sent" | "failed" | "skipped",
+    error?: string,
+  ) => {
+    const payload = (row["payload"] ?? {}) as Record<string, unknown>;
+    const patch: Record<string, unknown> = {
+      status,
+      error: error ?? null,
+      sent_at: new Date().toISOString(),
+    };
+    if (status === "failed") {
+      patch["payload"] = { ...payload, attempts: Number(payload["attempts"] ?? 0) + 1 };
+    }
     await supabase
       .from("billing_notifications")
-      .update({ status, error: error ?? null, sent_at: new Date().toISOString() })
-      .eq("id", id);
+      .update(patch)
+      .eq("id", row["id"] as string);
   };
 
   for (const row of queued) {
-    const id = String(row["id"]);
     try {
       const channel = String(row["channel"] ?? "whatsapp");
       if (channel !== "whatsapp") {
@@ -436,25 +502,26 @@ export async function drainBillingNotifications(
         continue;
       }
 
-      const templateName = TEMPLATE_FOR[`${String(row["audience"])}:${String(row["kind"])}`];
+      const kind = String(row["kind"]);
+      const templateName = TEMPLATE_FOR[`${String(row["audience"])}:${kind}`];
       if (!templateName) {
         // Nothing to send over WhatsApp: it stays an in-app record. 'sent' is
         // reserved for a message that actually left the platform number.
-        await mark(id, "skipped", templateName ? "in_app_only" : "no_template_for_kind");
+        await mark(row, "skipped", "no_template_for_kind");
         counts.skipped += 1;
         continue;
       }
 
       const connection = connectionResult.connection;
       if (!connection || !platformOrgId) {
-        await mark(id, "failed", connectionResult.error ?? "platform_number_not_connected");
+        await mark(row, "failed", connectionResult.error ?? "platform_number_not_connected");
         counts.failed += 1;
         continue;
       }
 
       const to = await recipientFor(supabase, row);
       if (!to) {
-        await mark(id, "failed", "no_recipient");
+        await mark(row, "failed", "no_recipient");
         counts.failed += 1;
         continue;
       }
@@ -468,7 +535,17 @@ export async function drainBillingNotifications(
         : { data: null };
       const orgName = ((org as { name?: string } | null)?.name ?? "your workspace") as string;
       const payload = (row["payload"] ?? {}) as Record<string, unknown>;
-      const params = paramsFor(String(row["kind"]), orgName, payload);
+      if ((kind === "topup_due" || kind === "topup_reminder") && payload["task_id"]) {
+        // Amounts come from the task as it stands now, not as it stood when
+        // the notice was queued.
+        const { data: task } = await supabase
+          .from("topup_tasks")
+          .select("meta_amount, margin_amount, credits_amount")
+          .eq("id", payload["task_id"] as string)
+          .maybeSingle();
+        if (task) Object.assign(payload, task as Record<string, unknown>);
+      }
+      const params = paramsFor(kind, orgName, payload);
 
       // Inside the 24-hour window a plain message is friendlier and cheaper.
       // Numbers are stored with and without the leading +, so match both.
@@ -497,12 +574,41 @@ export async function drainBillingNotifications(
       }
 
       if (conversationId) {
+        // Inside the window an invoice goes out as the document itself — the
+        // link belongs only to the template fallback.
+        if (kind === "invoice_issued" && payload["pdf_path"]) {
+          const { invoiceDownloadUrl } = await import("@/lib/invoices.server");
+          const url = await invoiceDownloadUrl(supabase, String(payload["pdf_path"]));
+          if (url) {
+            const { sendServiceDocument } = await import("@/lib/service-text.server");
+            const number = String(payload["invoice_number"] ?? "invoice");
+            const docResult = await sendServiceDocument(supabase, {
+              organizationId: platformOrgId,
+              phoneNumberId: connection.phoneNumberId,
+              accessToken: connection.accessToken,
+              conversationId,
+              to,
+              documentUrl: url,
+              fileName: `${number.replace(/\//g, "-")}.pdf`,
+              caption: `Your invoice ${number} for ${money(Number(payload["amount"] ?? 0))} — thank you.`,
+            });
+            if (docResult.ok) {
+              await mark(row, "sent");
+              counts.sent += 1;
+              continue;
+            }
+          }
+        }
+
         const { sendServiceText } = await import("@/lib/service-text.server");
         const spec = BILLING_TEMPLATES.find((t) => t.name === templateName);
-        const body = (spec?.body ?? "{{1}} {{2}} {{3}}")
-          .replace("{{1}}", params[0] ?? "")
-          .replace("{{2}}", params[1] ?? "")
-          .replace("{{3}}", params[2] ?? "");
+        const body =
+          kind === "topup_due" || kind === "topup_reminder"
+            ? await topupText(supabase, orgName, payload)
+            : (spec?.body ?? "{{1}} {{2}} {{3}}")
+                .replace("{{1}}", params[0] ?? "")
+                .replace("{{2}}", params[1] ?? "")
+                .replace("{{3}}", params[2] ?? "");
         const result = await sendServiceText(supabase, {
           organizationId: platformOrgId,
           phoneNumberId: connection.phoneNumberId,
@@ -512,7 +618,7 @@ export async function drainBillingNotifications(
           body,
         });
         if (result.ok) {
-          await mark(id, "sent");
+          await mark(row, "sent");
           counts.sent += 1;
           continue;
         }
@@ -527,7 +633,7 @@ export async function drainBillingNotifications(
         .eq("name", templateName)
         .maybeSingle();
       if (!template) {
-        await mark(id, "failed", "template_missing");
+        await mark(row, "failed", "template_missing");
         counts.failed += 1;
         continue;
       }
@@ -559,16 +665,16 @@ export async function drainBillingNotifications(
       );
 
       if (res.ok) {
-        await mark(id, "sent");
+        await mark(row, "sent");
         counts.sent += 1;
       } else {
         const text = (await res.text()).slice(0, 300);
-        await mark(id, "failed", text || "send_failed");
+        await mark(row, "failed", text || "send_failed");
         counts.failed += 1;
       }
     } catch (error) {
       try {
-        await mark(id, "failed", String((error as Error)?.message ?? error).slice(0, 300));
+        await mark(row, "failed", String((error as Error)?.message ?? error).slice(0, 300));
       } catch {
         // a notice that can't even be marked must not stop the drain
       }

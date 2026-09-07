@@ -691,11 +691,23 @@ export async function settlePayment(
     paymentId: payment.id as string,
   });
 
+  // The balance AFTER everything landed — the merchant is told what they now
+  // actually hold, never the size of the purchase.
+  const { data: walletAfter } = await supabase
+    .from("wallet_balances")
+    .select("balance")
+    .eq("organization_id", payment.organization_id as string)
+    .maybeSingle();
+
   await notify(supabase, {
     organizationId: payment.organization_id as string,
     audience: "client",
     kind: "credits_added",
-    payload: { amount: credits, bonus },
+    payload: {
+      amount: credits,
+      bonus,
+      balance: round2(Number((walletAfter as { balance?: number } | null)?.balance ?? 0)),
+    },
   });
 
   // A numbered tax invoice, issued and marked paid in one go. A failure here
@@ -772,23 +784,35 @@ export async function queueTopupTask(
   const ratio = rate.rate > 0 && metaRate > 0 ? metaRate / rate.rate : 1;
   const metaAmount = round2(input.metaAmount ?? credits * ratio);
 
-  await supabase.from("topup_tasks").insert({
-    organization_id: input.organizationId,
-    whatsapp_account_id: input.whatsappAccountId ?? null,
-    trigger: input.trigger,
-    credits_amount: credits,
-    meta_amount: metaAmount,
-    margin_amount: round2(credits - metaAmount),
-    status: "pending",
-    due_at: new Date(Date.now() + 12 * 3600e3).toISOString(),
-    payment_id: input.paymentId ?? null,
-  });
+  const { data: task } = await supabase
+    .from("topup_tasks")
+    .insert({
+      organization_id: input.organizationId,
+      whatsapp_account_id: input.whatsappAccountId ?? null,
+      trigger: input.trigger,
+      credits_amount: credits,
+      meta_amount: metaAmount,
+      margin_amount: round2(credits - metaAmount),
+      status: "pending",
+      due_at: new Date(Date.now() + 12 * 3600e3).toISOString(),
+      payment_id: input.paymentId ?? null,
+    })
+    .select("id")
+    .maybeSingle();
 
+  // The notice carries the task id, not the numbers: the amounts are read from
+  // the task when the message actually goes out, so a corrected task is
+  // reflected in the message rather than a figure frozen at queue time.
   await notify(supabase, {
     organizationId: input.organizationId,
     audience: "admin",
     kind: "topup_due",
-    payload: { credits, meta_amount: metaAmount, trigger: input.trigger },
+    payload: {
+      task_id: (task as { id?: string } | null)?.id ?? null,
+      credits,
+      meta_amount: metaAmount,
+      trigger: input.trigger,
+    },
   });
 }
 
@@ -862,6 +886,9 @@ export async function requestTopup(
   return { ok: true };
 }
 
+/** Standing-state warnings: at most one per workspace per 24 hours. */
+const ONCE_A_DAY_KINDS = new Set(["float_low", "low_credits"]);
+
 export async function notify(
   supabase: SupabaseClient,
   input: {
@@ -874,6 +901,21 @@ export async function notify(
   },
 ): Promise<void> {
   try {
+    // Warnings that describe a standing state (not an event) go out at most
+    // once a day per workspace, whatever else triggers them.
+    if (ONCE_A_DAY_KINDS.has(input.kind) && input.organizationId) {
+      const since = new Date(Date.now() - 864e5).toISOString();
+      const { data: recent } = await supabase
+        .from("billing_notifications")
+        .select("id")
+        .eq("organization_id", input.organizationId)
+        .eq("kind", input.kind)
+        .in("status", ["queued", "sent"])
+        .gte("created_at", since)
+        .limit(1);
+      if ((recent as { id: string }[] | null)?.length) return;
+    }
+
     await supabase.from("billing_notifications").insert({
       organization_id: input.organizationId,
       audience: input.audience,
