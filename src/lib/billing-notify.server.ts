@@ -437,7 +437,7 @@ export async function drainBillingNotifications(
       }
 
       const templateName = TEMPLATE_FOR[`${String(row["audience"])}:${String(row["kind"])}`];
-      if (!templateName || channel === "inapp") {
+      if (!templateName) {
         // Nothing to send over WhatsApp: it stays an in-app record. 'sent' is
         // reserved for a message that actually left the platform number.
         await mark(id, "skipped", templateName ? "in_app_only" : "no_template_for_kind");
