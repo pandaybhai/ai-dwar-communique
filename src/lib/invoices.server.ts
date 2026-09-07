@@ -213,12 +213,72 @@ export async function buildInvoice(
 
   if (error || !invoice) return { error: "We couldn't prepare the invoice." };
 
-  await supabase
+  const { error: lineError } = await supabase
     .from("invoice_lines")
     .insert(prepared.map((line) => ({ ...line, invoice_id: invoice.id as string })));
 
+  // An invoice with no lines is not an invoice. If the lines fail, the shell
+  // goes with them rather than sitting around waiting to be issued.
+  if (lineError) {
+    await supabase.from("invoices").delete().eq("id", invoice.id as string);
+    return { error: "We couldn't record the invoice lines." };
+  }
+
   return { invoice_id: invoice.id as string };
 }
+
+/**
+ * The last gate before a number is drawn. Everything here is arithmetic that
+ * must already be true; a failure means the invoice was built wrong, and a
+ * wrong invoice must never consume a number.
+ */
+export function checkInvoiceIssuable(
+  invoice: Record<string, unknown>,
+  lines: Record<string, unknown>[],
+): string | null {
+  const n = (v: unknown) => round2(Number(v ?? 0));
+  const money = lines.filter((l) => (l["metadata"] as Record<string, unknown> | null)?.["informational"] !== true);
+
+  if (lines.length === 0) return "the invoice has no lines";
+  if (money.length === 0) return "the invoice has no chargeable lines";
+
+  const taxable = n(invoice["taxable_value"]);
+  const lineSum = round2(money.reduce((sum, l) => sum + Number(l["amount"] ?? 0), 0));
+  if (Math.abs(taxable - lineSum) > 0.01) {
+    return `taxable value ${taxable} does not match the lines (${lineSum})`;
+  }
+
+  const isExport = invoice["is_export"] === true;
+  const isInterstate = invoice["is_interstate"] === true;
+  const cgst = n(invoice["cgst"]);
+  const sgst = n(invoice["sgst"]);
+  const igst = n(invoice["igst"]);
+  const expectedTax = isExport ? 0 : round2((taxable * TAX_RATE) / 100);
+
+  if (isExport) {
+    if (cgst || sgst || igst) return "an export invoice must be zero-rated";
+  } else if (isInterstate) {
+    if (cgst || sgst) return "an inter-state invoice carries IGST only";
+    if (Math.abs(igst - expectedTax) > 0.02) return `IGST ${igst} should be ${expectedTax}`;
+  } else {
+    if (igst) return "an intra-state invoice carries CGST and SGST only";
+    const half = round2(expectedTax / 2);
+    if (Math.abs(cgst - half) > 0.02 || Math.abs(sgst - half) > 0.02) {
+      return `CGST/SGST ${cgst}/${sgst} should be ${half} each`;
+    }
+  }
+
+  if (!invoice["place_of_supply"] && !isExport) return "place of supply is missing";
+  if (!invoice["supplier_state_code"]) return "supplier state is missing";
+
+  const total = n(invoice["total"]);
+  const expectedTotal = round2(taxable + cgst + sgst + igst);
+  if (Math.abs(total - expectedTotal) > 0.02) {
+    return `total ${total} should be ${expectedTotal}`;
+  }
+  return null;
+}
+
 
 /**
  * Draws the number, renders the PDF, files it and queues the notices.
