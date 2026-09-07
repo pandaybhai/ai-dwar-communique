@@ -149,9 +149,10 @@ export async function adminOverview(
         numbers: (row.numbers as Record<string, unknown>[]).map((n) => ({
           display: (n["display_phone_number"] as string) ?? null,
           quality: (n["quality_rating"] as string) ?? null,
-          tier: n["messaging_tier"] === null || n["messaging_tier"] === undefined
-            ? null
-            : Number(n["messaging_tier"]),
+          tier:
+            n["messaging_tier"] === null || n["messaging_tier"] === undefined
+              ? null
+              : Number(n["messaging_tier"]),
         })),
         pending_topups: row.pending_topups,
         last_activity: (activity.data as { created_at?: string } | null)?.created_at ?? null,
@@ -221,9 +222,13 @@ export async function saveBillingAccount(
 ): Promise<{ ok: true; id: string } | { error: string }> {
   await requireSuper(supabase, input.actorId);
 
-  const gstin = String(input.account["gstin"] ?? "").trim().toUpperCase();
+  const gstin = String(input.account["gstin"] ?? "")
+    .trim()
+    .toUpperCase();
   if (gstin && !GSTIN_PATTERN.test(gstin)) {
-    return { error: "That GSTIN doesn't look right — it should be 15 characters, like 27AAAAA0000A1Z5." };
+    return {
+      error: "That GSTIN doesn't look right — it should be 15 characters, like 27AAAAA0000A1Z5.",
+    };
   }
   const name = String(input.account["name"] ?? "").trim();
   if (!name) return { error: "The billing account needs a name." };
@@ -307,12 +312,38 @@ export async function saveRateCard(
 ): Promise<{ ok: true } | { error: string }> {
   await requireSuper(supabase, input.actorId);
 
-  if (input.mode === "markup" && (input.markupPercent === null || input.markupPercent === undefined)) {
-    return { error: "Enter the markup percentage." };
+  if (input.mode === "markup") {
+    const pct = Number(input.markupPercent);
+    if (
+      input.markupPercent === null ||
+      input.markupPercent === undefined ||
+      !Number.isFinite(pct)
+    ) {
+      return { error: "Enter the markup percentage." };
+    }
+    if (pct < 0 || pct > 200) {
+      return { error: "A markup has to be between 0% and 200%. For a rupee amount, pick Fixed ₹." };
+    }
   }
-  if (input.mode === "fixed" && (input.fixedRate === null || input.fixedRate === undefined)) {
-    return { error: "Enter the fixed rate." };
+  if (input.mode === "fixed") {
+    const rate = Number(input.fixedRate);
+    if (input.fixedRate === null || input.fixedRate === undefined || !Number.isFinite(rate)) {
+      return { error: "Enter the fixed rate." };
+    }
+    if (rate < 0 || rate > 50) {
+      return { error: "A fixed rate has to be between ₹0 and ₹50 per message." };
+    }
   }
+
+  // Same workspace, same category, same day: that day has one price. Replacing
+  // it keeps the history readable instead of stacking duplicate rows.
+  await supabase
+    .from("rate_cards")
+    .delete()
+    .eq("organization_id", input.organizationId)
+    .eq("country_code", input.countryCode)
+    .eq("category", input.category)
+    .eq("effective_from", input.effectiveFrom);
 
   const { error } = await supabase.from("rate_cards").insert({
     organization_id: input.organizationId,
@@ -366,7 +397,10 @@ export async function saveOrgBillingSettings(
 ): Promise<{ ok: true } | { error: string }> {
   await requireSuper(supabase, input.actorId);
 
-  const patch: Record<string, unknown> = { organization_id: input.organizationId, updated_by: input.actorId };
+  const patch: Record<string, unknown> = {
+    organization_id: input.organizationId,
+    updated_by: input.actorId,
+  };
   for (const field of SETTINGS_FIELDS) {
     if (!(field in input.settings)) continue;
     const value = input.settings[field];
@@ -422,7 +456,11 @@ export async function adminAddCredits(
       currency: "INR",
       status: "paid",
       paid_at: new Date().toISOString(),
-      raw: { reason: input.reason.trim().slice(0, 300), pack_amount: round2(input.amount), bonus: 0 },
+      raw: {
+        reason: input.reason.trim().slice(0, 300),
+        pack_amount: round2(input.amount),
+        bonus: 0,
+      },
       created_by: input.actorId,
     })
     .select("id")

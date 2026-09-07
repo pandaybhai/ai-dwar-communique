@@ -116,9 +116,7 @@ export const Route = createFileRoute("/api/admin/billing")({
               );
 
             case "recommend_plan":
-              return Response.json(
-                await core.recommendPlan(supabase, orgId, { userId: actorId }),
-              );
+              return Response.json(await core.recommendPlan(supabase, orgId, { userId: actorId }));
 
             case "feature_impact":
               return Response.json(
@@ -228,6 +226,11 @@ export const Route = createFileRoute("/api/admin/billing")({
             case "issue_pending_invoices": {
               const { issuePendingInvoices } = await import("@/lib/invoices.server");
               return Response.json(await issuePendingInvoices(supabase));
+            }
+
+            case "billing_templates": {
+              const { listBillingTemplates } = await import("@/lib/billing-notify.server");
+              return Response.json({ templates: await listBillingTemplates(supabase) });
             }
 
             case "create_billing_templates": {

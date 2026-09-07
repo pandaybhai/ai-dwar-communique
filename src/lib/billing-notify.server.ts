@@ -15,6 +15,8 @@ export type BillingTemplateSpec = {
   name: string;
   body: string;
   examples: string[];
+  /** Only the invoice notice carries a PDF header. */
+  headerFormat?: "DOCUMENT";
 };
 
 /**
@@ -23,59 +25,62 @@ export type BillingTemplateSpec = {
  * balance.
  */
 export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
+  // Meta rejects a message that begins or ends with a variable, so every body
+  // is wrapped in words.
   {
     name: "admin_credit_purchased",
-    body: "{{1}} just bought {{2}} of credits. Their balance is now {{3}}.",
+    body: "Workspace {{1}} just bought {{2}} of credits. Their balance is now {{3}} — no action needed.",
     examples: ["Sharma Textiles", "₹5,000", "₹6,200"],
   },
   {
     name: "client_credit_purchased",
-    body: "We've added {{2}} of credits to {{1}}. Your balance is now {{3}}.",
+    body: "We've added {{2}} of credits to {{1}}. Your balance is now {{3}} — thank you.",
     examples: ["Sharma Textiles", "₹5,000", "₹6,200"],
   },
   {
     name: "client_topup_requested",
-    body: "{{1}}: a teammate has asked for more credits ({{2}}). You can add them here: {{3}}",
+    body: "Hello {{1}} — a teammate has asked for more credits ({{2}}). You can add them here: {{3}} — thank you.",
     examples: ["Sharma Textiles", "₹2,000", "https://aidwar.in/app/billing"],
   },
   {
     name: "client_low_credits",
-    body: "{{1}} is running low on credits — {{2}} left. Top up here: {{3}}",
+    body: "Workspace {{1}} is running low on credits — {{2}} left. Top up here: {{3}} — thank you.",
     examples: ["Sharma Textiles", "₹350", "https://aidwar.in/app/billing"],
   },
   {
     name: "admin_float_low",
-    body: "Meta float for {{1}} is down to {{2}}. The target is {{3}}.",
+    body: "The Meta float for {{1}} is down to {{2}}. The target is {{3}} — please top it up.",
     examples: ["Sharma Textiles", "₹800", "₹5,000"],
   },
   {
     name: "client_campaign_approval",
-    body: "A campaign on {{1}} is waiting for your approval. It will cost about {{2}}. Review it here: {{3}}",
+    body: "A campaign on {{1}} is waiting for your approval. It will cost about {{2}}. Review it here: {{3}} — thank you.",
     examples: ["Sharma Textiles", "₹4,500", "https://aidwar.in/app/campaigns"],
   },
   {
     name: "admin_topup_due",
-    body: "{{1}} needs a Meta float top-up of {{2}}. Credits sold: {{3}}.",
+    body: "Workspace {{1}} needs a Meta float top-up of {{2}}. Credits sold: {{3}} — please top it up.",
     examples: ["Sharma Textiles", "₹4,200", "₹5,000"],
   },
   {
     name: "admin_settle_failed",
-    body: "A payment for {{1}} of {{2}} could not be credited automatically. Please check it: {{3}}",
+    body: "A payment for {{1}} of {{2}} could not be credited automatically. Please check it here: {{3}} — thank you.",
     examples: ["Sharma Textiles", "₹2,000", "https://aidwar.in/admin/billing"],
   },
   {
     name: "client_invoice_issued",
-    body: "{{1}}: your invoice for {{2}} is ready. You can view and download it here: {{3}}",
+    body: "Hello {{1}} — your invoice for {{2}} is ready. You can view and download it here: {{3}} — thank you.",
     examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
+    headerFormat: "DOCUMENT",
   },
   {
     name: "client_invoice_overdue",
-    body: "{{1}}: an invoice for {{2}} is still unpaid. Please settle it here to keep everything running: {{3}}",
+    body: "Hello {{1}} — an invoice for {{2}} is still unpaid. Please settle it here to keep everything running: {{3}} — thank you.",
     examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
   },
   {
     name: "client_payment_failed",
-    body: "{{1}}: your auto-pay of {{2}} didn't go through. You can pay it here: {{3}}",
+    body: "Hello {{1}} — your auto-pay of {{2}} didn't go through. You can pay it here: {{3}} — thank you.",
     examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
   },
 ];
@@ -122,11 +127,39 @@ export async function resolvePlatformOrg(supabase: SupabaseClient): Promise<stri
   return (membership as { organization_id?: string } | null)?.organization_id ?? null;
 }
 
-/** Creates every notice template on the platform number for Meta review. */
+export type BillingTemplateReport = {
+  created: string[];
+  skipped: string[];
+  failed: { name: string; error: string }[];
+  templates: { name: string; status: string | null; language: string; error: string | null }[];
+};
+
+/** A one-page sample PDF, so Meta can review the invoice notice's attachment. */
+async function sampleInvoicePdf(): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([420, 300]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText("AiDwar", { x: 40, y: 240, size: 22, font });
+  page.drawText("Sample tax invoice", { x: 40, y: 210, size: 12, font });
+  page.drawText("This document is only used for template review.", {
+    x: 40,
+    y: 190,
+    size: 10,
+    font,
+  });
+  return doc.save();
+}
+
+/**
+ * Creates every notice template on the platform workspace, through exactly the
+ * same path the Templates page uses. Idempotent by name: a template we already
+ * hold is skipped, never resubmitted.
+ */
 export async function ensureBillingTemplates(
   supabase: SupabaseClient,
   actorId: string,
-): Promise<{ created: string[]; skipped: string[]; failed: { name: string; error: string }[] }> {
+): Promise<BillingTemplateReport> {
   const { PermissionError } = await import("@/lib/billing.server");
   const { data: profile } = await supabase
     .from("profiles")
@@ -140,14 +173,20 @@ export async function ensureBillingTemplates(
   const created: string[] = [];
   const skipped: string[] = [];
   const failed: { name: string; error: string }[] = [];
+  const errors = new Map<string, string>();
 
   const orgId = await resolvePlatformOrg(supabase);
-  if (!orgId) return { created, skipped, failed: [{ name: "all", error: "no_platform_org" }] };
+  if (!orgId) {
+    return {
+      created,
+      skipped,
+      failed: [{ name: "all", error: "No platform workspace is set up yet." }],
+      templates: await listBillingTemplates(supabase),
+    };
+  }
 
-  const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
-  const { graphFetch, graphErrorMessage } = await import("@/lib/whatsapp-api.server");
-  const { connection, error } = await getWhatsAppConnection(supabase, orgId);
-  if (!connection) return { created, skipped, failed: [{ name: "all", error: error ?? "not_connected" }] };
+  const { emptyDraft, extractVariables } = await import("@/lib/templates");
+  const { createTemplateFromDraft } = await import("@/lib/template-create.server");
 
   for (const spec of BILLING_TEMPLATES) {
     const { data: existing } = await supabase
@@ -162,35 +201,93 @@ export async function ensureBillingTemplates(
       continue;
     }
 
-    const components = [
-      { type: "BODY", text: spec.body, example: { body_text: [spec.examples] } },
-    ];
-    const result = await graphFetch(`${connection.wabaId}/message_templates`, connection.accessToken, {
-      method: "POST",
-      body: { name: spec.name, language: "en", category: "UTILITY", components },
-    });
-    if (!result.ok) {
-      failed.push({ name: spec.name, error: graphErrorMessage(result.body) });
-      continue;
+    const draft = emptyDraft();
+    draft.name = spec.name;
+    draft.language = "en";
+    draft.category = "UTILITY";
+    draft.body = spec.body;
+    draft.bodyExamples = Object.fromEntries(
+      extractVariables(spec.body).map((v, i) => [v, spec.examples[i] ?? ""]),
+    );
+
+    if (spec.headerFormat === "DOCUMENT") {
+      const { uploadTemplateMedia } = await import("@/lib/template-media.server");
+      const uploaded = await uploadTemplateMedia(supabase, {
+        organizationId: orgId,
+        userId: actorId,
+        bytes: await sampleInvoicePdf(),
+        mime: "application/pdf",
+        fileName: "sample-invoice.pdf",
+        format: "DOCUMENT",
+        slot: "header",
+      });
+      if (!uploaded.ok) {
+        failed.push({ name: spec.name, error: uploaded.error });
+        errors.set(spec.name, uploaded.error);
+        continue;
+      }
+      draft.headerFormat = "DOCUMENT";
+      draft.headerHandle = uploaded.handle;
+      draft.headerMediaUrl = uploaded.mediaUrl;
+      draft.headerFileName = "invoice.pdf";
     }
 
-    await supabase.from("message_templates").upsert(
-      {
-        organization_id: orgId,
-        waba_id: connection.wabaId,
-        meta_template_id: (result.body["id"] as string) ?? null,
-        name: spec.name,
-        language: "en",
-        category: "UTILITY",
-        status: String(result.body["status"] ?? "PENDING").toUpperCase(),
-        components,
-      },
-      { onConflict: "organization_id,waba_id,name,language" },
-    );
+    const result = await createTemplateFromDraft(supabase, {
+      organizationId: orgId,
+      userId: actorId,
+      draft,
+    });
+    if (!result.ok) {
+      failed.push({ name: spec.name, error: result.error });
+      errors.set(spec.name, result.error);
+      continue;
+    }
     created.push(spec.name);
   }
 
-  return { created, skipped, failed };
+  await supabase.from("activity_log").insert({
+    organization_id: orgId,
+    user_id: actorId,
+    action: "billing_templates_created",
+    details: { created: created.length, skipped: skipped.length, failed: failed.length },
+  });
+
+  const templates = (await listBillingTemplates(supabase)).map((t) => ({
+    ...t,
+    error: errors.get(t.name) ?? null,
+  }));
+  return { created, skipped, failed, templates };
+}
+
+/** What Meta currently says about each billing notice template. */
+export async function listBillingTemplates(
+  supabase: SupabaseClient,
+): Promise<{ name: string; status: string | null; language: string; error: string | null }[]> {
+  const orgId = await resolvePlatformOrg(supabase);
+  const rows = orgId
+    ? ((
+        await supabase
+          .from("message_templates")
+          .select("name, language, status")
+          .eq("organization_id", orgId)
+          .in(
+            "name",
+            BILLING_TEMPLATES.map((t) => t.name),
+          )
+      ).data ?? [])
+    : [];
+  const byName = new Map(
+    (rows as { name: string; language: string; status: string | null }[]).map((r) => [r.name, r]),
+  );
+  return BILLING_TEMPLATES.map((spec) => {
+    const row = byName.get(spec.name);
+    return {
+      name: spec.name,
+      language: row?.language ?? "en",
+      status: row?.status ?? null,
+      error: null,
+    };
+  });
 }
 
 function paramsFor(kind: string, orgName: string, payload: Record<string, unknown>): string[] {
@@ -198,17 +295,33 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
   const link = String(payload["link"] ?? "https://aidwar.in/app/billing");
   switch (kind) {
     case "credits_added":
-      return [orgName, money(Number(amount ?? 0)), money(Number(payload["balance"] ?? amount ?? 0))];
+      return [
+        orgName,
+        money(Number(amount ?? 0)),
+        money(Number(payload["balance"] ?? amount ?? 0)),
+      ];
     case "topup_requested":
-      return [orgName, amount === null || amount === undefined ? "some credits" : money(Number(amount)), link];
+      return [
+        orgName,
+        amount === null || amount === undefined ? "some credits" : money(Number(amount)),
+        link,
+      ];
     case "low_credits":
       return [orgName, money(Number(payload["available"] ?? 0)), link];
     case "topup_due":
-      return [orgName, money(Number(payload["meta_amount"] ?? 0)), money(Number(payload["credits"] ?? 0))];
+      return [
+        orgName,
+        money(Number(payload["meta_amount"] ?? 0)),
+        money(Number(payload["credits"] ?? 0)),
+      ];
     case "settle_failed":
       return [orgName, money(Number(payload["amount"] ?? 0)), "https://aidwar.in/admin/billing"];
     case "float_low":
-      return [orgName, money(Number(payload["estimate"] ?? 0)), money(Number(payload["target"] ?? 0))];
+      return [
+        orgName,
+        money(Number(payload["estimate"] ?? 0)),
+        money(Number(payload["target"] ?? 0)),
+      ];
     case "invoice_issued":
     case "invoice_overdue":
       return [orgName, money(Number(payload["amount"] ?? 0)), link];
@@ -273,13 +386,13 @@ async function recipientFor(
     .select("billing_accounts:billing_account_id(billing_whatsapp)")
     .eq("id", orgId)
     .maybeSingle();
-  const account = ((org ?? {}) as Record<string, unknown>)["billing_accounts"] as
-    | Record<string, unknown>
-    | null;
+  const account = ((org ?? {}) as Record<string, unknown>)["billing_accounts"] as Record<
+    string,
+    unknown
+  > | null;
   const phone = (account?.["billing_whatsapp"] as string) ?? null;
   return phone ? normalizePhone(phone) : null;
 }
-
 
 /** Sends up to `limit` queued notices. One bad notice never stops the rest. */
 export async function drainBillingNotifications(
@@ -314,8 +427,16 @@ export async function drainBillingNotifications(
   for (const row of queued) {
     const id = String(row["id"]);
     try {
+      const channel = String(row["channel"] ?? "whatsapp");
+      if (channel === "email") {
+        // Email isn't built yet. These rows wait their turn rather than being
+        // recorded as a failure of a channel we never attempted.
+        counts.skipped += 1;
+        continue;
+      }
+
       const templateName = TEMPLATE_FOR[`${String(row["audience"])}:${String(row["kind"])}`];
-      if (!templateName || row["channel"] === "inapp") {
+      if (!templateName || channel === "inapp") {
         // Nothing to send over WhatsApp: it stays an in-app record. 'sent' is
         // reserved for a message that actually left the platform number.
         await mark(id, "skipped", templateName ? "in_app_only" : "no_template_for_kind");
@@ -349,19 +470,22 @@ export async function drainBillingNotifications(
       const params = paramsFor(String(row["kind"]), orgName, payload);
 
       // Inside the 24-hour window a plain message is friendlier and cheaper.
-      const { data: contact } = await supabase
+      // Numbers are stored with and without the leading +, so match both.
+      const digits = to.replace(/^\+/, "");
+      const { data: contacts } = await supabase
         .from("contacts")
         .select("id")
         .eq("organization_id", platformOrgId)
-        .eq("phone", to)
-        .maybeSingle();
+        .in("phone", [`+${digits}`, digits])
+        .limit(1);
+      const contact = (contacts as { id: string }[] | null)?.[0] ?? null;
       let conversationId: string | null = null;
       if (contact) {
         const { data: conversation } = await supabase
           .from("conversations")
           .select("id, last_customer_message_at")
           .eq("organization_id", platformOrgId)
-          .eq("contact_id", contact.id as string)
+          .eq("contact_id", contact.id)
           .order("last_message_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -389,11 +513,10 @@ export async function drainBillingNotifications(
         if (result.ok) {
           await mark(id, "sent");
           counts.sent += 1;
-        } else {
-          await mark(id, "failed", result.error ?? "send_failed");
-          counts.failed += 1;
+          continue;
         }
-        continue;
+        // The plain message didn't go through — fall through to the template,
+        // which is the one path that still works outside the window.
       }
 
       const { data: template } = await supabase
