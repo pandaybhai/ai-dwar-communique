@@ -22,6 +22,22 @@ import { GST_STATES, gstinStateMismatch } from "@/lib/gst-states";
 
 type AnyRow = Record<string, unknown>;
 
+type PlanChangePreview = {
+  plan_key: string;
+  plan_name: string;
+  features_off: { key: string; name: string; live: { label: string; count: number }[] }[];
+  locked_members: { user_id: string; name: string | null }[];
+  locked_numbers: { id: string; label: string }[];
+  subscription: {
+    mismatch: boolean;
+    current_plan_name: string | null;
+    status: string | null;
+    cycle: string | null;
+    current_period_end: string | null;
+  } | null;
+  requires_confirmation: boolean;
+};
+
 type OrgBilling = {
   summary: AnyRow;
   settings: AnyRow | null;
@@ -174,6 +190,55 @@ export function OrgBillingSheet({
     return true;
   }
 
+  // Never move a workspace onto another plan blind: ask what switches off and
+  // whether the auto-pay mandate disagrees, and make a person confirm it.
+  async function startAssignPlan() {
+    setBusy("plan");
+    const result = await callApi<PlanChangePreview & { error?: string }>("/api/admin/billing", {
+      body: {
+        action: "plan_change_preview",
+        organization_id: organizationId,
+        plan_key: planKey,
+      },
+    });
+    setBusy(null);
+    if (result.error || result.data?.error || !result.data) {
+      toast.error(result.error ?? result.data?.error ?? "We couldn't check that plan.");
+      return;
+    }
+    if (result.data.requires_confirmation) {
+      setPlanPreview(result.data);
+      return;
+    }
+    await confirmAssignPlan();
+  }
+
+  async function confirmAssignPlan() {
+    setPlanPreview(null);
+    setBusy("plan");
+    const result = await callApi<{
+      ok?: boolean;
+      error?: string;
+      mandate?: { changed: boolean; note: string };
+    }>("/api/admin/billing", {
+      body: {
+        action: "assign_plan",
+        organization_id: organizationId,
+        plan_key: planKey,
+        status: planStatus,
+        confirm: true,
+      },
+    });
+    setBusy(null);
+    if (result.error || result.data?.error) {
+      toast.error(result.error ?? result.data?.error ?? "That didn't work.");
+      return;
+    }
+    const note = result.data?.mandate?.changed ? ` ${result.data.mandate.note}` : "";
+    toast.success(`Plan assigned.${note}`);
+    await load();
+  }
+
   // A bad sync can leave a workspace with features switched off that its plan
   // does include. This recomputes them from the plan, leaving by-hand
   // decisions exactly as they are.
@@ -288,17 +353,7 @@ export function OrgBillingSheet({
                   </Field>
                 </div>
 
-                <Button
-                  disabled={!planKey || busy === "plan"}
-                  onClick={() =>
-                    void act(
-                      "assign_plan",
-                      { plan_key: planKey, status: planStatus },
-                      "plan",
-                      "Plan assigned.",
-                    )
-                  }
-                >
+                <Button disabled={!planKey || busy === "plan"} onClick={() => void startAssignPlan()}>
                   {busy === "plan" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Assign plan
                 </Button>
