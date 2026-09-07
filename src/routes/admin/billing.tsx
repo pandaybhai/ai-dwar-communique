@@ -854,8 +854,8 @@ function AdminBilling() {
                     >
                       <td className="px-3 py-3 text-muted-foreground">{r.month}</td>
                       <td className="px-3 py-3 font-medium text-foreground">{r.name}</td>
-                      <td className="px-3 py-3">{money(r.messaging_consumed)}</td>
-                      <td className="px-3 py-3 text-muted-foreground">{money(r.meta_cost)}</td>
+                      <td className="px-3 py-3">{fineMoney(r.messaging_consumed)}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{fineMoney(r.meta_cost)}</td>
                       <td className="px-3 py-3">
                         <Margin value={r.messaging_margin} />
                       </td>
@@ -873,14 +873,14 @@ function AdminBilling() {
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_within_allowance}</td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_over_allowance}</td>
                       <td className="px-3 py-3 text-muted-foreground">
-                        {money(r.ai_provider_cost)}
+                        {fineMoney(r.ai_provider_cost)}
                       </td>
-                      <td className="px-3 py-3">{money(r.ai_billed)}</td>
+                      <td className="px-3 py-3">{fineMoney(r.ai_billed)}</td>
                       <td className="px-3 py-3">
                         <Margin value={r.ai_margin} />
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">
-                        {money(r.ai_avg_cost_per_answer)}
+                        {fineMoney(r.ai_avg_cost_per_answer)}
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_everyday_pct}%</td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_careful_pct}%</td>
