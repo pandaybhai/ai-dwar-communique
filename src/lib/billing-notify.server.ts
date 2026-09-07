@@ -394,21 +394,73 @@ async function recipientFor(
   return phone ? normalizePhone(phone) : null;
 }
 
-/** Sends up to `limit` queued notices. One bad notice never stops the rest. */
+/** How many times a failed notice is retried before it is left alone. */
+const MAX_ATTEMPTS = 3;
+
+/**
+ * The live wording for a top-up notice: read from the task itself at send
+ * time, so a corrected task is what the owner sees.
+ */
+async function topupText(
+  supabase: SupabaseClient,
+  orgName: string,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  let meta = Number(payload["meta_amount"] ?? 0);
+  let margin = Number(payload["margin_amount"] ?? 0);
+  let credits = Number(payload["credits"] ?? 0);
+  let number: string | null = null;
+
+  const taskId = (payload["task_id"] as string | null) ?? null;
+  if (taskId) {
+    const { data: task } = await supabase
+      .from("topup_tasks")
+      .select("meta_amount, margin_amount, credits_amount, whatsapp_account_id")
+      .eq("id", taskId)
+      .maybeSingle();
+    if (task) {
+      const t = task as Record<string, unknown>;
+      meta = Number(t["meta_amount"] ?? meta);
+      margin = Number(t["margin_amount"] ?? margin);
+      credits = Number(t["credits_amount"] ?? credits);
+      if (t["whatsapp_account_id"]) {
+        const { data: account } = await supabase
+          .from("whatsapp_accounts")
+          .select("display_phone_number, waba_id")
+          .eq("id", t["whatsapp_account_id"] as string)
+          .maybeSingle();
+        const a = (account ?? {}) as Record<string, unknown>;
+        number = (a["display_phone_number"] as string) ?? (a["waba_id"] as string) ?? null;
+      }
+    }
+  }
+  if (margin === 0 && credits > 0) margin = Math.round((credits - meta) * 100) / 100;
+
+  const on = number ? ` on WABA ${number}` : "";
+  return `Top up ${money(meta)}${on} for ${orgName} · credits sold ${money(credits)} · your margin ${money(margin)}.`;
+}
+
+/** Sends up to `limit` pending notices. One bad notice never stops the rest. */
 export async function drainBillingNotifications(
   supabase: SupabaseClient,
   limit = 50,
 ): Promise<{ sent: number; failed: number; skipped: number }> {
   const counts = { sent: 0, failed: 0, skipped: 0 };
 
+  // Only work that is still pending: a notice already marked 'sent' is never
+  // sent a second time, and a failed one is retried a limited number of times.
   const { data: rows } = await supabase
     .from("billing_notifications")
-    .select("id, organization_id, audience, kind, channel, recipient, payload")
-    .eq("status", "queued")
+    .select("id, organization_id, audience, kind, channel, recipient, payload, status")
+    .in("status", ["queued", "failed"])
     .order("created_at", { ascending: true })
     .limit(Math.min(Math.max(limit, 1), 50));
 
-  const queued = (rows ?? []) as Record<string, unknown>[];
+  const queued = ((rows ?? []) as Record<string, unknown>[]).filter((row) => {
+    if (row["status"] !== "failed") return true;
+    const attempts = Number(((row["payload"] ?? {}) as Record<string, unknown>)["attempts"] ?? 0);
+    return attempts < MAX_ATTEMPTS;
+  });
   if (queued.length === 0) return counts;
 
   const platformOrgId = await resolvePlatformOrg(supabase);
@@ -417,11 +469,24 @@ export async function drainBillingNotifications(
     ? await getWhatsAppConnection(supabase, platformOrgId)
     : { connection: null, error: "no_platform_org" as string | null };
 
-  const mark = async (id: string, status: "sent" | "failed" | "skipped", error?: string) => {
+  const mark = async (
+    row: Record<string, unknown>,
+    status: "sent" | "failed" | "skipped",
+    error?: string,
+  ) => {
+    const payload = (row["payload"] ?? {}) as Record<string, unknown>;
+    const patch: Record<string, unknown> = {
+      status,
+      error: error ?? null,
+      sent_at: new Date().toISOString(),
+    };
+    if (status === "failed") {
+      patch["payload"] = { ...payload, attempts: Number(payload["attempts"] ?? 0) + 1 };
+    }
     await supabase
       .from("billing_notifications")
-      .update({ status, error: error ?? null, sent_at: new Date().toISOString() })
-      .eq("id", id);
+      .update(patch)
+      .eq("id", row["id"] as string);
   };
 
   for (const row of queued) {
