@@ -143,6 +143,7 @@ export function OrgBillingSheet({
   const [settings, setSettings] = useState<Record<string, string | boolean>>({});
   const [funding, setFunding] = useState("meta_direct");
   const [rateDraft, setRateDraft] = useState<Record<string, { mode: string; value: string }>>({});
+  const [showRateHistory, setShowRateHistory] = useState(false);
   const [walletAmount, setWalletAmount] = useState("");
   const [walletReason, setWalletReason] = useState("");
   const [planPreview, setPlanPreview] = useState<PlanChangePreview | null>(null);
