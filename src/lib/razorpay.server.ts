@@ -205,3 +205,16 @@ export async function cancelSubscription(
 export async function fetchSubscription(keys: RazorpayKeys, subscriptionId: string) {
   return rzp(keys, `/subscriptions/${subscriptionId}`);
 }
+
+/** Moves a live mandate onto another plan, taking effect at the next cycle. */
+export async function updateSubscriptionPlan(
+  keys: RazorpayKeys,
+  subscriptionId: string,
+  planId: string,
+) {
+  return rzp(keys, `/subscriptions/${subscriptionId}`, {
+    method: "PATCH",
+    body: { plan_id: planId, schedule_change_at: "cycle_end" },
+  });
+}
+
