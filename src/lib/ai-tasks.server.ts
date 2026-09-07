@@ -374,7 +374,9 @@ export async function merchantAnswer(
     .reverse()
     .map<Turn>((m) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
-      content: `${m.direction === "inbound" ? "Owner" : "Aiden"}: ${String(m.body)}`,
+      // The assistant's own turns are labelled "You" so the model doesn't learn
+      // to prefix its replies with its own name.
+      content: `${m.direction === "inbound" ? "Owner" : "You"}: ${String(m.body)}`,
     }));
 
   const { assembleBrief } = await import("@/lib/ai-brief.server");

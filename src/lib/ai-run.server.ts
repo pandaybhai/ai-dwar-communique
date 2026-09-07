@@ -1018,8 +1018,14 @@ export async function executeRun(
   // -------------------------------------------------------------- messages
   const systemParts = [options.system ?? ""];
   if (knowledgeBlock) {
+    // The owner's own chat reads better with a plain-words source line than
+    // with bracketed numbers; customers keep the numbered citation.
+    const citation =
+      options.channel === "onboarding"
+        ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
+        : "Cite the number of the item you used.";
     systemParts.push(
-      `Use only the following material to answer. Cite the number of the item you used. If it does not answer the question, say you don't know.\n\n${knowledgeBlock}`,
+      `Use only the following material to answer. ${citation} If it does not answer the question, say you don't know.\n\n${knowledgeBlock}`,
     );
   }
   const system = systemParts.filter(Boolean).join("\n\n");

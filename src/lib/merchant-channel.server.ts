@@ -214,9 +214,37 @@ export async function handleMerchantInbound(
     },
   );
 
-  const text = (run.output ?? "").trim();
+  // The model sometimes copies the transcript's speaker prefix into its answer.
+  const text = (run.output ?? "").trim().replace(/^\s*aiden\s*(:|—|-)\s*/i, "").trim();
   await reply(
     text ||
       "I'm having trouble thinking just now. Give me a minute and ask me again — someone from the AiDwar team is watching this chat too.",
   );
+
+  // First real answer on a workspace that already has its starter credits:
+  // tell the owner what they have and what to do next, once only.
+  if (currentStatus === "ready") {
+    const { data: credit } = await supabase
+      .from("wallet_ledger")
+      .select("id")
+      .eq("organization_id", session.organization_id)
+      .eq("entry_type", "starter_credits")
+      .limit(1)
+      .maybeSingle();
+
+    if (credit) {
+      await supabase
+        .from("onboarding_sessions")
+        .update({
+          status: "tested",
+          first_sourced_run_id: run.runId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", session.id);
+
+      await reply(
+        `I know your business now. 100 credits added to ${businessName || "your business"} — enough for about 700 customer messages. When you're ready, connect your WhatsApp number from Settings → WhatsApp and I'll start work.`,
+      );
+    }
+  }
 }
