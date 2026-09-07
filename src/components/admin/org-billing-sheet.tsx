@@ -143,6 +143,7 @@ export function OrgBillingSheet({
   const [settings, setSettings] = useState<Record<string, string | boolean>>({});
   const [funding, setFunding] = useState("meta_direct");
   const [rateDraft, setRateDraft] = useState<Record<string, { mode: string; value: string }>>({});
+  const [showRateHistory, setShowRateHistory] = useState(false);
   const [walletAmount, setWalletAmount] = useState("");
   const [walletReason, setWalletReason] = useState("");
   const [planPreview, setPlanPreview] = useState<PlanChangePreview | null>(null);
@@ -290,6 +291,24 @@ export function OrgBillingSheet({
     (data?.rate_cards ?? []).find(
       (r) => r["category"] === category && r["organization_id"] === organizationId,
     ) ?? null;
+
+  // The Meta rate in force on a given date: the latest message_rates row whose
+  // effective_from is on or before that date. Used to show what the client
+  // actually paid on past days, not what today's Meta rate would imply.
+  const metaRateAsOf = (category: string, date: string): number | null => {
+    const rows = (data?.meta_rates ?? []).filter(
+      (r) =>
+        r["category"] === category &&
+        (r["country_code"] ?? "IN") === "IN" &&
+        String(r["effective_from"] ?? "") <= date,
+    );
+    const row = rows[0] ?? null; // already ordered effective_from desc
+    return row ? Number(row["rate"]) : metaRateFor(category);
+  };
+
+  const historyRows = (data?.rate_cards ?? [])
+    .filter((r) => (r["country_code"] ?? "IN") === "IN")
+    .slice(0, 100);
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -691,6 +710,70 @@ export function OrgBillingSheet({
                   Saving sets today's rate. Saving again today replaces it; earlier days stay on the
                   record.
                 </p>
+                <div className="border-t border-border/70 pt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowRateHistory((v) => !v)}
+                  >
+                    {showRateHistory ? "Hide rate history" : "Show rate history"}
+                  </Button>
+                  {showRateHistory ? (
+                    historyRows.length === 0 ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        No rates on record yet — the first save starts the history.
+                      </p>
+                    ) : (
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="border-b border-border/70">
+                            <tr className="text-left text-xs text-muted-foreground">
+                              <th className="py-2">From</th>
+                              <th className="py-2">Category</th>
+                              <th className="py-2">Set</th>
+                              <th className="py-2">Client paid</th>
+                              <th className="py-2">Applies to</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {historyRows.map((r) => {
+                              const from = String(r["effective_from"] ?? "");
+                              const category = String(r["category"] ?? "");
+                              const isOrgRow = r["organization_id"] === organizationId;
+                              const meta = metaRateAsOf(category, from);
+                              const paid =
+                                r["mode"] === "fixed"
+                                  ? Number(r["fixed_rate"])
+                                  : meta === null
+                                    ? null
+                                    : meta * (1 + Number(r["markup_percent"] ?? 0) / 100);
+                              const setLabel =
+                                r["mode"] === "fixed"
+                                  ? `Fixed ${rateMoney(Number(r["fixed_rate"] ?? 0))}`
+                                  : `Markup ${Number(r["markup_percent"] ?? 0)}%`;
+                              return (
+                                <tr
+                                  key={String(r["id"])}
+                                  className="border-b border-border/50 last:border-0"
+                                >
+                                  <td className="py-2 text-muted-foreground">{from}</td>
+                                  <td className="py-2 capitalize">{category}</td>
+                                  <td className="py-2">{setLabel}</td>
+                                  <td className="py-2 font-medium">
+                                    {paid === null ? "—" : rateMoney(paid)}
+                                  </td>
+                                  <td className="py-2 text-muted-foreground">
+                                    {isOrgRow ? "This workspace" : "Platform default"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  ) : null}
+                </div>
               </Section>
             </TabsContent>
 
