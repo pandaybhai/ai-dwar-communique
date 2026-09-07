@@ -383,7 +383,12 @@ export async function adminReconcile(
 
   rows.sort((a, b) => (a.month === b.month ? a.name.localeCompare(b.name) : b.month.localeCompare(a.month)));
   const monthList = [...new Set(rows.map((r) => r.month))].sort().reverse();
-  return { rows, months: monthList };
+  return {
+    rows,
+    months: monthList,
+    from: fromIso.slice(0, 7),
+    to: new Date(new Date(toIso).getTime() - 1).toISOString().slice(0, 7),
+  };
 }
 
 
