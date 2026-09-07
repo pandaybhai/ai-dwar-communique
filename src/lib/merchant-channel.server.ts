@@ -149,10 +149,29 @@ export async function handleMerchantInbound(
 
   if (!body) return;
 
+  // The update above may have just moved pending -> bound, so use the effective status.
+  const currentStatus = session.status === "pending" ? "bound" : session.status;
+
   const [{ data: org }, { data: profile }] = await Promise.all([
     supabase.from("organizations").select("name").eq("id", session.organization_id).maybeSingle(),
     supabase.from("profiles").select("full_name").eq("id", session.user_id).maybeSingle(),
   ]);
+
+  const businessName = (org as { name?: string } | null)?.name ?? "";
+  const ownerName = (profile as { full_name?: string } | null)?.full_name ?? "";
+  const firstName = ownerName.split(" ")[0] || "there";
+
+  // Bound sessions that haven't learned anything yet get a scripted greeting,
+  // not a model call.
+  if (currentStatus === "bound") {
+    await reply(
+      `Hi ${firstName}, I'm Aiden — your new employee for ${businessName || "your business"}. Send me your website link and give me two minutes to learn your business.`,
+    );
+    return;
+  }
+
+  // The AI only answers once it has actually learned the business.
+  if (currentStatus !== "ready" && currentStatus !== "tested") return;
 
   const { merchantAnswer } = await import("@/lib/ai-tasks.server");
   const run = await merchantAnswer(
@@ -165,8 +184,8 @@ export async function handleMerchantInbound(
         id: session.id,
         organization_id: session.organization_id,
         user_id: session.user_id,
-        business_name: (org as { name?: string } | null)?.name ?? null,
-        owner_name: (profile as { full_name?: string } | null)?.full_name ?? null,
+        business_name: businessName || null,
+        owner_name: ownerName || null,
       },
     },
   );
