@@ -186,24 +186,10 @@ export async function createSubscription(
   });
 }
 
-/** A one-off charge on top of the mandate — how usage overage is collected. */
-export async function addAddon(
-  keys: RazorpayKeys,
-  subscriptionId: string,
-  input: { name: string; amount: number; quantity?: number },
-) {
-  return rzp(keys, `/subscriptions/${subscriptionId}/addons`, {
-    method: "POST",
-    body: {
-      item: {
-        name: input.name.slice(0, 100),
-        amount: Math.round(input.amount * 100),
-        currency: "INR",
-      },
-      quantity: input.quantity ?? 1,
-    },
-  });
-}
+// The mandate charges the plan fee only. Usage is never added on to a
+// subscription charge — it is debited from prepaid credits in the wallet.
+
+
 
 export async function cancelSubscription(
   keys: RazorpayKeys,
