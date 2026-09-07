@@ -252,14 +252,34 @@ const monthKey = (iso: string) => String(iso).slice(0, 7);
 export async function adminReconcile(
   supabase: SupabaseClient,
   actorId: string,
-  options: { months?: number } = {},
-): Promise<{ rows: ReconcileMonthRow[]; months: string[] }> {
+  options: { months?: number; from?: string | null; to?: string | null } = {},
+): Promise<{ rows: ReconcileMonthRow[]; months: string[]; from: string; to: string }> {
   await requireSuper(supabase, actorId);
-  const months = Math.min(Math.max(options.months ?? 6, 1), 24);
   const now = new Date();
-  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
+  const isMonth = (value: unknown): value is string =>
+    typeof value === "string" && /^\d{4}-\d{2}$/.test(value);
+
+  // Either an explicit month range (YYYY-MM … YYYY-MM, inclusive) or the last N months.
+  let from: Date;
+  let to: Date;
+  if (isMonth(options.from) && isMonth(options.to)) {
+    const [fy, fm] = options.from.split("-").map(Number) as [number, number];
+    const [ty, tm] = options.to.split("-").map(Number) as [number, number];
+    from = new Date(Date.UTC(fy, fm - 1, 1));
+    to = new Date(Date.UTC(ty, tm, 1));
+    if (to <= from) to = new Date(Date.UTC(fy, fm, 1));
+    // Never look further ahead than now, and never further back than 36 months.
+    const floor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 35, 1));
+    if (from < floor) from = floor;
+    const ceiling = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    if (to > ceiling) to = ceiling;
+  } else {
+    const months = Math.min(Math.max(options.months ?? 6, 1), 24);
+    from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
+    to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  }
   const fromIso = from.toISOString();
-  const toIso = new Date().toISOString();
+  const toIso = (to > now ? now : to).toISOString();
 
   const { aiAllowances, aiEconomicsByOrgMonth, emptyAiEconomics } = await import(
     "@/lib/billing-ai-economics.server"
@@ -274,11 +294,13 @@ export async function adminReconcile(
         .select("organization_id, amount, entry_type, created_at")
         .in("entry_type", ["debit_message", "debit_addon"])
         .gte("created_at", fromIso)
+        .lt("created_at", toIso)
         .limit(100_000),
       supabase
         .from("meta_prepaid_ledger")
         .select("organization_id, amount, entry_type, created_at")
         .gte("created_at", fromIso)
+        .lt("created_at", toIso)
         .limit(100_000),
       supabase
         .from("payments")
@@ -286,6 +308,7 @@ export async function adminReconcile(
         .eq("purpose", "plan_fee")
         .eq("status", "paid")
         .gte("paid_at", fromIso)
+        .lt("paid_at", toIso)
         .limit(20_000),
       aiEconomicsByOrgMonth(supabase, fromIso, toIso, allowances),
     ]);
@@ -360,7 +383,12 @@ export async function adminReconcile(
 
   rows.sort((a, b) => (a.month === b.month ? a.name.localeCompare(b.name) : b.month.localeCompare(a.month)));
   const monthList = [...new Set(rows.map((r) => r.month))].sort().reverse();
-  return { rows, months: monthList };
+  return {
+    rows,
+    months: monthList,
+    from: fromIso.slice(0, 7),
+    to: new Date(new Date(toIso).getTime() - 1).toISOString().slice(0, 7),
+  };
 }
 
 

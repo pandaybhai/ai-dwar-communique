@@ -1,14 +1,66 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowUpDown, Building2, Download, FileText, RefreshCw, Wallet } from "lucide-react";
+import {
+  ArrowUpDown,
+  Building2,
+  Download,
+  FileText,
+  Info,
+  RefreshCw,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
 import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
+import { AiRunsDialog } from "@/components/admin/ai-runs-dialog";
 import { callApi } from "@/lib/whatsapp-client";
 import { downloadCsv } from "@/lib/csv";
 import { money } from "@/lib/billing";
+
+/** Plain-English meaning of every AI economics column, shown on hover and focus. */
+const DEFINITIONS: Record<string, string> = {
+  "AI answers":
+    "Every answer the AI employee completed successfully this period. 'Included' are the ones covered by the workspace's plan allowance; 'over' are the ones beyond it.",
+  "Within allowance":
+    "Answers covered by the plan's included AI answers. The client pays nothing extra for these, so they cost us money.",
+  "Over allowance":
+    "Answers beyond the included allowance. These are the only ones charged to the client's credits.",
+  "AI cost":
+    "What the AI provider charged us for these answers, exactly as recorded when each answer was produced. Never recalculated.",
+  "AI provider cost":
+    "What the AI provider charged us for these answers, exactly as recorded when each answer was produced. Never recalculated.",
+  "AI billed":
+    "What we actually took from the client's credits — only over-allowance answers that produced a wallet charge.",
+  "AI margin":
+    "Billed to client minus provider cost. It reads negative while the workspace is still inside its included allowance, because we pay and they don't.",
+  "Avg cost per answer": "Provider cost divided by the number of answers in the period.",
+  "Model mix": "Share of answers handled on the everyday model versus the careful (slower, pricier) one.",
+  "Everyday %": "Share of answers handled on the everyday model.",
+  "Careful %": "Share of answers handled on the careful (slower, pricier) model.",
+};
+
+/** A column heading with its definition one hover away. */
+function InfoHint({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" aria-label={text} className="text-muted-foreground/70 hover:text-foreground">
+          <Info className="h-3 w-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs text-xs leading-relaxed">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 type AiEconomics = {
   answers: number;
@@ -213,10 +265,17 @@ function AdminBilling() {
   const [templatesBusy, setTemplatesBusy] = useState(false);
   const [reconcile, setReconcile] = useState<ReconcileRow[] | null>(null);
   const [reconcileLoading, setReconcileLoading] = useState(false);
+  const [range, setRange] = useState<{ from: string; to: string }>(() => {
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
+    return { from: start.toISOString().slice(0, 7), to: now.toISOString().slice(0, 7) };
+  });
+  const [drill, setDrill] = useState<{ id: string; name: string; month: string } | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "mtd_consumed",
     dir: "desc",
   });
+  const thisMonth = new Date().toISOString().slice(0, 7);
 
   const load = useCallback(async () => {
     setError(null);
@@ -245,7 +304,7 @@ function AdminBilling() {
   const loadReconcile = useCallback(async () => {
     setReconcileLoading(true);
     const result = await callApi<{ rows: ReconcileRow[] }>("/api/admin/billing", {
-      body: { action: "reconcile", months: 6 },
+      body: { action: "reconcile", from: range.from, to: range.to },
     });
     setReconcileLoading(false);
     if (result.error) {
@@ -254,7 +313,7 @@ function AdminBilling() {
       return;
     }
     setReconcile(result.data?.rows ?? []);
-  }, []);
+  }, [range.from, range.to]);
 
   const sorted = useMemo(() => {
     if (!rows) return null;
@@ -283,25 +342,30 @@ function AdminBilling() {
   }
 
   function Th({ label, sortKey }: { label: string; sortKey?: SortKey }) {
+    const definition = DEFINITIONS[label];
     return (
       <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
-        {sortKey ? (
-          <button
-            type="button"
-            onClick={() => toggleSort(sortKey)}
-            className="inline-flex items-center gap-1 transition-colors duration-150 hover:text-foreground"
-          >
-            {label}
-            <ArrowUpDown className="h-3 w-3" />
-          </button>
-        ) : (
-          label
-        )}
+        <span className="inline-flex items-center gap-1">
+          {sortKey ? (
+            <button
+              type="button"
+              onClick={() => toggleSort(sortKey)}
+              className="inline-flex items-center gap-1 transition-colors duration-150 hover:text-foreground"
+            >
+              {label}
+              <ArrowUpDown className="h-3 w-3" />
+            </button>
+          ) : (
+            label
+          )}
+          {definition ? <InfoHint text={definition} /> : null}
+        </span>
       </th>
     );
   }
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader
@@ -542,7 +606,19 @@ function AdminBilling() {
                           <Margin value={row.mtd_margin} />
                         </td>
                         <td className="px-3 py-3">
-                          <span className="text-foreground">{row.ai.answers}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDrill({
+                                id: row.organization_id,
+                                name: row.name,
+                                month: thisMonth,
+                              })
+                            }
+                            className="text-foreground underline-offset-2 transition-colors duration-150 hover:text-primary hover:underline"
+                          >
+                            {row.ai.answers}
+                          </button>
                           <span className="block text-xs text-muted-foreground">
                             {row.ai.within_allowance} included · {row.ai.over_allowance} over
                           </span>
@@ -600,17 +676,44 @@ function AdminBilling() {
               Month by month, per workspace: what clients consumed, what Meta and the AI providers
               actually cost us, and what the month earned.
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-xs text-muted-foreground" htmlFor="reconcile-from">
+                From
+              </label>
+              <Input
+                id="reconcile-from"
+                type="month"
+                value={range.from}
+                max={range.to}
+                className="h-9 w-[150px]"
+                onChange={(event) =>
+                  setRange((prev) => ({ ...prev, from: event.target.value || prev.from }))
+                }
+              />
+              <label className="text-xs text-muted-foreground" htmlFor="reconcile-to">
+                To
+              </label>
+              <Input
+                id="reconcile-to"
+                type="month"
+                value={range.to}
+                min={range.from}
+                max={thisMonth}
+                className="h-9 w-[150px]"
+                onChange={(event) =>
+                  setRange((prev) => ({ ...prev, to: event.target.value || prev.to }))
+                }
+              />
               <Button variant="ghost" onClick={() => void loadReconcile()}>
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh
+                Apply
               </Button>
               <Button
                 variant="outline"
                 disabled={!reconcile || reconcile.length === 0}
                 onClick={() =>
                   downloadCsv(
-                    `aidwar-reconcile-${new Date().toISOString().slice(0, 10)}.csv`,
+                    `aidwar-reconcile-${range.from}-to-${range.to}.csv`,
                     reconcileCsv(reconcile ?? []),
                   )
                 }
@@ -620,6 +723,7 @@ function AdminBilling() {
               </Button>
             </div>
           </div>
+
 
           {reconcileLoading || reconcile === null ? (
             <TableSkeleton rows={6} />
@@ -639,9 +743,15 @@ function AdminBilling() {
                         key={h}
                         className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold text-muted-foreground"
                       >
-                        {h}
+                        <span className="inline-flex items-center gap-1">
+                          {h}
+                          {DEFINITIONS[h] ? <InfoHint text={DEFINITIONS[h]} /> : null}
+                        </span>
                       </th>
                     ))}
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
+                      AI detail
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -657,7 +767,17 @@ function AdminBilling() {
                       <td className="px-3 py-3">
                         <Margin value={r.messaging_margin} />
                       </td>
-                      <td className="px-3 py-3">{r.ai_answers}</td>
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDrill({ id: r.organization_id, name: r.name, month: r.month })
+                          }
+                          className="text-foreground underline-offset-2 transition-colors duration-150 hover:text-primary hover:underline"
+                        >
+                          {r.ai_answers}
+                        </button>
+                      </td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_within_allowance}</td>
                       <td className="px-3 py-3 text-muted-foreground">{r.ai_over_allowance}</td>
                       <td className="px-3 py-3 text-muted-foreground">
@@ -676,6 +796,32 @@ function AdminBilling() {
                       <td className="px-3 py-3">
                         <Margin value={r.total_margin} />
                       </td>
+                      <td className="whitespace-nowrap px-3 py-3">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setDrill({ id: r.organization_id, name: r.name, month: r.month })
+                            }
+                          >
+                            View answers
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Export AI economics for ${r.name}, ${r.month}`}
+                            onClick={() =>
+                              downloadCsv(
+                                `aidwar-ai-${r.name.replace(/\W+/g, "-").toLowerCase()}-${r.month}.csv`,
+                                reconcileCsv([r]),
+                              )
+                            }
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -691,6 +837,15 @@ function AdminBilling() {
         onClose={() => setDrawer(false)}
         onDone={() => void load()}
       />
+
+      <AiRunsDialog
+        open={drill !== null}
+        organizationId={drill?.id ?? null}
+        organizationName={drill?.name ?? ""}
+        month={drill?.month ?? null}
+        onClose={() => setDrill(null)}
+      />
     </div>
+    </TooltipProvider>
   );
 }
