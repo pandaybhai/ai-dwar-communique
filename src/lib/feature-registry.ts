@@ -998,6 +998,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "autopay_setup",
       "autopay_cancelled",
       "dunning_advanced",
+      "billing_templates_created",
+
     ],
 
     settings_path: "/app/settings",
