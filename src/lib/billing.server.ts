@@ -1187,10 +1187,9 @@ export async function resyncPlanFeatures(
 
   const settings = await ensureSettings(supabase, input.organizationId);
   const overrides = (settings["limits_override"] ?? {}) as Record<string, unknown>;
+  const plans = (version["plans"] ?? {}) as unknown as Record<string, unknown>;
   const planName =
-    (((version["plans"] ?? {}) as Record<string, unknown>)["name"] as string) ??
-    (((version["plans"] ?? {}) as Record<string, unknown>)["key"] as string) ??
-    "plan";
+    (plans["name"] as string | undefined) ?? (plans["key"] as string | undefined) ?? "plan";
 
   const applied = await applyPlanFeatures(supabase, {
     organizationId: input.organizationId,
