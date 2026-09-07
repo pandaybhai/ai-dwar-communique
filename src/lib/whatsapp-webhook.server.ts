@@ -748,8 +748,17 @@ export async function processWebhookPayload(
                 phone: normalizePhone(waId),
                 wa_id: waId,
                 ...(profileName ? { name: profileName } : {}),
-                source: attribution.source,
-                source_detail: attribution.source_detail,
+                // Everyone on the onboarding number is a business owner, not a
+                // lead, and is filed that way for good.
+                source:
+                  onboardingAccountId && accountId === onboardingAccountId
+                    ? "onboarding"
+                    : attribution.source,
+                source_detail:
+                  onboardingAccountId && accountId === onboardingAccountId
+                    ? null
+                    : attribution.source_detail,
+
                 updated_at: new Date().toISOString(),
               },
               { onConflict: "organization_id,phone" },
