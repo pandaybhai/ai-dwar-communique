@@ -159,6 +159,7 @@ export const MESSAGING_TIER_LABELS: Record<string, string> = {
   TIER_100K: "100K/day",
   TIER_100000: "100K/day",
   TIER_UNLIMITED: "Unlimited",
+  NOT_AVAILABLE: "No tier (test number)",
 };
 
 export function messagingTierLabel(tier: string | null | undefined): string {

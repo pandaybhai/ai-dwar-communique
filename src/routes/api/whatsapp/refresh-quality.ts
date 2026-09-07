@@ -48,9 +48,11 @@ export const Route = createFileRoute("/api/whatsapp/refresh-quality")({
           .maybeSingle();
 
         const result = await graphFetch(connection.phoneNumberId, connection.accessToken, {
-          query: { fields: "quality_rating,name_status,messaging_limit_tier" },
+          query: { fields: "quality_rating,messaging_limit_tier,name_status,display_phone_number" },
         });
         if (!result.ok) return jsonError(graphErrorMessage(result.body), 400);
+
+        console.info("[refresh-quality]", JSON.stringify(result.body));
 
         const previous = (account?.quality_rating as string | null) ?? null;
         const rating = (result.body["quality_rating"] as string) ?? "UNKNOWN";
@@ -62,7 +64,8 @@ export const Route = createFileRoute("/api/whatsapp/refresh-quality")({
           .update({
             quality_rating: rating,
             quality_updated_at: nowIso,
-            messaging_tier: (result.body["messaging_limit_tier"] as string | null) ?? null,
+            messaging_tier: (result.body["messaging_limit_tier"] as string | undefined) ?? "NOT_AVAILABLE",
+            messaging_tier_updated_at: nowIso,
           })
           .eq("id", connection.accountId);
         if (updateErr) return jsonError("We couldn't save the latest quality rating.", 500);
