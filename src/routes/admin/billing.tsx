@@ -434,34 +434,68 @@ function AdminBilling() {
         </div>
       </div>
 
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <label className="text-xs text-muted-foreground" htmlFor="overview-month">
+          Month
+        </label>
+        <Input
+          id="overview-month"
+          type="month"
+          value={month}
+          max={thisMonth}
+          className="h-9 w-[160px]"
+          onChange={(event) => setMonth(event.target.value || thisMonth)}
+        />
+        <span className="text-xs text-muted-foreground">
+          Indian months — a month runs midnight to midnight, India time.
+        </span>
+      </div>
+
       {totals ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard label="Plan fees this month" value={money(totals.plan_fees)} hint="Collected, ex-GST" />
           <StatCard
-            label="AI billed"
-            value={money(totals.ai_billed)}
-            hint={`Provider cost ${money(totals.ai_provider_cost)}`}
+            label="Revenue"
+            value={money(totals.revenue)}
+            hint={`Plan fees ${money(totals.plan_fees)} · Messaging ${fineMoney(totals.messaging_consumed)} · AI ${fineMoney(totals.ai_billed)}`}
           />
           <StatCard
-            label="AI margin"
-            value={money(totals.ai_margin)}
-            tone={totals.ai_margin < 0 ? "negative" : "positive"}
-            hint="Negative while answers sit inside allowances"
+            label="Gross margin"
+            value={fineMoney(totals.gross_margin)}
+            tone={totals.gross_margin < 0 ? "negative" : "positive"}
+            hint="Plan fees + messaging margin + AI margin − our own AI cost"
           />
           <StatCard
             label="Messaging margin"
-            value={money(totals.messaging_margin)}
+            value={fineMoney(totals.messaging_margin)}
             tone={totals.messaging_margin < 0 ? "negative" : "positive"}
-            hint={`${money(totals.messaging_consumed)} consumed · ${money(totals.messaging_meta_cost)} Meta cost`}
+            hint={`${fineMoney(totals.messaging_consumed)} consumed · ${fineMoney(totals.messaging_meta_cost)} Meta cost`}
           />
           <StatCard
-            label="Total margin"
-            value={money(totals.total_margin)}
-            tone={totals.total_margin < 0 ? "negative" : "positive"}
-            hint="Plan fees + AI margin + messaging margin"
+            label="AI margin"
+            value={fineMoney(totals.ai_margin)}
+            tone={totals.ai_margin < 0 ? "negative" : "positive"}
+            hint={`Billed ${fineMoney(totals.ai_billed)} · Provider cost ${fineMoney(totals.ai_provider_cost)}`}
+          />
+          <StatCard
+            label="Our own AI cost"
+            value={fineMoney(totals.internal_ai_cost)}
+            tone={totals.internal_ai_cost > 0 ? "negative" : undefined}
+            hint={
+              totals.internal_ai_orgs.length > 0
+                ? `Workspaces we don't bill: ${totals.internal_ai_orgs.join(", ")}`
+                : "Every workspace with AI use is billed"
+            }
           />
         </div>
       ) : null}
+
+      {totals && totals.plan_fees_gross > totals.plan_fees ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Plan fees are shown without GST. Clients paid {money(totals.plan_fees_gross)} including
+          tax.
+        </p>
+      ) : null}
+
 
       {templates ? (
         <div className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
