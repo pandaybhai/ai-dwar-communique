@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { WaitlistDialog } from "@/components/waitlist-dialog";
+
 import { useSession } from "@/hooks/use-session";
 
 export function SiteHeader() {
@@ -48,13 +48,9 @@ export function SiteHeader() {
               >
                 Log in
               </Link>
-              <WaitlistDialog
-                trigger={
-                  <Button size="sm" className="rounded-full px-4">
-                    Get Early Access
-                  </Button>
-                }
-              />
+              <Button asChild size="sm" className="rounded-full px-4">
+                <Link to="/signup">Start free</Link>
+              </Button>
             </>
           )}
         </nav>

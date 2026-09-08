@@ -273,7 +273,7 @@ function Index() {
                     Hire your AI employee before your competitor does.
                   </h2>
                   <p className="mx-auto mt-4 max-w-xl text-primary-foreground/90">
-                    Early access is limited. Join the list and we&apos;ll onboard you personally.
+                    Day one is free, no card needed. Sign up and say hello on WhatsApp.
                   </p>
                   <div className="mt-8 flex justify-center">
                     <Button
