@@ -330,7 +330,7 @@ export async function handleMerchantInbound(
     }
   }
 
-  const session = await findSession(supabase, args.waId, body);
+  const { session, byCode } = await findSession(supabase, args.waId, body);
 
   if (!session) {
     if (await shouldGreetStranger(supabase, args.conversationId)) await reply(STRANGER_REPLY);
