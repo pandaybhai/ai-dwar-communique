@@ -1368,6 +1368,19 @@ function stripNumericNoise(text: string): string {
 }
 
 /**
+ * Questions whose only honest answer contains a figure: a price, a time, a
+ * count. English and the everyday Hinglish equivalents.
+ */
+const FIGURE_WORDS =
+  /\b(price|prices|pricing|cost|costs|how much|rate|rates|charge|charges|fee|fees|timing|timings|hours|when|how many|how long|kitna|kitne|kitni|kab)\b/i;
+
+export function asksForFigure(question: string): boolean {
+  return FIGURE_WORDS.test(question);
+}
+
+
+
+/**
  * The numbers in an answer that nothing behind the answer actually says.
  *
  * Small bare counts ("2 sizes") are ignored: they are ordinary language, not
