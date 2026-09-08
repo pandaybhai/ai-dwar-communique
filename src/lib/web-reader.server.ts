@@ -121,15 +121,17 @@ export async function readPage(
         ...headers,
         ...(headers["Authorization"] ? { Authorization: "Bearer [masked]" } : {}),
       };
+      const authUsed = Boolean(withKey && cleanKey);
       const response = await fetchWithTimeout(readerUrl, 15000, { headers });
+      const auth = `auth=${authUsed ? "yes" : "no"}`;
       if (!response) {
-        console.error("[web-reader]", JSON.stringify({ url: readerUrl, headers: safeHeaders, status: 0, body: "request failed or timed out" }));
-        return { response: null, body: "", detail: `reader request failed or timed out; url=${readerUrl}; headers=${JSON.stringify(safeHeaders)}` };
+        console.error("[web-reader]", JSON.stringify({ url: readerUrl, auth: authUsed, status: 0, body: "request failed or timed out" }));
+        return { response: null, body: "", detail: `reader request failed or timed out; url=${readerUrl}; ${auth}` };
       }
       const body = await response.text().catch((error) => `body read failed: ${error instanceof Error ? error.message : String(error)}`);
       const preview = bodyPreview(body);
-      console.info("[web-reader]", JSON.stringify({ url: readerUrl, headers: safeHeaders, status: response.status, body: preview }));
-      return { response, body, detail: `reader HTTP ${response.status}; url=${readerUrl}; headers=${JSON.stringify(safeHeaders)}; body=${preview}` };
+      console.info("[web-reader]", JSON.stringify({ url: readerUrl, auth: authUsed, status: response.status, body: preview }));
+      return { response, body, detail: `reader HTTP ${response.status}; url=${readerUrl}; ${auth}; body=${preview}` };
     };
 
     let attempt = await readerRequest(Boolean(cleanKey));
