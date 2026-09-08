@@ -495,7 +495,37 @@ export async function handleMerchantInbound(
     return;
   }
 
+  // An owner who volunteers a fact is teaching, not asking. Save it as a real
+  // answer first — a warm "got it" with nothing written down is a lie.
+  {
+    const { classifyBusinessFact } = await import("@/lib/ai-tasks.server");
+    const verdict = await classifyBusinessFact(
+      supabase,
+      { organizationId: session.organization_id, actorUserId: session.user_id },
+      {
+        conversationId: args.conversationId,
+        message: body,
+        businessName: businessName || null,
+      },
+    );
+    if (verdict.isFact) {
+      const { saveCorrection } = await import("@/lib/knowledge.server");
+      const saved = await saveCorrection(supabase, session.organization_id, {
+        question: verdict.question,
+        answer: body,
+        userId: session.user_id,
+      });
+      await reply(
+        saved.ok
+          ? "Saved — I'll remember that."
+          : "I couldn't save that just now. Send it again in a moment and I'll keep it.",
+      );
+      return;
+    }
+  }
+
   const { merchantAnswer } = await import("@/lib/ai-tasks.server");
+
   const run = await merchantAnswer(
     supabase,
     { organizationId: session.organization_id, actorUserId: session.user_id },

@@ -1208,6 +1208,26 @@ export async function executeRun(
     }
   }
 
+  // A question about a figure that comes back without a single digit is a
+  // polite way of saying "I don't know". Treat it as no source at all.
+  if (
+    task === "agent_reply" &&
+    result.status === "ok" &&
+    result.output &&
+    asksForFigure(input) &&
+    !/\d/.test(result.output)
+  ) {
+    console.log(
+      "[grounding] figure_missing",
+      organizationId,
+      JSON.stringify(input).slice(0, 120),
+    );
+    result.status = "escalated";
+    result.escalationSignal = "no_source";
+  }
+
+
+
   // ------------------------------------------------- signal-based hand-over
   // Only for conversation work. A summary or a tag never escalates.
   if (task === "agent_reply" && result.status === "ok") {
@@ -1346,6 +1366,19 @@ const NUMBER_PATTERN = /(?:₹|Rs\.?\s?)?\d[\d,]*(?:\.\d+)?\s?%?/g;
 function stripNumericNoise(text: string): string {
   return text.replace(/₹|Rs\.?/gi, "").replace(/[,\s]/g, "");
 }
+
+/**
+ * Questions whose only honest answer contains a figure: a price, a time, a
+ * count. English and the everyday Hinglish equivalents.
+ */
+const FIGURE_WORDS =
+  /\b(price|prices|pricing|cost|costs|how much|rate|rates|charge|charges|fee|fees|timing|timings|hours|when|how many|how long|kitna|kitne|kitni|kab)\b/i;
+
+export function asksForFigure(question: string): boolean {
+  return FIGURE_WORDS.test(question);
+}
+
+
 
 /**
  * The numbers in an answer that nothing behind the answer actually says.
