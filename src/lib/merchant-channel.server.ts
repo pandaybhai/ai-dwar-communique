@@ -453,7 +453,8 @@ export async function handleMerchantInbound(
   }
 
   // ---------------------------------------------------------- the website
-  const link = body.match(/https?:\/\/[^\s]+/i)?.[0] ?? null;
+  const link = extractSiteLink(body);
+
   if (link && !session.source_id) {
     let host = link;
     try {
