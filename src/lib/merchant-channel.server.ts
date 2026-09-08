@@ -607,6 +607,23 @@ export async function handleMerchantInbound(
     }
   }
 
+  // An owner on trial asking about OUR plans (not their own prices): point at
+  // the billing page. No plan is ever assigned from chat.
+  if (!interactiveId && UPGRADE_INTENT.test(body)) {
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("plan_status, plan_version_id")
+      .eq("id", session.organization_id)
+      .maybeSingle();
+    const o = (orgRow ?? {}) as { plan_status?: string | null; plan_version_id?: string | null };
+    if (!o.plan_version_id || o.plan_status === "trial" || o.plan_status === "locked") {
+      await reply(
+        "Plans start at ₹2,499 a month. Pick one and pay in a minute here — I'll keep working the moment it's done:\nhttps://aidwar.in/app/billing",
+      );
+      return;
+    }
+  }
+
   // An owner who volunteers a fact is teaching, not asking. Save it as a real
   // answer first — a warm "got it" with nothing written down is a lie.
   if (teachable) {
@@ -814,9 +831,14 @@ export async function handleNumberConnected(
     .eq("organization_id", args.organizationId);
 
   if (modeError) {
+    const guard = modeError.message.includes("AI_GUARD:")
+      ? modeError.message.split("AI_GUARD:")[1]?.trim()
+      : null;
     await sendServiceText(supabase, {
       ...channel,
-      body: "I'm connected but not switched on yet — add credits or pick a plan and I'll start.",
+      body:
+        `I'm connected but not switched on yet${guard ? ` — ${guard.replace(/\.$/, "")}` : ""}. ` +
+        "Pick a plan or add credits here and I'll start right away:\nhttps://aidwar.in/app/billing",
     });
     return;
   }
