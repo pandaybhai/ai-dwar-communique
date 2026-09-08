@@ -1033,6 +1033,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "meta_prepaid_ledger",
       "bsp_accounts",
       "billing_notifications",
+      "credit_notes",
     ],
   },
   {
