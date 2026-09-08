@@ -42,6 +42,9 @@ export type OnboardingSession = {
   step: string | null;
   source_id: string | null;
   pending_question: string | null;
+  pending_asked_at: string | null;
+  suggested_questions: string[] | null;
+
 };
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
