@@ -23,6 +23,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminActivityRouteImport } from './routes/admin/activity'
 import { Route as AdminAiRouteImport } from './routes/admin/ai'
 import { Route as AdminBillingRouteImport } from './routes/admin/billing'
+import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
@@ -42,6 +43,7 @@ import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as RTokenRouteImport } from './routes/r.$token'
 import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
+import { Route as ApiAdminCustomersRouteImport } from './routes/api/admin/customers'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
 import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
@@ -174,6 +176,11 @@ const AdminBillingRoute = AdminBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminCustomersRoute = AdminCustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminFlagsRoute = AdminFlagsRouteImport.update({
   id: '/flags',
   path: '/flags',
@@ -267,6 +274,11 @@ const ApiAdminAiRoute = ApiAdminAiRouteImport.update({
 const ApiAdminBillingRoute = ApiAdminBillingRouteImport.update({
   id: '/api/admin/billing',
   path: '/api/admin/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminCustomersRoute = ApiAdminCustomersRouteImport.update({
+  id: '/api/admin/customers',
+  path: '/api/admin/customers',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAiEmployeeRoute = ApiAiEmployeeRouteImport.update({
@@ -609,6 +621,7 @@ export interface FileRoutesByFullPath {
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/billing': typeof AdminBillingRoute
+  '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -629,6 +642,7 @@ export interface FileRoutesByFullPath {
   '/app/': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
+  '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -703,6 +717,7 @@ export interface FileRoutesByTo {
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/billing': typeof AdminBillingRoute
+  '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -723,6 +738,7 @@ export interface FileRoutesByTo {
   '/app': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
+  '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -800,6 +816,7 @@ export interface FileRoutesById {
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/billing': typeof AdminBillingRoute
+  '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -820,6 +837,7 @@ export interface FileRoutesById {
   '/app/': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
+  '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
@@ -898,6 +916,7 @@ export interface FileRouteTypes {
     | '/admin/activity'
     | '/admin/ai'
     | '/admin/billing'
+    | '/admin/customers'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -918,6 +937,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/api/admin/ai'
     | '/api/admin/billing'
+    | '/api/admin/customers'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -992,6 +1012,7 @@ export interface FileRouteTypes {
     | '/admin/activity'
     | '/admin/ai'
     | '/admin/billing'
+    | '/admin/customers'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -1012,6 +1033,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/api/admin/ai'
     | '/api/admin/billing'
+    | '/api/admin/customers'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -1088,6 +1110,7 @@ export interface FileRouteTypes {
     | '/admin/activity'
     | '/admin/ai'
     | '/admin/billing'
+    | '/admin/customers'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -1108,6 +1131,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/api/admin/ai'
     | '/api/admin/billing'
+    | '/api/admin/customers'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
@@ -1188,6 +1212,7 @@ export interface RootRouteChildren {
   RTokenRoute: typeof RTokenRoute
   ApiAdminAiRoute: typeof ApiAdminAiRoute
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
+  ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
   ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
@@ -1345,6 +1370,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminBillingRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/customers': {
+      id: '/admin/customers'
+      path: '/customers'
+      fullPath: '/admin/customers'
+      preLoaderRoute: typeof AdminCustomersRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/flags': {
       id: '/admin/flags'
       path: '/flags'
@@ -1476,6 +1508,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/billing'
       fullPath: '/api/admin/billing'
       preLoaderRoute: typeof ApiAdminBillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/customers': {
+      id: '/api/admin/customers'
+      path: '/api/admin/customers'
+      fullPath: '/api/admin/customers'
+      preLoaderRoute: typeof ApiAdminCustomersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/employee': {
@@ -1912,6 +1951,7 @@ interface AdminRouteRouteChildren {
   AdminActivityRoute: typeof AdminActivityRoute
   AdminAiRoute: typeof AdminAiRoute
   AdminBillingRoute: typeof AdminBillingRoute
+  AdminCustomersRoute: typeof AdminCustomersRoute
   AdminFlagsRoute: typeof AdminFlagsRoute
   AdminOrganizationsRoute: typeof AdminOrganizationsRoute
   AdminUsersRoute: typeof AdminUsersRoute
@@ -1922,6 +1962,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminActivityRoute: AdminActivityRoute,
   AdminAiRoute: AdminAiRoute,
   AdminBillingRoute: AdminBillingRoute,
+  AdminCustomersRoute: AdminCustomersRoute,
   AdminFlagsRoute: AdminFlagsRoute,
   AdminOrganizationsRoute: AdminOrganizationsRoute,
   AdminUsersRoute: AdminUsersRoute,
@@ -1991,6 +2032,7 @@ const rootRouteChildren: RootRouteChildren = {
   RTokenRoute: RTokenRoute,
   ApiAdminAiRoute: ApiAdminAiRoute,
   ApiAdminBillingRoute: ApiAdminBillingRoute,
+  ApiAdminCustomersRoute: ApiAdminCustomersRoute,
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
   ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,

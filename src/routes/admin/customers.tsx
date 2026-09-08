@@ -111,17 +111,12 @@ function AdminCustomers() {
 
   return (
     <>
-      <PageHeader
-        title="Customers"
-        description={DESCRIPTION}
-        action={
-          <Button variant="outline" size="sm" className="rounded-full" onClick={() => void load()}>
-            <RefreshCw className={cn("mr-2 h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
-          </Button>
-        }
-      />
+      <PageHeader title="Customers" description={DESCRIPTION} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Button variant="outline" size="sm" className="rounded-full" onClick={() => void load()}>
+          <RefreshCw className={cn("mr-2 h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
+        </Button>
         <Tabs value={queue} onValueChange={(v) => setQueue(v as Queue)}>
           <TabsList className="h-auto flex-wrap rounded-full">
             {QUEUES.map((q) => (
@@ -148,7 +143,7 @@ function AdminCustomers() {
       {loading && !rows ? (
         <TableSkeleton />
       ) : error ? (
-        <ErrorState message={error} onRetry={() => void load()} />
+        <ErrorState message={error} />
       ) : (rows ?? []).length === 0 ? (
         <EmptyState icon={Users} title="No customers yet" description="Sign-ups show up here as they happen." />
       ) : (
