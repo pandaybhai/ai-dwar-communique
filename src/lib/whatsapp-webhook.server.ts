@@ -1180,12 +1180,24 @@ export async function reprocessUnprocessedEvents(
     .limit(limit);
 
   if (!events?.length) return 0;
+  let handled = 0;
   for (const event of events) {
+    // Claim the event first: two overlapping catch-up passes used to pick the
+    // same rows and could each run a reply.
+    const { data: claimed } = await supabase
+      .from("webhook_events")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("id", event.id as string)
+      .is("processed_at", null)
+      .select("id");
+    if (!claimed?.length) continue;
+    handled += 1;
     await processWebhookPayload(
       supabase,
       event.id as string,
       (event.payload ?? {}) as AnyRecord,
     );
   }
-  return events.length;
+  return handled;
 }
+
