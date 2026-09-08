@@ -26,14 +26,18 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
           const stale = new Date(Date.now() - 10 * 60_000).toISOString();
           await supabase
             .from("knowledge_sources")
-            .update({ status: "queued", queued_at: new Date().toISOString() })
+            .update({
+              status: "pending",
+              queued_at: new Date().toISOString(),
+              sync_started_at: null,
+            })
             .eq("status", "syncing")
             .lt("sync_started_at", stale);
 
           const { data } = await supabase
             .from("knowledge_sources")
             .select("id, organization_id")
-            .eq("status", "pending")
+            .in("status", ["pending", "queued"])
             .not("queued_at", "is", null)
             .is("sync_started_at", null)
             .order("queued_at", { ascending: true })
@@ -45,7 +49,7 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
               .from("knowledge_sources")
               .update({ status: "syncing", sync_started_at: new Date().toISOString() })
               .eq("id", row.id)
-                .eq("status", "pending")
+                .in("status", ["pending", "queued"])
                 .not("queued_at", "is", null)
                 .is("sync_started_at", null)
               .select("id")

@@ -115,7 +115,10 @@ export async function readPage(
         "X-Return-Format": "text",
       };
       if (withKey && cleanKey) headers.Authorization = `Bearer ${cleanKey}`;
-      const safeHeaders = { ...headers, ...(headers.Authorization ? { Authorization: "Bearer [masked]" } : {}) };
+      const safeHeaders = {
+        ...headers,
+        ...(headers["Authorization"] ? { Authorization: "Bearer [masked]" } : {}),
+      };
       const response = await fetchWithTimeout(readerUrl, 15000, { headers });
       if (!response) {
         console.error("[web-reader]", JSON.stringify({ url: readerUrl, headers: safeHeaders, status: 0, body: "request failed or timed out" }));
