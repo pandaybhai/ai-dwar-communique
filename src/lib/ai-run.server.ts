@@ -1186,9 +1186,31 @@ export async function executeRun(
     costKnown: priced.source === "rate_card",
   };
 
+  // -------------------------------------------------- numeric grounding
+  // A number the material never mentions is a guess, and a guess about a
+  // price or a date is worse than no answer at all.
+  if (task === "agent_reply" && result.output) {
+    const unsupported = unsupportedNumbers(result.output, [
+      knowledgeBlock,
+      options.system ?? "",
+      input,
+      ...toolResultTexts,
+    ]);
+    if (unsupported.length > 0) {
+      console.log(
+        "[grounding] unsupported",
+        organizationId,
+        JSON.stringify(unsupported),
+        JSON.stringify(input).slice(0, 120),
+      );
+      result.status = "escalated";
+      result.escalationSignal = "unsupported_number";
+    }
+  }
+
   // ------------------------------------------------- signal-based hand-over
   // Only for conversation work. A summary or a tag never escalates.
-  if (task === "agent_reply") {
+  if (task === "agent_reply" && result.status === "ok") {
     const signal = decideEscalation({
       question: input,
       answer: result.output,
@@ -1313,6 +1335,41 @@ function normaliseQuestion(text: string): string {
     .replace(/\s+/g, " ")
     .replace(/[?!.,;:\u0964]+$/g, "")
     .trim();
+}
+
+// ------------------------------------------------------- numeric grounding
+
+/** Every number-looking run of characters, with currency and percent signs. */
+const NUMBER_PATTERN = /(?:₹|Rs\.?\s?)?\d[\d,]*(?:\.\d+)?\s?%?/g;
+
+/** ₹, Rs, commas and spaces carry no meaning for a comparison. */
+function stripNumericNoise(text: string): string {
+  return text.replace(/₹|Rs\.?/gi, "").replace(/[,\s]/g, "");
+}
+
+/**
+ * The numbers in an answer that nothing behind the answer actually says.
+ *
+ * Small bare counts ("2 sizes") are ignored: they are ordinary language, not
+ * a claim about price, date or quantity. Anything with a currency mark, a
+ * decimal, a percent sign or three digits or more must be there in writing.
+ */
+export function unsupportedNumbers(answer: string, support: string[]): string[] {
+  const haystack = stripNumericNoise(support.join("\n"));
+  const found = answer.match(NUMBER_PATTERN) ?? [];
+  const out: string[] = [];
+  for (const raw of found) {
+    const token = raw.trim();
+    const value = stripNumericNoise(token);
+    if (!value) continue;
+    const bare = value.replace(/%$/, "");
+    const trivial =
+      !/[₹%]|Rs/i.test(token) && !bare.includes(".") && bare.replace(/\D/g, "").length <= 2;
+    if (trivial) continue;
+    if (haystack.includes(value)) continue;
+    if (!out.includes(token)) out.push(token);
+  }
+  return out;
 }
 
 /** Observable signals only — never the model's own opinion of its certainty. */
