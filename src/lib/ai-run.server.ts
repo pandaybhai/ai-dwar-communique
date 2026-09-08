@@ -417,6 +417,16 @@ async function resolveApiKey(
   return { key: null, base: GATEWAY, direct: false };
 }
 
+/** The same credential the chat runs use, for non-chat calls (transcription). */
+export async function providerCredential(
+  supabase: SupabaseClient,
+  organizationId: string,
+  provider: string,
+): Promise<{ key: string | null; base: string; direct: boolean }> {
+  return resolveApiKey(supabase, organizationId, provider);
+}
+
+
 
 // ----------------------------------------------------------------- pricing
 
