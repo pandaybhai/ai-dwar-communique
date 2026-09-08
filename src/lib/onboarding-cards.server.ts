@@ -60,9 +60,13 @@ function fill(template: string, vars: Record<string, string | number>): string {
  */
 function cardMarkup(template: string): string {
   const body = template.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? template;
-  const withoutScaler = body.replace(/<div style="transform:scale\(2\)[^"]*">/i, "<div>");
+  const withoutScaler = body.replace(
+    /<div style="[^"]*transform:\s*scale\([^"]*"\s*>/i,
+    "<div>",
+  );
   return withoutScaler.replace(/<style>[\s\S]*?<\/style>/gi, "").trim();
 }
+
 
 // ------------------------------------------------------- markup -> elements
 
