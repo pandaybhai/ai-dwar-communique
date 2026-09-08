@@ -1039,8 +1039,12 @@ export async function executeRun(
         ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
         : "Cite the number of the item you used.";
     systemParts.push(
-      `Use only the following material to answer. ${citation} If it does not answer the question, say you don't know.\n\n${knowledgeBlock}`,
+      `Use only the following material to answer. ${citation} If it does not answer the question, say you don't know.\n\n` +
+        "Never state a price, date, quantity or percentage that does not appear verbatim in the material. " +
+        "If the material describes something without the number, say the number isn't on the page.\n\n" +
+        knowledgeBlock,
     );
+
   }
   const system = systemParts.filter(Boolean).join("\n\n");
 
