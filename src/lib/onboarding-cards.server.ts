@@ -265,14 +265,19 @@ async function fetchFont(family: string, weight: number): Promise<LoadedFont | n
     const cssRes = await fetch(
       `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weight}`,
     );
-    if (!cssRes.ok) return null;
+    if (!cssRes.ok) throw new Error(`css ${cssRes.status}`);
     const css = await cssRes.text();
     const url = css.match(/src:\s*url\((https:[^)]+\.ttf)\)/i)?.[1];
-    if (!url) return null;
+    if (!url) throw new Error("no ttf url in css");
     const fontRes = await fetch(url);
-    if (!fontRes.ok) return null;
+    if (!fontRes.ok) throw new Error(`ttf ${fontRes.status}`);
     return { name: family, data: await fontRes.arrayBuffer(), weight, style: "normal" };
-  } catch {
+  } catch (error) {
+    console.error(
+      "[onboarding-cards] font",
+      `${family} ${weight}`,
+      error instanceof Error ? error.message : String(error),
+    );
     return null;
   }
 }
@@ -286,8 +291,17 @@ function loadFonts(): Promise<LoadedFont[]> {
       fetchFont("Plus Jakarta Sans", 800),
       fetchFont("Caveat", 600),
     ])
-      .then((list) => list.filter((f): f is LoadedFont => f !== null))
-      .catch(() => []);
+      .then((list) => {
+        const loaded = list.filter((f): f is LoadedFont => f !== null);
+        // Don't cache a failure for the life of the worker.
+        if (loaded.length === 0) fontsPromise = null;
+        return loaded;
+      })
+      .catch((error: unknown) => {
+        fontsPromise = null;
+        console.error("[onboarding-cards] fonts", String(error));
+        return [];
+      });
   }
   return fontsPromise;
 }
@@ -303,18 +317,25 @@ async function initRenderer(): Promise<boolean> {
         const { initWasm } = await import("@resvg/resvg-wasm");
         // Fetched rather than bundled: the rasteriser's wasm expects host
         // bindings the worker bundler can't resolve at build time.
-        const res = await fetch(`https://unpkg.com/@resvg/resvg-wasm@${RESVG_VERSION}/index_bg.wasm`);
-        if (!res.ok) return false;
+        const res = await fetch(
+          `https://unpkg.com/@resvg/resvg-wasm@${RESVG_VERSION}/index_bg.wasm`,
+        );
+        if (!res.ok) throw new Error(`wasm fetch ${res.status}`);
         await initWasm(await res.arrayBuffer());
         return true;
-      } catch {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // A second init on an already-initialised module is a success, not a fault.
+        if (message.includes("Already initialized")) return true;
+        wasmReady = null;
+        console.error("[onboarding-cards] wasm", message);
         return false;
       }
     })();
-
   }
   return wasmReady;
 }
+
 
 // ------------------------------------------------------------------- cache
 
