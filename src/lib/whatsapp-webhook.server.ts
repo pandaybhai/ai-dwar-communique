@@ -890,6 +890,15 @@ export async function processWebhookPayload(
           if (onboardingAccountId && accountId === onboardingAccountId) {
             if (!isSystemEcho && inserted && inserted.length > 0) {
               const { handleMerchantInbound } = await import("@/lib/merchant-channel.server");
+              const merchantInteractive = msg["interactive"] as AnyRecord | undefined;
+              const merchantTapId =
+                ((merchantInteractive?.["button_reply"] as AnyRecord | undefined)?.["id"] as
+                  | string
+                  | undefined) ??
+                ((merchantInteractive?.["list_reply"] as AnyRecord | undefined)?.["id"] as
+                  | string
+                  | undefined) ??
+                null;
               await handleMerchantInbound(supabase, {
                 organizationId: orgId,
                 accountId,
@@ -899,7 +908,7 @@ export async function processWebhookPayload(
                 conversationId: conversation.id as string,
                 contactId: contact.id as string,
                 body: body ?? "",
-
+                interactiveId: merchantTapId,
               });
             }
             continue;
