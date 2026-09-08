@@ -114,7 +114,7 @@ export async function readPage(
         Accept: "text/plain",
         "X-Return-Format": "text",
       };
-      if (withKey && cleanKey) headers.Authorization = `Bearer ${cleanKey}`;
+      if (withKey && cleanKey) headers["Authorization"] = `Bearer ${cleanKey}`;
       const safeHeaders = {
         ...headers,
         ...(headers["Authorization"] ? { Authorization: "Bearer [masked]" } : {}),
