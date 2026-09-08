@@ -24,10 +24,13 @@ export type PendingReply = {
   question: string;
   source: string;
   selected_at: string | null;
+  created_at: string;
+  reminded_at: string | null;
 };
 
 const PENDING_COLUMNS =
-  "id, organization_id, owner_phone, conversation_id, contact_id, question, source, selected_at";
+  "id, organization_id, owner_phone, conversation_id, contact_id, question, source, selected_at, created_at, reminded_at";
+
 
 export type OnboardingChannel = {
   organizationId: string;
