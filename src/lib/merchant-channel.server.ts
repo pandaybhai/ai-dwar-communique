@@ -495,6 +495,7 @@ export async function handleMerchantInbound(
         mime: file.mime ?? args.mediaMime ?? null,
         extra: { media_id: mediaId, file: fileName },
         refPrefix: mediaId,
+        channel: "onboarding",
       },
     );
 

@@ -817,6 +817,8 @@ export async function ingestUpload(
      * PDFs' "page-1" never overwrite each other.
      */
     refPrefix?: string | null;
+    /** "onboarding" when the platform pays for the read (merchant channel). */
+    channel?: "onboarding" | null;
   } = {},
 ): Promise<{ ok: boolean; itemCount: number; error?: string }> {
   try {
@@ -824,7 +826,7 @@ export async function ingestUpload(
       kind === "pdf"
         ? await parsePdf(bytes, fileName)
         : kind === "image"
-          ? await readImage(supabase, organizationId, bytes, fileName, options.mime ?? null)
+          ? await readImage(supabase, organizationId, bytes, fileName, options.mime ?? null, options.channel ?? null)
           : kind === "docx"
             ? await parseDocx(bytes, fileName)
             : await parseSpreadsheet(bytes, fileName);
@@ -928,6 +930,7 @@ export async function readImage(
   bytes: Uint8Array,
   name: string,
   mime: string | null = null,
+  channel: "onboarding" | null = null,
 ): Promise<KnowledgeDocument[]> {
   const { executeRun, meterAiUsage } = await import("@/lib/ai-run.server");
   const base64 = Buffer.from(bytes as unknown as ArrayLike<number>).toString("base64");
@@ -943,7 +946,11 @@ export async function readImage(
       "then list the items or services shown.",
     metadata: { purpose: "knowledge_image" },
     billingExempt: true,
+    channel,
   });
+  if (run.status !== "ok") {
+    throw new Error(run.error || "The picture couldn't be read right now.");
+  }
   // Platform-paid, but the cost still lands on the workspace's meter like a reader call.
   await meterAiUsage(supabase, organizationId, "knowledge_image", {
     costAmount: run.costAmount ?? 0,
