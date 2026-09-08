@@ -208,7 +208,9 @@ export async function handleMerchantInbound(
     conversationId: args.conversationId,
     to: args.waId,
   };
-  const reply = (text: string) => sendServiceText(supabase, { ...channel, body: text });
+  // Set once the business is known; blank for single-business owners.
+  let prefix = "";
+  const reply = (text: string) => sendServiceText(supabase, { ...channel, body: prefix + text });
   const replyButtons = (
     text: string,
     buttons: Array<{ id: string; title: string }>,
@@ -216,7 +218,7 @@ export async function handleMerchantInbound(
   ) =>
     sendServiceButtons(supabase, {
       ...channel,
-      body: text,
+      body: prefix + text,
       buttons,
       imageUrl,
     });
@@ -317,6 +319,7 @@ export async function handleMerchantInbound(
   const businessName = (org as { name?: string } | null)?.name ?? "";
   const ownerName = (profile as { full_name?: string } | null)?.full_name ?? "";
   const firstName = ownerName.split(" ")[0] || "there";
+  prefix = prefixFor(multiBusiness, businessName || null);
 
   // If a previous inbound is still being crawled, don't start a second crawl
   // or ask the model questions until it finishes.
@@ -360,7 +363,11 @@ export async function handleMerchantInbound(
       },
     });
     if (notebook) {
-      await sendServiceImage(supabase, { ...channel, imageUrl: notebook, caption: readingCaption });
+      await sendServiceImage(supabase, {
+        ...channel,
+        imageUrl: notebook,
+        caption: prefix + readingCaption,
+      });
     } else {
       await reply(readingCaption);
     }
@@ -429,7 +436,8 @@ export async function handleMerchantInbound(
   // ------------------------------------------------- the "connect" button
   if (/^connect my whatsapp$/i.test(body)) {
     await reply(
-      "Open Settings → WhatsApp in your dashboard and tap Connect — takes a minute. I'll message you here the moment it's live.\n\nhttps://aidwar.in/app/settings",
+      "Open Settings → WhatsApp in your dashboard and tap Connect — takes a minute. I'll message you here the moment it's live.\n\nhttps://aidwar.in/app/settings\n\n" +
+        "Use a number that isn't on your phone's WhatsApp — a fresh SIM works. Once a number joins the WhatsApp API it leaves the normal app. Your own number stays yours; that's where you and I talk.",
     );
     return;
   }
@@ -508,9 +516,13 @@ export async function handleMerchantInbound(
   // leaves this branch unless the run succeeded on real material.
   const grounded = run.status === "ok" && run.sources.length > 0;
   if (!grounded) {
-    await patchSession(supabase, session.id, {
-      step: "await_teach",
-      pending_question: body,
+    // Their next message becomes the answer, handled by the pending-reply
+    // path above so a customer question and an owner question behave alike.
+    await recordOnboardingGap(supabase, {
+      organizationId: session.organization_id,
+      ownerPhone: args.waId,
+      question: body,
+      aiRunId: run.runId,
     });
     await reply(NO_SOURCE_REPLY);
     return;
@@ -519,9 +531,11 @@ export async function handleMerchantInbound(
   // The model sometimes copies the transcript's speaker prefix into its answer.
   const text = (run.output ?? "").trim().replace(/^\s*aiden\s*(:|—|-)\s*/i, "").trim();
   if (!text) {
-    await patchSession(supabase, session.id, {
-      step: "await_teach",
-      pending_question: body,
+    await recordOnboardingGap(supabase, {
+      organizationId: session.organization_id,
+      ownerPhone: args.waId,
+      question: body,
+      aiRunId: run.runId,
     });
     await reply(NO_SOURCE_REPLY);
     return;
@@ -703,6 +717,13 @@ export async function handleNumberConnected(
   } else {
     await sendServiceText(supabase, { ...channel, body: caption });
   }
+
+  await sendServiceText(supabase, {
+    ...channel,
+    body:
+      "If a customer asks something that isn't on your site — a price, a date, stock — I won't make it up. " +
+      "I'll message you here; reply once and I'll answer them and remember it for good.",
+  });
 
   await patchSession(supabase, session.id, {
     status: "completed",
