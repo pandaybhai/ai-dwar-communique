@@ -67,7 +67,10 @@ export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
     // Aiden meets the owner on WhatsApp. If that can't be arranged right now,
     // the workspace still opens — nobody gets stuck on this screen.
     const started = await callApi<Handoff>("/api/onboarding/start", {
-      body: { organization_id: (newOrgId as string) ?? null },
+      body: {
+        organization_id: (newOrgId as string) ?? null,
+        attribution: takeAttribution(),
+      },
     });
     setPending(false);
     if (started.data?.wa_link) {
@@ -102,21 +105,40 @@ export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
           </a>
         </Button>
 
-        <div className="mt-5 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-          <span>Your code: </span>
-          <code className="rounded-md bg-muted px-2 py-1 font-mono text-foreground">{handoff.code}</code>
-          <button
-            type="button"
-            onClick={() => {
-              void navigator.clipboard.writeText(handoff.code);
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1500);
-            }}
-            className="rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:text-foreground"
-            aria-label="Copy your code"
-          >
-            {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
-          </button>
+        {qr ? (
+          <div className="mt-8 rounded-2xl border border-border bg-card p-6">
+            <img
+              src={qr}
+              alt={`QR code that opens a chat with Aiden using code ${handoff.code}`}
+              className="mx-auto h-40 w-40 rounded-lg"
+            />
+            <p className="mt-4 text-sm text-muted-foreground">
+              On a laptop? Scan with your phone — WhatsApp opens with your code filled in.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="mt-6">
+          <div className="flex items-center justify-center gap-3">
+            <code className="rounded-xl bg-muted px-4 py-2 font-mono text-3xl font-bold tracking-widest text-foreground">
+              {handoff.code}
+            </code>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(handoff.code);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1500);
+              }}
+              className="rounded-md p-2 text-muted-foreground transition-colors duration-150 hover:text-foreground"
+              aria-label="Copy your code"
+            >
+              {copied ? <Check className="h-5 w-5 text-primary" /> : <Copy className="h-5 w-5" />}
+            </button>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Send this to Aiden if the link doesn't open.
+          </p>
         </div>
 
         <button
