@@ -371,3 +371,99 @@ export async function sendServiceDocument(
     error: res.ok ? null : JSON.stringify(json).slice(0, 300),
   };
 }
+
+/**
+ * Sends one message with a tap-to-choose list — used when the owner has more
+ * than one question waiting for an answer, or more than one business. Same
+ * 24-hour rule as any other session message.
+ */
+export async function sendServiceList(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    conversationId: string;
+    to: string;
+    body: string;
+    buttonText: string;
+    rows: Array<{ id: string; title: string; description?: string }>;
+  },
+): Promise<ServiceTextResult> {
+  if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
+
+  const rows = args.rows.slice(0, 10).map((r) => ({
+    id: r.id,
+    title: r.title.slice(0, 24),
+    ...(r.description ? { description: r.description.slice(0, 72) } : {}),
+  }));
+  if (rows.length === 0) return { ok: false, messageId: null, error: "no_rows" };
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("last_customer_message_at")
+    .eq("id", args.conversationId)
+    .eq("organization_id", args.organizationId)
+    .maybeSingle();
+  if (!isServiceWindowOpen(conversation)) {
+    return { ok: false, messageId: null, error: "service_window_closed" };
+  }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: args.to,
+      type: "interactive",
+      interactive: {
+        type: "list",
+        body: { text: args.body },
+        action: {
+          button: args.buttonText.slice(0, 20),
+          sections: [{ title: "Choose one", rows }],
+        },
+      },
+    }),
+  });
+
+  let json: AnyRecord = {};
+  try {
+    json = (await res.json()) as AnyRecord;
+  } catch {
+    json = {};
+  }
+  const metaMessageId =
+    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
+  const nowIso = new Date().toISOString();
+
+  const { data: inserted } = await supabase
+    .from("messages")
+    .insert({
+      organization_id: args.organizationId,
+      conversation_id: args.conversationId,
+      meta_message_id: metaMessageId,
+      direction: "outbound",
+      type: "text",
+      body: `${args.body} [list: ${rows.map((r) => r.title).join(", ")}]`,
+      status: res.ok ? "pending" : "failed",
+      status_updated_at: nowIso,
+      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
+    })
+    .select("id")
+    .maybeSingle();
+
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: nowIso })
+    .eq("id", args.conversationId);
+
+  return {
+    ok: res.ok,
+    messageId: (inserted?.id as string | undefined) ?? null,
+    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
+  };
+}
