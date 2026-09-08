@@ -372,6 +372,16 @@ export async function handleMerchantInbound(
   // The update above may have just moved pending -> bound, so use the effective status.
   const currentStatus = session.status === "pending" ? "bound" : session.status;
 
+  // A code always switches them onto that business and says so out loud, even
+  // when this number is already tied to other sessions.
+  if (byCode && currentStatus !== "bound") {
+    await reply(
+      `${prefix}Connected — we're on ${businessName || "your business"} now. Ask me anything about it.`,
+    );
+    return;
+  }
+
+
   // ------------------------------------------------- a picture or a file
   if (args.mediaUrl?.startsWith("meta:")) {
     const mime = (args.mediaMime ?? "").toLowerCase();
