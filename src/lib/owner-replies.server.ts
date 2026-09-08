@@ -24,10 +24,13 @@ export type PendingReply = {
   question: string;
   source: string;
   selected_at: string | null;
+  created_at: string;
+  reminded_at: string | null;
 };
 
 const PENDING_COLUMNS =
-  "id, organization_id, owner_phone, conversation_id, contact_id, question, source, selected_at";
+  "id, organization_id, owner_phone, conversation_id, contact_id, question, source, selected_at, created_at, reminded_at";
+
 
 export type OnboardingChannel = {
   organizationId: string;
@@ -371,9 +374,28 @@ export async function handleOwnerReply(
       rows: Array<{ id: string; title: string; description?: string }>,
     ) => Promise<unknown>;
     multiBusiness: boolean;
+    /** The three questions we offered as taps: never an answer. */
+    suggestions?: string[];
   },
 ): Promise<boolean> {
-  const pending = await loadPendingReplies(supabase, args.ownerPhone);
+  const { isSkipWord, isTeachableAnswer, teachWindowExpired } = await import("@/lib/teach-guard");
+
+  const loaded = await loadPendingReplies(supabase, args.ownerPhone);
+  if (loaded.length === 0) return false;
+
+  // Anything asked more than fifteen minutes ago lapses: after that the owner
+  // is just talking to us again.
+  const stale = loaded.filter((p) => teachWindowExpired(p.selected_at ?? p.created_at));
+  if (stale.length > 0) {
+    await supabase
+      .from("pending_owner_replies")
+      .update({ status: "expired" })
+      .in(
+        "id",
+        stale.map((p) => p.id),
+      );
+  }
+  const pending = loaded.filter((p) => !stale.includes(p));
   if (pending.length === 0) return false;
 
   const names = await orgNames(
@@ -399,6 +421,40 @@ export async function handleOwnerReply(
 
   const answer = args.body.trim();
   if (!answer) return false;
+
+  // "skip" calls the question off rather than answering it.
+  if (isSkipWord(answer) && !args.interactiveId) {
+    const target = pending.find((p) => p.selected_at) ?? pending[0]!;
+    await supabase.from("pending_owner_replies").update({ status: "expired" }).eq("id", target.id);
+    await args.reply(
+      `${prefixFor(args.multiBusiness, names.get(target.organization_id) ?? null)}Skipped.`,
+    );
+    return true;
+  }
+
+  // A tap, another question, or a bare "ok" is not an answer. Leave the row
+  // open, mention it once, and let the message be handled as ordinary chat.
+  if (
+    !isTeachableAnswer(answer, {
+      interactive: Boolean(args.interactiveId),
+      suggestions: args.suggestions ?? [],
+    })
+  ) {
+    const target = pending.find((p) => p.selected_at) ?? pending[0]!;
+    if (!target.reminded_at) {
+      await supabase
+        .from("pending_owner_replies")
+        .update({ reminded_at: new Date().toISOString() })
+        .eq("id", target.id);
+      await args.reply(
+        `${prefixFor(args.multiBusiness, names.get(target.organization_id) ?? null)}` +
+          `Still waiting on your answer for "${target.question.slice(0, 200)}" — reply whenever.`,
+      );
+    }
+    return false;
+  }
+
+
 
   let target: PendingReply | null = null;
   if (pending.length === 1) target = pending[0]!;

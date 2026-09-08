@@ -42,6 +42,9 @@ export type OnboardingSession = {
   step: string | null;
   source_id: string | null;
   pending_question: string | null;
+  pending_asked_at: string | null;
+  suggested_questions: string[] | null;
+
 };
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
@@ -57,7 +60,8 @@ const NO_SOURCE_REPLY =
 const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
-  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question";
+  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions";
+
 
 // --------------------------------------------------------------- formatting
 
@@ -232,6 +236,17 @@ export async function handleMerchantInbound(
   const ownerOrgs = await ownerOrganizationIds(supabase, args.waId);
   const multiBusiness = ownerOrgs.length > 1;
 
+  // The questions we offered as taps: a tap on one of them is a question,
+  // never the answer to an earlier one.
+  const { data: suggestRows } = await supabase
+    .from("onboarding_sessions")
+    .select("suggested_questions")
+    .eq("phone", normalizePhone(args.waId))
+    .not("status", "in", '("completed","expired")');
+  const suggestions = ((suggestRows ?? []) as Array<{ suggested_questions: string[] | null }>)
+    .flatMap((r) => r.suggested_questions ?? [])
+    .filter((q): q is string => typeof q === "string");
+
   // Something waiting on the owner comes first, whatever state onboarding is
   // in: their answer is worth more than the next step of a script.
   const consumed = await handleOwnerReply(supabase, {
@@ -239,6 +254,8 @@ export async function handleMerchantInbound(
     body,
     interactiveId,
     multiBusiness,
+    suggestions,
+
     reply: (text) => reply(text),
     list: (text, rows) =>
       sendServiceList(supabase, {
@@ -509,30 +526,61 @@ export async function handleMerchantInbound(
   // ------------------------------------------------------------ answering
   if (currentStatus !== "ready" && currentStatus !== "tested") return;
 
+  const { isSkipWord, isTeachableAnswer, teachWindowExpired } = await import("@/lib/teach-guard");
+  const teachable = isTeachableAnswer(body, {
+    interactive: Boolean(interactiveId),
+    suggestions: session.suggested_questions ?? [],
+  });
+
   // We asked them to teach us the answer to their last question: this reply is
-  // that answer, kept word for word rather than sent to the model.
+  // that answer, kept word for word rather than sent to the model. A tap, a
+  // fresh question or a bare "ok" is not an answer, and after fifteen minutes
+  // the ask lapses.
   if (session.step === "await_teach" && session.pending_question) {
-    const { saveCorrection } = await import("@/lib/knowledge.server");
-    const saved = await saveCorrection(supabase, session.organization_id, {
-      question: session.pending_question,
-      answer: body,
-      userId: session.user_id,
-    });
-    await patchSession(supabase, session.id, {
-      step: "answering",
-      pending_question: null,
-    });
-    await reply(
-      saved.ok
-        ? "Got it — I'll give your customers that answer from now on. Ask me something else whenever you like."
-        : "I couldn't save that just now. Send it again in a moment and I'll keep it.",
-    );
-    return;
+    const lapsed = teachWindowExpired(session.pending_asked_at);
+    if (lapsed) {
+      await patchSession(supabase, session.id, {
+        step: "answering",
+        pending_question: null,
+        pending_asked_at: null,
+      });
+    } else if (isSkipWord(body) && !interactiveId) {
+      await patchSession(supabase, session.id, {
+        step: "answering",
+        pending_question: null,
+        pending_asked_at: null,
+      });
+      await reply("Skipped.");
+      return;
+    } else if (teachable) {
+      const { saveCorrection } = await import("@/lib/knowledge.server");
+      const saved = await saveCorrection(supabase, session.organization_id, {
+        question: session.pending_question,
+        answer: body,
+        userId: session.user_id,
+      });
+      await patchSession(supabase, session.id, {
+        step: "answering",
+        pending_question: null,
+        pending_asked_at: null,
+      });
+      await reply(
+        saved.ok
+          ? "Got it — I'll give your customers that answer from now on. Ask me something else whenever you like."
+          : "I couldn't save that just now. Send it again in a moment and I'll keep it.",
+      );
+      return;
+    } else {
+      // Keep the ask open and treat this message as a new question.
+      await reply(
+        `Still waiting on your answer for "${session.pending_question.slice(0, 200)}" — reply whenever.`,
+      );
+    }
   }
 
   // An owner who volunteers a fact is teaching, not asking. Save it as a real
   // answer first — a warm "got it" with nothing written down is a lie.
-  {
+  if (teachable) {
     const { classifyBusinessFact } = await import("@/lib/ai-tasks.server");
     const verdict = await classifyBusinessFact(
       supabase,
@@ -558,6 +606,7 @@ export async function handleMerchantInbound(
       return;
     }
   }
+
 
   const { merchantAnswer } = await import("@/lib/ai-tasks.server");
 
@@ -903,10 +952,16 @@ export async function finishOnboardingCrawl(
     },
   });
 
+  // Remember what we offered, so a tap on one is never mistaken for teaching.
+  await patchSession(supabase, session.id, {
+    suggested_questions: first.questions.slice(0, 3),
+  });
+
   await sendServiceButtons(supabase, {
     ...channel,
     body: prefix + doneBody,
     buttons: first.questions.slice(0, 3).map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
     imageUrl: briefCard,
   });
+
 }
