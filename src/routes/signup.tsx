@@ -44,12 +44,29 @@ export const Route = createFileRoute("/signup")({
 
 function SignupPage() {
   const navigate = useNavigate();
-  const { redirect } = Route.useSearch();
+  const search = Route.useSearch();
+  const { redirect } = search;
   const goNext = () =>
     redirect ? navigate({ href: redirect, replace: true }) : navigate({ to: "/app", replace: true });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkEmail, setCheckEmail] = useState(false);
+
+  // Held until the workspace is created — that's when the session row exists.
+  useEffect(() => {
+    const attribution: Record<string, string> = {};
+    for (const key of ATTRIBUTION_KEYS) {
+      const value = search[key];
+      if (value) attribution[key] = value;
+    }
+    if (Object.keys(attribution).length > 0) {
+      try {
+        window.sessionStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(attribution));
+      } catch {
+        /* private mode — attribution is best effort, never blocks signup */
+      }
+    }
+  }, [search]);
 
   useEffect(() => {
     aidwar.auth.getSession().then(({ data }) => {
