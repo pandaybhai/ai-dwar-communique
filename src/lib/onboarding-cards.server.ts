@@ -315,13 +315,11 @@ async function initRenderer(): Promise<boolean> {
     wasmReady = (async () => {
       try {
         const { initWasm } = await import("@resvg/resvg-wasm");
-        // Fetched rather than bundled: the rasteriser's wasm expects host
-        // bindings the worker bundler can't resolve at build time.
-        const res = await fetch(
-          `https://unpkg.com/@resvg/resvg-wasm@${RESVG_VERSION}/index_bg.wasm`,
-        );
-        if (!res.ok) throw new Error(`wasm fetch ${res.status}`);
-        await initWasm(await res.arrayBuffer());
+        // Bundled, not fetched: the worker runtime refuses to compile wasm
+        // bytes at runtime ("Wasm code generation disallowed by embedder"),
+        // so the module has to be compiled at build time.
+        const mod = (await import("./wasm/resvg.wasm")).default;
+        await initWasm(mod);
         return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -335,6 +333,7 @@ async function initRenderer(): Promise<boolean> {
   }
   return wasmReady;
 }
+
 
 
 // ------------------------------------------------------------------- cache
