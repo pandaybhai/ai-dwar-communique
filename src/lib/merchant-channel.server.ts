@@ -60,7 +60,8 @@ const NO_SOURCE_REPLY =
 const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
-  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question";
+  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions";
+
 
 // --------------------------------------------------------------- formatting
 
