@@ -12,8 +12,15 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { embedTexts, EMBEDDING_MODEL } from "@/lib/ai-run.server";
+import {
+  READER_COST,
+  fetchWithTimeout,
+  readPage,
+  readerKey,
+  stripHtml,
+} from "@/lib/web-reader.server";
 
-export type SourceType = "website" | "pdf" | "spreadsheet" | "manual_qa";
+export type SourceType = "website" | "pdf" | "spreadsheet" | "manual_qa" | "image" | "docx";
 
 /** One normalised item, whatever its origin. */
 export type KnowledgeDocument = {
@@ -35,32 +42,16 @@ export type Connector = (ctx: ConnectorContext) => Promise<KnowledgeDocument[]>;
 
 // ------------------------------------------------------------------ helpers
 
-const MAX_PAGES = 40;
 const CHUNK_CHARS = 1200;
 const CHUNK_OVERLAP = 150;
-
-function stripHtml(html: string): { title: string; text: string; links: string[] } {
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const links = Array.from(html.matchAll(/href=["']([^"'#]+)["']/gi)).map((m) => m[1] ?? "");
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&#39;|&rsquo;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/\s+/g, " ")
-    .trim();
-  return { title: (titleMatch?.[1] ?? "").trim(), text, links };
-}
+const DEFAULT_PAGE_CAP = 200;
+const RUN_PAGE_CAP = 500;
 
 /** Very small robots.txt reader: honours Disallow for User-agent: *. */
 async function disallowedPaths(origin: string): Promise<string[]> {
   try {
-    const res = await fetch(`${origin}/robots.txt`, { redirect: "follow" });
-    if (!res.ok) return [];
+    const res = await fetchWithTimeout(`${origin}/robots.txt`, 8000);
+    if (!res || !res.ok) return [];
     const body = await res.text();
     const rules: string[] = [];
     let applies = false;
@@ -98,63 +89,326 @@ export function chunkText(text: string): string[] {
 
 // --------------------------------------------------------------- connectors
 
-const crawlWebsite: Connector = async ({ config }) => {
-  const startUrl = String(config["url"] ?? "").trim();
-  if (!startUrl) throw new Error("Add the address of the website first.");
-  const start = new URL(startUrl);
-  const cap = Math.min(Number(config["page_cap"] ?? MAX_PAGES) || MAX_PAGES, MAX_PAGES);
-  const blocked = await disallowedPaths(start.origin);
+/** Tidy one candidate address: same site, no hash, no campaign tags. */
+function normalizeUrl(href: string, base: string, origin: string): string | null {
+  try {
+    const url = new URL(href, base);
+    if (url.origin !== origin) return null;
+    if (!/^https?:$/.test(url.protocol)) return null;
+    url.hash = "";
+    for (const key of Array.from(url.searchParams.keys())) {
+      if (/^utm_|^gclid$|^fbclid$/i.test(key)) url.searchParams.delete(key);
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
-  const queue = [start.toString()];
-  const seen = new Set<string>();
-  const docs: KnowledgeDocument[] = [];
+/**
+ * Which pages matter to a customer. A shop's shipping page is worth more than
+ * its blog archive, so the useful pages are read first and a small budget
+ * still learns the important things.
+ */
+function scoreUrl(url: string, origin: string): number {
+  const path = url.slice(origin.length).toLowerCase() || "/";
+  if (/\b(blog|tag|category|cart|checkout|account|login|search|wp-json|feed)\b/.test(path)) return -10;
+  if (/\/page\/\d+/.test(path)) return -10;
+  if (/\.(jpg|jpeg|png|gif|svg|pdf|xml|css|js)$/.test(path)) return -10;
+  if (path === "/" || path === "") return 10;
+  if (/(about|contact|faq|help|shipping|delivery|return|refund|pricing|price|plans|policy|terms)/.test(path))
+    return 8;
+  if (/(products|collections|shop|menu|services|catalog)/.test(path)) return 6;
+  return 2;
+}
 
-  while (queue.length > 0 && docs.length < cap) {
+/** Addresses the site itself publishes, sitemap indexes included. */
+async function sitemapUrls(origin: string): Promise<string[]> {
+  const found: string[] = [];
+  const queue = [`${origin}/sitemap.xml`];
+  let files = 0;
+  while (queue.length > 0 && files < 4) {
     const next = queue.shift()!;
-    if (seen.has(next)) continue;
-    seen.add(next);
-
-    const url = new URL(next);
-    if (blocked.some((p) => url.pathname.startsWith(p))) continue;
-
-    let html: string;
-    try {
-      const res = await fetch(next, { redirect: "follow" });
-      if (!res.ok) continue;
-      const type = res.headers.get("content-type") ?? "";
-      if (!type.includes("text/html")) continue;
-      html = await res.text();
-    } catch {
-      continue;
-    }
-
-    const { title, text, links } = stripHtml(html);
-    if (text.length > 200) {
-      docs.push({
-        sourceRef: next,
-        title: title || url.pathname,
-        content: text.slice(0, 40000),
-        metadata: { url: next },
-      });
-    }
-
-    for (const href of links) {
-      try {
-        const linked = new URL(href, next);
-        if (linked.origin !== start.origin) continue;
-        linked.hash = "";
-        if (!seen.has(linked.toString()) && queue.length + docs.length < cap * 2) {
-          queue.push(linked.toString());
-        }
-      } catch {
-        // not a usable link
+    files += 1;
+    const res = await fetchWithTimeout(next, 8000);
+    if (!res || !res.ok) continue;
+    const xml = await res.text().catch(() => "");
+    const locs = Array.from(xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)).map((m: RegExpMatchArray) => m[1] ?? "");
+    const isIndex = /<sitemapindex/i.test(xml);
+    for (const loc of locs) {
+      if (isIndex) {
+        if (queue.length < 3) queue.push(loc);
+      } else {
+        found.push(loc);
       }
     }
   }
+  return found;
+}
+
+/** How many pages this workspace's plan allows us to read. */
+async function planPageCap(supabase: SupabaseClient, organizationId: string): Promise<number> {
+  const { data: sub } = await supabase
+    .from("subscriptions")
+    .select("plan_version_id")
+    .eq("organization_id", organizationId)
+    .in("status", ["active", "trialing", "past_due"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const versionId = (sub as { plan_version_id?: string } | null)?.plan_version_id;
+  if (!versionId) return DEFAULT_PAGE_CAP;
+  const { data: version } = await supabase
+    .from("plan_versions")
+    .select("limits")
+    .eq("id", versionId)
+    .maybeSingle();
+  const limits = (version as { limits?: Record<string, unknown> } | null)?.limits ?? {};
+  const pages = Number(limits["pages"] ?? 0);
+  return pages > 0 ? pages : DEFAULT_PAGE_CAP;
+}
+
+/**
+ * Shops publish their whole catalogue as plain data. When we can see one, we
+ * read it directly rather than scraping product pages one by one.
+ */
+async function commerceDocuments(
+  origin: string,
+  homepageHtml: string,
+  cap: number,
+): Promise<KnowledgeDocument[]> {
+  const docs: KnowledgeDocument[] = [];
+
+  const push = (
+    ref: string,
+    title: string,
+    content: string,
+    metadata: Record<string, unknown>,
+  ) => {
+    if (docs.length >= cap || content.trim().length < 20) return;
+    docs.push({ sourceRef: ref, title: title.slice(0, 200), content: content.slice(0, 20000), metadata });
+  };
+
+  if (/cdn\.shopify\.com/i.test(homepageHtml)) {
+    for (let page = 1; page <= 10 && docs.length < cap; page += 1) {
+      const res = await fetchWithTimeout(`${origin}/products.json?limit=250&page=${page}`, 8000);
+      if (!res || !res.ok) break;
+      const json = (await res.json().catch(() => ({}))) as { products?: Array<Record<string, unknown>> };
+      const products = json.products ?? [];
+      if (products.length === 0) break;
+      for (const product of products) {
+        const handle = String(product["handle"] ?? "");
+        const title = String(product["title"] ?? handle);
+        const body = stripHtml(String(product["body_html"] ?? "")).text;
+        const variants = (product["variants"] as Array<Record<string, unknown>> | undefined) ?? [];
+        const lines = variants.map(
+          (v) =>
+            `${String(v["title"] ?? "Default")}: ${String(v["price"] ?? "")} ${
+              v["available"] === false ? "(out of stock)" : "(available)"
+            }`,
+        );
+        const price = variants[0]?.["price"] ?? null;
+        push(
+          `${origin}/products/${handle}`,
+          title,
+          `${title}\n${body}\n${lines.join("\n")}\n${origin}/products/${handle}`,
+          {
+            kind: "product",
+            price,
+            available: variants.some((v) => v["available"] !== false),
+            url: `${origin}/products/${handle}`,
+          },
+        );
+      }
+      if (products.length < 250) break;
+    }
+
+    for (const path of ["refund-policy", "shipping-policy", "privacy-policy", "terms-of-service"]) {
+      if (docs.length >= cap) break;
+      const res = await fetchWithTimeout(`${origin}/policies/${path}`, 8000);
+      if (!res || !res.ok) continue;
+      const { title, text } = stripHtml(await res.text().catch(() => ""));
+      push(`${origin}/policies/${path}`, title || path, text, { url: `${origin}/policies/${path}` });
+    }
+    return docs;
+  }
+
+  if (/wp-content/i.test(homepageHtml)) {
+    for (let page = 1; page <= 10 && docs.length < cap; page += 1) {
+      const res = await fetchWithTimeout(
+        `${origin}/wp-json/wc/store/v1/products?per_page=100&page=${page}`,
+        8000,
+      );
+      if (!res || !res.ok) break;
+      const products = (await res.json().catch(() => [])) as Array<Record<string, unknown>>;
+      if (!Array.isArray(products) || products.length === 0) break;
+      for (const product of products) {
+        const title = String(product["name"] ?? "");
+        const body = stripHtml(String(product["description"] ?? "")).text;
+        const prices = (product["prices"] as Record<string, unknown> | undefined) ?? {};
+        const price = prices["price"] ?? null;
+        const link = String(product["permalink"] ?? `${origin}/?p=${String(product["id"] ?? "")}`);
+        push(link, title, `${title}\n${body}\nPrice: ${String(price ?? "")}\n${link}`, {
+          kind: "product",
+          price,
+          available: product["is_in_stock"] !== false,
+          url: link,
+        });
+      }
+      if (products.length < 100) break;
+    }
+  }
+
+  return docs;
+}
+
+/**
+ * Turn one long page into plain facts, keeping every number exactly as it was
+ * written. Chunks made from facts retrieve far better than chunks made from
+ * navigation menus and cookie notices.
+ */
+async function factsPass(
+  supabase: SupabaseClient,
+  organizationId: string,
+  docs: KnowledgeDocument[],
+): Promise<number> {
+  const { executeRun } = await import("@/lib/ai-run.server");
+  let cost = 0;
+  for (const doc of docs) {
+    if ((doc.metadata as Record<string, unknown> | undefined)?.["kind"] === "product") continue;
+    if (doc.content.length <= 1500) continue;
+    try {
+      const run = await executeRun(supabase, {
+        organizationId,
+        task: "agent_reply",
+        tier: "everyday",
+        input: doc.content.slice(0, 16000),
+        system:
+          "Rewrite this page as 5–15 plain factual sentences about the business, keeping every number, " +
+          "price, date, place and product name exactly as written. Skip navigation and legal boilerplate.",
+        metadata: { purpose: "knowledge_facts" },
+        billingExempt: true,
+      });
+      const output = (run.output ?? "").trim();
+      if (output.length > 80) {
+        doc.metadata = { ...(doc.metadata ?? {}), raw_excerpt: doc.content.slice(0, 2000) };
+        doc.content = output;
+      }
+      cost += run.costAmount ?? 0;
+      const { meterAiUsage } = await import("@/lib/ai-run.server");
+      await meterAiUsage(supabase, organizationId, "knowledge_facts", {
+        costAmount: run.costAmount ?? 0,
+        inputTokens: run.inputTokens ?? 0,
+        outputTokens: run.outputTokens ?? 0,
+      });
+    } catch {
+      // A page we couldn't summarise is still worth keeping as it was.
+    }
+  }
+  return cost;
+}
+
+const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, config }) => {
+  const startUrl = String(config["url"] ?? "").trim();
+  if (!startUrl) throw new Error("Add the address of the website first.");
+  const start = new URL(startUrl);
+  const origin = start.origin;
+
+  const mode = config["mode"] === "full" ? "full" : "day0";
+  const planCap = mode === "full" ? await planPageCap(supabase, organizationId) : 30;
+  const cap = mode === "full" ? Math.min(planCap, RUN_PAGE_CAP) : 30;
+  const concurrency = mode === "full" ? 6 : 4;
+  const deadline = mode === "day0" ? Date.now() + 90_000 : null;
+
+  const [blocked, sitemap, key, settings]: [string[], string[], string | null, { data: unknown }] =
+    await Promise.all([
+      disallowedPaths(origin),
+      sitemapUrls(origin),
+      readerKey(supabase),
+      supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
+    ]);
+  const costCap = Number(
+    (settings.data as { day0_crawl_cost_cap?: number } | null)?.day0_crawl_cost_cap ?? 2,
+  );
+
+  // The homepage first: it tells us whether this is a shop with public data.
+  const home = await readPage(start.toString(), { key });
+  let readerCost = home?.usedReader ? READER_COST : 0;
+
+  const candidates = new Map<string, number>();
+  const consider = (raw: string, base: string) => {
+    const url = normalizeUrl(raw, base, origin);
+    if (!url) return;
+    const score = scoreUrl(url, origin);
+    if (score <= -10) return;
+    if (blocked.some((p) => new URL(url).pathname.startsWith(p))) return;
+    if (!candidates.has(url)) candidates.set(url, score);
+  };
+
+  consider(start.toString(), start.toString());
+  for (const loc of sitemap) consider(loc, origin);
+  for (const href of home?.links ?? []) consider(href, start.toString());
+
+  const ordered = Array.from(candidates.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([url]) => url)
+    .slice(0, cap);
+
+  const docs: KnowledgeDocument[] = [];
+  if (home && home.text.length > 200) {
+    docs.push({
+      sourceRef: start.toString(),
+      title: home.title || start.pathname,
+      content: home.text.slice(0, 40000),
+      metadata: { url: start.toString() },
+    });
+  }
+
+  let seen = docs.length;
+  const queue = ordered.filter((u) => u !== start.toString());
+
+  const worker = async () => {
+    while (queue.length > 0 && docs.length < cap) {
+      if (deadline && Date.now() > deadline) return;
+      const next = queue.shift();
+      if (!next) return;
+      const allowReader = readerCost + READER_COST <= costCap;
+      const page = await readPage(next, { key, allowReader });
+      seen += 1;
+      if (page?.usedReader) readerCost += READER_COST;
+      if (!page || page.text.length <= 200) continue;
+      docs.push({
+        sourceRef: next,
+        title: page.title || new URL(next).pathname,
+        content: page.text.slice(0, 40000),
+        metadata: { url: next },
+      });
+      if (seen % 5 === 0) {
+        await supabase.from("knowledge_sources").update({ pages_seen: seen }).eq("id", sourceId);
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  // Shops hand over their catalogue directly; no need to walk every product.
+  if (home?.html) {
+    const room = Math.max(cap - docs.length, 0);
+    if (room > 0) docs.push(...(await commerceDocuments(origin, home.html, room)));
+  }
 
   if (docs.length === 0) throw new Error("We couldn't read any pages from that address.");
+
+  const factsCost = await factsPass(supabase, organizationId, docs);
+
+  await supabase
+    .from("knowledge_sources")
+    .update({ pages_seen: seen, cost_amount: readerCost + factsCost })
+    .eq("id", sourceId);
+
   return docs;
 };
+
 
 /** Pages of a PDF, one document each. */
 export async function parsePdf(
@@ -248,6 +502,8 @@ export const CONNECTORS: Record<SourceType, Connector> = {
   website: crawlWebsite,
   pdf: rereadUpload,
   spreadsheet: rereadUpload,
+  image: rereadUpload,
+  docx: rereadUpload,
 
   manual_qa: readManualQa,
 };
@@ -374,7 +630,7 @@ export async function upsertDocument(
 
   const chunks = chunkText(doc.content);
   if (chunks.length === 0) return;
-  const vectors = await embedTexts(chunks);
+  const vectors = await embedTexts(chunks, { supabase, organizationId });
 
   await supabase
     .from("knowledge_chunks")
@@ -410,7 +666,14 @@ export async function addWebsiteSource(
   organizationId: string,
   url: string,
   createdBy: string | null,
-): Promise<{ ok: boolean; sourceId: string | null; itemCount: number; error?: string }> {
+  options?: { mode?: "day0" | "full" },
+): Promise<{
+  ok: boolean;
+  sourceId: string | null;
+  itemCount: number;
+  queued?: boolean;
+  error?: string;
+}> {
   let hostname: string;
   try {
     hostname = new URL(url).hostname;
@@ -424,7 +687,9 @@ export async function addWebsiteSource(
       organization_id: organizationId,
       type: "website",
       name: hostname,
-      config: { url, page_cap: 40 },
+      config: { url, mode: options?.mode ?? "day0" },
+      status: "queued",
+      queued_at: new Date().toISOString(),
       refresh_days: 7,
       created_by: createdBy,
     })
@@ -434,9 +699,9 @@ export async function addWebsiteSource(
     return { ok: false, sourceId: null, itemCount: 0, error: "We couldn't add that website." };
   }
 
-  const sourceId = (data as { id: string }).id;
-  const result = await syncSource(supabase, sourceId);
-  return { ok: result.ok, sourceId, itemCount: result.itemCount, ...(result.error ? { error: result.error } : {}) };
+  // Reading a real website takes minutes, so it never happens on the request
+  // that asked for it: the worker picks the queued source up within a minute.
+  return { ok: true, sourceId: (data as { id: string }).id, itemCount: 0, queued: true };
 }
 
 
@@ -514,13 +779,17 @@ export async function ingestUpload(
   sourceId: string,
   fileName: string,
   bytes: Uint8Array,
-  kind: "pdf" | "spreadsheet",
+  kind: "pdf" | "spreadsheet" | "image" | "docx",
 ): Promise<{ ok: boolean; itemCount: number; error?: string }> {
   try {
     const docs =
       kind === "pdf"
         ? await parsePdf(bytes, fileName)
-        : await parseSpreadsheet(bytes, fileName);
+        : kind === "image"
+          ? await readImage(supabase, organizationId, bytes, fileName)
+          : kind === "docx"
+            ? await parseDocx(bytes, fileName)
+            : await parseSpreadsheet(bytes, fileName);
     for (const doc of docs) {
       await upsertDocument(supabase, organizationId, sourceId, doc);
     }
@@ -542,4 +811,64 @@ export async function ingestUpload(
       .eq("id", sourceId);
     return { ok: false, itemCount: 0, error: message };
   }
+}
+
+
+/** A Word document, one item per heading section. */
+export async function parseDocx(
+  bytes: Uint8Array,
+  name: string,
+): Promise<KnowledgeDocument[]> {
+  const mammoth = await import("mammoth");
+  const { value } = await mammoth.convertToHtml({
+    buffer: Buffer.from(bytes as unknown as ArrayLike<number>),
+  });
+  const parts = String(value).split(/(?=<h[1-3][^>]*>)/i);
+  const docs: KnowledgeDocument[] = [];
+  parts.forEach((part, index) => {
+    const { title, text } = stripHtml(part);
+    const heading = stripHtml(part.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i)?.[1] ?? "").text;
+    if (text.trim().length < 40) return;
+    docs.push({
+      sourceRef: `section-${index + 1}`,
+      title: heading || title || `${name} — part ${index + 1}`,
+      content: text,
+      metadata: { file: name, section: index + 1 },
+    });
+  });
+  if (docs.length === 0) throw new Error("That document had no readable text in it.");
+  return docs;
+}
+
+/** A photo of a price list or menu, read out in words. */
+export async function readImage(
+  supabase: SupabaseClient,
+  organizationId: string,
+  bytes: Uint8Array,
+  name: string,
+): Promise<KnowledgeDocument[]> {
+  const { executeRun } = await import("@/lib/ai-run.server");
+  const base64 = Buffer.from(bytes as unknown as ArrayLike<number>).toString("base64");
+  const run = await executeRun(supabase, {
+    organizationId,
+    task: "agent_reply",
+    tier: "everyday",
+    input: "Read this picture.",
+    imageDataUrl: `data:image/jpeg;base64,${base64}`,
+    system:
+      "Transcribe every piece of text in this image exactly, keeping prices and numbers as written; " +
+      "then list the items or services shown.",
+    metadata: { purpose: "knowledge_image" },
+    billingExempt: true,
+  });
+  const text = (run.output ?? "").trim();
+  if (text.length < 20) throw new Error("We couldn't read any text in that picture.");
+  return [
+    {
+      sourceRef: `image-${await hashText(name + text.slice(0, 200))}`,
+      title: name,
+      content: text,
+      metadata: { file: name, kind: "image" },
+    },
+  ];
 }

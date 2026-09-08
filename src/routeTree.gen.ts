@@ -69,6 +69,7 @@ import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/inte
 import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
 import { Route as ApiInternalKnowledgeRefreshRouteImport } from './routes/api/internal/knowledge-refresh'
+import { Route as ApiInternalKnowledgeWorkerRouteImport } from './routes/api/internal/knowledge-worker'
 import { Route as ApiInternalPlanBillingRouteImport } from './routes/api/internal/plan-billing'
 import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/internal/reconcile-events'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
@@ -407,6 +408,12 @@ const ApiInternalKnowledgeRefreshRoute =
     path: '/api/internal/knowledge-refresh',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiInternalKnowledgeWorkerRoute =
+  ApiInternalKnowledgeWorkerRouteImport.update({
+    id: '/api/internal/knowledge-worker',
+    path: '/api/internal/knowledge-worker',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInternalPlanBillingRoute = ApiInternalPlanBillingRouteImport.update({
   id: '/api/internal/plan-billing',
   path: '/api/internal/plan-billing',
@@ -643,6 +650,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
+  '/api/internal/knowledge-worker': typeof ApiInternalKnowledgeWorkerRoute
   '/api/internal/plan-billing': typeof ApiInternalPlanBillingRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
@@ -735,6 +743,7 @@ export interface FileRoutesByTo {
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
+  '/api/internal/knowledge-worker': typeof ApiInternalKnowledgeWorkerRoute
   '/api/internal/plan-billing': typeof ApiInternalPlanBillingRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
@@ -830,6 +839,7 @@ export interface FileRoutesById {
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
+  '/api/internal/knowledge-worker': typeof ApiInternalKnowledgeWorkerRoute
   '/api/internal/plan-billing': typeof ApiInternalPlanBillingRoute
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
@@ -926,6 +936,7 @@ export interface FileRouteTypes {
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/knowledge-refresh'
+    | '/api/internal/knowledge-worker'
     | '/api/internal/plan-billing'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
@@ -1018,6 +1029,7 @@ export interface FileRouteTypes {
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/knowledge-refresh'
+    | '/api/internal/knowledge-worker'
     | '/api/internal/plan-billing'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
@@ -1112,6 +1124,7 @@ export interface FileRouteTypes {
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/knowledge-refresh'
+    | '/api/internal/knowledge-worker'
     | '/api/internal/plan-billing'
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
@@ -1190,6 +1203,7 @@ export interface RootRouteChildren {
   ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
   ApiInternalKnowledgeRefreshRoute: typeof ApiInternalKnowledgeRefreshRoute
+  ApiInternalKnowledgeWorkerRoute: typeof ApiInternalKnowledgeWorkerRoute
   ApiInternalPlanBillingRoute: typeof ApiInternalPlanBillingRoute
   ApiInternalReconcileEventsRoute: typeof ApiInternalReconcileEventsRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
@@ -1640,6 +1654,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalKnowledgeRefreshRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/knowledge-worker': {
+      id: '/api/internal/knowledge-worker'
+      path: '/api/internal/knowledge-worker'
+      fullPath: '/api/internal/knowledge-worker'
+      preLoaderRoute: typeof ApiInternalKnowledgeWorkerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/plan-billing': {
       id: '/api/internal/plan-billing'
       path: '/api/internal/plan-billing'
@@ -1977,6 +1998,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
   ApiInternalKnowledgeRefreshRoute: ApiInternalKnowledgeRefreshRoute,
+  ApiInternalKnowledgeWorkerRoute: ApiInternalKnowledgeWorkerRoute,
   ApiInternalPlanBillingRoute: ApiInternalPlanBillingRoute,
   ApiInternalReconcileEventsRoute: ApiInternalReconcileEventsRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,

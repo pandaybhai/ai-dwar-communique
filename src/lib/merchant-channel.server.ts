@@ -373,11 +373,11 @@ export async function handleMerchantInbound(
     }
 
     const { addWebsiteSource } = await import("@/lib/knowledge.server");
-    const added = await addWebsiteSource(supabase, session.organization_id, link, session.user_id);
+    const added = await addWebsiteSource(supabase, session.organization_id, link, session.user_id, {
+      mode: "day0",
+    });
 
-    if (!added.ok || !added.sourceId || !added.itemCount) {
-      // Nothing readable came back: leave the session waiting for another link
-      // and say so in our own words, never in the crawler's.
+    if (!added.ok || !added.sourceId) {
       await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
       await reply(
         "I couldn't read anything useful from that link. Send another link, or tell me in a few lines what you sell and where you deliver.",
@@ -385,51 +385,12 @@ export async function handleMerchantInbound(
       return;
     }
 
-
-    await patchSession(supabase, session.id, {
-      source_id: added.sourceId,
-      status: "ready",
-      step: "answering",
-    });
-
-    const [titles, first] = await Promise.all([
-      pageTitles(supabase, added.sourceId),
-      (async () => {
-        const { merchantFirstBrief } = await import("@/lib/ai-tasks.server");
-        return merchantFirstBrief(supabase, {
-          organizationId: session.organization_id,
-          userId: session.user_id,
-          sourceId: added.sourceId!,
-          businessName,
-        });
-      })(),
-    ]);
-
-    const titleLine = shortTitles(titles).join(", ");
-    const doneBody =
-      `Done. I read ${added.itemCount} page${added.itemCount === 1 ? "" : "s"}${titleLine ? ` — ${titleLine}` : ""}.\n\n` +
-      `Here's what I know about ${businessName || "your business"} now. Below are three things a customer might ask you today. Tap one, or ask your own.`;
-
-    const briefCard = await renderCard(supabase, "brief", {
-      sessionId: session.id,
-      vars: {
-        business_name: businessName || "your business",
-        site_host: host,
-        pages_read: added.itemCount,
-        now_time: istTime(),
-        fact_1: first.facts[0] ?? "",
-        fact_2: first.facts[1] ?? "",
-        fact_3: first.facts[2] ?? "",
-      },
-    });
-
-    await replyButtons(
-      doneBody,
-      first.questions.slice(0, 3).map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
-      briefCard,
-    );
+    // The reading itself happens in the worker; it sends the brief card when
+    // it finishes, so nothing here waits on a website.
+    await patchSession(supabase, session.id, { source_id: added.sourceId });
     return;
   }
+
 
   if (!body) return;
 
