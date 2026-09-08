@@ -27,9 +27,10 @@ export async function conversationTurns(
     .eq("id", conversationId)
     .eq("organization_id", organizationId)
     .maybeSingle();
-  const c = convo as
-    | { contact_id: string | null; contacts?: { name?: string | null } | null }
-    | null;
+  const c = convo as {
+    contact_id: string | null;
+    contacts?: { name?: string | null } | null;
+  } | null;
 
   const { data: rows } = await supabase
     .from("messages")
@@ -71,24 +72,26 @@ export async function agentBrief(
   if (!agentId) return { brief: "", escalationRules: "", personaName: "" };
   const { data } = await supabase
     .from("ai_instructions")
-    .select("persona_name, tone, instructions, escalation_rules, languages, working_hours_behaviour")
+    .select(
+      "persona_name, tone, instructions, escalation_rules, languages, working_hours_behaviour",
+    )
     .eq("agent_id", agentId)
     .eq("is_current", true)
     .maybeSingle();
-  const i = data as
-    | {
-        persona_name: string;
-        tone: string;
-        instructions: string;
-        escalation_rules: string;
-        languages: string[];
-      }
-    | null;
+  const i = data as {
+    persona_name: string;
+    tone: string;
+    instructions: string;
+    escalation_rules: string;
+    languages: string[];
+  } | null;
   if (!i) return { brief: "", escalationRules: "", personaName: "" };
   const brief = [
     i.persona_name ? `You are ${i.persona_name}, answering on behalf of this business.` : "",
     i.tone ? `Tone: ${i.tone}.` : "",
-    i.languages?.length ? `Reply in the customer's language where possible (${i.languages.join(", ")}).` : "",
+    i.languages?.length
+      ? `Reply in the customer's language where possible (${i.languages.join(", ")}).`
+      : "",
     i.instructions,
     i.escalation_rules ? `Hand these to a person instead of answering: ${i.escalation_rules}` : "",
   ]
@@ -162,7 +165,12 @@ export async function summariseConversation(
   conversationId: string,
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { turns, contactId } = await conversationTurns(supabase, common.organizationId, conversationId, 60);
+  const { turns, contactId } = await conversationTurns(
+    supabase,
+    common.organizationId,
+    conversationId,
+    60,
+  );
   const transcript = turns
     .map((t) => `${t.role === "user" ? "Customer" : "Us"}: ${t.content}`)
     .join("\n")
@@ -188,7 +196,12 @@ export async function autoTag(
   conversationId: string,
 ): Promise<{ run: RunResult; tags: string[] }> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { turns, contactId } = await conversationTurns(supabase, common.organizationId, conversationId, 40);
+  const { turns, contactId } = await conversationTurns(
+    supabase,
+    common.organizationId,
+    conversationId,
+    40,
+  );
   const { data: existing } = await supabase
     .from("tags")
     .select("name")
@@ -221,7 +234,12 @@ export async function autoTag(
 
   const tags = run.output
     .split(/[,\n]/)
-    .map((t) => t.trim().replace(/^[-*\d.\s]+/, "").toLowerCase())
+    .map((t) =>
+      t
+        .trim()
+        .replace(/^[-*\d.\s]+/, "")
+        .toLowerCase(),
+    )
     .filter((t) => t.length > 1 && t.length <= 30)
     .slice(0, 3);
 
@@ -511,7 +529,6 @@ export async function merchantFirstBrief(
   }
 }
 
-
 /**
  * Owners teach without being asked: "Starter is ₹2,499 a month." That is a
  * fact about the business, not a question, and it must become a saved answer
@@ -548,7 +565,11 @@ export async function classifyBusinessFact(
   });
 
   try {
-    const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const raw = run.output
+      .trim()
+      .replace(/^```(?:json)?/i, "")
+      .replace(/```$/, "")
+      .trim();
     const parsed = JSON.parse(raw) as { is_fact_about_business?: boolean; topic?: string };
     const topic = String(parsed.topic ?? "").trim();
     return { isFact: parsed.is_fact_about_business === true && topic.length > 0, topic };
@@ -556,4 +577,3 @@ export async function classifyBusinessFact(
     return { isFact: false, topic: "" };
   }
 }
-

@@ -24,7 +24,11 @@ const CONTROL_WORDS = new Set([
 ]);
 
 function normalize(text: string): string {
-  return text.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.!]+$/, "");
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[.!]+$/, "");
 }
 
 /** "skip" and friends: the owner is calling the question off. */
@@ -68,7 +72,6 @@ export function isBareReference(body: string): boolean {
     .trim();
   return stripped.split(/\s+/).filter(Boolean).length < 3;
 }
-
 
 /** True when this message may be stored as the answer to a pending question. */
 export function isTeachableAnswer(

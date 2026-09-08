@@ -31,7 +31,6 @@ export type PendingReply = {
 const PENDING_COLUMNS =
   "id, organization_id, owner_phone, conversation_id, contact_id, question, source, selected_at, created_at, reminded_at";
 
-
 export type OnboardingChannel = {
   organizationId: string;
   phoneNumberId: string;
@@ -170,9 +169,11 @@ export async function onboardingChannelFor(
     .select("id, organization_id, phone_number_id")
     .eq("id", accountId)
     .maybeSingle();
-  const account = accountRow as
-    | { id: string; organization_id: string; phone_number_id: string }
-    | null;
+  const account = accountRow as {
+    id: string;
+    organization_id: string;
+    phone_number_id: string;
+  } | null;
   if (!account) return null;
 
   const { data: contact } = await supabase
@@ -195,11 +196,7 @@ export async function onboardingChannelFor(
   if (!conversation) return null;
 
   const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
-  const { connection } = await getWhatsAppConnection(
-    supabase,
-    account.organization_id,
-    account.id,
-  );
+  const { connection } = await getWhatsAppConnection(supabase, account.organization_id, account.id);
   const accessToken = connection?.accessToken ?? "";
   if (!accessToken) return null;
 
@@ -311,15 +308,13 @@ async function deliverToCustomer(
     .select("id, organization_id, contact_id, whatsapp_account_id, last_customer_message_at")
     .eq("id", pending.conversation_id)
     .maybeSingle();
-  const conversation = conversationRow as
-    | {
-        id: string;
-        organization_id: string;
-        contact_id: string | null;
-        whatsapp_account_id: string | null;
-        last_customer_message_at: string | null;
-      }
-    | null;
+  const conversation = conversationRow as {
+    id: string;
+    organization_id: string;
+    contact_id: string | null;
+    whatsapp_account_id: string | null;
+    last_customer_message_at: string | null;
+  } | null;
   if (!conversation || !isServiceWindowOpen(conversation)) return false;
 
   const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
@@ -456,8 +451,7 @@ export async function handleOwnerAnswer(
     return false;
   }
 
-  const target =
-    pending.length === 1 ? pending[0]! : (pending.find((p) => p.selected_at) ?? null);
+  const target = pending.length === 1 ? pending[0]! : (pending.find((p) => p.selected_at) ?? null);
 
   // More than one open and nothing picked: never guess which one this answers.
   if (!target) {
@@ -490,7 +484,8 @@ export async function handleOwnerAnswer(
     .update({ status: "answered", answer, answered_at: new Date().toISOString() })
     .eq("id", target.id);
 
-  await args.reply(delivered ? "Sent. I'll remember that for next time." : "Saved — I'll remember that.");
+  await args.reply(
+    delivered ? "Sent. I'll remember that for next time." : "Saved — I'll remember that.",
+  );
   return true;
 }
-

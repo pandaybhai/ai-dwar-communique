@@ -43,7 +43,6 @@ export type OnboardingSession = {
   pending_question: string | null;
   pending_asked_at: string | null;
   suggested_questions: string[] | null;
-
 };
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
@@ -67,7 +66,6 @@ const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
   "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions";
-
 
 // --------------------------------------------------------------- formatting
 
@@ -142,7 +140,6 @@ async function findSession(
   return { session: ((rows ?? []) as OnboardingSession[])[0] ?? null, byCode: false };
 }
 
-
 /** Don't repeat ourselves at someone who isn't signed up. */
 async function shouldGreetStranger(
   supabase: SupabaseClient,
@@ -173,10 +170,7 @@ async function patchSession(
 }
 
 /** The page titles this owner's website gave us, newest crawl. */
-async function pageTitles(
-  supabase: SupabaseClient,
-  sourceId: string | null,
-): Promise<string[]> {
+async function pageTitles(supabase: SupabaseClient, sourceId: string | null): Promise<string[]> {
   if (!sourceId) return [];
   const { data } = await supabase
     .from("knowledge_documents")
@@ -207,7 +201,6 @@ function shortTitles(titles: string[]): string[] {
   }
   return out;
 }
-
 
 // ------------------------------------------------------------------ inbound
 
@@ -388,7 +381,10 @@ export async function handleMerchantInbound(
         .not("status", "in", '("completed","expired")');
       const choices = (sessionRows ?? []) as OnboardingSession[];
       if (choices.length > 1) {
-        const names = await orgNames(supabase, choices.map((c) => c.organization_id));
+        const names = await orgNames(
+          supabase,
+          choices.map((c) => c.organization_id),
+        );
         await sendServiceList(supabase, {
           ...channel,
           body: "Which business are we working on?",
@@ -570,7 +566,8 @@ export async function handleMerchantInbound(
           .delete()
           .eq("source_id", source.id)
           .like("source_ref", `${mediaId}:%`);
-        if (firstMaterial) await patchSession(supabase, session.id, { status: "ready", step: "answering" });
+        if (firstMaterial)
+          await patchSession(supabase, session.id, { status: "ready", step: "answering" });
         await reply("Already have that one.");
         return;
       }
@@ -639,7 +636,8 @@ export async function handleMerchantInbound(
     });
 
     if (!added.ok || !added.sourceId) {
-      if (firstSite) await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
+      if (firstSite)
+        await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
       await reply(
         "I couldn't read anything useful from that link. Send another link, or tell me in a few lines what you sell and where you deliver.",
       );
@@ -789,7 +787,10 @@ export async function handleMerchantInbound(
   const grounded = run.status === "ok" && run.sources.length > 0;
   // The model sometimes copies the transcript's speaker prefix into its answer.
   const text = grounded
-    ? (run.output ?? "").trim().replace(/^\s*aiden\s*(:|—|-)\s*/i, "").trim()
+    ? (run.output ?? "")
+        .trim()
+        .replace(/^\s*aiden\s*(:|—|-)\s*/i, "")
+        .trim()
     : "";
   if (!text) {
     await recordOnboardingGap(supabase, {
@@ -870,14 +871,16 @@ async function stampHash(
     .select("id, metadata")
     .eq("source_id", sourceId)
     .like("source_ref", `${mediaId}:%`);
-  for (const row of (data ?? []) as Array<{ id: string; metadata: Record<string, unknown> | null }>) {
+  for (const row of (data ?? []) as Array<{
+    id: string;
+    metadata: Record<string, unknown> | null;
+  }>) {
     await supabase
       .from("knowledge_documents")
       .update({ metadata: { ...(row.metadata ?? {}), content_sha: contentHash } })
       .eq("id", row.id);
   }
 }
-
 
 // ---------------------------------------------------------- number connects
 
@@ -921,17 +924,15 @@ export async function handleNumberConnected(
     .select("id, organization_id, phone_number_id")
     .eq("id", onboardingAccountId)
     .maybeSingle();
-  const account = accountRow as
-    | { id: string; organization_id: string; phone_number_id: string }
-    | null;
+  const account = accountRow as {
+    id: string;
+    organization_id: string;
+    phone_number_id: string;
+  } | null;
   if (!account) return;
 
   const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
-  const { connection } = await getWhatsAppConnection(
-    supabase,
-    account.organization_id,
-    account.id,
-  );
+  const { connection } = await getWhatsAppConnection(supabase, account.organization_id, account.id);
   const accessToken = connection?.accessToken ?? "";
   if (!accessToken) return;
 
@@ -1034,7 +1035,6 @@ export async function handleNumberConnected(
     completed_at: new Date().toISOString(),
   });
 }
-
 
 /** The bytes behind an inbound picture or document. Null when Meta says no. */
 async function downloadMedia(mediaId: string, accessToken: string): Promise<Uint8Array | null> {
@@ -1149,8 +1149,9 @@ export async function finishOnboardingCrawl(
   await sendServiceButtons(supabase, {
     ...channel,
     body: prefix + doneBody,
-    buttons: first.questions.slice(0, 3).map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
+    buttons: first.questions
+      .slice(0, 3)
+      .map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
     imageUrl: briefCard,
   });
-
 }
