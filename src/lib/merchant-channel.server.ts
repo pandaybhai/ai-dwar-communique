@@ -382,6 +382,27 @@ export async function handleMerchantInbound(
   // ------------------------------------------------------------ answering
   if (currentStatus !== "ready" && currentStatus !== "tested") return;
 
+  // We asked them to teach us the answer to their last question: this reply is
+  // that answer, kept word for word rather than sent to the model.
+  if (session.step === "await_teach" && session.pending_question) {
+    const { saveCorrection } = await import("@/lib/knowledge.server");
+    const saved = await saveCorrection(supabase, session.organization_id, {
+      question: session.pending_question,
+      answer: body,
+      userId: session.user_id,
+    });
+    await patchSession(supabase, session.id, {
+      step: "answering",
+      pending_question: null,
+    });
+    await reply(
+      saved.ok
+        ? "Got it — I'll give your customers that answer from now on. Ask me something else whenever you like."
+        : "I couldn't save that just now. Send it again in a moment and I'll keep it.",
+    );
+    return;
+  }
+
   const { merchantAnswer } = await import("@/lib/ai-tasks.server");
   const run = await merchantAnswer(
     supabase,
@@ -399,12 +420,30 @@ export async function handleMerchantInbound(
     },
   );
 
+  // Nothing behind the answer means nothing gets said: no model text ever
+  // leaves this branch unless the run succeeded on real material.
+  const grounded = run.status === "ok" && run.sources.length > 0;
+  if (!grounded) {
+    await patchSession(supabase, session.id, {
+      step: "await_teach",
+      pending_question: body,
+    });
+    await reply(NO_SOURCE_REPLY);
+    return;
+  }
+
   // The model sometimes copies the transcript's speaker prefix into its answer.
   const text = (run.output ?? "").trim().replace(/^\s*aiden\s*(:|—|-)\s*/i, "").trim();
-  await reply(
-    text ||
-      "I'm having trouble thinking just now. Give me a minute and ask me again — someone from the AiDwar team is watching this chat too.",
-  );
+  if (!text) {
+    await patchSession(supabase, session.id, {
+      step: "await_teach",
+      pending_question: body,
+    });
+    await reply(NO_SOURCE_REPLY);
+    return;
+  }
+  await reply(text);
+
 
   // First real answer on a workspace that already has its starter credits:
   // the credits card, once only.
