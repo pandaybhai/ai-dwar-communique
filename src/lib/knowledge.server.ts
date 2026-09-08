@@ -707,7 +707,7 @@ export async function addWebsiteSource(
       type: "website",
       name: hostname,
       config: { url, mode: options?.mode ?? "day0" },
-      status: "queued",
+      status: "pending",
       queued_at: new Date().toISOString(),
       refresh_days: 7,
       created_by: createdBy,
