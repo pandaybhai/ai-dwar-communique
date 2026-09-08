@@ -1,13 +1,28 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Building2, Loader2, MessageCircle, Copy, Check } from "lucide-react";
+import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
 import { logActivity } from "@/lib/activity";
+import { ATTRIBUTION_STORAGE_KEY } from "@/routes/signup";
 
 type Handoff = { code: string; wa_link: string };
+
+/** Whatever the signup link carried — stored at /signup, spent here, then cleared. */
+function takeAttribution(): Record<string, string> {
+  try {
+    const raw = window.sessionStorage.getItem(ATTRIBUTION_STORAGE_KEY);
+    if (!raw) return {};
+    window.sessionStorage.removeItem(ATTRIBUTION_STORAGE_KEY);
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
 
 export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState("");
@@ -16,6 +31,22 @@ export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [business, setBusiness] = useState("");
   const [copied, setCopied] = useState(false);
+  const [qr, setQr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!handoff?.wa_link) return;
+    let live = true;
+    QRCode.toDataURL(handoff.wa_link, { width: 320, margin: 1 })
+      .then((url) => {
+        if (live) setQr(url);
+      })
+      .catch(() => {
+        if (live) setQr(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [handoff?.wa_link]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
