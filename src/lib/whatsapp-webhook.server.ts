@@ -486,14 +486,90 @@ function messageBody(msg: AnyRecord): { type: string; body: string | null } {
   }
 }
 
-function mediaOf(msg: AnyRecord): { media_url: string | null; media_mime: string | null } {
+function mediaOf(msg: AnyRecord): {
+  media_url: string | null;
+  media_mime: string | null;
+  media_name: string | null;
+} {
   const type = String(msg["type"] ?? "");
   const m = msg[type] as AnyRecord | undefined;
-  if (!m || typeof m !== "object") return { media_url: null, media_mime: null };
+  if (!m || typeof m !== "object") return { media_url: null, media_mime: null, media_name: null };
   const id = m["id"] as string | undefined;
   return {
     media_url: id ? `meta:${id}` : null,
     media_mime: (m["mime_type"] as string | undefined) ?? null,
+    media_name: (m["filename"] as string | undefined) ?? null,
+  };
+}
+
+/**
+ * A customer's photo or voice note, as words the AI can act on. Voice becomes
+ * the question itself; a picture becomes a one-line note the question is
+ * asked about. Unsupported files get a polite line so nobody is left waiting.
+ */
+async function customerMediaToText(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    conversationId: string;
+    messageId: string | null;
+    accessToken: string;
+    caption: string | null;
+    media: { media_url: string | null; media_mime: string | null; media_name: string | null };
+  },
+): Promise<{ body: string | null; fallback: string | null }> {
+  const mediaId = args.media.media_url?.startsWith("meta:") ? args.media.media_url.slice(5) : null;
+  if (!mediaId) return { body: args.caption, fallback: null };
+  const mime = (args.media.media_mime ?? "").toLowerCase();
+  const caption = (args.caption ?? "").trim();
+
+  try {
+    const { fetchMetaMedia, transcribeAudio, describeImage } = await import("@/lib/ai-media.server");
+    if (mime.startsWith("audio/")) {
+      const file = await fetchMetaMedia(mediaId, args.accessToken);
+      const heard = file
+        ? await transcribeAudio(supabase, args.organizationId, file.bytes, file.mime ?? args.media.media_mime)
+        : { text: null };
+      if (!heard.text) {
+        return {
+          body: caption || null,
+          fallback: "I couldn't hear that voice note clearly — could you type it out for me?",
+        };
+      }
+      if (args.messageId) {
+        await supabase.from("messages").update({ body: heard.text }).eq("id", args.messageId);
+      }
+      return { body: heard.text, fallback: null };
+    }
+    if (mime.startsWith("image/")) {
+      const file = await fetchMetaMedia(mediaId, args.accessToken);
+      const seen = file
+        ? await describeImage(supabase, args.organizationId, file.bytes, file.mime ?? args.media.media_mime, {
+            conversationId: args.conversationId,
+          })
+        : { text: null };
+      if (!seen.text) {
+        return {
+          body: caption || null,
+          fallback: caption ? null : "Thanks for the picture — tell me what you'd like to know about it.",
+        };
+      }
+      const body = caption
+        ? `${caption}\n\n[Customer attached a picture: ${seen.text}]`
+        : `[Customer sent a picture: ${seen.text}] What can you tell me about this?`;
+      return { body, fallback: null };
+    }
+  } catch (error) {
+    console.error("[customer-media]", error instanceof Error ? error.message : String(error));
+    return { body: caption || null, fallback: null };
+  }
+
+  // Documents, stickers, contacts, locations: nothing we can read into an answer.
+  return {
+    body: caption || null,
+    fallback: caption
+      ? null
+      : "Thanks — I can read text, pictures and voice notes. Tell me in a message how I can help.",
   };
 }
 
@@ -911,6 +987,7 @@ export async function processWebhookPayload(
                 interactiveId: merchantTapId,
                 mediaUrl: media.media_url,
                 mediaMime: media.media_mime,
+                mediaName: media.media_name,
               });
             }
             continue;
@@ -1009,19 +1086,62 @@ export async function processWebhookPayload(
               .gte("created_at", beforeAutomations);
 
             try {
+              const alreadyHandled =
+                optKeywordMatched || codHandled || (repliedCount ?? 0) > 0;
+              const optedOut =
+                (contact as { opt_in_status?: string }).opt_in_status === "opted_out";
+
+              // Pictures and voice notes become words first, so a media-only
+              // message is never dropped on the floor.
+              let agentBody = body;
+              let mediaFallback: string | null = null;
+              if (media.media_url && !alreadyHandled && !optedOut) {
+                const converted = await customerMediaToText(supabase, {
+                  organizationId: orgId,
+                  conversationId: conversation.id as string,
+                  messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
+                  accessToken,
+                  caption: body,
+                  media,
+                });
+                agentBody = converted.body;
+                mediaFallback = converted.fallback;
+              }
+
               const { runAgentOnInbound } = await import("@/lib/ai-agent.server");
-              await runAgentOnInbound(supabase, {
+              const outcome = await runAgentOnInbound(supabase, {
                 organizationId: orgId,
                 conversationId: conversation.id as string,
                 contactId: contact.id as string,
                 phoneNumberId,
                 accessToken,
                 waId,
-                body,
-                alreadyHandled: optKeywordMatched || codHandled || (repliedCount ?? 0) > 0,
-                optedOut:
-                  (contact as { opt_in_status?: string }).opt_in_status === "opted_out",
+                body: agentBody,
+                alreadyHandled,
+                optedOut,
               });
+
+              // Only a live-replying agent speaks; otherwise the thread just
+              // sits unread in the inbox for a person, as it always has.
+              if (mediaFallback && !outcome.acted && outcome.reason === "no_text") {
+                const { data: agentRow } = await supabase
+                  .from("ai_agents")
+                  .select("mode")
+                  .eq("organization_id", orgId)
+                  .eq("is_default", true)
+                  .maybeSingle();
+                if ((agentRow as { mode?: string } | null)?.mode === "replying") {
+                  const { sendServiceText } = await import("@/lib/service-text.server");
+                  await sendServiceText(supabase, {
+                    organizationId: orgId,
+                    phoneNumberId,
+                    accessToken,
+                    conversationId: conversation.id as string,
+                    to: waId,
+                    body: mediaFallback,
+                  });
+                }
+              }
             } catch (error) {
               console.error(
                 "[ai-agent] failed",

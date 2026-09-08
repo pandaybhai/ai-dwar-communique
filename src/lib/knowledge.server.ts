@@ -20,7 +20,15 @@ import {
   stripHtml,
 } from "@/lib/web-reader.server";
 
-export type SourceType = "website" | "pdf" | "spreadsheet" | "manual_qa" | "image" | "docx";
+export type SourceType =
+  | "website"
+  | "pdf"
+  | "spreadsheet"
+  | "manual_qa"
+  | "image"
+  | "docx"
+  /** Everything an owner sent on the merchant channel — one per workspace. */
+  | "upload";
 
 /** One normalised item, whatever its origin. */
 export type KnowledgeDocument = {
@@ -518,7 +526,7 @@ export const CONNECTORS: Record<SourceType, Connector> = {
   spreadsheet: rereadUpload,
   image: rereadUpload,
   docx: rereadUpload,
-
+  upload: rereadUpload,
   manual_qa: readManualQa,
 };
 
@@ -799,24 +807,47 @@ export async function ingestUpload(
   fileName: string,
   bytes: Uint8Array,
   kind: "pdf" | "spreadsheet" | "image" | "docx",
+  options: {
+    /** The file's real mime type (pictures are sent as-is to the model). */
+    mime?: string | null;
+    /** Extra metadata on every item, e.g. the Meta media id it came from. */
+    extra?: Record<string, unknown>;
+    /**
+     * Set when several files share one source: item refs are prefixed so two
+     * PDFs' "page-1" never overwrite each other.
+     */
+    refPrefix?: string | null;
+    /** "onboarding" when the platform pays for the read (merchant channel). */
+    channel?: "onboarding" | null;
+  } = {},
 ): Promise<{ ok: boolean; itemCount: number; error?: string }> {
   try {
     const docs =
       kind === "pdf"
         ? await parsePdf(bytes, fileName)
         : kind === "image"
-          ? await readImage(supabase, organizationId, bytes, fileName)
+          ? await readImage(supabase, organizationId, bytes, fileName, options.mime ?? null, options.channel ?? null)
           : kind === "docx"
             ? await parseDocx(bytes, fileName)
             : await parseSpreadsheet(bytes, fileName);
     for (const doc of docs) {
-      await upsertDocument(supabase, organizationId, sourceId, doc);
+      const stamped: KnowledgeDocument = {
+        ...doc,
+        sourceRef: options.refPrefix ? `${options.refPrefix}:${doc.sourceRef}` : doc.sourceRef,
+        metadata: { kind, ...(doc.metadata ?? {}), ...(options.extra ?? {}) },
+      };
+      await upsertDocument(supabase, organizationId, sourceId, stamped);
     }
+    // A shared source counts everything it holds, not just this file.
+    const { count } = await supabase
+      .from("knowledge_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("source_id", sourceId);
     await supabase
       .from("knowledge_sources")
       .update({
         status: "ready",
-        item_count: docs.length,
+        item_count: count ?? docs.length,
         last_synced_at: new Date().toISOString(),
         last_error: null,
       })
@@ -830,6 +861,39 @@ export async function ingestUpload(
       .eq("id", sourceId);
     return { ok: false, itemCount: 0, error: message };
   }
+}
+
+/** The one source every file an owner sends on the merchant channel lands in. */
+export async function ensureUploadSource(
+  supabase: SupabaseClient,
+  organizationId: string,
+  createdBy: string | null,
+): Promise<{ id: string; cost_amount: number } | null> {
+  const { data: existing } = await supabase
+    .from("knowledge_sources")
+    .select("id, cost_amount")
+    .eq("organization_id", organizationId)
+    .eq("type", "upload")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (existing) {
+    return { id: (existing as { id: string }).id, cost_amount: Number((existing as { cost_amount?: number }).cost_amount ?? 0) };
+  }
+  const { data: created } = await supabase
+    .from("knowledge_sources")
+    .insert({
+      organization_id: organizationId,
+      type: "upload",
+      name: "Files you sent",
+      config: {},
+      refresh_days: 0,
+      status: "ready",
+      created_by: createdBy,
+    })
+    .select("id")
+    .maybeSingle();
+  return created ? { id: (created as { id: string }).id, cost_amount: 0 } : null;
 }
 
 
@@ -865,20 +929,34 @@ export async function readImage(
   organizationId: string,
   bytes: Uint8Array,
   name: string,
+  mime: string | null = null,
+  channel: "onboarding" | null = null,
 ): Promise<KnowledgeDocument[]> {
-  const { executeRun } = await import("@/lib/ai-run.server");
+  const { executeRun, meterAiUsage } = await import("@/lib/ai-run.server");
   const base64 = Buffer.from(bytes as unknown as ArrayLike<number>).toString("base64");
+  const imageMime = mime && mime.startsWith("image/") ? mime.split(";")[0]! : "image/jpeg";
   const run = await executeRun(supabase, {
     organizationId,
     task: "agent_reply",
     tier: "everyday",
     input: "Read this picture.",
-    imageDataUrl: `data:image/jpeg;base64,${base64}`,
+    imageDataUrl: `data:${imageMime};base64,${base64}`,
     system:
       "Transcribe every piece of text in this image exactly, keeping prices and numbers as written; " +
       "then list the items or services shown.",
     metadata: { purpose: "knowledge_image" },
     billingExempt: true,
+    channel,
+  });
+  if (run.status !== "ok") {
+    throw new Error(run.error || "The picture couldn't be read right now.");
+  }
+  // Platform-paid, but the cost still lands on the workspace's meter like a reader call.
+  await meterAiUsage(supabase, organizationId, "knowledge_image", {
+    costAmount: run.costAmount ?? 0,
+    inputTokens: run.inputTokens ?? 0,
+    outputTokens: run.outputTokens ?? 0,
+    runs: 1,
   });
   const text = (run.output ?? "").trim();
   if (text.length < 20) throw new Error("We couldn't read any text in that picture.");

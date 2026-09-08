@@ -84,10 +84,28 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             }
           }
 
+          // Day-one follow-ups ride on this tick; a failure here never
+          // blocks the reads above.
+          let nudges: { expired: number; nudged: number; skipped: string | null } = {
+            expired: 0,
+            nudged: 0,
+            skipped: null,
+          };
+          try {
+            const { runOnboardingNudges } = await import("@/lib/onboarding-nudges.server");
+            nudges = await runOnboardingNudges(supabase);
+          } catch (error) {
+            console.error(
+              "[onboarding-nudge] failed",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+
           return Response.json({
             claimed: claimed.length,
             done,
             failed,
+            nudges,
             commit: buildInfo().commit,
           });
         } catch (error) {

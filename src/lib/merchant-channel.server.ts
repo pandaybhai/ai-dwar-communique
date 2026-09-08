@@ -229,6 +229,8 @@ export async function handleMerchantInbound(
     /** "meta:<id>" when they sent a picture or a document. */
     mediaUrl?: string | null;
     mediaMime?: string | null;
+    /** The document's filename, when Meta sent one. */
+    mediaName?: string | null;
   },
 ): Promise<void> {
   const body = (args.body ?? "").trim();
@@ -389,9 +391,43 @@ export async function handleMerchantInbound(
   }
 
 
-  // ------------------------------------------------- a picture or a file
+  // ------------------------------------------------- a picture, a file or a voice note
   if (args.mediaUrl?.startsWith("meta:")) {
     const mime = (args.mediaMime ?? "").toLowerCase();
+    const mediaId = args.mediaUrl.slice(5);
+
+    // A voice note is just the owner talking: once it is words, it goes
+    // through exactly the same path as a typed message (teach, ask, fact).
+    if (mime.startsWith("audio/")) {
+      const { fetchMetaMedia, transcribeAudio } = await import("@/lib/ai-media.server");
+      const file = await fetchMetaMedia(mediaId, args.accessToken);
+      if (!file) {
+        await reply("That voice note didn't come through. Send it again?");
+        return;
+      }
+      const heard = await transcribeAudio(supabase, session.organization_id, file.bytes, file.mime ?? args.mediaMime ?? null);
+      if (!heard.text) {
+        await reply("I couldn't make out that voice note. Could you type it, or try once more?");
+        return;
+      }
+      await supabase
+        .from("messages")
+        .update({ body: heard.text })
+        .eq("organization_id", args.organizationId)
+        .eq("conversation_id", args.conversationId)
+        .eq("media_url", args.mediaUrl)
+        .eq("direction", "inbound");
+      await handleMerchantInbound(supabase, {
+        ...args,
+        body: heard.text,
+        interactiveId: null,
+        mediaUrl: null,
+        mediaMime: null,
+        mediaName: null,
+      });
+      return;
+    }
+
     const kind = mime.startsWith("image/")
       ? "image"
       : mime.includes("pdf")
@@ -403,57 +439,82 @@ export async function handleMerchantInbound(
             : null;
 
     if (!kind) {
-      await reply("I can read pictures, PDFs, Word files and spreadsheets. Send me one of those.");
+      await reply("I can read pictures, PDFs, Word files, spreadsheets and voice notes. Send me one of those.");
       return;
     }
 
     await reply("Reading it…");
-    const bytes = await downloadMedia(args.mediaUrl.slice(5), args.accessToken);
-    if (!bytes) {
-      await reply("That file didn't come through. Send it again and I'll read it.");
-      return;
-    }
 
-    const fileName = `${kind === "image" ? "Photo" : "File"} from ${new Date().toDateString()}`;
-    const { data: created } = await supabase
-      .from("knowledge_sources")
-      .insert({
-        organization_id: session.organization_id,
-        type: kind,
-        name: fileName,
-        config: { file_name: fileName },
-        refresh_days: 0,
-        created_by: session.user_id,
-      })
-      .select("id")
-      .maybeSingle();
-    const newSourceId = (created as { id: string } | null)?.id ?? null;
-    if (!newSourceId) {
+    const { ensureUploadSource, ingestUpload } = await import("@/lib/knowledge.server");
+    const source = await ensureUploadSource(supabase, session.organization_id, session.user_id);
+    if (!source) {
       await reply("I couldn't keep that just now. Send it again in a moment.");
       return;
     }
 
-    const { ingestUpload } = await import("@/lib/knowledge.server");
+    // Reading is platform-paid; on a free trial it stays under the day-0 cap.
+    const [{ data: orgRow }, { data: platform }] = await Promise.all([
+      supabase.from("organizations").select("plan_status").eq("id", session.organization_id).maybeSingle(),
+      supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
+    ]);
+    const onTrial = (orgRow as { plan_status?: string } | null)?.plan_status !== "active";
+    const costCap = Number(
+      (platform as { day0_crawl_cost_cap?: number } | null)?.day0_crawl_cost_cap ?? 2,
+    );
+    if (onTrial && source.cost_amount >= costCap) {
+      await reply(
+        "I've used up today's free reading allowance. Send this again tomorrow, or pick a plan at https://aidwar.in/app/billing and I'll read it straight away.",
+      );
+      return;
+    }
+
+    const { fetchMetaMedia, TRANSCRIBE_COST } = await import("@/lib/ai-media.server");
+    const file = await fetchMetaMedia(mediaId, args.accessToken);
+    if (!file) {
+      await reply("That file didn't come through. Send it again and I'll read it.");
+      return;
+    }
+
+    const label =
+      (args.mediaName ?? "").trim() ||
+      (kind === "image" ? "photo" : `${kind === "spreadsheet" ? "sheet" : kind.toUpperCase()} you sent`);
+    const fileName = kind === "image" && !args.mediaName ? `Photo from ${new Date().toDateString()}` : label;
+
     const firstMaterial = !session.source_id;
     if (firstMaterial) {
-      await patchSession(supabase, session.id, { status: "learning", source_id: newSourceId });
+      await patchSession(supabase, session.id, { status: "learning", source_id: source.id });
     }
     const ingested = await ingestUpload(
       supabase,
       session.organization_id,
-      newSourceId,
+      source.id,
       fileName,
-      bytes,
+      file.bytes,
       kind,
+      {
+        mime: file.mime ?? args.mediaMime ?? null,
+        extra: { media_id: mediaId, file: fileName },
+        refPrefix: mediaId,
+        channel: "onboarding",
+      },
     );
 
+    // Vision runs are metered on ai_usage; the source keeps a running total
+    // so the trial cap above has something to compare against.
+    if (kind === "image") {
+      await supabase
+        .from("knowledge_sources")
+        .update({ cost_amount: source.cost_amount + TRANSCRIBE_COST })
+        .eq("id", source.id);
+    }
+
     if (firstMaterial) {
-      await finishOnboardingCrawl(supabase, newSourceId, ingested);
+      await finishOnboardingCrawl(supabase, source.id, ingested);
     } else {
       await reply(
         ingested.ok
-          ? `Read it — ${ingested.itemCount} thing${ingested.itemCount === 1 ? "" : "s"} added to what I know.`
-          : "I couldn't read that one. Try a clearer picture or a different file.",
+          ? `Got it — I now know ${ingested.itemCount} item${ingested.itemCount === 1 ? "" : "s"} from ${kind === "image" ? "your photo" : label}.`
+          : "Couldn't read that one — try a clearer photo or a PDF.",
       );
     }
     return;
