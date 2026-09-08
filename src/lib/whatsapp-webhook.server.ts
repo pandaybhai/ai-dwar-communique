@@ -909,6 +909,8 @@ export async function processWebhookPayload(
                 contactId: contact.id as string,
                 body: body ?? "",
                 interactiveId: merchantTapId,
+                mediaUrl: media.media_url,
+                mediaMime: media.media_mime,
               });
             }
             continue;

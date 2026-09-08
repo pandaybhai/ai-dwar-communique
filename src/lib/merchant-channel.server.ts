@@ -24,6 +24,7 @@ import {
 } from "@/lib/service-text.server";
 import {
   handleOwnerReply,
+  onboardingChannelFor,
   ownerOrganizationIds,
   orgNames,
   prefixFor,
@@ -196,6 +197,9 @@ export async function handleMerchantInbound(
     body: string;
     /** button_reply.id / list_reply.id, when they tapped instead of typed. */
     interactiveId?: string | null;
+    /** "meta:<id>" when they sent a picture or a document. */
+    mediaUrl?: string | null;
+    mediaMime?: string | null;
   },
 ): Promise<void> {
   const body = (args.body ?? "").trim();
@@ -720,5 +724,103 @@ export async function handleNumberConnected(
     status: "completed",
     step: "done",
     completed_at: new Date().toISOString(),
+  });
+}
+
+
+// ------------------------------------------------------- the crawl finishes
+
+/**
+ * The worker has finished reading an owner's website. This is the second half
+ * of the "send me your link" step: it runs minutes later, in a different
+ * process, and speaks in the same chat.
+ */
+export async function finishOnboardingCrawl(
+  supabase: SupabaseClient,
+  sourceId: string,
+  result: { ok: boolean; itemCount: number; error?: string },
+): Promise<void> {
+  const { data: sessionRow } = await supabase
+    .from("onboarding_sessions")
+    .select(SESSION_COLUMNS)
+    .eq("source_id", sourceId)
+    .eq("status", "learning")
+    .limit(1)
+    .maybeSingle();
+  const session = sessionRow as OnboardingSession | null;
+  if (!session || !session.wa_id) return;
+
+  const channel = await onboardingChannelFor(supabase, session.wa_id);
+  if (!channel) return;
+
+  const [{ data: org }, ownerOrgs] = await Promise.all([
+    supabase.from("organizations").select("name").eq("id", session.organization_id).maybeSingle(),
+    ownerOrganizationIds(supabase, session.wa_id),
+  ]);
+  const businessName = (org as { name?: string } | null)?.name ?? "";
+  const prefix = prefixFor(ownerOrgs.length > 1, businessName || null);
+
+  // Nothing readable: keep the session waiting for another link, in our words.
+  if (!result.ok || result.itemCount === 0) {
+    await patchSession(supabase, session.id, {
+      status: "bound",
+      step: "await_site",
+      source_id: null,
+    });
+    await sendServiceText(supabase, {
+      ...channel,
+      body:
+        prefix +
+        "I couldn't read anything useful from that link. Send another link, or tell me in a few lines what you sell and where you deliver.",
+    });
+    return;
+  }
+
+  await patchSession(supabase, session.id, { status: "ready", step: "answering" });
+
+  const [titles, first] = await Promise.all([
+    pageTitles(supabase, sourceId),
+    (async () => {
+      const { merchantFirstBrief } = await import("@/lib/ai-tasks.server");
+      return merchantFirstBrief(supabase, {
+        organizationId: session.organization_id,
+        userId: session.user_id,
+        sourceId,
+        businessName,
+      });
+    })(),
+  ]);
+
+  const { data: sourceRow } = await supabase
+    .from("knowledge_sources")
+    .select("name")
+    .eq("id", sourceId)
+    .maybeSingle();
+  const host = (sourceRow as { name?: string } | null)?.name ?? "";
+
+  const titleLine = shortTitles(titles).join(", ");
+  const doneBody =
+    `Done. I read ${result.itemCount} page${result.itemCount === 1 ? "" : "s"}${titleLine ? ` — ${titleLine}` : ""}.\n\n` +
+    `Here's what I know about ${businessName || "your business"} now. Below are three things a customer might ask you today. Tap one, or ask your own.`;
+
+  const { renderCard } = await import("@/lib/onboarding-cards.server");
+  const briefCard = await renderCard(supabase, "brief", {
+    sessionId: session.id,
+    vars: {
+      business_name: businessName || "your business",
+      site_host: host,
+      pages_read: result.itemCount,
+      now_time: istTime(),
+      fact_1: first.facts[0] ?? "",
+      fact_2: first.facts[1] ?? "",
+      fact_3: first.facts[2] ?? "",
+    },
+  });
+
+  await sendServiceButtons(supabase, {
+    ...channel,
+    body: prefix + doneBody,
+    buttons: first.questions.slice(0, 3).map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
+    imageUrl: briefCard,
   });
 }
