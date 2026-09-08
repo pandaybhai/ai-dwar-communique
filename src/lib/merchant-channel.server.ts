@@ -28,6 +28,7 @@ export type OnboardingSession = {
   status: string;
   step: string | null;
   source_id: string | null;
+  pending_question: string | null;
 };
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
@@ -36,10 +37,14 @@ const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
 const STRANGER_REPLY =
   "Hi! I'm Aiden from AiDwar. Sign up at aidwar.in first, then send me your code and I'll get started.";
 
+/** When there is nothing behind an answer we ask instead of inventing one. */
+const NO_SOURCE_REPLY =
+  "I couldn't find that on your website yet. Tell me the answer here and I'll remember it for your customers.";
+
 const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
-  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id";
+  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question";
 
 // --------------------------------------------------------------- formatting
 
@@ -140,6 +145,27 @@ async function pageTitles(
     .map((r) => (r.title ?? "").trim())
     .filter((t) => t.length > 0);
 }
+
+/**
+ * Page titles as a person would say them: the bit before the site name,
+ * trimmed to something that fits in a caption. At most five.
+ */
+function shortTitles(titles: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of titles) {
+    let t = raw.split(/\s+[—|]\s+/)[0]?.trim() ?? "";
+    if (!t) continue;
+    if (t.length > 24) t = `${t.slice(0, 23).trimEnd()}…`;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length === 5) break;
+  }
+  return out;
+}
+
 
 // ------------------------------------------------------------------ inbound
 
@@ -288,7 +314,7 @@ export async function handleMerchantInbound(
       })(),
     ]);
 
-    const titleLine = titles.slice(0, 5).join(", ");
+    const titleLine = shortTitles(titles).join(", ");
     const doneBody =
       `Done. I read ${added.itemCount} page${added.itemCount === 1 ? "" : "s"}${titleLine ? ` — ${titleLine}` : ""}.\n\n` +
       `Here's what I know about ${businessName || "your business"} now. Below are three things a customer might ask you today. Tap one, or ask your own.`;
@@ -356,6 +382,27 @@ export async function handleMerchantInbound(
   // ------------------------------------------------------------ answering
   if (currentStatus !== "ready" && currentStatus !== "tested") return;
 
+  // We asked them to teach us the answer to their last question: this reply is
+  // that answer, kept word for word rather than sent to the model.
+  if (session.step === "await_teach" && session.pending_question) {
+    const { saveCorrection } = await import("@/lib/knowledge.server");
+    const saved = await saveCorrection(supabase, session.organization_id, {
+      question: session.pending_question,
+      answer: body,
+      userId: session.user_id,
+    });
+    await patchSession(supabase, session.id, {
+      step: "answering",
+      pending_question: null,
+    });
+    await reply(
+      saved.ok
+        ? "Got it — I'll give your customers that answer from now on. Ask me something else whenever you like."
+        : "I couldn't save that just now. Send it again in a moment and I'll keep it.",
+    );
+    return;
+  }
+
   const { merchantAnswer } = await import("@/lib/ai-tasks.server");
   const run = await merchantAnswer(
     supabase,
@@ -373,12 +420,30 @@ export async function handleMerchantInbound(
     },
   );
 
+  // Nothing behind the answer means nothing gets said: no model text ever
+  // leaves this branch unless the run succeeded on real material.
+  const grounded = run.status === "ok" && run.sources.length > 0;
+  if (!grounded) {
+    await patchSession(supabase, session.id, {
+      step: "await_teach",
+      pending_question: body,
+    });
+    await reply(NO_SOURCE_REPLY);
+    return;
+  }
+
   // The model sometimes copies the transcript's speaker prefix into its answer.
   const text = (run.output ?? "").trim().replace(/^\s*aiden\s*(:|—|-)\s*/i, "").trim();
-  await reply(
-    text ||
-      "I'm having trouble thinking just now. Give me a minute and ask me again — someone from the AiDwar team is watching this chat too.",
-  );
+  if (!text) {
+    await patchSession(supabase, session.id, {
+      step: "await_teach",
+      pending_question: body,
+    });
+    await reply(NO_SOURCE_REPLY);
+    return;
+  }
+  await reply(text);
+
 
   // First real answer on a workspace that already has its starter credits:
   // the credits card, once only.

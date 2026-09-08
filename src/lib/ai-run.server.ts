@@ -966,13 +966,16 @@ export async function executeRun(
     try {
       const [vector] = await embedTexts([input]);
       if (vector) {
+        // The owner's own chat asks broad questions ("what is the price?")
+        // against a small, fresh crawl, so it reaches a little further down.
+        const isMerchantChannel = options.channel === "onboarding";
         const { data: matches } = await supabase.rpc("match_knowledge_chunks", {
           p_org: organizationId,
           p_embedding: JSON.stringify(vector),
           p_embedding_model: EMBEDDING_MODEL,
           p_agent: agentId,
           p_limit: 6,
-          p_min_similarity: 0.35,
+          p_min_similarity: isMerchantChannel ? 0.25 : 0.35,
         });
         const rows = (matches ?? []) as Array<{
           document_id: string;
@@ -983,6 +986,17 @@ export async function executeRun(
           text: string;
           similarity: number;
         }>;
+        if (isMerchantChannel) {
+          console.log(
+            "[merchant-retrieval]",
+            organizationId,
+            JSON.stringify(input).slice(0, 120),
+            rows
+              .slice(0, 6)
+              .map((r) => `${(r.title || r.source_name || "?").slice(0, 40)}=${Number(r.similarity).toFixed(3)}`)
+              .join(" | ") || "no candidates above 0.25",
+          );
+        }
         for (const row of rows) {
           sources.push({
             kind: "knowledge",
