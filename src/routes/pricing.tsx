@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Check, Loader2, Sparkles } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { WaitlistDialog } from "@/components/waitlist-dialog";
+
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "@/components/marketing/reveal";
@@ -94,6 +94,9 @@ function PricingPage() {
               Pricing that grows with the shop, not against it
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+              Every plan starts with a free day one on WhatsApp. No card needed.
+            </p>
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
               One monthly plan for the platform. Message credits are topped up separately and
               charged at cost plus a small margin — you always see the per-message rate before you
               send.
@@ -169,6 +172,11 @@ function PricingPage() {
                             <span className="text-sm text-muted-foreground">
                               {annual ? " / year" : " / month"}
                             </span>
+                            {!annual && plan.price_annual ? (
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                or {inr(plan.price_annual)}/yr
+                              </p>
+                            ) : null}
                           </>
                         )}
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -198,16 +206,15 @@ function PricingPage() {
                           </a>
                         </Button>
                       ) : (
-                        <WaitlistDialog
-                          trigger={
-                            <Button
-                              className="mt-6 rounded-full"
-                              variant={featured ? "default" : "outline"}
-                            >
-                              Get started
-                            </Button>
-                          }
-                        />
+                        <Button
+                          asChild
+                          className="mt-6 rounded-full"
+                          variant={featured ? "default" : "outline"}
+                        >
+                          <Link to="/signup" search={{ plan: plan.key }}>
+                            Start free
+                          </Link>
+                        </Button>
                       )}
                     </div>
                   </Reveal>
@@ -238,9 +245,9 @@ function PricingPage() {
               </p>
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
-              <WaitlistDialog
-                trigger={<Button className="rounded-full">Get early access</Button>}
-              />
+              <Button asChild className="rounded-full">
+                <Link to="/signup">Start free</Link>
+              </Button>
               <Button asChild variant="outline" className="rounded-full">
                 <Link to="/terms">Read the terms</Link>
               </Button>

@@ -1,13 +1,28 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Building2, Loader2, MessageCircle, Copy, Check } from "lucide-react";
+import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
 import { logActivity } from "@/lib/activity";
+import { ATTRIBUTION_STORAGE_KEY } from "@/routes/signup";
 
 type Handoff = { code: string; wa_link: string };
+
+/** Whatever the signup link carried — stored at /signup, spent here, then cleared. */
+function takeAttribution(): Record<string, string> {
+  try {
+    const raw = window.sessionStorage.getItem(ATTRIBUTION_STORAGE_KEY);
+    if (!raw) return {};
+    window.sessionStorage.removeItem(ATTRIBUTION_STORAGE_KEY);
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
 
 export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState("");
@@ -16,6 +31,22 @@ export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [business, setBusiness] = useState("");
   const [copied, setCopied] = useState(false);
+  const [qr, setQr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!handoff?.wa_link) return;
+    let live = true;
+    QRCode.toDataURL(handoff.wa_link, { width: 320, margin: 1 })
+      .then((url) => {
+        if (live) setQr(url);
+      })
+      .catch(() => {
+        if (live) setQr(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [handoff?.wa_link]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -36,7 +67,10 @@ export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
     // Aiden meets the owner on WhatsApp. If that can't be arranged right now,
     // the workspace still opens — nobody gets stuck on this screen.
     const started = await callApi<Handoff>("/api/onboarding/start", {
-      body: { organization_id: (newOrgId as string) ?? null },
+      body: {
+        organization_id: (newOrgId as string) ?? null,
+        attribution: takeAttribution(),
+      },
     });
     setPending(false);
     if (started.data?.wa_link) {
@@ -71,21 +105,40 @@ export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
           </a>
         </Button>
 
-        <div className="mt-5 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-          <span>Your code: </span>
-          <code className="rounded-md bg-muted px-2 py-1 font-mono text-foreground">{handoff.code}</code>
-          <button
-            type="button"
-            onClick={() => {
-              void navigator.clipboard.writeText(handoff.code);
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1500);
-            }}
-            className="rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:text-foreground"
-            aria-label="Copy your code"
-          >
-            {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
-          </button>
+        {qr ? (
+          <div className="mt-8 rounded-2xl border border-border bg-card p-6">
+            <img
+              src={qr}
+              alt={`QR code that opens a chat with Aiden using code ${handoff.code}`}
+              className="mx-auto h-40 w-40 rounded-lg"
+            />
+            <p className="mt-4 text-sm text-muted-foreground">
+              On a laptop? Scan with your phone — WhatsApp opens with your code filled in.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="mt-6">
+          <div className="flex items-center justify-center gap-3">
+            <code className="rounded-xl bg-muted px-4 py-2 font-mono text-3xl font-bold tracking-widest text-foreground">
+              {handoff.code}
+            </code>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(handoff.code);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1500);
+              }}
+              className="rounded-md p-2 text-muted-foreground transition-colors duration-150 hover:text-foreground"
+              aria-label="Copy your code"
+            >
+              {copied ? <Check className="h-5 w-5 text-primary" /> : <Copy className="h-5 w-5" />}
+            </button>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Send this to Aiden if the link doesn't open.
+          </p>
         </div>
 
         <button

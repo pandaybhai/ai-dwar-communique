@@ -10,11 +10,26 @@ import { aidwar } from "@/integrations/aidwar/client";
 const TITLE = "Create your account — AiDwar";
 const DESCRIPTION = "Create an AiDwar account and start building AI-powered campaigns for your business.";
 
+/**
+ * Where the signup came from. Kept as intent only — the plan is never assigned
+ * here; the purchase step later decides that.
+ */
+const ATTRIBUTION_KEYS = ["plan", "utm_source", "utm_medium", "utm_campaign", "ref"] as const;
+type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
+type SignupSearch = { redirect?: string } & Partial<Record<AttributionKey, string>>;
+export const ATTRIBUTION_STORAGE_KEY = "aidwar.signup.attribution";
+
 export const Route = createFileRoute("/signup")({
   ssr: false,
-  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+  validateSearch: (search: Record<string, unknown>): SignupSearch => {
+    const out: SignupSearch = {};
     const r = search["redirect"];
-    return typeof r === "string" && r.startsWith("/") ? { redirect: r } : {};
+    if (typeof r === "string" && r.startsWith("/")) out.redirect = r;
+    for (const key of ATTRIBUTION_KEYS) {
+      const value = search[key];
+      if (typeof value === "string" && value.trim()) out[key] = value.trim().slice(0, 120);
+    }
+    return out;
   },
   head: () => ({
     meta: [
@@ -29,12 +44,29 @@ export const Route = createFileRoute("/signup")({
 
 function SignupPage() {
   const navigate = useNavigate();
-  const { redirect } = Route.useSearch();
+  const search = Route.useSearch();
+  const { redirect } = search;
   const goNext = () =>
     redirect ? navigate({ href: redirect, replace: true }) : navigate({ to: "/app", replace: true });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkEmail, setCheckEmail] = useState(false);
+
+  // Held until the workspace is created — that's when the session row exists.
+  useEffect(() => {
+    const attribution: Record<string, string> = {};
+    for (const key of ATTRIBUTION_KEYS) {
+      const value = search[key];
+      if (value) attribution[key] = value;
+    }
+    if (Object.keys(attribution).length > 0) {
+      try {
+        window.sessionStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(attribution));
+      } catch {
+        /* private mode — attribution is best effort, never blocks signup */
+      }
+    }
+  }, [search]);
 
   useEffect(() => {
     aidwar.auth.getSession().then(({ data }) => {

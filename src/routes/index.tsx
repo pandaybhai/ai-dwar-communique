@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   PenLine,
   MessagesSquare,
@@ -7,7 +7,7 @@ import {
   Inbox,
   LineChart,
   ArrowRight,
-  ArrowDown,
+  
   Sunrise,
   Send,
   Languages,
@@ -20,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { WaitlistDialog } from "@/components/waitlist-dialog";
+
 import { PhoneDemo } from "@/components/marketing/phone-demo";
 import { Reveal } from "@/components/marketing/reveal";
 
@@ -162,24 +162,22 @@ function Index() {
                 replies, and analytics — on the official WhatsApp Business API.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <WaitlistDialog
-                  trigger={
-                    <Button
-                      size="lg"
-                      className="w-full rounded-full bg-gradient-to-r from-primary to-teal-500 px-8 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.99] sm:w-auto"
-                    >
-                      Get Early Access
-                      <ArrowRight className="size-4" />
-                    </Button>
-                  }
-                />
-                <a
-                  href="#a-days-work"
+                <Button
+                  asChild
+                  size="lg"
+                  className="w-full rounded-full bg-gradient-to-r from-primary to-teal-500 px-8 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.99] sm:w-auto"
+                >
+                  <Link to="/signup">
+                    Meet your AI employee on WhatsApp — free
+                    <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
+                <Link
+                  to="/pricing"
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-border px-6 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-secondary"
                 >
-                  See it work
-                  <ArrowDown className="size-4 animate-bounce" />
-                </a>
+                  See pricing
+                </Link>
               </div>
             </Reveal>
 
@@ -275,21 +273,20 @@ function Index() {
                     Hire your AI employee before your competitor does.
                   </h2>
                   <p className="mx-auto mt-4 max-w-xl text-primary-foreground/90">
-                    Early access is limited. Join the list and we&apos;ll onboard you personally.
+                    Day one is free, no card needed. Sign up and say hello on WhatsApp.
                   </p>
                   <div className="mt-8 flex justify-center">
-                    <WaitlistDialog
-                      trigger={
-                        <Button
-                          size="lg"
-                          variant="secondary"
-                          className="rounded-full px-8 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.99]"
-                        >
-                          Get Early Access
-                          <ArrowRight className="size-4" />
-                        </Button>
-                      }
-                    />
+                    <Button
+                      asChild
+                      size="lg"
+                      variant="secondary"
+                      className="rounded-full px-8 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.99]"
+                    >
+                      <Link to="/signup">
+                        Meet your AI employee on WhatsApp — free
+                        <ArrowRight className="size-4" />
+                      </Link>
+                    </Button>
                   </div>
                   <div className="mt-10 flex flex-wrap items-center justify-center gap-2.5">
                     {soon.map((s) => (

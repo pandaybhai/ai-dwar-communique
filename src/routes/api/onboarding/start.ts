@@ -84,6 +84,20 @@ export const Route = createFileRoute("/api/onboarding/start")({
           .limit(1)
           .maybeSingle();
 
+        // Where this signup came from. Intent only — it never assigns a plan.
+        const ATTRIBUTION_KEYS = ["plan", "utm_source", "utm_medium", "utm_campaign", "ref"];
+        const rawAttribution = payload["attribution"];
+        const attribution: Record<string, string> = {};
+        if (rawAttribution && typeof rawAttribution === "object") {
+          for (const key of ATTRIBUTION_KEYS) {
+            const value = (rawAttribution as Record<string, unknown>)[key];
+            if (typeof value === "string" && value.trim()) {
+              attribution[key] = value.trim().slice(0, 120);
+            }
+          }
+        }
+        const hasAttribution = Object.keys(attribution).length > 0;
+
         let code = (existing as unknown as { code?: string } | null)?.code ?? null;
         if (!code) {
           // A collision on the unique code is possible but rare; try a few.
@@ -95,13 +109,18 @@ export const Route = createFileRoute("/api/onboarding/start")({
               phone,
               code: candidate,
               status: "pending",
+              attribution,
             });
             if (!error) code = candidate;
           }
         } else {
           await supabaseAdmin
             .from("onboarding_sessions")
-            .update({ phone, updated_at: new Date().toISOString() })
+            .update({
+              phone,
+              updated_at: new Date().toISOString(),
+              ...(hasAttribution ? { attribution } : {}),
+            })
             .eq("id", (existing as unknown as { id: string }).id);
         }
 
