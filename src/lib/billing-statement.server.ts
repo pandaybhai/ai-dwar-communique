@@ -97,31 +97,64 @@ export async function planFeeRoiSnapshot(
   organizationId: string,
   periodStart: string,
   periodEnd: string,
-): Promise<{ attributed_revenue: number; total_cost: number }> {
-  const [{ data: revenue }, { data: ledger }] = await Promise.all([
-    supabase
-      .from("revenue_attributions")
-      .select("order_total")
-      .eq("organization_id", organizationId)
-      .gte("attributed_at", periodStart)
-      .lt("attributed_at", periodEnd)
-      .limit(20000),
-    supabase
-      .from("wallet_ledger")
-      .select("amount, entry_type")
-      .eq("organization_id", organizationId)
-      .gte("created_at", periodStart)
-      .lt("created_at", periodEnd)
-      .limit(20000),
-  ]);
+): Promise<{
+  attributed_revenue: number;
+  total_cost: number;
+  messages_sent: number;
+  ai_answers: number;
+  escalations: number;
+  revenue_attributed: number | null;
+}> {
+  const [{ data: revenue }, { data: ledger }, { count: messages }, { count: aiAnswers }, { count: escalations }] =
+    await Promise.all([
+      supabase
+        .from("revenue_attributions")
+        .select("order_total")
+        .eq("organization_id", organizationId)
+        .gte("attributed_at", periodStart)
+        .lt("attributed_at", periodEnd)
+        .limit(20000),
+      supabase
+        .from("wallet_ledger")
+        .select("amount, entry_type")
+        .eq("organization_id", organizationId)
+        .gte("created_at", periodStart)
+        .lt("created_at", periodEnd)
+        .limit(20000),
+      supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
+        .eq("direction", "outbound")
+        .gte("created_at", periodStart)
+        .lt("created_at", periodEnd),
+      supabase
+        .from("ai_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
+        .gte("created_at", periodStart)
+        .lt("created_at", periodEnd),
+      supabase
+        .from("ai_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
+        .eq("status", "escalated")
+        .gte("created_at", periodStart)
+        .lt("created_at", periodEnd),
+    ]);
 
-  const attributed = ((revenue ?? []) as Record<string, unknown>[]).reduce(
-    (sum, row) => sum + Number(row["order_total"] ?? 0),
-    0,
-  );
+  const revenueRows = (revenue ?? []) as Record<string, unknown>[];
+  const attributed = revenueRows.reduce((sum, row) => sum + Number(row["order_total"] ?? 0), 0);
   const spent = ((ledger ?? []) as Record<string, unknown>[])
     .filter((row) => Number(row["amount"] ?? 0) < 0)
     .reduce((sum, row) => sum + Math.abs(Number(row["amount"] ?? 0)), 0);
 
-  return { attributed_revenue: round2(attributed), total_cost: round2(spent) };
+  return {
+    attributed_revenue: round2(attributed),
+    total_cost: round2(spent),
+    messages_sent: messages ?? 0,
+    ai_answers: aiAnswers ?? 0,
+    escalations: escalations ?? 0,
+    revenue_attributed: revenueRows.length > 0 ? round2(attributed) : null,
+  };
 }
