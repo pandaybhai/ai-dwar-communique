@@ -70,6 +70,7 @@ function EmployeePage() {
   const [tab, setTab] = useState("knows");
   const [gate, setGate] = useState<{ mode: string; message: string } | null>(null);
   const [compareRequest, setCompareRequest] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
 
   const load = useCallback(async () => {
     if (!organizationId) return;
@@ -79,8 +80,10 @@ function EmployeePage() {
     });
     if (error) toast.error(error);
     setOverview(data);
+    setDataVersion((v) => v + 1);
     setLoading(false);
   }, [organizationId]);
+
 
   useEffect(() => {
     void load();
@@ -286,7 +289,9 @@ function EmployeePage() {
                 organizationId={active.organization.id}
                 agentName={overview?.agent?.name ?? "your AI employee"}
                 currency={currency}
+                refreshKey={dataVersion}
               />
+
             </TabsContent>
 
             <TabsContent value="brains" className="space-y-6">
