@@ -47,6 +47,7 @@ import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
 import { Route as ApiBillingInvoicesRouteImport } from './routes/api/billing/invoices'
 import { Route as ApiBillingLedgerRouteImport } from './routes/api/billing/ledger'
+import { Route as ApiBillingPlanRouteImport } from './routes/api/billing/plan'
 import { Route as ApiBillingPurchaseRouteImport } from './routes/api/billing/purchase'
 import { Route as ApiBillingRazorpayKeyRouteImport } from './routes/api/billing/razorpay-key'
 import { Route as ApiBillingRequestTopupRouteImport } from './routes/api/billing/request-topup'
@@ -291,6 +292,11 @@ const ApiBillingInvoicesRoute = ApiBillingInvoicesRouteImport.update({
 const ApiBillingLedgerRoute = ApiBillingLedgerRouteImport.update({
   id: '/api/billing/ledger',
   path: '/api/billing/ledger',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBillingPlanRoute = ApiBillingPlanRouteImport.update({
+  id: '/api/billing/plan',
+  path: '/api/billing/plan',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiBillingPurchaseRoute = ApiBillingPurchaseRouteImport.update({
@@ -628,6 +634,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
+  '/api/billing/plan': typeof ApiBillingPlanRoute
   '/api/billing/purchase': typeof ApiBillingPurchaseRoute
   '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
   '/api/billing/request-topup': typeof ApiBillingRequestTopupRoute
@@ -721,6 +728,7 @@ export interface FileRoutesByTo {
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
+  '/api/billing/plan': typeof ApiBillingPlanRoute
   '/api/billing/purchase': typeof ApiBillingPurchaseRoute
   '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
   '/api/billing/request-topup': typeof ApiBillingRequestTopupRoute
@@ -817,6 +825,7 @@ export interface FileRoutesById {
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
+  '/api/billing/plan': typeof ApiBillingPlanRoute
   '/api/billing/purchase': typeof ApiBillingPurchaseRoute
   '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
   '/api/billing/request-topup': typeof ApiBillingRequestTopupRoute
@@ -914,6 +923,7 @@ export interface FileRouteTypes {
     | '/api/ai/tools'
     | '/api/billing/invoices'
     | '/api/billing/ledger'
+    | '/api/billing/plan'
     | '/api/billing/purchase'
     | '/api/billing/razorpay-key'
     | '/api/billing/request-topup'
@@ -1007,6 +1017,7 @@ export interface FileRouteTypes {
     | '/api/ai/tools'
     | '/api/billing/invoices'
     | '/api/billing/ledger'
+    | '/api/billing/plan'
     | '/api/billing/purchase'
     | '/api/billing/razorpay-key'
     | '/api/billing/request-topup'
@@ -1102,6 +1113,7 @@ export interface FileRouteTypes {
     | '/api/ai/tools'
     | '/api/billing/invoices'
     | '/api/billing/ledger'
+    | '/api/billing/plan'
     | '/api/billing/purchase'
     | '/api/billing/razorpay-key'
     | '/api/billing/request-topup'
@@ -1181,6 +1193,7 @@ export interface RootRouteChildren {
   ApiAiToolsRoute: typeof ApiAiToolsRoute
   ApiBillingInvoicesRoute: typeof ApiBillingInvoicesRoute
   ApiBillingLedgerRoute: typeof ApiBillingLedgerRoute
+  ApiBillingPlanRoute: typeof ApiBillingPlanRoute
   ApiBillingPurchaseRoute: typeof ApiBillingPurchaseRoute
   ApiBillingRazorpayKeyRoute: typeof ApiBillingRazorpayKeyRoute
   ApiBillingRequestTopupRoute: typeof ApiBillingRequestTopupRoute
@@ -1498,6 +1511,13 @@ declare module '@tanstack/react-router' {
       path: '/api/billing/ledger'
       fullPath: '/api/billing/ledger'
       preLoaderRoute: typeof ApiBillingLedgerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/billing/plan': {
+      id: '/api/billing/plan'
+      path: '/api/billing/plan'
+      fullPath: '/api/billing/plan'
+      preLoaderRoute: typeof ApiBillingPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/billing/purchase': {
@@ -1976,6 +1996,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiToolsRoute: ApiAiToolsRoute,
   ApiBillingInvoicesRoute: ApiBillingInvoicesRoute,
   ApiBillingLedgerRoute: ApiBillingLedgerRoute,
+  ApiBillingPlanRoute: ApiBillingPlanRoute,
   ApiBillingPurchaseRoute: ApiBillingPurchaseRoute,
   ApiBillingRazorpayKeyRoute: ApiBillingRazorpayKeyRoute,
   ApiBillingRequestTopupRoute: ApiBillingRequestTopupRoute,
