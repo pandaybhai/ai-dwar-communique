@@ -952,10 +952,16 @@ export async function finishOnboardingCrawl(
     },
   });
 
+  // Remember what we offered, so a tap on one is never mistaken for teaching.
+  await patchSession(supabase, session.id, {
+    suggested_questions: first.questions.slice(0, 3),
+  });
+
   await sendServiceButtons(supabase, {
     ...channel,
     body: prefix + doneBody,
     buttons: first.questions.slice(0, 3).map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
     imageUrl: briefCard,
   });
+
 }
