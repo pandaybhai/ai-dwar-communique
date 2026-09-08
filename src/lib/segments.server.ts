@@ -39,14 +39,26 @@ async function contactIdsForTag(
   tagId: string,
 ): Promise<string[]> {
   if (!UUID_RE.test(tagId)) return [];
-  const { data } = await supabase
-    .from("contact_tags")
-    .select("contact_id")
-    .eq("organization_id", organizationId)
-    .eq("tag_id", tagId)
-    .limit(50000);
-  return ((data as { contact_id: string }[]) ?? []).map((r) => r.contact_id);
+  // The Data API caps a single read at 1000 rows, so a bare .limit(50000) used
+  // to silently truncate the tagged set — and "does not have tag" then let
+  // tagged contacts through. Page until the tag is fully read.
+  const page = 1000;
+  const ids: string[] = [];
+  for (let from = 0; from < 50000; from += page) {
+    const { data } = await supabase
+      .from("contact_tags")
+      .select("contact_id")
+      .eq("organization_id", organizationId)
+      .eq("tag_id", tagId)
+      .order("contact_id", { ascending: true })
+      .range(from, from + page - 1);
+    const rows = (data as { contact_id: string }[]) ?? [];
+    ids.push(...rows.map((r) => r.contact_id));
+    if (rows.length < page) break;
+  }
+  return ids;
 }
+
 
 function attrPath(key: string): string | null {
   return KEY_RE.test(key) ? `attributes->>${key}` : null;
