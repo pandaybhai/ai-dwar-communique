@@ -64,6 +64,7 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               auth.organizationId,
               url,
               auth.userId,
+              { mode: "full" },
             );
             if (!added.sourceId) return jsonError(added.error ?? "We couldn't add that website.");
             await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "ai_knowledge_added", {
@@ -73,6 +74,7 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               source_id: added.sourceId,
               ok: added.ok,
               itemCount: added.itemCount,
+              queued: added.queued ?? false,
               ...(added.error ? { error: added.error } : {}),
             });
           }
@@ -81,7 +83,10 @@ export const Route = createFileRoute("/api/ai/knowledge")({
           if (action === "add_file") {
             const fileName = String(payload["file_name"] ?? "").trim();
             const base64 = String(payload["file_base64"] ?? "");
-            const kind = payload["kind"] === "pdf" ? "pdf" : "spreadsheet";
+            const requested = String(payload["kind"] ?? "spreadsheet");
+            const kind = (["pdf", "image", "docx"].includes(requested)
+              ? requested
+              : "spreadsheet") as "pdf" | "spreadsheet" | "image" | "docx";
             if (!fileName || !base64) return jsonError("Choose a file first.");
             const binary = atob(base64);
             if (binary.length > 8 * 1024 * 1024) {
@@ -89,6 +94,7 @@ export const Route = createFileRoute("/api/ai/knowledge")({
             }
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+
 
             const { data, error } = await auth.supabase
               .from("knowledge_sources")

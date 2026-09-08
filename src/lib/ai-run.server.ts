@@ -113,6 +113,8 @@ export type RunOptions = {
   billingExempt?: boolean;
   /** Merchant onboarding chats are platform-paid and bypass workspace kill switches. */
   channel?: "onboarding" | null;
+  /** A picture to read, as a data URL. Used when a merchant sends a photo. */
+  imageDataUrl?: string | null;
 };
 
 
@@ -725,8 +727,56 @@ const isOpenAiModel = (model: string) => model.startsWith("openai/");
 
 // -------------------------------------------------------------- embeddings
 
+/** Rupees per million embedding tokens. Platform-internal. */
+const EMBED_RUPEES_PER_M = 2;
+
+/**
+ * Add one piece of work to a workspace's running total for the day. Used by
+ * the paths that don't create a run record of their own — reading a website,
+ * and turning text into numbers for search.
+ */
+export async function meterAiUsage(
+  supabase: SupabaseClient,
+  organizationId: string,
+  task: string,
+  amounts: { costAmount?: number; inputTokens?: number; outputTokens?: number; runs?: number },
+): Promise<void> {
+  const usageDate = new Date().toISOString().slice(0, 10);
+  const { data } = await supabase
+    .from("ai_usage")
+    .select("id, runs, input_tokens, output_tokens, cost_amount")
+    .eq("organization_id", organizationId)
+    .eq("usage_date", usageDate)
+    .eq("task", task)
+    .maybeSingle();
+  const prior = data as {
+    id: string;
+    runs: number;
+    input_tokens: number;
+    output_tokens: number;
+    cost_amount: number;
+  } | null;
+
+  const row = {
+    organization_id: organizationId,
+    usage_date: usageDate,
+    task,
+    runs: Number(prior?.runs ?? 0) + (amounts.runs ?? 1),
+    input_tokens: Number(prior?.input_tokens ?? 0) + (amounts.inputTokens ?? 0),
+    output_tokens: Number(prior?.output_tokens ?? 0) + (amounts.outputTokens ?? 0),
+    cost_amount: Number(prior?.cost_amount ?? 0) + (amounts.costAmount ?? 0),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (prior) await supabase.from("ai_usage").update(row).eq("id", prior.id);
+  else await supabase.from("ai_usage").insert(row);
+}
+
 /** The only embedding call in the codebase. Returns one vector per input. */
-export async function embedTexts(texts: string[]): Promise<number[][]> {
+export async function embedTexts(
+  texts: string[],
+  meter?: { supabase: SupabaseClient; organizationId: string },
+): Promise<number[][]> {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new Error("AI isn't connected on this deployment.");
   const out: number[][] = [];
@@ -741,9 +791,18 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     if (!res.ok) throw new Error(gatewayErrorMessage(res.status, await res.text()));
     const json = (await res.json()) as { data?: Array<{ embedding: number[] }> };
     for (const row of json.data ?? []) out.push(row.embedding);
+
+    if (meter) {
+      const tokens = Math.ceil(batch.reduce((sum, t) => sum + t.length, 0) / 4);
+      await meterAiUsage(meter.supabase, meter.organizationId, "embedding", {
+        inputTokens: tokens,
+        costAmount: (tokens / 1_000_000) * EMBED_RUPEES_PER_M,
+      });
+    }
   }
   return out;
 }
+
 
 // --------------------------------------------------------------- the run
 
@@ -1079,7 +1138,15 @@ export async function executeRun(
           ],
         });
       }
-      items.push({ role: "user", content: [{ type: "input_text", text: input }] });
+      items.push({
+        role: "user",
+        content: options.imageDataUrl
+          ? [
+              { type: "input_text", text: input },
+              { type: "input_image", image_url: options.imageDataUrl },
+            ]
+          : [{ type: "input_text", text: input }],
+      });
 
       for (let step = 0; step < maxSteps; step += 1) {
         const call = await callResponses(apiBase, key, wire, items, tools, direct);
@@ -1116,7 +1183,15 @@ export async function executeRun(
       const messages: ChatMessage[] = [];
       if (system) messages.push({ role: "system", content: system });
       for (const turn of history) messages.push({ role: turn.role, content: turn.content });
-      messages.push({ role: "user", content: input });
+      messages.push({
+        role: "user",
+        content: options.imageDataUrl
+          ? [
+              { type: "text", text: input },
+              { type: "image_url", image_url: { url: options.imageDataUrl } },
+            ]
+          : input,
+      });
 
       for (let step = 0; step < maxSteps; step += 1) {
         const call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
