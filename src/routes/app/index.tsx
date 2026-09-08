@@ -111,7 +111,7 @@ function Stat({
   icon: typeof Inbox;
   label: string;
   value: string;
-  hint?: string;
+  hint?: string | undefined;
 }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm transition-shadow duration-200 hover:shadow-md">
