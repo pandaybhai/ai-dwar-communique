@@ -38,6 +38,9 @@ const ICONS = {
   pdf: FileText,
   spreadsheet: FileSpreadsheet,
   manual_qa: MessageCircleQuestion,
+  upload: FileText,
+  image: FileText,
+  docx: FileText,
 } as const;
 
 const KIND_TEXT: Record<string, { label: string; live: boolean }> = {
@@ -45,6 +48,9 @@ const KIND_TEXT: Record<string, { label: string; live: boolean }> = {
   pdf: { label: "PDF", live: false },
   spreadsheet: { label: "Spreadsheet", live: false },
   manual_qa: { label: "Written answers", live: false },
+  upload: { label: "Files you sent on chat", live: false },
+  image: { label: "Photo", live: false },
+  docx: { label: "Document", live: false },
 };
 
 /**
