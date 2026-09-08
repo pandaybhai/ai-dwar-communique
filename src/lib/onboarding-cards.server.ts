@@ -60,9 +60,13 @@ function fill(template: string, vars: Record<string, string | number>): string {
  */
 function cardMarkup(template: string): string {
   const body = template.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? template;
-  const withoutScaler = body.replace(/<div style="transform:scale\(2\)[^"]*">/i, "<div>");
+  const withoutScaler = body.replace(
+    /<div style="[^"]*transform:\s*scale\([^"]*"\s*>/i,
+    "<div>",
+  );
   return withoutScaler.replace(/<style>[\s\S]*?<\/style>/gi, "").trim();
 }
+
 
 // ------------------------------------------------------- markup -> elements
 
@@ -150,10 +154,26 @@ function parseStyle(value: string): Record<string, string> {
     if (at < 0) continue;
     const key = part.slice(0, at).trim();
     const val = part.slice(at + 1).trim();
-    if (key && val) style[camel(key)] = convertColors(val);
+    if (!key || !val) continue;
+    if (UNSUPPORTED_STYLE.has(key)) continue;
+    style[camel(key)] = convertColors(val);
   }
   return style;
 }
+
+/** Declarations satori has no layout for; dropping them beats throwing. */
+const UNSUPPORTED_STYLE = new Set([
+  "font-variant-numeric",
+  "text-wrap",
+  "text-wrap-mode",
+  "background-clip",
+  "-webkit-background-clip",
+  "-webkit-text-fill-color",
+  "backdrop-filter",
+  "mix-blend-mode",
+  "grid-template-areas",
+]);
+
 
 /**
  * Satori wants React-shaped elements, not HTML. This is a deliberately small
@@ -245,14 +265,19 @@ async function fetchFont(family: string, weight: number): Promise<LoadedFont | n
     const cssRes = await fetch(
       `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weight}`,
     );
-    if (!cssRes.ok) return null;
+    if (!cssRes.ok) throw new Error(`css ${cssRes.status}`);
     const css = await cssRes.text();
     const url = css.match(/src:\s*url\((https:[^)]+\.ttf)\)/i)?.[1];
-    if (!url) return null;
+    if (!url) throw new Error("no ttf url in css");
     const fontRes = await fetch(url);
-    if (!fontRes.ok) return null;
+    if (!fontRes.ok) throw new Error(`ttf ${fontRes.status}`);
     return { name: family, data: await fontRes.arrayBuffer(), weight, style: "normal" };
-  } catch {
+  } catch (error) {
+    console.error(
+      "[onboarding-cards] font",
+      `${family} ${weight}`,
+      error instanceof Error ? error.message : String(error),
+    );
     return null;
   }
 }
@@ -266,8 +291,17 @@ function loadFonts(): Promise<LoadedFont[]> {
       fetchFont("Plus Jakarta Sans", 800),
       fetchFont("Caveat", 600),
     ])
-      .then((list) => list.filter((f): f is LoadedFont => f !== null))
-      .catch(() => []);
+      .then((list) => {
+        const loaded = list.filter((f): f is LoadedFont => f !== null);
+        // Don't cache a failure for the life of the worker.
+        if (loaded.length === 0) fontsPromise = null;
+        return loaded;
+      })
+      .catch((error: unknown) => {
+        fontsPromise = null;
+        console.error("[onboarding-cards] fonts", String(error));
+        return [];
+      });
   }
   return fontsPromise;
 }
@@ -283,18 +317,25 @@ async function initRenderer(): Promise<boolean> {
         const { initWasm } = await import("@resvg/resvg-wasm");
         // Fetched rather than bundled: the rasteriser's wasm expects host
         // bindings the worker bundler can't resolve at build time.
-        const res = await fetch(`https://unpkg.com/@resvg/resvg-wasm@${RESVG_VERSION}/index_bg.wasm`);
-        if (!res.ok) return false;
+        const res = await fetch(
+          `https://unpkg.com/@resvg/resvg-wasm@${RESVG_VERSION}/index_bg.wasm`,
+        );
+        if (!res.ok) throw new Error(`wasm fetch ${res.status}`);
         await initWasm(await res.arrayBuffer());
         return true;
-      } catch {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // A second init on an already-initialised module is a success, not a fault.
+        if (message.includes("Already initialized")) return true;
+        wasmReady = null;
+        console.error("[onboarding-cards] wasm", message);
         return false;
       }
     })();
-
   }
   return wasmReady;
 }
+
 
 // ------------------------------------------------------------------- cache
 
@@ -319,10 +360,11 @@ export async function renderCard(
 
   try {
     const template = TEMPLATES[kind];
-    if (!template) return null;
+    if (!template) throw new Error(`no template for kind "${kind}"`);
 
     const [fonts, ready] = await Promise.all([loadFonts(), initRenderer()]);
-    if (fonts.length === 0 || !ready) return null;
+    if (fonts.length === 0) throw new Error("no fonts loaded (Google Fonts fetch failed)");
+    if (!ready) throw new Error("resvg wasm did not initialise");
 
     const [{ default: satori }, { parse }, { Resvg }] = await Promise.all([
       import("satori"),
@@ -332,7 +374,6 @@ export async function renderCard(
 
     const markup = cardMarkup(fill(template, args.vars));
     const svg = await satori(toVNode(parse(markup)) as never, {
-
       width: DESIGN_WIDTH,
       height: DESIGN_HEIGHT,
       fonts: fonts.map((f) => ({
@@ -354,13 +395,20 @@ export async function renderCard(
     const { error } = await supabase.storage
       .from(BUCKET)
       .upload(path, png, { contentType: "image/png", upsert: true });
-    if (error) return null;
+    if (error) throw new Error(`upload failed: ${error.message}`);
 
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
     const url = data?.publicUrl ?? null;
-    if (url) urlCache.set(key, url);
+    if (!url) throw new Error("no public URL for uploaded card");
+    urlCache.set(key, url);
     return url;
-  } catch {
+  } catch (error) {
+    console.error(
+      "[onboarding-cards]",
+      kind,
+      error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error),
+    );
     return null;
   }
 }
+

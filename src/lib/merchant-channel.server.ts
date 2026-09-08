@@ -258,16 +258,16 @@ export async function handleMerchantInbound(
     const { addWebsiteSource } = await import("@/lib/knowledge.server");
     const added = await addWebsiteSource(supabase, session.organization_id, link, session.user_id);
 
-    if (!added.ok || !added.sourceId) {
-      // Crawl failed: leave the session waiting so they can send the link again.
+    if (!added.ok || !added.sourceId || !added.itemCount) {
+      // Nothing readable came back: leave the session waiting for another link
+      // and say so in our own words, never in the crawler's.
       await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
       await reply(
-        added.error && added.error.length > 0
-          ? added.error.slice(0, 300)
-          : "I couldn't read that page. Send me the link again, or tell me about your business in your own words.",
+        "I couldn't read anything useful from that link. Send another link, or tell me in a few lines what you sell and where you deliver.",
       );
       return;
     }
+
 
     await patchSession(supabase, session.id, {
       source_id: added.sourceId,

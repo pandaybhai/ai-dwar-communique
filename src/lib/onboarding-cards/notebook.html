@@ -1,5 +1,5 @@
 <!doctype html><html><head><meta charset="utf-8"><title>notebook</title></head>
-<body style="margin:0;width:1080px;height:1350px;overflow:hidden;background:oklch(0.18 0.02 255)">
+<body style="margin:0;width:1080px;height:1350px;overflow:hidden;background:#0c121a">
 <!-- Render at 1080x1350. Fonts: Plus Jakarta Sans 400-800, Caveat 600 (load TTFs into the renderer). Placeholders in {{ }} are filled server-side. -->
 <div style="transform:scale(2);transform-origin:top left;width:540px;height:675px;">
 
@@ -9,20 +9,20 @@
     a { color: #31b57f; } a:hover { color: #6dd2a8; }
   </style>
 
-<div style="width: 540px; height: 675px; background: oklch(0.18 0.02 255); position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; padding: 48px;">
-  <div style="position: absolute; inset: 0; background: radial-gradient(60% 45% at 50% 100%, oklch(0.32 0.06 162 / 0.45), transparent 70%);"></div>
+<div style="width: 540px; height: 675px; background: #0c121a; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; padding: 48px;">
+  <div style="position: absolute; inset: 0; background: radial-gradient(60% 45% at 50% 100%, rgba(14, 60, 41, 0.45), transparent 70%);"></div>
   <div style="position: absolute; top: 40px; left: 48px; right: 48px; display: flex; justify-content: space-between; align-items: center;">
-    <div style="font-size: 13px; font-weight: 800; color: oklch(0.985 0.003 250);">AiDwar</div>
+    <div style="font-size: 13px; font-weight: 800; color: #f9fafc;">AiDwar</div>
     <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #31b57f;">Day one · {{now_time}}</div>
   </div>
-  <div style="position: relative; width: 400px; background: oklch(0.985 0.005 90); border-radius: 6px 18px 18px 6px; box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6); display: flex; flex-direction: column; padding: 34px 30px 30px 44px; box-sizing: border-box; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 35px, oklch(0.88 0.02 250) 35px, oklch(0.88 0.02 250) 36px); background-position: 0 58px;">
-    <div style="position: absolute; top: 0; bottom: 0; left: 30px; width: 1px; background: oklch(0.8 0.08 25);"></div>
-    <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.55 0.02 255); margin-bottom: 14px;">Reading {{site_host}}</div>
-    <div style="font-family: Caveat, cursive; font-size: 26px; font-weight: 600; color: oklch(0.22 0.03 255); line-height: 36px; display: flex; flex-direction: column;">
+  <div style="position: relative; width: 400px; background: #fbfaf6; border-radius: 6px 18px 18px 6px; box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6); display: flex; flex-direction: column; padding: 34px 30px 30px 44px; box-sizing: border-box; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 35px, #ced9e5 35px, #ced9e5 36px); background-position: 0 58px;">
+    <div style="position: absolute; top: 0; bottom: 0; left: 30px; width: 1px; background: #edaaa4;"></div>
+    <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6a727d; margin-bottom: 14px;">Reading {{site_host}}</div>
+    <div style="font-family: Caveat, cursive; font-size: 26px; font-weight: 600; color: #111b28; line-height: 36px; display: flex; flex-direction: column;">
       <div>{{line_1}}</div>
       <div>{{line_2}}</div>
       <div>{{line_3}}</div>
-      <div style="color: oklch(0.5 0.02 255);">{{line_4}} — reading…</div>
+      <div style="color: #5c646f;">{{line_4}} — reading…</div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <div style="width: 10px; height: 10px; border-radius: 5px; background: #31b57f;"></div>
         <div style="width: 10px; height: 10px; border-radius: 5px; background: #31b57f; opacity: 0.5;"></div>
@@ -30,13 +30,13 @@
       </div>
     </div>
     <div style="margin-top: 26px; display: flex; align-items: center; justify-content: space-between;">
-      <div style="font-size: 12px; font-weight: 600; color: oklch(0.55 0.02 255);">Page {{page_n}} of {{page_total}}</div>
-      <div style="height: 6px; width: 150px; border-radius: 3px; background: oklch(0.9 0.01 255); overflow: hidden;">
+      <div style="font-size: 12px; font-weight: 600; color: #6a727d;">Page {{page_n}} of {{page_total}}</div>
+      <div style="height: 6px; width: 150px; border-radius: 3px; background: #dadee5; overflow: hidden;">
         <div style="height: 6px; width: {{progress_pct}}%; border-radius: 3px; background: #31b57f;"></div>
       </div>
     </div>
   </div>
-  <div style="position: absolute; bottom: 34px; left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 500; color: oklch(0.7 0.02 255);">Go grab a chai — back in 2 minutes</div>
+  <div style="position: absolute; bottom: 34px; left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 500; color: #969fab;">Go grab a chai — back in 2 minutes</div>
 </div>
 </div>
 </body></html>

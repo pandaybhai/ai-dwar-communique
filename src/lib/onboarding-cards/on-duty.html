@@ -1,5 +1,5 @@
 <!doctype html><html><head><meta charset="utf-8"><title>on-duty</title></head>
-<body style="margin:0;width:1080px;height:1350px;overflow:hidden;background:oklch(0.18 0.02 255)">
+<body style="margin:0;width:1080px;height:1350px;overflow:hidden;background:#0c121a">
 <!-- Render at 1080x1350. Fonts: Plus Jakarta Sans 400-800, Caveat 600 (load TTFs into the renderer). Placeholders in {{ }} are filled server-side. -->
 <div style="transform:scale(2);transform-origin:top left;width:540px;height:675px;">
 
@@ -9,54 +9,54 @@
     a { color: #31b57f; } a:hover { color: #6dd2a8; }
   </style>
 
-<div style="width: 540px; height: 675px; background: oklch(0.18 0.02 255); position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; padding: 48px;">
-  <div style="position: absolute; inset: 0; background: radial-gradient(60% 45% at 50% 0%, oklch(0.32 0.06 162 / 0.55), transparent 70%);"></div>
+<div style="width: 540px; height: 675px; background: #0c121a; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; padding: 48px;">
+  <div style="position: absolute; inset: 0; background: radial-gradient(60% 45% at 50% 0%, rgba(14, 60, 41, 0.55), transparent 70%);"></div>
   <div style="position: absolute; top: 28px; left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 8px;">
     <div style="width: 6px; height: 40px; border-radius: 3px; background: #31b57f;"></div>
     <div style="width: 30px; height: 40px; border-radius: 3px; background: #31b57f; opacity: 0.35;"></div>
   </div>
-  <div style="position: relative; width: 380px; background: oklch(0.985 0.003 250); border-radius: 22px; box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6); display: flex; flex-direction: column; overflow: hidden;">
+  <div style="position: relative; width: 380px; background: #f9fafc; border-radius: 22px; box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6); display: flex; flex-direction: column; overflow: hidden;">
     <div style="height: 14px; background: #31b57f;"></div>
     <div style="position: absolute; top: 44px; right: -34px; transform: rotate(18deg); border: 3px solid #1f8a5e; color: #1f8a5e; border-radius: 8px; padding: 6px 40px; font-size: 18px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.9;">On duty</div>
     <div style="display: flex; flex-direction: column; align-items: center; padding: 22px 28px 26px; gap: 14px;">
-      <div style="width: 44px; height: 14px; border-radius: 7px; background: oklch(0.9 0.01 255); margin-top: -8px;"></div>
-      <div style="width: 132px; height: 132px; border-radius: 28px; background: oklch(0.18 0.02 255); display: flex; align-items: center; justify-content: center; margin-top: 6px; position: relative;">
+      <div style="width: 44px; height: 14px; border-radius: 7px; background: #dadee5; margin-top: -8px;"></div>
+      <div style="width: 132px; height: 132px; border-radius: 28px; background: #0c121a; display: flex; align-items: center; justify-content: center; margin-top: 6px; position: relative;">
         <svg width="76" height="76" viewBox="0 0 76 76" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M14 62 L38 12 L62 62 H51 L38 32 L25 62 Z" fill="#31b57f"></path>
           <rect x="30" y="49" width="16" height="7" rx="3.5" fill="#31b57f"></rect>
         </svg>
-        <div style="position: absolute; bottom: -6px; right: -6px; width: 26px; height: 26px; border-radius: 13px; background: #31b57f; border: 4px solid oklch(0.985 0.003 250);"></div>
+        <div style="position: absolute; bottom: -6px; right: -6px; width: 26px; height: 26px; border-radius: 13px; background: #31b57f; border: 4px solid #f9fafc;"></div>
       </div>
       <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-        <div style="font-size: 34px; font-weight: 800; letter-spacing: -0.02em; color: oklch(0.18 0.02 255); line-height: 1;">Aiden</div>
+        <div style="font-size: 34px; font-weight: 800; letter-spacing: -0.02em; color: #0c121a; line-height: 1;">Aiden</div>
         <div style="font-size: 13px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #31b57f;">Answering your customers</div>
       </div>
-      <div style="width: 100%; height: 1px; background: oklch(0.92 0.01 255);"></div>
+      <div style="width: 100%; height: 1px; background: #e0e5eb;"></div>
       <div style="width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
         <div style="display: flex; flex-direction: column; gap: 3px;">
-          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.55 0.02 255);">On number</div>
-          <div style="font-size: 16px; font-weight: 700; color: oklch(0.18 0.02 255);">{{connected_number}}</div>
+          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6a727d;">On number</div>
+          <div style="font-size: 16px; font-weight: 700; color: #0c121a;">{{connected_number}}</div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 3px;">
-          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.55 0.02 255);">Since</div>
-          <div style="font-size: 16px; font-weight: 700; color: oklch(0.18 0.02 255);">{{live_since}}</div>
+          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6a727d;">Since</div>
+          <div style="font-size: 16px; font-weight: 700; color: #0c121a;">{{live_since}}</div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 3px;">
-          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.55 0.02 255);">Knows</div>
-          <div style="font-size: 16px; font-weight: 700; color: oklch(0.18 0.02 255);">{{pages_read}} pages · {{answers_given}} answers</div>
+          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6a727d;">Knows</div>
+          <div style="font-size: 16px; font-weight: 700; color: #0c121a;">{{pages_read}} pages · {{answers_given}} answers</div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 3px;">
-          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.55 0.02 255);">Hands over</div>
-          <div style="font-size: 16px; font-weight: 700; color: oklch(0.18 0.02 255);">When unsure</div>
+          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6a727d;">Hands over</div>
+          <div style="font-size: 16px; font-weight: 700; color: #0c121a;">When unsure</div>
         </div>
       </div>
       <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
-        <div style="font-size: 12px; font-weight: 800; letter-spacing: -0.01em; color: oklch(0.18 0.02 255);">AiDwar</div>
-        <div style="font-size: 11px; font-weight: 500; color: oklch(0.55 0.02 255);">{{business_name}}</div>
+        <div style="font-size: 12px; font-weight: 800; letter-spacing: -0.01em; color: #0c121a;">AiDwar</div>
+        <div style="font-size: 11px; font-weight: 500; color: #6a727d;">{{business_name}}</div>
       </div>
     </div>
   </div>
-  <div style="position: absolute; bottom: 34px; left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 500; color: oklch(0.7 0.02 255);">When I'm not sure, I hand over. I never guess.</div>
+  <div style="position: absolute; bottom: 34px; left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 500; color: #969fab;">When I'm not sure, I hand over. I never guess.</div>
 </div>
 </div>
 </body></html>
