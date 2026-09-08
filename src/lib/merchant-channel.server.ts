@@ -28,6 +28,7 @@ export type OnboardingSession = {
   status: string;
   step: string | null;
   source_id: string | null;
+  pending_question: string | null;
 };
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
@@ -36,10 +37,14 @@ const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
 const STRANGER_REPLY =
   "Hi! I'm Aiden from AiDwar. Sign up at aidwar.in first, then send me your code and I'll get started.";
 
+/** When there is nothing behind an answer we ask instead of inventing one. */
+const NO_SOURCE_REPLY =
+  "I couldn't find that on your website yet. Tell me the answer here and I'll remember it for your customers.";
+
 const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
-  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id";
+  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question";
 
 // --------------------------------------------------------------- formatting
 
