@@ -146,6 +146,27 @@ async function pageTitles(
     .filter((t) => t.length > 0);
 }
 
+/**
+ * Page titles as a person would say them: the bit before the site name,
+ * trimmed to something that fits in a caption. At most five.
+ */
+function shortTitles(titles: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of titles) {
+    let t = raw.split(/\s+[—|]\s+/)[0]?.trim() ?? "";
+    if (!t) continue;
+    if (t.length > 24) t = `${t.slice(0, 23).trimEnd()}…`;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length === 5) break;
+  }
+  return out;
+}
+
+
 // ------------------------------------------------------------------ inbound
 
 export async function handleMerchantInbound(
@@ -293,7 +314,7 @@ export async function handleMerchantInbound(
       })(),
     ]);
 
-    const titleLine = titles.slice(0, 5).join(", ");
+    const titleLine = shortTitles(titles).join(", ");
     const doneBody =
       `Done. I read ${added.itemCount} page${added.itemCount === 1 ? "" : "s"}${titleLine ? ` — ${titleLine}` : ""}.\n\n` +
       `Here's what I know about ${businessName || "your business"} now. Below are three things a customer might ask you today. Tap one, or ask your own.`;
