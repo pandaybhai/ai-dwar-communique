@@ -345,7 +345,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   );
 
   // The homepage first: it tells us whether this is a shop with public data.
-  const home = await readPage(start.toString(), { key, onStage });
+  const home = await readPage(start.toString(), { key, ...(onStage ? { onStage } : {}) });
   let readerCost = home?.usedReader ? READER_COST : 0;
 
   const candidates = new Map<string, number>();
@@ -386,7 +386,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       const next = queue.shift();
       if (!next) return;
       const allowReader = readerCost + READER_COST <= costCap;
-      const page = await readPage(next, { key, allowReader, onStage });
+      const page = await readPage(next, { key, allowReader, ...(onStage ? { onStage } : {}) });
       seen += 1;
       if (page?.usedReader) readerCost += READER_COST;
       if (!page || page.text.length <= 200) continue;
@@ -554,7 +554,7 @@ export async function syncSource(
       organizationId: source.organization_id,
       sourceId,
       config: source.config ?? {},
-      onStage: options?.onStage,
+      ...(options?.onStage ? { onStage: options.onStage } : {}),
     });
 
     options?.onStage?.("embed");
@@ -587,7 +587,7 @@ export async function syncSource(
   } catch (error) {
     const message = error instanceof Error ? error.message : "We couldn't read that source.";
     const name = error instanceof Error ? error.name : "Error";
-    if (options?.preserveError) return { ok: false, itemCount: 0, error: `${name}: ${message}` };
+    if (options?.preserveError) throw error;
     await supabase
       .from("knowledge_sources")
       .update({ status: "error", last_error: message.slice(0, 300) })

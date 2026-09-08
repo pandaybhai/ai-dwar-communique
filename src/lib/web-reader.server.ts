@@ -96,13 +96,15 @@ export async function readPage(
 
   if (options.allowReader !== false && (!readableDirect || looksEmpty(html, text))) {
     options.onStage?.("reader");
-    const reader = await fetchWithTimeout(`${READER_ENDPOINT}${url}`, 15000, {
+    const readerRequest = (withKey: boolean) => fetchWithTimeout(`${READER_ENDPOINT}${url}`, 15000, {
       headers: {
         Accept: "text/plain",
         "X-Return-Format": "text",
-        ...(options.key ? { Authorization: `Bearer ${options.key}` } : {}),
+        ...(withKey && options.key ? { Authorization: `Bearer ${options.key}` } : {}),
       },
     });
+    let reader = await readerRequest(true);
+    if ((!reader || !reader.ok) && options.key) reader = await readerRequest(false);
     if (reader?.ok) {
       const rendered = (await reader.text().catch(() => "")).replace(/\s+/g, " ").trim();
       if (rendered.length > text.length) {
