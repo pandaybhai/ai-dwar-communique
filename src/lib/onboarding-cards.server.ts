@@ -339,10 +339,11 @@ export async function renderCard(
 
   try {
     const template = TEMPLATES[kind];
-    if (!template) return null;
+    if (!template) throw new Error(`no template for kind "${kind}"`);
 
     const [fonts, ready] = await Promise.all([loadFonts(), initRenderer()]);
-    if (fonts.length === 0 || !ready) return null;
+    if (fonts.length === 0) throw new Error("no fonts loaded (Google Fonts fetch failed)");
+    if (!ready) throw new Error("resvg wasm did not initialise");
 
     const [{ default: satori }, { parse }, { Resvg }] = await Promise.all([
       import("satori"),
@@ -352,7 +353,6 @@ export async function renderCard(
 
     const markup = cardMarkup(fill(template, args.vars));
     const svg = await satori(toVNode(parse(markup)) as never, {
-
       width: DESIGN_WIDTH,
       height: DESIGN_HEIGHT,
       fonts: fonts.map((f) => ({
@@ -374,13 +374,20 @@ export async function renderCard(
     const { error } = await supabase.storage
       .from(BUCKET)
       .upload(path, png, { contentType: "image/png", upsert: true });
-    if (error) return null;
+    if (error) throw new Error(`upload failed: ${error.message}`);
 
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
     const url = data?.publicUrl ?? null;
-    if (url) urlCache.set(key, url);
+    if (!url) throw new Error("no public URL for uploaded card");
+    urlCache.set(key, url);
     return url;
-  } catch {
+  } catch (error) {
+    console.error(
+      "[onboarding-cards]",
+      kind,
+      error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error),
+    );
     return null;
   }
 }
+
