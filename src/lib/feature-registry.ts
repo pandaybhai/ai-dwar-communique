@@ -1003,7 +1003,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "dunning_advanced",
       "billing_templates_created",
       "trial_expired",
-
+      "plan_purchase_started",
+      "plan_purchased",
     ],
 
     settings_path: "/app/settings",
