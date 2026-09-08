@@ -36,9 +36,20 @@ export type ConnectorContext = {
   organizationId: string;
   sourceId: string;
   config: Record<string, unknown>;
+  onStage?: (stage: CrawlStage) => void;
 };
 
 export type Connector = (ctx: ConnectorContext) => Promise<KnowledgeDocument[]>;
+
+export type CrawlStage =
+  | "discover"
+  | "sitemap"
+  | "fetch"
+  | "reader"
+  | "extract"
+  | "facts"
+  | "embed"
+  | "finish";
 
 // ------------------------------------------------------------------ helpers
 
@@ -308,7 +319,8 @@ async function factsPass(
   return cost;
 }
 
-const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, config }) => {
+const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, config, onStage }) => {
+  onStage?.("discover");
   const startUrl = String(config["url"] ?? "").trim();
   if (!startUrl) throw new Error("Add the address of the website first.");
   const start = new URL(startUrl);
@@ -320,6 +332,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const concurrency = mode === "full" ? 6 : 4;
   const deadline = mode === "day0" ? Date.now() + 90_000 : null;
 
+  onStage?.("sitemap");
   const [blocked, sitemap, key, settings]: [string[], string[], string | null, { data: unknown }] =
     await Promise.all([
       disallowedPaths(origin),
@@ -332,7 +345,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   );
 
   // The homepage first: it tells us whether this is a shop with public data.
-  const home = await readPage(start.toString(), { key });
+  const home = await readPage(start.toString(), { key, onStage });
   let readerCost = home?.usedReader ? READER_COST : 0;
 
   const candidates = new Map<string, number>();
@@ -373,7 +386,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       const next = queue.shift();
       if (!next) return;
       const allowReader = readerCost + READER_COST <= costCap;
-      const page = await readPage(next, { key, allowReader });
+      const page = await readPage(next, { key, allowReader, onStage });
       seen += 1;
       if (page?.usedReader) readerCost += READER_COST;
       if (!page || page.text.length <= 200) continue;
@@ -399,6 +412,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
 
   if (docs.length === 0) throw new Error("We couldn't read any pages from that address.");
 
+  onStage?.("facts");
   const factsCost = await factsPass(supabase, organizationId, docs);
 
   await supabase
@@ -514,6 +528,7 @@ export const CONNECTORS: Record<SourceType, Connector> = {
 export async function syncSource(
   supabase: SupabaseClient,
   sourceId: string,
+  options?: { onStage?: (stage: CrawlStage) => void; preserveError?: boolean },
 ): Promise<{ ok: boolean; itemCount: number; error?: string }> {
   const { data } = await supabase
     .from("knowledge_sources")
@@ -539,8 +554,10 @@ export async function syncSource(
       organizationId: source.organization_id,
       sourceId,
       config: source.config ?? {},
+      onStage: options?.onStage,
     });
 
+    options?.onStage?.("embed");
     for (const doc of documents) {
       await upsertDocument(supabase, source.organization_id, sourceId, doc);
     }
@@ -569,6 +586,8 @@ export async function syncSource(
     return { ok: true, itemCount: documents.length };
   } catch (error) {
     const message = error instanceof Error ? error.message : "We couldn't read that source.";
+    const name = error instanceof Error ? error.name : "Error";
+    if (options?.preserveError) return { ok: false, itemCount: 0, error: `${name}: ${message}` };
     await supabase
       .from("knowledge_sources")
       .update({ status: "error", last_error: message.slice(0, 300) })
