@@ -23,7 +23,6 @@ import {
   sendServiceList,
 } from "@/lib/service-text.server";
 import {
-  handleOwnerReply,
   onboardingChannelFor,
   ownerOrganizationIds,
   orgNames,
@@ -44,7 +43,6 @@ export type OnboardingSession = {
   pending_question: string | null;
   pending_asked_at: string | null;
   suggested_questions: string[] | null;
-
 };
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
@@ -68,7 +66,6 @@ const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
   "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions";
-
 
 // --------------------------------------------------------------- formatting
 
@@ -143,7 +140,6 @@ async function findSession(
   return { session: ((rows ?? []) as OnboardingSession[])[0] ?? null, byCode: false };
 }
 
-
 /** Don't repeat ourselves at someone who isn't signed up. */
 async function shouldGreetStranger(
   supabase: SupabaseClient,
@@ -174,10 +170,7 @@ async function patchSession(
 }
 
 /** The page titles this owner's website gave us, newest crawl. */
-async function pageTitles(
-  supabase: SupabaseClient,
-  sourceId: string | null,
-): Promise<string[]> {
+async function pageTitles(supabase: SupabaseClient, sourceId: string | null): Promise<string[]> {
   if (!sourceId) return [];
   const { data } = await supabase
     .from("knowledge_documents")
@@ -209,9 +202,24 @@ function shortTitles(titles: string[]): string[] {
   return out;
 }
 
-
 // ------------------------------------------------------------------ inbound
 
+/** A question, by shape or by opening word — in English and in Hinglish. */
+function looksLikeQuestion(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  if (t.endsWith("?")) return true;
+  return /^(what|where|when|why|who|which|how|is|are|do|does|did|can|could|should|will|would|tell me|kya|kitna|kitne|kab|kaise|kahan|kaun)\b/.test(
+    t,
+  );
+}
+
+/**
+ * One inbound message from an owner, taken in a strict order. Each stage that
+ * matches answers and returns: a code is never a fact, a link is never an
+ * answer, a tap is never teaching. Getting this order wrong is how the
+ * notebook gets poisoned, so nothing here falls through by accident.
+ */
 export async function handleMerchantInbound(
   supabase: SupabaseClient,
   args: {
@@ -243,102 +251,27 @@ export async function handleMerchantInbound(
     conversationId: args.conversationId,
     to: args.waId,
   };
-  // Set once the business is known; blank for single-business owners.
+
+  // Stage 9: the business prefix is applied here and nowhere else, so a
+  // message can never come out as "[Shiva] [Shiva] …".
   let prefix = "";
   const reply = (text: string) => sendServiceText(supabase, { ...channel, body: prefix + text });
   const replyButtons = (
     text: string,
     buttons: Array<{ id: string; title: string }>,
     imageUrl: string | null,
-  ) =>
-    sendServiceButtons(supabase, {
-      ...channel,
-      body: prefix + text,
-      buttons,
-      imageUrl,
-    });
+  ) => sendServiceButtons(supabase, { ...channel, body: prefix + text, buttons, imageUrl });
+  const replyList = (
+    text: string,
+    rows: Array<{ id: string; title: string; description?: string }>,
+  ) => sendServiceList(supabase, { ...channel, body: prefix + text, buttonText: "Choose", rows });
 
   // Which businesses this number speaks for. More than one and every message
   // says which one it is about.
   const ownerOrgs = await ownerOrganizationIds(supabase, args.waId);
   const multiBusiness = ownerOrgs.length > 1;
 
-  // The questions we offered as taps: a tap on one of them is a question,
-  // never the answer to an earlier one.
-  const { data: suggestRows } = await supabase
-    .from("onboarding_sessions")
-    .select("suggested_questions")
-    .eq("phone", normalizePhone(args.waId))
-    .not("status", "in", '("completed","expired")');
-  const suggestions = ((suggestRows ?? []) as Array<{ suggested_questions: string[] | null }>)
-    .flatMap((r) => r.suggested_questions ?? [])
-    .filter((q): q is string => typeof q === "string");
-
-  // Something waiting on the owner comes first, whatever state onboarding is
-  // in: their answer is worth more than the next step of a script.
-  const consumed = await handleOwnerReply(supabase, {
-    ownerPhone: args.waId,
-    body,
-    interactiveId,
-    multiBusiness,
-    suggestions,
-
-    reply: (text) => reply(text),
-    list: (text, rows) =>
-      sendServiceList(supabase, {
-        ...channel,
-        body: text,
-        buttonText: "Choose",
-        rows,
-      }),
-  });
-  if (consumed) return;
-
-  // A multi-business owner saying only hello: ask which business first.
-  if (multiBusiness && !interactiveId && body && body.length <= 24 && !CODE_PATTERN.test(body)) {
-    const { isGreeting } = await import("@/lib/ai-run.server");
-    if (isGreeting(body)) {
-      const { data: sessionRows } = await supabase
-        .from("onboarding_sessions")
-        .select(SESSION_COLUMNS)
-        .eq("phone", normalizePhone(args.waId))
-        .not("status", "in", '("completed","expired")');
-      const choices = (sessionRows ?? []) as OnboardingSession[];
-      if (choices.length > 1) {
-        const names = await orgNames(supabase, choices.map((c) => c.organization_id));
-        await sendServiceList(supabase, {
-          ...channel,
-          body: "Which business are we working on?",
-          buttonText: "Choose",
-          rows: choices.map((c) => ({
-            id: `sess:${c.id}`,
-            title: (names.get(c.organization_id) ?? "Business").slice(0, 24),
-          })),
-        });
-        return;
-      }
-    }
-  }
-
-  // They picked a business from that list: make it the active one.
-  if (interactiveId?.startsWith("sess:")) {
-    await patchSession(supabase, interactiveId.slice(5), {
-      last_inbound_at: new Date().toISOString(),
-    });
-    const { data: picked } = await supabase
-      .from("onboarding_sessions")
-      .select(SESSION_COLUMNS)
-      .eq("id", interactiveId.slice(5))
-      .maybeSingle();
-    const pickedSession = picked as OnboardingSession | null;
-    if (pickedSession) {
-      const names = await orgNames(supabase, [pickedSession.organization_id]);
-      const name = names.get(pickedSession.organization_id) ?? null;
-      await reply(`${prefixFor(true, name)}Right — ask me anything about this one.`);
-      return;
-    }
-  }
-
+  // ------------------------------------------------ whose chat this is
   const { session, byCode } = await findSession(supabase, args.waId, body);
 
   if (!session) {
@@ -346,10 +279,6 @@ export async function handleMerchantInbound(
     return;
   }
 
-  // Bind the session to this number the first time they write, and record
-  // every inbound so a nudge job can tell who has gone quiet. The owner's name
-  // and business are needed by almost every branch below, so they're fetched
-  // alongside rather than after.
   const [, { data: org }, { data: profile }] = await Promise.all([
     supabase
       .from("onboarding_sessions")
@@ -369,35 +298,127 @@ export async function handleMerchantInbound(
   const firstName = ownerName.split(" ")[0] || "there";
   prefix = prefixFor(multiBusiness, businessName || null);
 
-  // If a previous inbound is still being crawled, don't start a second crawl
-  // or ask the model questions until it finishes.
+  // The update above may have just moved pending -> bound.
+  const currentStatus = session.status === "pending" ? "bound" : session.status;
+
+  const { renderCard } = await import("@/lib/onboarding-cards.server");
+
+  /** The Day One script: meeting Aiden, then asking for the website. */
+  const dayOneStep = async (): Promise<void> => {
+    if (currentStatus === "bound" && session.step !== "await_site") {
+      const idCard = await renderCard(supabase, "id-card", {
+        sessionId: session.id,
+        vars: {
+          owner_first_name: firstName,
+          business_name: businessName || "your business",
+          joined_date: istDate(),
+          session_code: session.code,
+        },
+      });
+      await replyButtons(
+        `${firstName}, meet Aiden. From today he works for ${businessName || "your business"} — answering your customers on WhatsApp, day and night, no leave, no attitude.\n\nHe hasn't read a word about you yet. Let's fix that.`,
+        [{ id: "start", title: "Your own AI employee" }],
+        idCard,
+      );
+      await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
+      return;
+    }
+    await reply(
+      `Send me your website link. Give me 2 minutes with it and I'll know ${businessName || "your business"} the way a good new hire knows it on day one — what you sell, what you charge, how you deliver.`,
+    );
+  };
+
+  const answering = currentStatus === "ready" || currentStatus === "tested";
+
+  // If a previous inbound is still being read, nothing else may start.
   if (session.status === "learning") {
     await reply("Still reading — one moment.");
     return;
   }
 
-  const { renderCard } = await import("@/lib/onboarding-cards.server");
-
-  // The update above may have just moved pending -> bound, so use the effective status.
-  const currentStatus = session.status === "pending" ? "bound" : session.status;
-
-  // A code always switches them onto that business and says so out loud, even
-  // when this number is already tied to other sessions.
-  if (byCode && currentStatus !== "bound") {
+  // ---------------------------------------------------------- 1. THE CODE
+  // A code is never a question, an answer or a fact. It binds or switches,
+  // says so, and stops.
+  if (byCode && !interactiveId) {
+    if (currentStatus === "bound" && session.step !== "await_site") {
+      await dayOneStep();
+      return;
+    }
     await reply(
-      `${prefix}Connected — we're on ${businessName || "your business"} now. Ask me anything about it.`,
+      `Connected — we're on ${businessName || "your business"} now. Ask me anything about it.`,
     );
     return;
   }
 
+  // ------------------------------------------------------ 2. CONTROL WORDS
+  const { controlWord, isBareReference } = await import("@/lib/teach-guard");
+  const control = !interactiveId && !args.mediaUrl ? controlWord(body) : null;
+  if (control) {
+    if (control === "skip") {
+      const { openPendingReplies } = await import("@/lib/owner-replies.server");
+      const open = await openPendingReplies(supabase, args.waId);
+      const target = open.find((p) => p.selected_at) ?? open[0] ?? null;
+      if (target) {
+        await supabase
+          .from("pending_owner_replies")
+          .update({ status: "expired" })
+          .eq("id", target.id);
+      }
+      await reply("Skipped.");
+      return;
+    }
+    if (control === "help") {
+      await reply(
+        "I read your website, your photos and your files, then answer your customers from them. Send me a link or a picture, ask me anything about your business, or tell me a fact and I'll remember it.",
+      );
+      return;
+    }
+    if (control === "greeting" && multiBusiness) {
+      const { data: sessionRows } = await supabase
+        .from("onboarding_sessions")
+        .select(SESSION_COLUMNS)
+        .eq("phone", normalizePhone(args.waId))
+        .not("status", "in", '("completed","expired")');
+      const choices = (sessionRows ?? []) as OnboardingSession[];
+      if (choices.length > 1) {
+        const names = await orgNames(
+          supabase,
+          choices.map((c) => c.organization_id),
+        );
+        await sendServiceList(supabase, {
+          ...channel,
+          body: "Which business are we working on?",
+          buttonText: "Choose",
+          rows: choices.map((c) => ({
+            id: `sess:${c.id}`,
+            title: (names.get(c.organization_id) ?? "Business").slice(0, 24),
+          })),
+        });
+        return;
+      }
+    }
+    if (!answering) {
+      await dayOneStep();
+      return;
+    }
+    await reply(
+      control === "test"
+        ? "Go on then — ask me anything one of your customers would ask."
+        : control === "greeting"
+          ? `Here and ready. Ask me anything about ${businessName || "your business"}.`
+          : "Got it.",
+    );
+    return;
+  }
 
-  // ------------------------------------------------- a picture, a file or a voice note
+  // -------------------------------------- 3. A PICTURE, A FILE, A VOICE NOTE
   if (args.mediaUrl?.startsWith("meta:")) {
     const mime = (args.mediaMime ?? "").toLowerCase();
     const mediaId = args.mediaUrl.slice(5);
 
-    // A voice note is just the owner talking: once it is words, it goes
-    // through exactly the same path as a typed message (teach, ask, fact).
+    // A voice note is just the owner talking: once it is words it re-enters
+    // this pipeline from the top, so a transcript with a code in it binds and
+    // a transcript that is a link gets crawled.
     if (mime.startsWith("audio/")) {
       const { fetchMetaMedia, transcribeAudio } = await import("@/lib/ai-media.server");
       const file = await fetchMetaMedia(mediaId, args.accessToken);
@@ -405,7 +426,12 @@ export async function handleMerchantInbound(
         await reply("That voice note didn't come through. Send it again?");
         return;
       }
-      const heard = await transcribeAudio(supabase, session.organization_id, file.bytes, file.mime ?? args.mediaMime ?? null);
+      const heard = await transcribeAudio(
+        supabase,
+        session.organization_id,
+        file.bytes,
+        file.mime ?? args.mediaMime ?? null,
+      );
       if (!heard.text) {
         await reply("I couldn't make out that voice note. Could you type it, or try once more?");
         return;
@@ -439,11 +465,11 @@ export async function handleMerchantInbound(
             : null;
 
     if (!kind) {
-      await reply("I can read pictures, PDFs, Word files, spreadsheets and voice notes. Send me one of those.");
+      await reply(
+        "I can read pictures, PDFs, Word files, spreadsheets and voice notes. Send me one of those.",
+      );
       return;
     }
-
-    await reply("Reading it…");
 
     const { ensureUploadSource, ingestUpload } = await import("@/lib/knowledge.server");
     const source = await ensureUploadSource(supabase, session.organization_id, session.user_id);
@@ -452,9 +478,23 @@ export async function handleMerchantInbound(
       return;
     }
 
+    // The same file twice in five minutes is a WhatsApp retry or a slip of the
+    // thumb, not new material.
+    const recent = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    if (await seenRecently(supabase, source.id, { media_id: mediaId }, recent)) {
+      await reply("Already have that one.");
+      return;
+    }
+
+    await reply("Reading it…");
+
     // Reading is platform-paid; on a free trial it stays under the day-0 cap.
     const [{ data: orgRow }, { data: platform }] = await Promise.all([
-      supabase.from("organizations").select("plan_status").eq("id", session.organization_id).maybeSingle(),
+      supabase
+        .from("organizations")
+        .select("plan_status")
+        .eq("id", session.organization_id)
+        .maybeSingle(),
       supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
     ]);
     const onTrial = (orgRow as { plan_status?: string } | null)?.plan_status !== "active";
@@ -477,8 +517,11 @@ export async function handleMerchantInbound(
 
     const label =
       (args.mediaName ?? "").trim() ||
-      (kind === "image" ? "photo" : `${kind === "spreadsheet" ? "sheet" : kind.toUpperCase()} you sent`);
-    const fileName = kind === "image" && !args.mediaName ? `Photo from ${new Date().toDateString()}` : label;
+      (kind === "image"
+        ? "photo"
+        : `${kind === "spreadsheet" ? "sheet" : kind.toUpperCase()} you sent`);
+    const fileName =
+      kind === "image" && !args.mediaName ? `Photo from ${new Date().toDateString()}` : label;
 
     const firstMaterial = !session.source_id;
     if (firstMaterial) {
@@ -508,22 +551,46 @@ export async function handleMerchantInbound(
         .eq("id", source.id);
     }
 
+    // The same words as something we read minutes ago: drop the copy.
+    if (ingested.ok && ingested.contentHash) {
+      const duplicate = await seenRecently(
+        supabase,
+        source.id,
+        { content_sha: ingested.contentHash },
+        recent,
+      );
+      await stampHash(supabase, source.id, mediaId, ingested.contentHash);
+      if (duplicate) {
+        await supabase
+          .from("knowledge_documents")
+          .delete()
+          .eq("source_id", source.id)
+          .like("source_ref", `${mediaId}:%`);
+        if (firstMaterial)
+          await patchSession(supabase, session.id, { status: "ready", step: "answering" });
+        await reply("Already have that one.");
+        return;
+      }
+    }
+
     if (firstMaterial) {
       await finishOnboardingCrawl(supabase, source.id, ingested);
     } else {
+      const items = ingested.factCount || ingested.itemCount;
       await reply(
         ingested.ok
-          ? `Got it — I now know ${ingested.itemCount} item${ingested.itemCount === 1 ? "" : "s"} from ${kind === "image" ? "your photo" : label}.`
+          ? `Got it — I now know ${items} item${items === 1 ? "" : "s"} from ${kind === "image" ? "your photo" : label}.`
           : "Couldn't read that one — try a clearer photo or a PDF.",
       );
     }
     return;
   }
 
-  // ---------------------------------------------------------- the website
-  const link = extractSiteLink(body);
-
-  if (link && !session.source_id) {
+  // ------------------------------------------------------------- 4. A LINK
+  // A website address is always something to read, never a fact and never an
+  // answer to an open question.
+  const link = !interactiveId ? extractSiteLink(body) : null;
+  if (link) {
     let host = link;
     try {
       host = new URL(link).hostname;
@@ -531,11 +598,14 @@ export async function handleMerchantInbound(
       // keep the raw link in the copy if it isn't parseable
     }
 
-    // Mark learning immediately so any concurrent inbound gets the "still
-    // reading" reply while the crawl is in progress.
-    await patchSession(supabase, session.id, { status: "learning", step: "reading" });
+    const firstSite = !session.source_id;
+    if (firstSite) {
+      await patchSession(supabase, session.id, { status: "learning", step: "reading" });
+    }
 
-    const readingCaption = `Reading ${host} now. Go grab a chai — I'll ping you in 2 minutes with everything I learned.`;
+    const readingCaption = firstSite
+      ? `Reading ${host} now. Go grab a chai — I'll ping you in 2 minutes with everything I learned.`
+      : `Reading ${host} now — I'll add whatever I find to what I already know.`;
     const notebook = await renderCard(supabase, "notebook", {
       sessionId: session.id,
       vars: {
@@ -566,7 +636,8 @@ export async function handleMerchantInbound(
     });
 
     if (!added.ok || !added.sourceId) {
-      await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
+      if (firstSite)
+        await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
       await reply(
         "I couldn't read anything useful from that link. Send another link, or tell me in a few lines what you sell and where you deliver.",
       );
@@ -575,15 +646,43 @@ export async function handleMerchantInbound(
 
     // The reading itself happens in the worker; it sends the brief card when
     // it finishes, so nothing here waits on a website.
-    await patchSession(supabase, session.id, { source_id: added.sourceId });
+    if (firstSite) await patchSession(supabase, session.id, { source_id: added.sourceId });
     return;
   }
 
+  // ------------------------------------------- 5. TAPS: LISTS AND BUTTONS
+  if (interactiveId?.startsWith("sess:")) {
+    const pickedId = interactiveId.slice(5);
+    await patchSession(supabase, pickedId, { last_inbound_at: new Date().toISOString() });
+    const { data: picked } = await supabase
+      .from("onboarding_sessions")
+      .select(SESSION_COLUMNS)
+      .eq("id", pickedId)
+      .maybeSingle();
+    const pickedSession = picked as OnboardingSession | null;
+    if (pickedSession) {
+      const names = await orgNames(supabase, [pickedSession.organization_id]);
+      prefix = prefixFor(multiBusiness, names.get(pickedSession.organization_id) ?? null);
+      await reply("Right — ask me anything about this one.");
+      return;
+    }
+  }
+
+  if (interactiveId) {
+    const { handleOwnerPick } = await import("@/lib/owner-replies.server");
+    const picked = await handleOwnerPick(supabase, {
+      ownerPhone: args.waId,
+      interactiveId,
+      reply: (text) => reply(text),
+      list: (text, rows) => replyList(text, rows),
+    });
+    if (picked) return;
+  }
 
   if (!body) return;
 
-  // ------------------------------------------------- the "connect" button
-  if (/^connect my whatsapp$/i.test(body)) {
+  // The "connect" button, tapped or typed.
+  if (interactiveId === "connect" || /^connect my whatsapp$/i.test(body)) {
     await reply(
       "Open Settings → WhatsApp in your dashboard and tap Connect — takes a minute. I'll message you here the moment it's live.\n\nhttps://aidwar.in/app/settings\n\n" +
         "Use a number that isn't on your phone's WhatsApp — a fresh SIM works. Once a number joins the WhatsApp API it leaves the normal app. Your own number stays yours; that's where you and I talk.",
@@ -591,88 +690,30 @@ export async function handleMerchantInbound(
     return;
   }
 
-  // ------------------------------------------------------- meeting Aiden
-  if (currentStatus === "bound" && session.step !== "await_site") {
-    const idCard = await renderCard(supabase, "id-card", {
-      sessionId: session.id,
-      vars: {
-        owner_first_name: firstName,
-        business_name: businessName || "your business",
-        joined_date: istDate(),
-        session_code: session.code,
-      },
+  if (interactiveId === "start") {
+    await dayOneStep();
+    return;
+  }
+
+  // Anything before the website is still the Day One script.
+  if (!answering) {
+    await dayOneStep();
+    return;
+  }
+
+  // ------------------------------------------------------ 6. A TAUGHT ANSWER
+  // Only a typed message, only when exactly one question is open, only when it
+  // reads like an answer. More than one open and we ask which.
+  if (!interactiveId) {
+    const { handleOwnerAnswer } = await import("@/lib/owner-replies.server");
+    const consumed = await handleOwnerAnswer(supabase, {
+      ownerPhone: args.waId,
+      body,
+      suggestions: session.suggested_questions ?? [],
+      reply: (text) => reply(text),
+      list: (text, rows) => replyList(text, rows),
     });
-
-    await replyButtons(
-      `${firstName}, meet Aiden. From today he works for ${businessName || "your business"} — answering your customers on WhatsApp, day and night, no leave, no attitude.\n\nHe hasn't read a word about you yet. Let's fix that.`,
-      [{ id: "start", title: "Your own AI employee" }],
-      idCard,
-    );
-    await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
-    return;
-  }
-
-  // Waiting for the link: anything that isn't one gets the same nudge.
-  if (currentStatus === "bound" || session.step === "await_site") {
-    await reply(
-      `Send me your website link. Give me 2 minutes with it and I'll know ${businessName || "your business"} the way a good new hire knows it on day one — what you sell, what you charge, how you deliver.`,
-    );
-    return;
-  }
-
-  // ------------------------------------------------------------ answering
-  if (currentStatus !== "ready" && currentStatus !== "tested") return;
-
-  const { isSkipWord, isTeachableAnswer, teachWindowExpired } = await import("@/lib/teach-guard");
-  const teachable = isTeachableAnswer(body, {
-    interactive: Boolean(interactiveId),
-    suggestions: session.suggested_questions ?? [],
-  });
-
-  // We asked them to teach us the answer to their last question: this reply is
-  // that answer, kept word for word rather than sent to the model. A tap, a
-  // fresh question or a bare "ok" is not an answer, and after fifteen minutes
-  // the ask lapses.
-  if (session.step === "await_teach" && session.pending_question) {
-    const lapsed = teachWindowExpired(session.pending_asked_at);
-    if (lapsed) {
-      await patchSession(supabase, session.id, {
-        step: "answering",
-        pending_question: null,
-        pending_asked_at: null,
-      });
-    } else if (isSkipWord(body) && !interactiveId) {
-      await patchSession(supabase, session.id, {
-        step: "answering",
-        pending_question: null,
-        pending_asked_at: null,
-      });
-      await reply("Skipped.");
-      return;
-    } else if (teachable) {
-      const { saveCorrection } = await import("@/lib/knowledge.server");
-      const saved = await saveCorrection(supabase, session.organization_id, {
-        question: session.pending_question,
-        answer: body,
-        userId: session.user_id,
-      });
-      await patchSession(supabase, session.id, {
-        step: "answering",
-        pending_question: null,
-        pending_asked_at: null,
-      });
-      await reply(
-        saved.ok
-          ? "Got it — I'll give your customers that answer from now on. Ask me something else whenever you like."
-          : "I couldn't save that just now. Send it again in a moment and I'll keep it.",
-      );
-      return;
-    } else {
-      // Keep the ask open and treat this message as a new question.
-      await reply(
-        `Still waiting on your answer for "${session.pending_question.slice(0, 200)}" — reply whenever.`,
-      );
-    }
+    if (consumed) return;
   }
 
   // An owner on trial asking about OUR plans (not their own prices): point at
@@ -692,9 +733,10 @@ export async function handleMerchantInbound(
     }
   }
 
-  // An owner who volunteers a fact is teaching, not asking. Save it as a real
-  // answer first — a warm "got it" with nothing written down is a lie.
-  if (teachable) {
+  // ---------------------------------------------------------- 8. A FACT
+  // Runs before the model only for messages that are plainly not questions,
+  // and never on an address, a code or a phone number on its own.
+  if (!interactiveId && !looksLikeQuestion(body) && !isBareReference(body)) {
     const { classifyBusinessFact } = await import("@/lib/ai-tasks.server");
     const verdict = await classifyBusinessFact(
       supabase,
@@ -706,10 +748,10 @@ export async function handleMerchantInbound(
       },
     );
     if (verdict.isFact) {
-      const { saveCorrection } = await import("@/lib/knowledge.server");
-      const saved = await saveCorrection(supabase, session.organization_id, {
-        question: verdict.question,
-        answer: body,
+      const { saveFact } = await import("@/lib/knowledge.server");
+      const saved = await saveFact(supabase, session.organization_id, {
+        topic: verdict.topic,
+        text: body,
         userId: session.user_id,
       });
       await reply(
@@ -721,7 +763,7 @@ export async function handleMerchantInbound(
     }
   }
 
-
+  // ------------------------------------------------------- 7. A QUESTION
   const { merchantAnswer } = await import("@/lib/ai-tasks.server");
 
   const run = await merchantAnswer(
@@ -743,21 +785,13 @@ export async function handleMerchantInbound(
   // Nothing behind the answer means nothing gets said: no model text ever
   // leaves this branch unless the run succeeded on real material.
   const grounded = run.status === "ok" && run.sources.length > 0;
-  if (!grounded) {
-    // Their next message becomes the answer, handled by the pending-reply
-    // path above so a customer question and an owner question behave alike.
-    await recordOnboardingGap(supabase, {
-      organizationId: session.organization_id,
-      ownerPhone: args.waId,
-      question: body,
-      aiRunId: run.runId,
-    });
-    await reply(NO_SOURCE_REPLY);
-    return;
-  }
-
   // The model sometimes copies the transcript's speaker prefix into its answer.
-  const text = (run.output ?? "").trim().replace(/^\s*aiden\s*(:|—|-)\s*/i, "").trim();
+  const text = grounded
+    ? (run.output ?? "")
+        .trim()
+        .replace(/^\s*aiden\s*(:|—|-)\s*/i, "")
+        .trim()
+    : "";
   if (!text) {
     await recordOnboardingGap(supabase, {
       organizationId: session.organization_id,
@@ -769,7 +803,6 @@ export async function handleMerchantInbound(
     return;
   }
   await reply(text);
-
 
   // First real answer on a workspace that already has its starter credits:
   // the credits card, once only.
@@ -806,6 +839,46 @@ export async function handleMerchantInbound(
         creditsCard,
       );
     }
+  }
+}
+
+/** Have we already filed something carrying this marker in the last minutes? */
+async function seenRecently(
+  supabase: SupabaseClient,
+  sourceId: string,
+  marker: Record<string, string>,
+  since: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("knowledge_documents")
+    .select("id")
+    .eq("source_id", sourceId)
+    .contains("metadata", marker)
+    .gte("created_at", since)
+    .limit(1);
+  return ((data ?? []) as unknown[]).length > 0;
+}
+
+/** Remember the fingerprint of what a file said, so a repeat is spotted. */
+async function stampHash(
+  supabase: SupabaseClient,
+  sourceId: string,
+  mediaId: string,
+  contentHash: string,
+): Promise<void> {
+  const { data } = await supabase
+    .from("knowledge_documents")
+    .select("id, metadata")
+    .eq("source_id", sourceId)
+    .like("source_ref", `${mediaId}:%`);
+  for (const row of (data ?? []) as Array<{
+    id: string;
+    metadata: Record<string, unknown> | null;
+  }>) {
+    await supabase
+      .from("knowledge_documents")
+      .update({ metadata: { ...(row.metadata ?? {}), content_sha: contentHash } })
+      .eq("id", row.id);
   }
 }
 
@@ -851,17 +924,15 @@ export async function handleNumberConnected(
     .select("id, organization_id, phone_number_id")
     .eq("id", onboardingAccountId)
     .maybeSingle();
-  const account = accountRow as
-    | { id: string; organization_id: string; phone_number_id: string }
-    | null;
+  const account = accountRow as {
+    id: string;
+    organization_id: string;
+    phone_number_id: string;
+  } | null;
   if (!account) return;
 
   const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
-  const { connection } = await getWhatsAppConnection(
-    supabase,
-    account.organization_id,
-    account.id,
-  );
+  const { connection } = await getWhatsAppConnection(supabase, account.organization_id, account.id);
   const accessToken = connection?.accessToken ?? "";
   if (!accessToken) return;
 
@@ -964,7 +1035,6 @@ export async function handleNumberConnected(
     completed_at: new Date().toISOString(),
   });
 }
-
 
 /** The bytes behind an inbound picture or document. Null when Meta says no. */
 async function downloadMedia(mediaId: string, accessToken: string): Promise<Uint8Array | null> {
@@ -1079,8 +1149,9 @@ export async function finishOnboardingCrawl(
   await sendServiceButtons(supabase, {
     ...channel,
     body: prefix + doneBody,
-    buttons: first.questions.slice(0, 3).map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
+    buttons: first.questions
+      .slice(0, 3)
+      .map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
     imageUrl: briefCard,
   });
-
 }

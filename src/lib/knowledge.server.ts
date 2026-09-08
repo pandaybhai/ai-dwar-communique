@@ -50,14 +50,7 @@ export type ConnectorContext = {
 export type Connector = (ctx: ConnectorContext) => Promise<KnowledgeDocument[]>;
 
 export type CrawlStage =
-  | "discover"
-  | "sitemap"
-  | "fetch"
-  | "reader"
-  | "extract"
-  | "facts"
-  | "embed"
-  | "finish";
+  "discover" | "sitemap" | "fetch" | "reader" | "extract" | "facts" | "embed" | "finish";
 
 // ------------------------------------------------------------------ helpers
 
@@ -131,11 +124,16 @@ function normalizeUrl(href: string, base: string, origin: string): string | null
  */
 function scoreUrl(url: string, origin: string): number {
   const path = url.slice(origin.length).toLowerCase() || "/";
-  if (/\b(blog|tag|category|cart|checkout|account|login|search|wp-json|feed)\b/.test(path)) return -10;
+  if (/\b(blog|tag|category|cart|checkout|account|login|search|wp-json|feed)\b/.test(path))
+    return -10;
   if (/\/page\/\d+/.test(path)) return -10;
   if (/\.(jpg|jpeg|png|gif|svg|pdf|xml|css|js)$/.test(path)) return -10;
   if (path === "/" || path === "") return 10;
-  if (/(about|contact|faq|help|shipping|delivery|return|refund|pricing|price|plans|policy|terms)/.test(path))
+  if (
+    /(about|contact|faq|help|shipping|delivery|return|refund|pricing|price|plans|policy|terms)/.test(
+      path,
+    )
+  )
     return 8;
   if (/(products|collections|shop|menu|services|catalog)/.test(path)) return 6;
   return 2;
@@ -152,7 +150,9 @@ async function sitemapUrls(origin: string): Promise<string[]> {
     const res = await fetchWithTimeout(next, 8000);
     if (!res || !res.ok) continue;
     const xml = await res.text().catch(() => "");
-    const locs = Array.from(xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)).map((m: RegExpMatchArray) => m[1] ?? "");
+    const locs = Array.from(xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)).map(
+      (m: RegExpMatchArray) => m[1] ?? "",
+    );
     const isIndex = /<sitemapindex/i.test(xml);
     for (const loc of locs) {
       if (isIndex) {
@@ -198,21 +198,23 @@ async function commerceDocuments(
 ): Promise<KnowledgeDocument[]> {
   const docs: KnowledgeDocument[] = [];
 
-  const push = (
-    ref: string,
-    title: string,
-    content: string,
-    metadata: Record<string, unknown>,
-  ) => {
+  const push = (ref: string, title: string, content: string, metadata: Record<string, unknown>) => {
     if (docs.length >= cap || content.trim().length < 20) return;
-    docs.push({ sourceRef: ref, title: title.slice(0, 200), content: content.slice(0, 20000), metadata });
+    docs.push({
+      sourceRef: ref,
+      title: title.slice(0, 200),
+      content: content.slice(0, 20000),
+      metadata,
+    });
   };
 
   if (/cdn\.shopify\.com/i.test(homepageHtml)) {
     for (let page = 1; page <= 10 && docs.length < cap; page += 1) {
       const res = await fetchWithTimeout(`${origin}/products.json?limit=250&page=${page}`, 8000);
       if (!res || !res.ok) break;
-      const json = (await res.json().catch(() => ({}))) as { products?: Array<Record<string, unknown>> };
+      const json = (await res.json().catch(() => ({}))) as {
+        products?: Array<Record<string, unknown>>;
+      };
       const products = json.products ?? [];
       if (products.length === 0) break;
       for (const product of products) {
@@ -247,7 +249,9 @@ async function commerceDocuments(
       const res = await fetchWithTimeout(`${origin}/policies/${path}`, 8000);
       if (!res || !res.ok) continue;
       const { title, text } = stripHtml(await res.text().catch(() => ""));
-      push(`${origin}/policies/${path}`, title || path, text, { url: `${origin}/policies/${path}` });
+      push(`${origin}/policies/${path}`, title || path, text, {
+        url: `${origin}/policies/${path}`,
+      });
     }
     return docs;
   }
@@ -431,12 +435,8 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   return docs;
 };
 
-
 /** Pages of a PDF, one document each. */
-export async function parsePdf(
-  bytes: Uint8Array,
-  name: string,
-): Promise<KnowledgeDocument[]> {
+export async function parsePdf(bytes: Uint8Array, name: string): Promise<KnowledgeDocument[]> {
   const { extractText, getDocumentProxy } = await import("unpdf");
   const pdf = await getDocumentProxy(bytes);
   const { text } = await extractText(pdf, { mergePages: false });
@@ -492,19 +492,20 @@ const rereadUpload: Connector = async ({ supabase, sourceId }) => {
     .from("knowledge_documents")
     .select("source_ref, title, content, metadata")
     .eq("source_id", sourceId);
-  return ((data ?? []) as Array<{
-    source_ref: string;
-    title: string;
-    content: string;
-    metadata: Record<string, unknown>;
-  }>).map((d) => ({
+  return (
+    (data ?? []) as Array<{
+      source_ref: string;
+      title: string;
+      content: string;
+      metadata: Record<string, unknown>;
+    }>
+  ).map((d) => ({
     sourceRef: d.source_ref,
     title: d.title,
     content: d.content,
     metadata: d.metadata ?? {},
   }));
 };
-
 
 /** Written answers, including corrections a merchant makes to a wrong reply. */
 const readManualQa: Connector = async ({ supabase, sourceId }) => {
@@ -543,13 +544,18 @@ export async function syncSource(
     .select("id, organization_id, type, name, config")
     .eq("id", sourceId)
     .maybeSingle();
-  const source = data as
-    | { id: string; organization_id: string; type: SourceType; name: string; config: Record<string, unknown> }
-    | null;
+  const source = data as {
+    id: string;
+    organization_id: string;
+    type: SourceType;
+    name: string;
+    config: Record<string, unknown>;
+  } | null;
   if (!source) return { ok: false, itemCount: 0, error: "That source no longer exists." };
 
   const connector = CONNECTORS[source.type];
-  if (!connector) return { ok: false, itemCount: 0, error: "We can't read that kind of source yet." };
+  if (!connector)
+    return { ok: false, itemCount: 0, error: "We can't read that kind of source yet." };
 
   await supabase
     .from("knowledge_sources")
@@ -626,7 +632,12 @@ export async function upsertDocument(
   if (prior) {
     await supabase
       .from("knowledge_documents")
-      .update({ title: doc.title, content: doc.content, metadata: doc.metadata ?? {}, content_hash: hash })
+      .update({
+        title: doc.title,
+        content: doc.content,
+        metadata: doc.metadata ?? {},
+        content_hash: hash,
+      })
       .eq("id", prior.id);
     if (prior.content_hash === hash) {
       const { count } = await supabase
@@ -682,7 +693,6 @@ export async function upsertDocument(
   }
 }
 
-
 /**
  * Add a website as something the employee reads, then read it. One
  * implementation, shared by the knowledge screen and the owner's chat with
@@ -730,7 +740,6 @@ export async function addWebsiteSource(
   // that asked for it: the worker picks the queued source up within a minute.
   return { ok: true, sourceId: (data as { id: string }).id, itemCount: 0, queued: true };
 }
-
 
 /** A merchant's correction becomes a written answer, attributed and dated. */
 export async function saveCorrection(
@@ -787,6 +796,66 @@ export async function saveCorrection(
   return { ok: true };
 }
 
+/**
+ * A fact the owner volunteered, filed under its own topic. No question is
+ * invented for it: "Catering: parties of 20+" is what it is about, and that is
+ * what the title says.
+ */
+export async function saveFact(
+  supabase: SupabaseClient,
+  organizationId: string,
+  input: { topic: string; text: string; userId: string | null },
+): Promise<{ ok: boolean; error?: string }> {
+  let { data: source } = await supabase
+    .from("knowledge_sources")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("type", "manual_qa")
+    .limit(1)
+    .maybeSingle();
+
+  if (!source) {
+    const { data: created, error } = await supabase
+      .from("knowledge_sources")
+      .insert({
+        organization_id: organizationId,
+        type: "manual_qa",
+        name: "Answers you wrote",
+        status: "ready",
+        refresh_days: 0,
+        created_by: input.userId,
+      })
+      .select("id")
+      .maybeSingle();
+    if (error) return { ok: false, error: "We couldn't save that." };
+    source = created as { id: string };
+  }
+
+  const sourceId = (source as { id: string }).id;
+  const topic = input.topic.trim().slice(0, 120) || "About the business";
+  await upsertDocument(supabase, organizationId, sourceId, {
+    sourceRef: `fact-${await hashText(input.text)}`,
+    title: topic,
+    content: `${topic}\n${input.text}`,
+    metadata: {
+      kind: "owner_fact",
+      corrected_by: input.userId,
+      corrected_at: new Date().toISOString(),
+    },
+  });
+
+  const { count } = await supabase
+    .from("knowledge_documents")
+    .select("id", { count: "exact", head: true })
+    .eq("source_id", sourceId);
+  await supabase
+    .from("knowledge_sources")
+    .update({ item_count: count ?? 0, last_synced_at: new Date().toISOString(), status: "ready" })
+    .eq("id", sourceId);
+
+  return { ok: true };
+}
+
 async function hashText(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -820,13 +889,28 @@ export async function ingestUpload(
     /** "onboarding" when the platform pays for the read (merchant channel). */
     channel?: "onboarding" | null;
   } = {},
-): Promise<{ ok: boolean; itemCount: number; error?: string }> {
+): Promise<{
+  ok: boolean;
+  itemCount: number;
+  /** Lines that actually say something: a price or a fact. */
+  factCount: number;
+  /** Fingerprint of the text we read, so the same file twice is noticed. */
+  contentHash: string | null;
+  error?: string;
+}> {
   try {
     const docs =
       kind === "pdf"
         ? await parsePdf(bytes, fileName)
         : kind === "image"
-          ? await readImage(supabase, organizationId, bytes, fileName, options.mime ?? null, options.channel ?? null)
+          ? await readImage(
+              supabase,
+              organizationId,
+              bytes,
+              fileName,
+              options.mime ?? null,
+              options.channel ?? null,
+            )
           : kind === "docx"
             ? await parseDocx(bytes, fileName)
             : await parseSpreadsheet(bytes, fileName);
@@ -852,15 +936,37 @@ export async function ingestUpload(
         last_error: null,
       })
       .eq("id", sourceId);
-    return { ok: true, itemCount: docs.length };
+    const text = docs.map((d) => d.content).join("\n");
+    return {
+      ok: true,
+      itemCount: docs.length,
+      factCount: countExtractedItems(text),
+      contentHash: text.trim() ? await hashText(text) : null,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "We couldn't read that file.";
     await supabase
       .from("knowledge_sources")
       .update({ status: "error", last_error: message.slice(0, 300) })
       .eq("id", sourceId);
-    return { ok: false, itemCount: 0, error: message };
+    return { ok: false, itemCount: 0, factCount: 0, contentHash: null, error: message };
   }
+}
+
+/**
+ * How much a file actually told us: lines carrying a price or a statement,
+ * not the number of pages they were spread over.
+ */
+export function countExtractedItems(text: string): number {
+  let items = 0;
+  for (const raw of (text ?? "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.length < 3) continue;
+    const hasPrice = /(₹|rs\.?\s*\d|\$\s*\d|\d+\s*(?:rs|inr|rupees))/i.test(line);
+    const hasFact = /[:\-–—]\s*\S/.test(line) && line.split(/\s+/).length >= 3;
+    if (hasPrice || hasFact) items += 1;
+  }
+  return items;
 }
 
 /** The one source every file an owner sends on the merchant channel lands in. */
@@ -878,7 +984,10 @@ export async function ensureUploadSource(
     .limit(1)
     .maybeSingle();
   if (existing) {
-    return { id: (existing as { id: string }).id, cost_amount: Number((existing as { cost_amount?: number }).cost_amount ?? 0) };
+    return {
+      id: (existing as { id: string }).id,
+      cost_amount: Number((existing as { cost_amount?: number }).cost_amount ?? 0),
+    };
   }
   const { data: created } = await supabase
     .from("knowledge_sources")
@@ -896,12 +1005,8 @@ export async function ensureUploadSource(
   return created ? { id: (created as { id: string }).id, cost_amount: 0 } : null;
 }
 
-
 /** A Word document, one item per heading section. */
-export async function parseDocx(
-  bytes: Uint8Array,
-  name: string,
-): Promise<KnowledgeDocument[]> {
+export async function parseDocx(bytes: Uint8Array, name: string): Promise<KnowledgeDocument[]> {
   const mammoth = await import("mammoth");
   const { value } = await mammoth.convertToHtml({
     buffer: Buffer.from(bytes as unknown as ArrayLike<number>),

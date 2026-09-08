@@ -27,9 +27,10 @@ export async function conversationTurns(
     .eq("id", conversationId)
     .eq("organization_id", organizationId)
     .maybeSingle();
-  const c = convo as
-    | { contact_id: string | null; contacts?: { name?: string | null } | null }
-    | null;
+  const c = convo as {
+    contact_id: string | null;
+    contacts?: { name?: string | null } | null;
+  } | null;
 
   const { data: rows } = await supabase
     .from("messages")
@@ -71,24 +72,26 @@ export async function agentBrief(
   if (!agentId) return { brief: "", escalationRules: "", personaName: "" };
   const { data } = await supabase
     .from("ai_instructions")
-    .select("persona_name, tone, instructions, escalation_rules, languages, working_hours_behaviour")
+    .select(
+      "persona_name, tone, instructions, escalation_rules, languages, working_hours_behaviour",
+    )
     .eq("agent_id", agentId)
     .eq("is_current", true)
     .maybeSingle();
-  const i = data as
-    | {
-        persona_name: string;
-        tone: string;
-        instructions: string;
-        escalation_rules: string;
-        languages: string[];
-      }
-    | null;
+  const i = data as {
+    persona_name: string;
+    tone: string;
+    instructions: string;
+    escalation_rules: string;
+    languages: string[];
+  } | null;
   if (!i) return { brief: "", escalationRules: "", personaName: "" };
   const brief = [
     i.persona_name ? `You are ${i.persona_name}, answering on behalf of this business.` : "",
     i.tone ? `Tone: ${i.tone}.` : "",
-    i.languages?.length ? `Reply in the customer's language where possible (${i.languages.join(", ")}).` : "",
+    i.languages?.length
+      ? `Reply in the customer's language where possible (${i.languages.join(", ")}).`
+      : "",
     i.instructions,
     i.escalation_rules ? `Hand these to a person instead of answering: ${i.escalation_rules}` : "",
   ]
@@ -162,7 +165,12 @@ export async function summariseConversation(
   conversationId: string,
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { turns, contactId } = await conversationTurns(supabase, common.organizationId, conversationId, 60);
+  const { turns, contactId } = await conversationTurns(
+    supabase,
+    common.organizationId,
+    conversationId,
+    60,
+  );
   const transcript = turns
     .map((t) => `${t.role === "user" ? "Customer" : "Us"}: ${t.content}`)
     .join("\n")
@@ -188,7 +196,12 @@ export async function autoTag(
   conversationId: string,
 ): Promise<{ run: RunResult; tags: string[] }> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { turns, contactId } = await conversationTurns(supabase, common.organizationId, conversationId, 40);
+  const { turns, contactId } = await conversationTurns(
+    supabase,
+    common.organizationId,
+    conversationId,
+    40,
+  );
   const { data: existing } = await supabase
     .from("tags")
     .select("name")
@@ -221,7 +234,12 @@ export async function autoTag(
 
   const tags = run.output
     .split(/[,\n]/)
-    .map((t) => t.trim().replace(/^[-*\d.\s]+/, "").toLowerCase())
+    .map((t) =>
+      t
+        .trim()
+        .replace(/^[-*\d.\s]+/, "")
+        .toLowerCase(),
+    )
     .filter((t) => t.length > 1 && t.length <= 30)
     .slice(0, 3);
 
@@ -511,7 +529,6 @@ export async function merchantFirstBrief(
   }
 }
 
-
 /**
  * Owners teach without being asked: "Starter is ₹2,499 a month." That is a
  * fact about the business, not a question, and it must become a saved answer
@@ -521,7 +538,7 @@ export async function classifyBusinessFact(
   supabase: SupabaseClient,
   common: Common,
   args: { conversationId: string; message: string; businessName?: string | null },
-): Promise<{ isFact: boolean; question: string }> {
+): Promise<{ isFact: boolean; topic: string }> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
   const run = await executeRun(supabase, {
     organizationId: common.organizationId,
@@ -540,20 +557,23 @@ export async function classifyBusinessFact(
       `The owner of ${args.businessName || "a business"} sent the message below on their own chat.`,
       "Decide whether it states a fact about their business that a customer might one day ask about — a price, a delivery time, an opening hour, a policy, what they sell.",
       "A question, a greeting, a thank-you, an instruction or small talk is NOT a fact.",
-      'Answer with JSON only: {"is_fact_about_business": true|false, "question_it_answers": "the customer question this fact answers, in plain words"}',
-      'If it is not a fact, answer {"is_fact_about_business": false, "question_it_answers": ""}.',
+      "A website address, a link, a phone number or a code on its own is NOT a fact.",
+      'Answer with JSON only: {"is_fact_about_business": true|false, "topic": "what this fact is about, 2-6 words, e.g. Catering: parties of 20+"}',
+      "Never invent a question. The topic is the subject of the fact itself.",
+      'If it is not a fact, answer {"is_fact_about_business": false, "topic": ""}.',
     ].join("\n"),
   });
 
   try {
-    const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    const parsed = JSON.parse(raw) as {
-      is_fact_about_business?: boolean;
-      question_it_answers?: string;
-    };
-    const question = String(parsed.question_it_answers ?? "").trim();
-    return { isFact: parsed.is_fact_about_business === true && question.length > 0, question };
+    const raw = run.output
+      .trim()
+      .replace(/^```(?:json)?/i, "")
+      .replace(/```$/, "")
+      .trim();
+    const parsed = JSON.parse(raw) as { is_fact_about_business?: boolean; topic?: string };
+    const topic = String(parsed.topic ?? "").trim();
+    return { isFact: parsed.is_fact_about_business === true && topic.length > 0, topic };
   } catch {
-    return { isFact: false, question: "" };
+    return { isFact: false, topic: "" };
   }
 }
