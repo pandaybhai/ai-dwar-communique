@@ -57,6 +57,13 @@ const STRANGER_REPLY =
 const NO_SOURCE_REPLY =
   "I couldn't find that on your website yet. Tell me the answer here and I'll remember it for your customers.";
 
+/**
+ * Questions about AiDwar's own plans — never about the owner's own prices,
+ * which are exactly what they test the AI with ("What is the price?").
+ */
+const UPGRADE_INTENT =
+  /\b(upgrade|subscribe|subscription|paid plan|buy (a |the )?plan|choose (a |the |my )?plan|pick (a |the |my )?plan|your (plans?|pricing|prices|rates)|aidwar('s)? (plans?|pricing|price|cost|charges?)|how much (do you|does aidwar|will you) (cost|charge)|what (do you|does aidwar) (cost|charge)|after (the |my )?trial|trial (ends?|over|expire))\b/i;
+
 const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
