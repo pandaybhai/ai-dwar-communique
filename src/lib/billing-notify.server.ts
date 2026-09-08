@@ -380,7 +380,7 @@ export async function resolveAdminRecipient(supabase: SupabaseClient): Promise<s
   return fromAccount ? normalizePhone(fromAccount) : null;
 }
 
-async function recipientFor(
+export async function recipientFor(
   supabase: SupabaseClient,
   row: Record<string, unknown>,
 ): Promise<string | null> {

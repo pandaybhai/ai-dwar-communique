@@ -597,7 +597,8 @@ export async function settlePayment(
 
   if (!claimed || claimed.length === 0) return { credited: false };
 
-  // A self-serve plan purchase: assign the plan, grant nothing to the wallet.
+  // A self-serve plan purchase: assign the plan, grant nothing to the wallet,
+  // and raise the one tax invoice for the fee.
   if (
     payment.purpose === "plan_fee" &&
     payment.organization_id &&
@@ -609,6 +610,41 @@ export async function settlePayment(
       organization_id: payment.organization_id as string,
       raw: priorRaw,
     });
+    try {
+      const { invoiceForPayment } = await import("@/lib/invoices.server");
+      const result = await invoiceForPayment(supabase, payment.id as string);
+      if ("error" in result) console.error("[billing] plan purchase invoice", payment.id, result.error);
+    } catch (error) {
+      // The plan is live; the nightly backfill raises the invoice.
+      console.error("[billing] plan purchase invoice", payment.id, String((error as Error)?.message ?? error));
+    }
+    return { credited: false };
+  }
+
+  // A plan-fee invoice paid through its payment link: settle the invoice,
+  // which also lifts any dunning stage. Nothing goes to the wallet.
+  if (payment.purpose === "plan_fee" && payment.organization_id && priorRaw["invoice_id"]) {
+    try {
+      const { markPaid } = await import("@/lib/invoices.server");
+      const { data: inv } = await supabase
+        .from("invoices")
+        .select("total, amount_paid")
+        .eq("id", String(priorRaw["invoice_id"]))
+        .maybeSingle();
+      const outstanding = round2(
+        Number(inv?.["total"] ?? 0) - Number(inv?.["amount_paid"] ?? 0),
+      );
+      if (outstanding > 0) {
+        await markPaid(
+          supabase,
+          String(priorRaw["invoice_id"]),
+          payment.id as string,
+          Math.min(outstanding, grossAmount > 0 ? grossAmount : outstanding),
+        );
+      }
+    } catch (error) {
+      console.error("[billing] plan fee settle", payment.id, String((error as Error)?.message ?? error));
+    }
     return { credited: false };
   }
 
