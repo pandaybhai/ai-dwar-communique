@@ -1208,6 +1208,26 @@ export async function executeRun(
     }
   }
 
+  // A question about a figure that comes back without a single digit is a
+  // polite way of saying "I don't know". Treat it as no source at all.
+  if (
+    task === "agent_reply" &&
+    result.status === "ok" &&
+    result.output &&
+    asksForFigure(input) &&
+    !/\d/.test(result.output)
+  ) {
+    console.log(
+      "[grounding] figure_missing",
+      organizationId,
+      JSON.stringify(input).slice(0, 120),
+    );
+    result.status = "escalated";
+    result.escalationSignal = "no_source";
+  }
+
+
+
   // ------------------------------------------------- signal-based hand-over
   // Only for conversation work. A summary or a tag never escalates.
   if (task === "agent_reply" && result.status === "ok") {
