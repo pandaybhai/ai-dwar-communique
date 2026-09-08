@@ -295,6 +295,143 @@ export const Route = createFileRoute("/api/admin/billing")({
               return Response.json(await issuePendingInvoices(supabase));
             }
 
+            case "invoices": {
+              const status = (payload["status"] as string) || null;
+              const purpose = (payload["purpose"] as string) || null;
+              const month = (payload["month"] as string) || null; // YYYY-MM
+              const search = ((payload["search"] as string) || "").trim();
+              let query = supabase
+                .from("invoices")
+                .select(
+                  "id, organization_id, invoice_number, kind, purpose, status, issue_date, due_date, period_start, period_end, subtotal, taxable_value, cgst, sgst, igst, total, amount_paid, currency, pdf_path, sent, payment_id, is_interstate, is_export, place_of_supply, created_at, organizations(name)",
+                )
+                .order("created_at", { ascending: false })
+                .limit(300);
+              if (orgId) query = query.eq("organization_id", orgId);
+              if (status) query = query.eq("status", status);
+              if (purpose) query = query.eq("purpose", purpose);
+              if (month && /^\d{4}-\d{2}$/.test(month)) {
+                const start = `${month}-01`;
+                const next = new Date(`${start}T00:00:00Z`);
+                next.setUTCMonth(next.getUTCMonth() + 1);
+                query = query.gte("issue_date", start).lt("issue_date", next.toISOString().slice(0, 10));
+              }
+              if (search) query = query.ilike("invoice_number", `%${search}%`);
+              const { data, error } = await query;
+              if (error) return jsonError("We couldn't load invoices.");
+              const rows = ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+                ...r,
+                organization_name:
+                  ((r["organizations"] as Record<string, unknown> | null)?.["name"] as string) ?? null,
+                organizations: undefined,
+                pay_url: ((r["sent"] as Record<string, unknown> | null)?.["pay_url"] as string) ?? null,
+                whatsapp_at:
+                  ((r["sent"] as Record<string, unknown> | null)?.["whatsapp_at"] as string) ?? null,
+                pdf_error: ((r["sent"] as Record<string, unknown> | null)?.["pdf_error"] as string) ?? null,
+              }));
+              return Response.json({ invoices: rows });
+            }
+
+            case "invoice_pdf_url": {
+              const { ensureInvoicePdf, invoiceDownloadUrl } = await import("@/lib/invoices.server");
+              const path = await ensureInvoicePdf(supabase, String(payload["invoice_id"] ?? ""));
+              if (!path) return jsonError("The PDF isn't available for this invoice.");
+              const url = await invoiceDownloadUrl(supabase, path);
+              if (!url) return jsonError("We couldn't open that PDF.");
+              return Response.json({ url });
+            }
+
+            case "regenerate_invoice_pdf": {
+              const { ensureInvoicePdf } = await import("@/lib/invoices.server");
+              const path = await ensureInvoicePdf(supabase, String(payload["invoice_id"] ?? ""), {
+                force: true,
+              });
+              if (!path) return jsonError("We couldn't regenerate that PDF — check the invoice's pdf_error.");
+              return Response.json({ ok: true, pdf_path: path });
+            }
+
+            case "resend_invoice": {
+              const { deliverInvoice } = await import("@/lib/invoices.server");
+              const result = await deliverInvoice(supabase, String(payload["invoice_id"] ?? ""), {
+                fallbackToQueue: false,
+              });
+              if (!result.ok) return jsonError(result.error);
+              return Response.json(result);
+            }
+
+            case "issue_credit_note": {
+              const { issueCreditNote } = await import("@/lib/credit-notes.server");
+              const result = await issueCreditNote(supabase, {
+                invoiceId: String(payload["invoice_id"] ?? ""),
+                amount: Number(payload["amount"] ?? 0),
+                reason: String(payload["reason"] ?? ""),
+                refundToWallet: payload["refund_to_wallet"] === true,
+                actorId,
+              });
+              if ("error" in result) return jsonError(result.error);
+              return Response.json(result);
+            }
+
+            case "credit_notes": {
+              const { listCreditNotes } = await import("@/lib/credit-notes.server");
+              return Response.json({
+                credit_notes: await listCreditNotes(supabase, {
+                  organizationId: orgId || null,
+                  invoiceId: (payload["invoice_id"] as string) || null,
+                }),
+              });
+            }
+
+            case "credit_note_pdf_url": {
+              const { invoiceDownloadUrl } = await import("@/lib/invoices.server");
+              const { data: note } = await supabase
+                .from("credit_notes")
+                .select("pdf_path")
+                .eq("id", String(payload["credit_note_id"] ?? ""))
+                .maybeSingle();
+              const path = (note?.["pdf_path"] as string | null) ?? null;
+              if (!path) return jsonError("The PDF isn't available for this credit note.");
+              const url = await invoiceDownloadUrl(supabase, path);
+              if (!url) return jsonError("We couldn't open that PDF.");
+              return Response.json({ url });
+            }
+
+            case "invoice_reconciliation": {
+              // Paid money with no tax document, and tax documents with no money.
+              const [{ data: payments }, { data: invoices }] = await Promise.all([
+                supabase
+                  .from("payments")
+                  .select("id, organization_id, purpose, amount, status, paid_at, created_at, organizations(name)")
+                  .eq("status", "paid")
+                  .in("purpose", ["credit_purchase", "plan_fee"])
+                  .order("paid_at", { ascending: false })
+                  .limit(500),
+                supabase
+                  .from("invoices")
+                  .select("id, organization_id, invoice_number, purpose, status, total, amount_paid, issue_date, due_date, payment_id, organizations(name)")
+                  .eq("kind", "tax_invoice")
+                  .neq("status", "void")
+                  .order("issue_date", { ascending: false })
+                  .limit(1000),
+              ]);
+              const invoiceRows = (invoices ?? []) as Record<string, unknown>[];
+              const byPayment = new Set(
+                invoiceRows.map((i) => i["payment_id"]).filter(Boolean) as string[],
+              );
+              const name = (r: Record<string, unknown>) =>
+                ((r["organizations"] as Record<string, unknown> | null)?.["name"] as string) ?? null;
+              const paymentsWithoutInvoice = ((payments ?? []) as Record<string, unknown>[])
+                .filter((p) => !byPayment.has(String(p["id"])))
+                .map((p) => ({ ...p, organization_name: name(p), organizations: undefined }));
+              const invoicesWithoutPayment = invoiceRows
+                .filter((i) => !i["payment_id"] && Number(i["amount_paid"] ?? 0) <= 0)
+                .map((i) => ({ ...i, organization_name: name(i), organizations: undefined }));
+              return Response.json({
+                payments_without_invoice: paymentsWithoutInvoice,
+                invoices_without_payment: invoicesWithoutPayment,
+              });
+            }
+
             case "billing_templates": {
               const { listBillingTemplates } = await import("@/lib/billing-notify.server");
               return Response.json({ templates: await listBillingTemplates(supabase) });

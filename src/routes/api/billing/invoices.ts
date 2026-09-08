@@ -23,7 +23,7 @@ export const Route = createFileRoute("/api/billing/invoices")({
             auth.supabase
               .from("invoices")
               .select(
-                "id, invoice_number, kind, purpose, status, issue_date, due_date, period_start, period_end, total, amount_paid, currency, pdf_path, roi_snapshot",
+                "id, invoice_number, kind, purpose, status, issue_date, due_date, period_start, period_end, total, amount_paid, currency, pdf_path, roi_snapshot, sent",
               )
               .eq("organization_id", auth.organizationId)
               .neq("status", "draft")
@@ -31,7 +31,13 @@ export const Route = createFileRoute("/api/billing/invoices")({
               .limit(60),
             getAutoPay(auth.supabase, auth.organizationId),
           ]);
-          return Response.json({ invoices: invoices ?? [], autopay });
+          // Only the payment link leaves the `sent` blob — delivery internals stay server-side.
+          const rows = ((invoices ?? []) as Record<string, unknown>[]).map((row) => {
+            const { sent, ...rest } = row;
+            const payUrl = ((sent as Record<string, unknown> | null)?.["pay_url"] as string) ?? null;
+            return { ...rest, pay_url: payUrl };
+          });
+          return Response.json({ invoices: rows, autopay });
         } catch (error) {
           return billingError(error);
         }
