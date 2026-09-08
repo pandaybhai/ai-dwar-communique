@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Navigate, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { aidwar } from "@/integrations/aidwar/client";
 import { OrgProvider, useOrg } from "@/lib/org-context";
 import { AppShell } from "@/components/app-shell";
@@ -23,6 +23,7 @@ export const Route = createFileRoute("/app")({
 
 function AppGate() {
   const { loading, error, active, reload } = useOrg();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   if (loading) {
     return (
@@ -50,6 +51,11 @@ function AppGate() {
         <OrgOnboarding onCreated={reload} />
       </div>
     );
+  }
+
+  // A locked workspace has exactly one page: billing, where it reactivates.
+  if (active.organization.plan_status === "locked" && !pathname.startsWith("/app/billing")) {
+    return <Navigate to="/app/billing" replace />;
   }
 
   return (

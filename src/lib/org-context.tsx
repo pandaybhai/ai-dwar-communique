@@ -10,6 +10,9 @@ export type Organization = {
   slug: string;
   status: string;
   timezone: string;
+  plan_status?: string | null;
+  plan_version_id?: string | null;
+  trial_ends_at?: string | null;
 };
 
 export type Membership = { role: OrgRole; organization: Organization };
@@ -68,7 +71,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     const [{ data: rows, error: memberErr }, { data: prof }] = await Promise.all([
       aidwar
         .from("organization_members")
-        .select("role, organizations(id, name, slug, status, timezone)")
+        .select(
+          "role, organizations(id, name, slug, status, timezone, plan_status, plan_version_id, trial_ends_at)",
+        )
         .eq("user_id", uid)
         .order("created_at", { ascending: true }),
       aidwar

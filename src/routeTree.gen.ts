@@ -23,6 +23,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminActivityRouteImport } from './routes/admin/activity'
 import { Route as AdminAiRouteImport } from './routes/admin/ai'
 import { Route as AdminBillingRouteImport } from './routes/admin/billing'
+import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
@@ -42,11 +43,13 @@ import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as RTokenRouteImport } from './routes/r.$token'
 import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
+import { Route as ApiAdminCustomersRouteImport } from './routes/api/admin/customers'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
 import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
 import { Route as ApiBillingInvoicesRouteImport } from './routes/api/billing/invoices'
 import { Route as ApiBillingLedgerRouteImport } from './routes/api/billing/ledger'
+import { Route as ApiBillingPlanRouteImport } from './routes/api/billing/plan'
 import { Route as ApiBillingPurchaseRouteImport } from './routes/api/billing/purchase'
 import { Route as ApiBillingRazorpayKeyRouteImport } from './routes/api/billing/razorpay-key'
 import { Route as ApiBillingRequestTopupRouteImport } from './routes/api/billing/request-topup'
@@ -173,6 +176,11 @@ const AdminBillingRoute = AdminBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminCustomersRoute = AdminCustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminFlagsRoute = AdminFlagsRouteImport.update({
   id: '/flags',
   path: '/flags',
@@ -268,6 +276,11 @@ const ApiAdminBillingRoute = ApiAdminBillingRouteImport.update({
   path: '/api/admin/billing',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminCustomersRoute = ApiAdminCustomersRouteImport.update({
+  id: '/api/admin/customers',
+  path: '/api/admin/customers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiEmployeeRoute = ApiAiEmployeeRouteImport.update({
   id: '/api/ai/employee',
   path: '/api/ai/employee',
@@ -291,6 +304,11 @@ const ApiBillingInvoicesRoute = ApiBillingInvoicesRouteImport.update({
 const ApiBillingLedgerRoute = ApiBillingLedgerRouteImport.update({
   id: '/api/billing/ledger',
   path: '/api/billing/ledger',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBillingPlanRoute = ApiBillingPlanRouteImport.update({
+  id: '/api/billing/plan',
+  path: '/api/billing/plan',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiBillingPurchaseRoute = ApiBillingPurchaseRouteImport.update({
@@ -603,6 +621,7 @@ export interface FileRoutesByFullPath {
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/billing': typeof AdminBillingRoute
+  '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -623,11 +642,13 @@ export interface FileRoutesByFullPath {
   '/app/': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
+  '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
+  '/api/billing/plan': typeof ApiBillingPlanRoute
   '/api/billing/purchase': typeof ApiBillingPurchaseRoute
   '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
   '/api/billing/request-topup': typeof ApiBillingRequestTopupRoute
@@ -696,6 +717,7 @@ export interface FileRoutesByTo {
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/billing': typeof AdminBillingRoute
+  '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -716,11 +738,13 @@ export interface FileRoutesByTo {
   '/app': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
+  '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
+  '/api/billing/plan': typeof ApiBillingPlanRoute
   '/api/billing/purchase': typeof ApiBillingPurchaseRoute
   '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
   '/api/billing/request-topup': typeof ApiBillingRequestTopupRoute
@@ -792,6 +816,7 @@ export interface FileRoutesById {
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/billing': typeof AdminBillingRoute
+  '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
@@ -812,11 +837,13 @@ export interface FileRoutesById {
   '/app/': typeof AppIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
+  '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
   '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
+  '/api/billing/plan': typeof ApiBillingPlanRoute
   '/api/billing/purchase': typeof ApiBillingPurchaseRoute
   '/api/billing/razorpay-key': typeof ApiBillingRazorpayKeyRoute
   '/api/billing/request-topup': typeof ApiBillingRequestTopupRoute
@@ -889,6 +916,7 @@ export interface FileRouteTypes {
     | '/admin/activity'
     | '/admin/ai'
     | '/admin/billing'
+    | '/admin/customers'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -909,11 +937,13 @@ export interface FileRouteTypes {
     | '/app/'
     | '/api/admin/ai'
     | '/api/admin/billing'
+    | '/api/admin/customers'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
     | '/api/billing/invoices'
     | '/api/billing/ledger'
+    | '/api/billing/plan'
     | '/api/billing/purchase'
     | '/api/billing/razorpay-key'
     | '/api/billing/request-topup'
@@ -982,6 +1012,7 @@ export interface FileRouteTypes {
     | '/admin/activity'
     | '/admin/ai'
     | '/admin/billing'
+    | '/admin/customers'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -1002,11 +1033,13 @@ export interface FileRouteTypes {
     | '/app'
     | '/api/admin/ai'
     | '/api/admin/billing'
+    | '/api/admin/customers'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
     | '/api/billing/invoices'
     | '/api/billing/ledger'
+    | '/api/billing/plan'
     | '/api/billing/purchase'
     | '/api/billing/razorpay-key'
     | '/api/billing/request-topup'
@@ -1077,6 +1110,7 @@ export interface FileRouteTypes {
     | '/admin/activity'
     | '/admin/ai'
     | '/admin/billing'
+    | '/admin/customers'
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
@@ -1097,11 +1131,13 @@ export interface FileRouteTypes {
     | '/app/'
     | '/api/admin/ai'
     | '/api/admin/billing'
+    | '/api/admin/customers'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
     | '/api/billing/invoices'
     | '/api/billing/ledger'
+    | '/api/billing/plan'
     | '/api/billing/purchase'
     | '/api/billing/razorpay-key'
     | '/api/billing/request-topup'
@@ -1176,11 +1212,13 @@ export interface RootRouteChildren {
   RTokenRoute: typeof RTokenRoute
   ApiAdminAiRoute: typeof ApiAdminAiRoute
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
+  ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
   ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
   ApiBillingInvoicesRoute: typeof ApiBillingInvoicesRoute
   ApiBillingLedgerRoute: typeof ApiBillingLedgerRoute
+  ApiBillingPlanRoute: typeof ApiBillingPlanRoute
   ApiBillingPurchaseRoute: typeof ApiBillingPurchaseRoute
   ApiBillingRazorpayKeyRoute: typeof ApiBillingRazorpayKeyRoute
   ApiBillingRequestTopupRoute: typeof ApiBillingRequestTopupRoute
@@ -1332,6 +1370,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminBillingRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/customers': {
+      id: '/admin/customers'
+      path: '/customers'
+      fullPath: '/admin/customers'
+      preLoaderRoute: typeof AdminCustomersRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/flags': {
       id: '/admin/flags'
       path: '/flags'
@@ -1465,6 +1510,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminBillingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/customers': {
+      id: '/api/admin/customers'
+      path: '/api/admin/customers'
+      fullPath: '/api/admin/customers'
+      preLoaderRoute: typeof ApiAdminCustomersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/employee': {
       id: '/api/ai/employee'
       path: '/api/ai/employee'
@@ -1498,6 +1550,13 @@ declare module '@tanstack/react-router' {
       path: '/api/billing/ledger'
       fullPath: '/api/billing/ledger'
       preLoaderRoute: typeof ApiBillingLedgerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/billing/plan': {
+      id: '/api/billing/plan'
+      path: '/api/billing/plan'
+      fullPath: '/api/billing/plan'
+      preLoaderRoute: typeof ApiBillingPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/billing/purchase': {
@@ -1892,6 +1951,7 @@ interface AdminRouteRouteChildren {
   AdminActivityRoute: typeof AdminActivityRoute
   AdminAiRoute: typeof AdminAiRoute
   AdminBillingRoute: typeof AdminBillingRoute
+  AdminCustomersRoute: typeof AdminCustomersRoute
   AdminFlagsRoute: typeof AdminFlagsRoute
   AdminOrganizationsRoute: typeof AdminOrganizationsRoute
   AdminUsersRoute: typeof AdminUsersRoute
@@ -1902,6 +1962,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminActivityRoute: AdminActivityRoute,
   AdminAiRoute: AdminAiRoute,
   AdminBillingRoute: AdminBillingRoute,
+  AdminCustomersRoute: AdminCustomersRoute,
   AdminFlagsRoute: AdminFlagsRoute,
   AdminOrganizationsRoute: AdminOrganizationsRoute,
   AdminUsersRoute: AdminUsersRoute,
@@ -1971,11 +2032,13 @@ const rootRouteChildren: RootRouteChildren = {
   RTokenRoute: RTokenRoute,
   ApiAdminAiRoute: ApiAdminAiRoute,
   ApiAdminBillingRoute: ApiAdminBillingRoute,
+  ApiAdminCustomersRoute: ApiAdminCustomersRoute,
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
   ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,
   ApiBillingInvoicesRoute: ApiBillingInvoicesRoute,
   ApiBillingLedgerRoute: ApiBillingLedgerRoute,
+  ApiBillingPlanRoute: ApiBillingPlanRoute,
   ApiBillingPurchaseRoute: ApiBillingPurchaseRoute,
   ApiBillingRazorpayKeyRoute: ApiBillingRazorpayKeyRoute,
   ApiBillingRequestTopupRoute: ApiBillingRequestTopupRoute,

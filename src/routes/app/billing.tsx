@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Lock, Wallet } from "lucide-react";
 import { BillingView } from "@/components/billing/billing-view";
+import { PlanChooser } from "@/components/billing/plan-chooser";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -24,21 +25,36 @@ export const Route = createFileRoute("/app/billing")({
 });
 
 function BillingPage() {
-  const { active, loading } = useOrg();
+  const { active, loading, reload } = useOrg();
   const { can, loading: permsLoading } = usePermissions();
   const { enabled, loading: flagLoading } = useFeatureFlag("billing");
+
+  const org = active?.organization;
+  const noPlan = Boolean(org) && !org?.plan_version_id;
+  const locked = org?.plan_status === "locked";
 
   return (
     <>
       <PageHeader title="Billing" description={DESCRIPTION} />
       {loading || permsLoading || flagLoading ? (
         <PageSkeleton />
-      ) : !active ? (
+      ) : !active || !org ? (
         <EmptyState
           icon={Wallet}
           title="No workspace selected"
           description="Pick a workspace from the switcher to see its billing."
         />
+      ) : noPlan || locked ? (
+        // Trial and locked workspaces choose (or re-buy) a plan here. This
+        // path runs before the billing flag, which the plan itself turns on.
+        <div className="space-y-10">
+          <PlanChooser
+            organizationId={org.id}
+            mode={locked ? "locked" : "trial"}
+            onActivated={() => void reload()}
+          />
+          {enabled && can("billing.view") ? <BillingView organizationId={org.id} /> : null}
+        </div>
       ) : !enabled ? (
         <EmptyState
           icon={Wallet}
@@ -52,7 +68,7 @@ function BillingPage() {
           description='You need the "View billing" permission for this workspace. Ask an owner or admin to grant it.'
         />
       ) : (
-        <BillingView organizationId={active.organization.id} />
+        <BillingView organizationId={org.id} />
       )}
     </>
   );

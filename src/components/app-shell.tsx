@@ -32,13 +32,16 @@ const NAV = navFeatures().map((f) => ({
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { isFeatureEnabled, flagsLoading } = useOrg();
+  const { isFeatureEnabled, flagsLoading, active } = useOrg();
   const { can, loading: permsLoading } = usePermissions();
-  const items = NAV.filter(
-    (item) =>
-      (!item.flag || flagsLoading || isFeatureEnabled(item.flag)) &&
-      (!item.perm || permsLoading || can(item.perm)),
-  );
+  const locked = active?.organization.plan_status === "locked";
+  const items = locked
+    ? [{ to: "/app/billing", label: "Billing", icon: FEATURE_ICONS["credit-card"] ?? Building2, flag: null, perm: null }]
+    : NAV.filter(
+        (item) =>
+          (!item.flag || flagsLoading || isFeatureEnabled(item.flag)) &&
+          (!item.perm || permsLoading || can(item.perm)),
+      );
   return (
     <nav className="space-y-1">
       {items.map((item) => {
@@ -177,8 +180,57 @@ function UserMenu() {
   );
 }
 
+/** "X days left" for a workspace on trial with no plan; a lock notice when locked. */
+function PlanBanner() {
+  const { active } = useOrg();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const org = active?.organization;
+  if (!org || pathname.startsWith("/app/billing")) return null;
+
+  if (org.plan_status === "locked") {
+    return (
+      <div className="border-b border-destructive/20 bg-destructive/5 px-4 py-2.5 text-sm text-foreground sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span>
+            <span className="font-semibold">This workspace is paused.</span> Reactivate to switch
+            everything back on.
+          </span>
+          <Button asChild size="sm" className="rounded-full">
+            <Link to="/app/billing">Reactivate</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (org.plan_version_id || org.plan_status !== "trial") return null;
+  const days = org.trial_ends_at
+    ? Math.max(0, Math.ceil((new Date(org.trial_ends_at).getTime() - Date.now()) / 864e5))
+    : null;
+  return (
+    <div className="border-b border-primary/20 bg-primary/5 px-4 py-2.5 text-sm text-foreground sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span>
+          <span className="font-semibold">
+            {days === null
+              ? "You're on a free trial."
+              : days === 0
+                ? "Your free trial ends today."
+                : `${days} day${days === 1 ? "" : "s"} left in your free trial.`}
+          </span>{" "}
+          Pick a plan and everything carries over.
+        </span>
+        <Button asChild size="sm" className="rounded-full">
+          <Link to="/app/billing">Choose plan</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -210,6 +262,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <UserMenu />
         </div>
       </header>
+      <PlanBanner />
 
       <div className="flex">
         <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 border-r border-border/70 bg-background p-3 lg:block">
