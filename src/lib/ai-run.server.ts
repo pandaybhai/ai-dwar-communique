@@ -1076,7 +1076,9 @@ export async function executeRun(
           .filter((r) => r.source_type === "manual_qa")
           .map((r) => r.document_id);
         if (taught.length) {
-          void supabase.rpc("record_knowledge_use", {
+          // Awaited: on the merchant channel the handler finishes before a
+          // fire-and-forget request leaves the worker, so the count never moved.
+          await supabase.rpc("record_knowledge_use", {
             p_org: organizationId,
             p_document_ids: taught,
           });

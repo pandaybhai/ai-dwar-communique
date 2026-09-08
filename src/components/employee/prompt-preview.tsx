@@ -14,10 +14,13 @@ export function PromptPreview({
   organizationId,
   agentName,
   currency,
+  refreshKey = 0,
 }: {
   organizationId: string;
   agentName: string;
   currency: string;
+  /** Bump this whenever behaviour, skills or knowledge change, so the brief follows. */
+  refreshKey?: number;
 }) {
   const [brief, setBrief] = useState<BriefPreview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +38,8 @@ export function PromptPreview({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
+
 
   return (
     <section
