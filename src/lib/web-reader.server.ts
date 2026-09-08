@@ -77,32 +77,44 @@ function looksEmpty(html: string, text: string): boolean {
 
 export async function readPage(
   url: string,
-  options: { key?: string | null; allowReader?: boolean; timeoutMs?: number } = {},
+  options: {
+    key?: string | null;
+    allowReader?: boolean;
+    timeoutMs?: number;
+    onStage?: (stage: "fetch" | "reader" | "extract") => void;
+  } = {},
 ): Promise<PageRead | null> {
+  options.onStage?.("fetch");
   const res = await fetchWithTimeout(url, options.timeoutMs ?? 8000);
-  if (!res || !res.ok) return null;
-  const type = res.headers.get("content-type") ?? "";
-  if (!type.includes("text/html") && !type.includes("text/plain")) return null;
-
-  const html = await res.text().catch(() => "");
+  const type = res?.headers.get("content-type") ?? "";
+  const readableDirect = Boolean(
+    res?.ok && (type.includes("text/html") || type.includes("text/plain")),
+  );
+  const html = readableDirect ? await res?.text().catch(() => "") ?? "" : "";
+  options.onStage?.("extract");
   const { title, text, links } = stripHtml(html);
 
-  if (options.allowReader !== false && looksEmpty(html, text)) {
-    const reader = await fetchWithTimeout(`${READER_ENDPOINT}${url}`, 15000, {
+  if (options.allowReader !== false && (!readableDirect || looksEmpty(html, text))) {
+    options.onStage?.("reader");
+    const readerRequest = (withKey: boolean) => fetchWithTimeout(`${READER_ENDPOINT}${url}`, 15000, {
       headers: {
         Accept: "text/plain",
         "X-Return-Format": "text",
-        ...(options.key ? { Authorization: `Bearer ${options.key}` } : {}),
+        ...(withKey && options.key ? { Authorization: `Bearer ${options.key}` } : {}),
       },
     });
+    let reader = await readerRequest(true);
+    if ((!reader || !reader.ok) && options.key) reader = await readerRequest(false);
     if (reader?.ok) {
       const rendered = (await reader.text().catch(() => "")).replace(/\s+/g, " ").trim();
       if (rendered.length > text.length) {
         return { title, text: rendered, html, links, usedReader: true };
       }
     }
-    return { title, text, html, links, usedReader: true };
+    if (readableDirect) return { title, text, html, links, usedReader: true };
+    return null;
   }
 
+  if (!readableDirect) return null;
   return { title, text, html, links, usedReader: false };
 }

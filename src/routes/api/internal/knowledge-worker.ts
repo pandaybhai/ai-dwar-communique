@@ -52,13 +52,28 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
           let done = 0;
           let failed = 0;
           for (const sourceId of claimed) {
-            const result = await syncSource(supabase, sourceId);
-            if (result.ok) done += 1;
-            else failed += 1;
+            let stage: import("@/lib/knowledge.server").CrawlStage = "discover";
+            try {
+              const result = await syncSource(supabase, sourceId, {
+                preserveError: true,
+                onStage: (next) => { stage = next; },
+              });
+              if (!result.ok) throw new Error(result.error ?? "The source could not be read.");
 
-            // The owner's chat with Aiden is waiting on this read.
-            const { finishOnboardingCrawl } = await import("@/lib/merchant-channel.server");
-            await finishOnboardingCrawl(supabase, sourceId, result);
+              stage = "finish";
+              const { finishOnboardingCrawl } = await import("@/lib/merchant-channel.server");
+              await finishOnboardingCrawl(supabase, sourceId, result);
+              done += 1;
+            } catch (error) {
+              const err = error instanceof Error ? error : new Error(String(error));
+              const detail = `${stage}: ${err.name}: ${err.message}`.slice(0, 500);
+              console.error("[knowledge-worker]", sourceId, detail);
+              await supabase
+                .from("knowledge_sources")
+                .update({ status: "error", last_error: detail })
+                .eq("id", sourceId);
+              failed += 1;
+            }
           }
 
           return Response.json({
