@@ -437,7 +437,7 @@ export async function handleOwnerReply(
   if (
     !isTeachableAnswer(answer, {
       interactive: Boolean(args.interactiveId),
-      suggestions: args.suggestions,
+      suggestions: args.suggestions ?? [],
     })
   ) {
     const target = pending.find((p) => p.selected_at) ?? pending[0]!;
