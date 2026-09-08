@@ -1057,7 +1057,10 @@ export async function executeRun(
 
   const toolCalls: RunResult["toolCalls"] = [];
   const foundMedia: RunMedia[] = [];
+  /** Everything a tool actually returned this run — used by the number guard. */
+  const toolResultTexts: string[] = [];
   let anyToolFailed = false;
+
   let inputTokens = 0;
   let outputTokens = 0;
   let answer = "";
