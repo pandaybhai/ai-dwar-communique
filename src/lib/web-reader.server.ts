@@ -66,17 +66,19 @@ export async function fetchWithTimeout(
 }
 
 /** The platform's reader key, when one is configured. Null is fine. */
+const READER_KEY_NAME = "jina_reader_key";
+let readerKeyCache: { value: string | null; at: number } | null = null;
+const READER_KEY_TTL_MS = 10 * 60_000;
+
 export async function readerKey(supabase: SupabaseClient): Promise<string | null> {
-  const { data: provider } = await supabase
-    .from("platform_ai_providers")
-    .select("vault_secret_name, is_active")
-    .eq("provider", "jina_reader")
-    .maybeSingle();
-  const row = provider as { vault_secret_name?: string | null; is_active?: boolean } | null;
-  if (!row || row.is_active === false || !row.vault_secret_name) return null;
-  const { data, error } = await supabase.rpc("read_vault_secret", { p_name: row.vault_secret_name });
-  if (error) return null;
-  return typeof data === "string" && data.length > 0 ? data : null;
+  if (readerKeyCache && Date.now() - readerKeyCache.at < READER_KEY_TTL_MS) {
+    return readerKeyCache.value;
+  }
+  const { data, error } = await supabase.rpc("read_vault_secret", { p_name: READER_KEY_NAME });
+  const value =
+    !error && typeof data === "string" && data.trim().length > 0 ? data.trim() : null;
+  readerKeyCache = { value, at: Date.now() };
+  return value;
 }
 
 /** A shell page: markup arrived, words did not. */
@@ -119,15 +121,17 @@ export async function readPage(
         ...headers,
         ...(headers["Authorization"] ? { Authorization: "Bearer [masked]" } : {}),
       };
+      const authUsed = Boolean(withKey && cleanKey);
       const response = await fetchWithTimeout(readerUrl, 15000, { headers });
+      const auth = `auth=${authUsed ? "yes" : "no"}`;
       if (!response) {
-        console.error("[web-reader]", JSON.stringify({ url: readerUrl, headers: safeHeaders, status: 0, body: "request failed or timed out" }));
-        return { response: null, body: "", detail: `reader request failed or timed out; url=${readerUrl}; headers=${JSON.stringify(safeHeaders)}` };
+        console.error("[web-reader]", JSON.stringify({ url: readerUrl, auth: authUsed, status: 0, body: "request failed or timed out" }));
+        return { response: null, body: "", detail: `reader request failed or timed out; url=${readerUrl}; ${auth}` };
       }
       const body = await response.text().catch((error) => `body read failed: ${error instanceof Error ? error.message : String(error)}`);
       const preview = bodyPreview(body);
-      console.info("[web-reader]", JSON.stringify({ url: readerUrl, headers: safeHeaders, status: response.status, body: preview }));
-      return { response, body, detail: `reader HTTP ${response.status}; url=${readerUrl}; headers=${JSON.stringify(safeHeaders)}; body=${preview}` };
+      console.info("[web-reader]", JSON.stringify({ url: readerUrl, auth: authUsed, status: response.status, body: preview }));
+      return { response, body, detail: `reader HTTP ${response.status}; url=${readerUrl}; ${auth}; body=${preview}` };
     };
 
     let attempt = await readerRequest(Boolean(cleanKey));
