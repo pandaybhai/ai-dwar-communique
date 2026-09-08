@@ -337,6 +337,76 @@ export async function handleMerchantInbound(
   // The update above may have just moved pending -> bound, so use the effective status.
   const currentStatus = session.status === "pending" ? "bound" : session.status;
 
+  // ------------------------------------------------- a picture or a file
+  if (args.mediaUrl?.startsWith("meta:")) {
+    const mime = (args.mediaMime ?? "").toLowerCase();
+    const kind = mime.startsWith("image/")
+      ? "image"
+      : mime.includes("pdf")
+        ? "pdf"
+        : mime.includes("wordprocessingml")
+          ? "docx"
+          : mime.includes("sheet") || mime.includes("csv") || mime.includes("excel")
+            ? "spreadsheet"
+            : null;
+
+    if (!kind) {
+      await reply("I can read pictures, PDFs, Word files and spreadsheets. Send me one of those.");
+      return;
+    }
+
+    await reply("Reading it…");
+    const bytes = await downloadMedia(args.mediaUrl.slice(5), args.accessToken);
+    if (!bytes) {
+      await reply("That file didn't come through. Send it again and I'll read it.");
+      return;
+    }
+
+    const fileName = `${kind === "image" ? "Photo" : "File"} from ${new Date().toDateString()}`;
+    const { data: created } = await supabase
+      .from("knowledge_sources")
+      .insert({
+        organization_id: session.organization_id,
+        type: kind,
+        name: fileName,
+        config: { file_name: fileName },
+        refresh_days: 0,
+        created_by: session.user_id,
+      })
+      .select("id")
+      .maybeSingle();
+    const newSourceId = (created as { id: string } | null)?.id ?? null;
+    if (!newSourceId) {
+      await reply("I couldn't keep that just now. Send it again in a moment.");
+      return;
+    }
+
+    const { ingestUpload } = await import("@/lib/knowledge.server");
+    const firstMaterial = !session.source_id;
+    if (firstMaterial) {
+      await patchSession(supabase, session.id, { status: "learning", source_id: newSourceId });
+    }
+    const ingested = await ingestUpload(
+      supabase,
+      session.organization_id,
+      newSourceId,
+      fileName,
+      bytes,
+      kind,
+    );
+
+    if (firstMaterial) {
+      await finishOnboardingCrawl(supabase, newSourceId, ingested);
+    } else {
+      await reply(
+        ingested.ok
+          ? `Read it — ${ingested.itemCount} thing${ingested.itemCount === 1 ? "" : "s"} added to what I know.`
+          : "I couldn't read that one. Try a clearer picture or a different file.",
+      );
+    }
+    return;
+  }
+
   // ---------------------------------------------------------- the website
   const link = body.match(/https?:\/\/[^\s]+/i)?.[0] ?? null;
   if (link && !session.source_id) {
@@ -727,6 +797,22 @@ export async function handleNumberConnected(
   });
 }
 
+
+/** The bytes behind an inbound picture or document. Null when Meta says no. */
+async function downloadMedia(mediaId: string, accessToken: string): Promise<Uint8Array | null> {
+  const { GRAPH_VERSION } = await import("@/lib/whatsapp-api.server");
+  const lookup = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const body = (await lookup.json().catch(() => ({}))) as Record<string, unknown>;
+  const url = body["url"] as string | undefined;
+  if (!lookup.ok || !url) return null;
+  const file = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!file.ok) return null;
+  const buffer = await file.arrayBuffer();
+  if (buffer.byteLength > 8 * 1024 * 1024) return null;
+  return new Uint8Array(buffer);
+}
 
 // ------------------------------------------------------- the crawl finishes
 
