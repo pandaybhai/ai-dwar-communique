@@ -16,7 +16,19 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/phone";
-import { sendServiceText, sendServiceImage, sendServiceButtons } from "@/lib/service-text.server";
+import {
+  sendServiceText,
+  sendServiceImage,
+  sendServiceButtons,
+  sendServiceList,
+} from "@/lib/service-text.server";
+import {
+  handleOwnerReply,
+  ownerOrganizationIds,
+  orgNames,
+  prefixFor,
+  recordOnboardingGap,
+} from "@/lib/owner-replies.server";
 
 export type OnboardingSession = {
   id: string;
@@ -96,6 +108,7 @@ async function findSession(
     .select(SESSION_COLUMNS)
     .eq("phone", normalizePhone(waId))
     .not("status", "in", '("completed","expired")')
+    .order("last_inbound_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(1);
   return ((rows ?? []) as OnboardingSession[])[0] ?? null;
@@ -181,9 +194,12 @@ export async function handleMerchantInbound(
     conversationId: string;
     contactId: string;
     body: string;
+    /** button_reply.id / list_reply.id, when they tapped instead of typed. */
+    interactiveId?: string | null;
   },
 ): Promise<void> {
   const body = (args.body ?? "").trim();
+  const interactiveId = args.interactiveId ?? null;
 
   const channel = {
     organizationId: args.organizationId,
@@ -204,6 +220,74 @@ export async function handleMerchantInbound(
       buttons,
       imageUrl,
     });
+
+  // Which businesses this number speaks for. More than one and every message
+  // says which one it is about.
+  const ownerOrgs = await ownerOrganizationIds(supabase, args.waId);
+  const multiBusiness = ownerOrgs.length > 1;
+
+  // Something waiting on the owner comes first, whatever state onboarding is
+  // in: their answer is worth more than the next step of a script.
+  const consumed = await handleOwnerReply(supabase, {
+    ownerPhone: args.waId,
+    body,
+    interactiveId,
+    multiBusiness,
+    reply: (text) => reply(text),
+    list: (text, rows) =>
+      sendServiceList(supabase, {
+        ...channel,
+        body: text,
+        buttonText: "Choose",
+        rows,
+      }),
+  });
+  if (consumed) return;
+
+  // A multi-business owner saying only hello: ask which business first.
+  if (multiBusiness && !interactiveId && body && body.length <= 24 && !CODE_PATTERN.test(body)) {
+    const { isGreeting } = await import("@/lib/ai-run.server");
+    if (isGreeting(body)) {
+      const { data: sessionRows } = await supabase
+        .from("onboarding_sessions")
+        .select(SESSION_COLUMNS)
+        .eq("phone", normalizePhone(args.waId))
+        .not("status", "in", '("completed","expired")');
+      const choices = (sessionRows ?? []) as OnboardingSession[];
+      if (choices.length > 1) {
+        const names = await orgNames(supabase, choices.map((c) => c.organization_id));
+        await sendServiceList(supabase, {
+          ...channel,
+          body: "Which business are we working on?",
+          buttonText: "Choose",
+          rows: choices.map((c) => ({
+            id: `sess:${c.id}`,
+            title: (names.get(c.organization_id) ?? "Business").slice(0, 24),
+          })),
+        });
+        return;
+      }
+    }
+  }
+
+  // They picked a business from that list: make it the active one.
+  if (interactiveId?.startsWith("sess:")) {
+    await patchSession(supabase, interactiveId.slice(5), {
+      last_inbound_at: new Date().toISOString(),
+    });
+    const { data: picked } = await supabase
+      .from("onboarding_sessions")
+      .select(SESSION_COLUMNS)
+      .eq("id", interactiveId.slice(5))
+      .maybeSingle();
+    const pickedSession = picked as OnboardingSession | null;
+    if (pickedSession) {
+      const names = await orgNames(supabase, [pickedSession.organization_id]);
+      const name = names.get(pickedSession.organization_id) ?? null;
+      await reply(`${prefixFor(true, name)}Right — ask me anything about this one.`);
+      return;
+    }
+  }
 
   const session = await findSession(supabase, args.waId, body);
 
