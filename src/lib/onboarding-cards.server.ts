@@ -154,10 +154,26 @@ function parseStyle(value: string): Record<string, string> {
     if (at < 0) continue;
     const key = part.slice(0, at).trim();
     const val = part.slice(at + 1).trim();
-    if (key && val) style[camel(key)] = convertColors(val);
+    if (!key || !val) continue;
+    if (UNSUPPORTED_STYLE.has(key)) continue;
+    style[camel(key)] = convertColors(val);
   }
   return style;
 }
+
+/** Declarations satori has no layout for; dropping them beats throwing. */
+const UNSUPPORTED_STYLE = new Set([
+  "font-variant-numeric",
+  "text-wrap",
+  "text-wrap-mode",
+  "background-clip",
+  "-webkit-background-clip",
+  "-webkit-text-fill-color",
+  "backdrop-filter",
+  "mix-blend-mode",
+  "grid-template-areas",
+]);
+
 
 /**
  * Satori wants React-shaped elements, not HTML. This is a deliberately small
