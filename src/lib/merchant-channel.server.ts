@@ -16,7 +16,19 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/phone";
-import { sendServiceText, sendServiceImage, sendServiceButtons } from "@/lib/service-text.server";
+import {
+  sendServiceText,
+  sendServiceImage,
+  sendServiceButtons,
+  sendServiceList,
+} from "@/lib/service-text.server";
+import {
+  handleOwnerReply,
+  ownerOrganizationIds,
+  orgNames,
+  prefixFor,
+  recordOnboardingGap,
+} from "@/lib/owner-replies.server";
 
 export type OnboardingSession = {
   id: string;
@@ -96,6 +108,7 @@ async function findSession(
     .select(SESSION_COLUMNS)
     .eq("phone", normalizePhone(waId))
     .not("status", "in", '("completed","expired")')
+    .order("last_inbound_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(1);
   return ((rows ?? []) as OnboardingSession[])[0] ?? null;
@@ -181,9 +194,12 @@ export async function handleMerchantInbound(
     conversationId: string;
     contactId: string;
     body: string;
+    /** button_reply.id / list_reply.id, when they tapped instead of typed. */
+    interactiveId?: string | null;
   },
 ): Promise<void> {
   const body = (args.body ?? "").trim();
+  const interactiveId = args.interactiveId ?? null;
 
   const channel = {
     organizationId: args.organizationId,
@@ -192,7 +208,9 @@ export async function handleMerchantInbound(
     conversationId: args.conversationId,
     to: args.waId,
   };
-  const reply = (text: string) => sendServiceText(supabase, { ...channel, body: text });
+  // Set once the business is known; blank for single-business owners.
+  let prefix = "";
+  const reply = (text: string) => sendServiceText(supabase, { ...channel, body: prefix + text });
   const replyButtons = (
     text: string,
     buttons: Array<{ id: string; title: string }>,
@@ -200,10 +218,78 @@ export async function handleMerchantInbound(
   ) =>
     sendServiceButtons(supabase, {
       ...channel,
-      body: text,
+      body: prefix + text,
       buttons,
       imageUrl,
     });
+
+  // Which businesses this number speaks for. More than one and every message
+  // says which one it is about.
+  const ownerOrgs = await ownerOrganizationIds(supabase, args.waId);
+  const multiBusiness = ownerOrgs.length > 1;
+
+  // Something waiting on the owner comes first, whatever state onboarding is
+  // in: their answer is worth more than the next step of a script.
+  const consumed = await handleOwnerReply(supabase, {
+    ownerPhone: args.waId,
+    body,
+    interactiveId,
+    multiBusiness,
+    reply: (text) => reply(text),
+    list: (text, rows) =>
+      sendServiceList(supabase, {
+        ...channel,
+        body: text,
+        buttonText: "Choose",
+        rows,
+      }),
+  });
+  if (consumed) return;
+
+  // A multi-business owner saying only hello: ask which business first.
+  if (multiBusiness && !interactiveId && body && body.length <= 24 && !CODE_PATTERN.test(body)) {
+    const { isGreeting } = await import("@/lib/ai-run.server");
+    if (isGreeting(body)) {
+      const { data: sessionRows } = await supabase
+        .from("onboarding_sessions")
+        .select(SESSION_COLUMNS)
+        .eq("phone", normalizePhone(args.waId))
+        .not("status", "in", '("completed","expired")');
+      const choices = (sessionRows ?? []) as OnboardingSession[];
+      if (choices.length > 1) {
+        const names = await orgNames(supabase, choices.map((c) => c.organization_id));
+        await sendServiceList(supabase, {
+          ...channel,
+          body: "Which business are we working on?",
+          buttonText: "Choose",
+          rows: choices.map((c) => ({
+            id: `sess:${c.id}`,
+            title: (names.get(c.organization_id) ?? "Business").slice(0, 24),
+          })),
+        });
+        return;
+      }
+    }
+  }
+
+  // They picked a business from that list: make it the active one.
+  if (interactiveId?.startsWith("sess:")) {
+    await patchSession(supabase, interactiveId.slice(5), {
+      last_inbound_at: new Date().toISOString(),
+    });
+    const { data: picked } = await supabase
+      .from("onboarding_sessions")
+      .select(SESSION_COLUMNS)
+      .eq("id", interactiveId.slice(5))
+      .maybeSingle();
+    const pickedSession = picked as OnboardingSession | null;
+    if (pickedSession) {
+      const names = await orgNames(supabase, [pickedSession.organization_id]);
+      const name = names.get(pickedSession.organization_id) ?? null;
+      await reply(`${prefixFor(true, name)}Right — ask me anything about this one.`);
+      return;
+    }
+  }
 
   const session = await findSession(supabase, args.waId, body);
 
@@ -233,6 +319,7 @@ export async function handleMerchantInbound(
   const businessName = (org as { name?: string } | null)?.name ?? "";
   const ownerName = (profile as { full_name?: string } | null)?.full_name ?? "";
   const firstName = ownerName.split(" ")[0] || "there";
+  prefix = prefixFor(multiBusiness, businessName || null);
 
   // If a previous inbound is still being crawled, don't start a second crawl
   // or ask the model questions until it finishes.
@@ -276,7 +363,11 @@ export async function handleMerchantInbound(
       },
     });
     if (notebook) {
-      await sendServiceImage(supabase, { ...channel, imageUrl: notebook, caption: readingCaption });
+      await sendServiceImage(supabase, {
+        ...channel,
+        imageUrl: notebook,
+        caption: prefix + readingCaption,
+      });
     } else {
       await reply(readingCaption);
     }
@@ -345,7 +436,8 @@ export async function handleMerchantInbound(
   // ------------------------------------------------- the "connect" button
   if (/^connect my whatsapp$/i.test(body)) {
     await reply(
-      "Open Settings → WhatsApp in your dashboard and tap Connect — takes a minute. I'll message you here the moment it's live.\n\nhttps://aidwar.in/app/settings",
+      "Open Settings → WhatsApp in your dashboard and tap Connect — takes a minute. I'll message you here the moment it's live.\n\nhttps://aidwar.in/app/settings\n\n" +
+        "Use a number that isn't on your phone's WhatsApp — a fresh SIM works. Once a number joins the WhatsApp API it leaves the normal app. Your own number stays yours; that's where you and I talk.",
     );
     return;
   }
@@ -424,9 +516,13 @@ export async function handleMerchantInbound(
   // leaves this branch unless the run succeeded on real material.
   const grounded = run.status === "ok" && run.sources.length > 0;
   if (!grounded) {
-    await patchSession(supabase, session.id, {
-      step: "await_teach",
-      pending_question: body,
+    // Their next message becomes the answer, handled by the pending-reply
+    // path above so a customer question and an owner question behave alike.
+    await recordOnboardingGap(supabase, {
+      organizationId: session.organization_id,
+      ownerPhone: args.waId,
+      question: body,
+      aiRunId: run.runId,
     });
     await reply(NO_SOURCE_REPLY);
     return;
@@ -435,9 +531,11 @@ export async function handleMerchantInbound(
   // The model sometimes copies the transcript's speaker prefix into its answer.
   const text = (run.output ?? "").trim().replace(/^\s*aiden\s*(:|—|-)\s*/i, "").trim();
   if (!text) {
-    await patchSession(supabase, session.id, {
-      step: "await_teach",
-      pending_question: body,
+    await recordOnboardingGap(supabase, {
+      organizationId: session.organization_id,
+      ownerPhone: args.waId,
+      question: body,
+      aiRunId: run.runId,
     });
     await reply(NO_SOURCE_REPLY);
     return;
@@ -619,6 +717,13 @@ export async function handleNumberConnected(
   } else {
     await sendServiceText(supabase, { ...channel, body: caption });
   }
+
+  await sendServiceText(supabase, {
+    ...channel,
+    body:
+      "If a customer asks something that isn't on your site — a price, a date, stock — I won't make it up. " +
+      "I'll message you here; reply once and I'll answer them and remember it for good.",
+  });
 
   await patchSession(supabase, session.id, {
     status: "completed",

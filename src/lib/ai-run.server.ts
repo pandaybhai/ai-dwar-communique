@@ -1039,8 +1039,12 @@ export async function executeRun(
         ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
         : "Cite the number of the item you used.";
     systemParts.push(
-      `Use only the following material to answer. ${citation} If it does not answer the question, say you don't know.\n\n${knowledgeBlock}`,
+      `Use only the following material to answer. ${citation} If it does not answer the question, say you don't know.\n\n` +
+        "Never state a price, date, quantity or percentage that does not appear verbatim in the material. " +
+        "If the material describes something without the number, say the number isn't on the page.\n\n" +
+        knowledgeBlock,
     );
+
   }
   const system = systemParts.filter(Boolean).join("\n\n");
 
@@ -1053,7 +1057,10 @@ export async function executeRun(
 
   const toolCalls: RunResult["toolCalls"] = [];
   const foundMedia: RunMedia[] = [];
+  /** Everything a tool actually returned this run — used by the number guard. */
+  const toolResultTexts: string[] = [];
   let anyToolFailed = false;
+
   let inputTokens = 0;
   let outputTokens = 0;
   let answer = "";
@@ -1096,10 +1103,12 @@ export async function executeRun(
           });
           sources.push({ kind: "tool", label: tc.name });
           collectProductMedia(tc.name, result, foundMedia);
+          const view = JSON.stringify(modelView(result)).slice(0, 6000);
+          toolResultTexts.push(view);
           items.push({
             type: "function_call_output",
             call_id: tc.id,
-            output: JSON.stringify(modelView(result)).slice(0, 6000),
+            output: view,
           });
         }
       }
@@ -1130,10 +1139,12 @@ export async function executeRun(
           });
           sources.push({ kind: "tool", label: tc.name });
           collectProductMedia(tc.name, result, foundMedia);
+          const view = JSON.stringify(modelView(result)).slice(0, 6000);
+          toolResultTexts.push(view);
           messages.push({
             role: "tool",
             tool_call_id: tc.id,
-            content: JSON.stringify(modelView(result)).slice(0, 6000),
+            content: view,
           });
         }
       }
@@ -1175,9 +1186,31 @@ export async function executeRun(
     costKnown: priced.source === "rate_card",
   };
 
+  // -------------------------------------------------- numeric grounding
+  // A number the material never mentions is a guess, and a guess about a
+  // price or a date is worse than no answer at all.
+  if (task === "agent_reply" && result.output) {
+    const unsupported = unsupportedNumbers(result.output, [
+      knowledgeBlock,
+      options.system ?? "",
+      input,
+      ...toolResultTexts,
+    ]);
+    if (unsupported.length > 0) {
+      console.log(
+        "[grounding] unsupported",
+        organizationId,
+        JSON.stringify(unsupported),
+        JSON.stringify(input).slice(0, 120),
+      );
+      result.status = "escalated";
+      result.escalationSignal = "unsupported_number";
+    }
+  }
+
   // ------------------------------------------------- signal-based hand-over
   // Only for conversation work. A summary or a tag never escalates.
-  if (task === "agent_reply") {
+  if (task === "agent_reply" && result.status === "ok") {
     const signal = decideEscalation({
       question: input,
       answer: result.output,
@@ -1302,6 +1335,41 @@ function normaliseQuestion(text: string): string {
     .replace(/\s+/g, " ")
     .replace(/[?!.,;:\u0964]+$/g, "")
     .trim();
+}
+
+// ------------------------------------------------------- numeric grounding
+
+/** Every number-looking run of characters, with currency and percent signs. */
+const NUMBER_PATTERN = /(?:₹|Rs\.?\s?)?\d[\d,]*(?:\.\d+)?\s?%?/g;
+
+/** ₹, Rs, commas and spaces carry no meaning for a comparison. */
+function stripNumericNoise(text: string): string {
+  return text.replace(/₹|Rs\.?/gi, "").replace(/[,\s]/g, "");
+}
+
+/**
+ * The numbers in an answer that nothing behind the answer actually says.
+ *
+ * Small bare counts ("2 sizes") are ignored: they are ordinary language, not
+ * a claim about price, date or quantity. Anything with a currency mark, a
+ * decimal, a percent sign or three digits or more must be there in writing.
+ */
+export function unsupportedNumbers(answer: string, support: string[]): string[] {
+  const haystack = stripNumericNoise(support.join("\n"));
+  const found = answer.match(NUMBER_PATTERN) ?? [];
+  const out: string[] = [];
+  for (const raw of found) {
+    const token = raw.trim();
+    const value = stripNumericNoise(token);
+    if (!value) continue;
+    const bare = value.replace(/%$/, "");
+    const trivial =
+      !/[₹%]|Rs/i.test(token) && !bare.includes(".") && bare.replace(/\D/g, "").length <= 2;
+    if (trivial) continue;
+    if (haystack.includes(value)) continue;
+    if (!out.includes(token)) out.push(token);
+  }
+  return out;
 }
 
 /** Observable signals only — never the model's own opinion of its certainty. */

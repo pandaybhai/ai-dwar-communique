@@ -112,11 +112,21 @@ export async function runAgentOnInbound(
   if (!shouldSend) {
     // The customer must never be left in silence. Say a person is coming,
     // then put the thread in front of one.
-    const { defaultAgentId, handoverMessage } = await import("@/lib/ai-tasks.server");
+    const { defaultAgentId, handoverMessage, DEFAULT_HANDOVER_MESSAGE } = await import(
+      "@/lib/ai-tasks.server"
+    );
     const { isServiceWindowOpen } = await import("@/lib/service-window");
     const agentId = (agentRow as { id?: string } | null)?.id
       ?? (await defaultAgentId(supabase, args.organizationId));
-    const text = await handoverMessage(supabase, agentId);
+    const configured = await handoverMessage(supabase, agentId);
+    // A missing number or a missing source is a "let me check", not a
+    // "let me help": the owner is about to be asked for the real answer.
+    const needsOwner =
+      run.escalationSignal === "unsupported_number" || run.escalationSignal === "no_source";
+    const text =
+      needsOwner && configured === DEFAULT_HANDOVER_MESSAGE
+        ? "Let me get someone from the team to confirm that — they'll reply here shortly."
+        : configured;
 
     const { data: convo } = await supabase
       .from("conversations")
@@ -167,6 +177,25 @@ export async function runAgentOnInbound(
       })
       .eq("id", args.conversationId)
       .eq("organization_id", args.organizationId);
+
+    // Ask the owner on the AiDwar number. Their reply answers this customer
+    // and is remembered, so the same question is never handed over twice.
+    if (needsOwner) {
+      const { pingOwnerForAnswer } = await import("@/lib/owner-replies.server");
+      const ping = await pingOwnerForAnswer(supabase, {
+        organizationId: args.organizationId,
+        conversationId: args.conversationId,
+        contactId: args.contactId,
+        question,
+        aiRunId: run.runId,
+      });
+      log("owner_pinged", {
+        conversation_id: args.conversationId,
+        recorded: ping.recorded,
+        sent: ping.sent,
+      });
+    }
+
     return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
   }
 
