@@ -22,6 +22,7 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
 import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
 import { AiRunsDialog } from "@/components/admin/ai-runs-dialog";
+import { InvoicesTab } from "@/components/admin/invoices-tab";
 import { callApi } from "@/lib/whatsapp-client";
 import { downloadCsv } from "@/lib/csv";
 import { fineMoney, money } from "@/lib/billing";
@@ -580,8 +581,13 @@ function AdminBilling() {
       >
         <TabsList>
           <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="reconcile">Reconcile</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="invoices" className="mt-4">
+          <InvoicesTab />
+        </TabsContent>
 
         <TabsContent value="workspaces" className="mt-4">
           {!sorted ? (
