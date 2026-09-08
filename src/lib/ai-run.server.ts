@@ -1103,10 +1103,12 @@ export async function executeRun(
           });
           sources.push({ kind: "tool", label: tc.name });
           collectProductMedia(tc.name, result, foundMedia);
+          const view = JSON.stringify(modelView(result)).slice(0, 6000);
+          toolResultTexts.push(view);
           items.push({
             type: "function_call_output",
             call_id: tc.id,
-            output: JSON.stringify(modelView(result)).slice(0, 6000),
+            output: view,
           });
         }
       }
@@ -1137,10 +1139,12 @@ export async function executeRun(
           });
           sources.push({ kind: "tool", label: tc.name });
           collectProductMedia(tc.name, result, foundMedia);
+          const view = JSON.stringify(modelView(result)).slice(0, 6000);
+          toolResultTexts.push(view);
           messages.push({
             role: "tool",
             tool_call_id: tc.id,
-            content: JSON.stringify(modelView(result)).slice(0, 6000),
+            content: view,
           });
         }
       }
