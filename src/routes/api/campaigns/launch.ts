@@ -60,10 +60,19 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         const headerMedia = httpsOrNull(rawSettings["header_media_url"]);
         if (headerMedia) sendSettings["header_media_url"] = headerMedia;
         const cardsRaw = Array.isArray(rawSettings["cards"]) ? rawSettings["cards"] : [];
-        const cards = cardsRaw.map((c) =>
-          httpsOrNull((c as Record<string, unknown> | null)?.["media_url"]),
-        );
-        if (cards.some(Boolean)) sendSettings["cards"] = cards.map((media_url) => ({ media_url }));
+        // Each carousel card keeps its own copy-code coupon; dropping it here
+        // was why launched carousels went out with empty coupon buttons.
+        const cards = cardsRaw.map((c) => {
+          const card = (c as Record<string, unknown> | null) ?? {};
+          const media_url = httpsOrNull(card["media_url"]);
+          const coupon_code =
+            typeof card["coupon_code"] === "string"
+              ? (card["coupon_code"] as string).trim().slice(0, 15)
+              : "";
+          return { media_url, ...(coupon_code ? { coupon_code } : {}) };
+        });
+        if (cards.some((c) => c.media_url || c.coupon_code)) sendSettings["cards"] = cards;
+
 
         // Offer details: the coupon a copy-code button copies, and when a
         // limited-time offer's countdown runs out.
