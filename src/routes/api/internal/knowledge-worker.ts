@@ -33,8 +33,10 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
           const { data } = await supabase
             .from("knowledge_sources")
             .select("id, organization_id")
-            .eq("status", "queued")
-            .order("queued_at", { ascending: true, nullsFirst: true })
+            .eq("status", "pending")
+            .not("queued_at", "is", null)
+            .is("sync_started_at", null)
+            .order("queued_at", { ascending: true })
             .limit(3);
 
           const claimed: string[] = [];
@@ -43,7 +45,9 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
               .from("knowledge_sources")
               .update({ status: "syncing", sync_started_at: new Date().toISOString() })
               .eq("id", row.id)
-              .eq("status", "queued")
+                .eq("status", "pending")
+                .not("queued_at", "is", null)
+                .is("sync_started_at", null)
               .select("id")
               .maybeSingle();
             if (won) claimed.push(row.id);

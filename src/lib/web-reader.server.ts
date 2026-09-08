@@ -20,6 +20,17 @@ export type PageRead = {
   usedReader: boolean;
 };
 
+class ReaderRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReaderRequestError";
+  }
+}
+
+function bodyPreview(body: string): string {
+  return body.replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
 export function stripHtml(html: string): { title: string; text: string; links: string[] } {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const links = Array.from(html.matchAll(/href=["']([^"'#]+)["']/gi)).map((m) => m[1] ?? "");
@@ -96,23 +107,37 @@ export async function readPage(
 
   if (options.allowReader !== false && (!readableDirect || looksEmpty(html, text))) {
     options.onStage?.("reader");
-    const readerRequest = (withKey: boolean) => fetchWithTimeout(`${READER_ENDPOINT}${url}`, 15000, {
-      headers: {
+    const readerUrl = `${READER_ENDPOINT}${url}`;
+    const cleanKey = options.key?.trim() || null;
+    const readerRequest = async (withKey: boolean) => {
+      const headers: Record<string, string> = {
         Accept: "text/plain",
         "X-Return-Format": "text",
-        ...(withKey && options.key ? { Authorization: `Bearer ${options.key}` } : {}),
-      },
-    });
-    let reader = await readerRequest(true);
-    if ((!reader || !reader.ok) && options.key) reader = await readerRequest(false);
-    if (reader?.ok) {
-      const rendered = (await reader.text().catch(() => "")).replace(/\s+/g, " ").trim();
+      };
+      if (withKey && cleanKey) headers.Authorization = `Bearer ${cleanKey}`;
+      const safeHeaders = { ...headers, ...(headers.Authorization ? { Authorization: "Bearer [masked]" } : {}) };
+      const response = await fetchWithTimeout(readerUrl, 15000, { headers });
+      if (!response) {
+        console.error("[web-reader]", JSON.stringify({ url: readerUrl, headers: safeHeaders, status: 0, body: "request failed or timed out" }));
+        return { response: null, body: "", detail: `reader request failed or timed out; url=${readerUrl}; headers=${JSON.stringify(safeHeaders)}` };
+      }
+      const body = await response.text().catch((error) => `body read failed: ${error instanceof Error ? error.message : String(error)}`);
+      const preview = bodyPreview(body);
+      console.info("[web-reader]", JSON.stringify({ url: readerUrl, headers: safeHeaders, status: response.status, body: preview }));
+      return { response, body, detail: `reader HTTP ${response.status}; url=${readerUrl}; headers=${JSON.stringify(safeHeaders)}; body=${preview}` };
+    };
+
+    let attempt = await readerRequest(Boolean(cleanKey));
+    if ((!attempt.response || !attempt.response.ok) && cleanKey) attempt = await readerRequest(false);
+    if (attempt.response?.ok) {
+      const rendered = attempt.body.replace(/\s+/g, " ").trim();
       if (rendered.length > text.length) {
         return { title, text: rendered, html, links, usedReader: true };
       }
     }
-    if (readableDirect) return { title, text, html, links, usedReader: true };
-    return null;
+    // A reader outage must never discard text our own fetch already found.
+    if (readableDirect && text.length > 0) return { title, text, html, links, usedReader: false };
+    throw new ReaderRequestError(attempt.detail);
   }
 
   if (!readableDirect) return null;
