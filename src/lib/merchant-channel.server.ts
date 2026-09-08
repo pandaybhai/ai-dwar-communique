@@ -526,30 +526,61 @@ export async function handleMerchantInbound(
   // ------------------------------------------------------------ answering
   if (currentStatus !== "ready" && currentStatus !== "tested") return;
 
+  const { isSkipWord, isTeachableAnswer, teachWindowExpired } = await import("@/lib/teach-guard");
+  const teachable = isTeachableAnswer(body, {
+    interactive: Boolean(interactiveId),
+    suggestions: session.suggested_questions ?? [],
+  });
+
   // We asked them to teach us the answer to their last question: this reply is
-  // that answer, kept word for word rather than sent to the model.
+  // that answer, kept word for word rather than sent to the model. A tap, a
+  // fresh question or a bare "ok" is not an answer, and after fifteen minutes
+  // the ask lapses.
   if (session.step === "await_teach" && session.pending_question) {
-    const { saveCorrection } = await import("@/lib/knowledge.server");
-    const saved = await saveCorrection(supabase, session.organization_id, {
-      question: session.pending_question,
-      answer: body,
-      userId: session.user_id,
-    });
-    await patchSession(supabase, session.id, {
-      step: "answering",
-      pending_question: null,
-    });
-    await reply(
-      saved.ok
-        ? "Got it — I'll give your customers that answer from now on. Ask me something else whenever you like."
-        : "I couldn't save that just now. Send it again in a moment and I'll keep it.",
-    );
-    return;
+    const lapsed = teachWindowExpired(session.pending_asked_at);
+    if (lapsed) {
+      await patchSession(supabase, session.id, {
+        step: "answering",
+        pending_question: null,
+        pending_asked_at: null,
+      });
+    } else if (isSkipWord(body) && !interactiveId) {
+      await patchSession(supabase, session.id, {
+        step: "answering",
+        pending_question: null,
+        pending_asked_at: null,
+      });
+      await reply("Skipped.");
+      return;
+    } else if (teachable) {
+      const { saveCorrection } = await import("@/lib/knowledge.server");
+      const saved = await saveCorrection(supabase, session.organization_id, {
+        question: session.pending_question,
+        answer: body,
+        userId: session.user_id,
+      });
+      await patchSession(supabase, session.id, {
+        step: "answering",
+        pending_question: null,
+        pending_asked_at: null,
+      });
+      await reply(
+        saved.ok
+          ? "Got it — I'll give your customers that answer from now on. Ask me something else whenever you like."
+          : "I couldn't save that just now. Send it again in a moment and I'll keep it.",
+      );
+      return;
+    } else {
+      // Keep the ask open and treat this message as a new question.
+      await reply(
+        `Still waiting on your answer for "${session.pending_question.slice(0, 200)}" — reply whenever.`,
+      );
+    }
   }
 
   // An owner who volunteers a fact is teaching, not asking. Save it as a real
   // answer first — a warm "got it" with nothing written down is a lie.
-  {
+  if (teachable) {
     const { classifyBusinessFact } = await import("@/lib/ai-tasks.server");
     const verdict = await classifyBusinessFact(
       supabase,
@@ -575,6 +606,7 @@ export async function handleMerchantInbound(
       return;
     }
   }
+
 
   const { merchantAnswer } = await import("@/lib/ai-tasks.server");
 
