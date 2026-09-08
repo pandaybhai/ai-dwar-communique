@@ -89,12 +89,29 @@ function istTime(at: Date = new Date()): string {
 
 // ------------------------------------------------------------------ session
 
+/**
+ * A website link the owner typed. People write "talentdwar.com" far more often
+ * than they write the scheme, so a bare domain counts as a link everywhere.
+ */
+export function extractSiteLink(body: string): string | null {
+  const withScheme = body.match(/https?:\/\/[^\s]+/i)?.[0];
+  if (withScheme) return withScheme;
+  for (const token of body.split(/\s+/)) {
+    const candidate = token.replace(/^[("'<]+|[)"'>.,;!]+$/g, "");
+    if (!candidate || candidate.includes("@")) continue;
+    if (/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}(?:\/\S*)?$/i.test(candidate)) {
+      return `https://${candidate}`;
+    }
+  }
+  return null;
+}
+
 /** The session this message belongs to: by code first, then by number. */
 async function findSession(
   supabase: SupabaseClient,
   waId: string,
   body: string,
-): Promise<OnboardingSession | null> {
+): Promise<{ session: OnboardingSession | null; byCode: boolean }> {
   const match = body.match(CODE_PATTERN);
   if (match) {
     const { data } = await supabase
@@ -103,7 +120,7 @@ async function findSession(
       .eq("code", match[0].toUpperCase())
       .maybeSingle();
     const byCode = data as OnboardingSession | null;
-    if (byCode && byCode.status !== "expired") return byCode;
+    if (byCode && byCode.status !== "expired") return { session: byCode, byCode: true };
   }
 
   // No code, or a code we don't know: fall back to the number they gave us
@@ -116,8 +133,9 @@ async function findSession(
     .order("last_inbound_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(1);
-  return ((rows ?? []) as OnboardingSession[])[0] ?? null;
+  return { session: ((rows ?? []) as OnboardingSession[])[0] ?? null, byCode: false };
 }
+
 
 /** Don't repeat ourselves at someone who isn't signed up. */
 async function shouldGreetStranger(
