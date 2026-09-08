@@ -313,6 +313,27 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     }
   }
 
+  const roi = invoice["roi_snapshot"] as Record<string, unknown> | null | undefined;
+  if (roi && typeof roi === "object" && kind !== "credit_note") {
+    const parts: string[] = [];
+    if (roi["messages_sent"] !== undefined) parts.push(`${Number(roi["messages_sent"])} messages sent`);
+    if (roi["ai_answers"] !== undefined) parts.push(`${Number(roi["ai_answers"])} AI answers`);
+    if (roi["escalations"] !== undefined) parts.push(`${Number(roi["escalations"])} handed to you`);
+    const revenue = roi["revenue_attributed"] ?? roi["attributed_revenue"];
+    if (revenue !== null && revenue !== undefined && Number(revenue) > 0) {
+      parts.push(`Rs ${Number(revenue).toLocaleString("en-IN", { maximumFractionDigits: 0 })} attributed revenue`);
+    }
+    if (parts.length > 0) {
+      y -= 6;
+      text(ctx, "ROI THIS MONTH", MARGIN, y, { size: 8, bold: true, color: BRAND });
+      y -= 11;
+      for (const part of wrap(parts.join("  ·  "), font, 8, A4[0] - MARGIN * 2)) {
+        text(ctx, part, MARGIN, y, { size: 8, color: MUTED });
+        y -= 10;
+      }
+    }
+  }
+
   if (invoice["notes"]) {
     y -= 4;
     for (const part of wrap(String(invoice["notes"]), font, 8, A4[0] - MARGIN * 2)) {

@@ -53,8 +53,14 @@ function AppGate() {
     );
   }
 
-  // A locked workspace has exactly one page: billing, where it reactivates.
-  if (active.organization.plan_status === "locked" && !pathname.startsWith("/app/billing")) {
+  // A locked or paused workspace keeps two pages: the inbox (read-only, so no
+  // customer is left hanging) and billing, where it reactivates.
+  const status = active.organization.plan_status;
+  if (
+    (status === "locked" || status === "paused") &&
+    !pathname.startsWith("/app/billing") &&
+    !pathname.startsWith("/app/inbox")
+  ) {
     return <Navigate to="/app/billing" replace />;
   }
 

@@ -24,6 +24,7 @@ type InvoiceRow = {
   amount_paid: number;
   currency: string;
   pdf_path: string | null;
+  pay_url: string | null;
   roi_snapshot: { attributed_revenue?: number; total_cost?: number } | null;
 };
 
@@ -290,7 +291,16 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
                         <td className="py-3 text-right font-medium">
                           {money(Number(invoice.total), invoice.currency)}
                         </td>
-                        <td className="py-3 text-right">
+                        <td className="py-3 text-right whitespace-nowrap">
+                          {(invoice.status === "issued" || invoice.status === "partially_paid") &&
+                          invoice.pay_url &&
+                          can("billing.pay") ? (
+                            <Button asChild size="sm" className="mr-1 rounded-full">
+                              <a href={invoice.pay_url} target="_blank" rel="noopener noreferrer">
+                                Pay now
+                              </a>
+                            </Button>
+                          ) : null}
                           <Button
                             variant="ghost"
                             size="sm"

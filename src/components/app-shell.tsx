@@ -34,9 +34,13 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { isFeatureEnabled, flagsLoading, active } = useOrg();
   const { can, loading: permsLoading } = usePermissions();
-  const locked = active?.organization.plan_status === "locked";
-  const items = locked
-    ? [{ to: "/app/billing", label: "Billing", icon: FEATURE_ICONS["credit-card"] ?? Building2, flag: null, perm: null }]
+  const status = active?.organization.plan_status;
+  const restricted = status === "locked" || status === "paused";
+  const items = restricted
+    ? [
+        ...NAV.filter((item) => item.to === "/app/inbox" && (!item.perm || permsLoading || can(item.perm))),
+        { to: "/app/billing", label: "Billing", icon: FEATURE_ICONS["credit-card"] ?? Building2, flag: null, perm: null },
+      ]
     : NAV.filter(
         (item) =>
           (!item.flag || flagsLoading || isFeatureEnabled(item.flag)) &&
@@ -187,13 +191,15 @@ function PlanBanner() {
   const org = active?.organization;
   if (!org || pathname.startsWith("/app/billing")) return null;
 
-  if (org.plan_status === "locked") {
+  if (org.plan_status === "locked" || org.plan_status === "paused") {
     return (
       <div className="border-b border-destructive/20 bg-destructive/5 px-4 py-2.5 text-sm text-foreground sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span>
-            <span className="font-semibold">This workspace is paused.</span> Reactivate to switch
-            everything back on.
+            <span className="font-semibold">This workspace is paused.</span>{" "}
+            {org.plan_status === "paused"
+              ? "Pay the open invoice to switch everything back on."
+              : "Reactivate to switch everything back on."}
           </span>
           <Button asChild size="sm" className="rounded-full">
             <Link to="/app/billing">Reactivate</Link>

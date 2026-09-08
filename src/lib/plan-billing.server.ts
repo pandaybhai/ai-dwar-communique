@@ -201,7 +201,9 @@ export async function invoicePlanFee(
   });
   if ("error" in built) return { error: built.error };
 
-  const issued = await issueInvoice(supabase, built.invoice_id);
+  // Number and file it first, then attach the payment link, then send the
+  // PDF once — with the link inside the message.
+  const issued = await issueInvoice(supabase, built.invoice_id, { deliver: false });
   if ("error" in issued) return { error: issued.error };
 
   const gross = withGst(Number(base)).total;
@@ -215,17 +217,20 @@ export async function invoicePlanFee(
     billingAccountId: (org["billing_account_id"] as string | null) ?? null,
   });
 
-  const { notify } = await import("@/lib/billing.server");
-  await notify(supabase, {
-    organizationId,
-    audience: "client",
-    kind: "invoice_issued",
-    payload: {
-      invoice_number: issued.invoice_number,
-      amount: round2(gross),
-      link: payUrl ?? "https://aidwar.in/app/billing",
-    },
-  });
+  if (payUrl) {
+    const { data: current } = await supabase
+      .from("invoices")
+      .select("sent")
+      .eq("id", built.invoice_id)
+      .maybeSingle();
+    await supabase
+      .from("invoices")
+      .update({ sent: { ...((current?.["sent"] ?? {}) as Record<string, unknown>), pay_url: payUrl } })
+      .eq("id", built.invoice_id);
+  }
+
+  const { deliverInvoice } = await import("@/lib/invoices.server");
+  await deliverInvoice(supabase, built.invoice_id, { fallbackToQueue: true });
 
   return { invoice_id: built.invoice_id, pay_url: payUrl };
 }
