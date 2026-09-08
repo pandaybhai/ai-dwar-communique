@@ -358,33 +358,17 @@ async function deliverToCustomer(
 }
 
 /**
- * The owner has written on the AiDwar number while something was waiting for
- * them. Returns true when this message was consumed as an answer or a choice,
- * so the onboarding state machine is left alone.
+ * The open questions for this owner, with anything older than the teaching
+ * window closed off first. Callers decide what to do with them.
  */
-export async function handleOwnerReply(
+export async function openPendingReplies(
   supabase: SupabaseClient,
-  args: {
-    ownerPhone: string;
-    body: string;
-    interactiveId: string | null;
-    reply: (text: string) => Promise<unknown>;
-    list: (
-      body: string,
-      rows: Array<{ id: string; title: string; description?: string }>,
-    ) => Promise<unknown>;
-    multiBusiness: boolean;
-    /** The three questions we offered as taps: never an answer. */
-    suggestions?: string[];
-  },
-): Promise<boolean> {
-  const { isSkipWord, isTeachableAnswer, teachWindowExpired } = await import("@/lib/teach-guard");
+  ownerPhone: string,
+): Promise<PendingReply[]> {
+  const { teachWindowExpired } = await import("@/lib/teach-guard");
+  const loaded = await loadPendingReplies(supabase, ownerPhone);
+  if (loaded.length === 0) return [];
 
-  const loaded = await loadPendingReplies(supabase, args.ownerPhone);
-  if (loaded.length === 0) return false;
-
-  // Anything asked more than fifteen minutes ago lapses: after that the owner
-  // is just talking to us again.
   const stale = loaded.filter((p) => teachWindowExpired(p.selected_at ?? p.created_at));
   if (stale.length > 0) {
     await supabase
@@ -395,51 +379,70 @@ export async function handleOwnerReply(
         stale.map((p) => p.id),
       );
   }
-  const pending = loaded.filter((p) => !stale.includes(p));
+  return loaded.filter((p) => !stale.includes(p));
+}
+
+type ReplyFns = {
+  reply: (text: string) => Promise<unknown>;
+  list: (
+    body: string,
+    rows: Array<{ id: string; title: string; description?: string }>,
+  ) => Promise<unknown>;
+};
+
+/**
+ * The owner tapped one of the waiting questions. Their next plain message is
+ * the answer to that one. Returns true when the tap was one of ours.
+ */
+export async function handleOwnerPick(
+  supabase: SupabaseClient,
+  args: { ownerPhone: string; interactiveId: string } & ReplyFns,
+): Promise<boolean> {
+  const pending = await openPendingReplies(supabase, args.ownerPhone);
+  const chosen = pending.find((p) => p.id === args.interactiveId);
+  if (!chosen) return false;
+
+  await supabase
+    .from("pending_owner_replies")
+    .update({ selected_at: new Date().toISOString() })
+    .eq("id", chosen.id);
+  await args.reply(`Reply here with the answer to: "${chosen.question.slice(0, 300)}"`);
+  return true;
+}
+
+/**
+ * A plain message from the owner while something is waiting on them. It only
+ * counts as an answer when exactly one question is open (or they picked one),
+ * and only when it reads like an answer rather than a tap or a new question.
+ */
+export async function handleOwnerAnswer(
+  supabase: SupabaseClient,
+  args: {
+    ownerPhone: string;
+    body: string;
+    /** The three questions we offered as taps: never an answer. */
+    suggestions?: string[];
+  } & ReplyFns,
+): Promise<boolean> {
+  const { isSkipWord, isTeachableAnswer } = await import("@/lib/teach-guard");
+
+  const pending = await openPendingReplies(supabase, args.ownerPhone);
   if (pending.length === 0) return false;
-
-  const names = await orgNames(
-    supabase,
-    pending.map((p) => p.organization_id),
-  );
-
-  // Picking a question from the list: the next plain message answers it.
-  if (args.interactiveId) {
-    const chosen = pending.find((p) => p.id === args.interactiveId);
-    if (chosen) {
-      await supabase
-        .from("pending_owner_replies")
-        .update({ selected_at: new Date().toISOString() })
-        .eq("id", chosen.id);
-      const name = names.get(chosen.organization_id) ?? "your business";
-      await args.reply(
-        `${prefixFor(args.multiBusiness, name)}Reply here with the answer to: "${chosen.question.slice(0, 300)}"`,
-      );
-      return true;
-    }
-  }
 
   const answer = args.body.trim();
   if (!answer) return false;
 
   // "skip" calls the question off rather than answering it.
-  if (isSkipWord(answer) && !args.interactiveId) {
+  if (isSkipWord(answer)) {
     const target = pending.find((p) => p.selected_at) ?? pending[0]!;
     await supabase.from("pending_owner_replies").update({ status: "expired" }).eq("id", target.id);
-    await args.reply(
-      `${prefixFor(args.multiBusiness, names.get(target.organization_id) ?? null)}Skipped.`,
-    );
+    await args.reply("Skipped.");
     return true;
   }
 
-  // A tap, another question, or a bare "ok" is not an answer. Leave the row
-  // open, mention it once, and let the message be handled as ordinary chat.
-  if (
-    !isTeachableAnswer(answer, {
-      interactive: Boolean(args.interactiveId),
-      suggestions: args.suggestions ?? [],
-    })
-  ) {
+  // Another question, or a bare "ok", is not an answer. Leave the row open,
+  // mention it once, and let the message be handled as ordinary chat.
+  if (!isTeachableAnswer(answer, { suggestions: args.suggestions ?? [] })) {
     const target = pending.find((p) => p.selected_at) ?? pending[0]!;
     if (!target.reminded_at) {
       await supabase
@@ -447,22 +450,23 @@ export async function handleOwnerReply(
         .update({ reminded_at: new Date().toISOString() })
         .eq("id", target.id);
       await args.reply(
-        `${prefixFor(args.multiBusiness, names.get(target.organization_id) ?? null)}` +
-          `Still waiting on your answer for "${target.question.slice(0, 200)}" — reply whenever.`,
+        `Still waiting on your answer for "${target.question.slice(0, 200)}" — reply whenever.`,
       );
     }
     return false;
   }
 
+  const target =
+    pending.length === 1 ? pending[0]! : (pending.find((p) => p.selected_at) ?? null);
 
-
-  let target: PendingReply | null = null;
-  if (pending.length === 1) target = pending[0]!;
-  else target = pending.find((p) => p.selected_at) ?? null;
-
+  // More than one open and nothing picked: never guess which one this answers.
   if (!target) {
+    const names = await orgNames(
+      supabase,
+      pending.map((p) => p.organization_id),
+    );
     await args.list(
-      "You have a few questions waiting. Which one are you answering?",
+      "Which one is this for?",
       pending.map((p) => ({
         id: p.id,
         title: (names.get(p.organization_id) ?? "Question").slice(0, 24),
@@ -486,10 +490,7 @@ export async function handleOwnerReply(
     .update({ status: "answered", answer, answered_at: new Date().toISOString() })
     .eq("id", target.id);
 
-  const name = names.get(target.organization_id) ?? null;
-  await args.reply(
-    `${prefixFor(args.multiBusiness, name)}` +
-      (delivered ? "Sent. I'll remember that for next time." : "Saved — I'll remember that."),
-  );
+  await args.reply(delivered ? "Sent. I'll remember that for next time." : "Saved — I'll remember that.");
   return true;
 }
+

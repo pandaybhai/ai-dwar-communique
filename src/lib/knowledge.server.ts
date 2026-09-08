@@ -787,6 +787,67 @@ export async function saveCorrection(
   return { ok: true };
 }
 
+/**
+ * A fact the owner volunteered, filed under its own topic. No question is
+ * invented for it: "Catering: parties of 20+" is what it is about, and that is
+ * what the title says.
+ */
+export async function saveFact(
+  supabase: SupabaseClient,
+  organizationId: string,
+  input: { topic: string; text: string; userId: string | null },
+): Promise<{ ok: boolean; error?: string }> {
+  let { data: source } = await supabase
+    .from("knowledge_sources")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("type", "manual_qa")
+    .limit(1)
+    .maybeSingle();
+
+  if (!source) {
+    const { data: created, error } = await supabase
+      .from("knowledge_sources")
+      .insert({
+        organization_id: organizationId,
+        type: "manual_qa",
+        name: "Answers you wrote",
+        status: "ready",
+        refresh_days: 0,
+        created_by: input.userId,
+      })
+      .select("id")
+      .maybeSingle();
+    if (error) return { ok: false, error: "We couldn't save that." };
+    source = created as { id: string };
+  }
+
+  const sourceId = (source as { id: string }).id;
+  const topic = input.topic.trim().slice(0, 120) || "About the business";
+  await upsertDocument(supabase, organizationId, sourceId, {
+    sourceRef: `fact-${await hashText(input.text)}`,
+    title: topic,
+    content: `${topic}\n${input.text}`,
+    metadata: {
+      kind: "owner_fact",
+      corrected_by: input.userId,
+      corrected_at: new Date().toISOString(),
+    },
+  });
+
+  const { count } = await supabase
+    .from("knowledge_documents")
+    .select("id", { count: "exact", head: true })
+    .eq("source_id", sourceId);
+  await supabase
+    .from("knowledge_sources")
+    .update({ item_count: count ?? 0, last_synced_at: new Date().toISOString(), status: "ready" })
+    .eq("id", sourceId);
+
+  return { ok: true };
+}
+
+
 async function hashText(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -820,7 +881,15 @@ export async function ingestUpload(
     /** "onboarding" when the platform pays for the read (merchant channel). */
     channel?: "onboarding" | null;
   } = {},
-): Promise<{ ok: boolean; itemCount: number; error?: string }> {
+): Promise<{
+  ok: boolean;
+  itemCount: number;
+  /** Lines that actually say something: a price or a fact. */
+  factCount: number;
+  /** Fingerprint of the text we read, so the same file twice is noticed. */
+  contentHash: string | null;
+  error?: string;
+}> {
   try {
     const docs =
       kind === "pdf"
@@ -852,16 +921,40 @@ export async function ingestUpload(
         last_error: null,
       })
       .eq("id", sourceId);
-    return { ok: true, itemCount: docs.length };
+    const text = docs.map((d) => d.content).join("\n");
+    return {
+      ok: true,
+      itemCount: docs.length,
+      factCount: countExtractedItems(text),
+      contentHash: text.trim() ? await hashText(text) : null,
+    };
+
   } catch (error) {
     const message = error instanceof Error ? error.message : "We couldn't read that file.";
     await supabase
       .from("knowledge_sources")
       .update({ status: "error", last_error: message.slice(0, 300) })
       .eq("id", sourceId);
-    return { ok: false, itemCount: 0, error: message };
+    return { ok: false, itemCount: 0, factCount: 0, contentHash: null, error: message };
   }
 }
+
+/**
+ * How much a file actually told us: lines carrying a price or a statement,
+ * not the number of pages they were spread over.
+ */
+export function countExtractedItems(text: string): number {
+  let items = 0;
+  for (const raw of (text ?? "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.length < 3) continue;
+    const hasPrice = /(₹|rs\.?\s*\d|\$\s*\d|\d+\s*(?:rs|inr|rupees))/i.test(line);
+    const hasFact = /[:\-–—]\s*\S/.test(line) && line.split(/\s+/).length >= 3;
+    if (hasPrice || hasFact) items += 1;
+  }
+  return items;
+}
+
 
 /** The one source every file an owner sends on the merchant channel lands in. */
 export async function ensureUploadSource(

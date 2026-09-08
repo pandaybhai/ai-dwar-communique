@@ -521,7 +521,7 @@ export async function classifyBusinessFact(
   supabase: SupabaseClient,
   common: Common,
   args: { conversationId: string; message: string; businessName?: string | null },
-): Promise<{ isFact: boolean; question: string }> {
+): Promise<{ isFact: boolean; topic: string }> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
   const run = await executeRun(supabase, {
     organizationId: common.organizationId,
@@ -540,20 +540,20 @@ export async function classifyBusinessFact(
       `The owner of ${args.businessName || "a business"} sent the message below on their own chat.`,
       "Decide whether it states a fact about their business that a customer might one day ask about — a price, a delivery time, an opening hour, a policy, what they sell.",
       "A question, a greeting, a thank-you, an instruction or small talk is NOT a fact.",
-      'Answer with JSON only: {"is_fact_about_business": true|false, "question_it_answers": "the customer question this fact answers, in plain words"}',
-      'If it is not a fact, answer {"is_fact_about_business": false, "question_it_answers": ""}.',
+      "A website address, a link, a phone number or a code on its own is NOT a fact.",
+      'Answer with JSON only: {"is_fact_about_business": true|false, "topic": "what this fact is about, 2-6 words, e.g. Catering: parties of 20+"}',
+      "Never invent a question. The topic is the subject of the fact itself.",
+      'If it is not a fact, answer {"is_fact_about_business": false, "topic": ""}.',
     ].join("\n"),
   });
 
   try {
     const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    const parsed = JSON.parse(raw) as {
-      is_fact_about_business?: boolean;
-      question_it_answers?: string;
-    };
-    const question = String(parsed.question_it_answers ?? "").trim();
-    return { isFact: parsed.is_fact_about_business === true && question.length > 0, question };
+    const parsed = JSON.parse(raw) as { is_fact_about_business?: boolean; topic?: string };
+    const topic = String(parsed.topic ?? "").trim();
+    return { isFact: parsed.is_fact_about_business === true && topic.length > 0, topic };
   } catch {
-    return { isFact: false, question: "" };
+    return { isFact: false, topic: "" };
   }
 }
+
