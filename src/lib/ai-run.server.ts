@@ -1275,8 +1275,10 @@ export async function executeRun(
 
   // -------------------------------------------------- numeric grounding
   // A number the material never mentions is a guess, and a guess about a
-  // price or a date is worse than no answer at all.
-  if (task === "agent_reply" && result.output) {
+  // price or a date is worse than no answer at all. Reading a picture is
+  // the exception: the picture *is* the material, so its numbers are sourced.
+  const isVisionRead = Boolean(options.imageDataUrl);
+  if (task === "agent_reply" && result.output && !isVisionRead) {
     const unsupported = unsupportedNumbers(result.output, [
       knowledgeBlock,
       options.system ?? "",
@@ -1298,6 +1300,7 @@ export async function executeRun(
   // A question about a figure that comes back without a single digit is a
   // polite way of saying "I don't know". Treat it as no source at all.
   if (
+    !isVisionRead &&
     task === "agent_reply" &&
     result.status === "ok" &&
     result.output &&
@@ -1317,7 +1320,7 @@ export async function executeRun(
 
   // ------------------------------------------------- signal-based hand-over
   // Only for conversation work. A summary or a tag never escalates.
-  if (task === "agent_reply" && result.status === "ok") {
+  if (task === "agent_reply" && result.status === "ok" && !isVisionRead) {
     const signal = decideEscalation({
       question: input,
       answer: result.output,
