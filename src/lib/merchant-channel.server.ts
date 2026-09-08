@@ -236,6 +236,17 @@ export async function handleMerchantInbound(
   const ownerOrgs = await ownerOrganizationIds(supabase, args.waId);
   const multiBusiness = ownerOrgs.length > 1;
 
+  // The questions we offered as taps: a tap on one of them is a question,
+  // never the answer to an earlier one.
+  const { data: suggestRows } = await supabase
+    .from("onboarding_sessions")
+    .select("suggested_questions")
+    .eq("phone", normalizePhone(args.waId))
+    .not("status", "in", '("completed","expired")');
+  const suggestions = ((suggestRows ?? []) as Array<{ suggested_questions: string[] | null }>)
+    .flatMap((r) => r.suggested_questions ?? [])
+    .filter((q): q is string => typeof q === "string");
+
   // Something waiting on the owner comes first, whatever state onboarding is
   // in: their answer is worth more than the next step of a script.
   const consumed = await handleOwnerReply(supabase, {
@@ -243,6 +254,8 @@ export async function handleMerchantInbound(
     body,
     interactiveId,
     multiBusiness,
+    suggestions,
+
     reply: (text) => reply(text),
     list: (text, rows) =>
       sendServiceList(supabase, {
