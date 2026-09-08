@@ -57,6 +57,20 @@ export function InboxView() {
 
 
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // /app/inbox?c=<conversation id> opens that thread once it has loaded
+  // (Home's "Reply" links land here).
+  const wantedIdRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (wantedIdRef.current === undefined) {
+      wantedIdRef.current = new URLSearchParams(window.location.search).get("c");
+    }
+    const wanted = wantedIdRef.current;
+    if (wanted && conversations.some((c) => c.id === wanted)) {
+      setActiveId(wanted);
+      wantedIdRef.current = null;
+    }
+  }, [conversations]);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [threadLoading, setThreadLoading] = useState(false);
   const [sending, setSending] = useState(false);
