@@ -512,3 +512,48 @@ export async function merchantFirstBrief(
 }
 
 
+/**
+ * Owners teach without being asked: "Starter is ₹2,499 a month." That is a
+ * fact about the business, not a question, and it must become a saved answer
+ * rather than a friendly "got it" the model forgets a minute later.
+ */
+export async function classifyBusinessFact(
+  supabase: SupabaseClient,
+  common: Common,
+  args: { conversationId: string; message: string; businessName?: string | null },
+): Promise<{ isFact: boolean; question: string }> {
+  const agentId = await defaultAgentId(supabase, common.organizationId);
+  const run = await executeRun(supabase, {
+    organizationId: common.organizationId,
+    task: "summarise",
+    agentId,
+    conversationId: args.conversationId,
+    actorUserId: common.actorUserId,
+    actingRole: common.actingRole ?? null,
+    input: args.message,
+    tier: "everyday",
+    useKnowledge: false,
+    useTools: false,
+    billingExempt: true,
+    channel: "onboarding",
+    system: [
+      `The owner of ${args.businessName || "a business"} sent the message below on their own chat.`,
+      "Decide whether it states a fact about their business that a customer might one day ask about — a price, a delivery time, an opening hour, a policy, what they sell.",
+      "A question, a greeting, a thank-you, an instruction or small talk is NOT a fact.",
+      'Answer with JSON only: {"is_fact_about_business": true|false, "question_it_answers": "the customer question this fact answers, in plain words"}',
+      'If it is not a fact, answer {"is_fact_about_business": false, "question_it_answers": ""}.',
+    ].join("\n"),
+  });
+
+  try {
+    const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(raw) as {
+      is_fact_about_business?: boolean;
+      question_it_answers?: string;
+    };
+    const question = String(parsed.question_it_answers ?? "").trim();
+    return { isFact: parsed.is_fact_about_business === true && question.length > 0, question };
+  } catch {
+    return { isFact: false, question: "" };
+  }
+}
