@@ -597,6 +597,21 @@ export async function settlePayment(
 
   if (!claimed || claimed.length === 0) return { credited: false };
 
+  // A self-serve plan purchase: assign the plan, grant nothing to the wallet.
+  if (
+    payment.purpose === "plan_fee" &&
+    payment.organization_id &&
+    priorRaw["kind"] === "plan_purchase"
+  ) {
+    const { activatePlanFromPayment } = await import("@/lib/plan-purchase.server");
+    await activatePlanFromPayment(supabase, {
+      id: payment.id as string,
+      organization_id: payment.organization_id as string,
+      raw: priorRaw,
+    });
+    return { credited: false };
+  }
+
   if (payment.purpose !== "credit_purchase" || !payment.organization_id) return { credited: false };
 
   const stored = (payment.raw ?? {}) as Record<string, unknown>;
