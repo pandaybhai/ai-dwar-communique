@@ -1001,6 +1001,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "autopay_cancelled",
       "autopay_plan_changed",
       "dunning_advanced",
+      "dunning_cleared",
+      "credit_note_issued",
       "billing_templates_created",
       "trial_expired",
       "plan_purchase_started",
@@ -1031,6 +1033,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "meta_prepaid_ledger",
       "bsp_accounts",
       "billing_notifications",
+      "credit_notes",
     ],
   },
   {
