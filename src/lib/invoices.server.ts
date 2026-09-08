@@ -287,6 +287,7 @@ export function checkInvoiceIssuable(
 export async function issueInvoice(
   supabase: SupabaseClient,
   invoiceId: string,
+  options: { deliver?: boolean } = {},
 ): Promise<{ invoice_number: string; pdf_path: string | null } | { error: string }> {
   const { data: invoice } = await supabase
     .from("invoices")
@@ -384,7 +385,7 @@ export async function issueInvoice(
   );
   const pdfPath = stored.path;
 
-  if (invoice["kind"] !== "proforma") {
+  if (invoice["kind"] !== "proforma" && options.deliver !== false) {
     await deliverInvoice(supabase, invoiceId, { fallbackToQueue: true });
   }
 
@@ -527,7 +528,14 @@ export async function deliverInvoice(
       {
         contactId: null,
         phone: to,
-        variables: { "1": orgName, "2": money(total), "3": "https://aidwar.in/app/billing" },
+        variables: {
+          "1": orgName,
+          "2": money(total),
+          // Unpaid invoices carry their payment link; paid ones point home.
+          "3": typeof sentSoFar["pay_url"] === "string" && sentSoFar["pay_url"]
+            ? String(sentSoFar["pay_url"])
+            : "https://aidwar.in/app/billing",
+        },
       },
       {
         name: String(template["name"]),
