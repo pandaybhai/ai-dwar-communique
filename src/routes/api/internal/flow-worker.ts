@@ -321,6 +321,31 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             return;
           }
 
+          // A branded card pinned to this step rides after the template —
+          // only when the workspace has cards on, and never at the cost of
+          // the text, which has already arrived.
+          const cardCfg = (step.condition as Record<string, unknown> | null)?.["card"] as
+            | { kind?: string; vars?: Record<string, string> }
+            | undefined;
+          if (cardCfg?.kind) {
+            try {
+              const cards = await import("@/lib/customer-cards.server");
+              if (await cards.cardsEnabled(supabase, orgId)) {
+                await cards.sendCardToContact(supabase, {
+                  organizationId: orgId,
+                  contactId: contact.id,
+                  phone: contact.phone,
+                  sender,
+                  kind: cardCfg.kind,
+                  vars: cards.fillCardVars(cardCfg.vars ?? {}, variables),
+                  caption: template.name,
+                });
+              }
+            } catch {
+              // card is decoration; the words already arrived
+            }
+          }
+
           await finish(
             "sent",
             { message_id: outcome.messageId, error: null, cancel_reason: null },

@@ -108,6 +108,20 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
           const couponCode = (settings["coupon_code"] as string | null) ?? null;
           const offerExpiresAt = (settings["offer_expires_at"] as string | null) ?? null;
 
+          // A branded picture card attached at creation time, sent after each
+          // template. Only when the workspace has cards on; failures never
+          // affect the template send.
+          const cardCfg = (settings["card"] ?? null) as {
+            kind?: string;
+            vars?: Record<string, string>;
+          } | null;
+          const cardTools = cardCfg?.kind
+            ? await import("@/lib/customer-cards.server").catch(() => null)
+            : null;
+          const cardsOn = cardTools
+            ? await cardTools.cardsEnabled(supabase, orgId).catch(() => false)
+            : false;
+
           const { data: claimed } = await supabase.rpc("claim_campaign_recipients", {
             p_campaign_id: campaignId,
             p_limit: CLAIM_LIMIT,
