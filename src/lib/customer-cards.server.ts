@@ -247,7 +247,17 @@ export async function sendCardToContact(
       imageUrl: url,
       caption: args.caption,
     });
-    if (!result.ok) return { sent: false, reason: result.error ?? "send_failed" };
+    if (!result.ok) {
+      // The 24-hour rule deserves plain words, not a code.
+      const closed =
+        typeof result.error === "string" && result.error.includes("service_window_closed");
+      return {
+        sent: false,
+        reason: closed
+          ? "Outside the 24-hour window — send a template first."
+          : result.error ?? "send_failed",
+      };
+    }
 
     const { emitEvent } = await import("@/lib/events.server");
     await emitEvent(supabase, "card.sent", {
