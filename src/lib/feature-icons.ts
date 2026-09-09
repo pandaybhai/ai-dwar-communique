@@ -34,4 +34,5 @@ export const FEATURE_ICONS: Record<FeatureIcon, LucideIcon> = {
   "shopping-bag": ShoppingBag,
   sparkles: Sparkles,
   package: Package,
+  "id-card": IdCard,
 };
