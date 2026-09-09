@@ -126,12 +126,16 @@ export async function readPage(
   } = {},
 ): Promise<PageRead | null> {
   options.onStage?.("fetch");
-  const res = await fetchWithTimeout(url, options.timeoutMs ?? 8000);
+  // Big storefronts are slow and occasionally drop the first connection, so a
+  // single miss must not push us onto the paid reader.
+  const timeout = options.timeoutMs ?? 20000;
+  let res = await fetchWithTimeout(url, timeout);
+  if (!res || res.status >= 500) res = (await fetchWithTimeout(url, timeout)) ?? res;
   const type = res?.headers.get("content-type") ?? "";
   const readableDirect = Boolean(
-    res?.ok && (type.includes("text/html") || type.includes("text/plain")),
+    res?.ok && (type.includes("text/html") || type.includes("text/plain") || type === ""),
   );
-  const html = readableDirect ? await res?.text().catch(() => "") ?? "" : "";
+  const html = readableDirect ? (await res?.text().catch(() => "")) ?? "" : "";
   options.onStage?.("extract");
   const { title, text, links } = stripHtml(html);
   const headers: Record<string, string> = {};
