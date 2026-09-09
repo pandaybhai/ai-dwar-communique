@@ -832,10 +832,12 @@ export async function issuePendingInvoices(
   issued: string[];
   failed: { invoice_id: string; error: string }[];
   pdfs_regenerated: string[];
+  delivered: string[];
 }> {
   const issued: string[] = [];
   const failed: { invoice_id: string; error: string }[] = [];
   const pdfsRegenerated: string[] = [];
+  const delivered: string[] = [];
   const cap = Math.min(Math.max(limit, 1), 200);
 
   // 1. Paid payments that never got an invoice (e.g. self-serve plan purchases
