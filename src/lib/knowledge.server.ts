@@ -57,7 +57,9 @@ export type CrawlStage =
 const CHUNK_CHARS = 1200;
 const CHUNK_OVERLAP = 150;
 const DEFAULT_PAGE_CAP = 200;
-const RUN_PAGE_CAP = 500;
+// Keep each worker tick comfortably inside the request lifetime. Large sites
+// advance through repeated resumable ticks instead of dying mid-run.
+const RUN_PAGE_CAP = 25;
 
 /** Binary, code and feed assets are never useful customer knowledge. */
 const ASSET_PATH_RE = /\.(?:css|m?js|json|map|png|jpe?g|gif|svg|webp|avif|ico|woff2?)(?:$|\/)/i;
