@@ -37,7 +37,7 @@ export const Route = createFileRoute("/api/ai/knowledge")({
           if (action === "list") {
             const { data } = await auth.supabase
               .from("knowledge_sources")
-              .select("id, type, name, status, item_count, last_synced_at, last_error, refresh_days, config")
+              .select("id, type, name, status, item_count, pages_seen, last_synced_at, last_error, refresh_days, config")
               .eq("organization_id", auth.organizationId)
               .order("created_at", { ascending: false });
             return Response.json({ sources: data ?? [] });

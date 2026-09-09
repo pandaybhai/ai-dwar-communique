@@ -18,7 +18,13 @@ export type PageRead = {
   html: string;
   links: string[];
   usedReader: boolean;
+  /** What our own fetch saw, for diagnostics. */
+  status?: number;
+  bytes?: number;
+  extractedChars?: number;
+  headers?: Record<string, string>;
 };
+
 
 class ReaderRequestError extends Error {
   constructor(message: string) {
@@ -38,7 +44,12 @@ export function stripHtml(html: string): { title: string; text: string; links: s
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<template[\s\S]*?<\/template>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<[^>]+>/g, " ")
+
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&#39;|&rsquo;/g, "'")
@@ -81,11 +92,12 @@ export async function readerKey(supabase: SupabaseClient): Promise<string | null
   return value;
 }
 
-/** A shell page: markup arrived, words did not. */
-function looksEmpty(html: string, text: string): boolean {
-  if (text.length < 300) return true;
-  const shell = /<div[^>]+id=["'](root|__next)["'][^>]*>\s*<\/div>|data-reactroot/i.test(html);
-  return shell && text.length < 1200;
+/**
+ * A shell page: markup arrived, words did not. Anything with 300 real
+ * characters is good enough on its own — we never pay the reader for it.
+ */
+function looksEmpty(_html: string, text: string): boolean {
+  return text.length < 300;
 }
 
 export async function readPage(
@@ -106,6 +118,20 @@ export async function readPage(
   const html = readableDirect ? await res?.text().catch(() => "") ?? "" : "";
   options.onStage?.("extract");
   const { title, text, links } = stripHtml(html);
+  const headers: Record<string, string> = {};
+  if (res) {
+    for (const name of ["content-type", "x-shopid", "x-shopify-stage", "powered-by", "x-powered-by"]) {
+      const value = res.headers.get(name);
+      if (value) headers[name] = value;
+    }
+  }
+  const diagnostics = {
+    status: res?.status ?? 0,
+    bytes: html.length,
+    extractedChars: text.length,
+    headers,
+  };
+
 
   if (options.allowReader !== false && (!readableDirect || looksEmpty(html, text))) {
     options.onStage?.("reader");
@@ -117,10 +143,6 @@ export async function readPage(
         "X-Return-Format": "text",
       };
       if (withKey && cleanKey) headers["Authorization"] = `Bearer ${cleanKey}`;
-      const safeHeaders = {
-        ...headers,
-        ...(headers["Authorization"] ? { Authorization: "Bearer [masked]" } : {}),
-      };
       const authUsed = Boolean(withKey && cleanKey);
       const response = await fetchWithTimeout(readerUrl, 15000, { headers });
       const auth = `auth=${authUsed ? "yes" : "no"}`;
@@ -139,14 +161,15 @@ export async function readPage(
     if (attempt.response?.ok) {
       const rendered = attempt.body.replace(/\s+/g, " ").trim();
       if (rendered.length > text.length) {
-        return { title, text: rendered, html, links, usedReader: true };
+        return { title, text: rendered, html, links, usedReader: true, ...diagnostics };
       }
     }
     // A reader outage must never discard text our own fetch already found.
-    if (readableDirect && text.length > 0) return { title, text, html, links, usedReader: false };
+    if (readableDirect && text.length > 0)
+      return { title, text, html, links, usedReader: false, ...diagnostics };
     throw new ReaderRequestError(attempt.detail);
   }
 
   if (!readableDirect) return null;
-  return { title, text, html, links, usedReader: false };
+  return { title, text, html, links, usedReader: false, ...diagnostics };
 }
