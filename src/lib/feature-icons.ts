@@ -2,6 +2,7 @@ import {
   BarChart3,
   Contact,
   CreditCard,
+  IdCard,
   Inbox,
   Megaphone,
   Package,

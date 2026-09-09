@@ -27,7 +27,8 @@ export type FeatureIcon =
   | "credit-card"
   | "shopping-bag"
   | "sparkles"
-  | "package";
+  | "package"
+  | "id-card";
 
 export type PermissionManifest = {
   key: string;
@@ -1115,6 +1116,40 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     data_tables: ["products", "product_collections", "product_collection_items", "catalog_imports"],
+  },
+  {
+    key: "cards",
+    depends_on: ["inbox"],
+    name: "Cards",
+    description:
+      "Branded picture cards — offers, products, order updates, receipts and appointments — attached to campaign, flow and AI messages.",
+    icon: "id-card",
+    nav_path: "/app/cards",
+    nav_order: 58,
+    nav_permission: "cards.view",
+    flag_key: "cards",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "cards.view",
+        name: "View cards",
+        description: "See the card designs and this workspace's brand settings.",
+        min_role: "agent",
+      },
+      {
+        key: "cards.manage",
+        name: "Manage cards",
+        description: "Change the logo and colours on cards and attach cards to campaigns and flows.",
+        min_role: "admin",
+      },
+    ],
+    analytics: {
+      event_types: ["card.sent"],
+      metrics: [],
+      dashboard_section: false,
+    },
+    activity_actions: ["card_branding_updated"],
+    data_tables: ["onboarding_card_templates"],
   },
 ] as const;
 
