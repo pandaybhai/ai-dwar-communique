@@ -415,22 +415,20 @@ async function storeInvoicePdf(
       console.error("[invoices] pdf upload failed", invoiceNumber, uploadError.message);
       await supabase
         .from("invoices")
-        .update({ sent: { ...((invoice["sent"] ?? {}) as Record<string, unknown>), pdf_error: uploadError.message.slice(0, 300) } })
+        .update({ pdf_error: uploadError.message.slice(0, 300) })
         .eq("id", invoiceId);
       return { path: null, error: uploadError.message };
     }
-    await supabase.from("invoices").update({ pdf_path: path }).eq("id", invoiceId);
+    await supabase.from("invoices").update({ pdf_path: path, pdf_error: null }).eq("id", invoiceId);
     return { path, error: null };
   } catch (error) {
     const message = String((error as Error)?.message ?? error);
     console.error("[invoices] pdf render failed", invoiceNumber, message);
-    await supabase
-      .from("invoices")
-      .update({ sent: { ...((invoice["sent"] ?? {}) as Record<string, unknown>), pdf_error: message.slice(0, 300) } })
-      .eq("id", invoiceId);
+    await supabase.from("invoices").update({ pdf_error: message.slice(0, 300) }).eq("id", invoiceId);
     return { path: null, error: message };
   }
 }
+
 
 /**
  * Sends the invoice to the buyer's billing WhatsApp as a document, through the
@@ -834,10 +832,12 @@ export async function issuePendingInvoices(
   issued: string[];
   failed: { invoice_id: string; error: string }[];
   pdfs_regenerated: string[];
+  delivered: string[];
 }> {
   const issued: string[] = [];
   const failed: { invoice_id: string; error: string }[] = [];
   const pdfsRegenerated: string[] = [];
+  const delivered: string[] = [];
   const cap = Math.min(Math.max(limit, 1), 200);
 
   // 1. Paid payments that never got an invoice (e.g. self-serve plan purchases
@@ -922,7 +922,27 @@ export async function issuePendingInvoices(
     else failed.push({ invoice_id: String(row["id"]), error: "pdf_not_generated" });
   }
 
-  return { issued, failed, pdfs_regenerated: pdfsRegenerated };
+  // 4. Invoices that never reached the buyer — usually because the PDF was
+  //    missing at the time. Now that a file exists, try the delivery again so
+  //    no invoice can sit on whatsapp_error forever.
+  const { data: undelivered } = await supabase
+    .from("invoices")
+    .select("id, invoice_number, sent")
+    .not("invoice_number", "is", null)
+    .not("pdf_path", "is", null)
+    .neq("status", "void")
+    .neq("kind", "proforma")
+    .order("created_at", { ascending: true })
+    .limit(200);
+  for (const row of (undelivered ?? []) as Record<string, unknown>[]) {
+    const sent = (row["sent"] ?? {}) as Record<string, unknown>;
+    if (sent["whatsapp_at"] || !sent["whatsapp_error"]) continue;
+    const result = await deliverInvoice(supabase, String(row["id"]), { fallbackToQueue: true });
+    if (result.ok) delivered.push(String(row["invoice_number"]));
+  }
+
+  return { issued, failed, pdfs_regenerated: pdfsRegenerated, delivered };
+
 }
 
 /**
