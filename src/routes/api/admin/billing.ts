@@ -303,7 +303,7 @@ export const Route = createFileRoute("/api/admin/billing")({
               let query = supabase
                 .from("invoices")
                 .select(
-                  "id, organization_id, invoice_number, kind, purpose, status, issue_date, due_date, period_start, period_end, subtotal, taxable_value, cgst, sgst, igst, total, amount_paid, currency, pdf_path, sent, payment_id, is_interstate, is_export, place_of_supply, created_at, organizations(name)",
+                  "id, organization_id, invoice_number, kind, purpose, status, issue_date, due_date, period_start, period_end, subtotal, taxable_value, cgst, sgst, igst, total, amount_paid, currency, pdf_path, pdf_error, sent, payment_id, is_interstate, is_export, place_of_supply, created_at, organizations(name)",
                 )
                 .order("created_at", { ascending: false })
                 .limit(300);
@@ -327,7 +327,11 @@ export const Route = createFileRoute("/api/admin/billing")({
                 pay_url: ((r["sent"] as Record<string, unknown> | null)?.["pay_url"] as string) ?? null,
                 whatsapp_at:
                   ((r["sent"] as Record<string, unknown> | null)?.["whatsapp_at"] as string) ?? null,
-                pdf_error: ((r["sent"] as Record<string, unknown> | null)?.["pdf_error"] as string) ?? null,
+                pdf_error:
+                  (r["pdf_error"] as string | null) ??
+                  ((r["sent"] as Record<string, unknown> | null)?.["pdf_error"] as string) ??
+                  null,
+
               }));
               return Response.json({ invoices: rows });
             }
