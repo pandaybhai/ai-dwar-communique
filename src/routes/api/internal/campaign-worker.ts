@@ -170,6 +170,21 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
                 .eq("id", recipient.id);
             } else {
               sent += 1;
+              if (cardsOn && cardTools && cardCfg?.kind) {
+                try {
+                  await cardTools.sendCardToContact(supabase, {
+                    organizationId: orgId,
+                    contactId: recipient.contact_id,
+                    phone: recipient.phone,
+                    sender,
+                    kind: cardCfg.kind,
+                    vars: cardTools.fillCardVars(cardCfg.vars ?? {}, recipient.resolved_variables ?? {}),
+                    caption: templateName,
+                  });
+                } catch {
+                  // card is decoration; the template already arrived
+                }
+              }
               await supabase
                 .from("campaign_recipients")
                 .update({ status: "sent", message_id: outcome.messageId, error: null })
