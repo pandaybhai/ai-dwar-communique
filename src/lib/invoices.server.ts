@@ -920,7 +920,27 @@ export async function issuePendingInvoices(
     else failed.push({ invoice_id: String(row["id"]), error: "pdf_not_generated" });
   }
 
-  return { issued, failed, pdfs_regenerated: pdfsRegenerated };
+  // 4. Invoices that never reached the buyer — usually because the PDF was
+  //    missing at the time. Now that a file exists, try the delivery again so
+  //    no invoice can sit on whatsapp_error forever.
+  const { data: undelivered } = await supabase
+    .from("invoices")
+    .select("id, invoice_number, sent")
+    .not("invoice_number", "is", null)
+    .not("pdf_path", "is", null)
+    .neq("status", "void")
+    .neq("kind", "proforma")
+    .order("created_at", { ascending: true })
+    .limit(200);
+  for (const row of (undelivered ?? []) as Record<string, unknown>[]) {
+    const sent = (row["sent"] ?? {}) as Record<string, unknown>;
+    if (sent["whatsapp_at"] || !sent["whatsapp_error"]) continue;
+    const result = await deliverInvoice(supabase, String(row["id"]), { fallbackToQueue: true });
+    if (result.ok) delivered.push(String(row["invoice_number"]));
+  }
+
+  return { issued, failed, pdfs_regenerated: pdfsRegenerated, delivered };
+
 }
 
 /**
