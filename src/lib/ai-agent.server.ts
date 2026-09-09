@@ -211,6 +211,8 @@ export async function runAgentOnInbound(
   // Catalogue answers travel with pictures: one image per product named,
   // sent after the text so the words arrive first.
   let picturesSent = 0;
+  const cardsOn = flags.has("cards");
+  let cardSent = false;
   if (sent.ok && run.media.length > 0) {
     for (const item of run.media) {
       const price =
@@ -221,6 +223,34 @@ export async function runAgentOnInbound(
               currency: item.currency || "INR",
               maximumFractionDigits: 0,
             }).format(item.price)}`;
+      // Cards on? The first product's picture goes out as a branded card;
+      // any failure falls back to the bare image below.
+      if (cardsOn && !cardSent) {
+        try {
+          const { sendCardToContact } = await import("@/lib/customer-cards.server");
+          const card = await sendCardToContact(supabase, {
+            organizationId: args.organizationId,
+            contactId: args.contactId,
+            phone: args.waId,
+            sender: { phoneNumberId: args.phoneNumberId, accessToken: args.accessToken },
+            kind: "customer_product",
+            vars: {
+              name: item.title,
+              price: price.replace(/^ — /, ""),
+              image_url: item.imageUrl,
+              one_liner: "",
+            },
+            caption: `${item.title}${price}`,
+          });
+          if (card.sent) {
+            cardSent = true;
+            picturesSent += 1;
+            continue;
+          }
+        } catch {
+          // fall through to the plain picture
+        }
+      }
       const picture = await sendServiceImage(supabase, {
         organizationId: args.organizationId,
         phoneNumberId: args.phoneNumberId,

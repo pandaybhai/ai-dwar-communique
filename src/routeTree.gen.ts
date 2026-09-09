@@ -27,12 +27,14 @@ import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as ApiCardsRouteImport } from './routes/api/cards'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
 import { Route as ApiPermissionsRouteImport } from './routes/api/permissions'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAutomationsRouteImport } from './routes/app/automations'
 import { Route as AppBillingRouteImport } from './routes/app/billing'
+import { Route as AppCardsRouteImport } from './routes/app/cards'
 import { Route as AppContactsRouteImport } from './routes/app/contacts'
 import { Route as AppEmployeeRouteImport } from './routes/app/employee'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
@@ -197,6 +199,11 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const ApiCardsRoute = ApiCardsRouteImport.update({
+  id: '/api/cards',
+  path: '/api/cards',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiEventsRoute = ApiEventsRouteImport.update({
   id: '/api/events',
   path: '/api/events',
@@ -225,6 +232,11 @@ const AppAutomationsRoute = AppAutomationsRouteImport.update({
 const AppBillingRoute = AppBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppCardsRoute = AppCardsRouteImport.update({
+  id: '/cards',
+  path: '/cards',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppContactsRoute = AppContactsRouteImport.update({
@@ -631,11 +643,13 @@ export interface FileRoutesByFullPath {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/cards': typeof ApiCardsRoute
   '/api/events': typeof ApiEventsRoute
   '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/billing': typeof AppBillingRoute
+  '/app/cards': typeof AppCardsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
@@ -728,11 +742,13 @@ export interface FileRoutesByTo {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/cards': typeof ApiCardsRoute
   '/api/events': typeof ApiEventsRoute
   '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/billing': typeof AppBillingRoute
+  '/app/cards': typeof AppCardsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
@@ -828,11 +844,13 @@ export interface FileRoutesById {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/cards': typeof ApiCardsRoute
   '/api/events': typeof ApiEventsRoute
   '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/billing': typeof AppBillingRoute
+  '/app/cards': typeof AppCardsRoute
   '/app/contacts': typeof AppContactsRoute
   '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
@@ -929,11 +947,13 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
+    | '/api/cards'
     | '/api/events'
     | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
     | '/app/billing'
+    | '/app/cards'
     | '/app/contacts'
     | '/app/employee'
     | '/app/inbox'
@@ -1026,11 +1046,13 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
+    | '/api/cards'
     | '/api/events'
     | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
     | '/app/billing'
+    | '/app/cards'
     | '/app/contacts'
     | '/app/employee'
     | '/app/inbox'
@@ -1125,11 +1147,13 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/organizations'
     | '/admin/users'
+    | '/api/cards'
     | '/api/events'
     | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
     | '/app/billing'
+    | '/app/cards'
     | '/app/contacts'
     | '/app/employee'
     | '/app/inbox'
@@ -1218,6 +1242,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  ApiCardsRoute: typeof ApiCardsRoute
   ApiEventsRoute: typeof ApiEventsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
@@ -1411,6 +1436,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/api/cards': {
+      id: '/api/cards'
+      path: '/api/cards'
+      fullPath: '/api/cards'
+      preLoaderRoute: typeof ApiCardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/events': {
       id: '/api/events'
       path: '/api/events'
@@ -1451,6 +1483,13 @@ declare module '@tanstack/react-router' {
       path: '/billing'
       fullPath: '/app/billing'
       preLoaderRoute: typeof AppBillingRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/cards': {
+      id: '/app/cards'
+      path: '/cards'
+      fullPath: '/app/cards'
+      preLoaderRoute: typeof AppCardsRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/contacts': {
@@ -1997,6 +2036,7 @@ interface AppRouteRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomationsRoute: typeof AppAutomationsRoute
   AppBillingRoute: typeof AppBillingRoute
+  AppCardsRoute: typeof AppCardsRoute
   AppContactsRoute: typeof AppContactsRoute
   AppEmployeeRoute: typeof AppEmployeeRoute
   AppInboxRoute: typeof AppInboxRoute
@@ -2016,6 +2056,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAutomationsRoute: AppAutomationsRoute,
   AppBillingRoute: AppBillingRoute,
+  AppCardsRoute: AppCardsRoute,
   AppContactsRoute: AppContactsRoute,
   AppEmployeeRoute: AppEmployeeRoute,
   AppInboxRoute: AppInboxRoute,
@@ -2046,6 +2087,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  ApiCardsRoute: ApiCardsRoute,
   ApiEventsRoute: ApiEventsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,

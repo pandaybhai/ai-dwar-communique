@@ -30,6 +30,7 @@ export type ActivityAction =
   | "automation_deleted"
   | "flow_toggled"
   | "flow_step_updated"
+  | "card_branding_updated"
   | "send_settings_updated"
   | "reconciliation_mismatch"
   | "member.role_changed"

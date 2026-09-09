@@ -2,6 +2,7 @@ import {
   BarChart3,
   Contact,
   CreditCard,
+  IdCard,
   Inbox,
   Megaphone,
   Package,
@@ -33,4 +34,5 @@ export const FEATURE_ICONS: Record<FeatureIcon, LucideIcon> = {
   "shopping-bag": ShoppingBag,
   sparkles: Sparkles,
   package: Package,
+  "id-card": IdCard,
 };
