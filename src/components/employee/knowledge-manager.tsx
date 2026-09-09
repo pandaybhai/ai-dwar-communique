@@ -467,7 +467,29 @@ function SourceItemsDialog({
           </p>
         ) : (
           <ul className="space-y-3">
-            {items.map((item) => (
+            {(() => {
+              const products = items.filter((i) => /\/products\//.test(i.source_ref ?? ""));
+              return products.length > 1 ? (
+                <li className="rounded-xl border border-border/70 bg-muted/30 p-4">
+                  <p className="text-sm font-medium text-foreground">
+                    Products · {products.length.toLocaleString("en-IN")}
+                  </p>
+                  <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+                    {products
+                      .slice(0, 12)
+                      .map((p) => p.title)
+                      .join(", ")}
+                  </p>
+                </li>
+              ) : null;
+            })()}
+            {items
+              .filter(
+                (item) =>
+                  !/\/products\//.test(item.source_ref ?? "") ||
+                  items.filter((i) => /\/products\//.test(i.source_ref ?? "")).length <= 1,
+              )
+              .map((item) => (
               <li key={item.id} className="rounded-xl border border-border/70 bg-muted/30 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-sm font-medium text-foreground">{item.title}</p>
