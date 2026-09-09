@@ -39,6 +39,8 @@ import {
   type TemplateRow,
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
+import { CardAttachmentPicker } from "@/components/cards/card-attachment-picker";
+import type { CardAttachment } from "@/lib/customer-cards";
 import {
   TemplatePreview,
   componentsToPreview,
@@ -505,6 +507,7 @@ export function CampaignWizard({
             : {}),
           ...(needsCoupon && couponCode.trim() ? { coupon_code: couponCode.trim() } : {}),
           ...(offerExpiresAt ? { offer_expires_at: offerExpiresAt } : {}),
+          ...(card ? { card: { kind: card.kind, vars: card.vars } } : {}),
         },
       },
     });
@@ -1058,6 +1061,12 @@ export function CampaignWizard({
                   </div>
                 )}
 
+                <CardAttachmentPicker
+                  idPrefix="campaign"
+                  value={card}
+                  onChange={setCard}
+                  hint="Write {{1}}, {{2}} and so on to reuse each contact's own details."
+                />
               </div>
             )}
 
