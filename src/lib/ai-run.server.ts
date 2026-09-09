@@ -1077,7 +1077,10 @@ export async function executeRun(
           });
         }
         knowledgeBlock = rows
-          .map((r, i) => `[${i + 1}] ${r.title || r.source_name}\n${r.text}`)
+          .map((r, i) => {
+            const url = /^https?:\/\//i.test(r.source_ref ?? "") ? `${r.source_ref}\n` : "";
+            return `[${i + 1}] ${r.title || r.source_name}\n${url}${r.text}`;
+          })
           .join("\n\n");
 
         // Something the merchant wrote themselves counts as used, so they can
@@ -1109,8 +1112,14 @@ export async function executeRun(
       options.channel === "onboarding"
         ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
         : "Cite the number of the item you used.";
+    // A shopper wants the product page; a policy or blog page linked in every
+    // reply is just noise.
+    const linkRule =
+      "Some items show a URL on the line under their title. If the item you used is a product page " +
+      "(its URL contains /products/), end your answer with that URL on its own last line, copied " +
+      "character for character, and nothing after it. For any other kind of page, do not output a URL at all.";
     systemParts.push(
-      `Use only the following material to answer. ${citation} If it does not answer the question, say you don't know.\n\n` +
+      `Use only the following material to answer. ${citation} ${linkRule} If it does not answer the question, say you don't know.\n\n` +
         "Never state a price, date, quantity or percentage that does not appear verbatim in the material. " +
         "If the material describes something without the number, say the number isn't on the page.\n\n" +
         knowledgeBlock,
@@ -1479,7 +1488,10 @@ export function asksForFigure(question: string): boolean {
  */
 export function unsupportedNumbers(answer: string, support: string[]): string[] {
   const haystack = stripNumericNoise(support.join("\n"));
-  const found = answer.match(NUMBER_PATTERN) ?? [];
+  // Digits inside a link (…premix-coffee-132g) are part of an address, not a
+  // claim about price or quantity. Drop links before looking for numbers.
+  const claims = answer.replace(/https?:\/\/\S+/gi, " ");
+  const found = claims.match(NUMBER_PATTERN) ?? [];
   const out: string[] = [];
   for (const raw of found) {
     const token = raw.trim();
