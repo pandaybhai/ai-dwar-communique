@@ -415,22 +415,20 @@ async function storeInvoicePdf(
       console.error("[invoices] pdf upload failed", invoiceNumber, uploadError.message);
       await supabase
         .from("invoices")
-        .update({ sent: { ...((invoice["sent"] ?? {}) as Record<string, unknown>), pdf_error: uploadError.message.slice(0, 300) } })
+        .update({ pdf_error: uploadError.message.slice(0, 300) })
         .eq("id", invoiceId);
       return { path: null, error: uploadError.message };
     }
-    await supabase.from("invoices").update({ pdf_path: path }).eq("id", invoiceId);
+    await supabase.from("invoices").update({ pdf_path: path, pdf_error: null }).eq("id", invoiceId);
     return { path, error: null };
   } catch (error) {
     const message = String((error as Error)?.message ?? error);
     console.error("[invoices] pdf render failed", invoiceNumber, message);
-    await supabase
-      .from("invoices")
-      .update({ sent: { ...((invoice["sent"] ?? {}) as Record<string, unknown>), pdf_error: message.slice(0, 300) } })
-      .eq("id", invoiceId);
+    await supabase.from("invoices").update({ pdf_error: message.slice(0, 300) }).eq("id", invoiceId);
     return { path: null, error: message };
   }
 }
+
 
 /**
  * Sends the invoice to the buyer's billing WhatsApp as a document, through the
