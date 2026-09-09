@@ -1112,8 +1112,14 @@ export async function executeRun(
       options.channel === "onboarding"
         ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
         : "Cite the number of the item you used.";
+    // A shopper wants the product page; a policy or blog page linked in every
+    // reply is just noise.
+    const linkRule =
+      "Some items show a URL on the line under their title. If the item you used is a product page " +
+      "(its URL contains /products/), end your answer with that URL on its own last line, copied " +
+      "character for character, and nothing after it. For any other kind of page, do not output a URL at all.";
     systemParts.push(
-      `Use only the following material to answer. ${citation} If it does not answer the question, say you don't know.\n\n` +
+      `Use only the following material to answer. ${citation} ${linkRule} If it does not answer the question, say you don't know.\n\n` +
         "Never state a price, date, quantity or percentage that does not appear verbatim in the material. " +
         "If the material describes something without the number, say the number isn't on the page.\n\n" +
         knowledgeBlock,
