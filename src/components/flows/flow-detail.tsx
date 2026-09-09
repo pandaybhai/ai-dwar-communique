@@ -10,6 +10,8 @@ import { PermissionGate } from "@/components/permission-gate";
 import { SendsLog } from "@/components/flows/sends-log";
 import { ReachabilityWarning } from "@/components/flows/flows-view";
 import { MessageBubble } from "@/components/flows/message-bubble";
+import { CardAttachmentPicker } from "@/components/cards/card-attachment-picker";
+import type { CardAttachment } from "@/lib/customer-cards";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
