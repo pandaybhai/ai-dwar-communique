@@ -196,6 +196,8 @@ export function CampaignWizard({
   // Offer details: the coupon a copy-code button copies, and when a
   // limited-time offer's countdown runs out.
   const [couponCode, setCouponCode] = useState("");
+  // An optional branded picture card sent after each template.
+  const [card, setCard] = useState<CardAttachment | null>(null);
   // A carousel can run a different discount on every card, so each card with a
   // copy-code button keeps its own code. Blank means "use the main code".
   const [cardCoupons, setCardCoupons] = useState<Record<number, string>>({});
