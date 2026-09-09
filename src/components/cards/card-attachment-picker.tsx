@@ -50,7 +50,7 @@ export function CardAttachmentPicker({
         onValueChange={(v) =>
           onChange(v === NONE ? null : { kind: v as CustomerCardKind, vars: {} })
         }
-        disabled={disabled}
+        disabled={Boolean(disabled)}
       >
         <SelectTrigger id={`${idPrefix}-card-kind`} className="min-h-11">
           <SelectValue placeholder="No card" />
