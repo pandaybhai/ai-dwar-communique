@@ -212,7 +212,6 @@ export function CardsView({
               >
                 <div className="flex aspect-[4/5] items-center justify-center bg-muted/40">
                   {url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={url}
                       alt={`${card.title} card preview`}
