@@ -1,10 +1,17 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import type { PDFFont, PDFPage } from "pdf-lib";
 import type { SupplierProfile } from "@/lib/invoices.server";
 
 /**
  * A4 tax invoice, drawn by hand with pdf-lib so it runs anywhere the server
  * runs. Brand green on a white page, one line table, one tax summary.
+ *
+ * pdf-lib is loaded with a runtime dynamic import so every bundle (webhook,
+ * cron, admin) resolves it the same way — a static import made one bundle
+ * pull tslib in as a CommonJS default and blow up at render time.
  */
+
+type Rgb = { type: "RGB"; red: number; green: number; blue: number };
+const rgb = (red: number, green: number, blue: number): Rgb => ({ type: "RGB", red, green, blue });
 
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 42;
@@ -12,6 +19,7 @@ const INK = rgb(0.07, 0.09, 0.11);
 const MUTED = rgb(0.42, 0.45, 0.5);
 const BRAND = rgb(0.063, 0.725, 0.506); // #10B981
 const RULE = rgb(0.87, 0.89, 0.91);
+
 
 const ONES = [
   "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
