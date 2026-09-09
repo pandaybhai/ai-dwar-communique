@@ -1155,3 +1155,78 @@ export async function finishOnboardingCrawl(
     imageUrl: briefCard,
   });
 }
+
+/**
+ * A one-off line to the owner on the onboarding chat he already knows. Quiet
+ * no-op when that chat doesn't exist yet.
+ */
+export async function notifyOwnerOnOnboardingChannel(
+  supabase: SupabaseClient,
+  organizationId: string,
+  body: string,
+): Promise<boolean> {
+  const { data: sessionRow } = await supabase
+    .from("onboarding_sessions")
+    .select(SESSION_COLUMNS)
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const session = sessionRow as OnboardingSession | null;
+  if (!session?.wa_id) return false;
+
+  const { data: setting } = await supabase
+    .from("platform_settings")
+    .select("onboarding_whatsapp_account_id")
+    .maybeSingle();
+  const onboardingAccountId =
+    (setting as { onboarding_whatsapp_account_id?: string | null } | null)
+      ?.onboarding_whatsapp_account_id ?? null;
+  if (!onboardingAccountId) return false;
+
+  const { data: accountRow } = await supabase
+    .from("whatsapp_accounts")
+    .select("id, organization_id, phone_number_id")
+    .eq("id", onboardingAccountId)
+    .maybeSingle();
+  const account = accountRow as {
+    id: string;
+    organization_id: string;
+    phone_number_id: string;
+  } | null;
+  if (!account) return false;
+
+  const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
+  const { connection } = await getWhatsAppConnection(supabase, account.organization_id, account.id);
+  const accessToken = connection?.accessToken ?? "";
+  if (!accessToken) return false;
+
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("id")
+    .eq("organization_id", account.organization_id)
+    .eq("phone", normalizePhone(session.wa_id))
+    .maybeSingle();
+  if (!contact) return false;
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("organization_id", account.organization_id)
+    .eq("contact_id", (contact as { id: string }).id)
+    .eq("whatsapp_account_id", account.id)
+    .order("last_message_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!conversation) return false;
+
+  await sendServiceText(supabase, {
+    organizationId: account.organization_id,
+    phoneNumberId: account.phone_number_id,
+    accessToken,
+    conversationId: (conversation as { id: string }).id,
+    to: session.wa_id,
+    body,
+  });
+  return true;
+}

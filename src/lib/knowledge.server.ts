@@ -165,18 +165,40 @@ async function sitemapUrls(origin: string): Promise<string[]> {
   return found;
 }
 
-/** How many pages this workspace's plan allows us to read. */
-async function planPageCap(supabase: SupabaseClient, organizationId: string): Promise<number> {
-  const { data: sub } = await supabase
-    .from("subscriptions")
-    .select("plan_version_id")
-    .eq("organization_id", organizationId)
-    .in("status", ["active", "trialing", "past_due"])
-    .order("created_at", { ascending: false })
-    .limit(1)
+/**
+ * How many pages this workspace's plan allows us to read, and whether it is on
+ * a paid plan at all. Trial workspaces get the shallow day-one read only.
+ */
+async function planLimits(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<{ cap: number; paid: boolean }> {
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("plan_version_id, plan_status")
+    .eq("id", organizationId)
     .maybeSingle();
-  const versionId = (sub as { plan_version_id?: string } | null)?.plan_version_id;
-  if (!versionId) return DEFAULT_PAGE_CAP;
+  const orgRow = (org ?? {}) as { plan_version_id?: string | null; plan_status?: string | null };
+  let versionId = orgRow.plan_version_id ?? null;
+  let paid = orgRow.plan_status === "active" && Boolean(versionId);
+
+  if (!paid) {
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("plan_version_id, status")
+      .eq("organization_id", organizationId)
+      .in("status", ["active", "past_due"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const subRow = sub as { plan_version_id?: string | null } | null;
+    if (subRow?.plan_version_id) {
+      versionId = subRow.plan_version_id;
+      paid = true;
+    }
+  }
+
+  if (!versionId) return { cap: DEFAULT_PAGE_CAP, paid };
   const { data: version } = await supabase
     .from("plan_versions")
     .select("limits")
@@ -184,8 +206,22 @@ async function planPageCap(supabase: SupabaseClient, organizationId: string): Pr
     .maybeSingle();
   const limits = (version as { limits?: Record<string, unknown> } | null)?.limits ?? {};
   const pages = Number(limits["pages"] ?? 0);
-  return pages > 0 ? pages : DEFAULT_PAGE_CAP;
+  return { cap: pages > 0 ? pages : DEFAULT_PAGE_CAP, paid };
 }
+
+/** Which shop software runs this site, when we can tell. */
+export function detectPlatform(
+  html: string,
+  headers: Record<string, string> = {},
+): "shopify" | "woocommerce" | null {
+  const headerBlob = Object.entries(headers)
+    .map(([k, v]) => `${k}:${v}`)
+    .join(" ");
+  if (/cdn\.shopify\.com|Shopify\.theme|x-shopid/i.test(`${html} ${headerBlob}`)) return "shopify";
+  if (/wp-content|woocommerce/i.test(html)) return "woocommerce";
+  return null;
+}
+
 
 /**
  * Shops publish their whole catalogue as plain data. When we can see one, we
@@ -193,7 +229,7 @@ async function planPageCap(supabase: SupabaseClient, organizationId: string): Pr
  */
 async function commerceDocuments(
   origin: string,
-  homepageHtml: string,
+  platform: "shopify" | "woocommerce",
   cap: number,
 ): Promise<KnowledgeDocument[]> {
   const docs: KnowledgeDocument[] = [];
@@ -208,8 +244,8 @@ async function commerceDocuments(
     });
   };
 
-  if (/cdn\.shopify\.com/i.test(homepageHtml)) {
-    for (let page = 1; page <= 10 && docs.length < cap; page += 1) {
+  if (platform === "shopify") {
+    for (let page = 1; page <= 4 && docs.length < cap; page += 1) {
       const res = await fetchWithTimeout(`${origin}/products.json?limit=250&page=${page}`, 8000);
       if (!res || !res.ok) break;
       const json = (await res.json().catch(() => ({}))) as {
@@ -244,19 +280,27 @@ async function commerceDocuments(
       if (products.length < 250) break;
     }
 
-    for (const path of ["refund-policy", "shipping-policy", "privacy-policy", "terms-of-service"]) {
+    const extras = [
+      "/policies/refund-policy",
+      "/policies/shipping-policy",
+      "/policies/privacy-policy",
+      "/policies/terms-of-service",
+      "/pages/about",
+      "/pages/about-us",
+      "/pages/contact",
+      "/pages/contact-us",
+    ];
+    for (const path of extras) {
       if (docs.length >= cap) break;
-      const res = await fetchWithTimeout(`${origin}/policies/${path}`, 8000);
+      const res = await fetchWithTimeout(`${origin}${path}`, 8000);
       if (!res || !res.ok) continue;
       const { title, text } = stripHtml(await res.text().catch(() => ""));
-      push(`${origin}/policies/${path}`, title || path, text, {
-        url: `${origin}/policies/${path}`,
-      });
+      push(`${origin}${path}`, title || path, text, { url: `${origin}${path}` });
     }
     return docs;
   }
 
-  if (/wp-content/i.test(homepageHtml)) {
+  {
     for (let page = 1; page <= 10 && docs.length < cap; page += 1) {
       const res = await fetchWithTimeout(
         `${origin}/wp-json/wc/store/v1/products?per_page=100&page=${page}`,
@@ -338,9 +382,14 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const start = new URL(startUrl);
   const origin = start.origin;
 
-  const mode = config["mode"] === "full" ? "full" : "day0";
-  const planCap = mode === "full" ? await planPageCap(supabase, organizationId) : 30;
-  const cap = mode === "full" ? Math.min(planCap, RUN_PAGE_CAP) : 30;
+  const plan = await planLimits(supabase, organizationId);
+  // Paid workspaces read the whole site; trials keep the shallow day-one read.
+  const mode = config["mode"] === "full" || plan.paid ? "full" : "day0";
+  const resuming = mode === "full" && config["resume"] === true;
+  const alreadySeen = resuming ? Number(config["pages_done"] ?? 0) : 0;
+  const planCap = mode === "full" ? plan.cap : 30;
+  const runCap =
+    mode === "full" ? Math.max(Math.min(planCap - alreadySeen, RUN_PAGE_CAP), 0) : 30;
   const concurrency = mode === "full" ? 6 : 4;
   const deadline = mode === "day0" ? Date.now() + 90_000 : null;
 
@@ -356,60 +405,136 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     (settings.data as { day0_crawl_cost_cap?: number } | null)?.day0_crawl_cost_cap ?? 2,
   );
 
+  // Pages an earlier run already read stay in the source; we only add to them.
+  const carried: KnowledgeDocument[] = [];
+  const done = new Set<string>();
+  if (resuming) {
+    const { data: prior } = await supabase
+      .from("knowledge_documents")
+      .select("source_ref, title, content, metadata")
+      .eq("source_id", sourceId)
+      .limit(5000);
+    for (const row of (prior ?? []) as Array<{
+      source_ref: string;
+      title: string;
+      content: string;
+      metadata: Record<string, unknown> | null;
+    }>) {
+      carried.push({
+        sourceRef: row.source_ref,
+        title: row.title,
+        content: row.content,
+        metadata: row.metadata ?? {},
+      });
+      done.add(row.source_ref);
+    }
+  }
+
   // The homepage first: it tells us whether this is a shop with public data.
   const home = await readPage(start.toString(), { key, ...(onStage ? { onStage } : {}) });
   let readerCost = home?.usedReader ? READER_COST : 0;
+  const platform = detectPlatform(home?.html ?? "", home?.headers ?? {});
+  console.info(
+    "[crawl]",
+    JSON.stringify({
+      source: sourceId,
+      mode,
+      planCap,
+      runCap,
+      platform,
+      fetch: {
+        status: home?.status ?? 0,
+        bytes: home?.bytes ?? 0,
+        extractedChars: home?.extractedChars ?? 0,
+        usedReader: home?.usedReader ?? false,
+      },
+      sitemap: sitemap.length,
+      homeLinks: home?.links.length ?? 0,
+    }),
+  );
 
   const candidates = new Map<string, number>();
   const consider = (raw: string, base: string) => {
     const url = normalizeUrl(raw, base, origin);
     if (!url) return;
+    if (done.has(url) || candidates.has(url)) return;
+    // A shop's catalogue arrives as data, so its product pages are not crawled.
+    if (platform && /\/(products|collections|product-category)\//.test(new URL(url).pathname))
+      return;
     const score = scoreUrl(url, origin);
     if (score <= -10) return;
     if (blocked.some((p) => new URL(url).pathname.startsWith(p))) return;
-    if (!candidates.has(url)) candidates.set(url, score);
+    candidates.set(url, score);
   };
 
   consider(start.toString(), start.toString());
   for (const loc of sitemap) consider(loc, origin);
   for (const href of home?.links ?? []) consider(href, start.toString());
+  candidates.delete(start.toString());
 
-  const ordered = Array.from(candidates.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([url]) => url)
-    .slice(0, cap);
-
-  const docs: KnowledgeDocument[] = [];
-  if (home && home.text.length > 200) {
+  const docs: KnowledgeDocument[] = [...carried];
+  let seen = 0;
+  if (home && home.text.length > 200 && !done.has(start.toString())) {
     docs.push({
       sourceRef: start.toString(),
       title: home.title || start.pathname,
       content: home.text.slice(0, 40000),
-      metadata: { url: start.toString() },
+      metadata: { url: start.toString(), platform },
     });
   }
+  if (home) seen += 1;
+  done.add(start.toString());
 
-  let seen = docs.length;
-  const queue = ordered.filter((u) => u !== start.toString());
+  /** Highest-scoring address we have not read yet. */
+  const takeNext = (): string | null => {
+    let best: string | null = null;
+    let bestScore = -Infinity;
+    for (const [url, score] of candidates) {
+      if (score > bestScore) {
+        best = url;
+        bestScore = score;
+      }
+    }
+    if (best) candidates.delete(best);
+    return best;
+  };
 
   const worker = async () => {
-    while (queue.length > 0 && docs.length < cap) {
+    while (candidates.size > 0 && seen < runCap) {
       if (deadline && Date.now() > deadline) return;
-      const next = queue.shift();
+      const next = takeNext();
       if (!next) return;
+      if (done.has(next)) continue;
+      done.add(next);
       const allowReader = readerCost + READER_COST <= costCap;
-      const page = await readPage(next, { key, allowReader, ...(onStage ? { onStage } : {}) });
+      let page: Awaited<ReturnType<typeof readPage>> = null;
+      try {
+        page = await readPage(next, { key, allowReader, ...(onStage ? { onStage } : {}) });
+      } catch (error) {
+        // One unreadable page must never end the whole crawl.
+        console.error(
+          "[crawl] page failed",
+          next,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
       seen += 1;
       if (page?.usedReader) readerCost += READER_COST;
-      if (!page || page.text.length <= 200) continue;
+      if (!page) continue;
+      // Every page we fetched ourselves widens the map of the site.
+      if (mode === "full") for (const href of page.links) consider(href, next);
+      if (page.text.length <= 200) continue;
       docs.push({
         sourceRef: next,
         title: page.title || new URL(next).pathname,
         content: page.text.slice(0, 40000),
-        metadata: { url: next },
+        metadata: { url: next, platform },
       });
       if (seen % 5 === 0) {
-        await supabase.from("knowledge_sources").update({ pages_seen: seen }).eq("id", sourceId);
+        await supabase
+          .from("knowledge_sources")
+          .update({ pages_seen: alreadySeen + seen })
+          .eq("id", sourceId);
       }
     }
   };
@@ -417,9 +542,8 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
   // Shops hand over their catalogue directly; no need to walk every product.
-  if (home?.html) {
-    const room = Math.max(cap - docs.length, 0);
-    if (room > 0) docs.push(...(await commerceDocuments(origin, home.html, room)));
+  if (platform && !resuming) {
+    docs.push(...(await commerceDocuments(origin, platform, 1000)));
   }
 
   if (docs.length === 0) throw new Error("We couldn't read any pages from that address.");
@@ -427,13 +551,27 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   onStage?.("facts");
   const factsCost = await factsPass(supabase, organizationId, docs);
 
+  const totalSeen = alreadySeen + seen;
+  const more = mode === "full" && candidates.size > 0 && totalSeen < planCap;
   await supabase
     .from("knowledge_sources")
-    .update({ pages_seen: seen, cost_amount: readerCost + factsCost })
+    .update({
+      pages_seen: totalSeen,
+      cost_amount: readerCost + factsCost,
+      config: {
+        ...config,
+        mode,
+        ...(platform ? { platform } : {}),
+        page_limit: planCap,
+        pages_done: totalSeen,
+        resume: more,
+      },
+    })
     .eq("id", sourceId);
 
   return docs;
 };
+
 
 /** Pages of a PDF, one document each. */
 export async function parsePdf(bytes: Uint8Array, name: string): Promise<KnowledgeDocument[]> {
@@ -596,6 +734,23 @@ export async function syncSource(
         last_error: null,
       })
       .eq("id", sourceId);
+
+    // A big site is read in runs; if pages remain, the worker picks it up again.
+    const { data: after } = await supabase
+      .from("knowledge_sources")
+      .select("config")
+      .eq("id", sourceId)
+      .maybeSingle();
+    if (((after as { config?: Record<string, unknown> } | null)?.config ?? {})["resume"] === true) {
+      await supabase
+        .from("knowledge_sources")
+        .update({
+          status: "pending",
+          queued_at: new Date().toISOString(),
+          sync_started_at: null,
+        })
+        .eq("id", sourceId);
+    }
 
     return { ok: true, itemCount: documents.length };
   } catch (error) {

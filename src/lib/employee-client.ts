@@ -70,6 +70,7 @@ export type KnowledgeSource = {
   last_synced_at: string | null;
   last_error: string | null;
   refresh_days?: number;
+  pages_seen?: number | null;
   config?: Record<string, unknown>;
 };
 

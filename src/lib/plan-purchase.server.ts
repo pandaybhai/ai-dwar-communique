@@ -380,4 +380,57 @@ export async function activatePlanFromPayment(
       plan_version_id: planVersionId,
     },
   });
+
+  await startFullSiteRead(supabase, payment.organization_id);
 }
+
+/**
+ * A paid plan buys the whole website, not just the front page. Every website
+ * source goes back in the queue in full mode, once, and the owner is told.
+ */
+async function startFullSiteRead(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from("knowledge_sources")
+      .select("id, name, config")
+      .eq("organization_id", organizationId)
+      .eq("type", "website");
+    const sources = (data ?? []) as Array<{
+      id: string;
+      name: string;
+      config: Record<string, unknown> | null;
+    }>;
+    if (sources.length === 0) return;
+
+    for (const source of sources) {
+      await supabase
+        .from("knowledge_sources")
+        .update({
+          config: { ...(source.config ?? {}), mode: "full", resume: false, pages_done: 0 },
+          status: "pending",
+          queued_at: new Date().toISOString(),
+          sync_started_at: null,
+          last_error: null,
+        })
+        .eq("id", source.id);
+    }
+
+    const site = sources[0]?.name ?? "your website";
+    const { notifyOwnerOnOnboardingChannel } = await import("@/lib/merchant-channel.server");
+    await notifyOwnerOnOnboardingChannel(
+      supabase,
+      organizationId,
+      `Reading the rest of ${site} now — I'll ping you when done.`,
+    );
+  } catch (error) {
+    console.error(
+      "[plan-purchase] full site read not started",
+      organizationId,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
