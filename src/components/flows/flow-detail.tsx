@@ -10,6 +10,8 @@ import { PermissionGate } from "@/components/permission-gate";
 import { SendsLog } from "@/components/flows/sends-log";
 import { ReachabilityWarning } from "@/components/flows/flows-view";
 import { MessageBubble } from "@/components/flows/message-bubble";
+import { CardAttachmentPicker } from "@/components/cards/card-attachment-picker";
+import type { CardAttachment } from "@/lib/customer-cards";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -528,6 +530,19 @@ function StepBlock({
               Counted from the moment it starts. Quiet hours can push it a little later.
             </p>
           </div>
+
+          <CardAttachmentPicker
+            idPrefix={`step-${step.id}`}
+            value={
+              ((step.condition ?? {})["card"] as CardAttachment | undefined) ?? null
+            }
+            disabled={!canManage}
+            onChange={(next) => {
+              const rest = { ...(step.condition ?? {}) };
+              delete rest["card"];
+              onChange({ condition: next ? { ...rest, card: next } : rest });
+            }}
+          />
         </div>
       ) : null}
     </div>

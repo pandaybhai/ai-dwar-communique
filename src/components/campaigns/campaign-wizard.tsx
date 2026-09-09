@@ -39,6 +39,8 @@ import {
   type TemplateRow,
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
+import { CardAttachmentPicker } from "@/components/cards/card-attachment-picker";
+import type { CardAttachment } from "@/lib/customer-cards";
 import {
   TemplatePreview,
   componentsToPreview,
@@ -194,6 +196,8 @@ export function CampaignWizard({
   // Offer details: the coupon a copy-code button copies, and when a
   // limited-time offer's countdown runs out.
   const [couponCode, setCouponCode] = useState("");
+  // An optional branded picture card sent after each template.
+  const [card, setCard] = useState<CardAttachment | null>(null);
   // A carousel can run a different discount on every card, so each card with a
   // copy-code button keeps its own code. Blank means "use the main code".
   const [cardCoupons, setCardCoupons] = useState<Record<number, string>>({});
@@ -505,6 +509,7 @@ export function CampaignWizard({
             : {}),
           ...(needsCoupon && couponCode.trim() ? { coupon_code: couponCode.trim() } : {}),
           ...(offerExpiresAt ? { offer_expires_at: offerExpiresAt } : {}),
+          ...(card ? { card: { kind: card.kind, vars: card.vars } } : {}),
         },
       },
     });
@@ -1058,6 +1063,12 @@ export function CampaignWizard({
                   </div>
                 )}
 
+                <CardAttachmentPicker
+                  idPrefix="campaign"
+                  value={card}
+                  onChange={setCard}
+                  hint="Write {{1}}, {{2}} and so on to reuse each contact's own details."
+                />
               </div>
             )}
 
