@@ -1,4 +1,4 @@
-import type { PDFFont, PDFPage } from "pdf-lib";
+import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import type { SupplierProfile } from "@/lib/invoices.server";
 
 /**
@@ -10,8 +10,9 @@ import type { SupplierProfile } from "@/lib/invoices.server";
  * pull tslib in as a CommonJS default and blow up at render time.
  */
 
-type Rgb = { type: "RGB"; red: number; green: number; blue: number };
-const rgb = (red: number, green: number, blue: number): Rgb => ({ type: "RGB", red, green, blue });
+const rgb = (red: number, green: number, blue: number): RGB =>
+  ({ type: "RGB", red, green, blue }) as unknown as RGB;
+
 
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 42;
@@ -118,10 +119,12 @@ export type InvoicePdfInput = {
 
 export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Array> {
   const { supplier, invoice, lines } = input;
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
   const doc = await PDFDocument.create();
   const page = doc.addPage(A4);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+
   const ctx: Ctx = { page, font, bold };
   const right = A4[0] - MARGIN;
 
