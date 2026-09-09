@@ -59,6 +59,17 @@ const CHUNK_OVERLAP = 150;
 const DEFAULT_PAGE_CAP = 200;
 const RUN_PAGE_CAP = 500;
 
+/** Binary, code and feed assets are never useful customer knowledge. */
+const ASSET_PATH_RE = /\.(?:css|m?js|json|map|png|jpe?g|gif|svg|webp|avif|ico|woff2?)(?:$|\/)/i;
+
+function isAssetUrl(url: string): boolean {
+  try {
+    return ASSET_PATH_RE.test(new URL(url).pathname);
+  } catch {
+    return true;
+  }
+}
+
 /** Very small robots.txt reader: honours Disallow for User-agent: *. */
 async function disallowedPaths(origin: string): Promise<string[]> {
   try {
@@ -107,6 +118,7 @@ function normalizeUrl(href: string, base: string, origin: string): string | null
     const url = new URL(href, base);
     if (url.origin !== origin) return null;
     if (!/^https?:$/.test(url.protocol)) return null;
+    if (isAssetUrl(url.toString())) return null;
     url.hash = "";
     for (const key of Array.from(url.searchParams.keys())) {
       if (/^utm_|^gclid$|^fbclid$/i.test(key)) url.searchParams.delete(key);
@@ -127,7 +139,7 @@ function scoreUrl(url: string, origin: string): number {
   if (/\b(blog|tag|category|cart|checkout|account|login|search|wp-json|feed)\b/.test(path))
     return -10;
   if (/\/page\/\d+/.test(path)) return -10;
-  if (/\.(jpg|jpeg|png|gif|svg|pdf|xml|css|js)$/.test(path)) return -10;
+  if (ASSET_PATH_RE.test(path) || /\.(?:pdf|xml)(?:$|\/)/i.test(path)) return -10;
   if (path === "/" || path === "") return 10;
   if (
     /(about|contact|faq|help|shipping|delivery|return|refund|pricing|price|plans|policy|terms)/.test(
@@ -258,22 +270,33 @@ async function commerceDocuments(
         const title = String(product["title"] ?? handle);
         const body = stripHtml(String(product["body_html"] ?? "")).text;
         const variants = (product["variants"] as Array<Record<string, unknown>> | undefined) ?? [];
+        const prices = variants
+          .map((v) => Number(v["price"]))
+          .filter((price) => Number.isFinite(price));
+        const compareAtPrices = variants
+          .map((v) => Number(v["compare_at_price"]))
+          .filter((price) => Number.isFinite(price));
         const lines = variants.map(
           (v) =>
             `${String(v["title"] ?? "Default")}: ${String(v["price"] ?? "")} ${
               v["available"] === false ? "(out of stock)" : "(available)"
             }`,
         );
-        const price = variants[0]?.["price"] ?? null;
+        const priceRange = prices.length > 0
+          ? `${Math.min(...prices)}${Math.min(...prices) === Math.max(...prices) ? "" : `–${Math.max(...prices)}`}`
+          : "";
+        const compareAtPrice = compareAtPrices.length > 0 ? Math.max(...compareAtPrices) : null;
+        const productUrl = `${origin}/products/${handle}`;
         push(
-          `${origin}/products/${handle}`,
+          productUrl,
           title,
-          `${title}\n${body}\n${lines.join("\n")}\n${origin}/products/${handle}`,
+          `${title}\nPrice: ${priceRange || "Not listed"}\nCompare-at price: ${compareAtPrice ?? "Not listed"}\nAvailability: ${variants.some((v) => v["available"] !== false) ? "Available" : "Out of stock"}\nVariants:\n${lines.join("\n")}\n${body.slice(0, 600)}\nProduct URL: ${productUrl}`,
           {
             kind: "product",
-            price,
+            price_range: priceRange || null,
+            compare_at_price: compareAtPrice,
             available: variants.some((v) => v["available"] !== false),
-            url: `${origin}/products/${handle}`,
+            url: productUrl,
           },
         );
       }
@@ -420,6 +443,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       content: string;
       metadata: Record<string, unknown> | null;
     }>) {
+      if (isAssetUrl(row.source_ref)) continue;
       carried.push({
         sourceRef: row.source_ref,
         title: row.title,
@@ -468,8 +492,10 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     if (!url) return;
     if (done.has(url) || candidates.has(url)) return;
     // A shop's catalogue arrives as data, so its product pages are not crawled.
-    if (platform && /\/(products|collections|product-category)\//.test(new URL(url).pathname))
-      return;
+    if (platform) {
+      const path = new URL(url).pathname;
+      if (/^\/(?:products|collections|product-category)(?:\/|$)/i.test(path)) return;
+    }
     const score = scoreUrl(url, origin);
     if (score <= -10) return;
     if (blocked.some((p) => new URL(url).pathname.startsWith(p))) return;
@@ -515,6 +541,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       if (!next) return;
       if (done.has(next)) continue;
       done.add(next);
+      if (isAssetUrl(next)) continue;
       const allowReader = readerCost + READER_COST <= costCap;
       let page: Awaited<ReturnType<typeof readPage>> = null;
       try {
@@ -529,7 +556,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       }
       seen += 1;
       if (page?.usedReader) readerCost += READER_COST;
-      if (!page) continue;
+      if (!page || !page.contentType?.toLowerCase().includes("text/html")) continue;
       // Every page we fetched ourselves widens the map of the site.
       if (mode === "full") for (const href of page.links) consider(href, next);
       if (page.text.length <= 200) continue;
@@ -542,7 +569,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       if (seen % 5 === 0) {
         await supabase
           .from("knowledge_sources")
-          .update({ pages_seen: alreadySeen + seen })
+          .update({ pages_seen: alreadySeen + seen, sync_started_at: new Date().toISOString() })
           .eq("id", sourceId);
       }
     }
@@ -551,8 +578,13 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
   // Shops hand over their catalogue directly; no need to walk every product.
-  if (platform && !resuming) {
-    docs.push(...(await commerceDocuments(origin, platform, 1000)));
+  if (platform) {
+    const commerce = await commerceDocuments(origin, platform, Math.min(planCap, 1000));
+    const commerceRefs = new Set(commerce.map((doc) => doc.sourceRef));
+    for (let index = docs.length - 1; index >= 0; index -= 1) {
+      if (commerceRefs.has(docs[index]?.sourceRef ?? "")) docs.splice(index, 1);
+    }
+    docs.push(...commerce);
   }
 
   if (docs.length === 0) throw new Error("We couldn't read any pages from that address.");
@@ -719,6 +751,20 @@ export async function syncSource(
     });
 
     options?.onStage?.("embed");
+    // Remove legacy asset rows before embedding. Their chunks cascade-delete.
+    if (source.type === "website") {
+      const { data: existing } = await supabase
+        .from("knowledge_documents")
+        .select("id, source_ref")
+        .eq("source_id", sourceId)
+        .limit(5000);
+      const assetIds = ((existing ?? []) as Array<{ id: string; source_ref: string }>)
+        .filter((row) => isAssetUrl(row.source_ref))
+        .map((row) => row.id);
+      if (assetIds.length > 0) {
+        await supabase.from("knowledge_documents").delete().in("id", assetIds);
+      }
+    }
     for (const doc of documents) {
       await upsertDocument(supabase, source.organization_id, sourceId, doc);
     }
