@@ -59,6 +59,17 @@ export function stripHtml(html: string): { title: string; text: string; links: s
   return { title: (titleMatch?.[1] ?? "").trim(), text, links };
 }
 
+/**
+ * Shops answer robots differently from people. We ask as an ordinary browser
+ * would, otherwise big storefronts hand back a block page or nothing at all.
+ */
+export const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-IN,en;q=0.9",
+};
+
 /** A fetch that always gives up rather than hanging a crawl. */
 export async function fetchWithTimeout(
   url: string,
@@ -68,7 +79,12 @@ export async function fetchWithTimeout(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { redirect: "follow", ...init, signal: controller.signal });
+    return await fetch(url, {
+      redirect: "follow",
+      ...init,
+      headers: { ...BROWSER_HEADERS, ...(init?.headers as Record<string, string> | undefined) },
+      signal: controller.signal,
+    });
   } catch {
     return null;
   } finally {
@@ -110,12 +126,16 @@ export async function readPage(
   } = {},
 ): Promise<PageRead | null> {
   options.onStage?.("fetch");
-  const res = await fetchWithTimeout(url, options.timeoutMs ?? 8000);
+  // Big storefronts are slow and occasionally drop the first connection, so a
+  // single miss must not push us onto the paid reader.
+  const timeout = options.timeoutMs ?? 20000;
+  let res = await fetchWithTimeout(url, timeout);
+  if (!res || res.status >= 500) res = (await fetchWithTimeout(url, timeout)) ?? res;
   const type = res?.headers.get("content-type") ?? "";
   const readableDirect = Boolean(
-    res?.ok && (type.includes("text/html") || type.includes("text/plain")),
+    res?.ok && (type.includes("text/html") || type.includes("text/plain") || type === ""),
   );
-  const html = readableDirect ? await res?.text().catch(() => "") ?? "" : "";
+  const html = readableDirect ? (await res?.text().catch(() => "")) ?? "" : "";
   options.onStage?.("extract");
   const { title, text, links } = stripHtml(html);
   const headers: Record<string, string> = {};
