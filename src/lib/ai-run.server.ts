@@ -1488,7 +1488,10 @@ export function asksForFigure(question: string): boolean {
  */
 export function unsupportedNumbers(answer: string, support: string[]): string[] {
   const haystack = stripNumericNoise(support.join("\n"));
-  const found = answer.match(NUMBER_PATTERN) ?? [];
+  // Digits inside a link (…premix-coffee-132g) are part of an address, not a
+  // claim about price or quantity. Drop links before looking for numbers.
+  const claims = answer.replace(/https?:\/\/\S+/gi, " ");
+  const found = claims.match(NUMBER_PATTERN) ?? [];
   const out: string[] = [];
   for (const raw of found) {
     const token = raw.trim();
