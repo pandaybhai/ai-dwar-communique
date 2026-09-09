@@ -22,6 +22,7 @@ export type PageRead = {
   status?: number;
   bytes?: number;
   extractedChars?: number;
+  contentType?: string;
   headers?: Record<string, string>;
 };
 
@@ -132,9 +133,7 @@ export async function readPage(
   let res = await fetchWithTimeout(url, timeout);
   if (!res || res.status >= 500) res = (await fetchWithTimeout(url, timeout)) ?? res;
   const type = res?.headers.get("content-type") ?? "";
-  const readableDirect = Boolean(
-    res?.ok && (type.includes("text/html") || type.includes("text/plain") || type === ""),
-  );
+  const readableDirect = Boolean(res?.ok && type.toLowerCase().includes("text/html"));
   const html = readableDirect ? (await res?.text().catch(() => "")) ?? "" : "";
   options.onStage?.("extract");
   const { title, text, links } = stripHtml(html);
@@ -149,6 +148,7 @@ export async function readPage(
     status: res?.status ?? 0,
     bytes: html.length,
     extractedChars: text.length,
+    contentType: type,
     headers,
   };
 
