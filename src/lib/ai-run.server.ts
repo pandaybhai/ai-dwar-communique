@@ -1077,7 +1077,10 @@ export async function executeRun(
           });
         }
         knowledgeBlock = rows
-          .map((r, i) => `[${i + 1}] ${r.title || r.source_name}\n${r.text}`)
+          .map((r, i) => {
+            const url = /^https?:\/\//i.test(r.source_ref ?? "") ? `${r.source_ref}\n` : "";
+            return `[${i + 1}] ${r.title || r.source_name}\n${url}${r.text}`;
+          })
           .join("\n\n");
 
         // Something the merchant wrote themselves counts as used, so they can
