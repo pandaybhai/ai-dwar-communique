@@ -528,6 +528,19 @@ function StepBlock({
               Counted from the moment it starts. Quiet hours can push it a little later.
             </p>
           </div>
+
+          <CardAttachmentPicker
+            idPrefix={`step-${step.id}`}
+            value={
+              ((step.condition ?? {})["card"] as CardAttachment | undefined) ?? null
+            }
+            disabled={!canManage}
+            onChange={(next) => {
+              const rest = { ...(step.condition ?? {}) };
+              delete rest["card"];
+              onChange({ condition: next ? { ...rest, card: next } : rest });
+            }}
+          />
         </div>
       ) : null}
     </div>
