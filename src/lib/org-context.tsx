@@ -61,8 +61,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(async () => {
     setError(null);
-    const { data: userData } = await aidwar.auth.getUser();
-    const uid = userData.user?.id;
+    // Local session read — no network hop before the first query.
+    const { data: userData } = await aidwar.auth.getSession();
+    const uid = userData.session?.user?.id;
     if (!uid) {
       setLoading(false);
       return;
