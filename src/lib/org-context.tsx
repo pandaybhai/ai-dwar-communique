@@ -105,7 +105,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
     setMemberships(list);
     setProfile(
-      (prof as Profile) ?? { id: uid, full_name: null, email: userData.user?.email ?? null },
+      (prof as Profile) ?? {
+        id: uid,
+        full_name: null,
+        email: userData.session?.user?.email ?? null,
+      },
     );
 
     const stored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
