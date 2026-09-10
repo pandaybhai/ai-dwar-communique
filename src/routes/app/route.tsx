@@ -8,11 +8,13 @@ import { ErrorState, PageSkeleton } from "@/components/empty-state";
 export const Route = createFileRoute("/app")({
   ssr: false,
   beforeLoad: async () => {
-    const { data, error } = await aidwar.auth.getUser();
-    if (error || !data.user) {
+    // getSession() reads the locally stored session; getUser() costs a full
+    // network round trip before anything can render, which is painful on 4G.
+    const { data, error } = await aidwar.auth.getSession();
+    if (error || !data.session?.user) {
       throw redirect({ to: "/login" });
     }
-    return { user: data.user };
+    return { user: data.session.user };
   },
   component: () => (
     <OrgProvider>

@@ -61,8 +61,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(async () => {
     setError(null);
-    const { data: userData } = await aidwar.auth.getUser();
-    const uid = userData.user?.id;
+    // Local session read — no network hop before the first query.
+    const { data: userData } = await aidwar.auth.getSession();
+    const uid = userData.session?.user?.id;
     if (!uid) {
       setLoading(false);
       return;
@@ -104,7 +105,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
     setMemberships(list);
     setProfile(
-      (prof as Profile) ?? { id: uid, full_name: null, email: userData.user?.email ?? null },
+      (prof as Profile) ?? {
+        id: uid,
+        full_name: null,
+        email: userData.session?.user?.email ?? null,
+      },
     );
 
     const stored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
