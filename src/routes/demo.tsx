@@ -65,7 +65,7 @@ const FAQS = [
   {
     question: "What will I see in the demo?",
     answer:
-      "We will use your catalogue or website to demonstrate customer answers, owner handoff, and whether AiDwar fits your workflow.",
+      "You share your website or catalogue, we show you a grounded answer built from it and an owner handoff, and you decide whether AiDwar fits your business.",
   },
   {
     question: "Do I need an account?",
@@ -192,7 +192,7 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
                 tabIndex={-1}
                 className="text-2xl font-bold leading-tight outline-none sm:text-3xl"
               >
-                See how AiDwar would handle your customer questions.
+                See AiDwar answer questions from your own business.
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 Tell us a little about your business. Your answers stay in place if you go back.
