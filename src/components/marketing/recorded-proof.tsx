@@ -2,7 +2,7 @@ import { useState } from "react";
 import { BookOpen, CheckCheck, Info, UserCog } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trackMarketing } from "@/lib/marketing-analytics";
-import type { PublicProof } from "@/lib/demo-proof.server";
+import type { PublicProof } from "@/lib/demo-proof";
 
 /**
  * Replay of real AiDwar runs recorded against an internal test workspace that
