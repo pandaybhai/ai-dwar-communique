@@ -8,6 +8,7 @@ import { createFileRoute } from "@tanstack/react-router";
 export const Route = createFileRoute("/api/public/demo-leads")({
   server: {
     handlers: {
+      GET: async () => Response.json({ error: "Not allowed." }, { status: 405 }),
       POST: async ({ request }) => {
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
         const { submitLead } = await import("@/lib/leads.server");

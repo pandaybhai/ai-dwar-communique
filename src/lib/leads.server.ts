@@ -109,8 +109,9 @@ export async function submitLead(
     return { ok: false, error: "Please enter your business name.", status: 400 };
   }
 
-  const phone = normalizePhone(str(body.phone, 30));
-  if (phone.replace(/\D/g, "").length < 10 || phone.replace(/\D/g, "").length > 15) {
+  const rawPhone = str(body.phone, 30);
+  const phone = normalizePhone(rawPhone);
+  if (!/^\+[1-9]\d{9,14}$/.test(rawPhone.replace(/[\s()-]/g, ""))) {
     return {
       ok: false,
       error: "Please enter your WhatsApp number with country code, like +91 98765 43210.",
