@@ -187,18 +187,18 @@ function Index() {
         {/* Hero */}
         <section className="relative overflow-hidden">
           <div className="pointer-events-none absolute inset-x-0 -top-56 h-[36rem] bg-[radial-gradient(ellipse_at_top,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_65%)]" />
-          <div className="relative mx-auto max-w-5xl px-5 pb-16 pt-16 sm:px-8 sm:pb-24 sm:pt-24">
+          <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-16 sm:px-8 sm:pb-24 sm:pt-24 lg:grid-cols-[1.02fr_0.98fr] lg:gap-14">
             <Reveal>
               <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-4 py-1.5 text-xs font-medium text-primary">
                 Official WhatsApp Business Platform
               </span>
-              <h1 className="mt-7 max-w-3xl text-[2.6rem] font-extrabold leading-[1.05] tracking-tight text-foreground sm:text-6xl">
+              <h1 className="mt-7 max-w-2xl text-[2.6rem] font-extrabold leading-[1.05] tracking-tight text-foreground sm:text-[3.4rem]">
                 Your AI employee.{" "}
                 <span className="bg-gradient-to-r from-primary to-teal-500 bg-clip-text text-transparent">
                   Inside WhatsApp.
                 </span>
               </h1>
-              <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+              <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
                 AiDwar understands your business, replies to customers, and asks for your approval
                 when needed. You focus on what matters.
               </p>
@@ -235,6 +235,12 @@ function Index() {
                   See pricing
                 </Link>
               </p>
+            </Reveal>
+
+            {/* Compact example of the same walkthrough shown in full below.
+                Hidden on small screens to keep the first mobile view short. */}
+            <Reveal delay={120} className="hidden lg:block">
+              <HeroExample onSeeMore={() => scrollToId("proof")} />
             </Reveal>
           </div>
         </section>
