@@ -3,6 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, BookOpenCheck, HandHelping, MessageSquareText } from "lucide-react";
 import { DemoForm } from "@/components/marketing/demo-form";
 import { HeroExample } from "@/components/marketing/product-proof";
+import { RecordedProof } from "@/components/marketing/recorded-proof";
+import { getPublishedProof } from "@/lib/demo-proof.functions";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
