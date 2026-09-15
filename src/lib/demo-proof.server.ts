@@ -269,10 +269,12 @@ export async function captureScenario(
   );
 
   // What the product would do next with this run, stated plainly.
+  // The fixture agent is in Draft mode, so an answer is a DRAFT for the owner —
+  // never an automatic send. No message was transmitted in either case.
   const workflow =
     run.status === "ok" && !run.escalationSignal
-      ? "Answer sent to the customer (in this capture nothing was sent — no number is connected)."
-      : `Held for owner review — escalation signal "${run.escalationSignal ?? run.status}". In the product this marks the conversation Needs you.`;
+      ? "Answered from the catalogue and saved as a draft for the owner to review. Nothing was sent: this fixture has no connected number."
+      : `Held for the owner instead of answering — signal "${run.escalationSignal ?? run.status}". In the product this marks the conversation Needs you. Nothing was sent.`;
 
   const { data, error } = await supabase
     .from("demo_proof_runs")
