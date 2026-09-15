@@ -195,7 +195,9 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
                 See AiDwar answer questions from your own business.
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Tell us a little about your business. Your answers stay in place if you go back.
+                Share your website or catalogue, see a grounded answer and an owner handoff, then
+                decide whether it fits. Website is optional. Your answers stay in place if you go
+                back.
               </p>
             </div>
             <DemoForm focused onFocusChange={setFormFocused} onComplete={() => setComplete(true)} />
