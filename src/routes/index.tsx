@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Reveal } from "@/components/marketing/reveal";
-import { ProductProof, type ProofAudience } from "@/components/marketing/product-proof";
+import {
+  HeroExample,
+  ProductProof,
+  type ProofAudience,
+} from "@/components/marketing/product-proof";
 import { DemoForm } from "@/components/marketing/demo-form";
 import { trackMarketing } from "@/lib/marketing-analytics";
 
@@ -63,17 +67,17 @@ const CAPABILITIES = [
   {
     icon: BookOpenCheck,
     title: "Understands",
-    body: "It reads your website, catalogue and the answers you teach it, so replies come from your business — not from a guess.",
+    body: "It reads your website, catalogue and the answers you teach it, so replies are grounded in your own material.",
   },
   {
     icon: MessagesSquare,
     title: "Replies",
-    body: "Customers get a clear answer in the language they typed in, at 11 at night or during a festival rush.",
+    body: "Customers get an answer in the language they wrote in, at 11 at night or during a festival rush.",
   },
   {
     icon: HandHelping,
     title: "Asks you",
-    body: "When there is no answer in what it knows, it stops, tells the customer honestly and brings you in.",
+    body: "When it has no answer in what it knows, it is designed to stop, say so plainly and bring you in.",
   },
 ];
 
@@ -84,7 +88,7 @@ const AUDIENCE_BENEFITS: Record<ProofAudience, { icon: typeof Store; title: stri
     points: [
       "Size, price and stock questions answered from your own product pages",
       "Product links sent in the chat instead of screenshots",
-      "Nothing invented — no price it cannot point to in your catalogue",
+      "Designed to ask you rather than state a price it cannot find in your catalogue",
     ],
   },
   services: {
@@ -100,7 +104,7 @@ const AUDIENCE_BENEFITS: Record<ProofAudience, { icon: typeof Store; title: stri
     icon: UsersRound,
     title: "Growing teams",
     points: [
-      "One shared inbox so two people never reply to the same customer",
+      "One shared inbox, so your team can see who is handling which chat",
       "Draft only mode while your team builds trust in it",
       "A work history showing what was answered and what was handed over",
     ],
@@ -116,7 +120,7 @@ const STEPS = [
   {
     icon: BookOpenCheck,
     title: "It reads your business",
-    body: "Point it at your website or store and it builds its own knowledge — pages, products, policies.",
+    body: "Point it at your website or store and it builds its knowledge from your pages, products and policies.",
   },
   {
     icon: Sparkles,
@@ -133,11 +137,11 @@ const STEPS = [
 const FAQS = [
   {
     q: "Will it make things up about my products?",
-    a: "It only answers from what it has read or been taught. When there is no source, it says so and asks you rather than guessing a price or a promise.",
+    a: "It is built to answer from what it has read or been taught. When it has no source for something, it is designed to say so and ask you, rather than state a price or a promise. You can also review its replies before they go out.",
   },
   {
     q: "Do I have to let it reply straight away?",
-    a: "No. Most businesses start in Draft only, where it writes the reply and a person presses send. You can switch it off entirely at any time.",
+    a: "No. You can start in Draft only, where it writes the reply and a person presses send. You can switch it off entirely at any time.",
   },
   {
     q: "Is this the official WhatsApp Business Platform?",
@@ -145,7 +149,7 @@ const FAQS = [
   },
   {
     q: "Which languages does it handle?",
-    a: "It replies in the language the customer typed in, including Hinglish and eight Indian languages.",
+    a: "It is built to reply in the language the customer wrote in, including Hinglish and several Indian languages alongside English.",
   },
   {
     q: "What happens to my data?",
@@ -187,18 +191,18 @@ function Index() {
         {/* Hero */}
         <section className="relative overflow-hidden">
           <div className="pointer-events-none absolute inset-x-0 -top-56 h-[36rem] bg-[radial-gradient(ellipse_at_top,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_65%)]" />
-          <div className="relative mx-auto max-w-5xl px-5 pb-16 pt-16 sm:px-8 sm:pb-24 sm:pt-24">
+          <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-16 sm:px-8 sm:pb-24 sm:pt-24 lg:grid-cols-[1.02fr_0.98fr] lg:gap-14">
             <Reveal>
               <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-4 py-1.5 text-xs font-medium text-primary">
                 Official WhatsApp Business Platform
               </span>
-              <h1 className="mt-7 max-w-3xl text-[2.6rem] font-extrabold leading-[1.05] tracking-tight text-foreground sm:text-6xl">
+              <h1 className="mt-7 max-w-2xl text-[2.6rem] font-extrabold leading-[1.05] tracking-tight text-foreground sm:text-[3.4rem]">
                 Your AI employee.{" "}
                 <span className="bg-gradient-to-r from-primary to-teal-500 bg-clip-text text-transparent">
                   Inside WhatsApp.
                 </span>
               </h1>
-              <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+              <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
                 AiDwar understands your business, replies to customers, and asks for your approval
                 when needed. You focus on what matters.
               </p>
@@ -235,6 +239,12 @@ function Index() {
                   See pricing
                 </Link>
               </p>
+            </Reveal>
+
+            {/* Compact example of the same walkthrough shown in full below.
+                Hidden on small screens to keep the first mobile view short. */}
+            <Reveal delay={120} className="hidden lg:block">
+              <HeroExample onSeeMore={() => scrollToId("proof")} />
             </Reveal>
           </div>
         </section>
@@ -375,7 +385,7 @@ function Index() {
               </p>
               <ul className="mt-7 space-y-3 text-sm text-muted-foreground">
                 {[
-                  "We show it answering questions from your own catalogue or website",
+                  "We show it answering questions built around your own catalogue or website",
                   "We show what happens when it doesn't know — how it hands over to you",
                   "We talk honestly about whether AiDwar fits how you work",
                 ].map((p) => (

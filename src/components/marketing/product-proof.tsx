@@ -12,6 +12,8 @@ import { trackMarketing } from "@/lib/marketing-analytics";
  * controls in the workspace.
  */
 
+export type { Example };
+
 export type ProofAudience = "retail" | "services" | "growing";
 
 type Example = {
@@ -33,21 +35,21 @@ export const AUDIENCES: Array<{
   {
     id: "retail",
     label: "Retail & D2C",
-    blurb: "Catalogue questions answered from your own product pages, not guesses.",
+    blurb: "Catalogue questions answered from your own product pages.",
     examples: [
       {
         id: "stock",
         question: "Do you have this kurta in medium?",
         reply:
           "Yes — the cotton kurta is listed in size M on our store page. Would you like the link to order?",
-        basis: "Answered from your product page. Nothing invented.",
+        basis: "Drawn from your product page, which the AI employee has read.",
       },
       {
         id: "price",
         question: "Bulk order pe kitna discount milega?",
         reply:
           "I don't have a bulk price written down, so I won't guess. I've asked the owner and will come back to you.",
-        basis: "No source for the answer, so it asked you instead of making a number up.",
+        basis: "No bulk price in its knowledge, so it is designed to ask you rather than state a figure.",
         asksOwner: true,
       },
       {
@@ -75,7 +77,7 @@ export const AUDIENCES: Array<{
         id: "cost",
         question: "What does the consultation cost?",
         reply: "The consultation is listed at ₹800 on our services page. Shall I note your details down?",
-        basis: "Price read from your own services page.",
+        basis: "Price drawn from your own services page.",
       },
       {
         id: "handover",
@@ -89,14 +91,14 @@ export const AUDIENCES: Array<{
   {
     id: "growing",
     label: "Growing teams",
-    blurb: "One shared inbox, clear ownership, and nothing sent without approval.",
+    blurb: "One shared inbox, clear ownership, and approval before anything goes out.",
     examples: [
       {
         id: "draft",
         question: "Is the Diwali offer still on?",
         reply:
           "Draft ready for your approval: \"The Diwali offer runs till Sunday — shall I send you the details?\"",
-        basis: "In Draft only mode nothing goes out until someone on your team approves it.",
+        basis: "In Draft only mode, replies wait for someone on your team to approve them.",
         asksOwner: true,
       },
       {
@@ -122,7 +124,7 @@ const MODES = [
     id: "off",
     label: "Off",
     icon: PauseCircle,
-    body: "Nothing is sent. Every message waits for your team, exactly as before AiDwar.",
+    body: "The AI employee stays quiet. Messages wait for your team, as they did before AiDwar.",
   },
   {
     id: "draft",
@@ -134,7 +136,7 @@ const MODES = [
     id: "replying",
     label: "Replying",
     icon: Send,
-    body: "It answers on its own from what it knows, and pulls you in the moment it isn't sure.",
+    body: "It answers from what it knows, and is designed to bring you in when it is not sure.",
   },
 ] as const;
 
@@ -177,7 +179,7 @@ export function ProductProof({
         </h2>
         <p className="mt-4 max-w-lg text-muted-foreground">
           These are written examples of the product&apos;s behaviour, not a recording of a live
-          customer chat. The controls on the right are the real ones your team gets.
+          customer chat. On the right is an example of the controls available in AiDwar.
         </p>
 
         <div
@@ -233,7 +235,7 @@ export function ProductProof({
       </div>
 
       <div className="grid gap-6">
-        <ChatPanel example={example} mode={mode} />
+        <ExampleChat example={example} mode={mode} />
 
         <div className="rounded-3xl border border-border bg-card p-6">
           <p className="text-sm font-semibold">You stay in charge</p>
@@ -277,7 +279,7 @@ export function ProductProof({
   );
 }
 
-function ChatPanel({
+export function ExampleChat({
   example,
   mode,
 }: {
@@ -363,7 +365,7 @@ function ChatPanel({
         <Info className="mt-0.5 size-4 shrink-0 text-primary" />
         <p className="text-xs leading-relaxed text-muted-foreground">
           {example.basis}
-          {example.asksOwner ? " You are asked before anything is promised." : ""}
+          {example.asksOwner ? " It is designed to check with you before promising anything." : ""}
         </p>
       </div>
     </div>
@@ -387,6 +389,51 @@ function Control({
       <div>
         <p className="text-sm font-medium">{title}</p>
         <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Compact hero illustration: one example question and the approval control,
+ * drawn from the same written examples as the full walkthrough below.
+ */
+export function HeroExample({ onSeeMore }: { onSeeMore: () => void }) {
+  const [mode, setMode] = useState<"draft" | "replying">("replying");
+  const example = AUDIENCES[0]!.examples[0]!;
+
+  return (
+    <div className="mx-auto w-full max-w-md">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground">
+          <Info className="size-3" /> Example
+        </span>
+        <button
+          type="button"
+          onClick={onSeeMore}
+          className="rounded-full px-2 py-1 text-xs font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          See the full walkthrough
+        </button>
+      </div>
+
+      <ExampleChat example={example} mode={mode} />
+
+      <div className="mt-3 flex items-center gap-2 rounded-2xl border border-border bg-card p-2">
+        {(["draft", "replying"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            aria-pressed={mode === m}
+            className={cn(
+              "flex-1 rounded-xl px-3 py-2 text-xs font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              mode === m ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {m === "draft" ? "Draft for approval" : "Replying"}
+          </button>
+        ))}
       </div>
     </div>
   );
