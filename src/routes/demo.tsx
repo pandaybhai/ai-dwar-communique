@@ -5,6 +5,7 @@ import { DemoForm } from "@/components/marketing/demo-form";
 import { HeroExample } from "@/components/marketing/product-proof";
 import { RecordedProof } from "@/components/marketing/recorded-proof";
 import { getPublishedProof } from "@/lib/demo-proof.functions";
+import type { PublicProof } from "@/lib/demo-proof";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
