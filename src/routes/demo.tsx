@@ -32,14 +32,15 @@ export const Route = createFileRoute("/demo")({
     links: [{ rel: "canonical", href: "https://aidwar.in/demo" }],
   }),
   loader: () => getPublishedProof(),
-  errorComponent: () => <DemoFallback />,
-  notFoundComponent: () => <DemoFallback />,
-  component: DemoPage,
+  errorComponent: () => <DemoPage proof={[]} />,
+  notFoundComponent: () => <DemoPage proof={[]} />,
+  component: DemoRoute,
 });
 
 /** The page is worth showing even if the recorded proof can't be read. */
-function DemoFallback() {
-  return <DemoPage proofOverride={[]} />;
+function DemoRoute() {
+  const data = Route.useLoaderData();
+  return <DemoPage proof={(data?.proof ?? []) as PublicProof[]} />;
 }
 
 const BENEFITS = [
