@@ -363,7 +363,7 @@ function Field({
   label: string;
   value: string;
   onChange: (value: string) => void;
-} & React.InputHTMLAttributes<HTMLInputElement>) {
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value" | "id">) {
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
