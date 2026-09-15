@@ -154,8 +154,11 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
               </div>
             </section>
 
-            <section aria-label="Illustrative product example" className="mt-8 sm:mt-10">
-              <HeroExample />
+            <section
+              aria-label={proof.length ? "Recorded product test" : "Illustrative product example"}
+              className="mt-8 sm:mt-10"
+            >
+              {proof.length ? <RecordedProof proof={proof} /> : <HeroExample />}
             </section>
 
             <section aria-labelledby="benefits-title" className="mt-9 border-y border-border py-7 sm:mt-12">
