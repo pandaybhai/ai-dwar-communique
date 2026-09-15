@@ -30,6 +30,8 @@ export const Route = createFileRoute("/demo")({
     ],
     links: [{ rel: "canonical", href: "https://aidwar.in/demo" }],
   }),
+  loader: () => getPublishedProof(),
+  errorComponent: () => <DemoPage />,
   component: DemoPage,
 });
 
