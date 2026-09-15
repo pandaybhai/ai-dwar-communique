@@ -307,6 +307,13 @@ async function freshConversation(supabase: SupabaseClient, ids: Ids): Promise<st
     .eq("id", ids.conversationId)
     .single();
   const row = conversation as { contact_id: string; whatsapp_account_id: string | null };
+  // Only one live conversation per fixture number, so close the previous one.
+  await supabase
+    .from("conversations")
+    .update({ status: "closed" })
+    .eq("organization_id", ids.organizationId)
+    .eq("contact_id", row.contact_id)
+    .neq("status", "closed");
   const { data, error } = await supabase
     .from("conversations")
     .insert({
