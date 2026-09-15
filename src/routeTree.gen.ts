@@ -75,6 +75,7 @@ import { Route as ApiInternalBillingMonthlyRouteImport } from './routes/api/inte
 import { Route as ApiInternalBillingNotifyRouteImport } from './routes/api/internal/billing-notify'
 import { Route as ApiInternalBillingSweepRouteImport } from './routes/api/internal/billing-sweep'
 import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/internal/campaign-worker'
+import { Route as ApiInternalDemoProofRouteImport } from './routes/api/internal/demo-proof'
 import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
 import { Route as ApiInternalKnowledgeRefreshRouteImport } from './routes/api/internal/knowledge-refresh'
@@ -447,6 +448,11 @@ const ApiInternalCampaignWorkerRoute =
     path: '/api/internal/campaign-worker',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiInternalDemoProofRoute = ApiInternalDemoProofRouteImport.update({
+  id: '/api/internal/demo-proof',
+  path: '/api/internal/demo-proof',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalFlowScanRoute = ApiInternalFlowScanRouteImport.update({
   id: '/api/internal/flow-scan',
   path: '/api/internal/flow-scan',
@@ -716,6 +722,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
   '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
+  '/api/internal/demo-proof': typeof ApiInternalDemoProofRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
@@ -819,6 +826,7 @@ export interface FileRoutesByTo {
   '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
   '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
+  '/api/internal/demo-proof': typeof ApiInternalDemoProofRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
@@ -925,6 +933,7 @@ export interface FileRoutesById {
   '/api/internal/billing-notify': typeof ApiInternalBillingNotifyRoute
   '/api/internal/billing-sweep': typeof ApiInternalBillingSweepRoute
   '/api/internal/campaign-worker': typeof ApiInternalCampaignWorkerRoute
+  '/api/internal/demo-proof': typeof ApiInternalDemoProofRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
@@ -1032,6 +1041,7 @@ export interface FileRouteTypes {
     | '/api/internal/billing-notify'
     | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
+    | '/api/internal/demo-proof'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/knowledge-refresh'
@@ -1135,6 +1145,7 @@ export interface FileRouteTypes {
     | '/api/internal/billing-notify'
     | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
+    | '/api/internal/demo-proof'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/knowledge-refresh'
@@ -1240,6 +1251,7 @@ export interface FileRouteTypes {
     | '/api/internal/billing-notify'
     | '/api/internal/billing-sweep'
     | '/api/internal/campaign-worker'
+    | '/api/internal/demo-proof'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
     | '/api/internal/knowledge-refresh'
@@ -1326,6 +1338,7 @@ export interface RootRouteChildren {
   ApiInternalBillingNotifyRoute: typeof ApiInternalBillingNotifyRoute
   ApiInternalBillingSweepRoute: typeof ApiInternalBillingSweepRoute
   ApiInternalCampaignWorkerRoute: typeof ApiInternalCampaignWorkerRoute
+  ApiInternalDemoProofRoute: typeof ApiInternalDemoProofRoute
   ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
   ApiInternalKnowledgeRefreshRoute: typeof ApiInternalKnowledgeRefreshRoute
@@ -1823,6 +1836,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalCampaignWorkerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/demo-proof': {
+      id: '/api/internal/demo-proof'
+      path: '/api/internal/demo-proof'
+      fullPath: '/api/internal/demo-proof'
+      preLoaderRoute: typeof ApiInternalDemoProofRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/flow-scan': {
       id: '/api/internal/flow-scan'
       path: '/api/internal/flow-scan'
@@ -2204,6 +2224,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalBillingNotifyRoute: ApiInternalBillingNotifyRoute,
   ApiInternalBillingSweepRoute: ApiInternalBillingSweepRoute,
   ApiInternalCampaignWorkerRoute: ApiInternalCampaignWorkerRoute,
+  ApiInternalDemoProofRoute: ApiInternalDemoProofRoute,
   ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
   ApiInternalKnowledgeRefreshRoute: ApiInternalKnowledgeRefreshRoute,
