@@ -125,6 +125,15 @@ function AdminLeads() {
         <Button variant="outline" size="sm" className="rounded-full" onClick={() => void load()}>
           <RefreshCw className={cn("mr-2 h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
         </Button>
+        <Button
+          variant={unassignedOnly ? "default" : "outline"}
+          size="sm"
+          className="rounded-full"
+          aria-pressed={unassignedOnly}
+          onClick={() => setUnassignedOnly((v) => !v)}
+        >
+          New &amp; unassigned ({unassignedNew})
+        </Button>
         <Tabs value={status} onValueChange={(v) => setStatus(v as LeadStatus | "all")}>
           <TabsList>
             <TabsTrigger value="all">All ({counts["all"] ?? 0})</TabsTrigger>
