@@ -109,17 +109,13 @@ function AdminLeads() {
 
   return (
     <>
-      <PageHeader
-        title="Leads &amp; Demos"
-        description={DESCRIPTION}
-        action={
-          data ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary">
-              <Sparkles className="h-3.5 w-3.5" /> {data.new_count} new
-            </span>
-          ) : undefined
-        }
-      />
+      <PageHeader title="Leads & Demos" description={DESCRIPTION} />
+
+      {data ? (
+        <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary">
+          <Sparkles className="h-3.5 w-3.5" /> {data.new_count} new
+        </span>
+      ) : null}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Button variant="outline" size="sm" className="rounded-full" onClick={() => void load()}>
@@ -150,7 +146,7 @@ function AdminLeads() {
       {loading && !data ? (
         <TableSkeleton rows={6} />
       ) : error ? (
-        <ErrorState description={error} onRetry={() => void load()} />
+        <ErrorState message={error} />
       ) : !data?.leads.length ? (
         <EmptyState
           icon={MessageSquarePlus}
@@ -158,7 +154,7 @@ function AdminLeads() {
           description="When someone asks for a demo from the website, they land here."
         />
       ) : !visible.length ? (
-        <NoResults onClear={() => { setSearch(""); setStatus("all"); }} />
+        <NoResults message="No enquiries match this filter." />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
           <table className="w-full text-sm">

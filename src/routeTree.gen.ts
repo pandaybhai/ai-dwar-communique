@@ -25,6 +25,7 @@ import { Route as AdminAiRouteImport } from './routes/admin/ai'
 import { Route as AdminBillingRouteImport } from './routes/admin/billing'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
+import { Route as AdminLeadsRouteImport } from './routes/admin/leads'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as ApiCardsRouteImport } from './routes/api/cards'
@@ -189,6 +190,11 @@ const AdminCustomersRoute = AdminCustomersRouteImport.update({
 const AdminFlagsRoute = AdminFlagsRouteImport.update({
   id: '/flags',
   path: '/flags',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminLeadsRoute = AdminLeadsRouteImport.update({
+  id: '/leads',
+  path: '/leads',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminOrganizationsRoute = AdminOrganizationsRouteImport.update({
@@ -653,6 +659,7 @@ export interface FileRoutesByFullPath {
   '/admin/billing': typeof AdminBillingRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
+  '/admin/leads': typeof AdminLeadsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
@@ -754,6 +761,7 @@ export interface FileRoutesByTo {
   '/admin/billing': typeof AdminBillingRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
+  '/admin/leads': typeof AdminLeadsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
@@ -858,6 +866,7 @@ export interface FileRoutesById {
   '/admin/billing': typeof AdminBillingRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
+  '/admin/leads': typeof AdminLeadsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
@@ -963,6 +972,7 @@ export interface FileRouteTypes {
     | '/admin/billing'
     | '/admin/customers'
     | '/admin/flags'
+    | '/admin/leads'
     | '/admin/organizations'
     | '/admin/users'
     | '/api/cards'
@@ -1064,6 +1074,7 @@ export interface FileRouteTypes {
     | '/admin/billing'
     | '/admin/customers'
     | '/admin/flags'
+    | '/admin/leads'
     | '/admin/organizations'
     | '/admin/users'
     | '/api/cards'
@@ -1167,6 +1178,7 @@ export interface FileRouteTypes {
     | '/admin/billing'
     | '/admin/customers'
     | '/admin/flags'
+    | '/admin/leads'
     | '/admin/organizations'
     | '/admin/users'
     | '/api/cards'
@@ -1446,6 +1458,13 @@ declare module '@tanstack/react-router' {
       path: '/flags'
       fullPath: '/admin/flags'
       preLoaderRoute: typeof AdminFlagsRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/leads': {
+      id: '/admin/leads'
+      path: '/leads'
+      fullPath: '/admin/leads'
+      preLoaderRoute: typeof AdminLeadsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/organizations': {
@@ -2052,6 +2071,7 @@ interface AdminRouteRouteChildren {
   AdminBillingRoute: typeof AdminBillingRoute
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminFlagsRoute: typeof AdminFlagsRoute
+  AdminLeadsRoute: typeof AdminLeadsRoute
   AdminOrganizationsRoute: typeof AdminOrganizationsRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -2063,6 +2083,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminBillingRoute: AdminBillingRoute,
   AdminCustomersRoute: AdminCustomersRoute,
   AdminFlagsRoute: AdminFlagsRoute,
+  AdminLeadsRoute: AdminLeadsRoute,
   AdminOrganizationsRoute: AdminOrganizationsRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
