@@ -79,6 +79,12 @@ export type RunOptions = {
   /** Plain user-visible question or instruction. */
   input: string;
   system?: string;
+  /**
+   * Only the merchant-authored hand-over rules (ai_instructions.escalation_rules).
+   * Never the assembled brief: platform wording in the brief used to match
+   * ordinary questions and hold known answers for review.
+   */
+  handoverRules?: string;
   agentId?: string | null;
   conversationId?: string | null;
   contactId?: string | null;
@@ -1338,7 +1344,7 @@ export async function executeRun(
       toolsBrokered: !useTools || tools.length > 0,
       anyToolFailed,
       history,
-      merchantRules: options.system ?? "",
+      merchantRules: options.handoverRules ?? "",
       priorFailedQuestions: options.priorFailedQuestions ?? [],
       customerLanguage: options.customerLanguage ?? null,
     });
