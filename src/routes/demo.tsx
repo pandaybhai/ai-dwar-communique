@@ -3,6 +3,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, BookOpenCheck, HandHelping, MessageSquareText } from "lucide-react";
 import { DemoForm } from "@/components/marketing/demo-form";
 import { HeroExample } from "@/components/marketing/product-proof";
+import { RecordedProof } from "@/components/marketing/recorded-proof";
+import { getPublishedProof } from "@/lib/demo-proof.functions";
+import type { PublicProof } from "@/lib/demo-proof";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
@@ -28,8 +31,17 @@ export const Route = createFileRoute("/demo")({
     ],
     links: [{ rel: "canonical", href: "https://aidwar.in/demo" }],
   }),
-  component: DemoPage,
+  loader: () => getPublishedProof(),
+  errorComponent: () => <DemoPage proof={[]} />,
+  notFoundComponent: () => <DemoPage proof={[]} />,
+  component: DemoRoute,
 });
+
+/** The page is worth showing even if the recorded proof can't be read. */
+function DemoRoute() {
+  const data = Route.useLoaderData();
+  return <DemoPage proof={(data?.proof ?? []) as PublicProof[]} />;
+}
 
 const BENEFITS = [
   {
@@ -53,7 +65,7 @@ const FAQS = [
   {
     question: "What will I see in the demo?",
     answer:
-      "We will use your catalogue or website to demonstrate customer answers, owner handoff, and whether AiDwar fits your workflow.",
+      "You share your website or catalogue, we show you a grounded answer built from it and an owner handoff, and you decide whether AiDwar fits your business.",
   },
   {
     question: "Do I need an account?",
@@ -66,7 +78,7 @@ const FAQS = [
   },
 ];
 
-function DemoPage() {
+function DemoPage({ proof }: { proof: PublicProof[] }) {
   const formSectionRef = useRef<HTMLElement>(null);
   const formHeadingRef = useRef<HTMLHeadingElement>(null);
   const heroActionRef = useRef<HTMLDivElement>(null);
@@ -142,8 +154,11 @@ function DemoPage() {
               </div>
             </section>
 
-            <section aria-label="Illustrative product example" className="mt-8 sm:mt-10">
-              <HeroExample />
+            <section
+              aria-label={proof.length ? "Recorded product test" : "Illustrative product example"}
+              className="mt-8 sm:mt-10"
+            >
+              {proof.length ? <RecordedProof proof={proof} /> : <HeroExample />}
             </section>
 
             <section aria-labelledby="benefits-title" className="mt-9 border-y border-border py-7 sm:mt-12">
@@ -177,10 +192,12 @@ function DemoPage() {
                 tabIndex={-1}
                 className="text-2xl font-bold leading-tight outline-none sm:text-3xl"
               >
-                See how AiDwar would handle your customer questions.
+                See AiDwar answer questions from your own business.
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Tell us a little about your business. Your answers stay in place if you go back.
+                Share your website or catalogue, see a grounded answer and an owner handoff, then
+                decide whether it fits. Website is optional. Your answers stay in place if you go
+                back.
               </p>
             </div>
             <DemoForm focused onFocusChange={setFormFocused} onComplete={() => setComplete(true)} />

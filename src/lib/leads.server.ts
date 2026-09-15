@@ -251,12 +251,20 @@ export async function listNotes(
 export async function updateLead(
   supabase: SupabaseClient,
   leadId: string,
-  patch: { status?: LeadStatus; assigned_to?: string | null; demo_at?: string | null },
+  patch: {
+    status?: LeadStatus;
+    assigned_to?: string | null;
+    demo_at?: string | null;
+    next_follow_up_at?: string | null;
+    demo_attended_at?: string | null;
+  },
 ): Promise<{ ok: boolean; error?: string }> {
   const update: Record<string, unknown> = {};
   if (patch.status) update["status"] = patch.status;
   if ("assigned_to" in patch) update["assigned_to"] = patch.assigned_to;
   if ("demo_at" in patch) update["demo_at"] = patch.demo_at;
+  if ("next_follow_up_at" in patch) update["next_follow_up_at"] = patch.next_follow_up_at;
+  if ("demo_attended_at" in patch) update["demo_attended_at"] = patch.demo_attended_at;
   if (!Object.keys(update).length) return { ok: true };
 
   const { error } = await supabase.from("demo_leads").update(update).eq("id", leadId);

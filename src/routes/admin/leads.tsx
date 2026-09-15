@@ -69,6 +69,7 @@ function AdminLeads() {
   const [status, setStatus] = useState<LeadStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState<LeadRow | null>(null);
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,12 +101,15 @@ function AdminLeads() {
     return (data?.leads ?? []).filter(
       (l) =>
         (status === "all" || l.status === status) &&
+        (!unassignedOnly || (l.status === "new" && !l.assigned_to)) &&
         (!needle ||
           l.name.toLowerCase().includes(needle) ||
           l.business_name.toLowerCase().includes(needle) ||
           l.phone.includes(needle)),
     );
-  }, [data, status, search]);
+  }, [data, status, search, unassignedOnly]);
+
+  const unassignedNew = (data?.leads ?? []).filter((l) => l.status === "new" && !l.assigned_to).length;
 
   return (
     <>
@@ -120,6 +124,15 @@ function AdminLeads() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Button variant="outline" size="sm" className="rounded-full" onClick={() => void load()}>
           <RefreshCw className={cn("mr-2 h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
+        </Button>
+        <Button
+          variant={unassignedOnly ? "default" : "outline"}
+          size="sm"
+          className="rounded-full"
+          aria-pressed={unassignedOnly}
+          onClick={() => setUnassignedOnly((v) => !v)}
+        >
+          New &amp; unassigned ({unassignedNew})
         </Button>
         <Tabs value={status} onValueChange={(v) => setStatus(v as LeadStatus | "all")}>
           <TabsList>
@@ -367,6 +380,49 @@ function LeadSheet({
                   }
                 />
               </label>
+
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium">Next follow-up (optional)</span>
+                <Input
+                  type="datetime-local"
+                  defaultValue={lead.next_follow_up_at ? lead.next_follow_up_at.slice(0, 16) : ""}
+                  onBlur={(e) =>
+                    void patch({
+                      next_follow_up_at: e.target.value
+                        ? new Date(e.target.value).toISOString()
+                        : null,
+                    })
+                  }
+                />
+              </label>
+
+              <div className="grid gap-1.5 text-sm">
+                <span className="font-medium">Demo attended</span>
+                {lead.demo_attended_at ? (
+                  <div className="flex items-center gap-3">
+                    <p className="text-muted-foreground">Attended {when(lead.demo_attended_at)}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full"
+                      disabled={saving}
+                      onClick={() => void patch({ demo_attended_at: null })}
+                    >
+                      Undo
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-fit rounded-full"
+                    disabled={saving}
+                    onClick={() => void patch({ demo_attended_at: new Date().toISOString() })}
+                  >
+                    Mark demo attended
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="mt-6">
