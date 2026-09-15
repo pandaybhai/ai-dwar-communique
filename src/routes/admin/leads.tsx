@@ -69,6 +69,7 @@ function AdminLeads() {
   const [status, setStatus] = useState<LeadStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState<LeadRow | null>(null);
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,12 +101,15 @@ function AdminLeads() {
     return (data?.leads ?? []).filter(
       (l) =>
         (status === "all" || l.status === status) &&
+        (!unassignedOnly || (l.status === "new" && !l.assigned_to)) &&
         (!needle ||
           l.name.toLowerCase().includes(needle) ||
           l.business_name.toLowerCase().includes(needle) ||
           l.phone.includes(needle)),
     );
-  }, [data, status, search]);
+  }, [data, status, search, unassignedOnly]);
+
+  const unassignedNew = (data?.leads ?? []).filter((l) => l.status === "new" && !l.assigned_to).length;
 
   return (
     <>
