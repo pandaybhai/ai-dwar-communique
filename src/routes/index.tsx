@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Reveal } from "@/components/marketing/reveal";
-import { ProductProof, type ProofAudience } from "@/components/marketing/product-proof";
+import {
+  HeroExample,
+  ProductProof,
+  type ProofAudience,
+} from "@/components/marketing/product-proof";
 import { DemoForm } from "@/components/marketing/demo-form";
 import { trackMarketing } from "@/lib/marketing-analytics";
 
