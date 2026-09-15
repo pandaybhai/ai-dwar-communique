@@ -35,6 +35,18 @@ export const Route = createFileRoute("/api/internal/demo-proof")({
             }
             return Response.json({ ok: true, run: await proof.captureScenario(supabase, scenario) });
           }
+          if (action === "brief") {
+            const ids = await proof.ensureFixture(supabase);
+            const { assembleBrief } = await import("@/lib/ai-brief.server");
+            const brief = await assembleBrief(supabase, ids.organizationId, ids.agentId, {});
+            const q = String(body["question"] ?? "").toLowerCase();
+            const hits = brief.text
+              .toLowerCase()
+              .split(/[\n,]/)
+              .map((r) => r.trim())
+              .filter((r) => r.length > 2 && q.includes(r));
+            return Response.json({ hits, text: brief.text });
+          }
           if (action === "publish") {
             const id = String(body["id"] ?? "");
             if (!id) return Response.json({ error: "Missing id." }, { status: 400 });
