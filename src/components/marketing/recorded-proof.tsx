@@ -51,7 +51,7 @@ export function RecordedProof({ proof }: { proof: PublicProof[] }) {
               aria-selected={index === active}
               onClick={() => {
                 setActive(index);
-                trackMarketing("proof_case_viewed", { case: item.scenario });
+                trackMarketing("proof_engaged", { example: item.scenario });
               }}
               className={cn(
                 "min-h-10 flex-1 rounded-xl px-3 text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
