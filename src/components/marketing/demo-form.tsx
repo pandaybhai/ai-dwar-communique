@@ -153,10 +153,18 @@ export function DemoForm({ presetBusinessType }: { presetBusinessType?: string }
       noValidate
       className="rounded-3xl border border-border bg-card p-6 shadow-[var(--shadow-card)] sm:p-8"
     >
-      {/* honeypot — hidden from people, visible to bots */}
-      <div aria-hidden className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+      {/* Honeypot: kept out of the accessibility tree and out of the tab order,
+          so neither screen readers nor keyboard users ever reach it. */}
+      <div aria-hidden="true" hidden className="hidden">
         <label htmlFor="company_website_confirm">Leave this empty</label>
-        <input id="company_website_confirm" name="company_website_confirm" tabIndex={-1} autoComplete="off" />
+        <input
+          id="company_website_confirm"
+          name="company_website_confirm"
+          type="text"
+          aria-hidden="true"
+          tabIndex={-1}
+          autoComplete="off"
+        />
       </div>
 
       <div className="flex items-center gap-3">
