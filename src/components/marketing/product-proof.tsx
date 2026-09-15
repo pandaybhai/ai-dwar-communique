@@ -398,7 +398,7 @@ function Control({
  * Compact hero illustration: one example question and the approval control,
  * drawn from the same written examples as the full walkthrough below.
  */
-export function HeroExample({ onSeeMore }: { onSeeMore: () => void }) {
+export function HeroExample({ onSeeMore }: { onSeeMore?: () => void }) {
   const [mode, setMode] = useState<"draft" | "replying">("replying");
   const example = AUDIENCES[0]!.examples[0]!;
 
@@ -408,13 +408,15 @@ export function HeroExample({ onSeeMore }: { onSeeMore: () => void }) {
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground">
           <Info className="size-3" /> Example
         </span>
-        <button
-          type="button"
-          onClick={onSeeMore}
-          className="rounded-full px-2 py-1 text-xs font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          See the full walkthrough
-        </button>
+        {onSeeMore ? (
+          <button
+            type="button"
+            onClick={onSeeMore}
+            className="rounded-full px-2 py-1 text-xs font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            See the full walkthrough
+          </button>
+        ) : null}
       </div>
 
       <ExampleChat example={example} mode={mode} />
