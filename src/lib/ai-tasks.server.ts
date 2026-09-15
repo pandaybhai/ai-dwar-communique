@@ -269,6 +269,7 @@ export async function playgroundAnswer(
     actingRole: common.actingRole ?? null,
     input: question,
     system: brief.text,
+    handoverRules: brief.instructions.escalationRules,
     promptRulesVersion: brief.rulesVersion,
     tier: tier ?? null,
     comparisonId: comparisonId ?? null,
@@ -344,6 +345,7 @@ export async function agentAnswer(
     input: question,
     // Escalation rules are part of the assembled brief — exactly once.
     system: brief.text,
+    handoverRules: brief.instructions.escalationRules,
     promptRulesVersion: brief.rulesVersion,
     customerLanguage,
     priorFailedQuestions,
