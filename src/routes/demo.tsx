@@ -76,7 +76,9 @@ const FAQS = [
   },
 ];
 
-function DemoPage() {
+function DemoPage({ proofOverride }: { proofOverride?: PublicProof[] }) {
+  const loaded = Route.useLoaderData({ select: (d) => d.proof }) as PublicProof[] | undefined;
+  const proof = proofOverride ?? loaded ?? [];
   const formSectionRef = useRef<HTMLElement>(null);
   const formHeadingRef = useRef<HTMLHeadingElement>(null);
   const heroActionRef = useRef<HTMLDivElement>(null);
