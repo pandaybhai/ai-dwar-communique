@@ -53,8 +53,7 @@ create table if not exists public.demo_leads (
 create index if not exists demo_leads_created_idx on public.demo_leads(created_at desc);
 create index if not exists demo_leads_status_idx on public.demo_leads(status, created_at desc);
 create index if not exists demo_leads_iphash_idx on public.demo_leads(ip_hash, created_at desc);
-create unique index if not exists demo_leads_recent_dedupe_uq
-  on public.demo_leads(phone, date_trunc('day', created_at));
+create index if not exists demo_leads_phone_idx on public.demo_leads(phone, created_at desc);
 
 create table if not exists public.demo_lead_notes (
   id uuid primary key default gen_random_uuid(),
