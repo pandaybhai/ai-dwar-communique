@@ -60,6 +60,8 @@ export const Route = createFileRoute("/api/admin/leads")({
         if (typeof body["status"] === "string") patch["status"] = body["status"];
         if ("assigned_to" in body) patch["assigned_to"] = body["assigned_to"] ?? null;
         if ("demo_at" in body) patch["demo_at"] = body["demo_at"] ?? null;
+        if ("next_follow_up_at" in body) patch["next_follow_up_at"] = body["next_follow_up_at"] ?? null;
+        if ("demo_attended_at" in body) patch["demo_attended_at"] = body["demo_attended_at"] ?? null;
 
         const result = await updateLead(auth.supabase, leadId, patch);
         return result.ok

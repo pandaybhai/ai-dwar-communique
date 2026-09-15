@@ -83,6 +83,10 @@ export type LeadRow = {
   status: LeadStatus;
   assigned_to: string | null;
   demo_at: string | null;
+  /** When the team should next chase this enquiry. */
+  next_follow_up_at: string | null;
+  /** Set only once the demo actually happened — distinct from "Demo booked". */
+  demo_attended_at: string | null;
   organization_id: string | null;
   is_test: boolean;
 };
