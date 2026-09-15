@@ -6,6 +6,7 @@ import {
   Building2,
   CreditCard,
   Flag,
+  MessageSquarePlus,
   LogOut,
   Menu,
   ShieldCheck,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { to: "/admin/organizations", label: "Organizations", icon: Building2 },
   { to: "/admin/customers", label: "Customers", icon: Users },
+  { to: "/admin/leads", label: "Leads & Demos", icon: MessageSquarePlus },
   { to: "/admin/billing", label: "Billing", icon: CreditCard },
   { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/flags", label: "Feature Flags", icon: Flag },
