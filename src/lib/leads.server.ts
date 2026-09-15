@@ -166,7 +166,7 @@ export async function submitLead(
     .maybeSingle();
   if (existing) return { ok: true, id: (existing as { id: string }).id, duplicate: true };
 
-  const attribution = cleanAttribution(body.attribution as Record<string, unknown>, true);
+  const attribution = cleanAttribution(body.attribution as Record<string, unknown>);
 
   const { data, error } = await supabase
     .from("demo_leads")
