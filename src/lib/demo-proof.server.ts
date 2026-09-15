@@ -256,11 +256,15 @@ export async function captureScenario(
   const ids = await ensureFixture(supabase);
   const { agentAnswer } = await import("@/lib/ai-tasks.server");
 
+  // Every capture starts a fresh fixture conversation, so an earlier capture's
+  // run history can never make the next one look like a repeated question.
+  const conversationId = await freshConversation(supabase, ids);
+
   const question = SCENARIOS[scenario].question;
   const run = await agentAnswer(
     supabase,
     { organizationId: ids.organizationId, actorUserId: null, actingRole: null },
-    ids.conversationId,
+    conversationId,
     question,
   );
 
@@ -293,6 +297,29 @@ export async function captureScenario(
     .single();
   if (error) throw new Error(`demo_proof_runs: ${error.message}`);
   return data as Record<string, unknown>;
+}
+
+/** A brand-new fixture conversation for one capture. */
+async function freshConversation(supabase: SupabaseClient, ids: Ids): Promise<string> {
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("contact_id, whatsapp_account_id")
+    .eq("id", ids.conversationId)
+    .single();
+  const row = conversation as { contact_id: string; whatsapp_account_id: string | null };
+  const { data, error } = await supabase
+    .from("conversations")
+    .insert({
+      organization_id: ids.organizationId,
+      contact_id: row.contact_id,
+      whatsapp_account_id: row.whatsapp_account_id,
+      status: "open",
+      last_customer_message_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(`conversations: ${error.message}`);
+  return (data as { id: string }).id;
 }
 
 /* ------------------------------------------------------------- public read */
