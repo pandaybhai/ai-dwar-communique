@@ -26,8 +26,12 @@ const ATTRIBUTION_KEYS = [
   "ref",
 ] as const;
 
-/** Ad click IDs are only kept when the visitor gave explicit contact consent. */
-const CLICK_ID_KEYS = ["gclid", "fbclid", "wbraid", "gbraid", "msclkid"] as const;
+/**
+ * Ad click IDs (gclid, fbclid, wbraid, gbraid, msclkid) are never stored.
+ * Demo-contact permission is not advertising/tracking consent, and there is
+ * no separate verified advertising-consent mechanism, so we drop them at the
+ * server even if a client sends them.
+ */
 
 export type LeadResult =
   | { ok: true; id: string; duplicate: boolean }
@@ -58,12 +62,10 @@ function safePath(value: string): string | null {
 
 function cleanAttribution(
   input: Record<string, unknown> | undefined,
-  consented: boolean,
 ): Record<string, string> {
   const out: Record<string, string> = {};
   if (!input) return out;
-  const keys = consented ? [...ATTRIBUTION_KEYS, ...CLICK_ID_KEYS] : [...ATTRIBUTION_KEYS];
-  for (const key of keys) {
+  for (const key of ATTRIBUTION_KEYS) {
     const value = input[key];
     if (typeof value === "string" && value.trim()) out[key] = value.trim().slice(0, 200);
   }
@@ -164,7 +166,7 @@ export async function submitLead(
     .maybeSingle();
   if (existing) return { ok: true, id: (existing as { id: string }).id, duplicate: true };
 
-  const attribution = cleanAttribution(body.attribution as Record<string, unknown>, true);
+  const attribution = cleanAttribution(body.attribution as Record<string, unknown>);
 
   const { data, error } = await supabase
     .from("demo_leads")

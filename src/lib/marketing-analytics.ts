@@ -45,7 +45,11 @@ export function trackMarketing(
   }
 }
 
-/** Reads campaign parameters from the URL. No click IDs unless consented later. */
+/**
+ * Reads campaign parameters from the URL. Ad click IDs (gclid, fbclid, …)
+ * are deliberately not collected: demo-contact permission is not
+ * advertising/tracking consent.
+ */
 export function readAttribution(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const params = new URLSearchParams(window.location.search);
@@ -57,11 +61,6 @@ export function readAttribution(): Record<string, string> {
     "utm_content",
     "utm_term",
     "ref",
-    "gclid",
-    "fbclid",
-    "wbraid",
-    "gbraid",
-    "msclkid",
   ]) {
     const value = params.get(key);
     if (value) out[key] = value.slice(0, 200);
