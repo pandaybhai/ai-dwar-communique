@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, CheckCheck, Info, UserCog } from "lucide-react";
+import { BookOpen, Info, UserCog } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trackMarketing } from "@/lib/marketing-analytics";
 import type { PublicProof } from "@/lib/demo-proof";
@@ -8,7 +8,9 @@ import type { PublicProof } from "@/lib/demo-proof";
  * Replay of real AiDwar runs recorded against an internal test workspace that
  * contains only fictional business data. Every word in the reply bubbles comes
  * from `demo_proof_runs` — nothing here is written by hand, and nothing here
- * is a live customer conversation.
+ * is a live customer conversation. Internal provenance (raw status, signals,
+ * model, fixture note) stays in the database; this component shows only the
+ * owner-friendly version.
  */
 
 const TAB_LABEL: Record<string, string> = {
@@ -16,14 +18,36 @@ const TAB_LABEL: Record<string, string> = {
   handoff: "A question it can't",
 };
 
+type StatusCopy = { label: string; explanation: string };
+
+const KNOWN: StatusCopy = {
+  label: "Draft ready for review",
+  explanation: "Answered using the demo catalogue and saved for review. No message was sent.",
+};
+
+const UNKNOWN: StatusCopy = {
+  label: "Needs owner input",
+  explanation:
+    "No discount policy was provided, so AiDwar flagged the request for the owner. No message was sent.",
+};
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Deterministic IST formatting — identical on server and client. */
 function when(value: string): string {
-  return new Date(value).toLocaleString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const ist = new Date(new Date(value).getTime() + 5.5 * 60 * 60 * 1000);
+  const day = ist.getUTCDate();
+  const month = MONTHS[ist.getUTCMonth()];
+  const year = ist.getUTCFullYear();
+  let h = ist.getUTCHours();
+  const m = String(ist.getUTCMinutes()).padStart(2, "0");
+  const ampm = h >= 12 ? "pm" : "am";
+  h = h % 12 || 12;
+  return `${day} ${month} ${year}, ${h}:${m} ${ampm}`;
+}
+
+function statusCopy(proof: PublicProof): StatusCopy {
+  return proof.status === "ok" && !proof.escalation_signal ? KNOWN : UNKNOWN;
 }
 
 export function RecordedProof({ proof }: { proof: PublicProof[] }) {
@@ -31,16 +55,10 @@ export function RecordedProof({ proof }: { proof: PublicProof[] }) {
   const [showFacts, setShowFacts] = useState(false);
   if (!proof.length) return null;
   const current = proof[Math.min(active, proof.length - 1)]!;
+  const status = statusCopy(current);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-border bg-secondary/40 px-4 py-2.5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-          Replay of a real test
-        </p>
-        <p className="text-[11px] text-muted-foreground">Fictional business data</p>
-      </div>
-
       {proof.length > 1 ? (
         <div role="tablist" aria-label="Recorded test cases" className="flex gap-1 border-b border-border p-2">
           {proof.map((item, index) => (
@@ -76,9 +94,7 @@ export function RecordedProof({ proof }: { proof: PublicProof[] }) {
           <div className="flex justify-start">
             <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-white px-3.5 py-2.5 text-sm leading-6 text-neutral-900 shadow-sm">
               <p className="whitespace-pre-wrap">{current.answer}</p>
-              <p className="mt-1 flex items-center justify-end gap-1 text-[11px] text-neutral-500">
-                Drafted <CheckCheck className="size-3.5" />
-              </p>
+              <p className="mt-1 text-right text-[11px] text-neutral-500">Drafted</p>
             </div>
           </div>
         ) : null}
@@ -87,7 +103,9 @@ export function RecordedProof({ proof }: { proof: PublicProof[] }) {
       <div className="space-y-3 px-4 py-4">
         <p className="flex items-start gap-2 text-sm leading-6 text-foreground">
           <UserCog className="mt-0.5 size-4 shrink-0 text-primary" />
-          <span>{current.workflow_state}</span>
+          <span>
+            <span className="font-semibold">{status.label}.</span> {status.explanation}
+          </span>
         </p>
 
         <button
@@ -97,7 +115,7 @@ export function RecordedProof({ proof }: { proof: PublicProof[] }) {
           className="flex min-h-10 items-center gap-2 text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <BookOpen className="size-4" />
-          {showFacts ? "Hide" : "Show"} everything the AI was given
+          {showFacts ? "Hide the source facts" : "View the source facts"}
         </button>
         {showFacts ? (
           <ul className="space-y-2 rounded-xl bg-secondary/50 p-3 text-xs leading-5 text-muted-foreground">
@@ -110,14 +128,9 @@ export function RecordedProof({ proof }: { proof: PublicProof[] }) {
           </ul>
         ) : null}
 
-        <p className="flex items-start gap-2 border-t border-border pt-3 text-xs leading-5 text-muted-foreground">
+        <p className="flex items-start gap-2 border-t border-border pt-3 text-[11px] leading-5 text-muted-foreground">
           <Info className="mt-0.5 size-3.5 shrink-0" />
-          <span>
-            Recorded {when(current.captured_at)} in an internal AiDwar test workspace holding only
-            fictional products. No customer data, and no message was sent to anyone. Result recorded
-            as <span className="font-medium text-foreground">{current.status}</span>
-            {current.escalation_signal ? ` (${current.escalation_signal})` : ""}.
-          </span>
+          <span>Recorded test · fictional business data · {when(current.captured_at)}</span>
         </p>
       </div>
     </div>
