@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight,
+  BadgeCheck,
   BookOpen,
   BookOpenCheck,
   HandHelping,
   History,
   MessageSquareText,
+  MessageSquareOff,
   PauseCircle,
   PencilLine,
   Send,
+  ShieldCheck,
 } from "lucide-react";
 import { DemoForm } from "@/components/marketing/demo-form";
 import { HeroExample } from "@/components/marketing/product-proof";
@@ -90,10 +93,28 @@ const FAQS = [
   },
 ];
 
-type CampaignContext = "general" | "retail" | "services" | "growing";
+type CampaignContext =
+  | "general"
+  | "retail"
+  | "services"
+  | "education"
+  | "healthcare"
+  | "realestate"
+  | "growing";
 type DemoNeed = "replies" | "handoff" | "campaigns";
+type IndustryId = "retail" | "services" | "education" | "healthcare" | "realestate";
 
-const CAMPAIGN_CONTEXTS: Record<CampaignContext, { eyebrow: string; headline: string; supporting: string }> = {
+type CampaignMessage = {
+  eyebrow: string;
+  headline: string;
+  supporting: string;
+  adLabel?: string;
+  outcome?: string;
+  industry?: IndustryId;
+  need?: DemoNeed;
+};
+
+const CAMPAIGN_CONTEXTS: Record<CampaignContext, CampaignMessage> = {
   general: {
     eyebrow: "A personalised AiDwar demo",
     headline: "Your AI employee. Inside WhatsApp.",
@@ -103,16 +124,50 @@ const CAMPAIGN_CONTEXTS: Record<CampaignContext, { eyebrow: string; headline: st
     eyebrow: "For retail and D2C teams",
     headline: "Turn your catalogue into helpful customer replies.",
     supporting: "Show AiDwar your products, then see how it drafts answers and brings uncertain questions to you.",
+    adLabel: "Retail",
+    outcome: "Answer product, availability and delivery questions from your catalogue.",
+    industry: "retail",
   },
   services: {
     eyebrow: "For service businesses",
     headline: "Handle routine questions. Keep judgement with your team.",
     supporting: "See how AiDwar drafts service answers and hands decisions to the right person.",
+    adLabel: "Services",
+    outcome: "Collect enquiry details and bring appointment decisions to your team.",
+    industry: "services",
+  },
+  education: {
+    eyebrow: "For education and coaching teams",
+    headline: "Answer course questions from the information you approve.",
+    supporting: "See how AiDwar explains course details and flags admissions questions that need your team.",
+    adLabel: "Education",
+    outcome: "Explain course information and flag admissions questions that need a person.",
+    industry: "education",
+  },
+  healthcare: {
+    eyebrow: "For clinics and healthcare teams",
+    headline: "Share approved information. Keep clinical judgement with people.",
+    supporting: "See how AiDwar handles routine clinic questions and brings sensitive decisions to your team.",
+    adLabel: "Healthcare",
+    outcome: "Share approved clinic information while keeping clinical judgement with your team.",
+    industry: "healthcare",
+    need: "handoff",
+  },
+  realestate: {
+    eyebrow: "For real estate teams",
+    headline: "Answer property questions and organise serious enquiries.",
+    supporting: "See how AiDwar uses your property information and brings qualified conversations to an agent.",
+    adLabel: "Real estate",
+    outcome: "Answer property basics and organize serious enquiries for an agent.",
+    industry: "realestate",
   },
   growing: {
     eyebrow: "For growing teams",
     headline: "Give every customer question a clear next step.",
     supporting: "See shared replies, owner review and follow-up context working together in one demo.",
+    adLabel: "Growing teams",
+    outcome: "Keep customer replies, owner decisions and follow-ups visible as the team grows.",
+    need: "campaigns",
   },
 };
 
@@ -136,6 +191,30 @@ const DELIVERABLES = [
   { number: "03", title: "Discuss fit", body: "Decide where AiDwar could help your team and where it should not." },
 ];
 
+const TRUST_ITEMS = [
+  {
+    icon: ShieldCheck,
+    title: "Security safeguards",
+    body: "Encryption and role-based access controls",
+    to: "/privacy" as const,
+    linkLabel: "Read our Privacy Policy",
+  },
+  {
+    icon: BadgeCheck,
+    title: "Official business platform",
+    body: "Built on the WhatsApp Business Platform",
+    to: "/terms" as const,
+    linkLabel: "Read our Terms",
+  },
+  {
+    icon: MessageSquareOff,
+    title: "Consent-led messaging",
+    body: "Unsolicited messages are prohibited",
+    to: "/terms" as const,
+    linkLabel: "Read our messaging terms",
+  },
+];
+
 function DemoPage({ proof }: { proof: PublicProof[] }) {
   const formSectionRef = useRef<HTMLElement>(null);
   const formHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -150,16 +229,27 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const candidate = (params.get("context") ?? params.get("utm_content") ?? "").toLowerCase();
     const aliases: Record<string, CampaignContext> = {
       retail: "retail", ecommerce: "retail", d2c: "retail",
       services: "services", service: "services", appointments: "services",
+      education: "education", coaching: "education",
+      healthcare: "healthcare", clinic: "healthcare",
+      realestate: "realestate", "real-estate": "realestate", property: "realestate",
       growing: "growing", teams: "growing", "growing-teams": "growing",
     };
-    const matched = aliases[candidate];
+    const candidates = [params.get("context"), params.get("utm_content"), params.get("utm_campaign")]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
+    const matched = candidates.map((candidate) => aliases[candidate]).find(Boolean);
     if (!matched) return;
     setCampaignContext(matched);
-    if (matched === "retail" || matched === "services") setIndustry(matched);
+    const message = CAMPAIGN_CONTEXTS[matched];
+    if (message.industry) setIndustry(message.industry);
+    if (message.need) setNeed(message.need);
+    trackMarketing("demo_context_selected", {
+      context: matched,
+      industry: message.industry,
+    });
   }, []);
 
   useEffect(() => {
@@ -217,6 +307,14 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
               <p className="mt-4 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
                  {campaign.supporting}
               </p>
+               {campaign.adLabel && campaign.outcome ? (
+                 <div className="mt-4 max-w-xl border-l-2 border-primary bg-primary/5 px-4 py-3">
+                   <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                     Your ad focus · {campaign.adLabel}
+                   </p>
+                   <p className="mt-1 text-sm leading-6 text-foreground">{campaign.outcome}</p>
+                 </div>
+               ) : null}
               <p className="mt-3 max-w-xl text-base font-medium leading-7 text-foreground">
                 Learns from your business. Drafts replies. Brings you the decisions.
               </p>
@@ -295,6 +393,27 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
             <DemoForm presetBusinessType={industry} presetPrimaryNeed={need} focused onFocusChange={setFormFocused} onComplete={() => setComplete(true)} />
           </section>
         </div>
+
+         <section aria-label="Trust and policies" className="border-y border-border bg-secondary/25">
+           <div className="mx-auto grid max-w-6xl divide-y divide-border px-5 sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-8">
+             {TRUST_ITEMS.map((item) => (
+               <Link
+                 key={item.title}
+                 to={item.to}
+                 aria-label={item.linkLabel}
+                 className="group flex min-h-24 items-start gap-3 py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-5 first:sm:pl-0 last:sm:pr-0"
+               >
+                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                   <item.icon className="size-4.5" aria-hidden="true" />
+                 </span>
+                 <span>
+                   <span className="block text-sm font-semibold text-foreground group-hover:text-primary">{item.title}</span>
+                   <span className="mt-1 block text-xs leading-5 text-muted-foreground">{item.body}</span>
+                 </span>
+               </Link>
+             ))}
+           </div>
+         </section>
 
         <section aria-labelledby="deliverable-title" className="border-y border-border bg-secondary/25">
           <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
