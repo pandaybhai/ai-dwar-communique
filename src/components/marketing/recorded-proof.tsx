@@ -52,15 +52,13 @@ function statusCopy(proof: PublicProof): StatusCopy {
 
 export function RecordedProof({ proof }: { proof: PublicProof[] }) {
   const [active, setActive] = useState(0);
-  const [showFacts, setShowFacts] = useState(false);
   if (!proof.length) return null;
   const current = proof[Math.min(active, proof.length - 1)]!;
-  const status = statusCopy(current);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      {proof.length > 1 ? (
-        <div role="tablist" aria-label="Recorded test cases" className="flex gap-1 border-b border-border p-2">
+    <div>
+      {proof.length > 1 ? <>
+        <div role="tablist" aria-label="Recorded test cases" className="flex gap-1 rounded-t-2xl border border-b-0 border-border p-2 md:hidden">
           {proof.map((item, index) => (
             <button
               key={item.scenario}
@@ -82,57 +80,34 @@ export function RecordedProof({ proof }: { proof: PublicProof[] }) {
             </button>
           ))}
         </div>
-      ) : null}
-
-      <div className="space-y-3 bg-[#ece5dd] px-4 py-5 dark:bg-muted">
-        <div className="flex justify-end">
-          <p className="max-w-[85%] rounded-2xl rounded-br-sm bg-[#d9fdd3] px-3.5 py-2.5 text-sm leading-6 text-neutral-900 shadow-sm">
-            {current.question}
-          </p>
+        </> : null}
+        <div className="md:hidden">
+          <ProofCase proof={current} connected={proof.length > 1} />
         </div>
-        {current.answer ? (
-          <div className="flex justify-start">
-            <div className="max-w-[88%] rounded-2xl rounded-bl-sm bg-white px-3.5 py-2.5 text-sm leading-6 text-neutral-900 shadow-sm">
-              <p className="whitespace-pre-wrap">{current.answer}</p>
-              <p className="mt-1 text-right text-[11px] text-neutral-500">Drafted</p>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="space-y-3 px-4 py-4">
-        <p className="flex items-start gap-2 text-sm leading-6 text-foreground">
-          <UserCog className="mt-0.5 size-4 shrink-0 text-primary" />
-          <span>
-            <span className="font-semibold">{status.label}.</span> {status.explanation}
-          </span>
-        </p>
-
-        <button
-          type="button"
-          onClick={() => setShowFacts((v) => !v)}
-          aria-expanded={showFacts}
-          className="flex min-h-10 items-center gap-2 text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <BookOpen className="size-4" />
-          {showFacts ? "Hide the source facts" : "View the source facts"}
-        </button>
-        {showFacts ? (
-          <ul className="space-y-2 rounded-xl bg-secondary/50 p-3 text-xs leading-5 text-muted-foreground">
-            {current.source_facts.map((fact) => (
-              <li key={fact.title}>
-                <span className="font-semibold text-foreground">{fact.title}</span>
-                <p className="mt-0.5 whitespace-pre-wrap">{fact.content}</p>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        <p className="flex items-start gap-2 border-t border-border pt-3 text-[11px] leading-5 text-muted-foreground">
-          <Info className="mt-0.5 size-3.5 shrink-0" />
-          <span>Recorded test · fictional business data · {when(current.captured_at)}</span>
-        </p>
-      </div>
+        <div className="hidden gap-4 md:grid md:grid-cols-2">
+          {proof.map((item) => <ProofCase key={item.scenario} proof={item} />)}
+        </div>
     </div>
+  );
+}
+
+function ProofCase({ proof, connected = false }: { proof: PublicProof; connected?: boolean }) {
+  const [showFacts, setShowFacts] = useState(false);
+  const status = statusCopy(proof);
+  return (
+    <article className={cn("overflow-hidden border border-border bg-card shadow-sm", connected ? "rounded-b-2xl" : "rounded-2xl")}>
+      <div className="space-y-3 bg-secondary/60 px-4 py-5">
+        <div className="flex justify-end">
+          <p className="max-w-[88%] rounded-2xl rounded-br-sm bg-primary/15 px-3.5 py-2.5 text-sm leading-6 text-foreground shadow-sm">{proof.question}</p>
+        </div>
+        {proof.answer ? <div className="flex justify-start"><div className="max-w-[90%] rounded-2xl rounded-bl-sm bg-card px-3.5 py-2.5 text-sm leading-6 text-foreground shadow-sm"><p className="whitespace-pre-wrap">{proof.answer}</p><p className="mt-1 text-right text-[11px] text-muted-foreground">Drafted</p></div></div> : null}
+      </div>
+      <div className="space-y-3 px-4 py-4">
+        <p className="flex items-start gap-2 text-sm leading-6 text-foreground"><UserCog className="mt-0.5 size-4 shrink-0 text-primary" /><span><span className="font-semibold">{status.label}.</span> {status.explanation}</span></p>
+        <button type="button" onClick={() => setShowFacts((v) => !v)} aria-expanded={showFacts} className="flex min-h-10 items-center gap-2 text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><BookOpen className="size-4" />{showFacts ? "Hide the source facts" : "View the source facts"}</button>
+        {showFacts ? <ul className="space-y-2 rounded-xl bg-secondary/50 p-3 text-xs leading-5 text-muted-foreground">{proof.source_facts.map((fact) => <li key={fact.title}><span className="font-semibold text-foreground">{fact.title}</span><p className="mt-0.5 whitespace-pre-wrap">{fact.content}</p></li>)}</ul> : null}
+        <p className="flex items-start gap-2 border-t border-border pt-3 text-[11px] leading-5 text-muted-foreground"><Info className="mt-0.5 size-3.5 shrink-0" /><span>Recorded test · fictional business data · {when(proof.captured_at)}</span></p>
+      </div>
+    </article>
   );
 }
