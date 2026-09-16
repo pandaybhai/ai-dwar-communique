@@ -8,6 +8,8 @@
  */
 export type MarketingEvent =
   | "proof_engaged"
+  | "demo_context_selected"
+  | "demo_need_selected"
   | "demo_form_started"
   | "demo_step_completed"
   | "demo_lead_submitted"
@@ -20,6 +22,8 @@ const SAFE_KEYS = [
   "enquiry_band",
   "primary_need",
   "placement",
+  "context",
+  "industry",
   "utm_source",
   "utm_medium",
   "utm_campaign",
