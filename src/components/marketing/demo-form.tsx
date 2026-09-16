@@ -58,12 +58,14 @@ export function DemoForm({
   presetBusinessType,
   presetPrimaryNeed,
   focused = false,
+  attached = false,
   onFocusChange,
   onComplete,
 }: {
   presetBusinessType?: string;
   presetPrimaryNeed?: string;
   focused?: boolean;
+  attached?: boolean;
   onFocusChange?: (focused: boolean) => void;
   onComplete?: () => void;
 }) {
@@ -243,7 +245,10 @@ export function DemoForm({
         blurTimer.current = setTimeout(() => onFocusChange?.(false), 0);
       }}
       noValidate
-      className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-8"
+      className={cn(
+        "border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-8",
+        attached ? "rounded-b-2xl rounded-t-none" : "rounded-2xl",
+      )}
     >
       {/* Honeypot: kept out of the accessibility tree and out of the tab order,
           so neither screen readers nor keyboard users ever reach it. */}

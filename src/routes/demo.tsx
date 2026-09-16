@@ -350,7 +350,7 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
               aria-labelledby="request-demo-title"
               className="scroll-mt-4 lg:sticky lg:top-6"
             >
-             <div className="mb-5 rounded-t-2xl border border-b-0 border-border bg-background px-5 pb-1 pt-6 shadow-sm sm:px-8 sm:pt-8">
+             <div className="rounded-t-2xl border border-b-0 border-border bg-background px-5 pb-5 pt-6 shadow-sm sm:px-8 sm:pt-8">
                <p className="text-xs font-bold uppercase tracking-wide text-primary">Personalised walkthrough</p>
               <h2
                 ref={formHeadingRef}
@@ -364,7 +364,7 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
                  Tell us what you handle today. We’ll show one grounded answer and one owner handoff using the information you share.
               </p>
             </div>
-            <DemoForm presetBusinessType={industry} presetPrimaryNeed={need} focused onFocusChange={setFormFocused} onComplete={() => setComplete(true)} />
+             <DemoForm presetBusinessType={industry} presetPrimaryNeed={need} focused attached onFocusChange={setFormFocused} onComplete={() => setComplete(true)} />
             </section>
           </div>
         </section>
