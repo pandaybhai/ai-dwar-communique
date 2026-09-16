@@ -56,11 +56,13 @@ const EMPTY: Values = {
 
 export function DemoForm({
   presetBusinessType,
+  presetPrimaryNeed,
   focused = false,
   onFocusChange,
   onComplete,
 }: {
   presetBusinessType?: string;
+  presetPrimaryNeed?: string;
   focused?: boolean;
   onFocusChange?: (focused: boolean) => void;
   onComplete?: () => void;
@@ -82,9 +84,15 @@ export function DemoForm({
   // The example a visitor picked upstream pre-fills step 1 — nobody repeats it.
   useEffect(() => {
     if (presetBusinessType) {
-      setValues((v) => (v.business_type ? v : { ...v, business_type: presetBusinessType }));
+      setValues((v) => ({ ...v, business_type: presetBusinessType }));
     }
   }, [presetBusinessType]);
+
+  useEffect(() => {
+    if (presetPrimaryNeed) {
+      setValues((v) => ({ ...v, primary_need: presetPrimaryNeed }));
+    }
+  }, [presetPrimaryNeed]);
 
   function set<K extends keyof Values>(key: K, value: Values[K]) {
     if (!started.current) {
