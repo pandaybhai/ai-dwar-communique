@@ -4,14 +4,12 @@ import {
   ArrowRight,
   BookOpen,
   BookOpenCheck,
-  Check,
   HandHelping,
   History,
   MessageSquareText,
   PauseCircle,
   PencilLine,
   Send,
-  UserRoundCheck,
 } from "lucide-react";
 import { DemoForm } from "@/components/marketing/demo-form";
 import { HeroExample } from "@/components/marketing/product-proof";
@@ -192,8 +190,8 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
 
   const showSticky = heroActionPassed && !formVisible && !formFocused && !complete;
   const campaign = CAMPAIGN_CONTEXTS[campaignContext];
-  const selectedNeed = NEEDS.find((item) => item.id === need) ?? NEEDS[0];
-  const selectedIndustry = INDUSTRIES.find((item) => item.id === industry) ?? INDUSTRIES[0];
+  const selectedNeed = NEEDS.find((item) => item.id === need) ?? NEEDS[0]!;
+  const selectedIndustry = INDUSTRIES.find((item) => item.id === industry) ?? INDUSTRIES[0]!;
 
   return (
     <div className="min-h-screen overflow-x-clip bg-background text-foreground">
