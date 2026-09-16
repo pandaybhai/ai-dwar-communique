@@ -294,105 +294,111 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
       </header>
 
       <main>
-        <div className="mx-auto max-w-6xl px-5 pb-12 pt-7 sm:px-8 sm:pt-12 lg:grid lg:grid-cols-[minmax(0,0.96fr)_minmax(26rem,1.04fr)] lg:items-start lg:gap-16 lg:pb-20 lg:pt-14">
-          <div className="min-w-0">
-            <section aria-labelledby="demo-page-title">
-               <p className="text-sm font-semibold text-primary">{campaign.eyebrow}</p>
+        <section className="border-b border-border bg-secondary/25" aria-labelledby="demo-page-title">
+          <div className="mx-auto grid max-w-6xl gap-10 px-5 pb-12 pt-8 sm:px-8 sm:pb-16 sm:pt-14 lg:grid-cols-[minmax(0,1.06fr)_minmax(25rem,0.94fr)] lg:items-start lg:gap-14 lg:pb-20">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-primary">
+                <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                {campaign.eyebrow}
+              </div>
               <h1
                 id="demo-page-title"
-                className="mt-3 max-w-xl text-[2.5rem] font-extrabold leading-[1.06] text-foreground sm:text-5xl lg:text-[3.4rem]"
+                 className="mt-5 max-w-2xl text-[2.65rem] font-extrabold leading-[1.04] text-foreground sm:text-6xl lg:text-[4rem]"
               >
                  {campaignContext === "general" ? <>Your AI employee. <span className="text-primary">Inside WhatsApp.</span></> : campaign.headline}
               </h1>
-              <p className="mt-4 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
+               <p className="mt-5 max-w-xl text-lg leading-8 text-muted-foreground sm:text-xl">
                  {campaign.supporting}
               </p>
                {campaign.adLabel && campaign.outcome ? (
-                 <div className="mt-4 max-w-xl border-l-2 border-primary bg-primary/5 px-4 py-3">
+                 <div className="mt-5 max-w-xl border-l-2 border-primary bg-background px-4 py-3 shadow-sm">
                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">
                      Your ad focus · {campaign.adLabel}
                    </p>
                    <p className="mt-1 text-sm leading-6 text-foreground">{campaign.outcome}</p>
                  </div>
                ) : null}
-              <p className="mt-3 max-w-xl text-base font-medium leading-7 text-foreground">
-                Learns from your business. Drafts replies. Brings you the decisions.
-              </p>
               <div ref={heroActionRef}>
                 <Button
                   size="lg"
                   onClick={goToForm}
-                  className="mt-6 min-h-12 w-full rounded-full bg-gradient-to-r from-primary to-teal-500 text-base transition-transform duration-200 hover:scale-[1.01] active:scale-[0.99] motion-reduce:transform-none sm:w-auto"
+                   className="mt-7 min-h-14 w-full rounded-xl bg-gradient-to-r from-primary to-teal-500 px-7 text-base font-bold shadow-lg shadow-primary/15 transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0 motion-reduce:transform-none sm:w-auto"
                 >
-                  Request my demo <ArrowRight className="size-4" />
+                   See AiDwar with my business <ArrowRight className="size-4" />
                 </Button>
                 <p className="mt-3 text-sm text-muted-foreground">No account needed. No customer messages are sent.</p>
               </div>
-            </section>
-
-            <section
-              aria-label={proof.length ? "Recorded product test" : "Illustrative product example"}
-              className="mt-8 sm:mt-10"
-            >
-              {proof.length ? <RecordedProof proof={proof} /> : <HeroExample />}
-            </section>
-
-            <section aria-labelledby="choose-title" className="mt-9">
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Shape your demo</p>
-              <h2 id="choose-title" className="mt-2 text-2xl font-bold">Choose what you want to see</h2>
-              <div role="tablist" aria-label="Demo focus" className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-secondary p-1">
-                {NEEDS.map((item) => (
-                  <button key={item.id} type="button" role="tab" aria-selected={need === item.id} onClick={() => { setNeed(item.id); trackMarketing("demo_need_selected", { primary_need: item.id }); }} className={cn("min-h-11 rounded-lg px-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:text-sm", need === item.id ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}>{item.label}</button>
-                ))}
-              </div>
-              <div className="mt-3 border-l-2 border-primary pl-4">
-                <p className="text-sm font-semibold">{selectedNeed.title}</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">{selectedNeed.example}</p>
-              </div>
-            </section>
-
-            <section aria-labelledby="benefits-title" className="mt-9 border-y border-border py-7 sm:mt-12">
-              <h2 id="benefits-title" className="sr-only">How AiDwar helps</h2>
-              <ul className="grid gap-5">
+               <section aria-labelledby="benefits-title" className="mt-8 border-t border-border pt-6">
+                 <h2 id="benefits-title" className="sr-only">How AiDwar helps</h2>
+                 <ul className="grid gap-4 sm:grid-cols-3">
                 {BENEFITS.map((benefit) => (
-                  <li key={benefit.title} className="flex gap-3">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <benefit.icon className="size-5" />
+                   <li key={benefit.title} className="min-w-0">
+                     <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                       <benefit.icon className="size-4.5" />
                     </span>
-                    <div>
-                      <h3 className="text-base font-semibold">{benefit.title}</h3>
-                      <p className="mt-0.5 text-sm leading-6 text-muted-foreground">{benefit.body}</p>
-                    </div>
+                     <h3 className="mt-3 text-sm font-bold">{benefit.title}</h3>
+                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{benefit.body}</p>
                   </li>
                 ))}
               </ul>
-            </section>
-          </div>
+               </section>
+            </div>
 
-          <section
-            ref={formSectionRef}
-            id="request-demo"
-            aria-labelledby="request-demo-title"
-            className="scroll-mt-4 pt-9 lg:sticky lg:top-6 lg:pt-0"
-          >
-            <div className="mb-5">
+            <section
+              ref={formSectionRef}
+              id="request-demo"
+              aria-labelledby="request-demo-title"
+              className="scroll-mt-4 lg:sticky lg:top-6"
+            >
+             <div className="rounded-t-2xl border border-b-0 border-border bg-background px-5 pb-5 pt-6 shadow-sm sm:px-8 sm:pt-8">
+               <p className="text-xs font-bold uppercase tracking-wide text-primary">Personalised walkthrough</p>
               <h2
                 ref={formHeadingRef}
                 id="request-demo-title"
                 tabIndex={-1}
-                className="text-2xl font-bold leading-tight outline-none sm:text-3xl"
+                 className="mt-2 text-2xl font-bold leading-tight outline-none sm:text-3xl"
               >
-                See AiDwar answer questions from your own business.
+                 See AiDwar work with your business.
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Share your website or catalogue, see a grounded answer and an owner handoff, then
-                decide whether it fits. Website is optional. Your answers stay in place if you go
-                back.
+                 Tell us what you handle today. We’ll show one grounded answer and one owner handoff using the information you share.
               </p>
             </div>
-            <DemoForm presetBusinessType={industry} presetPrimaryNeed={need} focused onFocusChange={setFormFocused} onComplete={() => setComplete(true)} />
-          </section>
-        </div>
+             <DemoForm presetBusinessType={industry} presetPrimaryNeed={need} focused attached onFocusChange={setFormFocused} onComplete={() => setComplete(true)} />
+            </section>
+          </div>
+        </section>
+
+        <section aria-label={proof.length ? "Recorded product test" : "Illustrative product example"} className="border-b border-border bg-background">
+          <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
+            <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-primary">Recorded product test</p>
+                <h2 className="mt-2 text-2xl font-bold sm:text-3xl">See what AiDwar answers—and what it leaves to you</h2>
+              </div>
+              <p className="max-w-sm text-sm leading-6 text-muted-foreground">Real recorded runs using fictional business data. No customer message was sent.</p>
+            </div>
+            {proof.length ? <RecordedProof proof={proof} /> : <HeroExample />}
+
+            <section aria-labelledby="choose-title" className="mt-10 grid gap-5 border-t border-border pt-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Shape your demo</p>
+                <h2 id="choose-title" className="mt-2 text-2xl font-bold">Choose what you want to see</h2>
+              </div>
+              <div>
+                <div role="tablist" aria-label="Demo focus" className="grid grid-cols-3 gap-1 rounded-xl bg-secondary p-1">
+                  {NEEDS.map((item) => (
+                    <button key={item.id} type="button" role="tab" aria-selected={need === item.id} onClick={() => { setNeed(item.id); trackMarketing("demo_need_selected", { primary_need: item.id }); }} className={cn("min-h-11 rounded-lg px-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:text-sm", need === item.id ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}>{item.label}</button>
+                  ))}
+                </div>
+                <div className="mt-4 border-l-2 border-primary pl-4">
+                  <p className="text-sm font-semibold">{selectedNeed.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{selectedNeed.example}</p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
 
          <section aria-label="Trust and policies" className="border-y border-border bg-secondary/25">
            <div className="mx-auto grid max-w-6xl divide-y divide-border px-5 sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-8">
