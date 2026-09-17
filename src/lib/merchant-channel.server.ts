@@ -43,6 +43,8 @@ export type OnboardingSession = {
   pending_question: string | null;
   pending_asked_at: string | null;
   suggested_questions: string[] | null;
+  updated_at?: string | null;
+  connected_account_id?: string | null;
 };
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
@@ -65,7 +67,7 @@ const UPGRADE_INTENT =
 const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
-  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions";
+  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions, updated_at, connected_account_id";
 
 // --------------------------------------------------------------- formatting
 
@@ -137,7 +139,20 @@ async function findSession(
     .order("last_inbound_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(1);
-  return { session: ((rows ?? []) as OnboardingSession[])[0] ?? null, byCode: false };
+  const active = ((rows ?? []) as OnboardingSession[])[0] ?? null;
+  if (active) return { session: active, byCode: false };
+
+  // Setup finished long ago: they are still our owner, not a stranger. Their
+  // replies to customers' open questions have to land.
+  const { data: doneRows } = await supabase
+    .from("onboarding_sessions")
+    .select(SESSION_COLUMNS)
+    .eq("phone", normalizePhone(waId))
+    .in("status", ["connected", "completed"])
+    .order("last_inbound_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
+  return { session: ((doneRows ?? []) as OnboardingSession[])[0] ?? null, byCode: false };
 }
 
 /** Don't repeat ourselves at someone who isn't signed up. */
@@ -299,7 +314,7 @@ export async function handleMerchantInbound(
   prefix = prefixFor(multiBusiness, businessName || null);
 
   // The update above may have just moved pending -> bound.
-  const currentStatus = session.status === "pending" ? "bound" : session.status;
+  let currentStatus = session.status === "pending" ? "bound" : session.status;
 
   const { renderCard } = await import("@/lib/onboarding-cards.server");
 
@@ -328,17 +343,9 @@ export async function handleMerchantInbound(
     );
   };
 
-  const answering = currentStatus === "ready" || currentStatus === "tested";
-
-  // If a previous inbound is still being read, nothing else may start.
-  if (session.status === "learning") {
-    await reply("Still reading — one moment.");
-    return;
-  }
-
   // ---------------------------------------------------------- 1. THE CODE
   // A code is never a question, an answer or a fact. It binds or switches,
-  // says so, and stops.
+  // says so, and stops. A code is heard even while we are still reading.
   if (byCode && !interactiveId) {
     if (currentStatus === "bound" && session.step !== "await_site") {
       await dayOneStep();
@@ -349,6 +356,68 @@ export async function handleMerchantInbound(
     );
     return;
   }
+
+  // If a previous inbound is still being read, nothing else may start — but a
+  // read that died must not hold the chat for ever.
+  if (session.status === "learning") {
+    const since = session.updated_at ? Date.parse(session.updated_at) : Number.NaN;
+    const stale = !Number.isNaN(since) && Date.now() - since > 10 * 60 * 1000;
+    if (!stale) {
+      await reply("Still reading — one moment.");
+      return;
+    }
+    await patchSession(supabase, session.id, {
+      status: "bound",
+      step: "await_site",
+      source_id: null,
+    });
+    session.status = "bound";
+    session.step = "await_site";
+    session.source_id = null;
+    currentStatus = "bound";
+  }
+
+  // Connected but never switched on: the money may have arrived since.
+  if (currentStatus === "connected" && session.step === "await_funds") {
+    const { ensureWallet } = await import("@/lib/billing.server");
+    const [{ data: planRow }, wallet] = await Promise.all([
+      supabase
+        .from("organizations")
+        .select("plan_status")
+        .eq("id", session.organization_id)
+        .maybeSingle(),
+      ensureWallet(supabase, session.organization_id),
+    ]);
+    const funded =
+      (planRow as { plan_status?: string } | null)?.plan_status === "active" ||
+      Number(wallet["balance"] ?? 0) > 0;
+    if (funded) {
+      const switched = await switchAgentOn(supabase, session.organization_id);
+      if (!switched.ok) {
+        await reply(guardMessage(switched.guard));
+        return;
+      }
+      const { data: acct } = await supabase
+        .from("whatsapp_accounts")
+        .select("display_phone_number")
+        .eq("id", session.connected_account_id ?? "00000000-0000-0000-0000-000000000000")
+        .maybeSingle();
+      await finishNumberConnected(supabase, {
+        session,
+        organizationId: session.organization_id,
+        channel,
+        displayNumber:
+          (acct as { display_phone_number?: string } | null)?.display_phone_number ?? null,
+      });
+      return;
+    }
+  }
+
+  const answering =
+    currentStatus === "ready" ||
+    currentStatus === "tested" ||
+    currentStatus === "connected" ||
+    currentStatus === "completed";
 
   // ------------------------------------------------------ 2. CONTROL WORDS
   const { controlWord, isBareReference } = await import("@/lib/teach-guard");
@@ -503,7 +572,7 @@ export async function handleMerchantInbound(
     );
     if (onTrial && source.cost_amount >= costCap) {
       await reply(
-        "I've used up today's free reading allowance. Send this again tomorrow, or pick a plan at https://aidwar.in/app/billing and I'll read it straight away.",
+        "I've used up the free reading allowance for your trial. Pick a plan at https://aidwar.in/app/billing and I'll read it straight away.",
       );
       return;
     }
@@ -527,20 +596,37 @@ export async function handleMerchantInbound(
     if (firstMaterial) {
       await patchSession(supabase, session.id, { status: "learning", source_id: source.id });
     }
-    const ingested = await ingestUpload(
-      supabase,
-      session.organization_id,
-      source.id,
-      fileName,
-      file.bytes,
-      kind,
-      {
-        mime: file.mime ?? args.mediaMime ?? null,
-        extra: { media_id: mediaId, file: fileName },
-        refPrefix: mediaId,
-        channel: "onboarding",
-      },
-    );
+    let ingested: Awaited<ReturnType<typeof ingestUpload>>;
+    try {
+      ingested = await ingestUpload(
+        supabase,
+        session.organization_id,
+        source.id,
+        fileName,
+        file.bytes,
+        kind,
+        {
+          mime: file.mime ?? args.mediaMime ?? null,
+          extra: { media_id: mediaId, file: fileName },
+          refPrefix: mediaId,
+          channel: "onboarding",
+        },
+      );
+    } catch (error) {
+      console.error(
+        "[merchant-channel] upload failed",
+        error instanceof Error ? error.message : String(error),
+      );
+      if (firstMaterial) {
+        await patchSession(supabase, session.id, {
+          status: "bound",
+          step: "await_site",
+          source_id: null,
+        });
+      }
+      await reply("Couldn't read that one — try a clearer photo or a PDF.");
+      return;
+    }
 
     // Vision runs are metered on ai_usage; the source keeps a running total
     // so the trial cap above has something to compare against.
@@ -964,23 +1050,72 @@ export async function handleNumberConnected(
   };
 
   // Switching him on is guarded in the database on the workspace balance.
-  const { error: modeError } = await supabase
-    .from("ai_agents")
-    .update({ mode: "replying" })
-    .eq("organization_id", args.organizationId);
-
-  if (modeError) {
-    const guard = modeError.message.includes("AI_GUARD:")
-      ? modeError.message.split("AI_GUARD:")[1]?.trim()
-      : null;
-    await sendServiceText(supabase, {
-      ...channel,
-      body:
-        `I'm connected but not switched on yet${guard ? ` — ${guard.replace(/\.$/, "")}` : ""}. ` +
-        "Pick a plan or add credits here and I'll start right away:\nhttps://aidwar.in/app/billing",
-    });
+  const switched = await switchAgentOn(supabase, args.organizationId);
+  if (!switched.ok) {
+    // Remember where we stopped, so paying later is enough to finish.
+    await patchSession(supabase, session.id, { step: "await_funds" });
+    await sendServiceText(supabase, { ...channel, body: guardMessage(switched.guard) });
     return;
   }
+
+  await finishNumberConnected(supabase, {
+    session,
+    organizationId: args.organizationId,
+    channel,
+    displayNumber: args.displayNumber,
+  });
+}
+
+/** Where the onboarding chat with this owner lives. */
+type OnboardingChannel = {
+  organizationId: string;
+  phoneNumberId: string;
+  accessToken: string;
+  conversationId: string;
+  to: string;
+};
+
+/**
+ * The one guarded switch-on. The database refuses it when the workspace can't
+ * pay; whatever it says comes back as `guard` so the owner hears the reason.
+ */
+async function switchAgentOn(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<{ ok: boolean; guard: string | null }> {
+  const { error } = await supabase
+    .from("ai_agents")
+    .update({ mode: "replying" })
+    .eq("organization_id", organizationId);
+  if (!error) return { ok: true, guard: null };
+  const guard = error.message.includes("AI_GUARD:")
+    ? (error.message.split("AI_GUARD:")[1]?.trim() ?? null)
+    : null;
+  return { ok: false, guard };
+}
+
+function guardMessage(guard: string | null): string {
+  return (
+    `I'm connected but not switched on yet${guard ? ` — ${guard.replace(/\.$/, "")}` : ""}. ` +
+    "Pick a plan or add credits here and I'll start right away:\nhttps://aidwar.in/app/billing"
+  );
+}
+
+/**
+ * The closing sequence once Aiden is actually on duty: the card, the promise
+ * about handing over, and the session marked done. Used both when the number
+ * connects and when a paid-later owner writes back.
+ */
+async function finishNumberConnected(
+  supabase: SupabaseClient,
+  args: {
+    session: OnboardingSession;
+    organizationId: string;
+    channel: OnboardingChannel;
+    displayNumber: string | null;
+  },
+): Promise<void> {
+  const { session, channel } = args;
 
   const [{ count: pagesRead }, { count: answersGiven }] = await Promise.all([
     supabase

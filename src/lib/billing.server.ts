@@ -111,7 +111,7 @@ async function ensureSettings(supabase: SupabaseClient, organizationId: string) 
   return (created ?? {}) as Record<string, unknown>;
 }
 
-async function ensureWallet(supabase: SupabaseClient, organizationId: string) {
+export async function ensureWallet(supabase: SupabaseClient, organizationId: string) {
   const { data } = await supabase
     .from("wallet_balances")
     .select("*")
