@@ -253,6 +253,16 @@ export type Correction = {
   created_at: string;
 };
 
+/** A customer question the employee couldn't answer, still waiting on you. */
+export type Gap = {
+  id: string;
+  question: string;
+  status: "pending" | "expired" | string;
+  source: string;
+  conversation_id: string | null;
+  created_at: string;
+};
+
 export const employeeApi = <T,>(body: Record<string, unknown>) =>
   callApi<T>("/api/ai/employee", { body });
 
