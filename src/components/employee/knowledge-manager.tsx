@@ -523,3 +523,186 @@ function SourceItemsDialog({
     </Dialog>
   );
 }
+
+/**
+ * Questions I couldn't answer. Write the answer here and the customer gets it
+ * now — and I remember it for good. Answering on WhatsApp clears it too.
+ */
+export function UnansweredList({
+  organizationId,
+  canConfigure,
+  onChanged,
+}: {
+  organizationId: string;
+  canConfigure: boolean;
+  onChanged: () => void;
+}) {
+  const [gaps, setGaps] = useState<Gap[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await knowledgeApi<{ gaps: Gap[]; total: number }>({
+      organization_id: organizationId,
+      action: "gaps",
+      page,
+    });
+    if (error) toast.error(error);
+    setGaps(data?.gaps ?? []);
+    setTotal(data?.total ?? 0);
+  }, [organizationId, page]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const teach = async (gap: Gap) => {
+    const answer = (drafts[gap.id] ?? "").trim();
+    if (!answer) {
+      toast.error("Write the answer first.");
+      return;
+    }
+    setBusyId(gap.id);
+    const { data, error } = await knowledgeApi<{ delivered?: boolean }>({
+      organization_id: organizationId,
+      action: "answer_gap",
+      reply_id: gap.id,
+      answer,
+    });
+    setBusyId(null);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    toast.success(
+      data?.delivered
+        ? "Sent to the customer — and I'll remember it."
+        : "Saved — customer's window has closed, they'll get it next time they write.",
+    );
+    setDrafts((d) => ({ ...d, [gap.id]: "" }));
+    gapsChanged();
+    await load();
+    onChanged();
+  };
+
+  const dismiss = async (gap: Gap) => {
+    setBusyId(gap.id);
+    const { error } = await knowledgeApi({
+      organization_id: organizationId,
+      action: "dismiss_gap",
+      reply_id: gap.id,
+    });
+    setBusyId(null);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    gapsChanged();
+    await load();
+  };
+
+  if (gaps === null) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-6 w-56" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+      </div>
+    );
+  }
+
+  if (gaps.length === 0) {
+    return (
+      <EmptyState
+        icon={HelpCircle}
+        title="Nothing waiting"
+        description="Nothing waiting. When I can't answer a customer, it lands here."
+      />
+    );
+  }
+
+  const pages = Math.max(1, Math.ceil(total / 20));
+
+  return (
+    <section aria-labelledby="unanswered-heading" className="space-y-4">
+      <div>
+        <h2 id="unanswered-heading" className="text-lg font-semibold text-foreground">
+          Questions I couldn't answer
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Write the answer once. If the customer's chat is still open I'll send it straight away.
+        </p>
+      </div>
+
+      <ul className="space-y-3">
+        {gaps.map((gap) => {
+          const busy = busyId === gap.id;
+          return (
+            <li key={gap.id} className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="min-w-0 text-sm font-medium text-foreground">{gap.question}</p>
+                <Badge variant={gap.status === "pending" ? "default" : "secondary"}>
+                  {gap.status === "pending" ? "Waiting" : "Expired"}
+                </Badge>
+              </div>
+              <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>Asked {whenText(gap.created_at)}</span>
+                <span>· {gap.conversation_id ? "Customer on WhatsApp" : "Your test chat"}</span>
+                {gap.conversation_id ? (
+                  <a
+                    className="text-primary underline-offset-4 hover:underline"
+                    href={`/app/inbox?c=${gap.conversation_id}`}
+                  >
+                    Open thread
+                  </a>
+                ) : null}
+              </p>
+
+              {canConfigure ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Input
+                    aria-label={`Answer for: ${gap.question}`}
+                    className="min-w-[12rem] flex-1"
+                    placeholder="The answer, the way you'd say it."
+                    value={drafts[gap.id] ?? ""}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [gap.id]: e.target.value }))}
+                  />
+                  <Button size="sm" disabled={busy} onClick={() => void teach(gap)}>
+                    {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Teach
+                  </Button>
+                  {gap.status === "pending" ? (
+                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => void dismiss(gap)}>
+                      Dismiss
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+
+      {pages > 1 ? (
+        <div className="flex items-center gap-3">
+          <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+            Previous
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Page {page + 1} of {pages}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page + 1 >= pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
