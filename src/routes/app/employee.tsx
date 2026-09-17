@@ -72,6 +72,7 @@ function EmployeePage() {
   const [gate, setGate] = useState<{ mode: string; message: string } | null>(null);
   const [compareRequest, setCompareRequest] = useState(0);
   const [dataVersion, setDataVersion] = useState(0);
+  const gapCount = usePendingGapCount(organizationId);
 
   const load = useCallback(async () => {
     if (!organizationId) return;
@@ -249,6 +250,14 @@ function EmployeePage() {
             <TabsList className="flex w-full flex-wrap justify-start gap-1">
               <TabsTrigger value="job">My job</TabsTrigger>
               <TabsTrigger value="knows">What I know</TabsTrigger>
+              <TabsTrigger value="gaps">
+                Unanswered
+                {gapCount > 0 ? (
+                  <Badge variant="secondary" className="ml-2">
+                    {gapCount}
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
               <TabsTrigger value="behaviour">How I behave</TabsTrigger>
               <TabsTrigger value="brains">My brain &amp; tools</TabsTrigger>
               <TabsTrigger value="try">Try me</TabsTrigger>
@@ -276,6 +285,14 @@ function EmployeePage() {
                 organizationId={active.organization.id}
                 agentName={overview?.agent?.name ?? "your AI employee"}
                 canConfigure={canConfigure}
+              />
+            </TabsContent>
+
+            <TabsContent value="gaps">
+              <UnansweredList
+                organizationId={active.organization.id}
+                canConfigure={canConfigure}
+                onChanged={load}
               />
             </TabsContent>
 
