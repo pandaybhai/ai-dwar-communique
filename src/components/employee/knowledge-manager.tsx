@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   BookOpen,
   FileSpreadsheet,
   FileText,
   Globe,
+  HelpCircle,
   Loader2,
   MessageCircleQuestion,
   RefreshCw,
