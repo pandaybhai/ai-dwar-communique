@@ -296,7 +296,7 @@ export async function recordOnboardingGap(
 }
 
 /** Send the owner's answer on to the customer who asked. */
-async function deliverToCustomer(
+export async function deliverToCustomer(
   supabase: SupabaseClient,
   pending: PendingReply,
   answer: string,

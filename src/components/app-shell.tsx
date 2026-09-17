@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { aidwar } from "@/integrations/aidwar/client";
 import { useOrg } from "@/lib/org-context";
+import { usePendingGapCount } from "@/hooks/use-pending-gaps";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 import { navFeatures } from "@/lib/feature-registry";
@@ -33,6 +34,7 @@ const NAV = navFeatures().map((f) => ({
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { isFeatureEnabled, flagsLoading, active } = useOrg();
+  const gapCount = usePendingGapCount(active?.organization.id ?? null);
   const { can, loading: permsLoading } = usePermissions();
   const status = active?.organization.plan_status;
   const restricted = status === "locked" || status === "paused";
@@ -63,7 +65,12 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             )}
           >
             <item.icon className="h-4 w-4" />
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {item.to === "/app/employee" && gapCount > 0 ? (
+              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
+                {gapCount}
+              </span>
+            ) : null}
           </Link>
         );
       })}
