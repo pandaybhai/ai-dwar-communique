@@ -25,7 +25,7 @@ export const Route = createFileRoute("/api/ai/knowledge")({
         const canUse = await requirePermission(auth, "ai.use", "see what the AI knows");
         if (canUse) return canUse;
 
-        const configuring = action !== "list" && action !== "open";
+        const configuring = action !== "list" && action !== "open" && action !== "gaps";
         if (configuring) {
           const denied = await requirePermission(auth, "ai.configure", "change what the AI knows");
           if (denied) return denied;
@@ -226,6 +226,109 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               edited: true,
             });
             return Response.json(result);
+          }
+
+          if (action === "gaps") {
+            const page = Math.max(0, Number(payload["page"] ?? 0));
+            const size = 20;
+            const { data, count } = await auth.supabase
+              .from("pending_owner_replies")
+              .select("id, question, status, source, conversation_id, created_at", {
+                count: "exact",
+              })
+              .eq("organization_id", auth.organizationId)
+              .in("status", ["pending", "expired"])
+              .order("created_at", { ascending: false })
+              .range(page * size, page * size + size - 1);
+            const { count: waiting } = await auth.supabase
+              .from("pending_owner_replies")
+              .select("id", { count: "exact", head: true })
+              .eq("organization_id", auth.organizationId)
+              .eq("status", "pending");
+            return Response.json({
+              gaps: data ?? [],
+              total: count ?? 0,
+              waiting: waiting ?? 0,
+              page,
+              page_size: size,
+            });
+          }
+
+          if (action === "answer_gap" || action === "dismiss_gap") {
+            const replyId = String(payload["reply_id"] ?? "");
+            if (!replyId) return jsonError("Which question?");
+            const { data: row } = await auth.supabase
+              .from("pending_owner_replies")
+              .select("id, organization_id, owner_phone, conversation_id, contact_id, question, source, status, selected_at, created_at, reminded_at")
+              .eq("id", replyId)
+              .eq("organization_id", auth.organizationId)
+              .maybeSingle();
+            if (!row) return jsonError("That question isn't in this workspace.", 403);
+            const pending = row as {
+              id: string;
+              organization_id: string;
+              owner_phone: string;
+              conversation_id: string | null;
+              contact_id: string | null;
+              question: string;
+              source: string;
+              status: string;
+              selected_at: string | null;
+              created_at: string;
+              reminded_at: string | null;
+            };
+
+            if (action === "dismiss_gap") {
+              await auth.supabase
+                .from("pending_owner_replies")
+                .update({ status: "expired" })
+                .eq("id", pending.id)
+                .eq("organization_id", auth.organizationId);
+              return Response.json({ ok: true });
+            }
+
+            const answer = String(payload["answer"] ?? "").trim();
+            if (!answer) return jsonError("Write the answer first.");
+
+            await knowledge.saveCorrection(auth.supabase, auth.organizationId, {
+              question: pending.question,
+              answer,
+              userId: auth.userId,
+            });
+
+            let delivered = false;
+            if (pending.status === "pending" && pending.conversation_id) {
+              try {
+                const { deliverToCustomer } = await import("@/lib/owner-replies.server");
+                delivered = await deliverToCustomer(auth.supabase, pending, answer);
+              } catch (sendError) {
+                console.error(
+                  "[ai-knowledge] gap delivery failed",
+                  sendError instanceof Error ? sendError.message : sendError,
+                );
+              }
+            }
+
+            await auth.supabase
+              .from("pending_owner_replies")
+              .update({
+                status: "answered",
+                answer,
+                answered_at: new Date().toISOString(),
+                selected_at: new Date().toISOString(),
+              })
+              .eq("id", pending.id)
+              .eq("organization_id", auth.organizationId);
+
+            await logServerActivity(
+              auth.supabase,
+              auth.organizationId,
+              auth.userId,
+              "ai_answer_corrected",
+              { from: "unanswered" },
+            );
+
+            return Response.json({ ok: true, delivered });
           }
 
           return jsonError("Unknown action.");
