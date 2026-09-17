@@ -6,7 +6,7 @@ import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import { BrainPicker } from "@/components/employee/brain-picker";
 import { CorrectionsList } from "@/components/employee/corrections-list";
-import { KnowledgeManager } from "@/components/employee/knowledge-manager";
+import { KnowledgeManager, UnansweredList } from "@/components/employee/knowledge-manager";
 import { Playground } from "@/components/employee/playground";
 import { PromptPreview } from "@/components/employee/prompt-preview";
 import { SkillsManager } from "@/components/employee/skills-manager";
@@ -26,6 +26,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePendingGapCount } from "@/hooks/use-pending-gaps";
 import { usePermissions } from "@/hooks/use-permissions";
 import { employeeApi, moneyText, type EmployeeOverview } from "@/lib/employee-client";
 import { useOrg } from "@/lib/org-context";
