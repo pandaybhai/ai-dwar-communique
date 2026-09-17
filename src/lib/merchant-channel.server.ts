@@ -1050,23 +1050,72 @@ export async function handleNumberConnected(
   };
 
   // Switching him on is guarded in the database on the workspace balance.
-  const { error: modeError } = await supabase
-    .from("ai_agents")
-    .update({ mode: "replying" })
-    .eq("organization_id", args.organizationId);
-
-  if (modeError) {
-    const guard = modeError.message.includes("AI_GUARD:")
-      ? modeError.message.split("AI_GUARD:")[1]?.trim()
-      : null;
-    await sendServiceText(supabase, {
-      ...channel,
-      body:
-        `I'm connected but not switched on yet${guard ? ` — ${guard.replace(/\.$/, "")}` : ""}. ` +
-        "Pick a plan or add credits here and I'll start right away:\nhttps://aidwar.in/app/billing",
-    });
+  const switched = await switchAgentOn(supabase, args.organizationId);
+  if (!switched.ok) {
+    // Remember where we stopped, so paying later is enough to finish.
+    await patchSession(supabase, session.id, { step: "await_funds" });
+    await sendServiceText(supabase, { ...channel, body: guardMessage(switched.guard) });
     return;
   }
+
+  await finishNumberConnected(supabase, {
+    session,
+    organizationId: args.organizationId,
+    channel,
+    displayNumber: args.displayNumber,
+  });
+}
+
+/** Where the onboarding chat with this owner lives. */
+type OnboardingChannel = {
+  organizationId: string;
+  phoneNumberId: string;
+  accessToken: string;
+  conversationId: string;
+  to: string;
+};
+
+/**
+ * The one guarded switch-on. The database refuses it when the workspace can't
+ * pay; whatever it says comes back as `guard` so the owner hears the reason.
+ */
+async function switchAgentOn(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<{ ok: boolean; guard: string | null }> {
+  const { error } = await supabase
+    .from("ai_agents")
+    .update({ mode: "replying" })
+    .eq("organization_id", organizationId);
+  if (!error) return { ok: true, guard: null };
+  const guard = error.message.includes("AI_GUARD:")
+    ? (error.message.split("AI_GUARD:")[1]?.trim() ?? null)
+    : null;
+  return { ok: false, guard };
+}
+
+function guardMessage(guard: string | null): string {
+  return (
+    `I'm connected but not switched on yet${guard ? ` — ${guard.replace(/\.$/, "")}` : ""}. ` +
+    "Pick a plan or add credits here and I'll start right away:\nhttps://aidwar.in/app/billing"
+  );
+}
+
+/**
+ * The closing sequence once Aiden is actually on duty: the card, the promise
+ * about handing over, and the session marked done. Used both when the number
+ * connects and when a paid-later owner writes back.
+ */
+async function finishNumberConnected(
+  supabase: SupabaseClient,
+  args: {
+    session: OnboardingSession;
+    organizationId: string;
+    channel: OnboardingChannel;
+    displayNumber: string | null;
+  },
+): Promise<void> {
+  const { session, channel } = args;
 
   const [{ count: pagesRead }, { count: answersGiven }] = await Promise.all([
     supabase
