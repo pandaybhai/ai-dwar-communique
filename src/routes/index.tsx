@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   BookOpenCheck,
+  Check,
   HandHelping,
   Link2,
   MessageCircleQuestion,
