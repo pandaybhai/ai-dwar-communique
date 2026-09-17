@@ -27,9 +27,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { gapsChanged } from "@/hooks/use-pending-gaps";
 import {
   knowledgeApi,
   whenText,
+  type Gap,
   type KnowledgeItem,
   type KnowledgeSource,
 } from "@/lib/employee-client";
