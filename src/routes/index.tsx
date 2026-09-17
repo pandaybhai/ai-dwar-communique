@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   BookOpenCheck,
+  Check,
   HandHelping,
   Link2,
   MessageCircleQuestion,
@@ -193,25 +194,43 @@ function Index() {
           <div className="pointer-events-none absolute inset-x-0 -top-56 h-[36rem] bg-[radial-gradient(ellipse_at_top,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_65%)]" />
           <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-16 sm:px-8 sm:pb-24 sm:pt-24 lg:grid-cols-[1.02fr_0.98fr] lg:gap-14">
             <Reveal>
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-4 py-1.5 text-xs font-medium text-primary">
-                Official WhatsApp Business Platform
+              <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/70 motion-reduce:hidden" />
+                  <span className="relative inline-flex size-2 rounded-full bg-primary" />
+                </span>
+                Answers customers 24/7 · Official Business Platform
               </span>
-              <h1 className="mt-7 max-w-2xl text-[2.6rem] font-extrabold leading-[1.05] tracking-tight text-foreground sm:text-[3.4rem]">
+              <h1 className="mt-7 max-w-2xl text-[2.75rem] font-extrabold leading-[1.03] tracking-tight text-foreground sm:text-[3.75rem]">
                 Your AI employee.{" "}
                 <span className="bg-gradient-to-r from-primary to-teal-500 bg-clip-text text-transparent">
-                  Inside WhatsApp.
+                  Inside every customer chat.
                 </span>
               </h1>
               <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                AiDwar understands your business, replies to customers, and asks for your approval
-                when needed. You focus on what matters.
+                It reads your website and catalogue, answers customers in their own language within
+                seconds, and brings you in the moment it is unsure. Nights, Sundays, festival rush.
               </p>
+
+              <ul className="mt-7 grid gap-2.5 text-sm text-foreground sm:grid-cols-2">
+                {[
+                  "Trained on your own material",
+                  "Replies in Hindi, Hinglish & more",
+                  "Hands over to you when unsure",
+                  "Draft-only mode until you trust it",
+                ].map((point) => (
+                  <li key={point} className="flex items-start gap-2">
+                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <span className="leading-snug">{point}</span>
+                  </li>
+                ))}
+              </ul>
 
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Button
                   size="lg"
                   onClick={() => scrollToId("demo")}
-                  className="w-full rounded-full bg-gradient-to-r from-primary to-teal-500 px-8 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.99] motion-reduce:transform-none sm:w-auto"
+                  className="w-full rounded-full bg-gradient-to-r from-primary to-teal-500 px-8 shadow-lg shadow-primary/25 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.99] motion-reduce:transform-none sm:w-auto"
                 >
                   Book a personalised demo
                   <ArrowRight className="size-4" />
@@ -219,9 +238,9 @@ function Index() {
                 <button
                   type="button"
                   onClick={() => scrollToId("proof")}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-border px-6 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full border-2 border-border px-6 text-sm font-semibold text-foreground transition-colors duration-200 hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                 >
-                  See how it works
+                  See it answer a question
                 </button>
               </div>
 
@@ -244,7 +263,10 @@ function Index() {
             {/* Compact example of the same walkthrough shown in full below.
                 Hidden on small screens to keep the first mobile view short. */}
             <Reveal delay={120} className="hidden lg:block">
-              <HeroExample onSeeMore={() => scrollToId("proof")} />
+              <div className="relative">
+                <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[2.75rem] bg-gradient-to-br from-primary/20 to-teal-400/10 blur-2xl" />
+                <HeroExample onSeeMore={() => scrollToId("proof")} />
+              </div>
             </Reveal>
           </div>
         </section>
