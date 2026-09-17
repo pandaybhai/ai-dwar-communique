@@ -80,6 +80,22 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
                 .from("knowledge_sources")
                 .update({ status: "error", last_error: detail })
                 .eq("id", sourceId);
+              // Tell the owner's chat too, or the session waits for ever.
+              // A failure here must never hide the crawl error above.
+              try {
+                const { finishOnboardingCrawl } = await import("@/lib/merchant-channel.server");
+                await finishOnboardingCrawl(supabase, sourceId, {
+                  ok: false,
+                  itemCount: 0,
+                  error: detail,
+                });
+              } catch (notifyError) {
+                console.error(
+                  "[knowledge-worker] notify failed",
+                  sourceId,
+                  notifyError instanceof Error ? notifyError.message : String(notifyError),
+                );
+              }
               failed += 1;
             }
           }

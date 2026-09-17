@@ -100,7 +100,24 @@ export async function runOnboardingNudges(
     .in("status", NUDGEABLE)
     .lt("last_inbound_at", new Date(now - EXPIRE_AFTER_MS).toISOString())
     .select("id");
-  const expired = (expiredRows ?? []).length;
+  let expired = (expiredRows ?? []).length;
+
+  // Codes handed out but never used: let them lapse at their own expiry.
+  const { data: lapsedRows } = await supabase
+    .from("onboarding_sessions")
+    .update({ status: "expired" })
+    .eq("status", "pending")
+    .lt("expires_at", new Date(now).toISOString())
+    .select("id");
+  expired += (lapsedRows ?? []).length;
+
+  // A question the owner never answered in two days is closed. The customer
+  // was told at the time; nothing further is sent now.
+  await supabase
+    .from("pending_owner_replies")
+    .update({ status: "expired" })
+    .eq("status", "pending")
+    .lt("created_at", new Date(now - 48 * 60 * 60 * 1000).toISOString());
 
   const { data: candidates } = await supabase
     .from("onboarding_sessions")
