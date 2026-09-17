@@ -40,3 +40,8 @@ Stage order and prefix-once logic, `teach-guard.ts`, `handleOwnerAnswer`/`handle
 ## After the build
 
 Per-file effective diff, then deployment and the new commit hash returned by `/api/internal/knowledge-worker`.
+
+## Approved constraints
+
+- The "has money arrived?" check reuses the existing wallet read in `billing.server.ts` (exported for this use) — no second balance calculation.
+- The retry is the same guarded switch-on as today, and any guard text it returns is shown to the owner exactly as now.
