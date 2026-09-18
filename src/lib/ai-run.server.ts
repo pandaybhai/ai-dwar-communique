@@ -1336,10 +1336,11 @@ export async function executeRun(
   const result: RunResult = {
     ...base,
     output: reported.output,
-    needsOwner: reported.needsOwner || (task === "agent_reply" && sources.length === 0),
+    // Zero material plus the model saying it was short of business facts.
+    needsOwner: reported.needsOwner && sources.length === 0,
     sources,
     toolCalls,
-    media: pickMediaForAnswer(foundMedia, answer),
+    media: pickMediaForAnswer(foundMedia, reported.output),
     inputTokens: inputTokens || null,
     outputTokens: outputTokens || null,
     costAmount: priced.amount,
