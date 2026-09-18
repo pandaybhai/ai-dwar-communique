@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 /**
  * Shared plumbing for the billing HTTP surfaces: one place that turns a
  * permission failure into a 403 and a switched-off billing flag into a 404,
