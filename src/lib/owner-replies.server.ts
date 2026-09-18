@@ -235,6 +235,9 @@ export async function pingOwnerForAnswer(
     question: args.question.slice(0, 1000),
     ai_run_id: args.aiRunId,
     source: "customer",
+    // The only value that lets a message reach the owner. Nothing in the
+    // answering path sets it — merchant handover rules do.
+    notify: "ping",
   });
   if (error) {
     console.error("[owner-ping] insert failed", error.message);
