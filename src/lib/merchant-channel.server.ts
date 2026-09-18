@@ -342,12 +342,15 @@ export async function handleMerchantInbound(
 
   const { renderCard } = await import("@/lib/onboarding-cards.server");
 
-  /** The Day One script: meeting Aiden, then asking for the website. */
+  /** The Day One script: meeting the employee, then asking for the website. */
   const dayOneStep = async (): Promise<void> => {
     if (currentStatus === "bound" && session.step !== "await_site") {
+      const persona = await personaNameFor(supabase, session.organization_id);
       const idCard = await renderCard(supabase, "id-card", {
         sessionId: session.id,
         vars: {
+          name: persona,
+          persona_name: persona,
           owner_first_name: firstName,
           business_name: businessName || "your business",
           joined_date: istDate(),
@@ -355,7 +358,7 @@ export async function handleMerchantInbound(
         },
       });
       await replyButtons(
-        `${firstName}, meet Aiden. From today he works for ${businessName || "your business"} — answering your customers on WhatsApp, day and night, no leave, no attitude.\n\nHe hasn't read a word about you yet. Let's fix that.`,
+        `${firstName}, meet ${persona}. From today he works for ${businessName || "your business"} — answering your customers on WhatsApp, day and night, no leave, no attitude.\n\nHe hasn't read a word about you yet. Let's fix that.`,
         [{ id: "start", title: "Your own AI employee" }],
         idCard,
       );
