@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { Building2, Loader2, MessageCircle, Copy, Check } from "lucide-react";
-import QRCode from "qrcode";
+import { useState } from "react";
+import { Building2, Loader2, MessageCircle } from "lucide-react";
+import { AidenHandoff } from "@/components/aiden-handoff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
