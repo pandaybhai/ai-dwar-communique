@@ -20,7 +20,7 @@ export async function billingGate(
  * credits from /admin never touch this.
  */
 export async function requireActivePlan(
-  supabase: { from: (table: string) => any },
+  supabase: SupabaseClient,
   organizationId: string,
 ): Promise<Response | null> {
   const { data } = await supabase
