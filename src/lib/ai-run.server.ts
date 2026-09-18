@@ -1369,28 +1369,17 @@ export async function executeRun(
         JSON.stringify(unsupported),
         JSON.stringify(input).slice(0, 120),
       );
-      result.status = "escalated";
-      result.escalationSignal = "unsupported_number";
+      // The guess goes; everything else the model said stays, with a promise
+      // to come back on the part we can't stand behind.
+      result.output = stripUnsupported(result.output, unsupported);
+      result.needsOwner = true;
     }
   }
 
-  // A question about a figure that comes back without a single digit is a
-  // polite way of saying "I don't know". Treat it as no source at all.
-  if (
-    !isVisionRead &&
-    task === "agent_reply" &&
-    result.status === "ok" &&
-    result.output &&
-    asksForFigure(input) &&
-    !/\d/.test(result.output)
-  ) {
-    console.log(
-      "[grounding] figure_missing",
-      organizationId,
-      JSON.stringify(input).slice(0, 120),
-    );
-    result.status = "escalated";
-    result.escalationSignal = "no_source";
+  // "Let me confirm that for you" is the model telling us it hit a fact it
+  // couldn't source. That belongs under Unanswered, silently.
+  if (task === "agent_reply" && /let me confirm/i.test(result.output)) {
+    result.needsOwner = true;
   }
 
 
