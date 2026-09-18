@@ -84,12 +84,26 @@ export async function ensureResumeTemplate(
 }
 
 /**
- * One pass: expire week-old sessions, nudge day-old ones (once each).
- * Returns counts so the worker can report them.
+ * One pass: expire week-old sessions, nudge day-old ones (once each), and
+ * remind owners who never sent their code. Returns counts for the worker.
  */
 export async function runOnboardingNudges(
   supabase: SupabaseClient,
   limit = 20,
+): Promise<{ expired: number; nudged: number; code_nudged: number; skipped: string | null }> {
+  const base = await runResumePass(supabase, limit);
+  const code = await runCodePass(supabase, limit);
+  return {
+    expired: base.expired,
+    nudged: base.nudged,
+    code_nudged: code.nudged,
+    skipped: base.skipped ?? code.skipped,
+  };
+}
+
+async function runResumePass(
+  supabase: SupabaseClient,
+  limit: number,
 ): Promise<{ expired: number; nudged: number; skipped: string | null }> {
   const now = Date.now();
 
