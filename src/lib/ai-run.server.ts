@@ -137,6 +137,52 @@ export type RunMedia = {
 /** How many pictures a single answer is allowed to carry. */
 export const MAX_PRODUCT_IMAGES = 5;
 
+/**
+ * The one answering rule, on every conversation reply — with material or
+ * without it. Helpfulness is never the thing we withhold; only hard facts
+ * about this particular business are.
+ *
+ * The last line is the model's own report of whether it was missing business
+ * information. It is stripped from the reply before anything is sent and is
+ * only ever used to file a silent row under Unanswered.
+ */
+export const ANSWER_POLICY =
+  "Answer as this business. Use the business material when it exists. For anything else — " +
+  "general knowledge, product advice, how-to, small talk, comparisons — answer helpfully from " +
+  "your own knowledge in the same tone. NEVER state a price, quantity, stock level, delivery " +
+  "date, address or policy detail unless it appears in the material; for those say " +
+  "\"Let me confirm that for you\" and continue helping with everything else in the message.\n\n" +
+  'End every reply with a final line exactly of the form {"needs_owner": true} or ' +
+  '{"needs_owner": false} — true when you were missing business information you needed, false ' +
+  "otherwise. Write nothing after that line.";
+
+/** The model's self-report line, and the reply with it taken off. */
+export function splitNeedsOwner(text: string): { output: string; needsOwner: boolean } {
+  const match = text.match(/\{\s*"?needs_owner"?\s*:\s*(true|false)\s*\}\s*$/i);
+  if (!match) return { output: text.trim(), needsOwner: false };
+  return {
+    output: text.slice(0, match.index).trim(),
+    needsOwner: match[1]?.toLowerCase() === "true",
+  };
+}
+
+/** What we say in place of a fact we can't stand behind. */
+const CONFIRM_LINE = "Let me confirm that for you.";
+
+/**
+ * Take out the sentences carrying a number the material never mentions, keep
+ * everything else the model said, and promise to come back on the rest.
+ */
+export function stripUnsupported(answer: string, tokens: string[]): string {
+  const parts = answer.split(/(?<=[.!?\n])\s+/);
+  const kept = parts.filter((part) => !tokens.some((t) => part.includes(t)));
+  let text = kept.join(" ").replace(/\s+\n/g, "\n").trim();
+  for (const token of tokens) text = text.split(token).join("").trim();
+  text = text.replace(/[ \t]{2,}/g, " ").trim();
+  if (!text) return CONFIRM_LINE;
+  return `${text}\n\n${CONFIRM_LINE}`;
+}
+
 export type RunResult = {
   runId: string | null;
   status: "ok" | "refused" | "escalated" | "capped" | "error";
