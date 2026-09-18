@@ -45,6 +45,8 @@ export type OnboardingSession = {
   suggested_questions: string[] | null;
   updated_at?: string | null;
   connected_account_id?: string | null;
+  /** Last time we mentioned Unanswered here — at most once per ten minutes. */
+  last_gap_note_at?: string | null;
 };
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
@@ -77,9 +79,9 @@ async function personaNameFor(
 const STRANGER_REPLY =
   "Hi! I'm Aiden from AiDwar. If you've signed up, open aidwar.in/app — your code is on the home screen; send it here and I'll get started. New here? Sign up at aidwar.in.";
 
-/** When there is nothing behind an answer we ask instead of inventing one. */
+/** Only for the rare case where the model returns nothing at all. */
 const NO_SOURCE_REPLY =
-  "I couldn't find that on your website yet. Tell me the answer here and I'll remember it for your customers.";
+  "I didn't catch that one — ask me again and I'll have a proper go at it.";
 
 /**
  * Questions about AiDwar's own plans — never about the owner's own prices,
@@ -91,7 +93,7 @@ const UPGRADE_INTENT =
 const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
-  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions, updated_at, connected_account_id";
+  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions, updated_at, connected_account_id, last_gap_note_at";
 
 // --------------------------------------------------------------- formatting
 
@@ -895,16 +897,14 @@ export async function handleMerchantInbound(
     },
   );
 
-  // Nothing behind the answer means nothing gets said: no model text ever
-  // leaves this branch unless the run succeeded on real material.
+  // Whether the answer stood on the owner's own material — the credits card
+  // below still waits for that first real, sourced answer.
   const grounded = run.status === "ok" && run.sources.length > 0;
   // The model sometimes copies the transcript's speaker prefix into its answer.
-  const text = grounded
-    ? (run.output ?? "")
-        .trim()
-        .replace(/^\s*aiden\s*(:|—|-)\s*/i, "")
-        .trim()
-    : "";
+  const text = (run.output ?? "")
+    .trim()
+    .replace(/^\s*aiden\s*(:|—|-)\s*/i, "")
+    .trim();
   if (!text) {
     await recordOnboardingGap(supabase, {
       organizationId: session.organization_id,
@@ -915,11 +915,29 @@ export async function handleMerchantInbound(
     await reply(NO_SOURCE_REPLY);
     return;
   }
-  await reply(text);
+
+  // Short of a business fact? The answer still goes out; the question is
+  // filed, and the owner is told where to find it — sparingly.
+  let note = "";
+  if (run.needsOwner) {
+    await recordOnboardingGap(supabase, {
+      organizationId: session.organization_id,
+      ownerPhone: args.waId,
+      question: body,
+      aiRunId: run.runId,
+    });
+    const last = session.last_gap_note_at ? Date.parse(session.last_gap_note_at) : 0;
+    if (!last || Date.now() - last > 10 * 60 * 1000) {
+      note =
+        "\n\n(I've noted this under Unanswered in your dashboard — add the answer there whenever you like.)";
+      await patchSession(supabase, session.id, { last_gap_note_at: new Date().toISOString() });
+    }
+  }
+  await reply(text + note);
 
   // First real answer on a workspace that already has its starter credits:
   // the credits card, once only.
-  if (currentStatus === "ready") {
+  if (grounded && currentStatus === "ready") {
     const { data: credit } = await supabase
       .from("wallet_ledger")
       .select("id, created_at")

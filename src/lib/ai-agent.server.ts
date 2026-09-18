@@ -178,22 +178,18 @@ export async function runAgentOnInbound(
       .eq("id", args.conversationId)
       .eq("organization_id", args.organizationId);
 
-    // Ask the owner on the AiDwar number. Their reply answers this customer
-    // and is remembered, so the same question is never handed over twice.
-    if (needsOwner) {
-      const { pingOwnerForAnswer } = await import("@/lib/owner-replies.server");
-      const ping = await pingOwnerForAnswer(supabase, {
+    // File it under Unanswered. The owner is never messaged about a customer
+    // question: they answer it from the dashboard whenever they like.
+    if (needsOwner || run.needsOwner) {
+      const { recordCustomerGap } = await import("@/lib/owner-replies.server");
+      const recorded = await recordCustomerGap(supabase, {
         organizationId: args.organizationId,
         conversationId: args.conversationId,
         contactId: args.contactId,
         question,
         aiRunId: run.runId,
       });
-      log("owner_pinged", {
-        conversation_id: args.conversationId,
-        recorded: ping.recorded,
-        sent: ping.sent,
-      });
+      log("gap_filed", { conversation_id: args.conversationId, recorded });
     }
 
     return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
@@ -207,6 +203,20 @@ export async function runAgentOnInbound(
     to: args.waId,
     body: answer,
   });
+
+  // The customer got a helpful reply; part of it needed the business's own
+  // facts. That question waits under Unanswered — the owner is not messaged.
+  if (run.needsOwner) {
+    const { recordCustomerGap } = await import("@/lib/owner-replies.server");
+    const recorded = await recordCustomerGap(supabase, {
+      organizationId: args.organizationId,
+      conversationId: args.conversationId,
+      contactId: args.contactId,
+      question,
+      aiRunId: run.runId,
+    });
+    log("gap_filed", { conversation_id: args.conversationId, recorded });
+  }
 
   // Catalogue answers travel with pictures: one image per product named,
   // sent after the text so the words arrive first.

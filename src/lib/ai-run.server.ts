@@ -137,6 +137,52 @@ export type RunMedia = {
 /** How many pictures a single answer is allowed to carry. */
 export const MAX_PRODUCT_IMAGES = 5;
 
+/**
+ * The one answering rule, on every conversation reply — with material or
+ * without it. Helpfulness is never the thing we withhold; only hard facts
+ * about this particular business are.
+ *
+ * The last line is the model's own report of whether it was missing business
+ * information. It is stripped from the reply before anything is sent and is
+ * only ever used to file a silent row under Unanswered.
+ */
+export const ANSWER_POLICY =
+  "Answer as this business. Use the business material when it exists. For anything else — " +
+  "general knowledge, product advice, how-to, small talk, comparisons — answer helpfully from " +
+  "your own knowledge in the same tone. NEVER state a price, quantity, stock level, delivery " +
+  "date, address or policy detail unless it appears in the material; for those say " +
+  "\"Let me confirm that for you\" and continue helping with everything else in the message.\n\n" +
+  'End every reply with a final line exactly of the form {"needs_owner": true} or ' +
+  '{"needs_owner": false} — true when you were missing business information you needed, false ' +
+  "otherwise. Write nothing after that line.";
+
+/** The model's self-report line, and the reply with it taken off. */
+export function splitNeedsOwner(text: string): { output: string; needsOwner: boolean } {
+  const match = text.match(/\{\s*"?needs_owner"?\s*:\s*(true|false)\s*\}\s*$/i);
+  if (!match) return { output: text.trim(), needsOwner: false };
+  return {
+    output: text.slice(0, match.index).trim(),
+    needsOwner: match[1]?.toLowerCase() === "true",
+  };
+}
+
+/** What we say in place of a fact we can't stand behind. */
+const CONFIRM_LINE = "Let me confirm that for you.";
+
+/**
+ * Take out the sentences carrying a number the material never mentions, keep
+ * everything else the model said, and promise to come back on the rest.
+ */
+export function stripUnsupported(answer: string, tokens: string[]): string {
+  const parts = answer.split(/(?<=[.!?\n])\s+/);
+  const kept = parts.filter((part) => !tokens.some((t) => part.includes(t)));
+  let text = kept.join(" ").replace(/\s+\n/g, "\n").trim();
+  for (const token of tokens) text = text.split(token).join("").trim();
+  text = text.replace(/[ \t]{2,}/g, " ").trim();
+  if (!text) return CONFIRM_LINE;
+  return `${text}\n\n${CONFIRM_LINE}`;
+}
+
 export type RunResult = {
   runId: string | null;
   status: "ok" | "refused" | "escalated" | "capped" | "error";
@@ -157,6 +203,12 @@ export type RunResult = {
   media: RunMedia[];
 
   escalationSignal: string | null;
+  /**
+   * The answer went out, but something in it needed the owner: a hard fact
+   * that isn't in the material, or the model saying so itself. Files a silent
+   * row under Unanswered — never a message to the owner.
+   */
+  needsOwner: boolean;
   /** What the provider charges the platform. Platform-internal, never shown. */
   costAmount: number | null;
   costCurrency: string | null;
@@ -888,6 +940,7 @@ export async function executeRun(
     toolCalls: [],
     media: [],
     escalationSignal: null,
+    needsOwner: false,
     costAmount: null,
     costCurrency: null,
     billedAmount: null,
@@ -1125,12 +1178,15 @@ export async function executeRun(
       "(its URL contains /products/), end your answer with that URL on its own last line, copied " +
       "character for character, and nothing after it. For any other kind of page, do not output a URL at all.";
     systemParts.push(
-      `Use only the following material to answer. ${citation} ${linkRule} If it does not answer the question, say you don't know.\n\n` +
-        "Never state a price, date, quantity or percentage that does not appear verbatim in the material. " +
-        "If the material describes something without the number, say the number isn't on the page.\n\n" +
+      `Material from this business follows. Prefer it over anything else you know. ${citation} ${linkRule}\n\n` +
         knowledgeBlock,
     );
 
+  }
+  // The house rule: always be useful, never invent a hard fact. Applies with
+  // or without material, so a question with no match still gets an answer.
+  if (task === "agent_reply") {
+    systemParts.push(ANSWER_POLICY);
   }
   const system = systemParts.filter(Boolean).join("\n\n");
 
@@ -1273,12 +1329,18 @@ export async function executeRun(
 
   const priced = await priceRun(supabase, brain.provider, brain.model_id, inputTokens, outputTokens);
 
+  // The model's own "was I missing business information?" line comes off
+  // before anything else reads the answer.
+  const reported = task === "agent_reply" ? splitNeedsOwner(answer) : { output: answer.trim(), needsOwner: false };
+
   const result: RunResult = {
     ...base,
-    output: answer.trim(),
+    output: reported.output,
+    // Zero material plus the model saying it was short of business facts.
+    needsOwner: reported.needsOwner && sources.length === 0,
     sources,
     toolCalls,
-    media: pickMediaForAnswer(foundMedia, answer),
+    media: pickMediaForAnswer(foundMedia, reported.output),
     inputTokens: inputTokens || null,
     outputTokens: outputTokens || null,
     costAmount: priced.amount,
@@ -1307,28 +1369,17 @@ export async function executeRun(
         JSON.stringify(unsupported),
         JSON.stringify(input).slice(0, 120),
       );
-      result.status = "escalated";
-      result.escalationSignal = "unsupported_number";
+      // The guess goes; everything else the model said stays, with a promise
+      // to come back on the part we can't stand behind.
+      result.output = stripUnsupported(result.output, unsupported);
+      result.needsOwner = true;
     }
   }
 
-  // A question about a figure that comes back without a single digit is a
-  // polite way of saying "I don't know". Treat it as no source at all.
-  if (
-    !isVisionRead &&
-    task === "agent_reply" &&
-    result.status === "ok" &&
-    result.output &&
-    asksForFigure(input) &&
-    !/\d/.test(result.output)
-  ) {
-    console.log(
-      "[grounding] figure_missing",
-      organizationId,
-      JSON.stringify(input).slice(0, 120),
-    );
-    result.status = "escalated";
-    result.escalationSignal = "no_source";
+  // "Let me confirm that for you" is the model telling us it hit a fact it
+  // couldn't source. That belongs under Unanswered, silently.
+  if (task === "agent_reply" && /let me confirm/i.test(result.output)) {
+    result.needsOwner = true;
   }
 
 
@@ -1348,7 +1399,12 @@ export async function executeRun(
       priorFailedQuestions: options.priorFailedQuestions ?? [],
       customerLanguage: options.customerLanguage ?? null,
     });
-    if (signal) {
+    // Nothing to answer from is no longer a reason to go quiet: the answer
+    // stands and the question is filed under Unanswered instead. Merchant
+    // handover rules and the other signals still hand the thread to a person.
+    if (signal === "no_source") {
+      result.needsOwner = true;
+    } else if (signal) {
       result.status = "escalated";
       result.escalationSignal = signal;
     }
