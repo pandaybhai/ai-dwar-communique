@@ -1329,9 +1329,14 @@ export async function executeRun(
 
   const priced = await priceRun(supabase, brain.provider, brain.model_id, inputTokens, outputTokens);
 
+  // The model's own "was I missing business information?" line comes off
+  // before anything else reads the answer.
+  const reported = task === "agent_reply" ? splitNeedsOwner(answer) : { output: answer.trim(), needsOwner: false };
+
   const result: RunResult = {
     ...base,
-    output: answer.trim(),
+    output: reported.output,
+    needsOwner: reported.needsOwner || (task === "agent_reply" && sources.length === 0),
     sources,
     toolCalls,
     media: pickMediaForAnswer(foundMedia, answer),
