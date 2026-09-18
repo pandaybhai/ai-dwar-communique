@@ -1132,12 +1132,15 @@ export async function executeRun(
       "(its URL contains /products/), end your answer with that URL on its own last line, copied " +
       "character for character, and nothing after it. For any other kind of page, do not output a URL at all.";
     systemParts.push(
-      `Use only the following material to answer. ${citation} ${linkRule} If it does not answer the question, say you don't know.\n\n` +
-        "Never state a price, date, quantity or percentage that does not appear verbatim in the material. " +
-        "If the material describes something without the number, say the number isn't on the page.\n\n" +
+      `Material from this business follows. Prefer it over anything else you know. ${citation} ${linkRule}\n\n` +
         knowledgeBlock,
     );
 
+  }
+  // The house rule: always be useful, never invent a hard fact. Applies with
+  // or without material, so a question with no match still gets an answer.
+  if (task === "agent_reply") {
+    systemParts.push(ANSWER_POLICY);
   }
   const system = systemParts.filter(Boolean).join("\n\n");
 
