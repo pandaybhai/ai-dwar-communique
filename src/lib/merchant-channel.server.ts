@@ -1166,10 +1166,13 @@ async function finishNumberConnected(
     .eq("id", args.organizationId)
     .maybeSingle();
 
+  const persona = await personaNameFor(supabase, args.organizationId);
   const { renderCard } = await import("@/lib/onboarding-cards.server");
   const card = await renderCard(supabase, "on-duty", {
     sessionId: session.id,
     vars: {
+      name: persona,
+      persona_name: persona,
       business_name: (org as { name?: string } | null)?.name ?? "your business",
       connected_number: number,
       live_since: `Today, ${istTime()}`,
