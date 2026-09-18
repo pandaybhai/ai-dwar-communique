@@ -75,6 +75,37 @@ export const Route = createFileRoute("/api/onboarding/start")({
           return jsonError("Aiden's number isn't set up yet. Please continue to your workspace.", 503);
         }
 
+        // The dashboard reminder asks in "card" mode: it only wants a code
+        // while the step is genuinely unfinished, and must never mint one for
+        // a workspace that has already moved on.
+        const cardMode = payload["mode"] === "card";
+        if (cardMode) {
+          const { data: newest } = await supabaseAdmin
+            .from("onboarding_sessions")
+            .select("status")
+            .eq("organization_id", auth.organizationId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const status = (newest as { status?: string } | null)?.status ?? null;
+          const done = status !== null && !["pending", "bound", "expired"].includes(status);
+          if (done) return Response.json({ show_setup: false, status });
+
+          const { data: agent } = await supabaseAdmin
+            .from("ai_agents")
+            .select("mode")
+            .eq("organization_id", auth.organizationId)
+            .limit(1)
+            .maybeSingle();
+          if ((agent as { mode?: string } | null)?.mode === "replying") {
+            const { count } = await supabaseAdmin
+              .from("whatsapp_accounts")
+              .select("id", { count: "exact", head: true })
+              .eq("organization_id", auth.organizationId);
+            if ((count ?? 0) > 0) return Response.json({ show_setup: false, status });
+          }
+        }
+
         const { data: existing } = await supabaseAdmin
           .from("onboarding_sessions")
           .select("id, code, status")

@@ -30,23 +30,6 @@ export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [business, setBusiness] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [qr, setQr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!handoff?.wa_link) return;
-    let live = true;
-    QRCode.toDataURL(handoff.wa_link, { width: 320, margin: 1 })
-      .then((url) => {
-        if (live) setQr(url);
-      })
-      .catch(() => {
-        if (live) setQr(null);
-      });
-    return () => {
-      live = false;
-    };
-  }, [handoff?.wa_link]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -95,51 +78,7 @@ export function OrgOnboarding({ onCreated }: { onCreated: () => void }) {
           minutes — right in your own chats.
         </p>
 
-        <Button
-          asChild
-          size="lg"
-          className="mt-8 h-14 w-full rounded-full text-base transition-all duration-200"
-        >
-          <a href={handoff.wa_link} target="_blank" rel="noreferrer">
-            Say hello to Aiden
-          </a>
-        </Button>
-
-        {qr ? (
-          <div className="mt-8 rounded-2xl border border-border bg-card p-6">
-            <img
-              src={qr}
-              alt={`QR code that opens a chat with Aiden using code ${handoff.code}`}
-              className="mx-auto h-40 w-40 rounded-lg"
-            />
-            <p className="mt-4 text-sm text-muted-foreground">
-              On a laptop? Scan with your phone — WhatsApp opens with your code filled in.
-            </p>
-          </div>
-        ) : null}
-
-        <div className="mt-6">
-          <div className="flex items-center justify-center gap-3">
-            <code className="rounded-xl bg-muted px-4 py-2 font-mono text-3xl font-bold tracking-widest text-foreground">
-              {handoff.code}
-            </code>
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(handoff.code);
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1500);
-              }}
-              className="rounded-md p-2 text-muted-foreground transition-colors duration-150 hover:text-foreground"
-              aria-label="Copy your code"
-            >
-              {copied ? <Check className="h-5 w-5 text-primary" /> : <Copy className="h-5 w-5" />}
-            </button>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Send this to Aiden if the link doesn't open.
-          </p>
-        </div>
+        <AidenHandoff code={handoff.code} waLink={handoff.wa_link} />
 
         <button
           type="button"
