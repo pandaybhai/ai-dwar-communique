@@ -18,9 +18,14 @@ export const Route = createFileRoute("/api/billing/request-topup")({
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
 
-        const { billingGate, billingError } = await import("@/lib/billing-route.server");
+        const { billingGate, billingError, requireActivePlan } = await import(
+          "@/lib/billing-route.server"
+        );
         const gate = await billingGate(auth.supabase, auth.organizationId);
         if (gate) return gate;
+
+        const planGate = await requireActivePlan(auth.supabase, auth.organizationId);
+        if (planGate) return planGate;
 
         const amountRaw = payload["amount"];
         const amount =

@@ -49,6 +49,30 @@ export type OnboardingSession = {
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
 
+/** The default name the employee answers to when the owner hasn't renamed him. */
+const DEFAULT_PERSONA = "Aiden";
+
+/**
+ * What this workspace calls its employee: the persona name on the current
+ * behaviour version, or "Aiden" when it's empty. Owner-facing only — the
+ * AiDwar voice (stranger reply, nudges, billing notices) stays "Aiden".
+ */
+async function personaNameFor(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string> {
+  const { data: agent } = await supabase
+    .from("ai_agents")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const agentId = (agent as { id?: string } | null)?.id ?? null;
+  if (!agentId) return DEFAULT_PERSONA;
+  const { currentInstructions } = await import("@/lib/ai-brief.server");
+  const { personaName } = await currentInstructions(supabase, agentId);
+  return personaName.trim() || DEFAULT_PERSONA;
+}
+
 /** What we say to someone who writes in without a workspace behind them. */
 const STRANGER_REPLY =
   "Hi! I'm Aiden from AiDwar. If you've signed up, open aidwar.in/app — your code is on the home screen; send it here and I'll get started. New here? Sign up at aidwar.in.";
@@ -318,12 +342,15 @@ export async function handleMerchantInbound(
 
   const { renderCard } = await import("@/lib/onboarding-cards.server");
 
-  /** The Day One script: meeting Aiden, then asking for the website. */
+  /** The Day One script: meeting the employee, then asking for the website. */
   const dayOneStep = async (): Promise<void> => {
     if (currentStatus === "bound" && session.step !== "await_site") {
+      const persona = await personaNameFor(supabase, session.organization_id);
       const idCard = await renderCard(supabase, "id-card", {
         sessionId: session.id,
         vars: {
+          name: persona,
+          persona_name: persona,
           owner_first_name: firstName,
           business_name: businessName || "your business",
           joined_date: istDate(),
@@ -331,7 +358,7 @@ export async function handleMerchantInbound(
         },
       });
       await replyButtons(
-        `${firstName}, meet Aiden. From today he works for ${businessName || "your business"} — answering your customers on WhatsApp, day and night, no leave, no attitude.\n\nHe hasn't read a word about you yet. Let's fix that.`,
+        `${firstName}, meet ${persona}. From today he works for ${businessName || "your business"} — answering your customers on WhatsApp, day and night, no leave, no attitude.\n\nHe hasn't read a word about you yet. Let's fix that.`,
         [{ id: "start", title: "Your own AI employee" }],
         idCard,
       );
@@ -1139,10 +1166,13 @@ async function finishNumberConnected(
     .eq("id", args.organizationId)
     .maybeSingle();
 
+  const persona = await personaNameFor(supabase, args.organizationId);
   const { renderCard } = await import("@/lib/onboarding-cards.server");
   const card = await renderCard(supabase, "on-duty", {
     sessionId: session.id,
     vars: {
+      name: persona,
+      persona_name: persona,
       business_name: (org as { name?: string } | null)?.name ?? "your business",
       connected_number: number,
       live_since: `Today, ${istTime()}`,

@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 /**
  * Shared plumbing for the billing HTTP surfaces: one place that turns a
  * permission failure into a 403 and a switched-off billing flag into a 404,
@@ -12,6 +14,28 @@ export async function billingGate(
     return Response.json({ error: "Billing isn't switched on for this workspace." }, { status: 404 });
   }
   return null;
+}
+
+/**
+ * Credits only work alongside a live plan. Anything that puts money into the
+ * wallet from the customer side goes through here first. Super-admin manual
+ * credits from /admin never touch this.
+ */
+export async function requireActivePlan(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<Response | null> {
+  const { data } = await supabase
+    .from("organizations")
+    .select("plan_status")
+    .eq("id", organizationId)
+    .maybeSingle();
+  const status = (data as { plan_status?: string | null } | null)?.plan_status ?? null;
+  if (status === "active") return null;
+  return Response.json(
+    { error: "Pick a plan first — credits only work with an active plan." },
+    { status: 409 },
+  );
 }
 
 export async function billingError(error: unknown): Promise<Response> {

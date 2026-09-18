@@ -53,7 +53,7 @@ function BillingPage() {
             mode={locked ? "locked" : "trial"}
             onActivated={() => void reload()}
           />
-          {enabled && can("billing.view") ? <BillingView organizationId={org.id} /> : null}
+          {enabled && can("billing.view") ? <BillingView organizationId={org.id} planActive={org.plan_status === "active"} /> : null}
         </div>
       ) : !enabled ? (
         <EmptyState
@@ -68,7 +68,7 @@ function BillingPage() {
           description='You need the "View billing" permission for this workspace. Ask an owner or admin to grant it.'
         />
       ) : (
-        <BillingView organizationId={org.id} />
+        <BillingView organizationId={org.id} planActive={org.plan_status === "active"} />
       )}
     </>
   );
