@@ -49,6 +49,30 @@ export type OnboardingSession = {
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
 
+/** The default name the employee answers to when the owner hasn't renamed him. */
+const DEFAULT_PERSONA = "Aiden";
+
+/**
+ * What this workspace calls its employee: the persona name on the current
+ * behaviour version, or "Aiden" when it's empty. Owner-facing only — the
+ * AiDwar voice (stranger reply, nudges, billing notices) stays "Aiden".
+ */
+async function personaNameFor(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string> {
+  const { data: agent } = await supabase
+    .from("ai_agents")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const agentId = (agent as { id?: string } | null)?.id ?? null;
+  if (!agentId) return DEFAULT_PERSONA;
+  const { currentInstructions } = await import("@/lib/ai-brief.server");
+  const { personaName } = await currentInstructions(supabase, agentId);
+  return personaName.trim() || DEFAULT_PERSONA;
+}
+
 /** What we say to someone who writes in without a workspace behind them. */
 const STRANGER_REPLY =
   "Hi! I'm Aiden from AiDwar. If you've signed up, open aidwar.in/app — your code is on the home screen; send it here and I'll get started. New here? Sign up at aidwar.in.";
