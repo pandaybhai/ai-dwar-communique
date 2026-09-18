@@ -102,9 +102,15 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
 
           // Day-one follow-ups ride on this tick; a failure here never
           // blocks the reads above.
-          let nudges: { expired: number; nudged: number; skipped: string | null } = {
+          let nudges: {
+            expired: number;
+            nudged: number;
+            code_nudged: number;
+            skipped: string | null;
+          } = {
             expired: 0,
             nudged: 0,
+            code_nudged: 0,
             skipped: null,
           };
           try {
