@@ -46,7 +46,13 @@ const CATEGORY_COPY: Record<string, string> = {
   service: "Replies inside the 24-hour window",
 };
 
-export function BillingView({ organizationId }: { organizationId: string }) {
+export function BillingView({
+  organizationId,
+  planActive = true,
+}: {
+  organizationId: string;
+  planActive?: boolean;
+}) {
   const { can } = usePermissions();
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -164,16 +170,32 @@ export function BillingView({ organizationId }: { organizationId: string }) {
         />
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        {can("billing.pay") ? (
-          <Button onClick={() => setBuyOpen(true)} className="rounded-full">
-            Buy credits
-          </Button>
-        ) : null}
-        {can("billing.request") && !can("billing.pay") ? (
-          <Button variant="outline" className="rounded-full" onClick={() => setAskOpen(true)}>
-            Request a top-up
-          </Button>
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-3">
+          {can("billing.pay") ? (
+            <Button
+              onClick={() => setBuyOpen(true)}
+              disabled={!planActive}
+              className="rounded-full"
+            >
+              Buy credits
+            </Button>
+          ) : null}
+          {can("billing.request") && !can("billing.pay") ? (
+            <Button
+              variant="outline"
+              className="rounded-full"
+              disabled={!planActive}
+              onClick={() => setAskOpen(true)}
+            >
+              Request a top-up
+            </Button>
+          ) : null}
+        </div>
+        {!planActive ? (
+          <p className="text-sm text-muted-foreground">
+            Pick a plan first — credits only work with an active plan.
+          </p>
         ) : null}
       </div>
 
