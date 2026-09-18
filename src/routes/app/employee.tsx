@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Bot, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { AidenSetupCard } from "@/components/aiden-setup-card";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import { BrainPicker } from "@/components/employee/brain-picker";
@@ -164,6 +165,8 @@ function EmployeePage() {
   return (
     <>
       <PageHeader title={overview?.agent?.name ?? "Your AI employee"} description={DESCRIPTION} />
+      <AidenSetupCard organizationId={organizationId} />
+
 
       {loading ? (
         <PageSkeleton />

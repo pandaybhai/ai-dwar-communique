@@ -51,7 +51,7 @@ const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
 
 /** What we say to someone who writes in without a workspace behind them. */
 const STRANGER_REPLY =
-  "Hi! I'm Aiden from AiDwar. Sign up at aidwar.in first, then send me your code and I'll get started.";
+  "Hi! I'm Aiden from AiDwar. If you've signed up, open aidwar.in/app — your code is on the home screen; send it here and I'll get started. New here? Sign up at aidwar.in.";
 
 /** When there is nothing behind an answer we ask instead of inventing one. */
 const NO_SOURCE_REPLY =

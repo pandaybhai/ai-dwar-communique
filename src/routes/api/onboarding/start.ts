@@ -158,7 +158,11 @@ export const Route = createFileRoute("/api/onboarding/start")({
         if (!code) return jsonError("We couldn't start your setup. Please try again.");
 
         const text = encodeURIComponent(`Hi Aiden, my code is ${code}`);
-        return Response.json({ code, wa_link: `https://wa.me/${aidenNumber}?text=${text}` });
+        return Response.json({
+          code,
+          wa_link: `https://wa.me/${aidenNumber}?text=${text}`,
+          show_setup: true,
+        });
       },
     },
   },
