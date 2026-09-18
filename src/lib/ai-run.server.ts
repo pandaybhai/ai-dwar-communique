@@ -157,6 +157,12 @@ export type RunResult = {
   media: RunMedia[];
 
   escalationSignal: string | null;
+  /**
+   * The answer went out, but something in it needed the owner: a hard fact
+   * that isn't in the material, or the model saying so itself. Files a silent
+   * row under Unanswered — never a message to the owner.
+   */
+  needsOwner: boolean;
   /** What the provider charges the platform. Platform-internal, never shown. */
   costAmount: number | null;
   costCurrency: string | null;
@@ -888,6 +894,7 @@ export async function executeRun(
     toolCalls: [],
     media: [],
     escalationSignal: null,
+    needsOwner: false,
     costAmount: null,
     costCurrency: null,
     billedAmount: null,
