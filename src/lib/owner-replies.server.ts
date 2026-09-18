@@ -278,6 +278,39 @@ export async function pingOwnerForAnswer(
   return { recorded: true, sent: sent.ok };
 }
 
+/**
+ * A customer got a helpful answer, but part of it needed the owner. File it
+ * under Unanswered and say nothing to anyone: no ping, no template, no
+ * message. The owner picks it up in their own time.
+ */
+export async function recordCustomerGap(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    conversationId: string;
+    contactId: string | null;
+    question: string;
+    aiRunId: string | null;
+  },
+): Promise<boolean> {
+  const ownerPhone = (await ownerPhoneFor(supabase, args.organizationId)) ?? "";
+  const { error } = await supabase.from("pending_owner_replies").insert({
+    organization_id: args.organizationId,
+    owner_phone: ownerPhone,
+    conversation_id: args.conversationId,
+    contact_id: args.contactId,
+    question: args.question.slice(0, 1000),
+    ai_run_id: args.aiRunId,
+    source: "customer",
+    notify: "silent",
+  });
+  if (error) {
+    console.error("[owner-gap] insert failed", error.message);
+    return false;
+  }
+  return true;
+}
+
 /** Record a question the owner asked in their own chat that we couldn't answer. */
 export async function recordOnboardingGap(
   supabase: SupabaseClient,
@@ -291,6 +324,7 @@ export async function recordOnboardingGap(
     question: args.question.slice(0, 1000),
     ai_run_id: args.aiRunId,
     source: "onboarding",
+    notify: "silent",
   });
   if (error) console.error("[owner-ping] onboarding insert failed", error.message);
 }
