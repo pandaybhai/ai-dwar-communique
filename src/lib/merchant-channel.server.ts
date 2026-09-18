@@ -79,9 +79,9 @@ async function personaNameFor(
 const STRANGER_REPLY =
   "Hi! I'm Aiden from AiDwar. If you've signed up, open aidwar.in/app — your code is on the home screen; send it here and I'll get started. New here? Sign up at aidwar.in.";
 
-/** When there is nothing behind an answer we ask instead of inventing one. */
+/** Only for the rare case where the model returns nothing at all. */
 const NO_SOURCE_REPLY =
-  "I couldn't find that on your website yet. Tell me the answer here and I'll remember it for your customers.";
+  "I didn't catch that one — ask me again and I'll have a proper go at it.";
 
 /**
  * Questions about AiDwar's own plans — never about the owner's own prices,
