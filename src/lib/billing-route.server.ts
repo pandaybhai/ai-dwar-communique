@@ -14,6 +14,28 @@ export async function billingGate(
   return null;
 }
 
+/**
+ * Credits only work alongside a live plan. Anything that puts money into the
+ * wallet from the customer side goes through here first. Super-admin manual
+ * credits from /admin never touch this.
+ */
+export async function requireActivePlan(
+  supabase: { from: (table: string) => any },
+  organizationId: string,
+): Promise<Response | null> {
+  const { data } = await supabase
+    .from("organizations")
+    .select("plan_status")
+    .eq("id", organizationId)
+    .maybeSingle();
+  const status = (data as { plan_status?: string | null } | null)?.plan_status ?? null;
+  if (status === "active") return null;
+  return Response.json(
+    { error: "Pick a plan first — credits only work with an active plan." },
+    { status: 409 },
+  );
+}
+
 export async function billingError(error: unknown): Promise<Response> {
   const { isPermissionError } = await import("@/lib/billing.server");
   if (isPermissionError(error)) {
