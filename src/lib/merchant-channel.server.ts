@@ -314,7 +314,12 @@ export async function handleMerchantInbound(
   const { session, byCode } = await findSession(supabase, args.waId, body);
 
   if (!session) {
-    if (await shouldGreetStranger(supabase, args.conversationId)) await reply(STRANGER_REPLY);
+    const greeted = await strangerGreetCount(supabase, args.conversationId);
+    if (greeted < 3) {
+      const quietNote =
+        greeted === 2 ? " I'll go quiet now until you send a code." : "";
+      await reply(STRANGER_REPLY + quietNote);
+    }
     return;
   }
 
