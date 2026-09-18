@@ -45,6 +45,8 @@ export type OnboardingSession = {
   suggested_questions: string[] | null;
   updated_at?: string | null;
   connected_account_id?: string | null;
+  /** Last time we mentioned Unanswered here — at most once per ten minutes. */
+  last_gap_note_at?: string | null;
 };
 
 const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
