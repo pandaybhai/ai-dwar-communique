@@ -10,6 +10,10 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export const CODE_TEMPLATE_NAME = "aidwar_onboarding_code";
+export const CODE_TEMPLATE_BODY =
+  "Hi {{1}}, Aiden here from AiDwar. Your code for {{2}} is {{3}}. Reply to this message with the code and I'll read your website.";
+
 export const RESUME_TEMPLATE_NAME = "aidwar_onboarding_resume";
 export const RESUME_TEMPLATE_BODY =
   "Hi {{1}}, Aiden here from AiDwar. We stopped at {{2}}. Reply here to continue, or say 'help'.";
@@ -227,4 +231,130 @@ async function runResumePass(
   }
 
   return { expired, nudged, skipped: null };
+}
+
+/** A phone already being served elsewhere is not a stalled sign-up. */
+const BUSY_STATUSES = ["learning", "ready", "tested", "connected", "completed"];
+
+/**
+ * Owners who took a code and never used it: one reminder with the code in it,
+ * sent as an approved utility template from the onboarding number.
+ */
+async function runCodePass(
+  supabase: SupabaseClient,
+  limit: number,
+): Promise<{ nudged: number; skipped: string | null }> {
+  const now = Date.now();
+
+  const { data: rows } = await supabase
+    .from("onboarding_sessions")
+    .select("id, organization_id, phone, code, nudges_sent, created_at")
+    .eq("status", "pending")
+    .eq("nudges_sent", 0)
+    .not("phone", "is", null)
+    .lt("created_at", new Date(now - NUDGE_AFTER_MS).toISOString())
+    .gt("expires_at", new Date(now).toISOString())
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  const sessions = (rows ?? []) as Array<{
+    id: string;
+    organization_id: string;
+    phone: string;
+    code: string;
+    nudges_sent: number | null;
+  }>;
+  if (sessions.length === 0) return { nudged: 0, skipped: null };
+
+  const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+  const platformOrgId = await resolvePlatformOrg(supabase);
+  if (!platformOrgId) return { nudged: 0, skipped: "no_platform_org" };
+
+  const { data: templateRow } = await supabase
+    .from("message_templates")
+    .select("name, language, components, status")
+    .eq("organization_id", platformOrgId)
+    .eq("name", CODE_TEMPLATE_NAME)
+    .eq("language", "en")
+    .maybeSingle();
+  const template = templateRow as
+    | { name: string; language: string; components: unknown; status: string | null }
+    | null;
+  if (!template) return { nudged: 0, skipped: "code_template_missing" };
+  if (String(template.status ?? "").toUpperCase() !== "APPROVED") {
+    return {
+      nudged: 0,
+      skipped: `code_template_${String(template.status ?? "unknown").toLowerCase()}`,
+    };
+  }
+
+  const { data: setting } = await supabase
+    .from("platform_settings")
+    .select("onboarding_whatsapp_account_id")
+    .maybeSingle();
+  const accountId =
+    (setting as { onboarding_whatsapp_account_id?: string | null } | null)
+      ?.onboarding_whatsapp_account_id ?? null;
+  if (!accountId) return { nudged: 0, skipped: "no_onboarding_number" };
+
+  const { loadSenderContext, sendCampaignTemplate } = await import("@/lib/campaigns.server");
+  const sender = await loadSenderContext(supabase, platformOrgId, accountId);
+  if (!sender) return { nudged: 0, skipped: "onboarding_number_not_connected" };
+
+  let nudged = 0;
+  for (const session of sessions) {
+    // Same person, further along on another workspace: leave them alone.
+    const { data: busy } = await supabase
+      .from("onboarding_sessions")
+      .select("id")
+      .eq("phone", session.phone)
+      .in("status", BUSY_STATUSES)
+      .limit(1)
+      .maybeSingle();
+    if (busy) continue;
+
+    const { data: claimed } = await supabase
+      .from("onboarding_sessions")
+      .update({ nudges_sent: 1, last_nudge_at: new Date().toISOString() })
+      .eq("id", session.id)
+      .eq("nudges_sent", 0)
+      .select("id")
+      .maybeSingle();
+    if (!claimed) continue;
+
+    const [{ data: contact }, { data: org }] = await Promise.all([
+      supabase
+        .from("contacts")
+        .select("id, name")
+        .eq("organization_id", platformOrgId)
+        .eq("phone", session.phone)
+        .maybeSingle(),
+      supabase.from("organizations").select("name").eq("id", session.organization_id).maybeSingle(),
+    ]);
+    const orgName = ((org as { name?: string } | null)?.name ?? "your business").trim();
+    const firstName =
+      ((contact as { name?: string | null } | null)?.name ?? "").trim().split(/\s+/)[0] || "there";
+
+    const outcome = await sendCampaignTemplate(
+      supabase,
+      platformOrgId,
+      sender,
+      {
+        contactId: (contact as { id: string } | null)?.id ?? null,
+        phone: session.phone,
+        variables: { "1": firstName, "2": orgName, "3": session.code },
+      },
+      {
+        name: template.name,
+        language: template.language,
+        variableOrder: [1, 2, 3],
+        components: (template.components ?? null) as import("@/lib/templates").TemplateComponent[] | null,
+      },
+      { campaignId: null, category: "utility" },
+    );
+
+    if (outcome.messageId && !outcome.error) nudged += 1;
+    else console.error("[onboarding-code-nudge] send failed", session.id, outcome.error);
+  }
+
+  return { nudged, skipped: null };
 }
