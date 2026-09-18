@@ -1399,7 +1399,12 @@ export async function executeRun(
       priorFailedQuestions: options.priorFailedQuestions ?? [],
       customerLanguage: options.customerLanguage ?? null,
     });
-    if (signal) {
+    // Nothing to answer from is no longer a reason to go quiet: the answer
+    // stands and the question is filed under Unanswered instead. Merchant
+    // handover rules and the other signals still hand the thread to a person.
+    if (signal === "no_source") {
+      result.needsOwner = true;
+    } else if (signal) {
       result.status = "escalated";
       result.escalationSignal = signal;
     }
