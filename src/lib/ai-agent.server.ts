@@ -204,6 +204,20 @@ export async function runAgentOnInbound(
     body: answer,
   });
 
+  // The customer got a helpful reply; part of it needed the business's own
+  // facts. That question waits under Unanswered — the owner is not messaged.
+  if (run.needsOwner) {
+    const { recordCustomerGap } = await import("@/lib/owner-replies.server");
+    const recorded = await recordCustomerGap(supabase, {
+      organizationId: args.organizationId,
+      conversationId: args.conversationId,
+      contactId: args.contactId,
+      question,
+      aiRunId: run.runId,
+    });
+    log("gap_filed", { conversation_id: args.conversationId, recorded });
+  }
+
   // Catalogue answers travel with pictures: one image per product named,
   // sent after the text so the words arrive first.
   let picturesSent = 0;
