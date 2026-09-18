@@ -181,22 +181,20 @@ async function findSession(
   return { session: ((doneRows ?? []) as OnboardingSession[])[0] ?? null, byCode: false };
 }
 
-/** Don't repeat ourselves at someone who isn't signed up. */
-async function shouldGreetStranger(
+/** How many times we've greeted this number in the last day (from the chat log). */
+async function strangerGreetCount(
   supabase: SupabaseClient,
   conversationId: string,
-): Promise<boolean> {
+): Promise<number> {
+  const since = new Date(Date.now() - STRANGER_QUIET_MS).toISOString();
   const { data } = await supabase
     .from("messages")
-    .select("created_at")
+    .select("id")
     .eq("conversation_id", conversationId)
     .eq("direction", "outbound")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const last = (data as { created_at?: string } | null)?.created_at;
-  if (!last) return true;
-  return Date.now() - new Date(last).getTime() > STRANGER_QUIET_MS;
+    .like("body", "Hi! I'm Aiden from AiDwar%")
+    .gte("created_at", since);
+  return data?.length ?? 0;
 }
 
 async function patchSession(
