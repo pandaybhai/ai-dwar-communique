@@ -93,7 +93,7 @@ const UPGRADE_INTENT =
 const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
-  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions, updated_at, connected_account_id";
+  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions, updated_at, connected_account_id, last_gap_note_at";
 
 // --------------------------------------------------------------- formatting
 
@@ -937,7 +937,7 @@ export async function handleMerchantInbound(
 
   // First real answer on a workspace that already has its starter credits:
   // the credits card, once only.
-  if (currentStatus === "ready") {
+  if (grounded && currentStatus === "ready") {
     const { data: credit } = await supabase
       .from("wallet_ledger")
       .select("id, created_at")
