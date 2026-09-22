@@ -207,7 +207,7 @@ export function KnowledgeManager({
         />
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2">
-          {sources.map((source) => {
+          {rows.map((source) => {
             const Icon = ICONS[source.type as keyof typeof ICONS] ?? BookOpen;
             const kind = KIND_TEXT[source.type] ?? { label: source.type, live: false };
             const busy = busyId === source.id;
