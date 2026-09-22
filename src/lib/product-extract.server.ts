@@ -63,7 +63,8 @@ function categoryFromUrl(pageUrl: string): string | null {
     const parts = new URL(pageUrl).pathname.split("/").filter(Boolean);
     if (parts.length < 2) return null;
     const parent = parts[parts.length - 2] ?? "";
-    if (!parent || /^(products?|item|shop|p|collections?)$/i.test(parent)) return null;
+    if (!parent || /^(products?|product[-_]detail(?:s)?|item|shop|p|collections?)$/i.test(parent))
+      return null;
     return decode(parent.replace(/[-_]+/g, " ")).slice(0, 80);
   } catch {
     return null;
