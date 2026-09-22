@@ -76,6 +76,33 @@ export function KnowledgeManager({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState<null | "website" | "file" | "answer">(null);
   const [openSource, setOpenSource] = useState<KnowledgeSource | null>(null);
+  // While something is being read, refresh this list itself every 5s so the
+  // owner watches it happen instead of pressing reload.
+  const [live, setLive] = useState<KnowledgeSource[] | null>(null);
+  useEffect(() => {
+    setLive(null);
+  }, [sources]);
+  const rows = live ?? sources;
+  const reading = rows.some((s) => isReading(s.status));
+  useEffect(() => {
+    if (!reading) return;
+    let stopped = false;
+    const id = setInterval(() => {
+      void knowledgeApi<{ sources: KnowledgeSource[] }>({
+        organization_id: organizationId,
+        action: "list",
+      }).then(({ data }) => {
+        if (stopped || !data?.sources) return;
+        setLive(data.sources);
+        if (!data.sources.some((s) => isReading(s.status))) onChanged();
+      });
+    }, 5000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [reading, organizationId, onChanged]);
+
 
   const act = useCallback(
     async (body: Record<string, unknown>, id: string, success: string) => {
