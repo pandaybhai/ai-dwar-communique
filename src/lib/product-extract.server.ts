@@ -80,14 +80,24 @@ const SKU_WORDS: Array<[RegExp, string]> = [
   [/\bZNCK/i, "necklaces"],
 ];
 
-function normalizeCategory(raw: string | null | undefined): string | null {
+const ROUTE_WORDS =
+  /^(home|shop|all|products?|product[-_ ]?details?|collections?|catalogue|catalog|listing|list|page|search|filter|new|sale|category|categories)$/i;
+
+/**
+ * A shelf name has to read like one. Anything that is really a page name, an
+ * internal id or the product's own title is not a category.
+ */
+function normalizeCategory(raw: string | null | undefined, title?: string | null): string | null {
   if (!raw) return null;
   const text = decode(String(raw).replace(/[+%]/g, " ").replace(/[-_]+/g, " "));
-  if (!text || text.length > 120) return null;
+  if (!text || text.length > 60) return null;
   for (const [pattern, word] of CATEGORY_WORDS) if (pattern.test(text)) return word;
-  if (/^(home|shop|all|products?|collections?|catalogue|catalog|new|sale)$/i.test(text.trim()))
-    return null;
-  return text.trim().toLowerCase().slice(0, 80) || null;
+  const clean = text.trim().toLowerCase();
+  if (!/^[a-z][a-z '&]*$/.test(clean)) return null; // ids, codes, addresses
+  if (clean.split(/\s+/).length > 3) return null;
+  if (ROUTE_WORDS.test(clean)) return null;
+  if (title && clean === decode(title).toLowerCase()) return null;
+  return clean.slice(0, 80);
 }
 
 /** The trail a shop prints above a product: Home / Rings / This ring. */
@@ -114,22 +124,26 @@ function breadcrumbText(html: string): string | null {
     .split(/\s*(?:\/|›|»|>|\|)\s*/)
     .map((step) => step.trim())
     .filter(Boolean);
-  return steps.length > 1 ? steps.slice(0, -1).join(" / ") : null;
+  const shelves = steps.slice(0, -1).filter((step) => !/^home$/i.test(step));
+  return shelves.length > 0 ? (shelves[shelves.length - 1] ?? null) : null;
 }
 
 /** The listing page that pointed us here: /listing?categories[]=rings. */
-function categoryFromReferrer(referrer: string | null | undefined): string | null {
+function categoryFromReferrer(referrer: string | null | undefined, title?: string | null): string | null {
   if (!referrer) return null;
   try {
     const url = new URL(referrer);
-    const fromQuery = [...url.searchParams.entries()]
-      .filter(([key]) => /categor|collection|type|filter/i.test(key))
-      .map(([, value]) => value)
-      .join(" ");
-    return (
-      normalizeCategory(fromQuery) ??
-      normalizeCategory(decodeURIComponent(url.pathname.split("/").filter(Boolean).join(" ")))
-    );
+    for (const [key, value] of url.searchParams.entries()) {
+      if (!/categor|collection|type|filter|shelf/i.test(key)) continue;
+      const word = normalizeCategory(value, title);
+      if (word) return word;
+    }
+    const parts = url.pathname.split("/").filter(Boolean).reverse();
+    for (const part of parts) {
+      const word = normalizeCategory(decodeURIComponent(part), title);
+      if (word) return word;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -413,9 +427,9 @@ export function extractProduct(
 
   const crumbs = breadcrumbText(html);
   draft.category =
-    normalizeCategory(draft.category) ??
-    normalizeCategory(crumbs) ??
-    categoryFromReferrer(context.referrer ?? null) ??
+    normalizeCategory(draft.category, draft.title) ??
+    normalizeCategory(crumbs, draft.title) ??
+    categoryFromReferrer(context.referrer ?? null, draft.title) ??
     categoryFromCode(draft.sku, draft.title, draft.imageUrl) ??
     null;
   draft.gender = genderHint(crumbs, context.referrer ?? null, draft.title);
