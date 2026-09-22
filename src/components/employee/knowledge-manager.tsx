@@ -227,18 +227,17 @@ export function KnowledgeManager({
                       {kind.live ? `re-read ${whenText(source.last_synced_at)}` : "read once"}
                     </p>
                     {source.type === "website" ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {(source.pages_seen ?? 0).toLocaleString("en-IN")} of{" "}
-                        {Number(source.config?.["page_limit"] ?? 0) > 0
-                          ? Number(source.config?.["page_limit"]).toLocaleString("en-IN")
-                          : "1"}{" "}
-                        pages read
-                        {source.config?.["platform"] ? (
-                          <Badge variant="outline" className="ml-2 capitalize">
-                            {String(source.config["platform"])}
-                          </Badge>
-                        ) : null}
-                      </p>
+                      <>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          <ReadingLine source={source} />
+                          {source.config?.["platform"] ? (
+                            <Badge variant="outline" className="ml-2 capitalize">
+                              {String(source.config["platform"])}
+                            </Badge>
+                          ) : null}
+                        </p>
+                        {isReading(source.status) ? <ReadingBar /> : null}
+                      </>
                     ) : null}
                   </div>
                   <Badge variant={source.status === "error" ? "destructive" : "secondary"}>
