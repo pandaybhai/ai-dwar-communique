@@ -155,7 +155,7 @@ export function KnowledgeManager({
     [organizationId, onChanged],
   );
 
-  const totalItems = sources.reduce((sum, s) => sum + (s.item_count ?? 0), 0);
+  const totalItems = rows.reduce((sum, s) => sum + (s.item_count ?? 0), 0);
 
   return (
     <section aria-labelledby="knowledge-heading" className="space-y-6">
