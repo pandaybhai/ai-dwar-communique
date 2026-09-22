@@ -103,9 +103,18 @@ function breadcrumbText(html: string): string | null {
       .filter((name): name is string => Boolean(name));
     if (names.length > 1) return names.slice(0, -1).join(" ");
   }
-  const block = html.match(/<(?:nav|ol|ul|div)[^>]*breadcrumb[^>]*>([\s\S]{0,1200}?)<\/(?:nav|ol|ul|div)>/i);
+  const block = html.match(
+    /<(?:nav|ol|ul|div)[^>]*breadcrumb[^>]*>([\s\S]{0,1200}?)<\/(?:nav|ol|ul|div)>/i,
+  );
   if (!block) return null;
-  return decode((block[1] ?? "").replace(/<[^>]+>/g, " ")) || null;
+  const text = decode((block[1] ?? "").replace(/<[^>]+>/g, " / "));
+  if (!text) return null;
+  // The last step of a trail is the product itself, not the shelf it sits on.
+  const steps = text
+    .split(/\s*(?:\/|›|»|>|\|)\s*/)
+    .map((step) => step.trim())
+    .filter(Boolean);
+  return steps.length > 1 ? steps.slice(0, -1).join(" / ") : null;
 }
 
 /** The listing page that pointed us here: /listing?categories[]=rings. */
@@ -380,8 +389,8 @@ function priceAnchor(html: string, price: number | null): number {
       if (at > -1) return at;
     }
   }
-  PRICE_RE.lastIndex = 0;
-  return PRICE_RE.exec(html)?.index ?? 0;
+  // A fresh matcher: the shared one is used elsewhere at the same time.
+  return new RegExp(PRICE_RE.source, "i").exec(html)?.index ?? 0;
 }
 
 export type ExtractContext = {
