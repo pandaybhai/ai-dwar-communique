@@ -126,6 +126,45 @@ async function findContact(ctx: ToolContext, args: ToolArgs) {
 }
 
 /**
+ * Shop words a customer actually uses, mapped onto the shelf names the
+ * catalogue stores. Longest phrases first so "mangalsutra" never matches on a
+ * shorter word.
+ */
+const CATEGORY_WORDS: [RegExp, string][] = [
+  [/mangal\s?sutra|tanmaniya|tanmania/i, "tanmaniya"],
+  [/pendant|pendent|locket/i, "pendants"],
+  [/ear\s?ring|jhumka|jhumki|stud|bali/i, "earrings"],
+  [/bracelet|kada|kadha/i, "bracelets"],
+  [/necklace|haar|\bset\b/i, "necklaces"],
+  [/\bchain\b|\bchains\b/i, "chains"],
+  [/\brings?\b|anguthi|\bband\b/i, "rings"],
+];
+
+const GENDER_WORDS: [RegExp, string][] = [
+  [/\bgents?\b|\bmens?\b|\bmale\b|\bboys?\b|for him/i, "male"],
+  [/\bladies\b|\bwomens?\b|\bfemale\b|\bgirls?\b|for her/i, "female"],
+];
+
+/** The catalogue shelf a phrase is asking for, or "" when it names none. */
+export function canonCategory(text: string): string {
+  for (const [re, word] of CATEGORY_WORDS) if (re.test(text)) return word;
+  return "";
+}
+
+/** "male" / "female" when a phrase says so, otherwise null. */
+export function canonGender(text: string): string | null {
+  if (/^male$/i.test(text.trim())) return "male";
+  if (/^female$/i.test(text.trim())) return "female";
+  for (const [re, word] of GENDER_WORDS) if (re.test(text)) return word;
+  return null;
+}
+
+/** A whole sentence dropped into `query` instead of a product name. */
+function looksLikeSentence(text: string): boolean {
+  return text.trim().split(/\s+/).filter(Boolean).length > 2;
+}
+
+/**
  * Handler implementations. Every `handler` named in a manifest must exist here
  * — the build check fails otherwise.
  */
