@@ -27,6 +27,54 @@ export function getServiceClient(): SupabaseClient {
   });
 }
 
+/** How long a second text can arrive and still count as the same question. */
+const BURST_WINDOW_MS = 5000;
+
+/**
+ * People type in bursts — a half-sentence, then the whole one. Wait out the
+ * window: the last text in the burst answers for all of them, every earlier
+ * delivery stands down, so the customer gets exactly one reply.
+ */
+async function coalesceBurst(
+  supabase: SupabaseClient,
+  args: {
+    conversationId: string;
+    messageId: string | null;
+    occurredAt: string;
+    body: string | null;
+  },
+): Promise<{ proceed: boolean; body: string | null }> {
+  const text = (args.body ?? "").trim();
+  if (!text || !args.messageId) return { proceed: true, body: args.body };
+
+  await new Promise((resolve) => setTimeout(resolve, BURST_WINDOW_MS));
+
+  const windowStart = new Date(
+    new Date(args.occurredAt).getTime() - BURST_WINDOW_MS,
+  ).toISOString();
+  const { data } = await supabase
+    .from("messages")
+    .select("id, direction, body, created_at")
+    .eq("conversation_id", args.conversationId)
+    .gte("created_at", windowStart)
+    .order("created_at", { ascending: true })
+    .limit(30);
+  const rows = (data ?? []) as Array<{ id: string; direction: string; body: string | null }>;
+
+  // Something already replied in this window: leave the usual path to it.
+  if (rows.some((r) => r.direction === "outbound")) return { proceed: true, body: args.body };
+
+  const inbound = rows.filter((r) => r.direction === "inbound" && (r.body ?? "").trim());
+  const mine = inbound.findIndex((r) => r.id === args.messageId);
+  if (mine >= 0 && mine < inbound.length - 1) return { proceed: false, body: null };
+
+  const earlier = inbound
+    .slice(0, Math.max(mine, 0))
+    .map((r) => (r.body ?? "").trim())
+    .filter((t) => t && !text.toLowerCase().includes(t.toLowerCase()));
+  return { proceed: true, body: [...earlier, text].join("\n") };
+}
+
 /** Timing-safe hex compare. */
 function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
