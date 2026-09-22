@@ -223,23 +223,20 @@ export function KnowledgeManager({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-foreground">{source.name}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {kind.label} · {source.item_count.toLocaleString("en-IN")} items ·{" "}
-                      {kind.live ? `re-read ${whenText(source.last_synced_at)}` : "read once"}
-                    </p>
-                    {source.type === "website" ? (
-                      <>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          <ReadingLine source={source} />
-                          {source.config?.["platform"] ? (
-                            <Badge variant="outline" className="ml-2 capitalize">
-                              {String(source.config["platform"])}
-                            </Badge>
-                          ) : null}
-                        </p>
-                        {isReading(source.status) ? <ReadingBar /> : null}
-                      </>
-                    ) : null}
+                    {kind.live ? (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        <ReadingLine source={source} />
+                        {source.config?.["platform"] ? (
+                          <Badge variant="outline" className="ml-2 capitalize">
+                            {String(source.config["platform"])}
+                          </Badge>
+                        ) : null}
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {kind.label} · {source.item_count.toLocaleString("en-IN")} items · read once
+                      </p>
+                    )}
                   </div>
                   <Badge variant={source.status === "error" ? "destructive" : "secondary"}>
                     {source.status === "ready"
