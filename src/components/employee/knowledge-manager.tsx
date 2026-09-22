@@ -259,6 +259,19 @@ export function KnowledgeManager({
                 ) : null}
 
                 <div className="mt-4 flex flex-wrap gap-2">
+                  {source.status === "error" && canConfigure ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() =>
+                        act({ action: "sync", source_id: source.id }, source.id, "Trying again.")
+                      }
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Retry
+                    </Button>
+                  ) : null}
                   <Button size="sm" variant="ghost" onClick={() => setOpenSource(source)}>
                     See what it read
                   </Button>
