@@ -125,6 +125,14 @@ function normalizeUrl(href: string, base: string, origin: string): string | null
     for (const key of Array.from(url.searchParams.keys())) {
       if (/^utm_|^gclid$|^fbclid$/i.test(key)) url.searchParams.delete(key);
     }
+    // A listing sorted by price and the same listing on page 4 are the same
+    // page to a customer's question. Product addresses keep their query.
+    if (!/\/products?\//i.test(url.pathname)) {
+      for (const key of Array.from(url.searchParams.keys())) {
+        if (/^(?:price|sort|sort_by|sortby|sortBy|order|page|paged|filter|ref)(?:$|[._-])/i.test(key))
+          url.searchParams.delete(key);
+      }
+    }
     return url.toString();
   } catch {
     return null;
