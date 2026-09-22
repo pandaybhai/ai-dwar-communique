@@ -194,7 +194,7 @@ export function KnowledgeManager({
             <Skeleton key={i} className="h-32 rounded-2xl" />
           ))}
         </div>
-      ) : sources.length === 0 ? (
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={BookOpen}
           title="It hasn't read anything yet"
