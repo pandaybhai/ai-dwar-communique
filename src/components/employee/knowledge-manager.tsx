@@ -56,6 +56,43 @@ const KIND_TEXT: Record<string, { label: string; live: boolean }> = {
   docx: { label: "Document", live: false },
 };
 
+/** Still working on it: queued to start, or reading right now. */
+export function isReading(status: string): boolean {
+  return status === "pending" || status === "queued" || status === "syncing";
+}
+
+const nf = (n: number) => n.toLocaleString("en-IN");
+
+/** One plain line about where a source has got to. */
+export function ReadingLine({ source }: { source: KnowledgeSource }) {
+  const pages = source.pages_seen ?? 0;
+  const items = source.item_count ?? 0;
+  if (source.status === "queued") return <>Waiting to start</>;
+  if (source.status === "pending") return <>Queued</>;
+  if (source.status === "syncing") {
+    return (
+      <>
+        Reading {source.name}
+        {pages > 0 || items > 0 ? ` — ${nf(pages)} pages, ${nf(items)} things so far` : " — just started"}
+      </>
+    );
+  }
+  return (
+    <>
+      Read {nf(pages)} pages · {nf(items)} things · finished {whenText(source.last_synced_at)}
+    </>
+  );
+}
+
+/** A soft bar that says "working", never a fake percentage. */
+export function ReadingBar() {
+  return (
+    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-primary/10">
+      <div className="h-full w-1/3 animate-[shimmer_1.6s_ease-in-out_infinite] rounded-full bg-primary/60" />
+    </div>
+  );
+}
+
 /**
  * What the AI employee has read. Live sources re-read themselves; uploads are
  * read once. Everything it knows is visible here and can be deleted.
@@ -76,6 +113,33 @@ export function KnowledgeManager({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState<null | "website" | "file" | "answer">(null);
   const [openSource, setOpenSource] = useState<KnowledgeSource | null>(null);
+  // While something is being read, refresh this list itself every 5s so the
+  // owner watches it happen instead of pressing reload.
+  const [live, setLive] = useState<KnowledgeSource[] | null>(null);
+  useEffect(() => {
+    setLive(null);
+  }, [sources]);
+  const rows = live ?? sources;
+  const reading = rows.some((s) => isReading(s.status));
+  useEffect(() => {
+    if (!reading) return;
+    let stopped = false;
+    const id = setInterval(() => {
+      void knowledgeApi<{ sources: KnowledgeSource[] }>({
+        organization_id: organizationId,
+        action: "list",
+      }).then(({ data }) => {
+        if (stopped || !data?.sources) return;
+        setLive(data.sources);
+        if (!data.sources.some((s) => isReading(s.status))) onChanged();
+      });
+    }, 5000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [reading, organizationId, onChanged]);
+
 
   const act = useCallback(
     async (body: Record<string, unknown>, id: string, success: string) => {
@@ -91,7 +155,7 @@ export function KnowledgeManager({
     [organizationId, onChanged],
   );
 
-  const totalItems = sources.reduce((sum, s) => sum + (s.item_count ?? 0), 0);
+  const totalItems = rows.reduce((sum, s) => sum + (s.item_count ?? 0), 0);
 
   return (
     <section aria-labelledby="knowledge-heading" className="space-y-6">
@@ -130,7 +194,7 @@ export function KnowledgeManager({
             <Skeleton key={i} className="h-32 rounded-2xl" />
           ))}
         </div>
-      ) : sources.length === 0 ? (
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={BookOpen}
           title="It hasn't read anything yet"
@@ -143,7 +207,7 @@ export function KnowledgeManager({
         />
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2">
-          {sources.map((source) => {
+          {rows.map((source) => {
             const Icon = ICONS[source.type as keyof typeof ICONS] ?? BookOpen;
             const kind = KIND_TEXT[source.type] ?? { label: source.type, live: false };
             const busy = busyId === source.id;
@@ -163,18 +227,17 @@ export function KnowledgeManager({
                       {kind.live ? `re-read ${whenText(source.last_synced_at)}` : "read once"}
                     </p>
                     {source.type === "website" ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {(source.pages_seen ?? 0).toLocaleString("en-IN")} of{" "}
-                        {Number(source.config?.["page_limit"] ?? 0) > 0
-                          ? Number(source.config?.["page_limit"]).toLocaleString("en-IN")
-                          : "1"}{" "}
-                        pages read
-                        {source.config?.["platform"] ? (
-                          <Badge variant="outline" className="ml-2 capitalize">
-                            {String(source.config["platform"])}
-                          </Badge>
-                        ) : null}
-                      </p>
+                      <>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          <ReadingLine source={source} />
+                          {source.config?.["platform"] ? (
+                            <Badge variant="outline" className="ml-2 capitalize">
+                              {String(source.config["platform"])}
+                            </Badge>
+                          ) : null}
+                        </p>
+                        {isReading(source.status) ? <ReadingBar /> : null}
+                      </>
                     ) : null}
                   </div>
                   <Badge variant={source.status === "error" ? "destructive" : "secondary"}>
@@ -196,6 +259,19 @@ export function KnowledgeManager({
                 ) : null}
 
                 <div className="mt-4 flex flex-wrap gap-2">
+                  {source.status === "error" && canConfigure ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() =>
+                        act({ action: "sync", source_id: source.id }, source.id, "Trying again.")
+                      }
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Retry
+                    </Button>
+                  ) : null}
                   <Button size="sm" variant="ghost" onClick={() => setOpenSource(source)}>
                     See what it read
                   </Button>

@@ -86,7 +86,7 @@ function AppHome() {
   return (
     <>
       <PageHeader title="Home" description={`What's happening in ${name} today.`} />
-      <AidenSetupCard organizationId={orgId} />
+      <AidenSetupCard organizationId={orgId} showFinished />
       {loading || (orgId && fetching && !data) ? (
         <PageSkeleton />
       ) : !active ? (
