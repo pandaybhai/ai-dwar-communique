@@ -14,6 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { embedTexts, EMBEDDING_MODEL } from "@/lib/ai-run.server";
 import {
   countCrawledProducts,
+  dropSharedImages,
   extractProduct,
   hideMissingCrawledProducts,
   saveCrawledProducts,
@@ -509,9 +510,12 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   );
 
   const candidates = new Map<string, number>();
+  /** Which page pointed us at each address — a product's shelf, usually. */
+  const referrers = new Map<string, string>();
   const consider = (raw: string, base: string) => {
     const url = normalizeUrl(raw, base, origin);
     if (!url) return;
+    if (!referrers.has(url)) referrers.set(url, base);
     if (done.has(url) || candidates.has(url)) return;
     // A shop's catalogue arrives as data, so its product pages are not crawled.
     if (platform) {
@@ -583,7 +587,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       if (mode === "full") for (const href of page.links) consider(href, next);
       // One product, if this page is a product page. No extra fetch.
       try {
-        const draft = extractProduct(page.html, next);
+        const draft = extractProduct(page.html, next, { referrer: referrers.get(next) ?? null });
         if (draft) productDrafts.push(draft);
       } catch {
         // Never let reading a price stop the crawl.
@@ -625,6 +629,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const more = mode === "full" && candidates.size > 0 && totalSeen < planCap;
 
   // What the pages themselves said about products, remembered in one place.
+  dropSharedImages(productDrafts);
   await saveCrawledProducts(supabase, organizationId, productDrafts);
   if (!more) await hideMissingCrawledProducts(supabase, organizationId, origin, runStart);
   const productsFound = await countCrawledProducts(supabase, organizationId, origin);
