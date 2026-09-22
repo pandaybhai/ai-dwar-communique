@@ -237,6 +237,7 @@ export function KnowledgeManager({
                         {kind.label} · {source.item_count.toLocaleString("en-IN")} items · read once
                       </p>
                     )}
+                    {source.type === "website" && isReading(source.status) ? <ReadingBar /> : null}
                   </div>
                   <Badge variant={source.status === "error" ? "destructive" : "secondary"}>
                     {source.status === "ready"
