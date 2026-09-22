@@ -1088,21 +1088,26 @@ export const FEATURES: readonly FeatureManifest[] = [
       {
         name: "catalog_search",
         description:
-          "Search this workspace's product catalogue by words in the title, description, SKU, brand or category. Optionally narrow by maximum price, availability or category. Omit query to list what's currently available. Returns title, price, availability and product URL.",
+          "Use this whenever a customer wants to see, browse, or choose products (any wording, any language, e.g. 'gents ring under 50k dikhao', 'pendant 30k ke andar', 'show me earrings'). Put the product type in `category` (rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya, mangalsutra), the budget in `max_price` as a number in INR (50k -> 50000, 1 lakh -> 100000), gender in `gender` (male/female) if said, and use `query` ONLY for a specific product name or SKU. Never put the whole sentence in `query`.",
         parameters: {
           type: "object",
           properties: {
             query: {
               type: "string",
               description:
-                "Words to search for across the catalogue. Leave this out to browse what is available.",
+                "A specific product name or SKU only. Never a whole sentence. Leave this out to browse.",
             },
-            max_price: { type: "number", description: "Only return products at or below this price." },
+            max_price: { type: "number", description: "Only return products at or below this price, in INR." },
             availability: {
               type: "string",
               description: "Filter by availability: in_stock, out_of_stock or preorder.",
             },
-            category: { type: "string", description: "Only return products in this category." },
+            category: {
+              type: "string",
+              description:
+                "The product type: rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya.",
+            },
+            gender: { type: "string", description: "male or female, when the customer says so." },
             limit: { type: "number", description: "How many products to return, default 10, max 25." },
           },
           required: [],

@@ -1186,6 +1186,17 @@ export async function executeRun(
   // The house rule: always be useful, never invent a hard fact. Applies with
   // or without material, so a question with no match still gets an answer.
   if (task === "agent_reply") {
+    // A shop with a real shelf must be browsed, not guessed at.
+    const { count: productCount } = await supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("is_visible", true);
+    if ((productCount ?? 0) > 0) {
+      systemParts.push(
+        "This business has a product catalogue; for any browse/choose request call catalog_search before answering.",
+      );
+    }
     systemParts.push(ANSWER_POLICY);
   }
   const system = systemParts.filter(Boolean).join("\n\n");
