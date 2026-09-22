@@ -348,65 +348,117 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
   },
 
   async catalogSearch(ctx, args) {
-    const query = str(args["query"]);
     const limit = Math.min(Math.max(num(args["limit"], 10), 1), 25);
+    const { isAvailability } = await import("@/lib/catalog");
 
-    const { toTsQuery, isAvailability } = await import("@/lib/catalog");
-    const tsquery = query ? toTsQuery(query) : "";
+    const rawQuery = str(args["query"]);
+    const rawCategory = str(args["category"]);
+    // Shoppers don't speak in catalogue words: "anguthi", "gents ring",
+    // "jhumka" all have to land on the same shelf before anything is queried.
+    const spoken = `${rawCategory} ${rawQuery}`;
+    const category = canonCategory(rawCategory) || canonCategory(rawQuery);
+    const gender = canonGender(str(args["gender"])) || canonGender(spoken);
+    const maxPriceRaw = args["max_price"];
+    const maxPrice =
+      typeof maxPriceRaw === "number" && Number.isFinite(maxPriceRaw) ? maxPriceRaw : null;
+    const availability = isAvailability(args["availability"]) ? args["availability"] : null;
+    // A whole sentence in `query` matches nothing; once we know the shelf and
+    // the budget, the words the customer typed are noise.
+    const query = category && looksLikeSentence(rawQuery) ? "" : rawQuery;
 
-    let request = ctx.supabase
-      .from("products")
-      .select(
-        "id, title, sku, brand, category, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url",
-      )
-      .eq("organization_id", ctx.organizationId)
-      // Hidden products never reach a customer, whether searching or browsing.
-      .eq("is_visible", true)
-      .limit(limit);
+    const run = async (withQuery: string, withMaxPrice: number | null, rowLimit: number, cheapestFirst = false) => {
+      const { toTsQuery } = await import("@/lib/catalog");
+      let request = ctx.supabase
+        .from("products")
+        .select(
+          "id, title, sku, brand, category, gender, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url",
+        )
+        .eq("organization_id", ctx.organizationId)
+        // Hidden products never reach a customer, whether searching or browsing.
+        .eq("is_visible", true)
+        .limit(rowLimit);
 
-    if (query) {
-      // Full-text when the words are searchable, a plain contains match otherwise.
-      request = tsquery
-        ? request.textSearch("search_vector", tsquery)
-        : request.ilike("title", `%${query.replace(/[%,()]/g, " ").trim()}%`);
-    } else {
-      // Browse case: what's in stock, with a picture, most recently touched
-      // first. A product without a picture arrives as a bare line of text, so
-      // it should never crowd out one the customer can actually see.
-      request = request
-        .order("availability", { ascending: true })
-        .order("image_url", { ascending: true, nullsFirst: false })
-        .order("updated_at", { ascending: false });
+      if (withQuery) {
+        const tsquery = toTsQuery(withQuery);
+        request = tsquery
+          ? request.textSearch("search_vector", tsquery)
+          : request.ilike("title", `%${withQuery.replace(/[%,()]/g, " ").trim()}%`);
+      } else if (cheapestFirst) {
+        request = request.order("price", { ascending: true, nullsFirst: false });
+      } else {
+        // Browse case: what's in stock, with a picture, most recently touched
+        // first. A product without a picture arrives as a bare line of text, so
+        // it should never crowd out one the customer can actually see.
+        request = request
+          .order("availability", { ascending: true })
+          .order("image_url", { ascending: true, nullsFirst: false })
+          .order("updated_at", { ascending: false });
+      }
+
+      if (withMaxPrice !== null) request = request.lte("price", withMaxPrice);
+      if (availability) request = request.eq("availability", availability);
+      if (category) request = request.ilike("category", `%${category}%`);
+      if (gender) {
+        const words = gender === "male" ? ["male", "men", "gents"] : ["female", "women", "ladies"];
+        request = request.or(words.map((w) => `gender.ilike.${w}`).join(","));
+      }
+
+      const { data, error } = await request;
+      if (error) return { rows: null as Array<Record<string, unknown>> | null, error: error.message };
+      return { rows: (data ?? []) as Array<Record<string, unknown>>, error: null };
+    };
+
+    const sortRows = (rows: Array<Record<string, unknown>>, searched: boolean) => {
+      const hasPicture = (r: Record<string, unknown>) =>
+        typeof r["image_url"] === "string" && /^https?:\/\//i.test(r["image_url"] as string);
+      return searched
+        ? [...rows].sort((a, b) => Number(hasPicture(b)) - Number(hasPicture(a)))
+        : [...rows].sort(
+            (a, b) =>
+              Number(b["availability"] === "in_stock") - Number(a["availability"] === "in_stock") ||
+              Number(hasPicture(b)) - Number(hasPicture(a)),
+          );
+    };
+
+    let first = await run(query, maxPrice, limit);
+    if (first.error) return { ok: false, error: first.error };
+    let searched = Boolean(query);
+
+    // Words that matched nothing shouldn't hide a shelf we can browse.
+    if (first.rows!.length === 0 && query && (category || maxPrice !== null)) {
+      const retry = await run("", maxPrice, limit);
+      if (retry.error) return { ok: false, error: retry.error };
+      first = retry;
+      searched = false;
     }
 
+    const ordered = sortRows(first.rows!, searched);
+    if (ordered.length > 0) return { ok: true, found: true, data: ordered };
 
-    const maxPrice = args["max_price"];
-    if (typeof maxPrice === "number" && Number.isFinite(maxPrice)) {
-      request = request.lte("price", maxPrice);
+    // Nothing at that budget: offer the nearest three above it rather than a
+    // dead end.
+    if (category || maxPrice !== null) {
+      const closest = await run("", null, 3, true);
+      const suggestions = closest.rows ? sortRows(closest.rows, false) : [];
+      if (suggestions.length > 0) {
+        return {
+          ok: true,
+          found: false,
+          data: {
+            found: false,
+            category: category || null,
+            max_price: maxPrice,
+            closest_above: suggestions,
+            reply_hint:
+              `Say: "I don't have ${category || "that"}${maxPrice !== null ? ` under ₹${maxPrice}` : ""} right now — ` +
+              `want me to show the closest above that, or a different type?" Then show these three.`,
+          },
+        };
+      }
     }
-    const availability = args["availability"];
-    if (isAvailability(availability)) request = request.eq("availability", availability);
-    const category = str(args["category"]);
-    if (category) request = request.ilike("category", `%${category}%`);
-
-    const { data, error } = await request;
-    if (error) return { ok: false, error: error.message };
-    const rows = (data ?? []) as Array<Record<string, unknown>>;
-    // "in_stock" sorts before "out_of_stock"/"preorder" alphabetically except
-    // preorder, so put in_stock first explicitly for the browse case, and put
-    // the ones that carry a picture ahead of the ones that don't.
-    const hasPicture = (r: Record<string, unknown>) =>
-      typeof r["image_url"] === "string" && /^https?:\/\//i.test(r["image_url"] as string);
-    const ordered = query
-      ? [...rows].sort((a, b) => Number(hasPicture(b)) - Number(hasPicture(a)))
-      : [...rows].sort(
-          (a, b) =>
-            Number(b["availability"] === "in_stock") - Number(a["availability"] === "in_stock") ||
-            Number(hasPicture(b)) - Number(hasPicture(a)),
-        );
 
     // A search that matches nothing still ran: ok, just empty.
-    return { ok: true, found: ordered.length > 0, data: ordered };
+    return { ok: true, found: false, data: [] };
   },
 
 
