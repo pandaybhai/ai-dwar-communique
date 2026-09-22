@@ -1108,6 +1108,23 @@ export async function processWebhookPayload(
                 mediaFallback = converted.fallback;
               }
 
+              // Two texts typed a breath apart are one question: wait out the
+              // burst, answer once, and let the overtaken delivery stand down.
+              const burst =
+                alreadyHandled || optedOut
+                  ? { proceed: true, body: agentBody }
+                  : await coalesceBurst(supabase, {
+                      conversationId: conversation.id as string,
+                      messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
+                      occurredAt,
+                      body: agentBody,
+                    });
+              if (!burst.proceed) {
+                console.log("[ai-agent] burst_superseded", conversation.id);
+                continue;
+              }
+              agentBody = burst.body;
+
               const { runAgentOnInbound } = await import("@/lib/ai-agent.server");
               const outcome = await runAgentOnInbound(supabase, {
                 organizationId: orgId,
