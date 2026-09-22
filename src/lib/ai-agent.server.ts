@@ -195,13 +195,20 @@ export async function runAgentOnInbound(
     return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
   }
 
+  // A discovery answer ends with an easy way to keep looking.
+  const pictures = run.media.slice(0, 3);
+  const body =
+    pictures.length > 0 && !/different budget or style/i.test(answer)
+      ? `${answer}\n\nWant a different budget or style?`
+      : answer;
+
   const sent = await sendServiceText(supabase, {
     organizationId: args.organizationId,
     phoneNumberId: args.phoneNumberId,
     accessToken: args.accessToken,
     conversationId: args.conversationId,
     to: args.waId,
-    body: answer,
+    body,
   });
 
   // The customer got a helpful reply; part of it needed the business's own
@@ -223,8 +230,8 @@ export async function runAgentOnInbound(
   let picturesSent = 0;
   const cardsOn = flags.has("cards");
   let cardSent = false;
-  if (sent.ok && run.media.length > 0) {
-    for (const item of run.media) {
+  if (sent.ok && pictures.length > 0) {
+    for (const item of pictures) {
       const price =
         item.price === null
           ? ""

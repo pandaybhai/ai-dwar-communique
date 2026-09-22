@@ -13,6 +13,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { embedTexts, EMBEDDING_MODEL } from "@/lib/ai-run.server";
 import {
+  countCrawledProducts,
+  extractProduct,
+  hideMissingCrawledProducts,
+  saveCrawledProducts,
+  type ProductDraft,
+} from "@/lib/product-extract.server";
+import {
   READER_COST,
   fetchWithTimeout,
   readPage,
@@ -464,6 +471,11 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     }
   }
 
+  // Anything in the catalogue not touched by this read is hidden afterwards.
+  const runStart = new Date().toISOString();
+  /** Products read straight off the pages, for shops with no data feed. */
+  const productDrafts: ProductDraft[] = [];
+
   // The homepage first: it tells us whether this is a shop with public data.
   const home = await readPage(start.toString(), { key, ...(onStage ? { onStage } : {}) });
   let readerCost = home?.usedReader ? READER_COST : 0;
@@ -569,6 +581,13 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       if (!page || !page.contentType?.toLowerCase().includes("text/html")) continue;
       // Every page we fetched ourselves widens the map of the site.
       if (mode === "full") for (const href of page.links) consider(href, next);
+      // One product, if this page is a product page. No extra fetch.
+      try {
+        const draft = extractProduct(page.html, next);
+        if (draft) productDrafts.push(draft);
+      } catch {
+        // Never let reading a price stop the crawl.
+      }
       if (page.text.length <= 200) continue;
       docs.push({
         sourceRef: next,
@@ -604,10 +623,17 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
 
   const totalSeen = alreadySeen + seen;
   const more = mode === "full" && candidates.size > 0 && totalSeen < planCap;
+
+  // What the pages themselves said about products, remembered in one place.
+  await saveCrawledProducts(supabase, organizationId, productDrafts);
+  if (!more) await hideMissingCrawledProducts(supabase, organizationId, origin, runStart);
+  const productsFound = await countCrawledProducts(supabase, organizationId, origin);
+
   await supabase
     .from("knowledge_sources")
     .update({
       pages_seen: totalSeen,
+      products_found: productsFound,
       cost_amount: readerCost + factsCost,
       config: {
         ...config,

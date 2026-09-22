@@ -67,6 +67,7 @@ const nf = (n: number) => n.toLocaleString("en-IN");
 export function ReadingLine({ source }: { source: KnowledgeSource }) {
   const pages = source.pages_seen ?? 0;
   const items = source.item_count ?? 0;
+  const products = source.products_found ?? 0;
   const noun = source.type === "website" ? "products" : "items";
   if (source.status === "queued") return <>Waiting to start</>;
   if (source.status === "pending") return <>Queued</>;
@@ -80,7 +81,9 @@ export function ReadingLine({ source }: { source: KnowledgeSource }) {
   }
   return (
     <>
-      Read {nf(pages)} pages · {nf(items)} {noun} · finished {whenText(source.last_synced_at)}
+      Read {nf(pages)} pages · {nf(items)} things
+      {products > 0 ? ` · ${nf(products)} ${noun}` : ""} · finished{" "}
+      {whenText(source.last_synced_at)}
     </>
   );
 }
