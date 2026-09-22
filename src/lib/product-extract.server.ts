@@ -215,45 +215,52 @@ function largestImage(html: string, pageUrl: string): string | null {
 }
 
 function fromPageShape(html: string, pageUrl: string): ProductDraft | null {
-  // The page's own headline: an <h1> when it has one, otherwise the first
-  // <h2>, which is what most shop themes actually use for a product name.
-  const headMatch =
-    html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i) ?? html.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i);
-  if (!headMatch) return null;
-  const title = decode((headMatch[1] ?? "").replace(/<[^>]+>/g, " "));
-  if (title.length < 2) return null;
-
   const plain = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ");
   const all = Array.from(plain.matchAll(PRICE_RE));
   const distinct = new Set(all.map((m) => (m[1] ?? "").replace(/,/g, "")));
   // A wall of different prices is a listing page, not one product.
   if (distinct.size === 0 || distinct.size > 6) return null;
 
-  const headAt = html.indexOf(headMatch[0] ?? "");
-  const window = html.slice(
-    Math.max(0, headAt - 300),
-    headAt + (headMatch[0]?.length ?? 0) + 800,
-  );
-  const near = Array.from(window.replace(/<[^>]+>/g, " ").matchAll(PRICE_RE));
-  const nearDistinct = new Set(near.map((m) => (m[1] ?? "").replace(/,/g, "")));
-  // Exactly one price belongs to this heading, or we can't tell which is its.
-  if (nearDistinct.size !== 1) return null;
+  // Shop themes put the product name in an <h1> or an <h2>; filter widgets and
+  // section labels use the same tags, so the heading we want is the one with a
+  // price beside it and only one.
+  const headings = [
+    ...Array.from(html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)),
+    ...Array.from(html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi)),
+  ];
 
-  const image = largestImage(html, pageUrl);
-  if (!image) return null;
+  for (const heading of headings) {
+    const title = decode((heading[1] ?? "").replace(/<[^>]+>/g, " "));
+    if (title.length < 2 || title.length > 200) continue;
+    if (/^(price|filter|sort|categor|shop by|refine)/i.test(title)) continue;
+    const at = html.indexOf(heading[0] ?? "");
+    if (at < 0) continue;
+    const near = Array.from(
+      html
+        .slice(Math.max(0, at - 300), at + (heading[0]?.length ?? 0) + 800)
+        .replace(/<[^>]+>/g, " ")
+        .matchAll(PRICE_RE),
+    );
+    const nearDistinct = new Set(near.map((m) => (m[1] ?? "").replace(/,/g, "")));
+    if (nearDistinct.size !== 1) continue;
 
-  return {
-    externalId: pageUrl,
-    title: title.slice(0, 300),
-    price: toNumber(near[0]?.[1] ?? null),
-    currency: "INR",
-    imageUrl: image,
-    productUrl: pageUrl,
-    category: categoryFromUrl(pageUrl),
-    availability: soldOut(html) ? "out_of_stock" : "in_stock",
-    sku: null,
-    brand: null,
-  };
+    const image = largestImage(html, pageUrl);
+    if (!image) return null;
+
+    return {
+      externalId: pageUrl,
+      title: title.slice(0, 300),
+      price: toNumber(near[0]?.[1] ?? null),
+      currency: "INR",
+      imageUrl: image,
+      productUrl: pageUrl,
+      category: categoryFromUrl(pageUrl),
+      availability: soldOut(html) ? "out_of_stock" : "in_stock",
+      sku: null,
+      brand: null,
+    };
+  }
+  return null;
 }
 
 /** One product off one page, or nothing. First method that works wins. */
