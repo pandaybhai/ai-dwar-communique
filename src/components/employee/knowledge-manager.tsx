@@ -56,6 +56,43 @@ const KIND_TEXT: Record<string, { label: string; live: boolean }> = {
   docx: { label: "Document", live: false },
 };
 
+/** Still working on it: queued to start, or reading right now. */
+export function isReading(status: string): boolean {
+  return status === "pending" || status === "queued" || status === "syncing";
+}
+
+const nf = (n: number) => n.toLocaleString("en-IN");
+
+/** One plain line about where a source has got to. */
+export function ReadingLine({ source }: { source: KnowledgeSource }) {
+  const pages = source.pages_seen ?? 0;
+  const items = source.item_count ?? 0;
+  if (source.status === "queued") return <>Waiting to start</>;
+  if (source.status === "pending") return <>Queued</>;
+  if (source.status === "syncing") {
+    return (
+      <>
+        Reading {source.name}
+        {pages > 0 || items > 0 ? ` — ${nf(pages)} pages, ${nf(items)} things so far` : " — just started"}
+      </>
+    );
+  }
+  return (
+    <>
+      Read {nf(pages)} pages · {nf(items)} things · finished {whenText(source.last_synced_at)}
+    </>
+  );
+}
+
+/** A soft bar that says "working", never a fake percentage. */
+export function ReadingBar() {
+  return (
+    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-primary/10">
+      <div className="h-full w-1/3 animate-[shimmer_1.6s_ease-in-out_infinite] rounded-full bg-primary/60" />
+    </div>
+  );
+}
+
 /**
  * What the AI employee has read. Live sources re-read themselves; uploads are
  * read once. Everything it knows is visible here and can be deleted.
