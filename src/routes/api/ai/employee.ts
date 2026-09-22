@@ -93,7 +93,7 @@ export const Route = createFileRoute("/api/ai/employee")({
                 .limit(20),
               supabase
                 .from("knowledge_sources")
-                .select("id, type, name, status, item_count, last_synced_at, last_error")
+                .select("id, type, name, status, item_count, pages_seen, last_synced_at, last_error")
                 .eq("organization_id", org)
                 .order("created_at", { ascending: false }),
               supabase

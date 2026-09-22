@@ -67,19 +67,20 @@ const nf = (n: number) => n.toLocaleString("en-IN");
 export function ReadingLine({ source }: { source: KnowledgeSource }) {
   const pages = source.pages_seen ?? 0;
   const items = source.item_count ?? 0;
+  const noun = source.type === "website" ? "products" : "items";
   if (source.status === "queued") return <>Waiting to start</>;
   if (source.status === "pending") return <>Queued</>;
   if (source.status === "syncing") {
     return (
       <>
         Reading {source.name}
-        {pages > 0 || items > 0 ? ` — ${nf(pages)} pages, ${nf(items)} things so far` : " — just started"}
+        {pages > 0 || items > 0 ? ` — ${nf(pages)} pages, ${nf(items)} so far` : " — just started"}
       </>
     );
   }
   return (
     <>
-      Read {nf(pages)} pages · {nf(items)} things · finished {whenText(source.last_synced_at)}
+      Read {nf(pages)} pages · {nf(items)} {noun} · finished {whenText(source.last_synced_at)}
     </>
   );
 }
