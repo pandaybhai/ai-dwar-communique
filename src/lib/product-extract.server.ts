@@ -96,7 +96,8 @@ function normalizeCategory(raw: string | null | undefined, title?: string | null
   if (!/^[a-z][a-z '&]*$/.test(clean)) return null; // ids, codes, addresses
   if (clean.split(/\s+/).length > 3) return null;
   if (ROUTE_WORDS.test(clean)) return null;
-  if (title && clean === decode(title).toLowerCase()) return null;
+  // A shelf that merely echoes the product name is the product, not a shelf.
+  if (title && decode(title).toLowerCase().includes(clean)) return null;
   return clean.slice(0, 80);
 }
 
