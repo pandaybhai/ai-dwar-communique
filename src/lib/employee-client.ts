@@ -71,6 +71,7 @@ export type KnowledgeSource = {
   last_error: string | null;
   refresh_days?: number;
   pages_seen?: number | null;
+  products_found?: number | null;
   config?: Record<string, unknown>;
 };
 

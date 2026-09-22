@@ -142,13 +142,20 @@ export const Route = createFileRoute("/api/ai/knowledge")({
             if (!sourceId) return jsonError("Which source?");
             const { data: owned } = await auth.supabase
               .from("knowledge_sources")
-              .select("id")
+              .select("id, type")
               .eq("id", sourceId)
               .eq("organization_id", auth.organizationId)
               .maybeSingle();
             if (!owned) return jsonError("That source isn't in this workspace.", 403);
             const result = await knowledge.syncSource(auth.supabase, sourceId);
-            return Response.json(result);
+            // A shop read before we kept a catalogue catches up here: only its
+            // product pages are fetched again, never the whole site.
+            let productsFound = 0;
+            if ((owned as { type?: string }).type === "website") {
+              const { backfillProductsFromSource } = await import("@/lib/product-extract.server");
+              productsFound = await backfillProductsFromSource(auth.supabase, sourceId);
+            }
+            return Response.json({ ...result, productsFound });
           }
 
           if (action === "delete_source") {
