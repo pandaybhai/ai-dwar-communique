@@ -410,7 +410,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       let request = ctx.supabase
         .from("products")
         .select(
-          "id, title, sku, brand, category, gender, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url",
+          "id, external_id, title, sku, brand, category, gender, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url, source, meta_synced_at",
         )
         .eq("organization_id", ctx.organizationId)
         // Hidden products never reach a customer, whether searching or browsing.

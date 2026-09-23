@@ -225,12 +225,36 @@ export async function runAgentOnInbound(
     log("gap_filed", { conversation_id: args.conversationId, recorded });
   }
 
+  // Products that live in the number's WhatsApp catalogue go out as real
+  // catalogue cards the customer can add to a cart; everything else still
+  // travels as pictures.
+  let catalogSent = 0;
+  if (sent.ok && pictures.length > 0 && flags.has("whatsapp_catalog")) {
+    const { sendCatalogProducts } = await import("@/lib/whatsapp-catalog.server");
+    const result = await sendCatalogProducts(supabase, {
+      organizationId: args.organizationId,
+      conversationId: args.conversationId,
+      phoneNumberId: args.phoneNumberId,
+      accessToken: args.accessToken,
+      to: args.waId,
+      items: pictures.map((p) => ({
+        retailerId: p.retailerId,
+        title: p.title,
+        category: p.category,
+        inCatalog: p.inCatalog,
+      })),
+    });
+    if (result.sent > 0) catalogSent = result.sent;
+    if (result.error) log("catalog_send_failed", { conversation_id: args.conversationId, error: result.error });
+  }
+
   // Catalogue answers travel with pictures: one image per product named,
   // sent after the text so the words arrive first.
   let picturesSent = 0;
   const cardsOn = flags.has("cards");
   let cardSent = false;
-  if (sent.ok && pictures.length > 0) {
+  if (sent.ok && catalogSent === 0 && pictures.length > 0) {
+
     for (const item of pictures) {
       const price =
         item.price === null

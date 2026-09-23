@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { graphFetch, graphErrorMessage, providerErrorDetail } from "@/lib/whatsapp-api.server";
+import {
+  graphFetch,
+  graphErrorMessage,
+  providerErrorDetail,
+  logServerActivity,
+} from "@/lib/whatsapp-api.server";
 import { getWhatsAppConnection } from "@/lib/whatsapp-numbers.server";
 
 /**
@@ -85,7 +90,10 @@ export type CatalogRow = {
   pushed_count: number;
   rejected_count: number;
   last_error: string | null;
+  is_catalog_visible: boolean | null;
+  is_cart_enabled: boolean | null;
 };
+
 
 export async function getCatalogRow(
   supabase: SupabaseClient,
@@ -95,7 +103,7 @@ export async function getCatalogRow(
   const { data } = await supabase
     .from("whatsapp_catalogs")
     .select(
-      "catalog_id, catalog_name, status, mode, last_sync_at, pushed_count, rejected_count, last_error",
+      "catalog_id, catalog_name, status, mode, last_sync_at, pushed_count, rejected_count, last_error, is_catalog_visible, is_cart_enabled",
     )
     .eq("organization_id", organizationId)
     .eq("waba_id", wabaId)
@@ -121,6 +129,7 @@ export async function getGrantedScopes(
 
 type Resolved = {
   wabaId: string;
+  phoneNumberId: string;
   accessToken: string;
   scopes: string[] | null;
 };
@@ -138,10 +147,16 @@ export async function resolveCatalogContext(
   if (!connection) return { ctx: null, error };
   const scopes = await getGrantedScopes(supabase, organizationId, connection.wabaId);
   return {
-    ctx: { wabaId: connection.wabaId, accessToken: connection.accessToken, scopes },
+    ctx: {
+      wabaId: connection.wabaId,
+      phoneNumberId: connection.phoneNumberId,
+      accessToken: connection.accessToken,
+      scopes,
+    },
     error: null,
   };
 }
+
 
 const SCOPE_MESSAGE =
   "Reconnect this number to enable the WhatsApp catalogue — the connection is missing catalogue permission.";
@@ -311,8 +326,107 @@ export async function enableCatalog(args: {
       error: graphErrorMessage(linked.body),
     };
   }
+  // A catalogue nobody can see is no use: turn on the shop button and the
+  // cart for this number straight away. A failure here never fails Enable.
+  await setCommerceSettings({
+    supabase,
+    organizationId,
+    userId,
+    whatsappAccountId: args.whatsappAccountId,
+    isCatalogVisible: true,
+    isCartEnabled: true,
+  });
+
   return { ok: true, catalog_id: catalogId, created: mode === "managed", mode };
 }
+
+export type CommerceSettings = {
+  is_catalog_visible: boolean;
+  is_cart_enabled: boolean;
+};
+
+/** What the customer sees on this number: the shop button and the cart. */
+export async function getCommerceSettings(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  userId: string | null;
+  whatsappAccountId: string | null;
+}): Promise<{ ok: boolean; settings?: CommerceSettings; error?: string }> {
+  const { supabase, organizationId, userId } = args;
+  const { ctx, error } = await resolveCatalogContext(
+    supabase,
+    organizationId,
+    args.whatsappAccountId,
+  );
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+
+  const callCtx: CallArgs = { supabase, organizationId, userId, wabaId: ctx.wabaId };
+  const result = await loggedGraph(
+    callCtx,
+    `${ctx.phoneNumberId}/whatsapp_commerce_settings`,
+    ctx.accessToken,
+  );
+  if (!result.ok) return { ok: false, error: graphErrorMessage(result.body) };
+  const row = ((result.body["data"] ?? []) as Array<Record<string, unknown>>)[0] ?? {};
+  return {
+    ok: true,
+    settings: {
+      is_catalog_visible: row["is_catalog_visible"] === true,
+      is_cart_enabled: row["is_cart_enabled"] === true,
+    },
+  };
+}
+
+/** Turns the shop button and cart on or off for the connected number. */
+export async function setCommerceSettings(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  userId: string | null;
+  whatsappAccountId: string | null;
+  isCatalogVisible: boolean;
+  isCartEnabled: boolean;
+}): Promise<{ ok: boolean; settings?: CommerceSettings; error?: string }> {
+  const { supabase, organizationId, userId } = args;
+  const { ctx, error } = await resolveCatalogContext(
+    supabase,
+    organizationId,
+    args.whatsappAccountId,
+  );
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+
+  const callCtx: CallArgs = { supabase, organizationId, userId, wabaId: ctx.wabaId };
+  const result = await loggedGraph(
+    callCtx,
+    `${ctx.phoneNumberId}/whatsapp_commerce_settings`,
+    ctx.accessToken,
+    {
+      method: "POST",
+      query: {
+        is_catalog_visible: String(args.isCatalogVisible),
+        is_cart_enabled: String(args.isCartEnabled),
+      },
+    },
+  );
+  if (!result.ok) return { ok: false, error: graphErrorMessage(result.body) };
+
+  await supabase
+    .from("whatsapp_catalogs")
+    .update({
+      is_catalog_visible: args.isCatalogVisible,
+      is_cart_enabled: args.isCartEnabled,
+    })
+    .eq("organization_id", organizationId)
+    .eq("waba_id", ctx.wabaId);
+
+  return {
+    ok: true,
+    settings: {
+      is_catalog_visible: args.isCatalogVisible,
+      is_cart_enabled: args.isCartEnabled,
+    },
+  };
+}
+
 
 type ProductRow = {
   id: string;
@@ -754,4 +868,85 @@ export async function refreshLinkedCatalog(args: {
     .eq("waba_id", ctx.wabaId);
 
   return { ok: true, catalog_id: row.catalog_id, imported };
+}
+
+/**
+ * Sends the products that are live in this number's catalogue as real
+ * catalogue cards. Returns how many went out; 0 means the caller should fall
+ * back to plain pictures.
+ */
+export async function sendCatalogProducts(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    conversationId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    to: string;
+    items: Array<{
+      retailerId: string | null;
+      title: string;
+      category: string | null;
+      inCatalog: boolean;
+    }>;
+  },
+): Promise<{ sent: number; error: string | null }> {
+  const eligible = args.items.filter(
+    (i) => i.inCatalog && typeof i.retailerId === "string" && i.retailerId.length > 0,
+  );
+  if (eligible.length === 0) return { sent: 0, error: null };
+
+  const { data: account } = await supabase
+    .from("whatsapp_accounts")
+    .select("waba_id")
+    .eq("organization_id", args.organizationId)
+    .eq("phone_number_id", args.phoneNumberId)
+    .maybeSingle();
+  const wabaId = (account as { waba_id?: string } | null)?.waba_id;
+  if (!wabaId) return { sent: 0, error: null };
+
+  const { data: catalog } = await supabase
+    .from("whatsapp_catalogs")
+    .select("catalog_id, status, is_catalog_visible")
+    .eq("organization_id", args.organizationId)
+    .eq("waba_id", wabaId)
+    .maybeSingle();
+  const row = catalog as
+    | { catalog_id: string; status: string; is_catalog_visible: boolean | null }
+    | null;
+  if (!row || row.status !== "linked" || row.is_catalog_visible === false) {
+    return { sent: 0, error: null };
+  }
+
+  const { sendServiceProducts } = await import("@/lib/service-text.server");
+  const items = eligible.slice(0, 30).map((i) => ({
+    retailerId: i.retailerId as string,
+    title: i.title,
+    section: i.category ?? "Products",
+  }));
+
+  const result = await sendServiceProducts(supabase, {
+    organizationId: args.organizationId,
+    phoneNumberId: args.phoneNumberId,
+    accessToken: args.accessToken,
+    conversationId: args.conversationId,
+    to: args.to,
+    catalogId: row.catalog_id,
+    header: "Have a look",
+    body:
+      items.length === 1
+        ? "Here's the one I'd show you — tap it for the full details."
+        : "Here's what I have for you — tap any one to see it in full.",
+    items,
+  });
+
+  if (!result.ok) return { sent: 0, error: result.error };
+
+  await logServerActivity(supabase, args.organizationId, null, "whatsapp_catalog_products_sent", {
+    catalog_id: row.catalog_id,
+    conversation_id: args.conversationId,
+    count: items.length,
+  });
+
+  return { sent: items.length, error: null };
 }

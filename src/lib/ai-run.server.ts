@@ -132,7 +132,14 @@ export type RunMedia = {
   price: number | null;
   currency: string | null;
   productUrl: string | null;
+  /** The id this product carries in the WhatsApp catalogue, when it's in one. */
+  retailerId: string | null;
+  /** Shelf name, used to group a catalogue list into sections. */
+  category: string | null;
+  /** True when this exact product is live in the number's catalogue. */
+  inCatalog: boolean;
 };
+
 
 /** How many pictures a single answer is allowed to carry. */
 export const MAX_PRODUCT_IMAGES = 5;
@@ -1639,13 +1646,26 @@ export function collectProductMedia(
     if (!imageUrl || !/^https?:\/\//i.test(imageUrl) || !title) continue;
     if (into.some((m) => m.imageUrl === imageUrl)) continue;
     const price = row["price"];
+    const str = (key: string) =>
+      typeof row[key] === "string" && (row[key] as string).trim()
+        ? (row[key] as string).trim()
+        : null;
+    // The catalogue knows a product by the same id the sync pushed, and only
+    // a product that was actually pushed (or read back from a linked
+    // catalogue) can be sent as a card.
+    const retailerId = str("external_id") ?? str("sku") ?? str("id");
+    const source = str("source");
     into.push({
       title,
       imageUrl,
       price: typeof price === "number" ? price : price === null || price === undefined ? null : Number(price) || null,
       currency: typeof row["currency"] === "string" ? row["currency"] : null,
       productUrl: typeof row["product_url"] === "string" ? row["product_url"] : null,
+      retailerId,
+      category: str("category"),
+      inCatalog: Boolean(retailerId) && (Boolean(str("meta_synced_at")) || source === "meta_catalog"),
     });
+
   }
 }
 

@@ -74,7 +74,7 @@ export async function requirePermission(
 export async function logServerActivity(
   supabase: SupabaseClient,
   organizationId: string,
-  userId: string,
+  userId: string | null,
   action: string,
   details: Record<string, unknown> = {},
 ): Promise<void> {

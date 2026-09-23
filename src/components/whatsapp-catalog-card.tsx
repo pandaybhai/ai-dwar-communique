@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +26,8 @@ type Catalog = {
   pushed_count: number;
   rejected_count: number;
   last_error: string | null;
+  is_catalog_visible: boolean | null;
+  is_cart_enabled: boolean | null;
 } | null;
 
 type Status = {
@@ -57,7 +61,7 @@ export function CatalogCard({
   const { enabled: flagOn, loading: flagLoading } = useFeatureFlag("whatsapp_catalog");
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState<"enable" | "sync" | "choose" | null>(null);
+  const [working, setWorking] = useState<"enable" | "sync" | "choose" | "settings" | null>(null);
   const [choices, setChoices] = useState<BusinessCatalog[] | null>(null);
 
   const load = useCallback(async () => {
@@ -158,6 +162,25 @@ export function CatalogCard({
     await load();
   }
 
+  async function setCommerce(next: { visible: boolean; cart: boolean }) {
+    setWorking("settings");
+    const { error } = await callApi("/api/whatsapp/catalog", {
+      body: {
+        organization_id: orgId,
+        whatsapp_account_id: accountId,
+        action: "commerce_settings",
+        is_catalog_visible: next.visible,
+        is_cart_enabled: next.cart,
+      },
+    });
+    setWorking(null);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    await load();
+  }
+
   const catalog = status?.catalog ?? null;
   const mode = catalog?.mode ?? "managed";
 
@@ -251,6 +274,37 @@ export function CatalogCard({
           </div>
         ) : null}
       </div>
+
+      {catalog && canManage ? (
+        <div className="mt-4 flex flex-wrap gap-6 border-t border-border/60 pt-4">
+          <div className="flex items-center gap-3">
+            <Switch
+              id="catalog-visible"
+              checked={catalog.is_catalog_visible !== false}
+              disabled={working !== null}
+              onCheckedChange={(checked) =>
+                void setCommerce({ visible: checked, cart: catalog.is_cart_enabled !== false })
+              }
+            />
+            <Label htmlFor="catalog-visible" className="text-sm text-muted-foreground">
+              Show the shop button on this number
+            </Label>
+          </div>
+          <div className="flex items-center gap-3">
+            <Switch
+              id="catalog-cart"
+              checked={catalog.is_cart_enabled !== false}
+              disabled={working !== null}
+              onCheckedChange={(checked) =>
+                void setCommerce({ visible: catalog.is_catalog_visible !== false, cart: checked })
+              }
+            />
+            <Label htmlFor="catalog-cart" className="text-sm text-muted-foreground">
+              Let customers build a cart
+            </Label>
+          </div>
+        </div>
+      ) : null}
 
       <Dialog open={choices !== null} onOpenChange={(open) => (open ? null : setChoices(null))}>
         <DialogContent className="sm:max-w-md">
