@@ -132,7 +132,14 @@ export type RunMedia = {
   price: number | null;
   currency: string | null;
   productUrl: string | null;
+  /** The id this product carries in the WhatsApp catalogue, when it's in one. */
+  retailerId: string | null;
+  /** Shelf name, used to group a catalogue list into sections. */
+  category: string | null;
+  /** True when this exact product is live in the number's catalogue. */
+  inCatalog: boolean;
 };
+
 
 /** How many pictures a single answer is allowed to carry. */
 export const MAX_PRODUCT_IMAGES = 5;
