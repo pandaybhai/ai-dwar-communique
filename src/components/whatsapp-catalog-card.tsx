@@ -133,6 +133,7 @@ export function CatalogCard({
     const { data, error } = await callApi<{
       pushed?: number;
       rejected?: number;
+      removed?: number;
       imported?: number;
     }>("/api/whatsapp/catalog", {
       body: {
@@ -149,10 +150,11 @@ export function CatalogCard({
     toast.success(
       mode === "linked"
         ? `${data?.imported ?? 0} product${data?.imported === 1 ? "" : "s"} read from your catalogue`
-        : `${data?.pushed ?? 0} product${data?.pushed === 1 ? "" : "s"} sent${
+        : `${data?.pushed ?? 0} sent${data?.removed ? `, ${data.removed} removed` : ""}${
             data?.rejected ? `, ${data.rejected} refused by Meta` : ""
           }`,
     );
+
     await load();
   }
 
