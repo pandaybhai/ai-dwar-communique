@@ -193,6 +193,7 @@ async function strangerGreetCount(
     .eq("conversation_id", conversationId)
     .eq("direction", "outbound")
     .like("body", "Hi! I'm Aiden from AiDwar%")
+    .in("status", ["sent", "delivered", "read"])
     .gte("created_at", since);
   return data?.length ?? 0;
 }
