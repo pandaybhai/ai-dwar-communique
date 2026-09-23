@@ -481,16 +481,94 @@ export async function syncCatalog(args: {
     // the per-item errors it reports as rejected.
     const handles = (result.body["handles"] ?? []) as string[];
     let failedCount = 0;
+    const failedIds = new Set<string>();
     for (const handle of handles) {
       if (typeof handle !== "string" || !handle) continue;
       const status = await pollBatchStatus(callCtx, row.catalog_id, handle, ctx.accessToken);
       failedCount += status.errors.length;
+      for (const id of status.failedIds) failedIds.add(id);
       for (const f of status.errors.slice(0, 5)) rejections.push(f);
     }
     failedCount = Math.min(failedCount, chunk.length);
     rejected += failedCount;
     pushed += chunk.length - failedCount;
+    for (const p of chunk) {
+      if (!failedIds.has(retailerId(p))) pushedIds.push(p.id);
+    }
   }
+
+  // Remember what is live in Meta's catalogue so the next sync can remove
+  // anything that stopped being eligible on our side.
+  if (pushedIds.length > 0) {
+    const stamp = new Date().toISOString();
+    for (let i = 0; i < pushedIds.length; i += 200) {
+      await supabase
+        .from("products")
+        .update({ meta_synced_at: stamp })
+        .eq("organization_id", organizationId)
+        .in("id", pushedIds.slice(i, i + 200));
+    }
+  }
+
+  // Anything previously pushed that is no longer eligible gets deleted from
+  // the catalogue, then loses its marker.
+  const liveIds = new Set(rows.map((p) => retailerId(p)));
+  const { data: syncedBefore } = await supabase
+    .from("products")
+    .select("id, external_id, sku")
+    .eq("organization_id", organizationId)
+    .not("meta_synced_at", "is", null)
+    .limit(2000);
+
+  const stale = ((syncedBefore ?? []) as Array<{
+    id: string;
+    external_id: string | null;
+    sku: string | null;
+  }>)
+    .map((p) => ({ id: p.id, retailer: (p.external_id ?? p.sku ?? p.id).slice(0, 100) }))
+    .filter((p) => !liveIds.has(p.retailer));
+
+  for (let i = 0; i < stale.length; i += CHUNK) {
+    const chunk = stale.slice(i, i + CHUNK);
+    const result = await loggedGraph(
+      callCtx,
+      `${row.catalog_id}/items_batch`,
+      ctx.accessToken,
+      {
+        method: "POST",
+        body: {
+          item_type: "PRODUCT_ITEM",
+          allow_upsert: true,
+          requests: chunk.map((p) => ({ method: "DELETE", data: { id: p.retailer } })),
+        },
+      },
+      chunk.length,
+    );
+    if (!result.ok) {
+      rejections.push(graphErrorMessage(result.body));
+      continue;
+    }
+
+    const handles = (result.body["handles"] ?? []) as string[];
+    const failedIds = new Set<string>();
+    for (const handle of handles) {
+      if (typeof handle !== "string" || !handle) continue;
+      const status = await pollBatchStatus(callCtx, row.catalog_id, handle, ctx.accessToken);
+      for (const id of status.failedIds) failedIds.add(id);
+      for (const f of status.errors.slice(0, 5)) rejections.push(f);
+    }
+
+    const clearedIds = chunk.filter((p) => !failedIds.has(p.retailer)).map((p) => p.id);
+    if (clearedIds.length > 0) {
+      await supabase
+        .from("products")
+        .update({ meta_synced_at: null })
+        .eq("organization_id", organizationId)
+        .in("id", clearedIds);
+      removed += clearedIds.length;
+    }
+  }
+
 
   await supabase
     .from("whatsapp_catalogs")
