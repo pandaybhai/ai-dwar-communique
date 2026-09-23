@@ -429,10 +429,6 @@ export async function syncCatalog(args: {
   const rows = ((products ?? []) as ProductRow[]).filter(
     (p) => p.price != null && Boolean(p.image_url) && p.title.trim().length > 0,
   );
-  if (rows.length === 0) {
-    return { ok: true, catalog_id: row.catalog_id, eligible: 0, pushed: 0, rejected: 0 };
-  }
-
   const callCtx: CallArgs = {
     supabase,
     organizationId,
@@ -443,8 +439,11 @@ export async function syncCatalog(args: {
 
   let pushed = 0;
   let rejected = 0;
+  let removed = 0;
+  const pushedIds: string[] = [];
   const rejections: string[] = [];
   const CHUNK = 100;
+
 
   for (let i = 0; i < rows.length; i += CHUNK) {
     const chunk = rows.slice(i, i + CHUNK);
