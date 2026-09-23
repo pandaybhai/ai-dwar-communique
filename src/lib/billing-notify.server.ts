@@ -110,11 +110,30 @@ const TEMPLATE_FOR: Record<string, string> = {
 
 /**
  * The workspace AiDwar itself runs on. Set PLATFORM_ORG_ID to pin it; without
- * it we fall back to the oldest workspace that has a platform owner in it.
+ * it, the workspace that owns platform_settings.onboarding_whatsapp_account_id
+ * is the platform workspace; failing that, the oldest workspace that has a
+ * platform owner in it.
  */
 export async function resolvePlatformOrg(supabase: SupabaseClient): Promise<string | null> {
   const pinned = process.env["PLATFORM_ORG_ID"];
   if (pinned) return pinned;
+
+  const { data: settings } = await supabase
+    .from("platform_settings")
+    .select("onboarding_whatsapp_account_id")
+    .limit(1)
+    .maybeSingle();
+  const onboardingAccountId = (settings as { onboarding_whatsapp_account_id?: string } | null)
+    ?.onboarding_whatsapp_account_id;
+  if (onboardingAccountId) {
+    const { data: account } = await supabase
+      .from("whatsapp_accounts")
+      .select("organization_id")
+      .eq("id", onboardingAccountId)
+      .maybeSingle();
+    const orgId = (account as { organization_id?: string } | null)?.organization_id;
+    if (orgId) return orgId;
+  }
 
   const { data: admins } = await supabase
     .from("profiles")
