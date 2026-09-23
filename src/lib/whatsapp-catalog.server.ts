@@ -470,3 +470,165 @@ export async function syncCatalog(args: {
     rejections: rejections.slice(0, 5),
   };
 }
+
+type MetaItem = {
+  retailer_id?: string;
+  name?: string;
+  price?: string;
+  image_url?: string;
+  url?: string;
+  availability?: string;
+};
+
+function parsePrice(value: string | undefined): number | null {
+  if (!value) return null;
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const num = Number(cleaned);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function currencyOf(value: string | undefined): string {
+  if (value && /[A-Z]{3}/.test(value)) return (value.match(/[A-Z]{3}/) ?? ["INR"])[0];
+  return "INR";
+}
+
+function availabilityOf(value: string | undefined): string {
+  const v = (value ?? "").toLowerCase();
+  if (v.includes("out of stock")) return "out_of_stock";
+  if (v.includes("preorder")) return "preorder";
+  return "in_stock";
+}
+
+/**
+ * Reads a merchant-owned catalogue into our products table so Aiden can search
+ * it and send its items as product cards. Never writes to Meta.
+ */
+export async function refreshLinkedCatalog(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  userId: string;
+  whatsappAccountId: string | null;
+}): Promise<{ ok: boolean; catalog_id?: string; imported?: number; error?: string }> {
+  const { supabase, organizationId, userId } = args;
+  const { ctx, error } = await resolveCatalogContext(
+    supabase,
+    organizationId,
+    args.whatsappAccountId,
+  );
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+  if (!hasCatalogScopes(ctx.scopes)) return { ok: false, error: SCOPE_MESSAGE };
+
+  const row = await getCatalogRow(supabase, organizationId, ctx.wabaId);
+  if (!row) return { ok: false, error: "Link a catalogue first, then refresh." };
+
+  const callCtx: CallArgs = {
+    supabase,
+    organizationId,
+    userId,
+    wabaId: ctx.wabaId,
+    catalogId: row.catalog_id,
+  };
+
+  const startedAt = new Date().toISOString();
+  const items: MetaItem[] = [];
+  let path = `${row.catalog_id}/products`;
+  let query: Record<string, string> | undefined = {
+    fields: "retailer_id,name,price,image_url,url,availability",
+    limit: "100",
+  };
+
+  for (let page = 0; page < 20; page += 1) {
+    const result: Awaited<ReturnType<typeof loggedGraph>> = await loggedGraph(
+      callCtx,
+      path,
+      ctx.accessToken,
+      query ? { query } : {},
+    );
+    if (!result.ok) {
+      const message = graphErrorMessage(result.body);
+      await supabase
+        .from("whatsapp_catalogs")
+        .update({ last_error: message })
+        .eq("organization_id", organizationId)
+        .eq("waba_id", ctx.wabaId);
+      return { ok: false, error: message };
+    }
+    items.push(...((result.body["data"] ?? []) as MetaItem[]));
+    const next = (
+      (result.body["paging"] ?? {}) as { next?: string; cursors?: { after?: string } }
+    ).cursors?.after;
+    const hasNext = Boolean((result.body["paging"] as { next?: string } | undefined)?.next);
+    if (!hasNext || !next) break;
+    path = `${row.catalog_id}/products`;
+    query = {
+      fields: "retailer_id,name,price,image_url,url,availability",
+      limit: "100",
+      after: next,
+    };
+  }
+
+  let imported = 0;
+  for (const item of items) {
+    const retailerId = (item.retailer_id ?? "").trim();
+    const title = (item.name ?? "").trim();
+    if (!retailerId || !title) continue;
+
+    const productRow = {
+      organization_id: organizationId,
+      source: "meta_catalog",
+      external_id: retailerId,
+      title: title.slice(0, 200),
+      price: parsePrice(item.price),
+      currency: currencyOf(item.price),
+      image_url: item.image_url ?? null,
+      product_url: item.url ?? null,
+      availability: availabilityOf(item.availability),
+      is_visible: true,
+      synced_at: startedAt,
+      updated_at: startedAt,
+    };
+
+    const { data: existing } = await supabase
+      .from("products")
+      .select("id, source")
+      .eq("organization_id", organizationId)
+      .eq("external_id", retailerId)
+      .maybeSingle();
+    const prior = existing as { id: string; source: string } | null;
+    if (prior) {
+      // A product another source owns is never overwritten by the catalogue read.
+      if (prior.source !== "meta_catalog") continue;
+      const { error: updateError } = await supabase
+        .from("products")
+        .update(productRow)
+        .eq("id", prior.id);
+      if (!updateError) imported += 1;
+    } else {
+      const { error: insertError } = await supabase.from("products").insert(productRow);
+      if (!insertError) imported += 1;
+    }
+  }
+
+  // Items no longer in the catalogue stop being offered.
+  await supabase
+    .from("products")
+    .update({ is_visible: false })
+    .eq("organization_id", organizationId)
+    .eq("source", "meta_catalog")
+    .eq("is_visible", true)
+    .lt("synced_at", startedAt);
+
+  await supabase
+    .from("whatsapp_catalogs")
+    .update({
+      last_sync_at: new Date().toISOString(),
+      pushed_count: imported,
+      rejected_count: 0,
+      last_error: null,
+      status: "linked",
+    })
+    .eq("organization_id", organizationId)
+    .eq("waba_id", ctx.wabaId);
+
+  return { ok: true, catalog_id: row.catalog_id, imported };
+}
