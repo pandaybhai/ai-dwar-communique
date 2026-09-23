@@ -318,8 +318,107 @@ export async function enableCatalog(args: {
       error: graphErrorMessage(linked.body),
     };
   }
+  // A catalogue nobody can see is no use: turn on the shop button and the
+  // cart for this number straight away. A failure here never fails Enable.
+  await setCommerceSettings({
+    supabase,
+    organizationId,
+    userId,
+    whatsappAccountId: args.whatsappAccountId,
+    isCatalogVisible: true,
+    isCartEnabled: true,
+  });
+
   return { ok: true, catalog_id: catalogId, created: mode === "managed", mode };
 }
+
+export type CommerceSettings = {
+  is_catalog_visible: boolean;
+  is_cart_enabled: boolean;
+};
+
+/** What the customer sees on this number: the shop button and the cart. */
+export async function getCommerceSettings(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  userId: string | null;
+  whatsappAccountId: string | null;
+}): Promise<{ ok: boolean; settings?: CommerceSettings; error?: string }> {
+  const { supabase, organizationId, userId } = args;
+  const { ctx, error } = await resolveCatalogContext(
+    supabase,
+    organizationId,
+    args.whatsappAccountId,
+  );
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+
+  const callCtx: CallArgs = { supabase, organizationId, userId, wabaId: ctx.wabaId };
+  const result = await loggedGraph(
+    callCtx,
+    `${ctx.phoneNumberId}/whatsapp_commerce_settings`,
+    ctx.accessToken,
+  );
+  if (!result.ok) return { ok: false, error: graphErrorMessage(result.body) };
+  const row = ((result.body["data"] ?? []) as Array<Record<string, unknown>>)[0] ?? {};
+  return {
+    ok: true,
+    settings: {
+      is_catalog_visible: row["is_catalog_visible"] === true,
+      is_cart_enabled: row["is_cart_enabled"] === true,
+    },
+  };
+}
+
+/** Turns the shop button and cart on or off for the connected number. */
+export async function setCommerceSettings(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  userId: string | null;
+  whatsappAccountId: string | null;
+  isCatalogVisible: boolean;
+  isCartEnabled: boolean;
+}): Promise<{ ok: boolean; settings?: CommerceSettings; error?: string }> {
+  const { supabase, organizationId, userId } = args;
+  const { ctx, error } = await resolveCatalogContext(
+    supabase,
+    organizationId,
+    args.whatsappAccountId,
+  );
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+
+  const callCtx: CallArgs = { supabase, organizationId, userId, wabaId: ctx.wabaId };
+  const result = await loggedGraph(
+    callCtx,
+    `${ctx.phoneNumberId}/whatsapp_commerce_settings`,
+    ctx.accessToken,
+    {
+      method: "POST",
+      query: {
+        is_catalog_visible: String(args.isCatalogVisible),
+        is_cart_enabled: String(args.isCartEnabled),
+      },
+    },
+  );
+  if (!result.ok) return { ok: false, error: graphErrorMessage(result.body) };
+
+  await supabase
+    .from("whatsapp_catalogs")
+    .update({
+      is_catalog_visible: args.isCatalogVisible,
+      is_cart_enabled: args.isCartEnabled,
+    })
+    .eq("organization_id", organizationId)
+    .eq("waba_id", ctx.wabaId);
+
+  return {
+    ok: true,
+    settings: {
+      is_catalog_visible: args.isCatalogVisible,
+      is_cart_enabled: args.isCartEnabled,
+    },
+  };
+}
+
 
 type ProductRow = {
   id: string;
