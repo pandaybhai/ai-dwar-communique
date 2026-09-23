@@ -80,6 +80,7 @@ export type CatalogRow = {
   catalog_id: string;
   catalog_name: string | null;
   status: string;
+  mode: "managed" | "linked";
   last_sync_at: string | null;
   pushed_count: number;
   rejected_count: number;
@@ -93,7 +94,9 @@ export async function getCatalogRow(
 ): Promise<CatalogRow | null> {
   const { data } = await supabase
     .from("whatsapp_catalogs")
-    .select("catalog_id, catalog_name, status, last_sync_at, pushed_count, rejected_count, last_error")
+    .select(
+      "catalog_id, catalog_name, status, mode, last_sync_at, pushed_count, rejected_count, last_error",
+    )
     .eq("organization_id", organizationId)
     .eq("waba_id", wabaId)
     .maybeSingle();
