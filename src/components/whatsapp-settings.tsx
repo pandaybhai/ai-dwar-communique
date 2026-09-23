@@ -41,6 +41,7 @@ import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { NUMBER_COLUMNS, numberLabel, sortNumbers, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
+import { CatalogCard } from "@/components/whatsapp-catalog-card";
 
 type Account = WhatsAppNumber & { phone_number_id: string };
 
