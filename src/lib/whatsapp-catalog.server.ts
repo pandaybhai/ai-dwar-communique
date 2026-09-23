@@ -391,6 +391,8 @@ export async function syncCatalog(args: {
   eligible?: number;
   pushed?: number;
   rejected?: number;
+  removed?: number;
+
   error?: string;
   rejections?: string[];
 }> {
