@@ -90,7 +90,10 @@ export type CatalogRow = {
   pushed_count: number;
   rejected_count: number;
   last_error: string | null;
+  is_catalog_visible: boolean | null;
+  is_cart_enabled: boolean | null;
 };
+
 
 export async function getCatalogRow(
   supabase: SupabaseClient,
