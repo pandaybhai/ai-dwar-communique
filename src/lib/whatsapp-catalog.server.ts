@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { graphFetch, graphErrorMessage, providerErrorDetail } from "@/lib/whatsapp-api.server";
+import {
+  graphFetch,
+  graphErrorMessage,
+  providerErrorDetail,
+  logServerActivity,
+} from "@/lib/whatsapp-api.server";
 import { getWhatsAppConnection } from "@/lib/whatsapp-numbers.server";
 
 /**
@@ -860,4 +865,85 @@ export async function refreshLinkedCatalog(args: {
     .eq("waba_id", ctx.wabaId);
 
   return { ok: true, catalog_id: row.catalog_id, imported };
+}
+
+/**
+ * Sends the products that are live in this number's catalogue as real
+ * catalogue cards. Returns how many went out; 0 means the caller should fall
+ * back to plain pictures.
+ */
+export async function sendCatalogProducts(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    conversationId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    to: string;
+    items: Array<{
+      retailerId: string | null;
+      title: string;
+      category: string | null;
+      inCatalog: boolean;
+    }>;
+  },
+): Promise<{ sent: number; error: string | null }> {
+  const eligible = args.items.filter(
+    (i) => i.inCatalog && typeof i.retailerId === "string" && i.retailerId.length > 0,
+  );
+  if (eligible.length === 0) return { sent: 0, error: null };
+
+  const { data: account } = await supabase
+    .from("whatsapp_accounts")
+    .select("waba_id")
+    .eq("organization_id", args.organizationId)
+    .eq("phone_number_id", args.phoneNumberId)
+    .maybeSingle();
+  const wabaId = (account as { waba_id?: string } | null)?.waba_id;
+  if (!wabaId) return { sent: 0, error: null };
+
+  const { data: catalog } = await supabase
+    .from("whatsapp_catalogs")
+    .select("catalog_id, status, is_catalog_visible")
+    .eq("organization_id", args.organizationId)
+    .eq("waba_id", wabaId)
+    .maybeSingle();
+  const row = catalog as
+    | { catalog_id: string; status: string; is_catalog_visible: boolean | null }
+    | null;
+  if (!row || row.status !== "linked" || row.is_catalog_visible === false) {
+    return { sent: 0, error: null };
+  }
+
+  const { sendServiceProducts } = await import("@/lib/service-text.server");
+  const items = eligible.slice(0, 30).map((i) => ({
+    retailerId: i.retailerId as string,
+    title: i.title,
+    section: i.category ?? "Products",
+  }));
+
+  const result = await sendServiceProducts(supabase, {
+    organizationId: args.organizationId,
+    phoneNumberId: args.phoneNumberId,
+    accessToken: args.accessToken,
+    conversationId: args.conversationId,
+    to: args.to,
+    catalogId: row.catalog_id,
+    header: "Have a look",
+    body:
+      items.length === 1
+        ? "Here's the one I'd show you — tap it for the full details."
+        : "Here's what I have for you — tap any one to see it in full.",
+    items,
+  });
+
+  if (!result.ok) return { sent: 0, error: result.error };
+
+  await logServerActivity(supabase, args.organizationId, null, "whatsapp_catalog_products_sent", {
+    catalog_id: row.catalog_id,
+    conversation_id: args.conversationId,
+    count: items.length,
+  });
+
+  return { sent: items.length, error: null };
 }
