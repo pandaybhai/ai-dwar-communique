@@ -27,6 +27,17 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
 
         const { supabase, organizationId } = auth;
 
+        // Is this the AiDwar platform workspace? Only it may swap a stored
+        // token on a live number, so the UI needs the answer per workspace.
+        let isPlatformOrg = false;
+        try {
+          const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+          const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+          isPlatformOrg = (await resolvePlatformOrg(getServiceClient())) === organizationId;
+        } catch {
+          isPlatformOrg = false;
+        }
+
         const { data: accounts } = await supabase
           .from("whatsapp_accounts")
           .select("id, waba_id, display_phone_number, verified_name, status, is_default")
@@ -40,7 +51,8 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
           verified_name: string | null;
           is_default: boolean;
         }>;
-        if (rows.length === 0) return Response.json({ connected: false, numbers: [] });
+        if (rows.length === 0)
+          return Response.json({ connected: false, numbers: [], is_platform_org: false });
 
         const wabaIds = Array.from(
           new Set(rows.map((r) => r.waba_id).filter((v): v is string => Boolean(v))),
@@ -93,6 +105,7 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
         // workspace while the settings list shows each number individually.
         return Response.json({
           connected: true,
+          is_platform_org: isPlatformOrg,
           numbers,
           credentials_missing: numbers.some((n) => n.credentials_missing),
           token_expired: numbers.some((n) => n.token_expired),
