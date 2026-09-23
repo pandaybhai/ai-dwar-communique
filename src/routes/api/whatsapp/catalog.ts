@@ -41,6 +41,7 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
           syncCatalog,
           listBusinessCatalogs,
           refreshLinkedCatalog,
+          setCommerceSettings,
         } = await import("@/lib/whatsapp-catalog.server");
 
         if (action === "status") {
@@ -53,6 +54,27 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
             granted_scopes: ctx.scopes ?? [],
             catalog,
           });
+        }
+
+        if (action === "commerce_settings") {
+          const result = await setCommerceSettings({
+            supabase,
+            organizationId,
+            userId,
+            whatsappAccountId: accountId,
+            isCatalogVisible: payload["is_catalog_visible"] === true,
+            isCartEnabled: payload["is_cart_enabled"] === true,
+          });
+          if (!result.ok)
+            return jsonError(result.error ?? "We couldn't change those settings.", 400);
+          await logServerActivity(
+            supabase,
+            organizationId,
+            userId,
+            "whatsapp_catalog_settings_changed",
+            result.settings ?? {},
+          );
+          return Response.json(result);
         }
 
         if (action === "list_catalogs") {

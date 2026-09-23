@@ -100,7 +100,7 @@ export async function getCatalogRow(
   const { data } = await supabase
     .from("whatsapp_catalogs")
     .select(
-      "catalog_id, catalog_name, status, mode, last_sync_at, pushed_count, rejected_count, last_error",
+      "catalog_id, catalog_name, status, mode, last_sync_at, pushed_count, rejected_count, last_error, is_catalog_visible, is_cart_enabled",
     )
     .eq("organization_id", organizationId)
     .eq("waba_id", wabaId)
