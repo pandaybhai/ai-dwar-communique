@@ -32,6 +32,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { ErrorState } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
 import { normalizePhone } from "@/lib/phone";
@@ -187,6 +196,7 @@ export function WhatsAppTab() {
                 token={tokens[account.id]}
                 canManage={canManage}
                 canDisconnect={live.length > 0}
+                allowManual={isSuperAdmin}
                 onChanged={load}
                 orgId={orgId!}
               />
