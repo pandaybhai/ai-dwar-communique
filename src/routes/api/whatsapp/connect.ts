@@ -34,6 +34,27 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
           );
         }
 
+        // Replacing the token on a number that is already live is a
+        // platform-support tool for the AiDwar workspace only — never for a
+        // client workspace, even for a super admin.
+        const { data: activeNumbers } = await auth.supabase
+          .from("whatsapp_accounts")
+          .select("id")
+          .eq("organization_id", auth.organizationId)
+          .eq("status", "active")
+          .limit(1);
+        if ((activeNumbers ?? []).length > 0) {
+          const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+          const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+          const platformOrgId = await resolvePlatformOrg(getServiceClient());
+          if (platformOrgId !== auth.organizationId) {
+            return jsonError(
+              "This workspace already has a connected number. Only the AiDwar platform team can replace its access token.",
+              403,
+            );
+          }
+        }
+
         const wabaId = String(payload["waba_id"] ?? "").trim();
         const phoneNumberId = String(payload["phone_number_id"] ?? "").trim();
         const displayPhone = String(payload["display_phone_number"] ?? "").trim();
