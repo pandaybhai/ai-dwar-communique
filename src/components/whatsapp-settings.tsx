@@ -608,6 +608,45 @@ function NumberCard({
               )}
               Refresh quality
             </Button>
+            {allowManual && account.waba_id ? (
+              <Dialog open={replaceOpen} onOpenChange={setReplaceOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" className="rounded-full" disabled={replacing}>
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Replace access token
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Replace the access token for {numberLabel(account)}</DialogTitle>
+                    <DialogDescription>
+                      Paste a fresh access token from Meta. The number, its business account and everything
+                      already stored stay exactly as they are — only the token is swapped. The stored token is
+                      never shown.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={replaceToken} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor={`replace_token_${account.id}`}>Access token</Label>
+                      <Input
+                        id={`replace_token_${account.id}`}
+                        type="password"
+                        autoComplete="off"
+                        value={newToken}
+                        onChange={(e) => setNewToken(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button type="submit" className="rounded-full" disabled={replacing}>
+                        {replacing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Replace token
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            ) : null}
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline" className="rounded-full" disabled={working}>
