@@ -1041,6 +1041,23 @@ export async function processWebhookPayload(
             continue;
           }
 
+          // A cart sent from the catalogue is an order, not a question: record
+          // it, hand the thread to a person and acknowledge it ourselves. The
+          // AI employee never answers an order message.
+          if (type === "order" && !isSystemEcho && inserted && inserted.length > 0) {
+            const { handleCatalogOrder } = await import("@/lib/whatsapp-orders.server");
+            const handled = await handleCatalogOrder(supabase, {
+              organizationId: orgId,
+              conversationId: conversation.id as string,
+              contactId: (contact.id as string) ?? null,
+              metaMessageId: String(msg["id"] ?? ""),
+              order: (msg["order"] as AnyRecord | undefined) ?? {},
+              phoneNumberId,
+              accessToken,
+              to: waId,
+            });
+            if (handled.handled) continue;
+          }
 
 
           // Opt-out / opt-in runs on EVERY inbound text, independent of whether
