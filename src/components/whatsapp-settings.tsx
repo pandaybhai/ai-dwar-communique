@@ -73,6 +73,7 @@ type NumberToken = {
 
 type TokenStatus = {
   connected: boolean;
+  is_platform_org?: boolean;
   numbers?: NumberToken[];
 };
 
@@ -135,6 +136,9 @@ export function WhatsAppTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tokens, setTokens] = useState<Record<string, NumberToken>>({});
+  // Only the AiDwar platform workspace may swap a stored token on a live
+  // number — resolved server-side, never hard-coded here.
+  const [isPlatformOrg, setIsPlatformOrg] = useState(false);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -159,8 +163,10 @@ export function WhatsAppTab() {
       const map: Record<string, NumberToken> = {};
       for (const n of status?.numbers ?? []) map[n.whatsapp_account_id] = n;
       setTokens(map);
+      setIsPlatformOrg(status?.is_platform_org === true);
     } else {
       setTokens({});
+      setIsPlatformOrg(false);
     }
   }, [orgId]);
 
@@ -196,7 +202,7 @@ export function WhatsAppTab() {
                 token={tokens[account.id]}
                 canManage={canManage}
                 canDisconnect={live.length > 0}
-                allowManual={isSuperAdmin}
+                allowManual={isSuperAdmin && isPlatformOrg}
                 onChanged={load}
                 orgId={orgId!}
               />
