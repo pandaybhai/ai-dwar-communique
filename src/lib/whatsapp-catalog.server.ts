@@ -146,10 +146,73 @@ export async function resolveCatalogContext(
 const SCOPE_MESSAGE =
   "Reconnect this number to enable the WhatsApp catalogue — the connection is missing catalogue permission.";
 
+/** The business that owns the connected business account. */
+async function resolveBusinessId(
+  callCtx: CallArgs,
+  wabaId: string,
+  accessToken: string,
+): Promise<{ businessId?: string; error?: string }> {
+  const owner = await loggedGraph(callCtx, wabaId, accessToken, {
+    query: { fields: "owner_business_info,on_behalf_of_business_info,name" },
+  });
+  if (!owner.ok) return { error: graphErrorMessage(owner.body) };
+  const ownerInfo = (owner.body["owner_business_info"] ??
+    owner.body["on_behalf_of_business_info"]) as { id?: string; name?: string } | undefined;
+  if (!ownerInfo?.id) {
+    return { error: "We couldn't read the business behind this number. Reconnect it and try again." };
+  }
+  return { businessId: ownerInfo.id };
+}
+
+export type BusinessCatalog = { id: string; name: string; product_count: number };
+
+/** Catalogues the merchant's business already owns, so they can reuse one. */
+export async function listBusinessCatalogs(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  userId: string;
+  whatsappAccountId: string | null;
+}): Promise<{ ok: boolean; catalogs?: BusinessCatalog[]; error?: string }> {
+  const { supabase, organizationId, userId } = args;
+  const { ctx, error } = await resolveCatalogContext(
+    supabase,
+    organizationId,
+    args.whatsappAccountId,
+  );
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+  if (!hasCatalogScopes(ctx.scopes)) return { ok: false, error: SCOPE_MESSAGE };
+
+  const callCtx: CallArgs = { supabase, organizationId, userId, wabaId: ctx.wabaId };
+  const { businessId, error: bizError } = await resolveBusinessId(
+    callCtx,
+    ctx.wabaId,
+    ctx.accessToken,
+  );
+  if (!businessId) return { ok: false, error: bizError };
+
+  const listed = await loggedGraph(
+    callCtx,
+    `${businessId}/owned_product_catalogs`,
+    ctx.accessToken,
+    { query: { fields: "name,product_count", limit: "50" } },
+  );
+  if (!listed.ok) return { ok: false, error: graphErrorMessage(listed.body) };
+  const rows = (listed.body["data"] ?? []) as Array<Record<string, unknown>>;
+  return {
+    ok: true,
+    catalogs: rows.map((r) => ({
+      id: String(r["id"] ?? ""),
+      name: String(r["name"] ?? "Catalogue"),
+      product_count: Number(r["product_count"] ?? 0),
+    })),
+  };
+}
+
 /**
- * Creates the catalogue on the business that owns the WABA and links it to the
- * WABA, so products can be attached to messages. Idempotent: an existing row is
- * returned untouched.
+ * Enables the catalogue for a number. Either links a catalogue the merchant
+ * already owns (mode 'linked' — we never write into it), or creates a new one
+ * AiDwar manages (mode 'managed'). Idempotent: an existing row is returned
+ * untouched.
  */
 export async function enableCatalog(args: {
   supabase: SupabaseClient;
@@ -157,7 +220,14 @@ export async function enableCatalog(args: {
   userId: string;
   whatsappAccountId: string | null;
   businessName: string;
-}): Promise<{ ok: boolean; catalog_id?: string; created?: boolean; error?: string }> {
+  useCatalogId?: string | null;
+}): Promise<{
+  ok: boolean;
+  catalog_id?: string;
+  created?: boolean;
+  mode?: "managed" | "linked";
+  error?: string;
+}> {
   const { supabase, organizationId, userId } = args;
   const { ctx, error } = await resolveCatalogContext(
     supabase,
@@ -168,39 +238,50 @@ export async function enableCatalog(args: {
   if (!hasCatalogScopes(ctx.scopes)) return { ok: false, error: SCOPE_MESSAGE };
 
   const existing = await getCatalogRow(supabase, organizationId, ctx.wabaId);
-  if (existing) return { ok: true, catalog_id: existing.catalog_id, created: false };
-
-  const callCtx: CallArgs = { supabase, organizationId, userId, wabaId: ctx.wabaId };
-
-  // 1. Which business owns this business account?
-  const owner = await loggedGraph(callCtx, ctx.wabaId, ctx.accessToken, {
-    query: { fields: "owner_business_info,on_behalf_of_business_info,name" },
-  });
-  if (!owner.ok) return { ok: false, error: graphErrorMessage(owner.body) };
-  const ownerInfo = (owner.body["owner_business_info"] ?? owner.body["on_behalf_of_business_info"]) as
-    | { id?: string; name?: string }
-    | undefined;
-  const businessId = ownerInfo?.id;
-  if (!businessId) {
+  if (existing) {
     return {
-      ok: false,
-      error: "We couldn't read the business behind this number. Reconnect it and try again.",
+      ok: true,
+      catalog_id: existing.catalog_id,
+      created: false,
+      mode: existing.mode ?? "managed",
     };
   }
 
-  // 2. Create the catalogue on that business.
-  const name = `${args.businessName} — WhatsApp catalogue`;
-  const created = await loggedGraph(
-    callCtx,
-    `${businessId}/owned_product_catalogs`,
-    ctx.accessToken,
-    { method: "POST", body: { name, vertical: "commerce" } },
-  );
-  if (!created.ok) return { ok: false, error: graphErrorMessage(created.body) };
-  const catalogId = String(created.body["id"] ?? "");
-  if (!catalogId) return { ok: false, error: "Meta didn't return a catalogue id." };
+  const callCtx: CallArgs = { supabase, organizationId, userId, wabaId: ctx.wabaId };
+  const reuseId = (args.useCatalogId ?? "").trim();
 
-  // 3. Link it to the business account so the number can use it.
+  let catalogId = reuseId;
+  let name: string | null = null;
+  const mode: "managed" | "linked" = reuseId ? "linked" : "managed";
+
+  if (reuseId) {
+    // Confirm the catalogue exists and read its name for the card.
+    const info = await loggedGraph(callCtx, reuseId, ctx.accessToken, {
+      query: { fields: "name,product_count" },
+    });
+    if (!info.ok) return { ok: false, error: graphErrorMessage(info.body) };
+    name = String(info.body["name"] ?? "Your catalogue");
+  } else {
+    const { businessId, error: bizError } = await resolveBusinessId(
+      callCtx,
+      ctx.wabaId,
+      ctx.accessToken,
+    );
+    if (!businessId) return { ok: false, error: bizError };
+
+    name = `${args.businessName} — WhatsApp catalogue`;
+    const created = await loggedGraph(
+      callCtx,
+      `${businessId}/owned_product_catalogs`,
+      ctx.accessToken,
+      { method: "POST", body: { name, vertical: "commerce" } },
+    );
+    if (!created.ok) return { ok: false, error: graphErrorMessage(created.body) };
+    catalogId = String(created.body["id"] ?? "");
+    if (!catalogId) return { ok: false, error: "Meta didn't return a catalogue id." };
+  }
+
+  // Link it to the business account so the number can use it.
   const linked = await loggedGraph(
     { ...callCtx, catalogId },
     `${ctx.wabaId}/product_catalogs`,
@@ -214,6 +295,7 @@ export async function enableCatalog(args: {
       waba_id: ctx.wabaId,
       catalog_id: catalogId,
       catalog_name: name,
+      mode,
       status: linked.ok ? "linked" : "created",
       last_error: linked.ok ? null : graphErrorMessage(linked.body),
     },
@@ -224,11 +306,12 @@ export async function enableCatalog(args: {
     return {
       ok: false,
       catalog_id: catalogId,
-      created: true,
+      created: mode === "managed",
+      mode,
       error: graphErrorMessage(linked.body),
     };
   }
-  return { ok: true, catalog_id: catalogId, created: true };
+  return { ok: true, catalog_id: catalogId, created: mode === "managed", mode };
 }
 
 type ProductRow = {
