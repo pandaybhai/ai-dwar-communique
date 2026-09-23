@@ -351,7 +351,7 @@ async function pollBatchStatus(
   catalogId: string,
   handle: string,
   accessToken: string,
-): Promise<{ errors: string[] }> {
+): Promise<{ errors: string[]; failedIds: string[] }> {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     if (attempt > 0) await sleep(2000);
     const result = await loggedGraph(
@@ -360,7 +360,7 @@ async function pollBatchStatus(
       accessToken,
       { query: { handle } },
     );
-    if (!result.ok) return { errors: [graphErrorMessage(result.body)] };
+    if (!result.ok) return { errors: [graphErrorMessage(result.body)], failedIds: [] };
     const status = String(result.body["status"] ?? "").toLowerCase();
     const errors = (result.body["errors"] ?? []) as Array<{
       retailer_id?: string;
@@ -369,11 +369,15 @@ async function pollBatchStatus(
     if (status === "finished" || errors.length > 0) {
       return {
         errors: errors.map((e) => `${e.retailer_id ?? "item"}: ${e.message ?? "rejected"}`),
+        failedIds: errors
+          .map((e) => e.retailer_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
       };
     }
   }
-  return { errors: [] };
+  return { errors: [], failedIds: [] };
 }
+
 
 /** Pushes every visible product that has both a price and a picture. */
 export async function syncCatalog(args: {
@@ -387,6 +391,8 @@ export async function syncCatalog(args: {
   eligible?: number;
   pushed?: number;
   rejected?: number;
+  removed?: number;
+
   error?: string;
   rejections?: string[];
 }> {
@@ -423,10 +429,6 @@ export async function syncCatalog(args: {
   const rows = ((products ?? []) as ProductRow[]).filter(
     (p) => p.price != null && Boolean(p.image_url) && p.title.trim().length > 0,
   );
-  if (rows.length === 0) {
-    return { ok: true, catalog_id: row.catalog_id, eligible: 0, pushed: 0, rejected: 0 };
-  }
-
   const callCtx: CallArgs = {
     supabase,
     organizationId,
@@ -437,8 +439,11 @@ export async function syncCatalog(args: {
 
   let pushed = 0;
   let rejected = 0;
+  let removed = 0;
+  const pushedIds: string[] = [];
   const rejections: string[] = [];
   const CHUNK = 100;
+
 
   for (let i = 0; i < rows.length; i += CHUNK) {
     const chunk = rows.slice(i, i + CHUNK);
@@ -476,16 +481,94 @@ export async function syncCatalog(args: {
     // the per-item errors it reports as rejected.
     const handles = (result.body["handles"] ?? []) as string[];
     let failedCount = 0;
+    const failedIds = new Set<string>();
     for (const handle of handles) {
       if (typeof handle !== "string" || !handle) continue;
       const status = await pollBatchStatus(callCtx, row.catalog_id, handle, ctx.accessToken);
       failedCount += status.errors.length;
+      for (const id of status.failedIds) failedIds.add(id);
       for (const f of status.errors.slice(0, 5)) rejections.push(f);
     }
     failedCount = Math.min(failedCount, chunk.length);
     rejected += failedCount;
     pushed += chunk.length - failedCount;
+    for (const p of chunk) {
+      if (!failedIds.has(retailerId(p))) pushedIds.push(p.id);
+    }
   }
+
+  // Remember what is live in Meta's catalogue so the next sync can remove
+  // anything that stopped being eligible on our side.
+  if (pushedIds.length > 0) {
+    const stamp = new Date().toISOString();
+    for (let i = 0; i < pushedIds.length; i += 200) {
+      await supabase
+        .from("products")
+        .update({ meta_synced_at: stamp })
+        .eq("organization_id", organizationId)
+        .in("id", pushedIds.slice(i, i + 200));
+    }
+  }
+
+  // Anything previously pushed that is no longer eligible gets deleted from
+  // the catalogue, then loses its marker.
+  const liveIds = new Set(rows.map((p) => retailerId(p)));
+  const { data: syncedBefore } = await supabase
+    .from("products")
+    .select("id, external_id, sku")
+    .eq("organization_id", organizationId)
+    .not("meta_synced_at", "is", null)
+    .limit(2000);
+
+  const stale = ((syncedBefore ?? []) as Array<{
+    id: string;
+    external_id: string | null;
+    sku: string | null;
+  }>)
+    .map((p) => ({ id: p.id, retailer: (p.external_id ?? p.sku ?? p.id).slice(0, 100) }))
+    .filter((p) => !liveIds.has(p.retailer));
+
+  for (let i = 0; i < stale.length; i += CHUNK) {
+    const chunk = stale.slice(i, i + CHUNK);
+    const result = await loggedGraph(
+      callCtx,
+      `${row.catalog_id}/items_batch`,
+      ctx.accessToken,
+      {
+        method: "POST",
+        body: {
+          item_type: "PRODUCT_ITEM",
+          allow_upsert: true,
+          requests: chunk.map((p) => ({ method: "DELETE", data: { id: p.retailer } })),
+        },
+      },
+      chunk.length,
+    );
+    if (!result.ok) {
+      rejections.push(graphErrorMessage(result.body));
+      continue;
+    }
+
+    const handles = (result.body["handles"] ?? []) as string[];
+    const failedIds = new Set<string>();
+    for (const handle of handles) {
+      if (typeof handle !== "string" || !handle) continue;
+      const status = await pollBatchStatus(callCtx, row.catalog_id, handle, ctx.accessToken);
+      for (const id of status.failedIds) failedIds.add(id);
+      for (const f of status.errors.slice(0, 5)) rejections.push(f);
+    }
+
+    const clearedIds = chunk.filter((p) => !failedIds.has(p.retailer)).map((p) => p.id);
+    if (clearedIds.length > 0) {
+      await supabase
+        .from("products")
+        .update({ meta_synced_at: null })
+        .eq("organization_id", organizationId)
+        .in("id", clearedIds);
+      removed += clearedIds.length;
+    }
+  }
+
 
   await supabase
     .from("whatsapp_catalogs")
@@ -505,6 +588,8 @@ export async function syncCatalog(args: {
     eligible: rows.length,
     pushed,
     rejected,
+    removed,
+
     rejections: rejections.slice(0, 5),
   };
 }
