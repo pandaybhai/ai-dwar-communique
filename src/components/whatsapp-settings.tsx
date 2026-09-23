@@ -598,6 +598,13 @@ function NumberCard({
 
       <HealthNote token={token} />
 
+      <CatalogCard
+        orgId={orgId}
+        accountId={account.id}
+        canManage={canManage}
+        onReconnected={onChanged}
+      />
+
       {failure ? (
         <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           {failure}
