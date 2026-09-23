@@ -92,6 +92,7 @@ import { Route as ApiPublicRazorpayWebhookRouteImport } from './routes/api/publi
 import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
 import { Route as ApiPublicShopifyWebhookRouteImport } from './routes/api/public/shopify-webhook'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
+import { Route as ApiWhatsappCatalogRouteImport } from './routes/api/whatsapp/catalog'
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
 import { Route as ApiWhatsappEsConfigRouteImport } from './routes/api/whatsapp/es-config'
 import { Route as ApiWhatsappEsExchangeRouteImport } from './routes/api/whatsapp/es-exchange'
@@ -541,6 +542,11 @@ const ApiPublicWhatsappWebhookRoute =
     path: '/api/public/whatsapp-webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiWhatsappCatalogRoute = ApiWhatsappCatalogRouteImport.update({
+  id: '/api/whatsapp/catalog',
+  path: '/api/whatsapp/catalog',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWhatsappConnectRoute = ApiWhatsappConnectRouteImport.update({
   id: '/api/whatsapp/connect',
   path: '/api/whatsapp/connect',
@@ -739,6 +745,7 @@ export interface FileRoutesByFullPath {
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
+  '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
@@ -843,6 +850,7 @@ export interface FileRoutesByTo {
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
+  '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
@@ -950,6 +958,7 @@ export interface FileRoutesById {
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
+  '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
@@ -1058,6 +1067,7 @@ export interface FileRouteTypes {
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
     | '/api/public/whatsapp-webhook'
+    | '/api/whatsapp/catalog'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
     | '/api/whatsapp/es-exchange'
@@ -1162,6 +1172,7 @@ export interface FileRouteTypes {
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
     | '/api/public/whatsapp-webhook'
+    | '/api/whatsapp/catalog'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
     | '/api/whatsapp/es-exchange'
@@ -1268,6 +1279,7 @@ export interface FileRouteTypes {
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
     | '/api/public/whatsapp-webhook'
+    | '/api/whatsapp/catalog'
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
     | '/api/whatsapp/es-exchange'
@@ -1355,6 +1367,7 @@ export interface RootRouteChildren {
   ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
   ApiPublicShopifyWebhookRoute: typeof ApiPublicShopifyWebhookRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
+  ApiWhatsappCatalogRoute: typeof ApiWhatsappCatalogRoute
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
   ApiWhatsappEsConfigRoute: typeof ApiWhatsappEsConfigRoute
   ApiWhatsappEsExchangeRoute: typeof ApiWhatsappEsExchangeRoute
@@ -1955,6 +1968,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/catalog': {
+      id: '/api/whatsapp/catalog'
+      path: '/api/whatsapp/catalog'
+      fullPath: '/api/whatsapp/catalog'
+      preLoaderRoute: typeof ApiWhatsappCatalogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/connect': {
       id: '/api/whatsapp/connect'
       path: '/api/whatsapp/connect'
@@ -2241,6 +2261,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
   ApiPublicShopifyWebhookRoute: ApiPublicShopifyWebhookRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
+  ApiWhatsappCatalogRoute: ApiWhatsappCatalogRoute,
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,
   ApiWhatsappEsConfigRoute: ApiWhatsappEsConfigRoute,
   ApiWhatsappEsExchangeRoute: ApiWhatsappEsExchangeRoute,
