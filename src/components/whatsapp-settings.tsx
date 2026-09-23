@@ -41,6 +41,7 @@ import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { NUMBER_COLUMNS, numberLabel, sortNumbers, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
+import { CatalogCard } from "@/components/whatsapp-catalog-card";
 
 type Account = WhatsAppNumber & { phone_number_id: string };
 
@@ -597,6 +598,13 @@ function NumberCard({
       </div>
 
       <HealthNote token={token} />
+
+      <CatalogCard
+        orgId={orgId}
+        accountId={account.id}
+        canManage={canManage}
+        onReconnected={onChanged}
+      />
 
       {failure ? (
         <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
