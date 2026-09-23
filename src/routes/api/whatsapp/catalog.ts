@@ -39,6 +39,8 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
           getCatalogRow,
           enableCatalog,
           syncCatalog,
+          listBusinessCatalogs,
+          refreshLinkedCatalog,
         } = await import("@/lib/whatsapp-catalog.server");
 
         if (action === "status") {
@@ -53,6 +55,18 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
           });
         }
 
+        if (action === "list_catalogs") {
+          const result = await listBusinessCatalogs({
+            supabase,
+            organizationId,
+            userId,
+            whatsappAccountId: accountId,
+          });
+          if (!result.ok)
+            return jsonError(result.error ?? "We couldn't read your catalogues.", 400);
+          return Response.json({ catalogs: result.catalogs ?? [] });
+        }
+
         if (action === "enable") {
           const { data: org } = await supabase
             .from("organizations")
@@ -65,11 +79,29 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
             userId,
             whatsappAccountId: accountId,
             businessName: ((org as { name?: string } | null)?.name ?? "Business").slice(0, 60),
+            useCatalogId: (payload["catalog_id"] as string) ?? null,
           });
           if (!result.ok) return jsonError(result.error ?? "We couldn't create the catalogue.", 400);
           await logServerActivity(supabase, organizationId, userId, "whatsapp_catalog_enabled", {
             catalog_id: result.catalog_id,
             created: result.created ?? false,
+            mode: result.mode ?? "managed",
+          });
+          return Response.json(result);
+        }
+
+        if (action === "refresh") {
+          const result = await refreshLinkedCatalog({
+            supabase,
+            organizationId,
+            userId,
+            whatsappAccountId: accountId,
+          });
+          if (!result.ok) return jsonError(result.error ?? "We couldn't read the catalogue.", 400);
+          await logServerActivity(supabase, organizationId, userId, "whatsapp_catalog_synced", {
+            catalog_id: result.catalog_id,
+            imported: result.imported,
+            mode: "linked",
           });
           return Response.json(result);
         }
@@ -87,6 +119,7 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
             eligible: result.eligible,
             pushed: result.pushed,
             rejected: result.rejected,
+            mode: "managed",
           });
           return Response.json(result);
         }
