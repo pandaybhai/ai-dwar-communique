@@ -351,7 +351,7 @@ async function pollBatchStatus(
   catalogId: string,
   handle: string,
   accessToken: string,
-): Promise<{ errors: string[] }> {
+): Promise<{ errors: string[]; failedIds: string[] }> {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     if (attempt > 0) await sleep(2000);
     const result = await loggedGraph(
@@ -360,7 +360,7 @@ async function pollBatchStatus(
       accessToken,
       { query: { handle } },
     );
-    if (!result.ok) return { errors: [graphErrorMessage(result.body)] };
+    if (!result.ok) return { errors: [graphErrorMessage(result.body)], failedIds: [] };
     const status = String(result.body["status"] ?? "").toLowerCase();
     const errors = (result.body["errors"] ?? []) as Array<{
       retailer_id?: string;
@@ -369,11 +369,15 @@ async function pollBatchStatus(
     if (status === "finished" || errors.length > 0) {
       return {
         errors: errors.map((e) => `${e.retailer_id ?? "item"}: ${e.message ?? "rejected"}`),
+        failedIds: errors
+          .map((e) => e.retailer_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
       };
     }
   }
-  return { errors: [] };
+  return { errors: [], failedIds: [] };
 }
+
 
 /** Pushes every visible product that has both a price and a picture. */
 export async function syncCatalog(args: {
