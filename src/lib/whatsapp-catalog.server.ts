@@ -339,6 +339,42 @@ function availabilityFor(value: string): string {
   return "in stock";
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * items_batch is async: Meta returns handles, and the per-item errors only
+ * appear once the batch is finished. Polls the handle (max ~10 tries, 2s
+ * apart) and returns one message per rejected item.
+ */
+async function pollBatchStatus(
+  callCtx: CallArgs,
+  catalogId: string,
+  handle: string,
+  accessToken: string,
+): Promise<{ errors: string[] }> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (attempt > 0) await sleep(2000);
+    const result = await loggedGraph(
+      callCtx,
+      `${catalogId}/check_batch_request_status`,
+      accessToken,
+      { query: { handle } },
+    );
+    if (!result.ok) return { errors: [graphErrorMessage(result.body)] };
+    const status = String(result.body["status"] ?? "").toLowerCase();
+    const errors = (result.body["errors"] ?? []) as Array<{
+      retailer_id?: string;
+      message?: string;
+    }>;
+    if (status === "finished" || errors.length > 0) {
+      return {
+        errors: errors.map((e) => `${e.retailer_id ?? "item"}: ${e.message ?? "rejected"}`),
+      };
+    }
+  }
+  return { errors: [] };
+}
+
 /** Pushes every visible product that has both a price and a picture. */
 export async function syncCatalog(args: {
   supabase: SupabaseClient;
@@ -414,18 +450,17 @@ export async function syncCatalog(args: {
         description: (p.description ?? p.title).slice(0, 9999),
         availability: availabilityFor(p.availability),
         condition: "new",
-        price: Math.round(Number(p.price) * 100),
-        currency: (p.currency ?? "INR").toUpperCase(),
-        image_url: p.image_url,
-        url: p.product_url ?? undefined,
+        price: `${Number(p.price).toFixed(2)} ${(p.currency ?? "INR").toUpperCase()}`,
+        image_link: p.image_url,
+        link: p.product_url ?? undefined,
         brand: p.brand ?? undefined,
-        ...(p.category ? { google_product_category: undefined, product_type: p.category } : {}),
+        product_type: p.category ?? undefined,
       },
     }));
 
     const result = await loggedGraph(
       callCtx,
-      `${row.catalog_id}/batch`,
+      `${row.catalog_id}/items_batch`,
       ctx.accessToken,
       { method: "POST", body: { item_type: "PRODUCT_ITEM", requests, allow_upsert: true } },
       chunk.length,
@@ -437,16 +472,19 @@ export async function syncCatalog(args: {
       continue;
     }
 
-    const validation = (result.body["validation_status"] ?? []) as Array<{
-      retailer_id?: string;
-      errors?: Array<{ message?: string }>;
-    }>;
-    const failed = validation.filter((v) => (v.errors ?? []).length > 0);
-    for (const f of failed.slice(0, 5)) {
-      rejections.push(`${f.retailer_id ?? "item"}: ${f.errors?.[0]?.message ?? "rejected"}`);
+    // items_batch is async: poll each handle until Meta finishes, then count
+    // the per-item errors it reports as rejected.
+    const handles = (result.body["handles"] ?? []) as string[];
+    let failedCount = 0;
+    for (const handle of handles) {
+      if (typeof handle !== "string" || !handle) continue;
+      const status = await pollBatchStatus(callCtx, row.catalog_id, handle, ctx.accessToken);
+      failedCount += status.errors.length;
+      for (const f of status.errors.slice(0, 5)) rejections.push(f);
     }
-    rejected += failed.length;
-    pushed += chunk.length - failed.length;
+    failedCount = Math.min(failedCount, chunk.length);
+    rejected += failedCount;
+    pushed += chunk.length - failedCount;
   }
 
   await supabase
