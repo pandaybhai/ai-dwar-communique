@@ -193,6 +193,7 @@ async function strangerGreetCount(
     .eq("conversation_id", conversationId)
     .eq("direction", "outbound")
     .like("body", "Hi! I'm Aiden from AiDwar%")
+    .in("status", ["sent", "delivered", "read"])
     .gte("created_at", since);
   return data?.length ?? 0;
 }
@@ -328,6 +329,11 @@ export async function handleMerchantInbound(
       .from("onboarding_sessions")
       .update({
         wa_id: args.waId,
+        // A valid code from a different number wins: the phone that actually
+        // messaged us is the one we talk to from here on.
+        ...(byCode && session.phone !== normalizePhone(args.waId)
+          ? { phone: normalizePhone(args.waId) }
+          : {}),
         ...(session.status === "pending" ? { status: "bound" } : {}),
         last_inbound_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
