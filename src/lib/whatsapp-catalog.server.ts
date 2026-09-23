@@ -188,7 +188,7 @@ export async function listBusinessCatalogs(args: {
     ctx.wabaId,
     ctx.accessToken,
   );
-  if (!businessId) return { ok: false, error: bizError };
+  if (!businessId) return { ok: false, error: bizError ?? "We couldn't read the business behind this number." };
 
   const listed = await loggedGraph(
     callCtx,
@@ -267,7 +267,7 @@ export async function enableCatalog(args: {
       ctx.wabaId,
       ctx.accessToken,
     );
-    if (!businessId) return { ok: false, error: bizError };
+    if (!businessId) return { ok: false, error: bizError ?? "We couldn't read the business behind this number." };
 
     name = `${args.businessName} — WhatsApp catalogue`;
     const created = await loggedGraph(
