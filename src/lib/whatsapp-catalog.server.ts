@@ -588,6 +588,8 @@ export async function syncCatalog(args: {
     eligible: rows.length,
     pushed,
     rejected,
+    removed,
+
     rejections: rejections.slice(0, 5),
   };
 }
