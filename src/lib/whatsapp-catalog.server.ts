@@ -365,6 +365,12 @@ export async function syncCatalog(args: {
 
   const row = await getCatalogRow(supabase, organizationId, ctx.wabaId);
   if (!row) return { ok: false, error: "Create the catalogue first, then sync." };
+  if (row.mode === "linked") {
+    return {
+      ok: false,
+      error: "This is your own catalogue — AiDwar only reads it. Use Refresh instead.",
+    };
+  }
 
   const { data: products } = await supabase
     .from("products")
