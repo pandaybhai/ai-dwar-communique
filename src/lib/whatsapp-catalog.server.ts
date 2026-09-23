@@ -121,6 +121,7 @@ export async function getGrantedScopes(
 
 type Resolved = {
   wabaId: string;
+  phoneNumberId: string;
   accessToken: string;
   scopes: string[] | null;
 };
@@ -138,10 +139,16 @@ export async function resolveCatalogContext(
   if (!connection) return { ctx: null, error };
   const scopes = await getGrantedScopes(supabase, organizationId, connection.wabaId);
   return {
-    ctx: { wabaId: connection.wabaId, accessToken: connection.accessToken, scopes },
+    ctx: {
+      wabaId: connection.wabaId,
+      phoneNumberId: connection.phoneNumberId,
+      accessToken: connection.accessToken,
+      scopes,
+    },
     error: null,
   };
 }
+
 
 const SCOPE_MESSAGE =
   "Reconnect this number to enable the WhatsApp catalogue — the connection is missing catalogue permission.";
