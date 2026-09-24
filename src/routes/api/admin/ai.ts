@@ -313,6 +313,98 @@ export const Route = createFileRoute("/api/admin/ai")({
           return Response.json({ ok: true, version: nextVersion });
         }
 
+        if (action === "reading_load" || action === "reading_save") {
+          const { loadReadingSettings } = await import("@/lib/reading.server");
+          const meta = async () => {
+            const { data } = await supabase
+              .from("platform_settings")
+              .select("reading_version, reading_updated_at, reading_updated_by")
+              .eq("id", true)
+              .maybeSingle();
+            const m = (data ?? {}) as { reading_version?: number; reading_updated_at?: string | null; reading_updated_by?: string | null };
+            let by: string | null = null;
+            if (m.reading_updated_by) {
+              const { data: p } = await supabase.from("profiles").select("full_name, email").eq("id", m.reading_updated_by).maybeSingle();
+              const pr = p as { full_name?: string | null; email?: string | null } | null;
+              by = pr?.full_name || pr?.email || null;
+            }
+            return { version: m.reading_version ?? 1, updated_at: m.reading_updated_at ?? null, updated_by_name: by };
+          };
+          if (action === "reading_save") {
+            const current = await meta();
+            if (typeof payload["base_version"] === "number" && payload["base_version"] !== current.version)
+              return Response.json(
+                {
+                  error: `Updated by ${current.updated_by_name ?? "another admin"} ${current.updated_at ? new Date(current.updated_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" }) : ""} — reload to see their change`,
+                  conflict: current,
+                },
+                { status: 409 },
+              );
+            const incoming = (payload["settings"] ?? {}) as Record<string, unknown>;
+            const next: Record<string, unknown> = {};
+            const ints = ["day0_page_limit", "backfill_pages_per_day", "refresh_days", "manual_refresh_cooldown_hours", "firecrawl_monthly_credit_cap", "firecrawl_workspace_monthly_cap"];
+            for (const k of ints) {
+              if (incoming[k] == null) continue;
+              const n = Math.floor(Number(incoming[k]));
+              if (!Number.isFinite(n) || n < 0) return jsonError(`${k.replace(/_/g, " ")} must be 0 or more.`);
+              next[k] = n;
+            }
+            if (next["day0_page_limit"] === 0) return jsonError("Quick read needs at least 1 page.");
+            if (incoming["crawl_engine"] != null) {
+              if (!["firecrawl", "auto", "own"].includes(String(incoming["crawl_engine"]))) return jsonError("Unknown reading engine.");
+              next["crawl_engine"] = incoming["crawl_engine"];
+            }
+            if (incoming["full_crawl_trigger"] != null) {
+              if (!["on_number_connected", "on_plan_active", "manual"].includes(String(incoming["full_crawl_trigger"]))) return jsonError("Unknown full-read trigger.");
+              next["full_crawl_trigger"] = incoming["full_crawl_trigger"];
+            }
+            if (incoming["on_demand_read"] != null) next["on_demand_read"] = Boolean(incoming["on_demand_read"]);
+            if (incoming["plan_page_overrides"] != null) {
+              const o: Record<string, number> = {};
+              for (const [k, v] of Object.entries(incoming["plan_page_overrides"] as Record<string, unknown>)) {
+                const n = Math.floor(Number(v));
+                if (Number.isFinite(n) && n > 0) o[k] = n;
+              }
+              next["plan_page_overrides"] = o;
+            }
+            const before = await loadReadingSettings(supabase);
+            const { data: updated, error: upErr } = await supabase
+              .from("platform_settings")
+              .update({ ...next, reading_version: current.version + 1, reading_updated_at: new Date().toISOString(), reading_updated_by: user.id })
+              .eq("id", true)
+              .eq("reading_version", current.version)
+              .select("id");
+            if (upErr) return jsonError("Couldn't save the reading settings.");
+            if (!updated?.length) return jsonError("Someone saved at the same moment — reload to see their change.", 409);
+            const changes: Record<string, { from: unknown; to: unknown }> = {};
+            for (const [k, v] of Object.entries(next))
+              if (JSON.stringify((before as Record<string, unknown>)[k]) !== JSON.stringify(v)) changes[k] = { from: (before as Record<string, unknown>)[k], to: v };
+            const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+            const { logServerActivity } = await import("@/lib/whatsapp-api.server");
+            const platformOrg = await resolvePlatformOrg(supabase).catch(() => null);
+            if (platformOrg)
+              await logServerActivity(supabase, platformOrg, user.id, "reading_settings_updated", {
+                old_version: current.version,
+                version: current.version + 1,
+                changes,
+              }).catch(() => undefined);
+          }
+          const [settings, m, plans] = await Promise.all([
+            loadReadingSettings(supabase),
+            meta(),
+            supabase.from("plans").select("id, name, plan_versions!inner(limits, is_current)").eq("plan_versions.is_current", true),
+          ]);
+          return Response.json({
+            settings,
+            meta: m,
+            plans: ((plans.data ?? []) as Array<{ id: string; name: string; plan_versions: Array<{ limits: Record<string, unknown> }> }>).map((p) => ({
+              id: p.id,
+              name: p.name,
+              pages: Number(p.plan_versions[0]?.limits?.["pages"] ?? 0),
+            })),
+          });
+        }
+
         if (action === "approved_templates") {
           const nudges = await import("@/lib/onboarding-nudges.server");
           const names = [nudges.CODE_TEMPLATE_NAME, nudges.RESUME_TEMPLATE_NAME];

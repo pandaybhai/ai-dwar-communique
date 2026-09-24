@@ -1188,14 +1188,21 @@ export async function executeRun(
         // The owner's own chat asks broad questions ("what is the price?")
         // against a small, fresh crawl, so it reaches a little further down.
         const isMerchantChannel = options.channel === "onboarding";
-        const { data: matches } = await supabase.rpc("match_knowledge_chunks", {
-          p_org: organizationId,
-          p_embedding: JSON.stringify(vector),
-          p_embedding_model: EMBEDDING_MODEL,
-          p_agent: agentId,
-          p_limit: 6,
-          p_min_similarity: isMerchantChannel ? 0.25 : 0.35,
-        });
+        const match = () =>
+          supabase.rpc("match_knowledge_chunks", {
+            p_org: organizationId,
+            p_embedding: JSON.stringify(vector),
+            p_embedding_model: EMBEDDING_MODEL,
+            p_agent: agentId,
+            p_limit: 6,
+            p_min_similarity: isMerchantChannel ? 0.25 : 0.35,
+          });
+        let { data: matches } = await match();
+        // Nothing known: read one matching unread page of the site, then look again.
+        if (!(matches ?? []).length && !isMerchantChannel && conversationId && options.billingExempt !== true) {
+          const { readOnDemand } = await import("@/lib/knowledge.server");
+          if (await readOnDemand(supabase, organizationId, conversationId, input)) ({ data: matches } = await match());
+        }
         const rows = (matches ?? []) as Array<{
           document_id: string;
           source_type: string;

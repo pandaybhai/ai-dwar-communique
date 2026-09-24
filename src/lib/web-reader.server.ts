@@ -128,15 +128,22 @@ export async function readPage(
     /** Firecrawl credits are charged here; without it we read with our own fetch. */
     budget?: FirecrawlBudget;
     onStage?: (stage: "fetch" | "reader" | "extract") => void;
+    /** firecrawl (default) | auto: own fetch first, Firecrawl for thin/JS pages | own: never Firecrawl. */
+    engine?: "firecrawl" | "auto" | "own";
   } = {},
 ): Promise<PageRead | null> {
   options.onStage?.("fetch");
   const timeout = options.timeoutMs ?? 20000;
 
+  if (options.engine === "auto") {
+    const own = await readPage(url, { ...options, engine: "own", allowReader: false });
+    if (own && own.contentType?.toLowerCase().includes("text/html") && !looksEmpty(own.html, own.text)) return own;
+  }
+
   // Firecrawl is the primary reader when its key is configured: it renders
   // the page and hands back clean text plus the processed markup. Any
   // failure falls through to our own fetch below.
-  const scraped = await firecrawlScrape(url, options.budget, timeout);
+  const scraped = options.engine === "own" ? null : await firecrawlScrape(url, options.budget, timeout);
   if (scraped) {
     const { links } = stripHtml(scraped.html);
     return {

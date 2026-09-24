@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
 import { PromptBlocksEditor } from "@/components/admin/prompt-blocks-editor";
 import { SCRIPT_KEYS } from "@/lib/scripts";
+import { ReadingSettingsPanel } from "@/components/admin/reading-settings";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import type { InstructionVersion } from "@/lib/employee-client";
 
@@ -64,7 +65,7 @@ function AidenControl() {
           <WorkspacesTab />
         </TabsContent>
         <TabsContent value="reading" className="mt-6">
-          <Soon icon={BookOpen} title="Reading settings come later" text="Page limits and Firecrawl caps already apply; the editor for them lands in a later phase." />
+          <ReadingSettingsPanel />
         </TabsContent>
         <TabsContent value="test" className="mt-6">
           <Soon icon={FlaskConical} title="Test replies without sending" text="Coming in a later phase." />

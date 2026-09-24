@@ -21,14 +21,21 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
         const supabase = getServiceClient();
 
         try {
-          const { data } = await supabase
+          const { loadReadingSettings } = await import("@/lib/reading.server");
+          const reading = await loadReadingSettings(supabase);
+          const { data: raw } = await supabase
             .from("knowledge_sources")
-            .select("id, refresh_days, last_synced_at")
-            .gt("refresh_days", 0)
+            .select("id, type, refresh_days, last_synced_at, config, status")
+            .or("refresh_days.gt.0,and(type.eq.website,refresh_days.is.null)")
+            .neq("status", "syncing")
             .order("last_synced_at", { ascending: true, nullsFirst: true })
             .limit(25);
 
-          const due = ((data ?? []) as Array<{
+          // Website sources without their own window use the platform's refresh_days.
+          const data = ((raw ?? []) as Array<{ id: string; type: string; refresh_days: number | null; last_synced_at: string | null; config: Record<string, unknown> | null }>)
+            .map((s) => ({ ...s, refresh_days: s.refresh_days ?? (s.type === "website" ? reading.refresh_days : 0) }))
+            .filter((s) => s.refresh_days > 0);
+          const due = (data as Array<{
             id: string;
             refresh_days: number;
             last_synced_at: string | null;
@@ -41,6 +48,10 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
           let refreshed = 0;
           let failed = 0;
           for (const source of due) {
+            // Websites: re-read only pages already read; unchanged pages aren't re-embedded.
+            const src = data.find((d) => d.id === source.id);
+            if (src?.type === "website")
+              await supabase.from("knowledge_sources").update({ config: { ...(src.config ?? {}), refresh: true } }).eq("id", source.id);
             const result = await syncSource(supabase, source.id);
             if (result.ok) refreshed += 1;
             else failed += 1;

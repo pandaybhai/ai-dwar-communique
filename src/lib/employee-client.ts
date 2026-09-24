@@ -78,6 +78,18 @@ export type KnowledgeSource = {
   pages_seen?: number | null;
   products_found?: number | null;
   config?: Record<string, unknown>;
+  total_pages?: number | null;
+  last_full_read_at?: string | null;
+  /** Website sources only. */
+  reading?: {
+    unread: number;
+    plan_cap: number;
+    paid: boolean;
+    tonight: number;
+    refresh_days: number;
+    can_read_more: boolean;
+    changes_available_at: string | null;
+  };
 };
 
 export type KnowledgeItem = {

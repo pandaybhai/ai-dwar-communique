@@ -177,6 +177,9 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
           });
         }
 
+        const { queueFullReadOnConnect } = await import("@/lib/knowledge.server");
+        await queueFullReadOnConnect(supabase, organizationId);
+
         return Response.json({ account: saved, reprocessed_events: reprocessed });
       },
 

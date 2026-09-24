@@ -269,6 +269,10 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           token_never_expires: info.expires_never,
           token_expiry_missing: !info.expires_at && !info.expires_never,
         });
+        {
+          const { queueFullReadOnConnect } = await import("@/lib/knowledge.server");
+          await queueFullReadOnConnect(supabase, organizationId);
+        }
 
         if (dropped.length > 0) {
           await logServerActivity(supabase, organizationId, userId, "whatsapp_scopes_removed", {
