@@ -2,7 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Platform-wide reading settings (platform_settings), edited in /admin/aiden → Reading. */
 export type ReadingSettings = {
-  crawl_engine: "firecrawl" | "auto" | "own";
+  reader_primary: "own" | "tavily" | "firecrawl";
+  reader_fallback_order: Array<"own" | "tavily" | "firecrawl">;
+  tavily_extract_depth: "basic" | "advanced";
+  map_engine: "own" | "tavily" | "firecrawl";
+  tavily_monthly_credit_cap: number;
+  tavily_workspace_monthly_cap: number;
   day0_page_limit: number;
   full_crawl_trigger: "on_number_connected" | "on_plan_active" | "manual";
   backfill_pages_per_day: number;
@@ -16,15 +21,20 @@ export type ReadingSettings = {
 };
 
 export const READING_DEFAULTS: ReadingSettings = {
-  crawl_engine: "firecrawl",
+  reader_primary: "tavily",
+  reader_fallback_order: ["tavily", "firecrawl", "own"],
+  tavily_extract_depth: "basic",
+  map_engine: "own",
+  tavily_monthly_credit_cap: 900,
+  tavily_workspace_monthly_cap: 200,
   day0_page_limit: 15,
   full_crawl_trigger: "on_number_connected",
   backfill_pages_per_day: 200,
   on_demand_read: true,
   refresh_days: 7,
   manual_refresh_cooldown_hours: 24,
-  firecrawl_monthly_credit_cap: 3000,
-  firecrawl_workspace_monthly_cap: 500,
+  firecrawl_monthly_credit_cap: 450,
+  firecrawl_workspace_monthly_cap: 100,
   plan_page_overrides: {},
 };
 

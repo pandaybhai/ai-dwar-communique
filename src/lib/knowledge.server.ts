@@ -27,7 +27,8 @@ import {
   readerKey,
   stripHtml,
 } from "@/lib/web-reader.server";
-import { firecrawlMap, type FirecrawlBudget } from "@/lib/firecrawl.server";
+import { type FirecrawlBudget } from "@/lib/firecrawl.server";
+import type { TavilyBudget } from "@/lib/tavily.server";
 import { logServerActivity } from "@/lib/whatsapp-api.server";
 
 export type SourceType =
@@ -410,7 +411,9 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const plan = await planLimits(supabase, organizationId);
   const { loadReadingSettings, urlPriority } = await import("@/lib/reading.server");
   const reading = await loadReadingSettings(supabase);
-  const engine = reading.crawl_engine;
+  const { engineOrder, mapSite } = await import("@/lib/web-reader.server");
+  const order = engineOrder(reading.reader_primary, reading.reader_fallback_order);
+  const tavilyDepth = reading.tavily_extract_depth;
   // When the whole site is read is a platform setting (Reading tab).
   let autoFull = false;
   if (plan.paid && reading.full_crawl_trigger === "on_plan_active") autoFull = true;
@@ -445,18 +448,30 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       }).catch(() => undefined);
     },
   };
+  const tavilyBudget: TavilyBudget = {
+    supabase,
+    organizationId,
+    onCapped: () => {
+      void logServerActivity(supabase, organizationId, null, "tavily_cap_reached", {
+        source_id: sourceId,
+        mode,
+      }).catch(() => undefined);
+    },
+  };
+  const readOpts = { order, tavilyDepth, budget, tavilyBudget } as const;
   const concurrency = mode === "full" ? 6 : 4;
   const deadline = mode === "day0" ? Date.now() + 90_000 : null;
 
   onStage?.("sitemap");
-  const [blocked, sitemap, mapped, key, settings]: [string[], string[], string[], string | null, { data: unknown }] =
+  const [blocked, sitemap, , key, settings]: [string[], string[], string[], string | null, { data: unknown }] =
     await Promise.all([
       disallowedPaths(origin),
       sitemapUrls(origin),
-      firecrawlMap(start.toString(), budget),
+      Promise.resolve([] as string[]),
       readerKey(supabase),
       supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
     ]);
+  const mapped = (await mapSite(start.toString(), reading.map_engine, { sitemap, budget, tavilyBudget })).urls;
   const costCap = Number(
     (settings.data as { day0_crawl_cost_cap?: number } | null)?.day0_crawl_cost_cap ?? 2,
   );
@@ -493,7 +508,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const productDrafts: ProductDraft[] = [];
 
   // The homepage first: it tells us whether this is a shop with public data.
-  const home = await readPage(start.toString(), { key, budget, engine, ...(onStage ? { onStage } : {}) });
+  const home = await readPage(start.toString(), { key, ...readOpts, ...(onStage ? { onStage } : {}) });
   let readerCost = home?.usedReader ? READER_COST : 0;
   let platform = detectPlatform(home?.html ?? "", home?.headers ?? {});
   // If the markup didn't tell us, the catalogue itself will: a shop answers
@@ -571,7 +586,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       sourceRef: start.toString(),
       title: home.title || start.pathname,
       content: home.text.slice(0, 40000),
-      metadata: { url: start.toString(), platform },
+      metadata: { url: start.toString(), platform, engine: home.engine ?? "own" },
     });
   }
   if (home) seen += 1;
@@ -591,46 +606,52 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     return best;
   };
 
+  // Tavily bills per 5 URLs, so it reads in batches of 5.
+  const batchSize = order[0] === "tavily" ? 5 : 1;
   const worker = async () => {
     while (candidates.size > 0 && seen < runCap) {
       if (deadline && Date.now() > deadline) return;
-      const next = takeNext();
-      if (!next) return;
-      if (done.has(next)) continue;
-      done.add(next);
-      if (isAssetUrl(next)) continue;
+      const batch: string[] = [];
+      while (batch.length < batchSize && seen + batch.length < runCap) {
+        const next = takeNext();
+        if (!next) break;
+        if (done.has(next)) continue;
+        done.add(next);
+        if (isAssetUrl(next)) continue;
+        batch.push(next);
+      }
+      if (!batch.length) return;
       const allowReader = readerCost + READER_COST <= costCap;
-      let page: Awaited<ReturnType<typeof readPage>> = null;
+      let pages = new Map<string, Awaited<ReturnType<typeof readPage>>>();
       try {
-        page = await readPage(next, { key, allowReader, budget, engine, ...(onStage ? { onStage } : {}) });
+        pages = await readPages(batch, { key, allowReader, ...readOpts, ...(onStage ? { onStage } : {}) });
       } catch (error) {
-        // One unreadable page must never end the whole crawl.
-        console.error(
-          "[crawl] page failed",
-          next,
-          error instanceof Error ? error.message : String(error),
-        );
+        // One unreadable batch must never end the whole crawl.
+        console.error("[crawl] pages failed", batch.join(","), error instanceof Error ? error.message : String(error));
       }
-      seen += 1;
-      if (page?.usedReader) readerCost += READER_COST;
-      if (!page || !page.contentType?.toLowerCase().includes("text/html")) continue;
-      // Every page we fetched ourselves widens the map of the site.
-      if (mode === "full") for (const href of page.links) consider(href, next);
-      // One product, if this page is a product page. No extra fetch.
-      try {
-        const draft = extractProduct(page.html, next, { referrer: referrers.get(next) ?? null });
-        if (draft) productDrafts.push(draft);
-      } catch {
-        // Never let reading a price stop the crawl.
+      for (const next of batch) {
+        const page = pages.get(next) ?? null;
+        seen += 1;
+        if (page?.usedReader) readerCost += READER_COST;
+        if (!page || !page.contentType?.toLowerCase().includes("text/html")) continue;
+        // Every page we fetched widens the map of the site.
+        if (mode === "full") for (const href of page.links) consider(href, next);
+        // One product, if this page is a product page. No extra fetch.
+        try {
+          const draft = extractProduct(page.html, next, { referrer: referrers.get(next) ?? null });
+          if (draft) productDrafts.push(draft);
+        } catch {
+          // Never let reading a price stop the crawl.
+        }
+        if (page.text.length <= 200) continue;
+        docs.push({
+          sourceRef: next,
+          title: page.title || new URL(next).pathname,
+          content: page.text.slice(0, 40000),
+          metadata: { url: next, platform, engine: page.engine ?? "own" },
+        });
       }
-      if (page.text.length <= 200) continue;
-      docs.push({
-        sourceRef: next,
-        title: page.title || new URL(next).pathname,
-        content: page.text.slice(0, 40000),
-        metadata: { url: next, platform },
-      });
-      if (seen % 5 === 0) {
+      if (seen % 5 === 0 || batchSize > 1) {
         await supabase
           .from("knowledge_sources")
           .update({ pages_seen: alreadySeen + seen, sync_started_at: new Date().toISOString() })
@@ -1459,8 +1480,11 @@ export async function readOnDemand(
     const strong = bestScore >= 2 || (bestScore === 1 && words.length <= 2 && (words.find((w) => best && best.url.toLowerCase().includes(w))?.length ?? 0) >= 5);
     if (!best || !strong) return false;
 
+    const { engineOrder } = await import("@/lib/web-reader.server");
     const page = await readPage(best.url, {
-      engine: reading.crawl_engine,
+      order: engineOrder(reading.reader_primary, reading.reader_fallback_order),
+      tavilyDepth: reading.tavily_extract_depth,
+      tavilyBudget: { supabase, organizationId },
       allowReader: false,
       timeoutMs: 12000,
       budget: { supabase, organizationId },
@@ -1470,7 +1494,7 @@ export async function readOnDemand(
       sourceRef: best.url,
       title: page.title || new URL(best.url).pathname,
       content: page.text.slice(0, 40000),
-      metadata: { url: best.url, on_demand: true },
+      metadata: { url: best.url, on_demand: true, engine: page.engine ?? "own" },
     });
     await supabase
       .from("knowledge_urls")

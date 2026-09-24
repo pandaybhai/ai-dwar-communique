@@ -163,6 +163,8 @@ async function readLegacy(
       html: scraped.html,
       links,
       usedReader: false,
+      engine: "firecrawl",
+      credits: 1,
       status: scraped.statusCode,
       bytes: scraped.html.length,
       extractedChars: scraped.markdown.length,
@@ -365,10 +367,7 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
         } catch (error) {
           if (last) console.error("[reader] page failed", url, error instanceof Error ? error.message : String(error));
         }
-        if (page && engine === "firecrawl" && page.extractedChars === page.text.length && page.headers && Object.keys(page.headers).length === 0) {
-          page.engine = "firecrawl";
-          page.credits = 1;
-        } else if (page) {
+        if (page && !page.engine) {
           page.engine = "own";
           page.credits = 0;
         }
