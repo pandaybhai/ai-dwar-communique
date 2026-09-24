@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Building2, FlaskConical, Lock, Search } from "lucide-react";
+import { BookOpen, Building2, FlaskConical, Lock, RotateCcw, Search, Sparkles } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -72,13 +74,37 @@ function AidenControl() {
   );
 }
 
-type Org = { id: string; name: string };
+type Org = {
+  id: string;
+  name: string;
+  plan?: string | null;
+  numbers?: number;
+  ai_mode?: string | null;
+  behaviour?: "none" | "suggested" | "owner" | "aidwar";
+  sources?: number;
+  items?: number;
+  pages_read?: number;
+  credits_month?: number;
+  last_full_read?: string | null;
+  last_refresh?: string | null;
+};
+
+const BEHAVIOUR_LABEL: Record<string, string> = {
+  none: "Not set",
+  suggested: "Suggested — review",
+  owner: "Owner",
+  aidwar: "Edited by AiDwar",
+};
+
+const shortDate = (v?: string | null) =>
+  v ? new Date(v).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—";
 
 function WorkspacesTab() {
   const [q, setQ] = useState("");
   const [orgs, setOrgs] = useState<Org[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Org | null>(null);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -87,39 +113,61 @@ function WorkspacesTab() {
       else setOrgs(((data?.["organizations"] as Org[]) ?? []));
     }, 250);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, tick]);
 
   if (error) return <ErrorState message={error} />;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+    <div className="space-y-6">
       <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
-        <div className="relative">
+        <div className="relative max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search workspaces" className="pl-9" />
         </div>
-        <ul className="mt-3 max-h-[60vh] space-y-1 overflow-y-auto">
-          {orgs === null
-            ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-lg" />)
-            : orgs.length === 0
-              ? <li className="px-2 py-6 text-center text-sm text-muted-foreground">No workspace matches.</li>
-              : orgs.map((o) => (
-                  <li key={o.id}>
-                    <button
-                      type="button"
-                      onClick={() => setPicked(o)}
-                      className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors duration-150 ${
-                        picked?.id === o.id ? "bg-primary/10 font-medium text-foreground" : "text-muted-foreground hover:bg-muted"
-                      }`}
-                    >
-                      {o.name}
-                    </button>
-                  </li>
+        <div className="mt-3 max-h-[50vh] overflow-auto">
+          {orgs === null ? (
+            <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-lg" />)}</div>
+          ) : orgs.length === 0 ? (
+            <p className="px-2 py-6 text-center text-sm text-muted-foreground">No workspace matches.</p>
+          ) : (
+            <table className="w-full min-w-[900px] text-sm">
+              <thead className="text-left text-xs text-muted-foreground">
+                <tr className="border-b border-border/70">
+                  {["Workspace", "Plan", "Numbers", "Aiden", "Behaviour", "Knowledge", "Pages read", "Firecrawl (month)", "Last full read", "Last refresh"].map((h) => (
+                    <th key={h} className="px-2 py-2 font-medium">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {orgs.map((o) => (
+                  <tr
+                    key={o.id}
+                    onClick={() => setPicked(o)}
+                    className={`cursor-pointer border-b border-border/40 transition-colors duration-150 ${picked?.id === o.id ? "bg-primary/10" : "hover:bg-muted/60"}`}
+                  >
+                    <td className="px-2 py-2 font-medium text-foreground">{o.name}</td>
+                    <td className="px-2 py-2">{o.plan ?? "—"}</td>
+                    <td className="px-2 py-2">{o.numbers ?? 0}</td>
+                    <td className="px-2 py-2">{o.ai_mode ?? "—"}</td>
+                    <td className="px-2 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${o.behaviour === "suggested" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                        {BEHAVIOUR_LABEL[o.behaviour ?? "none"]}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2">{o.sources ?? 0} sources · {o.items ?? 0} items</td>
+                    <td className="px-2 py-2">{o.pages_read ?? 0}</td>
+                    <td className="px-2 py-2">{o.credits_month ?? 0}</td>
+                    <td className="px-2 py-2">{shortDate(o.last_full_read)}</td>
+                    <td className="px-2 py-2">{shortDate(o.last_refresh)}</td>
+                  </tr>
                 ))}
-        </ul>
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
       {picked ? (
-        <WorkspaceBehaviour key={picked.id} org={picked} />
+        <WorkspaceBehaviour key={picked.id} org={picked} onChanged={() => setTick((n) => n + 1)} />
       ) : (
         <EmptyState icon={Building2} title="Pick a workspace" description="Open one to see and edit how Aiden behaves there." />
       )}
@@ -127,10 +175,11 @@ function WorkspacesTab() {
   );
 }
 
-function WorkspaceBehaviour({ org }: { org: Org }) {
+function WorkspaceBehaviour({ org, onChanged }: { org: Org; onChanged: () => void }) {
   const [versions, setVersions] = useState<InstructionVersion[] | null>(null);
   const [hasAgent, setHasAgent] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"generate" | "restore" | null>(null);
 
   const load = useCallback(async () => {
     const { data, error: err } = await adminApi({ action: "behaviour_load", organization_id: org.id });
@@ -143,6 +192,21 @@ function WorkspaceBehaviour({ org }: { org: Org }) {
     void load();
   }, [load]);
 
+  const run = async (kind: "generate" | "restore") => {
+    const current = versions?.find((v) => v.is_current);
+    setBusy(kind);
+    const { error: err } = await adminApi({
+      action: kind === "generate" ? "generate_persona" : "restore_previous",
+      organization_id: org.id,
+      base_version: current?.version ?? null,
+    });
+    setBusy(null);
+    if (err) toast.error(err);
+    else toast.success(kind === "generate" ? "Saved as a suggestion — the merchant will be asked to review it." : "Previous version restored.");
+    await load();
+    onChanged();
+  };
+
   if (error) return <ErrorState message={error} />;
   if (versions === null) return <Skeleton className="h-96 w-full rounded-2xl" />;
   if (!hasAgent)
@@ -150,14 +214,29 @@ function WorkspaceBehaviour({ org }: { org: Org }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Editing <span className="font-medium text-foreground">{org.name}</span> — the merchant will see "Updated by AiDwar support".
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Editing <span className="font-medium text-foreground">{org.name}</span> — the merchant will see "Updated by AiDwar support".
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" disabled={busy !== null} onClick={() => void run("generate")}>
+            <Sparkles className="mr-1.5 h-4 w-4" />
+            {busy === "generate" ? "Reading the website…" : "Generate from website"}
+          </Button>
+          <Button variant="outline" size="sm" disabled={busy !== null || versions.length < 2} onClick={() => void run("restore")}>
+            <RotateCcw className="mr-1.5 h-4 w-4" />
+            Restore previous version
+          </Button>
+        </div>
+      </div>
       <BehaviourEditor
         organizationId={org.id}
         versions={versions}
         canConfigure
-        onChanged={load}
+        onChanged={() => {
+          void load();
+          onChanged();
+        }}
         api={async (body) => {
           const { error: err } = await adminApi(body);
           if (err) await load();
