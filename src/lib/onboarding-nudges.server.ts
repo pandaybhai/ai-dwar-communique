@@ -10,9 +10,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const CODE_TEMPLATE_NAME = "aidwar_onboarding_code";
+export const CODE_TEMPLATE_NAME = "aidwar_onboarding_start";
 export const CODE_TEMPLATE_BODY =
-  "Hi {{1}}, Aiden here from AiDwar. Your code for {{2}} is {{3}}. Reply to this message with the code and I'll read your website.";
+  "Hi {{1}}, Aiden here from AiDwar. Your workspace {{2}} is ready and waiting for you. Reply to this message with {{3}} and I'll start reading your website.";
 
 export const RESUME_TEMPLATE_NAME = "aidwar_onboarding_resume";
 export const RESUME_TEMPLATE_BODY =
@@ -66,7 +66,7 @@ export async function ensureResumeTemplate(
     .select("status")
     .eq("organization_id", orgId)
     .eq("name", RESUME_TEMPLATE_NAME)
-    .eq("language", "en")
+    .eq("language", "en_US")
     .maybeSingle();
   if (existing) {
     return { status: (existing as { status: string | null }).status, created: false, error: null };
@@ -158,7 +158,7 @@ async function runResumePass(
     .select("name, language, components, status")
     .eq("organization_id", platformOrgId)
     .eq("name", RESUME_TEMPLATE_NAME)
-    .eq("language", "en")
+    .eq("language", "en_US")
     .maybeSingle();
   const template = templateRow as
     | { name: string; language: string; components: unknown; status: string | null }
@@ -274,7 +274,7 @@ async function runCodePass(
     .select("name, language, components, status")
     .eq("organization_id", platformOrgId)
     .eq("name", CODE_TEMPLATE_NAME)
-    .eq("language", "en")
+    .eq("language", "en_US")
     .maybeSingle();
   const template = templateRow as
     | { name: string; language: string; components: unknown; status: string | null }
