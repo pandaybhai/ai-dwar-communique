@@ -13,5 +13,5 @@ Allow: /
 User-agent: *
 Allow: /
 
-Sitemap: https://ai-dwar-communique.lovable.app/sitemap.xml
+Sitemap: https://aidwar.in/sitemap.xml
 
