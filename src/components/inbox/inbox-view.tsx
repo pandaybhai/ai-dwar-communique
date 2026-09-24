@@ -106,6 +106,27 @@ export function InboxView() {
       const preview = Array.isArray(r["preview"]) ? r["preview"][0] : r["preview"];
       return { ...r, contact: contact ?? null, preview: preview ?? null } as ConversationRow;
     });
+    // Template sends are stored without a body: show the template's own text.
+    const names = Array.from(
+      new Set(rows.map((c) => (c.preview?.type === "template" && !c.preview.body?.trim() ? c.preview.template_name : null)).filter(Boolean) as string[]),
+    );
+    if (names.length) {
+      const { data: tpls } = await supabase
+        .from("message_templates")
+        .select("name, components")
+        .eq("organization_id", orgId)
+        .in("name", names);
+      const bodies = new Map<string, string>();
+      for (const t of (tpls ?? []) as Array<{ name: string; components: Array<Record<string, unknown>> | null }>) {
+        const body = (t.components ?? []).find((c) => String(c["type"] ?? "").toUpperCase() === "BODY");
+        const text = typeof body?.["text"] === "string" ? (body["text"] as string).trim() : "";
+        if (text && !bodies.has(t.name)) bodies.set(t.name, text);
+      }
+      for (const c of rows) {
+        const name = c.preview?.template_name;
+        if (c.preview && name && !c.preview.body?.trim() && bodies.has(name)) c.preview = { ...c.preview, body: bodies.get(name)! };
+      }
+    }
     setError(null);
     setConversations(rows);
     setLoading(false);
