@@ -182,6 +182,9 @@ export type TokenInfo = {
   /** Meta's own type string, e.g. SYSTEM_USER / USER / PAGE. */
   token_type: string | null;
   granted_scopes: string[] | null;
+  /** The Meta app the token was issued for. */
+  app_id?: string | null;
+  is_valid?: boolean;
   error: string | null;
 };
 
@@ -232,6 +235,8 @@ export async function debugToken(inputToken: string): Promise<TokenInfo> {
       expires_never: known && expiresAtSeconds === 0,
       token_type: typeof data["type"] === "string" ? (data["type"] as string) : null,
       granted_scopes: scopes,
+      app_id: data["app_id"] != null ? String(data["app_id"]) : null,
+      is_valid: data["is_valid"] === true,
       error: null,
     };
   } catch {
@@ -291,3 +296,60 @@ export function classifyTokenExpiry(
   };
 }
 
+
+/** The only Meta app whose tokens AiDwar will store. */
+export const OUR_META_APP_ID = "1039014438836671";
+
+/**
+ * Token guard shared by both connect paths. A new token is saved only when it
+ * was issued for our app, carries whatsapp_business_messaging, and can read
+ * the number. Anything else is refused before a single row is written, so a
+ * working stored token is never overwritten by a bad one.
+ */
+export async function verifyTokenForNumber(
+  accessToken: string,
+  phoneNumberId: string,
+): Promise<
+  | { ok: true; info: TokenInfo }
+  | { ok: false; error: string }
+> {
+  const info = await debugToken(accessToken);
+  if (info.error) {
+    return {
+      ok: false,
+      error:
+        "We couldn't verify this access token with Meta, so your current connection was kept. Please try again.",
+    };
+  }
+  if (info.app_id !== OUR_META_APP_ID) {
+    return {
+      ok: false,
+      error:
+        "This access token was issued for a different Meta app, not AiDwar. Your current connection was kept — generate the token from the AiDwar app and try again.",
+    };
+  }
+  if (!(info.granted_scopes ?? []).includes("whatsapp_business_messaging")) {
+    return {
+      ok: false,
+      error:
+        "This access token can't send messages (it's missing the messaging permission). Your current connection was kept — reconnect with an account that grants messaging.",
+    };
+  }
+  const phone = await graphFetch(phoneNumberId, accessToken, { query: { fields: "id" } });
+  if (!phone.ok) {
+    return {
+      ok: false,
+      error: `This access token can't reach this number: ${graphErrorMessage(phone.body)} Your current connection was kept.`,
+    };
+  }
+  return { ok: true, info };
+}
+
+/** Scopes the previous token had that the new one lacks. */
+export function removedScopes(
+  previous: string[] | null | undefined,
+  next: string[] | null | undefined,
+): string[] {
+  const now = new Set(next ?? []);
+  return (previous ?? []).filter((s) => !now.has(s));
+}
