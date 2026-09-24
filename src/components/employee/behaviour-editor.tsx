@@ -155,6 +155,13 @@ export function BehaviourEditor({
         ) : null}
       </div>
 
+      {current?.origin === "suggested" ? (
+        <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-foreground">
+          <span className="font-medium">Suggested from your website — review.</span>{" "}
+          I wrote this from the pages I read. Change anything that's off and press Save — that makes it yours.
+        </div>
+      ) : null}
+
       <div className="mt-6 grid gap-5 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="persona">What customers should call it</Label>

@@ -12,6 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { AidenSetupCard } from "@/components/aiden-setup-card";
+import { PersonaReviewBanner } from "@/components/persona-review-banner";
 import { SendHealthBanner } from "@/components/send-health-banner";
 import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,7 @@ function AppHome() {
       <PageHeader title="Home" description={`What's happening in ${name} today.`} />
       <SendHealthBanner organizationId={orgId} showLink className="mb-6" />
       <AidenSetupCard organizationId={orgId} showFinished />
+      <PersonaReviewBanner organizationId={orgId} />
       {loading || (orgId && fetching && !data) ? (
         <PageSkeleton />
       ) : !active ? (

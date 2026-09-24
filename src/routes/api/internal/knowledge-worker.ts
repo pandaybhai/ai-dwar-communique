@@ -71,6 +71,9 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
               stage = "finish";
               const { finishOnboardingCrawl } = await import("@/lib/merchant-channel.server");
               await finishOnboardingCrawl(supabase, sourceId, result);
+              // First website read with no behaviour yet → a suggested one to review.
+              const { suggestPersonaAfterRead } = await import("@/lib/persona.server");
+              await suggestPersonaAfterRead(supabase, sourceId);
               done += 1;
             } catch (error) {
               const err = error instanceof Error ? error : new Error(String(error));

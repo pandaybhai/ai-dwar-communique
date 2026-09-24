@@ -62,6 +62,8 @@ export type InstructionVersion = {
   updated_by?: string | null;
   /** "AiDwar support" when a super admin saved it (merchant view). */
   updated_by_name?: string | null;
+  /** "suggested" = drafted from the website, waiting for the owner's review. */
+  origin?: "owner" | "admin" | "suggested" | null;
 };
 
 export type KnowledgeSource = {
