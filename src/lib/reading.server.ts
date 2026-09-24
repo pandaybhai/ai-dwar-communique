@@ -18,6 +18,10 @@ export type ReadingSettings = {
   firecrawl_workspace_monthly_cap: number;
   /** plan_id → page limit, overriding plan_versions.limits.pages. */
   plan_page_overrides: Record<string, number>;
+  /** Same link isn't read again within this many days (saved copy used). */
+  link_reread_days: number;
+  trial_links_per_day: number;
+  trial_links_total: number;
 };
 
 export const READING_DEFAULTS: ReadingSettings = {
@@ -36,6 +40,9 @@ export const READING_DEFAULTS: ReadingSettings = {
   firecrawl_monthly_credit_cap: 450,
   firecrawl_workspace_monthly_cap: 100,
   plan_page_overrides: {},
+  link_reread_days: 7,
+  trial_links_per_day: 3,
+  trial_links_total: 10,
 };
 
 export const READING_COLUMNS = Object.keys(READING_DEFAULTS).join(", ");
