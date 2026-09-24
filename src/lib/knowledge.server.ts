@@ -524,10 +524,10 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   // The homepage first: it tells us whether this is a shop with public data.
   const home = await readPage(start.toString(), { key, ...readOpts, ...(onStage ? { onStage } : {}) });
   let readerCost = home?.usedReader ? READER_COST : 0;
-  let platform = detectPlatform(home?.html ?? "", home?.headers ?? {});
+  let platform = singlePage ? null : detectPlatform(home?.html ?? "", home?.headers ?? {});
   // If the markup didn't tell us, the catalogue itself will: a shop answers
   // this address with product data and nothing else does.
-  if (!platform) {
+  if (!platform && !singlePage) {
     const probe = await fetchWithTimeout(`${origin}/products.json?limit=1`, 8000);
     if (probe?.ok) {
       const body = (await probe.json().catch(() => null)) as { products?: unknown } | null;
