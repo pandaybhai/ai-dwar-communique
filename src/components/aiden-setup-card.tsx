@@ -1,3 +1,4 @@
+import { plural } from "@/lib/plural";
 import { useCallback, useEffect, useState } from "react";
 import { BookOpenCheck, MessageCircle, X } from "lucide-react";
 import { toast } from "sonner";
@@ -139,8 +140,8 @@ export function AidenSetupCard({
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-bold tracking-tight text-foreground">
             Aiden finished reading {finished.name} —{" "}
-            {(finished.pages_seen ?? finished.item_count ?? 0).toLocaleString("en-IN")} pages
-            {finished.products_found ? ` · ${finished.products_found.toLocaleString("en-IN")} products` : ""}.
+            {plural(finished.pages_seen ?? finished.item_count ?? 0, "page")}
+            {finished.products_found ? ` · ${plural(finished.products_found, "product")}` : ""}.
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">Ask him something.</p>
         </div>

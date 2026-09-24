@@ -377,6 +377,9 @@ export const Route = createFileRoute("/api/ai/knowledge")({
 
             const answer = String(payload["answer"] ?? "").trim();
             if (!answer) return jsonError("Write the answer first.");
+            const { isQuestionText } = await import("@/lib/teach-guard");
+            if (isQuestionText(answer))
+              return jsonError("That reads like a question. Write the answer as a statement, without a question mark.");
 
             await knowledge.saveCorrection(auth.supabase, auth.organizationId, {
               question: pending.question,

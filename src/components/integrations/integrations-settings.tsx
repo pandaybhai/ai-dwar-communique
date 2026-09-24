@@ -1,3 +1,4 @@
+import { plural } from "@/lib/plural";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -242,13 +243,13 @@ export function IntegrationsTab() {
                   {running ? (
                     <span className="flex items-center gap-2 text-foreground">
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                      Syncing {job.phase ?? "store"} — {job.products_synced ?? 0} products,{" "}
-                      {job.orders_synced ?? 0} orders so far.
+                      Syncing {job.phase ?? "store"} — {plural(job.products_synced ?? 0, "product")},{" "}
+                      {plural(job.orders_synced ?? 0, "order")} so far.
                     </span>
                   ) : job.status === "completed" ? (
                     <span className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-primary" />
-                      Synced {job.products_synced ?? 0} products and {job.orders_synced ?? 0} orders,{" "}
+                      Synced {plural(job.products_synced ?? 0, "product")} and {plural(job.orders_synced ?? 0, "order")},{" "}
                       {job.contacts_matched ?? 0} matched to contacts.
                     </span>
                   ) : (

@@ -1,3 +1,4 @@
+import { fixCountPlurals } from "@/lib/plural";
 /**
  * Aiden's fixed onboarding texts. These defaults are the built-in wording:
  * they seed ai_prompt_blocks and are what Aiden sends whenever the saved
@@ -118,5 +119,5 @@ export function fillScript(text: string | null | undefined, vars: Record<string,
     return value === undefined || value === null || String(value).trim() === "" ? whole : String(value);
   });
   if (/\{[a-z_]+\}/.test(out)) return null;
-  return out;
+  return fixCountPlurals(out);
 }

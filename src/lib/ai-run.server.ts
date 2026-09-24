@@ -46,7 +46,7 @@ function wireModel(provider: string, modelId: string): string {
 }
 
 
-export type AiTask = "suggest_reply" | "summarise" | "auto_tag" | "agent_reply" | "embedding";
+export type AiTask = "suggest_reply" | "summarise" | "auto_tag" | "agent_reply" | "embedding" | "extract_facts";
 
 export type ResolvedBrain = {
   /** Platform-internal. Never travels to a merchant surface. */
@@ -336,6 +336,8 @@ const DEFAULT_TIER: Record<AiTask, string> = {
   suggest_reply: "everyday",
   agent_reply: "careful",
   embedding: "everyday",
+  // Reading only: no answer policy, price/policy guards or escalation.
+  extract_facts: "everyday",
 };
 
 const EMBEDDING_FALLBACK = { provider: "lovable", model_id: "openai/text-embedding-3-small" };

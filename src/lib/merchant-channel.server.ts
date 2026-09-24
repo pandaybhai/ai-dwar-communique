@@ -237,14 +237,11 @@ function shortTitles(titles: string[]): string[] {
 
 // ------------------------------------------------------------------ inbound
 
+import { isQuestionText } from "@/lib/teach-guard";
+
 /** A question, by shape or by opening word — in English and in Hinglish. */
 function looksLikeQuestion(text: string): boolean {
-  const t = text.trim().toLowerCase();
-  if (!t) return false;
-  if (t.endsWith("?")) return true;
-  return /^(what|where|when|why|who|which|how|is|are|do|does|did|can|could|should|will|would|tell me|kya|kitna|kitne|kab|kaise|kahan|kaun)\b/.test(
-    t,
-  );
+  return isQuestionText(text);
 }
 
 /**

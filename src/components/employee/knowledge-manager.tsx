@@ -1,3 +1,4 @@
+import { plural } from "@/lib/plural";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -70,14 +71,14 @@ export function ReadingLine({ source }: { source: KnowledgeSource }) {
   const pages = source.pages_seen ?? 0;
   const items = source.item_count ?? 0;
   const products = source.products_found ?? 0;
-  const noun = source.type === "website" ? "products" : "items";
+  const noun = source.type === "website" ? "product" : "item";
   if (source.status === "queued") return <>Waiting to start</>;
   if (source.status === "pending") return <>Queued</>;
   if (source.status === "syncing") {
     return (
       <>
         Reading {source.name}
-        {pages > 0 || items > 0 ? ` — ${nf(pages)} pages, ${nf(items)} so far` : " — just started"}
+        {pages > 0 || items > 0 ? ` — ${plural(pages, "page")}, ${nf(items)} so far` : " — just started"}
       </>
     );
   }
@@ -85,8 +86,8 @@ export function ReadingLine({ source }: { source: KnowledgeSource }) {
   return (
     <>
       Read {nf(pages)}
-      {source.type === "website" && total > pages ? ` of ${nf(total)}` : ""} pages
-      {products > 0 ? ` · ${nf(products)} ${noun}` : ""} · updated {whenText(source.last_synced_at)}
+      {source.type === "website" && total > pages ? ` of ${nf(total)}` : ""} {(total > pages ? total : pages) === 1 ? "page" : "pages"}
+      {products > 0 ? ` · ${plural(products, noun)}` : ""} · updated {whenText(source.last_synced_at)}
     </>
   );
 }
@@ -252,7 +253,7 @@ export function KnowledgeManager({
                       </p>
                     ) : (
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {kind.label} · {source.item_count.toLocaleString("en-IN")} items · read once
+                        {kind.label} · {plural(source.item_count, "item")} · read once
                       </p>
                     )}
                     {source.type === "website" ? <NextLine source={source} /> : null}
@@ -445,7 +446,7 @@ function AddDialog({
       return;
     }
     if (data && data.error) toast.warning(data.error);
-    else toast.success(`Read and remembered${data?.itemCount ? ` — ${data.itemCount} items` : ""}.`);
+    else toast.success(`Read and remembered${data?.itemCount ? ` — ${plural(data.itemCount, "item")}` : ""}.`);
     reset();
     onAdded();
     onClose();

@@ -374,7 +374,7 @@ async function factsPass(
     try {
       const run = await executeRun(supabase, {
         organizationId,
-        task: "agent_reply",
+        task: "extract_facts",
         tier: "everyday",
         input: doc.content.slice(0, 16000),
         system:
@@ -1127,7 +1127,7 @@ async function rebuildChunks(
 }
 
 /** Worker tick: retry documents whose chunks couldn't be built. */
-export async function retryPendingEmbeddings(supabase: SupabaseClient, limit = 20): Promise<{ tried: number; built: number }> {
+export async function retryPendingEmbeddings(supabase: SupabaseClient, limit = 50): Promise<{ tried: number; built: number }> {
   const { data } = await supabase
     .from("knowledge_documents")
     .select("id, organization_id, source_id, source_ref, content, content_hash, metadata")
@@ -1373,6 +1373,8 @@ export async function saveFact(
   organizationId: string,
   input: { topic: string; text: string; userId: string | null },
 ): Promise<{ ok: boolean; error?: string }> {
+  const { isQuestionText } = await import("@/lib/teach-guard");
+  if (isQuestionText(input.text)) return { ok: false, error: "That's a question, not a fact." };
   let { data: source } = await supabase
     .from("knowledge_sources")
     .select("id")

@@ -22,7 +22,7 @@ export type ConversationRow = {
     phone: string;
     opt_in_status?: string | null;
   } | null;
-  preview: { body: string | null; type: string; direction: string } | null;
+  preview: { body: string | null; type: string; direction: string; template_name?: string | null } | null;
 };
 
 
@@ -88,7 +88,10 @@ export function previewText(row: ConversationRow): string {
   const p = row.preview;
   if (!p) return "No messages yet";
   if (p.body?.trim()) return p.body.trim();
-  if (p.type === "template") return "Template message";
+  if (p.type === "template") {
+    const name = p.template_name?.trim();
+    return name ? `Template: ${name.replace(/_/g, " ")}` : "Template message";
+  }
   return p.type.charAt(0).toUpperCase() + p.type.slice(1);
 }
 

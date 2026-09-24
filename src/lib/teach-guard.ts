@@ -73,6 +73,17 @@ export function isBareReference(body: string): boolean {
   return stripped.split(/\s+/).filter(Boolean).length < 3;
 }
 
+const QUESTION_START =
+  /^(what|which|how|why|when|where|who|is|are|do|does|did|can|could|should|will|would|kya|kaise|kitna|kitne|kab|kahan|kaun|batao|tell me|explain)\b/;
+
+/** A question by shape or opening word (English + Hinglish). Never a fact, never an answer. */
+export function isQuestionText(body: string | null | undefined): boolean {
+  const t = (body ?? "").trim().toLowerCase();
+  if (!t) return false;
+  if (t.includes("?")) return true;
+  return QUESTION_START.test(t);
+}
+
 /** True when this message may be stored as the answer to a pending question. */
 export function isTeachableAnswer(
   body: string,
@@ -81,7 +92,7 @@ export function isTeachableAnswer(
   if (opts.interactive) return false;
   const text = (body ?? "").trim();
   if (!text) return false;
-  if (text.endsWith("?")) return false;
+  if (isQuestionText(text)) return false;
 
   const norm = normalize(text);
   for (const s of opts.suggestions ?? []) {
