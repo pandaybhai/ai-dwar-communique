@@ -58,7 +58,7 @@ export function CatalogCard({
   const [catalogInput, setCatalogInput] = useState("");
   const [setupMode, setSetupMode] = useState<"managed" | "linked">("managed");
   const [showHowTo, setShowHowTo] = useState(false);
-  const [checkError, setCheckError] = useState<{ step?: string; message: string } | null>(null);
+  const [checkError, setCheckError] = useState<{ step?: string | undefined; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
