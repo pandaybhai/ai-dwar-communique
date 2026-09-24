@@ -42,6 +42,8 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
           listBusinessCatalogs,
           refreshLinkedCatalog,
           setCommerceSettings,
+          checkCatalogAccess,
+          setCatalogMode,
         } = await import("@/lib/whatsapp-catalog.server");
 
         if (action === "status") {
@@ -50,7 +52,10 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
           const catalog = await getCatalogRow(supabase, organizationId, ctx.wabaId);
           return Response.json({
             connected: true,
-            scopes_ok: hasCatalogScopes(ctx.scopes),
+            // Catalogue work now runs on AiDwar's partner access, so the
+            // merchant's own catalogue scopes are no longer required.
+            scopes_ok: true,
+            merchant_catalog_scopes: hasCatalogScopes(ctx.scopes),
             granted_scopes: ctx.scopes ?? [],
             catalog,
           });
@@ -75,6 +80,44 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
             result.settings ?? {},
           );
           return Response.json(result);
+        }
+
+        if (action === "check_access") {
+          const mode = payload["mode"] === "linked" ? "linked" : "managed";
+          const result = await checkCatalogAccess({
+            supabase,
+            organizationId,
+            userId,
+            whatsappAccountId: accountId,
+            catalogId: String(payload["catalog_id"] ?? ""),
+            mode,
+          });
+          if (result.ok) {
+            await logServerActivity(supabase, organizationId, userId, "whatsapp_catalog_enabled", {
+              catalog_id: result.catalog_id,
+              created: false,
+              mode,
+            });
+          }
+          return Response.json(result, { status: result.ok ? 200 : 400 });
+        }
+
+        if (action === "set_mode") {
+          const mode = payload["mode"] === "linked" ? "linked" : "managed";
+          const result = await setCatalogMode({
+            supabase,
+            organizationId,
+            whatsappAccountId: accountId,
+            mode,
+          });
+          if (!result.ok) return jsonError(result.error ?? "We couldn't change that.", 400);
+          await logServerActivity(supabase, organizationId, userId, "whatsapp_catalog_settings_changed", { mode });
+          return Response.json(result);
+        }
+
+        // Auto-creating catalogues in a merchant's business is not allowed.
+        if (action === "enable" && !payload["catalog_id"]) {
+          return jsonError("Pick a catalogue in your Meta business and share it with AiDwar first.", 400);
         }
 
         if (action === "list_catalogs") {

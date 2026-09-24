@@ -425,6 +425,17 @@ export async function upsertProduct(ctx: SyncContext, product: AnyRecord): Promi
   const image = (product["image"] as AnyRecord | undefined) ?? {};
   const handle = str(product["handle"]) || null;
 
+  // Stock: only variants Shopify tracks count. Sold out = every tracked
+  // variant is at ≤ 0 and none allow overselling.
+  const tracked = variants.filter((v) => str(v["inventory_management"]) === "shopify");
+  const trackedQty = tracked.reduce((sum, v) => sum + (numOrNull(v["inventory_quantity"]) ?? 0), 0);
+  const soldOut =
+    variants.length > 0 &&
+    tracked.length === variants.length &&
+    tracked.every(
+      (v) => (numOrNull(v["inventory_quantity"]) ?? 0) <= 0 && str(v["inventory_policy"]) !== "continue",
+    );
+
   const { data: saved } = await ctx.supabase
     .from("products")
     .upsert(
@@ -439,6 +450,8 @@ export async function upsertProduct(ctx: SyncContext, product: AnyRecord): Promi
         image_url: str(image["src"]) || null,
         product_url: handle ? `https://${ctx.shopDomain}/products/${handle}` : null,
         status: str(product["status"]) || null,
+        availability: soldOut ? "out_of_stock" : "in_stock",
+        inventory_quantity: tracked.length > 0 ? Math.trunc(trackedQty) : null,
         synced_at: new Date().toISOString(),
       },
       { onConflict: "integration_id,external_id" },

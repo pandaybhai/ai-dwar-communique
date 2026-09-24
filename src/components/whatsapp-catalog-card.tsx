@@ -1,21 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Loader2, RefreshCw } from "lucide-react";
+import { BookOpen, Check, Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { callApi } from "@/lib/whatsapp-client";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
-import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
 
 type Catalog = {
   catalog_id: string;
@@ -37,7 +30,7 @@ type Status = {
   catalog?: Catalog;
 };
 
-type BusinessCatalog = { id: string; name: string; product_count: number };
+const PARTNER_ID = "1451227116580979";
 
 /**
  * Catalogue controls for one connected number. The enable button only appears
@@ -61,8 +54,12 @@ export function CatalogCard({
   const { enabled: flagOn, loading: flagLoading } = useFeatureFlag("whatsapp_catalog");
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState<"enable" | "sync" | "choose" | "settings" | null>(null);
-  const [choices, setChoices] = useState<BusinessCatalog[] | null>(null);
+  const [working, setWorking] = useState<"check" | "sync" | "mode" | "settings" | null>(null);
+  const [catalogInput, setCatalogInput] = useState("");
+  const [setupMode, setSetupMode] = useState<"managed" | "linked">("managed");
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [checkError, setCheckError] = useState<{ step?: string | undefined; message: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,57 +76,50 @@ export function CatalogCard({
 
   if (flagLoading || !flagOn) return null;
 
-  /** Ask Meta what the business already has before creating anything. */
-  async function startEnable() {
-    setWorking("choose");
-    const { data, error } = await callApi<{ catalogs: BusinessCatalog[] }>(
-      "/api/whatsapp/catalog",
-      {
-        body: {
-          organization_id: orgId,
-          whatsapp_account_id: accountId,
-          action: "list_catalogs",
-        },
+  async function checkAccess() {
+    setWorking("check");
+    setCheckError(null);
+    const { error, raw } = await callApi<{ ok: boolean }>("/api/whatsapp/catalog", {
+      body: {
+        organization_id: orgId,
+        whatsapp_account_id: accountId,
+        action: "check_access",
+        catalog_id: catalogInput.trim(),
+        mode: setupMode,
       },
-    );
+    });
     setWorking(null);
     if (error) {
-      toast.error(error);
+      const step = (raw as { step?: string } | null)?.step;
+      setCheckError({ step, message: error });
       return;
     }
-    const existing = data?.catalogs ?? [];
-    if (existing.length === 0) {
-      await enable(null);
-      return;
-    }
-    setChoices(existing);
+    toast.success("Catalogue connected to this number");
+    await load();
   }
 
-  async function enable(catalogId: string | null) {
-    setChoices(null);
-    setWorking("enable");
-    const { data, error } = await callApi<{ mode?: "managed" | "linked" }>(
-      "/api/whatsapp/catalog",
-      {
-        body: {
-          organization_id: orgId,
-          whatsapp_account_id: accountId,
-          action: "enable",
-          ...(catalogId ? { catalog_id: catalogId } : {}),
-        },
-      },
-    );
+  async function changeMode(next: "managed" | "linked") {
+    setWorking("mode");
+    const { error } = await callApi("/api/whatsapp/catalog", {
+      body: { organization_id: orgId, whatsapp_account_id: accountId, action: "set_mode", mode: next },
+    });
     setWorking(null);
     if (error) {
       toast.error(error);
       return;
     }
-    toast.success(
-      data?.mode === "linked"
-        ? "Your existing catalogue is now linked to this number"
-        : "Catalogue ready on your business account",
-    );
+    toast.success(next === "linked" ? "Your store fills it — AiDwar only reads" : "AiDwar keeps it in sync");
     await load();
+  }
+
+  async function copyId() {
+    try {
+      await navigator.clipboard.writeText(PARTNER_ID);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Couldn't copy — select the number and copy it by hand.");
+    }
   }
 
   async function runSync(mode: "managed" | "linked") {
@@ -154,9 +144,7 @@ export function CatalogCard({
     toast.success(
       mode === "linked"
         ? `${data?.imported ?? 0} product${data?.imported === 1 ? "" : "s"} read from your catalogue`
-        : `${data?.pushed ?? 0} sent${data?.removed ? `, ${data.removed} removed` : ""}${
-            data?.rejected ? `, ${data.rejected} refused by Meta` : ""
-          }`,
+        : `${data?.pushed ?? 0} sent · ${data?.removed ?? 0} removed · ${data?.rejected ?? 0} refused`,
     );
 
     await load();
@@ -195,11 +183,6 @@ export function CatalogCard({
             <p className="text-sm font-semibold text-foreground">Product catalogue</p>
             {loading ? (
               <Skeleton className="mt-2 h-4 w-56" />
-            ) : !status?.scopes_ok ? (
-              <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Reconnect this number to enable the WhatsApp catalogue — the connection doesn't
-                include catalogue permission yet.
-              </p>
             ) : catalog ? (
               <>
                 <p className="mt-1 max-w-md text-sm text-muted-foreground">
@@ -218,14 +201,23 @@ export function CatalogCard({
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {mode === "linked"
-                    ? "Linked to your existing catalogue — your shop keeps it updated."
-                    : "Managed by AiDwar."}
+                    ? "My store already fills it — AiDwar only reads."
+                    : "AiDwar keeps it in sync."}{" "}
+                  {canManage ? (
+                    <button
+                      type="button"
+                      className="font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
+                      disabled={working !== null}
+                      onClick={() => void changeMode(mode === "linked" ? "managed" : "linked")}
+                    >
+                      Change
+                    </button>
+                  ) : null}
                 </p>
               </>
             ) : (
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Use a catalogue you already have, or let AiDwar create one and send products that
-                have a price and a picture.
+                Connect a catalogue from your Meta business in four short steps.
               </p>
             )}
             {catalog?.last_error ? (
@@ -234,29 +226,14 @@ export function CatalogCard({
           </div>
         </div>
 
-        {loading ? null : !status?.scopes_ok ? (
-          canManage ? (
-            <EmbeddedSignupButton orgId={orgId} onConnected={onReconnected} />
-          ) : null
-        ) : canManage ? (
+        {loading ? null : canManage && catalog ? (
           <div className="flex flex-wrap items-center gap-2">
             {catalog ? (
               <Badge variant="outline" className="rounded-full">
                 {mode === "linked" ? "Your catalogue" : "Managed by AiDwar"}
               </Badge>
             ) : null}
-            {!catalog ? (
-              <Button
-                className="rounded-full"
-                disabled={working !== null}
-                onClick={() => void startEnable()}
-              >
-                {working === "enable" || working === "choose" ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                Enable WhatsApp catalogue
-              </Button>
-            ) : (
+            {
               <Button
                 variant="outline"
                 className="rounded-full"
@@ -270,10 +247,104 @@ export function CatalogCard({
                 )}
                 {mode === "linked" ? "Refresh" : "Sync products"}
               </Button>
-            )}
+            }
           </div>
         ) : null}
       </div>
+
+      {!loading && !catalog && canManage ? (
+        <ol className="mt-4 space-y-4 border-t border-border/60 pt-4 text-sm">
+          <li>
+            <p className="font-semibold text-foreground">A · Pick or create a catalogue in your Meta business</p>
+            <a
+              href="https://business.facebook.com/commerce"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              Open Commerce Manager <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <Input
+              className="mt-2 max-w-xs"
+              inputMode="numeric"
+              placeholder="Paste the catalogue ID"
+              value={catalogInput}
+              onChange={(e) => setCatalogInput(e.target.value.replace(/\s/g, ""))}
+            />
+            <button
+              type="button"
+              className="mt-2 block text-xs font-medium text-muted-foreground hover:text-foreground"
+              onClick={() => setShowHowTo((v) => !v)}
+            >
+              I don't have one
+            </button>
+            {showHowTo ? (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                <li>In Commerce Manager, choose Add catalogue → E-commerce.</li>
+                <li>Pick Upload product info, name it, and create it.</li>
+                <li>Open Settings in the new catalogue and copy its ID here.</li>
+              </ul>
+            ) : null}
+            {checkError?.step === "catalog_id" ? (
+              <p className="mt-2 text-xs text-destructive">{checkError.message}</p>
+            ) : null}
+          </li>
+          <li>
+            <p className="font-semibold text-foreground">B · Share it with AiDwar</p>
+            <p className="mt-1 text-muted-foreground">
+              Business settings → Data sources → Catalogues → your catalogue → Assign partner →
+              Business ID {PARTNER_ID} → Manage catalogue.
+            </p>
+            <Button variant="outline" size="sm" className="mt-2 rounded-full" onClick={() => void copyId()}>
+              {copied ? <Check className="mr-2 h-3.5 w-3.5" /> : <Copy className="mr-2 h-3.5 w-3.5" />}
+              {copied ? "Copied" : `Copy ${PARTNER_ID}`}
+            </Button>
+            {checkError?.step === "share" ? (
+              <p className="mt-2 text-xs text-destructive">{checkError.message}</p>
+            ) : null}
+          </li>
+          <li>
+            <p className="font-semibold text-foreground">C · How should products get in?</p>
+            <p className="mt-1 text-xs text-muted-foreground">You can change this later.</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  ["managed", "AiDwar keeps it in sync", "We add, update and remove products for you."],
+                  ["linked", "My store already fills it", "We only read it — nothing is changed."],
+                ] as const
+              ).map(([value, title, hint]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSetupMode(value)}
+                  className={`rounded-xl border p-3 text-left transition ${
+                    setupMode === value
+                      ? "border-primary bg-primary/5"
+                      : "border-border/70 hover:border-primary/60"
+                  }`}
+                >
+                  <p className="text-sm font-medium text-foreground">{title}</p>
+                  <p className="text-xs text-muted-foreground">{hint}</p>
+                </button>
+              ))}
+            </div>
+          </li>
+          <li>
+            <p className="font-semibold text-foreground">D · Check access</p>
+            <Button
+              className="mt-2 rounded-full"
+              disabled={working !== null || catalogInput.trim().length === 0}
+              onClick={() => void checkAccess()}
+            >
+              {working === "check" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Check access
+            </Button>
+            {checkError && checkError.step !== "catalog_id" && checkError.step !== "share" ? (
+              <p className="mt-2 text-xs text-destructive">{checkError.message}</p>
+            ) : null}
+          </li>
+        </ol>
+      ) : null}
 
       {catalog && canManage ? (
         <div className="mt-4 flex flex-wrap gap-6 border-t border-border/60 pt-4">
@@ -306,44 +377,6 @@ export function CatalogCard({
         </div>
       ) : null}
 
-      <Dialog open={choices !== null} onOpenChange={(open) => (open ? null : setChoices(null))}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Which catalogue should this number use?</DialogTitle>
-            <DialogDescription>
-              We found catalogues on your business already. Link one and we'll only read from it —
-              nothing is added or removed.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            {(choices ?? []).map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className="w-full rounded-xl border border-border/70 p-3 text-left transition hover:border-primary/60 hover:bg-muted/50"
-                onClick={() => void enable(c.id)}
-              >
-                <p className="text-sm font-medium text-foreground">Use existing catalogue {c.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {c.product_count} product{c.product_count === 1 ? "" : "s"}
-                </p>
-              </button>
-            ))}
-            <button
-              type="button"
-              className="w-full rounded-xl border border-dashed border-border p-3 text-left transition hover:border-primary/60 hover:bg-muted/50"
-              onClick={() => void enable(null)}
-            >
-              <p className="text-sm font-medium text-foreground">
-                Create a new one managed by AiDwar
-              </p>
-              <p className="text-xs text-muted-foreground">
-                We'll send products that have a price and a picture.
-              </p>
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
