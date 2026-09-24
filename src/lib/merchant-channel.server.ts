@@ -324,6 +324,22 @@ export async function handleMerchantInbound(
     return;
   }
 
+  // Two messages carrying the same code a breath apart get one reply: the
+  // first delivery claims the session, the second stands down.
+  if (byCode) {
+    const cutoff = new Date(Date.now() - 5000).toISOString();
+    const { data: claimed } = await supabase
+      .from("onboarding_sessions")
+      .update({ last_inbound_at: new Date().toISOString() })
+      .eq("id", session.id)
+      .or(`last_inbound_at.is.null,last_inbound_at.lt.${cutoff}`)
+      .select("id");
+    if (!claimed || claimed.length === 0) {
+      console.log("[merchant-channel] code_burst_superseded", session.id);
+      return;
+    }
+  }
+
   const [, { data: org }, { data: profile }] = await Promise.all([
     supabase
       .from("onboarding_sessions")
