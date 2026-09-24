@@ -73,10 +73,6 @@ function PricingPage() {
   const failed = !loaded.ok || loaded.plans.length === 0;
   const [annual, setAnnual] = useState(false);
 
-  return () => {
-      live = false;
-    };
-  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
