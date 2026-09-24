@@ -711,7 +711,6 @@ export async function syncCatalog(args: {
       pushed_count: pushed,
       rejected_count: rejected,
       last_error: rejections[0] ?? null,
-      status: "linked",
     })
     .eq("organization_id", organizationId)
     .eq("waba_id", ctx.wabaId);
@@ -883,7 +882,6 @@ export async function refreshLinkedCatalog(args: {
       pushed_count: imported,
       rejected_count: 0,
       last_error: null,
-      status: "linked",
     })
     .eq("organization_id", organizationId)
     .eq("waba_id", ctx.wabaId);
@@ -966,6 +964,17 @@ export async function sendCatalogProducts(
   });
 
   if (!result.ok) return { sent: 0, error: result.error };
+
+  // Meta only accepts a product card when the catalogue is attached to the
+  // number, so the first accepted card confirms the attach.
+  if (row.status === ATTACH_UNCONFIRMED) {
+    await supabase
+      .from("whatsapp_catalogs")
+      .update({ status: "linked" })
+      .eq("organization_id", args.organizationId)
+      .eq("waba_id", wabaId)
+      .eq("status", ATTACH_UNCONFIRMED);
+  }
 
   await logServerActivity(supabase, args.organizationId, null, "whatsapp_catalog_products_sent", {
     catalog_id: row.catalog_id,
@@ -1075,4 +1084,21 @@ export async function setCatalogMode(args: {
     .eq("organization_id", args.organizationId)
     .eq("waba_id", ctx.wabaId);
   return dbError ? { ok: false, error: "We couldn't change that. Please try again." } : { ok: true };
+}
+
+/** Merchant says "I've connected it" in WhatsApp Manager. */
+export async function confirmCatalogAttached(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  whatsappAccountId: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { ctx, error } = await resolveCatalogContext(args.supabase, args.organizationId, args.whatsappAccountId);
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+  const { error: dbError } = await args.supabase
+    .from("whatsapp_catalogs")
+    .update({ status: "linked" })
+    .eq("organization_id", args.organizationId)
+    .eq("waba_id", ctx.wabaId)
+    .eq("status", ATTACH_UNCONFIRMED);
+  return dbError ? { ok: false, error: "We couldn't save that. Please try again." } : { ok: true };
 }
