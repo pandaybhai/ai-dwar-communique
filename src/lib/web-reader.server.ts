@@ -9,6 +9,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { firecrawlScrape } from "@/lib/firecrawl.server";
+
 export const READER_COST = 0.2;
 const READER_ENDPOINT = "https://r.jina.ai/";
 
