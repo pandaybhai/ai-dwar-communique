@@ -28,7 +28,15 @@ export const Route = createFileRoute("/api/internal/reprocess-events")({
           limit: 100,
         });
 
-        return Response.json({ processed, commit: buildInfo().commit });
+        let healthAlerts = 0;
+        try {
+          const { drainHealthNotifications } = await import("@/lib/send-health.server");
+          healthAlerts = await drainHealthNotifications(supabase);
+        } catch {
+          // alerts never block event catch-up
+        }
+
+        return Response.json({ processed, health_alerts: healthAlerts, commit: buildInfo().commit });
       },
     },
   },

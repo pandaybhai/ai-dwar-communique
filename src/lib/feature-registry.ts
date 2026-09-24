@@ -615,6 +615,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "whatsapp_catalog_products_sent",
       "whatsapp_catalog_order_received",
       "whatsapp_catalog_settings_changed",
+      "whatsapp_scopes_removed",
+      "whatsapp_health_needs_attention",
 
     ],
     settings_path: "/app/settings",

@@ -99,7 +99,11 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           );
         }
 
-        // 2. Verify the number before anything is written.
+        // 2. Token guard + verify the number before anything is written.
+        const { verifyTokenForNumber, removedScopes } = await import("@/lib/whatsapp-api.server");
+        const guard = await verifyTokenForNumber(accessToken, phoneNumberId);
+        if (!guard.ok) return stepError(guard.error, "token_exchanged", 400);
+
         const check = await graphFetch(phoneNumberId, accessToken, {
           query: { fields: "id,display_phone_number,verified_name,quality_rating,messaging_limit_tier" },
         });
@@ -127,8 +131,18 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
         const pin = String(Math.floor(100000 + Math.random() * 900000));
 
         // Introspect the token so we store its real expiry, not null.
-        const { debugToken } = await import("@/lib/whatsapp-api.server");
-        const info = await debugToken(accessToken);
+        const info = guard.info;
+
+        const { data: prevCred } = await supabase
+          .from("whatsapp_credentials")
+          .select("granted_scopes")
+          .eq("organization_id", organizationId)
+          .eq("waba_id", wabaId)
+          .maybeSingle();
+        const dropped = removedScopes(
+          (prevCred as { granted_scopes?: string[] | null } | null)?.granted_scopes,
+          info.granted_scopes,
+        );
         if (!info.expires_at && !info.expires_never) {
           console.error(
             JSON.stringify({
@@ -155,6 +169,7 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
             expires_at: info.expires_at,
             expires_never: info.expires_never,
             granted_scopes: info.granted_scopes,
+            removed_scopes: dropped,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "organization_id,waba_id" },
@@ -254,6 +269,15 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           token_never_expires: info.expires_never,
           token_expiry_missing: !info.expires_at && !info.expires_never,
         });
+
+        if (dropped.length > 0) {
+          await logServerActivity(supabase, organizationId, userId, "whatsapp_scopes_removed", {
+            method: "embedded_signup",
+            phone_number_id: phoneNumberId,
+            waba_id: wabaId,
+            removed_scopes: dropped,
+          });
+        }
 
         // If this owner is still being set up over WhatsApp, close that loop:
         // Aiden reports for duty in the onboarding chat. Never blocks connect.

@@ -48,6 +48,7 @@ import { callApi } from "@/lib/whatsapp-client";
 import { useOrg } from "@/lib/org-context";
 import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
+import { SendHealthBanner } from "@/components/send-health-banner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { NUMBER_COLUMNS, numberLabel, sortNumbers, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
 import { CatalogCard } from "@/components/whatsapp-catalog-card";
@@ -69,7 +70,39 @@ type NumberToken = {
   expiry_unknown?: boolean;
   never_expires?: boolean;
   token_type?: string | null;
+  removed_scopes?: string[];
 };
+
+/** Plain words for Meta permissions, and what stops working without them. */
+const SCOPE_WORDS: Record<string, { words: string; feature: string }> = {
+  whatsapp_business_messaging: { words: "permission to send messages", feature: "Sending replies and campaigns" },
+  whatsapp_business_management: { words: "permission to manage the business account", feature: "Templates and number settings" },
+  catalog_management: { words: "permission to manage product catalogues", feature: "The WhatsApp catalogue" },
+  business_management: { words: "access to your Meta business", feature: "The WhatsApp catalogue" },
+};
+
+function ScopeLossNote({ scopes }: { scopes: string[] | undefined }) {
+  if (!scopes || scopes.length === 0) return null;
+  return (
+    <div className="mt-4 space-y-2">
+      {scopes.map((scope) => {
+        const w = SCOPE_WORDS[scope] ?? { words: scope.replace(/_/g, " "), feature: "Features that rely on it" };
+        return (
+          <div
+            key={scope}
+            className="flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              This reconnect removed {w.words} — {w.feature.charAt(0).toLowerCase() + w.feature.slice(1)} will stop
+              working. Reconnect with an account that has access to fix it.
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 type TokenStatus = {
   connected: boolean;
@@ -190,6 +223,7 @@ export function WhatsAppTab() {
 
   return (
     <div className="space-y-6">
+      <SendHealthBanner organizationId={orgId} />
       <QualityBanner organizationId={orgId} />
 
       {live.length > 0 ? (
@@ -686,6 +720,7 @@ function NumberCard({
       </div>
 
       <HealthNote token={token} />
+      <ScopeLossNote scopes={token?.removed_scopes} />
 
       <CatalogCard
         orgId={orgId}
