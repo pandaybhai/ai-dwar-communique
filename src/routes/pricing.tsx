@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { getPublicPlans } from "@/lib/public-plans.functions";
 import { Check, Loader2, Sparkles } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -23,6 +24,8 @@ export const Route = createFileRoute("/pricing")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
+  // Plans are server-rendered so search engines and readers see names and prices.
+  loader: () => getPublicPlans(),
   component: PricingPage,
 });
 
@@ -65,24 +68,11 @@ function limitLine(limits: Record<string, number>): string[] {
 }
 
 function PricingPage() {
-  const [plans, setPlans] = useState<Plan[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  const loaded = Route.useLoaderData();
+  const plans: Plan[] | null = loaded.plans;
+  const failed = !loaded.ok || loaded.plans.length === 0;
   const [annual, setAnnual] = useState(false);
 
-  useEffect(() => {
-    let live = true;
-    fetch("/api/public/plans")
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("failed"))))
-      .then((body: { plans: Plan[] }) => {
-        if (live) setPlans(body.plans ?? []);
-      })
-      .catch(() => {
-        if (live) setFailed(true);
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">

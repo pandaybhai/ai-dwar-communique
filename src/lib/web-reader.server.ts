@@ -292,6 +292,8 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
     if (!prev || page.text.length > prev.text.length) thin.set(url, page);
   };
   let remaining = Array.from(new Set(urls));
+  /** Pages Tavily already read rendered (advanced); no second rendered read. */
+  const advancedRead = new Set<string>();
   options.onStage?.("fetch");
 
   for (let i = 0; i < order.length && remaining.length; i += 1) {
@@ -315,7 +317,10 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
         for (const url of batch) {
           const p = first.pages.get(url);
           const len = p ? p.markdown.replace(/\s+/g, " ").trim().length : 0;
-          if (p && len >= MIN_MAIN_TEXT) accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share });
+          if (p && len >= MIN_MAIN_TEXT) {
+            accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share });
+            if (depth === "advanced") advancedRead.add(url);
+          }
           else if (depth === "basic" && !stop) retry.push(url);
         }
         if (retry.length) {
@@ -323,7 +328,10 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
           for (const url of retry) {
             const p = second.pages.get(url);
             const len = p ? p.markdown.replace(/\s+/g, " ").trim().length : 0;
-            if (p && len >= MIN_MAIN_TEXT) accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share + second.share });
+            if (p && len >= MIN_MAIN_TEXT) {
+              accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share + second.share });
+              advancedRead.add(url);
+            }
           }
         }
       }
@@ -378,7 +386,75 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
     remaining = remaining.filter((u) => !out.has(u));
   }
   for (const url of urls) if (!out.has(url)) out.set(url, thin.get(url) ?? null);
+  await rereadClientRendered(out, order, options, advancedRead);
   return out;
+}
+
+/**
+ * Signs that the words arrive after load: an empty app root, or the page's
+ * data shipped as a JSON blob for the browser to render.
+ */
+export function looksClientRendered(html: string): boolean {
+  if (!html) return false;
+  if (/<div[^>]+id=["'](?:root|app|__next|__nuxt|svelte)["'][^>]*>\s*<\/div>/i.test(html)) return true;
+  if (/id=["']__NEXT_DATA__["']|window\.__(?:INITIAL_STATE|NUXT|APOLLO_STATE|PRELOADED_STATE)__|\$_TSR|__TSR_/i.test(html)) return true;
+  const blobs = html.match(/<script[^>]+type=["']application\/(?:json|ld\+json)["'][^>]*>[\s\S]{2000,}?<\/script>/gi);
+  if (blobs && blobs.some((b) => !/ld\+json/i.test(b))) return true;
+  return false;
+}
+
+/**
+ * A page read without rendering (our own fetch, or Tavily basic) whose markup
+ * looks client-rendered is read again rendered: Tavily advanced, then
+ * Firecrawl. The rendered text replaces the first read when it is at least
+ * 30% longer.
+ */
+async function rereadClientRendered(
+  out: Map<string, PageRead | null>,
+  order: ReaderEngine[],
+  options: ReadOptions,
+  advancedRead: Set<string>,
+): Promise<void> {
+  const timeout = options.timeoutMs ?? 20000;
+  const targets = Array.from(out.entries()).filter(([url, page]) => {
+    if (!page || page.engine === "firecrawl" || advancedRead.has(url)) return false;
+    return looksClientRendered(page.html);
+  });
+  if (!targets.length) return;
+  const better = (page: PageRead, text: string) => text.length >= Math.max(page.text.length * 1.3, MIN_MAIN_TEXT / 2);
+
+  const replaced = new Set<string>();
+  let pending = targets.map(([url]) => url);
+  if (order.includes("tavily")) {
+    for (let b = 0; b < pending.length; b += 5) {
+      const batch = pending.slice(b, b + 5);
+      const r = await tavilyExtract(batch, "advanced", options.tavilyBudget, Math.max(timeout, 30000));
+      const share = r.credits / Math.max(batch.length, 1);
+      for (const url of batch) {
+        const page = out.get(url);
+        const p = r.pages.get(url);
+        if (!page || !p) continue;
+        const text = p.markdown.replace(/\s+/g, " ").trim();
+        if (better(page, text)) {
+          out.set(url, { ...page, title: p.title || page.title, text, engine: "tavily", credits: (page.credits ?? 0) + share, extractedChars: text.length });
+          replaced.add(url);
+        }
+      }
+      if (r.failure && r.failure !== "error") break;
+    }
+    pending = pending.filter((url) => !replaced.has(url));
+  }
+  if (!order.includes("firecrawl")) return;
+  for (const url of pending) {
+    const page = out.get(url);
+    if (!page) continue;
+    const scraped = await firecrawlScrape(url, options.budget, timeout).catch(() => null);
+    if (!scraped) continue;
+    const text = scraped.markdown.replace(/\s+/g, " ").trim();
+    if (better(page, text)) {
+      out.set(url, { ...page, title: scraped.title || page.title, text, engine: "firecrawl", credits: (page.credits ?? 0) + 1, extractedChars: text.length });
+    }
+  }
 }
 
 /** One page through the reader interface. */

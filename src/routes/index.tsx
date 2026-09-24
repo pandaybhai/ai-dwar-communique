@@ -24,12 +24,14 @@ import {
 } from "@/components/marketing/product-proof";
 import { DemoForm } from "@/components/marketing/demo-form";
 import { trackMarketing } from "@/lib/marketing-analytics";
+import { getPublicPlans } from "@/lib/public-plans.functions";
 
 const TITLE = "AiDwar — Your AI employee inside WhatsApp";
 const DESCRIPTION =
   "AiDwar understands your business, replies to customers on WhatsApp, and asks for your approval when needed. Book a personalised demo.";
 
 export const Route = createFileRoute("/")({
+  loader: () => getPublicPlans(),
   head: () => ({
     meta: [
       { title: TITLE },
@@ -372,6 +374,8 @@ function Index() {
           </div>
         </section>
 
+        <PlansStrip />
+
         {/* FAQs */}
         <section className="border-t border-border bg-secondary/25">
           <div className="mx-auto max-w-3xl px-5 py-20 sm:px-8 sm:py-24">
@@ -447,5 +451,43 @@ function Index() {
       </div>
       <div className={formVisible ? "" : "h-20 sm:hidden"} aria-hidden />
     </div>
+  );
+}
+
+function PlansStrip() {
+  const { plans } = Route.useLoaderData();
+  if (!plans.length) return null;
+  const inr = (v: number) =>
+    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
+  return (
+    <section className="border-t border-border">
+      <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+        <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Plans</h2>
+        <p className="mt-3 text-muted-foreground">
+          One monthly plan for the platform, plus 18% GST. Message credits are topped up separately.
+        </p>
+        <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {plans.map((plan) => (
+            <li key={plan.key} className="rounded-2xl border border-border bg-background p-6 transition-shadow duration-200 hover:shadow-md">
+              <h3 className="font-heading text-lg font-bold">{plan.name}</h3>
+              <p className="mt-2 font-heading text-2xl font-bold">
+                {plan.price_monthly ? (
+                  <>
+                    {inr(plan.price_monthly)}
+                    <span className="text-sm font-normal text-muted-foreground"> / month</span>
+                  </>
+                ) : (
+                  "Let's talk"
+                )}
+              </p>
+              {plan.tagline ? <p className="mt-2 text-sm text-muted-foreground">{plan.tagline}</p> : null}
+            </li>
+          ))}
+        </ul>
+        <Link to="/pricing" className="mt-8 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+          Compare every plan <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+    </section>
   );
 }
