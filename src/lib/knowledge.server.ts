@@ -439,6 +439,9 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   let runCap =
     mode === "full" ? Math.max(Math.min(planCap - alreadySeen, RUN_PAGE_CAP), 0) : day0Limit;
   if (runLimit > 0) runCap = Math.min(runCap, runLimit);
+  // App stores, social profiles, marketplaces, maps: that one page only.
+  const singlePage = config["single_page"] === true;
+  if (singlePage) runCap = 0;
   // Firecrawl credits are reserved per call against the monthly caps; once a
   // cap is hit the rest of this read uses our own reader, logged once.
   const budget: FirecrawlBudget = {
@@ -468,13 +471,13 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   onStage?.("sitemap");
   const [blocked, sitemap, , key, settings]: [string[], string[], string[], string | null, { data: unknown }] =
     await Promise.all([
-      disallowedPaths(origin),
-      sitemapUrls(origin),
+      singlePage ? Promise.resolve([] as string[]) : disallowedPaths(origin),
+      singlePage ? Promise.resolve([] as string[]) : sitemapUrls(origin),
       Promise.resolve([] as string[]),
       readerKey(supabase),
       supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
     ]);
-  const mapped = (await mapSite(start.toString(), reading.map_engine, { sitemap, budget, tavilyBudget })).urls;
+  const mapped = singlePage ? [] : (await mapSite(start.toString(), reading.map_engine, { sitemap, budget, tavilyBudget })).urls;
   const costCap = Number(
     (settings.data as { day0_crawl_cost_cap?: number } | null)?.day0_crawl_cost_cap ?? 2,
   );
