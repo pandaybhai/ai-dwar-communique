@@ -86,7 +86,7 @@ export const Route = createFileRoute("/api/ai/employee")({
               supabase
                 .from("ai_instructions")
                 .select(
-                  "id, persona_name, tone, instructions, escalation_rules, handover_message, languages, working_hours_behaviour, version, is_current, updated_at",
+                  "id, persona_name, tone, instructions, escalation_rules, handover_message, languages, working_hours_behaviour, version, is_current, updated_at, updated_by",
                 )
                 .eq("organization_id", org)
                 .order("version", { ascending: false })
@@ -446,82 +446,42 @@ export const Route = createFileRoute("/api/ai/employee")({
             return Response.json({ ok: true });
           }
 
-          if (action === "save_instructions") {
+          if (action === "save_instructions" || action === "revert_instructions") {
             const agent = await agentRow();
             if (!agent) return jsonError("No AI employee in this workspace yet.");
-            const { data: current } = await supabase
-              .from("ai_instructions")
-              .select("version")
-              .eq("agent_id", agent.id)
-              .order("version", { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            const nextVersion = Number((current as { version?: number } | null)?.version ?? 0) + 1;
-
-            await supabase.from("ai_instructions").update({ is_current: false }).eq("agent_id", agent.id);
-            const { error } = await supabase.from("ai_instructions").insert({
-              organization_id: org,
-              agent_id: agent.id,
-              persona_name: String(payload["persona_name"] ?? agent.name),
-              tone: String(payload["tone"] ?? "friendly"),
-              instructions: String(payload["instructions"] ?? ""),
-              escalation_rules: String(payload["escalation_rules"] ?? ""),
-              handover_message:
-                String(payload["handover_message"] ?? "").trim() ||
-                "Let me get someone from the team to help — they'll reply here shortly.",
-              languages:
-                Array.isArray(payload["languages"]) && payload["languages"].length
-                  ? (payload["languages"] as unknown[]).map(String)
-                  : ["en", "hi"],
-
-              working_hours_behaviour: String(payload["working_hours_behaviour"] ?? "always"),
-              version: nextVersion,
-              is_current: true,
-              updated_by: auth.userId,
+            const { saveBehaviourVersion, fieldsFromPayload, conflictMessage } = await import(
+              "@/lib/behaviour-save.server"
+            );
+            let fields = fieldsFromPayload(payload, agent.name);
+            let revertedFrom: number | undefined;
+            if (action === "revert_instructions") {
+              const versionId = String(payload["instruction_id"] ?? "");
+              if (!versionId) return jsonError("Which version?");
+              const { data: old } = await supabase
+                .from("ai_instructions")
+                .select("*")
+                .eq("id", versionId)
+                .eq("organization_id", org)
+                .maybeSingle();
+              if (!old) return jsonError("That version is gone.");
+              fields = fieldsFromPayload(old as Record<string, unknown>, agent.name);
+              revertedFrom = Number((old as { version?: number }).version ?? 0);
+            }
+            const base = payload["base_version"];
+            const result = await saveBehaviourVersion(supabase, {
+              organizationId: org,
+              agentId: agent.id,
+              userId: auth.userId,
+              fields,
+              baseVersion: typeof base === "number" ? base : null,
+              audience: "merchant",
+              via: "owner",
+              ...(revertedFrom != null ? { reverted_from: revertedFrom } : {}),
             });
-            if (error) return jsonError("We couldn't save that.");
-            await logServerActivity(supabase, org, auth.userId, "ai_instructions_updated", {
-              version: nextVersion,
-            });
-            return Response.json({ ok: true, version: nextVersion });
-          }
-
-          if (action === "revert_instructions") {
-            const agent = await agentRow();
-            const versionId = String(payload["instruction_id"] ?? "");
-            if (!agent || !versionId) return jsonError("Which version?");
-            const { data: old } = await supabase
-              .from("ai_instructions")
-              .select("*")
-              .eq("id", versionId)
-              .eq("organization_id", org)
-              .maybeSingle();
-            if (!old) return jsonError("That version is gone.");
-            const source = old as Record<string, unknown>;
-            const { data: current } = await supabase
-              .from("ai_instructions")
-              .select("version")
-              .eq("agent_id", agent.id)
-              .order("version", { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            const nextVersion = Number((current as { version?: number } | null)?.version ?? 0) + 1;
-            await supabase.from("ai_instructions").update({ is_current: false }).eq("agent_id", agent.id);
-            await supabase.from("ai_instructions").insert({
-              organization_id: org,
-              agent_id: agent.id,
-              persona_name: source["persona_name"],
-              tone: source["tone"],
-              instructions: source["instructions"],
-              escalation_rules: source["escalation_rules"],
-              handover_message: source["handover_message"],
-              languages: source["languages"],
-              working_hours_behaviour: source["working_hours_behaviour"],
-              version: nextVersion,
-              is_current: true,
-              updated_by: auth.userId,
-            });
-            return Response.json({ ok: true, version: nextVersion });
+            if (!result.ok && "conflict" in result)
+              return Response.json({ error: conflictMessage(result.conflict), conflict: result.conflict }, { status: 409 });
+            if (!result.ok) return jsonError(result.error);
+            return Response.json({ ok: true, version: result.version });
           }
 
           if (action === "skills") {
