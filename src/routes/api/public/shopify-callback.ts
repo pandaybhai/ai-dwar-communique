@@ -94,6 +94,12 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
 
         const integrationId = (saved as { id: string } | null)?.id;
         if (!integrationId) return settingsUrl({ shopify_error: "save" });
+        if (creds.source === "custom") {
+          await service
+            .from("shopify_app_credentials")
+            .update({ status: "active", updated_at: nowIso })
+            .eq("shop_domain", shopDomain);
+        }
 
         await service.from("integration_credentials").upsert(
           {
