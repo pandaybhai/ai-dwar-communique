@@ -385,8 +385,10 @@ async function factsPass(
       });
       const output = (run.output ?? "").trim();
       if (output.length > 80) {
-        doc.metadata = { ...(doc.metadata ?? {}), raw_excerpt: doc.content.slice(0, 2000) };
-        doc.content = output;
+        // The summary leads, but the page text is always kept too: a summary
+        // that drops a price must never be the only thing Aiden can find.
+        doc.metadata = { ...(doc.metadata ?? {}), raw_excerpt: doc.content.slice(0, 2000), summarised: true };
+        doc.content = `${output}\n\n${doc.content}`;
       }
       cost += run.costAmount ?? 0;
       const { meterAiUsage } = await import("@/lib/ai-run.server");
