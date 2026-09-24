@@ -11,6 +11,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getScript } from "@/lib/scripts.server";
 import { normalizePhone } from "@/lib/phone";
 import { sendServiceText, sendServiceList } from "@/lib/service-text.server";
 import { isServiceWindowOpen } from "@/lib/service-window";
@@ -522,7 +523,7 @@ export async function handleOwnerAnswer(
     .eq("id", target.id);
 
   await args.reply(
-    delivered ? "Sent. I'll remember that for next time." : "Saved — I'll remember that.",
+    delivered ? "Sent. I'll remember that for next time." : await getScript(supabase, "fact_saved"),
   );
   return true;
 }

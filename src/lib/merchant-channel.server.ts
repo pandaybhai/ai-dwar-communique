@@ -15,6 +15,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getScript } from "@/lib/scripts.server";
 import { normalizePhone } from "@/lib/phone";
 import {
   sendServiceText,
@@ -74,14 +75,6 @@ async function personaNameFor(
   const { personaName } = await currentInstructions(supabase, agentId);
   return personaName.trim() || DEFAULT_PERSONA;
 }
-
-/** What we say to someone who writes in without a workspace behind them. */
-const STRANGER_REPLY =
-  "Hi! I'm Aiden from AiDwar. If you've signed up, open aidwar.in/app — your code is on the home screen; send it here and I'll get started. New here? Sign up at aidwar.in.";
-
-/** Only for the rare case where the model returns nothing at all. */
-const NO_SOURCE_REPLY =
-  "I didn't catch that one — ask me again and I'll have a proper go at it.";
 
 /**
  * Questions about AiDwar's own plans — never about the owner's own prices,
@@ -192,7 +185,7 @@ async function strangerGreetCount(
     .select("id")
     .eq("conversation_id", conversationId)
     .eq("direction", "outbound")
-    .like("body", "Hi! I'm Aiden from AiDwar%")
+    .eq("metadata->>kind", "stranger_greeting")
     .in("status", ["sent", "delivered", "read"])
     .gte("created_at", since);
   return data?.length ?? 0;
@@ -319,7 +312,11 @@ export async function handleMerchantInbound(
     if (greeted < 3) {
       const quietNote =
         greeted === 2 ? " I'll go quiet now until you send a code." : "";
-      await reply(STRANGER_REPLY + quietNote);
+      await sendServiceText(supabase, {
+        ...channel,
+        body: prefix + (await getScript(supabase, "stranger_reply")) + quietNote,
+        metadata: { kind: "stranger_greeting" },
+      });
     }
     return;
   }
@@ -385,16 +382,18 @@ export async function handleMerchantInbound(
         },
       });
       await replyButtons(
-        `${firstName}, meet ${persona}. From today he works for ${businessName || "your business"} — answering your customers on WhatsApp, day and night, no leave, no attitude.\n\nHe hasn't read a word about you yet. Let's fix that.`,
+        await getScript(supabase, "day_one_intro", {
+          first_name: firstName,
+          persona,
+          business: businessName || "your business",
+        }),
         [{ id: "start", title: "Your own AI employee" }],
         idCard,
       );
       await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
       return;
     }
-    await reply(
-      `Send me your website link. Give me 2 minutes with it and I'll know ${businessName || "your business"} the way a good new hire knows it on day one — what you sell, what you charge, how you deliver.`,
-    );
+    await reply(await getScript(supabase, "ask_website", { business: businessName || "your business" }));
   };
 
   // ---------------------------------------------------------- 1. THE CODE
@@ -625,9 +624,7 @@ export async function handleMerchantInbound(
       (platform as { day0_crawl_cost_cap?: number } | null)?.day0_crawl_cost_cap ?? 2,
     );
     if (onTrial && source.cost_amount >= costCap) {
-      await reply(
-        "I've used up the free reading allowance for your trial. Pick a plan at https://aidwar.in/app/billing and I'll read it straight away.",
-      );
+      await reply(await getScript(supabase, "trial_cap_reply"));
       return;
     }
 
@@ -744,7 +741,7 @@ export async function handleMerchantInbound(
     }
 
     const readingCaption = firstSite
-      ? `Reading ${host} now. Go grab a chai — I'll ping you in 2 minutes with everything I learned.`
+      ? await getScript(supabase, "reading_site", { site: host })
       : `Reading ${host} now — I'll add whatever I find to what I already know.`;
     const notebook = await renderCard(supabase, "notebook", {
       sessionId: session.id,
@@ -866,9 +863,7 @@ export async function handleMerchantInbound(
       .maybeSingle();
     const o = (orgRow ?? {}) as { plan_status?: string | null; plan_version_id?: string | null };
     if (!o.plan_version_id || o.plan_status === "trial" || o.plan_status === "locked") {
-      await reply(
-        "Plans start at ₹2,499 a month. Pick one and pay in a minute here — I'll keep working the moment it's done:\nhttps://aidwar.in/app/billing",
-      );
+      await reply(await getScript(supabase, "upgrade_intent"));
       return;
     }
   }
@@ -895,9 +890,7 @@ export async function handleMerchantInbound(
         userId: session.user_id,
       });
       await reply(
-        saved.ok
-          ? "Saved — I'll remember that."
-          : "I couldn't save that just now. Send it again in a moment and I'll keep it.",
+        await getScript(supabase, saved.ok ? "fact_saved" : "fact_save_failed"),
       );
       return;
     }
@@ -937,7 +930,7 @@ export async function handleMerchantInbound(
       question: body,
       aiRunId: run.runId,
     });
-    await reply(NO_SOURCE_REPLY);
+    await reply(await getScript(supabase, "no_source_reply"));
     return;
   }
 
@@ -1199,9 +1192,7 @@ async function finishNumberConnected(
   ]);
 
   const number = args.displayNumber ?? "your number";
-  const caption =
-    `I'm on duty at ${number}. Message it from your own phone and watch me work.\n\n` +
-    "When I'm not sure, I hand over to you. I never guess.";
+  const caption = await getScript(supabase, "on_duty", { number });
 
   const { data: org } = await supabase
     .from("organizations")

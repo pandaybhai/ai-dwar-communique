@@ -292,7 +292,8 @@ export async function handoverMessage(
   supabase: SupabaseClient,
   agentId: string | null,
 ): Promise<string> {
-  if (!agentId) return DEFAULT_HANDOVER_MESSAGE;
+  const { getScript } = await import("@/lib/scripts.server");
+  if (!agentId) return getScript(supabase, "handover_default");
   const { data } = await supabase
     .from("ai_instructions")
     .select("handover_message")
@@ -300,7 +301,7 @@ export async function handoverMessage(
     .eq("is_current", true)
     .maybeSingle();
   const text = (data as { handover_message?: string | null } | null)?.handover_message ?? "";
-  return text.trim() || DEFAULT_HANDOVER_MESSAGE;
+  return text.trim() || getScript(supabase, "handover_default");
 }
 
 /** The real answer the agent would give a customer. */
