@@ -26,7 +26,7 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
 
         // Manual token paste skips the register and subscribe steps, so it is a
         // platform-support tool only — never available to org admins.
-        const { isSuperAdmin, debugToken } = await import("@/lib/whatsapp-api.server");
+        const { isSuperAdmin } = await import("@/lib/whatsapp-api.server");
         if (!(await isSuperAdmin(auth.supabase, auth.userId))) {
           return jsonError(
             "Manual connection is restricted to AiDwar support. Please use Connect with Facebook.",
@@ -80,7 +80,6 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
         const guard = await verifyTokenForNumber(accessToken, phoneNumberId);
         if (!guard.ok) return jsonError(guard.error, 400);
         const info = guard.info;
-        void debugToken;
 
         const { data: prevCred } = await supabase
           .from("whatsapp_credentials")
