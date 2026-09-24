@@ -24,6 +24,7 @@ import {
   READER_COST,
   fetchWithTimeout,
   readPage,
+  readPages,
   readerKey,
   stripHtml,
 } from "@/lib/web-reader.server";
