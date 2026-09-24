@@ -230,6 +230,7 @@ async function unsupportedPolicyClaims(
     actingRole: string | null;
     sentences: string[];
     sources: string;
+    channel?: RunOptions["channel"];
   },
 ): Promise<string[]> {
   if (!args.sources.trim()) return args.sentences;
@@ -246,6 +247,7 @@ async function unsupportedPolicyClaims(
       useKnowledge: false,
       useTools: false,
       billingExempt: true,
+      ...(args.channel ? { channel: args.channel } : {}),
       metadata: { purpose: "policy_claim_check" },
       system: [
         "You check whether sentences are directly supported by the sources.",
@@ -1486,6 +1488,7 @@ export async function executeRun(
         actorUserId,
         actingRole,
         sentences: candidates,
+        channel: options.channel,
         sources: sourceText,
       });
       if (unsupported.length > 0) {
