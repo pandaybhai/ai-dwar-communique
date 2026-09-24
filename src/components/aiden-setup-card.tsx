@@ -139,7 +139,8 @@ export function AidenSetupCard({
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-bold tracking-tight text-foreground">
             Aiden finished reading {finished.name} —{" "}
-            {(finished.item_count ?? 0).toLocaleString("en-IN")} things.
+            {(finished.pages_seen ?? finished.item_count ?? 0).toLocaleString("en-IN")} pages
+            {finished.products_found ? ` · ${finished.products_found.toLocaleString("en-IN")} products` : ""}.
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">Ask him something.</p>
         </div>
