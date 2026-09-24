@@ -9,7 +9,14 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { firecrawlScrape, type FirecrawlBudget } from "@/lib/firecrawl.server";
+import { firecrawlMap, firecrawlScrape, type FirecrawlBudget } from "@/lib/firecrawl.server";
+import { tavilyExtract, tavilyMap, type TavilyBudget } from "@/lib/tavily.server";
+
+/** The three readers behind one interface. */
+export type ReaderEngine = "own" | "tavily" | "firecrawl";
+export const READER_ENGINES: ReaderEngine[] = ["own", "tavily", "firecrawl"];
+/** Below this much main text a page counts as "not read" and the next engine tries. */
+export const MIN_MAIN_TEXT = 300;
 
 export const READER_COST = 0.2;
 const READER_ENDPOINT = "https://r.jina.ai/";
@@ -20,6 +27,10 @@ export type PageRead = {
   html: string;
   links: string[];
   usedReader: boolean;
+  /** Which engine produced the text (saved as knowledge_documents metadata.engine). */
+  engine?: ReaderEngine;
+  /** Credits this page cost on that engine (Tavily batches share a credit). */
+  credits?: number;
   /** What our own fetch saw, for diagnostics. */
   status?: number;
   bytes?: number;
@@ -119,7 +130,7 @@ function looksEmpty(_html: string, text: string): boolean {
   return text.length < 300;
 }
 
-export async function readPage(
+async function readLegacy(
   url: string,
   options: {
     key?: string | null;
@@ -136,7 +147,7 @@ export async function readPage(
   const timeout = options.timeoutMs ?? 20000;
 
   if (options.engine === "auto") {
-    const own = await readPage(url, { ...options, engine: "own", allowReader: false });
+    const own = await readLegacy(url, { ...options, engine: "own", allowReader: false });
     if (own && own.contentType?.toLowerCase().includes("text/html") && !looksEmpty(own.html, own.text)) return own;
   }
 
@@ -152,6 +163,8 @@ export async function readPage(
       html: scraped.html,
       links,
       usedReader: false,
+      engine: "firecrawl",
+      credits: 1,
       status: scraped.statusCode,
       bytes: scraped.html.length,
       extractedChars: scraped.markdown.length,
@@ -224,4 +237,166 @@ export async function readPage(
 
   if (!readableDirect) return null;
   return { title, text, html, links, usedReader: false, ...diagnostics };
+}
+
+export type ReadOptions = {
+  /** Engines to try, in order: primary first, then the fallback order. */
+  order?: ReaderEngine[];
+  tavilyDepth?: "basic" | "advanced";
+  key?: string | null;
+  allowReader?: boolean;
+  timeoutMs?: number;
+  /** Firecrawl credits are charged here. */
+  budget?: FirecrawlBudget;
+  /** Tavily credits are charged here. */
+  tavilyBudget?: TavilyBudget;
+  onStage?: (stage: "fetch" | "reader" | "extract") => void;
+};
+
+/** Primary first, then fallbacks, each engine once. */
+export function engineOrder(primary: string, fallback: unknown): ReaderEngine[] {
+  const list = [primary, ...(Array.isArray(fallback) ? fallback : [])].filter((e): e is ReaderEngine =>
+    READER_ENGINES.includes(e as ReaderEngine),
+  );
+  const out = Array.from(new Set(list));
+  return out.length ? out : ["own"];
+}
+
+/** Our own fetch of the raw markup: JSON-LD / Open Graph and links live here. */
+async function rawHtml(url: string, timeoutMs: number): Promise<{ html: string; status: number; headers: Record<string, string> }> {
+  const res = await fetchWithTimeout(url, Math.min(timeoutMs, 15000));
+  const type = res?.headers.get("content-type") ?? "";
+  const html = res?.ok && type.toLowerCase().includes("text/html") ? ((await res.text().catch(() => "")) ?? "") : "";
+  const headers: Record<string, string> = {};
+  if (res) for (const name of ["content-type", "x-shopid", "x-shopify-stage", "powered-by", "x-powered-by"]) {
+    const v = res.headers.get(name);
+    if (v) headers[name] = v;
+  }
+  return { html, status: res?.status ?? 0, headers };
+}
+
+/**
+ * Read several pages (the crawler hands over up to 5 so Tavily credits are
+ * used fully). Each URL walks the engine order until one returns at least
+ * MIN_MAIN_TEXT characters; a cap, 402/429 or failure moves to the next
+ * engine. When none clears the bar, the longest thin result is kept.
+ */
+export async function readPages(urls: string[], options: ReadOptions = {}): Promise<Map<string, PageRead | null>> {
+  const order = options.order?.length ? options.order : (["own"] as ReaderEngine[]);
+  const timeout = options.timeoutMs ?? 20000;
+  const out = new Map<string, PageRead | null>();
+  const thin = new Map<string, PageRead>();
+  const keepThin = (url: string, page: PageRead | null) => {
+    if (!page) return;
+    const prev = thin.get(url);
+    if (!prev || page.text.length > prev.text.length) thin.set(url, page);
+  };
+  let remaining = Array.from(new Set(urls));
+  options.onStage?.("fetch");
+
+  for (let i = 0; i < order.length && remaining.length; i += 1) {
+    const engine = order[i]!;
+    const last = i === order.length - 1;
+
+    if (engine === "tavily") {
+      const depth = options.tavilyDepth ?? "basic";
+      const accepted = new Map<string, { title: string; markdown: string; credits: number }>();
+      let stop = false;
+      const run = async (batch: string[], d: "basic" | "advanced") => {
+        const r = await tavilyExtract(batch, d, options.tavilyBudget, Math.max(timeout, 30000));
+        if (r.failure && r.failure !== "error") stop = true; // cap/402/429/unconfigured: next engine
+        const share = r.credits / Math.max(batch.length, 1);
+        return { pages: r.pages, share };
+      };
+      for (let b = 0; b < remaining.length && !stop; b += 5) {
+        const batch = remaining.slice(b, b + 5);
+        const first = await run(batch, depth);
+        const retry: string[] = [];
+        for (const url of batch) {
+          const p = first.pages.get(url);
+          const len = p ? p.markdown.replace(/\s+/g, " ").trim().length : 0;
+          if (p && len >= MIN_MAIN_TEXT) accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share });
+          else if (depth === "basic" && !stop) retry.push(url);
+        }
+        if (retry.length) {
+          const second = await run(retry, "advanced");
+          for (const url of retry) {
+            const p = second.pages.get(url);
+            const len = p ? p.markdown.replace(/\s+/g, " ").trim().length : 0;
+            if (p && len >= MIN_MAIN_TEXT) accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share + second.share });
+          }
+        }
+      }
+      // Tavily gives no full HTML: fetch the static markup ourselves for
+      // products and links. Only Tavily's markdown is chunked and embedded.
+      await Promise.all(
+        Array.from(accepted.entries()).map(async ([url, p]) => {
+          const raw = await rawHtml(url, timeout);
+          const text = p.markdown.replace(/\s+/g, " ").trim();
+          const own = stripHtml(raw.html);
+          out.set(url, {
+            title: p.title || own.title,
+            text,
+            html: raw.html,
+            links: own.links,
+            usedReader: false,
+            engine: "tavily",
+            credits: p.credits,
+            status: raw.status || 200,
+            bytes: raw.html.length,
+            extractedChars: text.length,
+            contentType: "text/html",
+            headers: raw.headers,
+          });
+        }),
+      );
+      remaining = remaining.filter((u) => !out.has(u));
+      continue;
+    }
+
+    await Promise.all(
+      remaining.map(async (url) => {
+        let page: PageRead | null = null;
+        try {
+          page = await readLegacy(url, {
+            ...options,
+            engine: engine === "firecrawl" ? "firecrawl" : "own",
+            // The paid Jina fallback only runs inside our own reader.
+            allowReader: engine === "own" ? options.allowReader !== false : false,
+          });
+        } catch (error) {
+          if (last) console.error("[reader] page failed", url, error instanceof Error ? error.message : String(error));
+        }
+        if (page && !page.engine) {
+          page.engine = "own";
+          page.credits = 0;
+        }
+        if (page && page.text.length >= MIN_MAIN_TEXT) out.set(url, page);
+        else keepThin(url, page);
+      }),
+    );
+    remaining = remaining.filter((u) => !out.has(u));
+  }
+  for (const url of urls) if (!out.has(url)) out.set(url, thin.get(url) ?? null);
+  return out;
+}
+
+/** One page through the reader interface. */
+export async function readPage(url: string, options: ReadOptions = {}): Promise<PageRead | null> {
+  return (await readPages([url], options)).get(url) ?? null;
+}
+
+/**
+ * Site discovery. 'own' = the sitemap (plus Tavily map only when the site
+ * publishes no sitemap); 'tavily' / 'firecrawl' = that engine's map.
+ */
+export async function mapSite(
+  url: string,
+  engine: ReaderEngine,
+  opts: { sitemap: string[]; budget?: FirecrawlBudget; tavilyBudget?: TavilyBudget },
+): Promise<{ urls: string[]; engine: ReaderEngine | "sitemap" }> {
+  if (engine === "firecrawl") return { urls: await firecrawlMap(url, opts.budget), engine };
+  if (engine === "tavily") return { urls: await tavilyMap(url, opts.tavilyBudget), engine };
+  if (opts.sitemap.length) return { urls: [], engine: "sitemap" };
+  return { urls: await tavilyMap(url, opts.tavilyBudget), engine: "tavily" };
 }

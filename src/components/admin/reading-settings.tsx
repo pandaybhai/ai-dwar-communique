@@ -9,7 +9,12 @@ import { ErrorState } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
 
 type Settings = {
-  crawl_engine: "firecrawl" | "auto" | "own";
+  reader_primary: Engine;
+  reader_fallback_order: Engine[];
+  tavily_extract_depth: "basic" | "advanced";
+  map_engine: Engine;
+  tavily_monthly_credit_cap: number;
+  tavily_workspace_monthly_cap: number;
   day0_page_limit: number;
   full_crawl_trigger: "on_number_connected" | "on_plan_active" | "manual";
   backfill_pages_per_day: number;
@@ -20,6 +25,19 @@ type Settings = {
   firecrawl_workspace_monthly_cap: number;
   plan_page_overrides: Record<string, number>;
 };
+type Engine = "own" | "tavily" | "firecrawl";
+const ENGINE_OPTS: Array<{ v: Engine; label: string }> = [
+  { v: "tavily", label: "Tavily" },
+  { v: "firecrawl", label: "Firecrawl" },
+  { v: "own", label: "Own reader" },
+];
+const ORDERS: Engine[][] = [
+  ["tavily", "firecrawl", "own"],
+  ["firecrawl", "tavily", "own"],
+  ["tavily", "own"],
+  ["firecrawl", "own"],
+  ["own"],
+];
 type Meta = { version: number; updated_at: string | null; updated_by_name: string | null };
 type Plan = { id: string; name: string; pages: number };
 type Loaded = { settings: Settings; meta: Meta; plans: Plan[] };
@@ -31,6 +49,8 @@ const NUMBERS: Array<{ key: keyof Settings; label: string; help: string }> = [
   { key: "manual_refresh_cooldown_hours", label: "\"Read changes now\" cooldown (hours)", help: "How often a merchant can ask." },
   { key: "firecrawl_monthly_credit_cap", label: "Firecrawl credits / month (platform)", help: "After this, our own reader takes over." },
   { key: "firecrawl_workspace_monthly_cap", label: "Firecrawl credits / month (per workspace)", help: "Same fallback, per workspace." },
+  { key: "tavily_monthly_credit_cap", label: "Tavily credits / month (platform)", help: "After this, the next reader in the fallback order." },
+  { key: "tavily_workspace_monthly_cap", label: "Tavily credits / month (per workspace)", help: "Same fallback, per workspace." },
 ];
 
 function Choice<T extends string>({ value, options, onChange }: { value: T; options: Array<{ v: T; label: string }>; onChange: (v: T) => void }) {
@@ -109,14 +129,37 @@ export function ReadingSettingsPanel() {
       </div>
 
       <div className="space-y-2">
-        <Label>Reading engine</Label>
+        <Label>Main reader</Label>
+        <Choice value={draft.reader_primary} onChange={(v) => set("reader_primary", v)} options={ENGINE_OPTS} />
+      </div>
+      <div className="space-y-2">
+        <Label>If it fails, thin page (under 300 characters), limit reached or refused</Label>
         <Choice
-          value={draft.crawl_engine}
-          onChange={(v) => set("crawl_engine", v)}
+          value={draft.reader_fallback_order.join(",")}
+          onChange={(v) => set("reader_fallback_order", v.split(",") as Engine[])}
+          options={ORDERS.map((o) => ({ v: o.join(","), label: o.map((e) => ENGINE_OPTS.find((x) => x.v === e)?.label).join(" → ") }))}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Tavily depth</Label>
+        <Choice
+          value={draft.tavily_extract_depth}
+          onChange={(v) => set("tavily_extract_depth", v)}
           options={[
+            { v: "basic", label: "Basic (retries a thin page with advanced)" },
+            { v: "advanced", label: "Advanced (2× credits)" },
+          ]}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Finding pages</Label>
+        <Choice
+          value={draft.map_engine}
+          onChange={(v) => set("map_engine", v)}
+          options={[
+            { v: "own", label: "Sitemap (Tavily only if none)" },
+            { v: "tavily", label: "Tavily" },
             { v: "firecrawl", label: "Firecrawl" },
-            { v: "auto", label: "Auto (own first, Firecrawl for thin pages)" },
-            { v: "own", label: "Own reader only" },
           ]}
         />
       </div>
