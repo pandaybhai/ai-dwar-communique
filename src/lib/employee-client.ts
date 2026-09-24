@@ -59,6 +59,9 @@ export type InstructionVersion = {
   version: number;
   is_current: boolean;
   updated_at: string;
+  updated_by?: string | null;
+  /** "AiDwar support" when a super admin saved it (merchant view). */
+  updated_by_name?: string | null;
 };
 
 export type KnowledgeSource = {

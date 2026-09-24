@@ -181,7 +181,15 @@ export const Route = createFileRoute("/api/ai/employee")({
               spend_this_month: Number(spend.data ?? 0),
               tiers: models.data ?? [],
               task_models: taskModels.data ?? [],
-              instructions: instructions.data ?? [],
+              instructions: await (async () => {
+                const rows = (instructions.data ?? []) as Array<Record<string, unknown>>;
+                const { authorNames } = await import("@/lib/behaviour-save.server");
+                const names = await authorNames(rows.map((r) => String(r["updated_by"] ?? "")), "merchant");
+                return rows.map((r) => ({
+                  ...r,
+                  updated_by_name: names[String(r["updated_by"] ?? "")]?.name ?? null,
+                }));
+              })(),
               sources: sources.data ?? [],
               tools,
               week: {

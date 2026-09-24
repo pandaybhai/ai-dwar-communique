@@ -46,11 +46,14 @@ export function BehaviourEditor({
   versions,
   canConfigure,
   onChanged,
+  api = employeeApi,
 }: {
   organizationId: string;
   versions: InstructionVersion[];
   canConfigure: boolean;
   onChanged: () => void | Promise<void>;
+  /** Admin mode passes the /api/admin/ai caller; same payload shape. */
+  api?: (body: Record<string, unknown>) => Promise<{ error?: string | null }>;
 }) {
   const current = useMemo(
     () => versions.find((v) => v.is_current) ?? versions[0] ?? null,
@@ -85,9 +88,10 @@ export function BehaviourEditor({
 
   const save = async () => {
     setSaving(true);
-    const { error } = await employeeApi({
+    const { error } = await api({
       organization_id: organizationId,
       action: "save_instructions",
+      base_version: current?.version ?? 0,
       persona_name: personaName,
       tone,
       instructions,
@@ -105,9 +109,10 @@ export function BehaviourEditor({
   };
 
   const revert = async (id: string) => {
-    const { error } = await employeeApi({
+    const { error } = await api({
       organization_id: organizationId,
       action: "revert_instructions",
+      base_version: current?.version ?? 0,
       instruction_id: id,
     });
     if (error) toast.error(error);
@@ -138,7 +143,16 @@ export function BehaviourEditor({
             person.
           </p>
         </div>
-        {current ? <Badge variant="secondary">Version {current.version}</Badge> : null}
+        {current ? (
+          <div className="flex flex-col items-end gap-1">
+            <Badge variant="secondary">Version {current.version}</Badge>
+            {current.updated_by_name ? (
+              <span className="text-xs text-muted-foreground">
+                Last changed by {current.updated_by_name}, {whenText(current.updated_at)}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-6 grid gap-5 md:grid-cols-2">
@@ -299,6 +313,7 @@ export function BehaviourEditor({
                     <p className="text-sm font-medium text-foreground">Version {v.version}</p>
                     <p className="truncate text-xs text-muted-foreground">
                       {whenText(v.updated_at)} · {v.persona_name || "Unnamed"}
+                      {v.updated_by_name ? ` · ${v.updated_by_name}` : ""}
                     </p>
                   </div>
                   {canConfigure ? (
