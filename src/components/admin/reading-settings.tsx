@@ -82,7 +82,10 @@ export function ReadingSettingsPanel() {
       body: { action: "reading_save", base_version: data.meta.version, settings: draft },
     });
     setSaving(false);
-    if (err || !res) return toast.error(err ?? "Couldn't save.");
+    if (err || !res) {
+      toast.error(err ?? "Couldn't save.");
+      return;
+    }
     setData(res);
     setDraft(res.settings);
     toast.success("Reading settings saved.");

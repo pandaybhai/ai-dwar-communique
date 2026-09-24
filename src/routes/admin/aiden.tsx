@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Building2, FlaskConical, Lock, RotateCcw, Search, Sparkles } from "lucide-react";
+import { BookOpen, Building2, FlaskConical, Lock, RotateCcw, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
