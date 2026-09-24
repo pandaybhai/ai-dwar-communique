@@ -1199,7 +1199,7 @@ export async function executeRun(
           });
         let { data: matches } = await match();
         // Nothing known: read one matching unread page of the site, then look again.
-        if (!(matches ?? []).length && !isMerchantChannel && conversationId && options.preview !== true) {
+        if (!(matches ?? []).length && !isMerchantChannel && conversationId && options.billingExempt !== true) {
           const { readOnDemand } = await import("@/lib/knowledge.server");
           if (await readOnDemand(supabase, organizationId, conversationId, input)) ({ data: matches } = await match());
         }
