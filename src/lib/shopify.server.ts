@@ -594,7 +594,7 @@ export async function refreshShopifyToken(
     refreshTokenExpiresAt?: string | null;
   },
 ): Promise<{ ok: true; accessToken: string } | { ok: false; fatal: boolean; error: string }> {
-  const creds = shopifyCredentials();
+  const creds = await resolveShopifyApp(args.shopDomain, supabase);
   if (!creds) return { ok: false, fatal: false, error: "Shopify app credentials are not configured." };
 
   const rtExpiry = args.refreshTokenExpiresAt ? Date.parse(args.refreshTokenExpiresAt) : null;
@@ -710,9 +710,9 @@ export async function signInstallState(payload: {
   organizationId: string;
   shopDomain: string;
   userId: string;
-}): Promise<string> {
-  const creds = shopifyCredentials();
-  if (!creds) throw new Error("Shopify app credentials are not configured.");
+}, secret?: string): Promise<string> {
+  const creds = { apiSecret: shopifyCredentials()?.apiSecret ?? secret ?? "" };
+  if (!creds.apiSecret) throw new Error("Shopify app credentials are not configured.");
   const body = JSON.stringify({ ...payload, ts: Date.now(), nonce: crypto.randomUUID() });
   const encoded = btoa(body).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const signature = toHex(await hmacBytes(creds.apiSecret, encoded));
@@ -721,9 +721,10 @@ export async function signInstallState(payload: {
 
 export async function verifyInstallState(
   state: string,
+  secret?: string,
 ): Promise<{ organizationId: string; shopDomain: string; userId: string } | null> {
-  const creds = shopifyCredentials();
-  if (!creds) return null;
+  const creds = { apiSecret: shopifyCredentials()?.apiSecret ?? secret ?? "" };
+  if (!creds.apiSecret) return null;
   const [encoded, signature] = state.split(".");
   if (!encoded || !signature) return null;
   const expected = toHex(await hmacBytes(creds.apiSecret, encoded));
