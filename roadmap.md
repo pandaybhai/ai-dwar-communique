@@ -16,3 +16,10 @@
 - [x] Phase 5b — reading priority/skip, per-source URL list, nightly backfill, on-demand read, content-hash refresh, merchant buttons + full-read banner/WhatsApp, admin UI for reading settings
 - [x] Phase 6 — Test tab (preview: true → billingExempt)
 - [x] Phase 7 — /admin → Users: super admin list, add/remove, logged + email — after email is set up
+
+## Sep 24 batch
+- [x] Reading independent of AI switch; pages save even when search prep fails
+- [x] Rendered re-read for client-loaded pages; re-read pages from a different engine
+- [x] /pricing + homepage plans in first HTML; sitemap/robots/root use aidwar.in
+- [ ] Email domain aidwar.in — waiting on user to complete setup dialog
+- [ ] Lovable AI credit limit reached — search prep for 6 aidwar.in pages waits on it
