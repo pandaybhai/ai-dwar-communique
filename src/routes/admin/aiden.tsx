@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Building2, FileText, FlaskConical, ScrollText, Search } from "lucide-react";
+import { BookOpen, Building2, FileText, FlaskConical, Search } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
+import { PromptBlocksEditor } from "@/components/admin/prompt-blocks-editor";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import type { InstructionVersion } from "@/lib/employee-client";
 
@@ -39,7 +40,7 @@ function AidenControl() {
         title="Aiden control centre"
         description="Everything that shapes how Aiden talks and reads, across every workspace. Every change is versioned and recorded."
       />
-      <Tabs defaultValue="workspaces">
+      <Tabs defaultValue="rules">
         <TabsList className="flex h-auto flex-wrap justify-start">
           <TabsTrigger value="rules">Rules</TabsTrigger>
           <TabsTrigger value="scripts">Scripts</TabsTrigger>
@@ -48,7 +49,7 @@ function AidenControl() {
           <TabsTrigger value="test">Test</TabsTrigger>
         </TabsList>
         <TabsContent value="rules" className="mt-6">
-          <Soon icon={ScrollText} title="Customer and owner rules move here next" text="Until then, edit them under AI operations." />
+          <PromptBlocksEditor keys={["agent_rules", "merchant_rules"]} heading={false} />
         </TabsContent>
         <TabsContent value="scripts" className="mt-6">
           <Soon icon={FileText} title="Aiden's fixed texts arrive in the next phase" text="Stranger reply, day-one intro and the rest will be editable here, with safe fallbacks." />

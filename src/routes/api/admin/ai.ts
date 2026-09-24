@@ -176,55 +176,68 @@ export const Route = createFileRoute("/api/admin/ai")({
         if (action === "prompt_blocks") {
           const { data, error } = await supabase
             .from("ai_prompt_blocks")
-            .select("key, name, description, content, default_content, version, updated_at")
+            .select("key, name, description, content, default_content, version, updated_at, updated_by")
             .order("key");
           if (error) return jsonError("The platform rules could not be loaded.", 500);
-          return Response.json({ blocks: data ?? [] });
+          const rows = (data ?? []) as Array<Record<string, unknown>>;
+          const { authorNames } = await import("@/lib/behaviour-save.server");
+          const names = await authorNames(rows.map((r) => String(r["updated_by"] ?? "")), "admin");
+          return Response.json({
+            blocks: rows.map((r) => ({ ...r, updated_by_name: names[String(r["updated_by"] ?? "")]?.name ?? null })),
+          });
         }
 
-        if (action === "save_prompt_block") {
+        if (action === "save_prompt_block" || action === "reset_prompt_block") {
           const key = String(payload["key"] ?? "").trim();
-          const content = String(payload["content"] ?? "").trim();
           if (!key) return jsonError("Which block?");
-          if (content.length < 10) return jsonError("The rules cannot be empty.");
-          if (content.length > 20000) return jsonError("That is too long to send with every message.");
           const { data: existing } = await supabase
             .from("ai_prompt_blocks")
-            .select("version")
+            .select("version, default_content, updated_by, updated_at")
             .eq("key", key)
             .maybeSingle();
           if (!existing) return jsonError("That block does not exist.");
-          const { error } = await supabase
+          const row = existing as { version: number; default_content: string; updated_by: string | null; updated_at: string };
+          const { authorNames, conflictMessage } = await import("@/lib/behaviour-save.server");
+          const conflict = async () => {
+            const { data: now } = await supabase
+              .from("ai_prompt_blocks")
+              .select("version, updated_by, updated_at")
+              .eq("key", key)
+              .maybeSingle();
+            const cur = (now ?? row) as { version: number; updated_by: string | null; updated_at: string };
+            const names = await authorNames(cur.updated_by ? [cur.updated_by] : [], "admin");
+            const c = { by: (cur.updated_by && names[cur.updated_by]?.name) || "someone else", at: cur.updated_at, version: cur.version };
+            return Response.json({ error: conflictMessage(c), conflict: c }, { status: 409 });
+          };
+          const base = typeof payload["base_version"] === "number" ? (payload["base_version"] as number) : row.version;
+          if (base !== row.version) return conflict();
+          let content = row.default_content ?? "";
+          if (action === "save_prompt_block") {
+            content = String(payload["content"] ?? "").trim();
+            if (content.length < 10) return jsonError("The rules cannot be empty.");
+            if (content.length > 20000) return jsonError("That is too long to send with every message.");
+          }
+          const nextVersion = row.version + 1;
+          // Guarded on the loaded version, so two admins saving at once can't both win.
+          const { data: written, error } = await supabase
             .from("ai_prompt_blocks")
-            .update({
-              content,
-              version: Number((existing as { version?: number }).version ?? 1) + 1,
-              updated_by: user.id,
-            })
-            .eq("key", key);
+            .update({ content, version: nextVersion, updated_by: user.id })
+            .eq("key", key)
+            .eq("version", row.version)
+            .select("key");
           if (error) return jsonError("The rules could not be saved.", 500);
-          return Response.json({ ok: true });
-        }
-
-        if (action === "reset_prompt_block") {
-          const key = String(payload["key"] ?? "").trim();
-          const { data: existing } = await supabase
-            .from("ai_prompt_blocks")
-            .select("version, default_content")
-            .eq("key", key)
-            .maybeSingle();
-          if (!existing) return jsonError("That block does not exist.");
-          const row = existing as { version?: number; default_content?: string };
-          const { error } = await supabase
-            .from("ai_prompt_blocks")
-            .update({
-              content: row.default_content ?? "",
-              version: Number(row.version ?? 1) + 1,
-              updated_by: user.id,
-            })
-            .eq("key", key);
-          if (error) return jsonError("The rules could not be reset.", 500);
-          return Response.json({ ok: true });
+          if (!written || written.length === 0) return conflict();
+          const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+          const { logServerActivity } = await import("@/lib/whatsapp-api.server");
+          const platformOrg = await resolvePlatformOrg(supabase).catch(() => null);
+          if (platformOrg)
+            await logServerActivity(supabase, platformOrg, user.id, "ai_prompt_block_updated", {
+              key,
+              old_version: row.version,
+              version: nextVersion,
+              reset: action === "reset_prompt_block",
+            });
+          return Response.json({ ok: true, version: nextVersion });
         }
 
         if (action === "set_markup") {
