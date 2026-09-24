@@ -397,7 +397,7 @@ export const Route = createFileRoute("/api/admin/ai")({
               );
             const incoming = (payload["settings"] ?? {}) as Record<string, unknown>;
             const next: Record<string, unknown> = {};
-            const ints = ["day0_page_limit", "backfill_pages_per_day", "refresh_days", "manual_refresh_cooldown_hours", "firecrawl_monthly_credit_cap", "firecrawl_workspace_monthly_cap", "tavily_monthly_credit_cap", "tavily_workspace_monthly_cap"];
+            const ints = ["day0_page_limit", "backfill_pages_per_day", "refresh_days", "manual_refresh_cooldown_hours", "firecrawl_monthly_credit_cap", "firecrawl_workspace_monthly_cap", "tavily_monthly_credit_cap", "tavily_workspace_monthly_cap", "link_reread_days", "trial_links_per_day", "trial_links_total"];
             for (const k of ints) {
               if (incoming[k] == null) continue;
               const n = Math.floor(Number(incoming[k]));
