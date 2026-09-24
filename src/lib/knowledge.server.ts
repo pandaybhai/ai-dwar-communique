@@ -27,6 +27,7 @@ import {
   readerKey,
   stripHtml,
 } from "@/lib/web-reader.server";
+import { firecrawlMap } from "@/lib/firecrawl.server";
 
 export type SourceType =
   | "website"
@@ -435,10 +436,11 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const deadline = mode === "day0" ? Date.now() + 90_000 : null;
 
   onStage?.("sitemap");
-  const [blocked, sitemap, key, settings]: [string[], string[], string | null, { data: unknown }] =
+  const [blocked, sitemap, mapped, key, settings]: [string[], string[], string[], string | null, { data: unknown }] =
     await Promise.all([
       disallowedPaths(origin),
       sitemapUrls(origin),
+      firecrawlMap(start.toString()),
       readerKey(supabase),
       supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
     ]);
