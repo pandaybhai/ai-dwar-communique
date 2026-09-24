@@ -9,7 +9,7 @@
 - [x] Phase 5a — Firecrawl monthly caps (platform + workspace), per-call credit recording, fallback to own reader, day0_page_limit 15
 
 ## Open (in this order)
-- [ ] Phase 1 — /admin/aiden shell (super-admin gate), shared behaviour-save helper, version-conflict check ("Updated by <name> <time>"), "Last changed by" labels, audit rows
+- [x] Phase 1 — /admin/aiden shell (super-admin gate), shared behaviour-save helper, version-conflict check ("Updated by <name> <time>"), "Last changed by" labels, audit rows
 - [ ] Phase 2 — Rules tab (move PromptBlocksEditor, link from /admin/ai)
 - [ ] Phase 3 — Scripts tab: getScript + 12 keys in ai_prompt_blocks, tests, stranger_greeting metadata counter, read-only approved templates
 - [ ] Phase 4 — Workspaces tab + admin behaviour editor + persona generator (auto after first read, review banner)
