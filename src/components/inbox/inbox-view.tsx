@@ -86,7 +86,7 @@ export function InboxView() {
     const { data, error: err } = await aidwar
       .from("conversations")
       .select(
-        "id, status, assigned_to, whatsapp_account_id, last_message_at, last_customer_message_at, unread_count, needs_human, needs_human_reason, needs_human_question, needs_human_at, handover_state, contact:contacts(id, name, phone, opt_in_status), preview:messages(body, type, direction, created_at)",
+        "id, status, assigned_to, whatsapp_account_id, last_message_at, last_customer_message_at, unread_count, needs_human, needs_human_reason, needs_human_question, needs_human_at, handover_state, contact:contacts(id, name, phone, opt_in_status), preview:messages(body, type, direction, template_name, created_at)",
       )
       .eq("organization_id", orgId)
       .order("last_message_at", { ascending: false, nullsFirst: false })
