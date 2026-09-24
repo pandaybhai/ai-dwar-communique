@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
 
         const { data: accounts } = await supabase
           .from("whatsapp_accounts")
-          .select("id, waba_id, display_phone_number, verified_name, status, is_default")
+          .select("id, waba_id, display_phone_number, verified_name, status, is_default, health, last_health_error")
           .eq("organization_id", organizationId)
           .eq("status", "active");
 
@@ -50,6 +50,8 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
           display_phone_number: string | null;
           verified_name: string | null;
           is_default: boolean;
+          health: string | null;
+          last_health_error: string | null;
         }>;
         if (rows.length === 0)
           return Response.json({ connected: false, numbers: [], is_platform_org: false });
@@ -60,7 +62,7 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
 
         const { data: creds, error } = await supabase
           .from("whatsapp_credentials")
-          .select("waba_id, expires_at, expires_never, token_type, granted_scopes")
+          .select("waba_id, expires_at, expires_never, token_type, granted_scopes, removed_scopes")
           .eq("organization_id", organizationId)
           .in("waba_id", wabaIds.length > 0 ? wabaIds : ["__none__"]);
         if (error) return jsonError("We couldn't check your connection health.", 500);
@@ -72,6 +74,7 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
             expires_never: boolean | null;
             token_type: string | null;
             granted_scopes: string[] | null;
+            removed_scopes: string[] | null;
           }>).map((c) => [c.waba_id, c]),
         );
 
@@ -97,6 +100,8 @@ export const Route = createFileRoute("/api/whatsapp/token-status")({
             credentials_missing: !cred,
             scopes: cred?.granted_scopes ?? null,
             token_type: cred?.token_type ?? null,
+            removed_scopes: cred?.removed_scopes ?? [],
+            health: row.health ?? "ok",
             ...expiry,
           };
         });

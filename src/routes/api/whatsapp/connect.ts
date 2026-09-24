@@ -74,7 +74,24 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
 
         const { supabase, organizationId, userId } = auth;
 
-        const info = await debugToken(accessToken);
+        // Token guard: wrong app, no messaging scope or no access to this
+        // number → refuse before anything is written.
+        const { verifyTokenForNumber, removedScopes } = await import("@/lib/whatsapp-api.server");
+        const guard = await verifyTokenForNumber(accessToken, phoneNumberId);
+        if (!guard.ok) return jsonError(guard.error, 400);
+        const info = guard.info;
+        void debugToken;
+
+        const { data: prevCred } = await supabase
+          .from("whatsapp_credentials")
+          .select("granted_scopes")
+          .eq("organization_id", organizationId)
+          .eq("waba_id", wabaId)
+          .maybeSingle();
+        const dropped = removedScopes(
+          (prevCred as { granted_scopes?: string[] | null } | null)?.granted_scopes,
+          info.granted_scopes,
+        );
         if (!info.expires_at && !info.expires_never) {
           console.error(
             JSON.stringify({
@@ -98,6 +115,7 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
             expires_at: info.expires_at,
             expires_never: info.expires_never,
             granted_scopes: info.granted_scopes,
+            removed_scopes: dropped,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "organization_id,waba_id" },
@@ -151,6 +169,14 @@ export const Route = createFileRoute("/api/whatsapp/connect")({
           phone_number_id: phoneNumberId,
           waba_id: wabaId,
         });
+        if (dropped.length > 0) {
+          await logServerActivity(supabase, organizationId, userId, "whatsapp_scopes_removed", {
+            method: "manual",
+            phone_number_id: phoneNumberId,
+            waba_id: wabaId,
+            removed_scopes: dropped,
+          });
+        }
 
         return Response.json({ account: saved, reprocessed_events: reprocessed });
       },
