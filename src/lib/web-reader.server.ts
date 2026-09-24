@@ -292,6 +292,8 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
     if (!prev || page.text.length > prev.text.length) thin.set(url, page);
   };
   let remaining = Array.from(new Set(urls));
+  /** Pages Tavily already read rendered (advanced); no second rendered read. */
+  const advancedRead = new Set<string>();
   options.onStage?.("fetch");
 
   for (let i = 0; i < order.length && remaining.length; i += 1) {
@@ -315,7 +317,10 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
         for (const url of batch) {
           const p = first.pages.get(url);
           const len = p ? p.markdown.replace(/\s+/g, " ").trim().length : 0;
-          if (p && len >= MIN_MAIN_TEXT) accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share });
+          if (p && len >= MIN_MAIN_TEXT) {
+            accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share });
+            if (depth === "advanced") advancedRead.add(url);
+          }
           else if (depth === "basic" && !stop) retry.push(url);
         }
         if (retry.length) {
@@ -323,7 +328,10 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
           for (const url of retry) {
             const p = second.pages.get(url);
             const len = p ? p.markdown.replace(/\s+/g, " ").trim().length : 0;
-            if (p && len >= MIN_MAIN_TEXT) accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share + second.share });
+            if (p && len >= MIN_MAIN_TEXT) {
+              accepted.set(url, { title: p.title, markdown: p.markdown, credits: first.share + second.share });
+              advancedRead.add(url);
+            }
           }
         }
       }
@@ -415,8 +423,9 @@ async function rereadClientRendered(
   if (!targets.length) return;
   const better = (page: PageRead, text: string) => text.length >= Math.max(page.text.length * 1.3, MIN_MAIN_TEXT / 2);
 
+  const replaced = new Set<string>();
   let pending = targets.map(([url]) => url);
-  if (order.includes("tavily") || order.includes("firecrawl") === false) {
+  if (order.includes("tavily")) {
     for (let b = 0; b < pending.length; b += 5) {
       const batch = pending.slice(b, b + 5);
       const r = await tavilyExtract(batch, "advanced", options.tavilyBudget, Math.max(timeout, 30000));
@@ -428,12 +437,14 @@ async function rereadClientRendered(
         const text = p.markdown.replace(/\s+/g, " ").trim();
         if (better(page, text)) {
           out.set(url, { ...page, title: p.title || page.title, text, engine: "tavily", credits: (page.credits ?? 0) + share, extractedChars: text.length });
+          replaced.add(url);
         }
       }
       if (r.failure && r.failure !== "error") break;
     }
-    pending = pending.filter((url) => out.get(url)?.engine !== "tavily" || !advancedRereadDone(out.get(url)));
+    pending = pending.filter((url) => !replaced.has(url));
   }
+  if (!order.includes("firecrawl")) return;
   for (const url of pending) {
     const page = out.get(url);
     if (!page) continue;
