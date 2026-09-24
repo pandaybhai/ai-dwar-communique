@@ -223,6 +223,12 @@ export function CatalogCard({
             {catalog?.last_error ? (
               <p className="mt-2 max-w-md text-xs text-destructive">{catalog.last_error}</p>
             ) : null}
+            {catalog?.status === "attach_unconfirmed" ? (
+              <p className="mt-2 max-w-md text-xs text-muted-foreground">
+                If the catalogue isn't showing in WhatsApp yet, open WhatsApp Manager → Catalogue and
+                connect {catalog.catalog_name ?? "your catalogue"}.
+              </p>
+            ) : null}
           </div>
         </div>
 

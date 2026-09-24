@@ -57,6 +57,8 @@ async function logGraphCall(
  * calls on catalogues a merchant has shared with us as a partner — never for
  * sending messages. Linking to a WABA and commerce settings use the merchant token.
  */
+/** Saved but Meta did not confirm the attach to the number (partner-managed catalogues). */
+export const ATTACH_UNCONFIRMED = "attach_unconfirmed";
 export const PLATFORM_PARTNER_BUSINESS_ID = "1451227116580979";
 function platformToken(): string | null {
   const t = process.env["META_CATALOG_PLATFORM_TOKEN"];
@@ -933,7 +935,11 @@ export async function sendCatalogProducts(
   const row = catalog as
     | { catalog_id: string; status: string; is_catalog_visible: boolean | null }
     | null;
-  if (!row || row.status !== "linked" || row.is_catalog_visible === false) {
+  if (
+    !row ||
+    (row.status !== "linked" && row.status !== ATTACH_UNCONFIRMED) ||
+    row.is_catalog_visible === false
+  ) {
     return { sent: 0, error: null };
   }
 
@@ -990,6 +996,7 @@ export async function checkCatalogAccess(args: {
   catalog_name?: string;
   product_count?: number;
   error?: string;
+  warnings?: string[];
 }> {
   const { supabase, organizationId, userId } = args;
   const catalogId = args.catalogId.trim();
@@ -1015,10 +1022,14 @@ export async function checkCatalogAccess(args: {
   const name = String(info.body["name"] ?? "Your catalogue");
   const productCount = Number(info.body["product_count"] ?? 0);
 
+  // The merchant token often can't see a partner-managed catalogue, so this
+  // attach can fail even when the catalogue is already connected in
+  // WhatsApp Manager. A failure is a warning, never a stop.
   const linked = await loggedGraph(callCtx, `${ctx.wabaId}/product_catalogs`, ctx.accessToken, {
     method: "POST",
     body: { catalog_id: catalogId },
   });
+  const attachConfirmed = linked.ok;
 
   await supabase.from("whatsapp_catalogs").upsert(
     {
@@ -1027,32 +1038,26 @@ export async function checkCatalogAccess(args: {
       catalog_id: catalogId,
       catalog_name: name,
       mode: args.mode,
-      status: linked.ok ? "linked" : "created",
-      last_error: linked.ok ? null : graphErrorMessage(linked.body),
+      status: attachConfirmed ? "linked" : ATTACH_UNCONFIRMED,
+      last_error: null,
     },
     { onConflict: "organization_id,waba_id" },
   );
 
-  if (!linked.ok) {
-    return {
-      ok: false,
-      step: "link",
-      catalog_id: catalogId,
-      catalog_name: name,
-      error: `We can see "${name}", but couldn't attach it to this number: ${graphErrorMessage(linked.body)}`,
-    };
-  }
-
-  await setCommerceSettings({
+  const commerce = await setCommerceSettings({
     supabase,
     organizationId,
     userId,
     whatsappAccountId: args.whatsappAccountId,
     isCatalogVisible: true,
     isCartEnabled: true,
-  });
+  }).catch(() => ({ ok: false as const, error: "couldn't reach Meta" }));
 
-  return { ok: true, catalog_id: catalogId, catalog_name: name, product_count: productCount };
+  const warnings: string[] = [];
+  if (!attachConfirmed) warnings.push("attach: confirm in WhatsApp Manager");
+  if (!commerce.ok) warnings.push(`shop button settings: ${commerce.error ?? "not saved"}`);
+
+  return { ok: true, catalog_id: catalogId, catalog_name: name, product_count: productCount, warnings };
 }
 
 /** Step D: switch managed ↔ linked without re-linking anything at Meta. */
