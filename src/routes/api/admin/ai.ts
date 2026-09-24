@@ -24,6 +24,51 @@ export const Route = createFileRoute("/api/admin/ai")({
         }
         const action = String(payload["action"] ?? "overview");
 
+        // ---- Aiden control centre: Test tab. Customer-mode answer, never sent, never billed.
+        if (action === "aiden_test") {
+          const orgId = String(payload["organization_id"] ?? "");
+          if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
+          const question = String(payload["question"] ?? "").trim().slice(0, 2000);
+          if (!question) return jsonError("Type a customer message.");
+          const rawHistory = Array.isArray(payload["history"]) ? (payload["history"] as Array<Record<string, unknown>>) : [];
+          const history = rawHistory
+            .filter((t) => (t["role"] === "user" || t["role"] === "assistant") && typeof t["content"] === "string")
+            .map((t) => ({ role: t["role"] as "user" | "assistant", content: String(t["content"]).slice(0, 2000) }));
+          const instructionsOverride = typeof payload["instructions_override"] === "string" && payload["instructions_override"].trim()
+            ? String(payload["instructions_override"]).slice(0, 8000)
+            : null;
+          const { playgroundAnswer } = await import("@/lib/ai-tasks.server");
+          const run = await playgroundAnswer(
+            supabase,
+            { organizationId: orgId, actorUserId: user.id, actingRole: "owner" },
+            question,
+            null,
+            instructionsOverride,
+            null,
+            { history },
+          );
+          const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+          const { logServerActivity } = await import("@/lib/whatsapp-api.server");
+          const platformOrg = await resolvePlatformOrg(supabase).catch(() => null);
+          if (platformOrg)
+            await logServerActivity(supabase, platformOrg, user.id, "aiden_admin_test", {
+              organization_id: orgId,
+              status: run.status,
+              draft_behaviour: Boolean(instructionsOverride),
+            }).catch(() => undefined);
+          return Response.json({
+            status: run.status,
+            reply: run.output,
+            error: run.error ?? null,
+            needs_owner: run.needsOwner,
+            escalation: run.escalationSignal,
+            tools: run.toolCalls.map((t) => ({ tool: t.tool, ok: t.ok })),
+            media: run.media.map((m) => ({ title: m.title, image_url: m.imageUrl, price: m.price, currency: m.currency })),
+            tier: run.tier,
+            latency_ms: run.latencyMs,
+          });
+        }
+
         // ---- Aiden control centre: behaviour for any workspace (one shared save path).
         if (action === "aiden_orgs") {
           const q = String(payload["q"] ?? "").trim();

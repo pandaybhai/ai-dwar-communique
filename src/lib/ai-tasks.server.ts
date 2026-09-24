@@ -254,6 +254,8 @@ export async function playgroundAnswer(
   tier?: string | null,
   instructionsOverride?: string | null,
   comparisonId?: string | null,
+  /** Admin Test tab: prior turns, billing-exempt, never sent. */
+  preview?: { history?: Turn[] } | null,
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
   const { assembleBrief } = await import("@/lib/ai-brief.server");
@@ -275,6 +277,14 @@ export async function playgroundAnswer(
     comparisonId: comparisonId ?? null,
     useKnowledge: true,
     useTools: true,
+    ...(preview
+      ? {
+          preview: true,
+          billingExempt: true,
+          history: (preview.history ?? []).slice(-10),
+          metadata: { purpose: "admin_preview" },
+        }
+      : {}),
   });
 }
 

@@ -623,6 +623,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "knowledge_read_changes",
       "knowledge_read_more",
       "reading_settings_updated",
+      "aiden_admin_test",
       "ai_prompt_block_updated",
 
     ],

@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
 import { PromptBlocksEditor } from "@/components/admin/prompt-blocks-editor";
 import { SCRIPT_KEYS } from "@/lib/scripts";
+import { AidenTestPanel } from "@/components/admin/aiden-test";
 import { ReadingSettingsPanel } from "@/components/admin/reading-settings";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import type { InstructionVersion } from "@/lib/employee-client";
@@ -68,7 +69,7 @@ function AidenControl() {
           <ReadingSettingsPanel />
         </TabsContent>
         <TabsContent value="test" className="mt-6">
-          <Soon icon={FlaskConical} title="Test replies without sending" text="Coming in a later phase." />
+          <AidenTestPanel />
         </TabsContent>
       </Tabs>
     </div>
