@@ -117,7 +117,8 @@ export const Route = createFileRoute("/api/admin/ai")({
               agent,
               instructions: list.map((r) => {
                 const n = names[String(r["updated_by"] ?? "")];
-                return { ...r, updated_by_name: n ? (n.is_support ? `${n.name} (AiDwar)` : n.name) : null };
+                const who = n ? (n.is_support ? `${n.name} (AiDwar)` : n.name) : null;
+                return { ...r, updated_by_name: r["origin"] === "suggested" ? `Suggested from website${who ? ` by ${who}` : ""}` : who };
               }),
             });
           }
