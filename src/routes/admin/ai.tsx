@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Bot, Gauge, KeyRound, Loader2, Save, WalletCards } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,6 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
-import { PromptBlocksEditor } from "@/components/admin/prompt-blocks-editor";
 
 export const Route = createFileRoute("/admin/ai")({
   head: () => ({
@@ -208,7 +207,15 @@ function AdminAi() {
         </div>
       </section>
 
-      <PromptBlocksEditor />
+      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+        <h2 className="text-lg font-semibold">Customer and owner rules</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          These now live in the Aiden control centre, next to scripts and workspace behaviour.
+        </p>
+        <Link to="/admin/aiden" className="mt-3 inline-flex text-sm font-medium text-primary hover:underline">
+          Open Rules in Aiden control →
+        </Link>
+      </section>
     </div>
   );
 }

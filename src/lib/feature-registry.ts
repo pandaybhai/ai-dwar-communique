@@ -618,6 +618,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "whatsapp_scopes_removed",
       "whatsapp_health_needs_attention",
       "firecrawl_cap_reached",
+      "ai_prompt_block_updated",
 
     ],
     settings_path: "/app/settings",

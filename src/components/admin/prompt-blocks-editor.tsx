@@ -16,13 +16,19 @@ type PromptBlock = {
   default_content: string;
   version: number;
   updated_at: string;
+  updated_by_name?: string | null;
+};
+
+const LABELS: Record<string, { name: string; description: string }> = {
+  agent_rules: { name: "Customer rules", description: "Sent with every reply Aiden writes to a merchant's customers." },
+  merchant_rules: { name: "Owner rules", description: "Sent with every reply Aiden writes to a business owner on the AiDwar number." },
 };
 
 /**
  * The rules every AI employee on the platform is briefed with. Merchants read
  * them in their prompt preview; this is the only place they are written.
  */
-export function PromptBlocksEditor() {
+export function PromptBlocksEditor({ keys, heading = true }: { keys?: string[]; heading?: boolean } = {}) {
   const [blocks, setBlocks] = useState<PromptBlock[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -36,10 +42,11 @@ export function PromptBlocksEditor() {
       setBlocks([]);
       return;
     }
-    const rows = data?.blocks ?? [];
+    const rows = (data?.blocks ?? []).filter((b) => !keys || keys.includes(b.key));
     setBlocks(rows);
     setDrafts(Object.fromEntries(rows.map((b) => [b.key, b.content])));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keys?.join(",")]);
 
   useEffect(() => {
     void load();
@@ -48,7 +55,7 @@ export function PromptBlocksEditor() {
   const act = async (action: string, block: PromptBlock) => {
     setBusy(block.key);
     const { error } = await callApi<{ ok: boolean }>("/api/admin/ai", {
-      body: { action, key: block.key, content: drafts[block.key] ?? "" },
+      body: { action, key: block.key, content: drafts[block.key] ?? "", base_version: block.version },
     });
     setBusy(null);
     if (error) {
@@ -61,13 +68,13 @@ export function PromptBlocksEditor() {
 
   return (
     <section className="space-y-4">
-      <div>
+      {heading ? <div>
         <h2 className="text-lg font-semibold">Platform rules</h2>
         <p className="text-sm text-muted-foreground">
           Sent with every message on every workspace. Keep it short — merchants pay for each
           character.
         </p>
-      </div>
+      </div> : null}
 
       {!blocks ? (
         <div className="space-y-3">
@@ -87,8 +94,12 @@ export function PromptBlocksEditor() {
             <div key={block.key} className="rounded-xl border border-border/70 bg-card p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="font-semibold">{block.name || block.key}</h3>
-                  <p className="text-sm text-muted-foreground">{block.description}</p>
+                  <h3 className="font-semibold">{LABELS[block.key]?.name ?? (block.name || block.key)}</h3>
+                  <p className="text-sm text-muted-foreground">{LABELS[block.key]?.description ?? block.description}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Last changed {block.updated_by_name ? `by ${block.updated_by_name}, ` : ""}
+                    {new Date(block.updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">v{block.version}</Badge>
