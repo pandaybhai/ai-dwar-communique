@@ -86,7 +86,6 @@ import { Route as ApiInternalPlanBillingRouteImport } from './routes/api/interna
 import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/internal/reconcile-events'
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
-import { Route as ApiInternalTmpRereadRouteImport } from './routes/api/internal/tmp-reread'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
 import { Route as ApiOnboardingStartRouteImport } from './routes/api/onboarding/start'
 import { Route as ApiPublicDemoLeadsRouteImport } from './routes/api/public/demo-leads'
@@ -513,11 +512,6 @@ const ApiInternalShopifySyncWorkerRoute =
     path: '/api/internal/shopify-sync-worker',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiInternalTmpRereadRoute = ApiInternalTmpRereadRouteImport.update({
-  id: '/api/internal/tmp-reread',
-  path: '/api/internal/tmp-reread',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiInternalVersionRoute = ApiInternalVersionRouteImport.update({
   id: '/api/internal/version',
   path: '/api/internal/version',
@@ -758,7 +752,6 @@ export interface FileRoutesByFullPath {
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
-  '/api/internal/tmp-reread': typeof ApiInternalTmpRereadRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
@@ -866,7 +859,6 @@ export interface FileRoutesByTo {
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
-  '/api/internal/tmp-reread': typeof ApiInternalTmpRereadRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
@@ -977,7 +969,6 @@ export interface FileRoutesById {
   '/api/internal/reconcile-events': typeof ApiInternalReconcileEventsRoute
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
-  '/api/internal/tmp-reread': typeof ApiInternalTmpRereadRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
@@ -1089,7 +1080,6 @@ export interface FileRouteTypes {
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
-    | '/api/internal/tmp-reread'
     | '/api/internal/version'
     | '/api/onboarding/start'
     | '/api/public/demo-leads'
@@ -1197,7 +1187,6 @@ export interface FileRouteTypes {
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
-    | '/api/internal/tmp-reread'
     | '/api/internal/version'
     | '/api/onboarding/start'
     | '/api/public/demo-leads'
@@ -1307,7 +1296,6 @@ export interface FileRouteTypes {
     | '/api/internal/reconcile-events'
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
-    | '/api/internal/tmp-reread'
     | '/api/internal/version'
     | '/api/onboarding/start'
     | '/api/public/demo-leads'
@@ -1397,7 +1385,6 @@ export interface RootRouteChildren {
   ApiInternalReconcileEventsRoute: typeof ApiInternalReconcileEventsRoute
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
-  ApiInternalTmpRereadRoute: typeof ApiInternalTmpRereadRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
   ApiOnboardingStartRoute: typeof ApiOnboardingStartRoute
   ApiPublicDemoLeadsRoute: typeof ApiPublicDemoLeadsRoute
@@ -1965,13 +1952,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalShopifySyncWorkerRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/internal/tmp-reread': {
-      id: '/api/internal/tmp-reread'
-      path: '/api/internal/tmp-reread'
-      fullPath: '/api/internal/tmp-reread'
-      preLoaderRoute: typeof ApiInternalTmpRereadRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/internal/version': {
       id: '/api/internal/version'
       path: '/api/internal/version'
@@ -2316,7 +2296,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalReconcileEventsRoute: ApiInternalReconcileEventsRoute,
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
-  ApiInternalTmpRereadRoute: ApiInternalTmpRereadRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
   ApiOnboardingStartRoute: ApiOnboardingStartRoute,
   ApiPublicDemoLeadsRoute: ApiPublicDemoLeadsRoute,
