@@ -57,6 +57,8 @@ async function logGraphCall(
  * calls on catalogues a merchant has shared with us as a partner — never for
  * sending messages. Linking to a WABA and commerce settings use the merchant token.
  */
+/** Saved but Meta did not confirm the attach to the number (partner-managed catalogues). */
+export const ATTACH_UNCONFIRMED = "attach_unconfirmed";
 export const PLATFORM_PARTNER_BUSINESS_ID = "1451227116580979";
 function platformToken(): string | null {
   const t = process.env["META_CATALOG_PLATFORM_TOKEN"];
