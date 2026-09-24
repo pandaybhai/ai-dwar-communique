@@ -26,7 +26,10 @@ export type FirecrawlBudget = {
 async function reserve(budget: FirecrawlBudget | undefined, credits: number): Promise<boolean> {
   if (!budget) return false; // unattributed calls are not allowed
   if (budget.capped) return false;
-  const { data, error } = await budget.supabase.rpc("firecrawl_try_spend", {
+  // The counter is service-only, so a merchant-triggered Refresh (user client)
+  // still records its credits.
+  const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+  const { data, error } = await getServiceClient().rpc("firecrawl_try_spend", {
     _org: budget.organizationId,
     _credits: credits,
   });
