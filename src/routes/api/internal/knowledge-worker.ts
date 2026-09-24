@@ -139,6 +139,7 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             done,
             failed,
             nudges,
+            embeddings,
             commit: buildInfo().commit,
           });
         } catch (error) {
