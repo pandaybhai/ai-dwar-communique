@@ -721,7 +721,11 @@ function gatewayHeaders(key: string, direct = false): Record<string, string> {
 /** Human words for a gateway failure. Only 429/5xx are worth retrying. */
 export function gatewayErrorMessage(status: number, body: string): string {
   if (status === 402) return "This workspace has run out of AI credit.";
-  if (status === 403) return "AI is switched off for this workspace.";
+  if (status === 403) {
+    // The gateway's 403 is a platform credit limit, not the workspace's AI switch.
+    if (/credit_limit|credit limit/i.test(body)) return "The platform's AI credit limit has been reached.";
+    return "The AI service refused this request.";
+  }
   if (status === 401) return "The AI connection isn't set up correctly.";
   if (status === 429) return "Too many AI requests right now. Try again in a moment.";
   if (status >= 500) return "The AI service is having trouble. Try again in a moment.";
@@ -1132,7 +1136,11 @@ export async function executeRun(
   // switches (ai_enabled, per-org cap) do not apply. The platform cap still does.
   const isMerchantOnboarding = options.channel === "onboarding";
   const isAdminPreview = options.preview === true && options.billingExempt === true;
-  if (!isMerchantOnboarding && !isAdminPreview) {
+  // Reading the merchant's own material (page facts, pictures) is platform-paid
+  // and must work whatever the workspace's AI mode is: off / draft / replying.
+  const purpose = String((options.metadata as Record<string, unknown> | undefined)?.["purpose"] ?? "");
+  const isKnowledgeReading = options.billingExempt === true && purpose.startsWith("knowledge_");
+  if (!isMerchantOnboarding && !isAdminPreview && !isKnowledgeReading) {
     const { data: settings } = await supabase
       .from("organization_ai_settings")
       .select("ai_enabled")

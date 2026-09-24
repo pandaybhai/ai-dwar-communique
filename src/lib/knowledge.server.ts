@@ -480,6 +480,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   // Pages an earlier run already read stay in the source; we only add to them.
   const carried: KnowledgeDocument[] = [];
   const done = new Set<string>();
+  const reReadByEngine: string[] = [];
   if (resuming) {
     const { data: prior } = await supabase
       .from("knowledge_documents")
@@ -493,6 +494,13 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       metadata: Record<string, unknown> | null;
     }>) {
       if (isAssetUrl(row.source_ref)) continue;
+      // A page last read by a different engine than today's main reader is
+      // read again, even if its text hash hasn't changed.
+      const readBy = String((row.metadata ?? {})["engine"] ?? "own");
+      if (!row.metadata?.["kind"] && readBy !== order[0]) {
+        reReadByEngine.push(row.source_ref);
+        continue;
+      }
       carried.push({
         sourceRef: row.source_ref,
         title: row.title,
@@ -562,6 +570,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   consider(start.toString(), start.toString());
   for (const loc of sitemap) consider(loc, origin);
   for (const loc of mapped) consider(loc, origin);
+  for (const loc of reReadByEngine) consider(loc, origin);
   for (const href of home?.links ?? []) consider(href, start.toString());
   candidates.delete(start.toString());
 
@@ -915,9 +924,11 @@ export async function syncSource(
         await supabase.from("knowledge_documents").delete().in("id", assetIds);
       }
     }
+    embedDeferred = 0;
     for (const doc of documents) {
       await upsertDocument(supabase, source.organization_id, sourceId, doc);
     }
+    const deferred = embedDeferred;
 
     // Anything the source no longer has is forgotten, so a deleted page stops
     // being quoted at customers.
@@ -936,7 +947,10 @@ export async function syncSource(
         status: "ready",
         item_count: documents.length,
         last_synced_at: new Date().toISOString(),
-        last_error: null,
+        last_error:
+          deferred > 0
+            ? `Saved every page. ${deferred} still being prepared for answers — they finish on the next read.`
+            : null,
       })
       .eq("id", sourceId);
 
@@ -969,6 +983,9 @@ export async function syncSource(
     return { ok: false, itemCount: 0, error: message };
   }
 }
+
+/** Pages saved whose search index could not be built yet (per process, reset per sync). */
+let embedDeferred = 0;
 
 /** Store one document and (re)build its chunks when the text has changed. */
 export async function upsertDocument(
@@ -1028,7 +1045,17 @@ export async function upsertDocument(
 
   const chunks = chunkText(doc.content);
   if (chunks.length === 0) return;
-  const vectors = await embedTexts(chunks, { supabase, organizationId });
+  let vectors: number[][];
+  try {
+    vectors = await embedTexts(chunks, { supabase, organizationId });
+  } catch (error) {
+    // The page text is already saved. Without chunks it is re-prepared on the
+    // next read (unchanged pages with no chunks are rebuilt), so reading never
+    // stops because the search index couldn't be built right now.
+    console.error("[knowledge] embed deferred", doc.sourceRef, error instanceof Error ? error.message : String(error));
+    embedDeferred += 1;
+    return;
+  }
 
   await supabase
     .from("knowledge_chunks")
