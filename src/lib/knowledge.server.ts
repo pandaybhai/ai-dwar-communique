@@ -1412,3 +1412,74 @@ export async function readImage(
     },
   ];
 }
+
+/**
+ * On-demand read: a customer asked something the knowledge doesn't cover.
+ * If an unread page of the site clearly matches the question by its address
+ * or title, read that one page now and add it. Max 1 per question and 3 per
+ * conversation. Returns true when a page was added. Never throws.
+ */
+export async function readOnDemand(
+  supabase: SupabaseClient,
+  organizationId: string,
+  conversationId: string | null,
+  question: string,
+): Promise<boolean> {
+  try {
+    const { loadReadingSettings, questionWords } = await import("@/lib/reading.server");
+    const reading = await loadReadingSettings(supabase);
+    if (!reading.on_demand_read || !conversationId) return false;
+    const { count } = await supabase
+      .from("knowledge_urls")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("conversation_id", conversationId)
+      .eq("read_via", "on_demand");
+    if ((count ?? 0) >= 3) return false;
+
+    const words = questionWords(question).map((w) => w.replace(/(es|s)$/, ""));
+    if (!words.length) return false;
+    const { data } = await supabase
+      .from("knowledge_urls")
+      .select("id, source_id, url, title")
+      .eq("organization_id", organizationId)
+      .eq("status", "unread")
+      .order("priority", { ascending: false })
+      .limit(3000);
+    let best: { id: string; source_id: string; url: string; title: string | null } | null = null;
+    let bestScore = 0;
+    for (const row of (data ?? []) as Array<{ id: string; source_id: string; url: string; title: string | null }>) {
+      const hay = `${decodeURIComponent(row.url).toLowerCase().replace(/[-_/]+/g, " ")} ${(row.title ?? "").toLowerCase()}`;
+      const score = words.filter((w) => hay.includes(w)).length;
+      if (score > bestScore) {
+        best = row;
+        bestScore = score;
+      }
+    }
+    const strong = bestScore >= 2 || (bestScore === 1 && words.length <= 2 && (words.find((w) => best && best.url.toLowerCase().includes(w))?.length ?? 0) >= 5);
+    if (!best || !strong) return false;
+
+    const page = await readPage(best.url, {
+      engine: reading.crawl_engine,
+      allowReader: false,
+      timeoutMs: 12000,
+      budget: { supabase, organizationId },
+    });
+    if (!page || page.text.length <= 200) return false;
+    await upsertDocument(supabase, organizationId, best.source_id, {
+      sourceRef: best.url,
+      title: page.title || new URL(best.url).pathname,
+      content: page.text.slice(0, 40000),
+      metadata: { url: best.url, on_demand: true },
+    });
+    await supabase
+      .from("knowledge_urls")
+      .update({ status: "read", read_at: new Date().toISOString(), read_via: "on_demand", conversation_id: conversationId, title: page.title || null })
+      .eq("id", best.id);
+    await logServerActivity(supabase, organizationId, null, "knowledge_on_demand_read", { source_id: best.source_id, url: best.url }).catch(() => undefined);
+    return true;
+  } catch (error) {
+    console.error("[on-demand-read] failed", error instanceof Error ? error.message : String(error));
+    return false;
+  }
+}
