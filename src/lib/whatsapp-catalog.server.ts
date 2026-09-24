@@ -969,3 +969,105 @@ export async function sendCatalogProducts(
 
   return { sent: items.length, error: null };
 }
+
+/**
+ * Guided setup, step C. Reads the catalogue with the platform token (works
+ * only once the merchant has shared it with AiDwar as a partner), saves it,
+ * then links it to the WABA and turns on commerce settings with the MERCHANT
+ * token. Never creates a catalogue.
+ */
+export async function checkCatalogAccess(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  userId: string;
+  whatsappAccountId: string | null;
+  catalogId: string;
+  mode: "managed" | "linked";
+}): Promise<{
+  ok: boolean;
+  step?: "catalog_id" | "share" | "link";
+  catalog_id?: string;
+  catalog_name?: string;
+  product_count?: number;
+  error?: string;
+}> {
+  const { supabase, organizationId, userId } = args;
+  const catalogId = args.catalogId.trim();
+  if (!/^\d{5,25}$/.test(catalogId)) {
+    return { ok: false, step: "catalog_id", error: "That doesn't look like a catalogue ID — it's a long number from Commerce Manager." };
+  }
+  const { ctx, error } = await resolveCatalogContext(supabase, organizationId, args.whatsappAccountId);
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+  const token = platformToken();
+  if (!token) return { ok: false, error: PLATFORM_TOKEN_MISSING };
+
+  const callCtx: CallArgs = { supabase, organizationId, userId, wabaId: ctx.wabaId, catalogId };
+  const info = await loggedGraph(callCtx, catalogId, token, {
+    query: { fields: "id,name,product_count" },
+  });
+  if (!info.ok) {
+    return {
+      ok: false,
+      step: "share",
+      error: `We can't see this catalogue yet. Check the ID, then share it with AiDwar (Business ID ${PLATFORM_PARTNER_BUSINESS_ID}) with "Manage catalogue" turned on.`,
+    };
+  }
+  const name = String(info.body["name"] ?? "Your catalogue");
+  const productCount = Number(info.body["product_count"] ?? 0);
+
+  const linked = await loggedGraph(callCtx, `${ctx.wabaId}/product_catalogs`, ctx.accessToken, {
+    method: "POST",
+    body: { catalog_id: catalogId },
+  });
+
+  await supabase.from("whatsapp_catalogs").upsert(
+    {
+      organization_id: organizationId,
+      waba_id: ctx.wabaId,
+      catalog_id: catalogId,
+      catalog_name: name,
+      mode: args.mode,
+      status: linked.ok ? "linked" : "created",
+      last_error: linked.ok ? null : graphErrorMessage(linked.body),
+    },
+    { onConflict: "organization_id,waba_id" },
+  );
+
+  if (!linked.ok) {
+    return {
+      ok: false,
+      step: "link",
+      catalog_id: catalogId,
+      catalog_name: name,
+      error: `We can see "${name}", but couldn't attach it to this number: ${graphErrorMessage(linked.body)}`,
+    };
+  }
+
+  await setCommerceSettings({
+    supabase,
+    organizationId,
+    userId,
+    whatsappAccountId: args.whatsappAccountId,
+    isCatalogVisible: true,
+    isCartEnabled: true,
+  });
+
+  return { ok: true, catalog_id: catalogId, catalog_name: name, product_count: productCount };
+}
+
+/** Step D: switch managed ↔ linked without re-linking anything at Meta. */
+export async function setCatalogMode(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  whatsappAccountId: string | null;
+  mode: "managed" | "linked";
+}): Promise<{ ok: boolean; error?: string }> {
+  const { ctx, error } = await resolveCatalogContext(args.supabase, args.organizationId, args.whatsappAccountId);
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+  const { error: dbError } = await args.supabase
+    .from("whatsapp_catalogs")
+    .update({ mode: args.mode })
+    .eq("organization_id", args.organizationId)
+    .eq("waba_id", ctx.wabaId);
+  return dbError ? { ok: false, error: "We couldn't change that. Please try again." } : { ok: true };
+}
