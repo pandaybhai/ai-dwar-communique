@@ -86,6 +86,7 @@ type Org = {
   items?: number;
   pages_read?: number;
   credits_month?: number;
+  tavily_credits_month?: number;
   last_full_read?: string | null;
   last_refresh?: string | null;
 };
@@ -103,6 +104,7 @@ const shortDate = (v?: string | null) =>
 function WorkspacesTab() {
   const [q, setQ] = useState("");
   const [orgs, setOrgs] = useState<Org[] | null>(null);
+  const [platformCredits, setPlatformCredits] = useState<{ tavily: number; firecrawl: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Org | null>(null);
   const [tick, setTick] = useState(0);
@@ -111,7 +113,11 @@ function WorkspacesTab() {
     const t = setTimeout(async () => {
       const { data, error: err } = await adminApi({ action: "aiden_orgs", q });
       if (err) setError(err);
-      else setOrgs(((data?.["organizations"] as Org[]) ?? []));
+      else {
+        setOrgs(((data?.["organizations"] as Org[]) ?? []));
+        const pc = data?.["platform_credits"] as { tavily: number; firecrawl: number } | null | undefined;
+        if (pc) setPlatformCredits(pc);
+      }
     }, 250);
     return () => clearTimeout(t);
   }, [q, tick]);
@@ -121,6 +127,11 @@ function WorkspacesTab() {
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+        {platformCredits ? (
+          <p className="mb-3 text-xs text-muted-foreground">
+            Reader credits this month (platform): Tavily {platformCredits.tavily} · Firecrawl {platformCredits.firecrawl}
+          </p>
+        ) : null}
         <div className="relative max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search workspaces" className="pl-9" />
@@ -134,7 +145,7 @@ function WorkspacesTab() {
             <table className="w-full min-w-[900px] text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr className="border-b border-border/70">
-                  {["Workspace", "Plan", "Numbers", "Aiden", "Behaviour", "Knowledge", "Pages read", "Firecrawl (month)", "Last full read", "Last refresh"].map((h) => (
+                  {["Workspace", "Plan", "Numbers", "Aiden", "Behaviour", "Knowledge", "Pages read", "Tavily (month)", "Firecrawl (month)", "Last full read", "Last refresh"].map((h) => (
                     <th key={h} className="px-2 py-2 font-medium">{h}</th>
                   ))}
                 </tr>
@@ -157,6 +168,7 @@ function WorkspacesTab() {
                     </td>
                     <td className="px-2 py-2">{o.sources ?? 0} sources · {o.items ?? 0} items</td>
                     <td className="px-2 py-2">{o.pages_read ?? 0}</td>
+                    <td className="px-2 py-2">{o.tavily_credits_month ?? 0}</td>
                     <td className="px-2 py-2">{o.credits_month ?? 0}</td>
                     <td className="px-2 py-2">{shortDate(o.last_full_read)}</td>
                     <td className="px-2 py-2">{shortDate(o.last_refresh)}</td>
