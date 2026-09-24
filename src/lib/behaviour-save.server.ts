@@ -91,11 +91,13 @@ export async function saveBehaviourVersion(
   input: {
     organizationId: string;
     agentId: string;
-    userId: string;
+    userId: string | null;
     fields: BehaviourFields;
+    /** Defaults from `via`: owner → "owner", super_admin → "admin". */
+    origin?: "owner" | "admin" | "suggested";
     baseVersion?: number | null;
     audience: "merchant" | "admin";
-    via: "owner" | "super_admin";
+    via: "owner" | "super_admin" | "system";
     reverted_from?: number;
   },
 ): Promise<SaveResult> {
@@ -121,6 +123,7 @@ export async function saveBehaviourVersion(
     version: nextVersion,
     is_current: true,
     updated_by: input.userId,
+    origin: input.origin ?? (input.via === "owner" ? "owner" : input.via === "super_admin" ? "admin" : "suggested"),
   });
   if (error) return { ok: false, error: "We couldn't save that." };
   const { logServerActivity } = await import("@/lib/whatsapp-api.server");
@@ -128,6 +131,7 @@ export async function saveBehaviourVersion(
     version: nextVersion,
     old_version: previous,
     by: input.via,
+    origin: input.origin ?? null,
     ...(input.reverted_from != null ? { reverted_from: input.reverted_from } : {}),
   });
   return { ok: true, version: nextVersion, previous };
