@@ -1139,7 +1139,8 @@ export async function executeRun(
   // Reading the merchant's own material (page facts, pictures) is platform-paid
   // and must work whatever the workspace's AI mode is: off / draft / replying.
   const purpose = String((options.metadata as Record<string, unknown> | undefined)?.["purpose"] ?? "");
-  const isKnowledgeReading = options.billingExempt === true && purpose.startsWith("knowledge_");
+  const isKnowledgeReading =
+    options.billingExempt === true && (purpose.startsWith("knowledge_") || purpose === "policy_claim_check");
   if (!isMerchantOnboarding && !isAdminPreview && !isKnowledgeReading) {
     const { data: settings } = await supabase
       .from("organization_ai_settings")
