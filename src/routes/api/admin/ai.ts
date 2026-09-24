@@ -24,6 +24,86 @@ export const Route = createFileRoute("/api/admin/ai")({
         }
         const action = String(payload["action"] ?? "overview");
 
+        // ---- Aiden control centre: behaviour for any workspace (one shared save path).
+        if (action === "aiden_orgs") {
+          const q = String(payload["q"] ?? "").trim();
+          let query = supabase.from("organizations").select("id, name").order("name").limit(50);
+          if (q) query = query.ilike("name", `%${q.replace(/[%_]/g, "")}%`);
+          const { data } = await query;
+          return Response.json({ organizations: data ?? [] });
+        }
+
+        if (
+          action === "behaviour_load" ||
+          action === "save_instructions" ||
+          action === "revert_instructions"
+        ) {
+          const orgId = String(payload["organization_id"] ?? "");
+          if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
+          const { data: agentData } = await supabase
+            .from("ai_agents")
+            .select("id, name")
+            .eq("organization_id", orgId)
+            .eq("is_default", true)
+            .maybeSingle();
+          const agent = agentData as { id: string; name: string } | null;
+          const behaviour = await import("@/lib/behaviour-save.server");
+
+          if (action === "behaviour_load") {
+            if (!agent) return Response.json({ agent: null, instructions: [] });
+            const { data: rows } = await supabase
+              .from("ai_instructions")
+              .select(
+                "id, persona_name, tone, instructions, escalation_rules, handover_message, languages, working_hours_behaviour, version, is_current, updated_at, updated_by",
+              )
+              .eq("agent_id", agent.id)
+              .order("version", { ascending: false })
+              .limit(20);
+            const list = (rows ?? []) as Array<Record<string, unknown>>;
+            const names = await behaviour.authorNames(list.map((r) => String(r["updated_by"] ?? "")), "admin");
+            return Response.json({
+              agent,
+              instructions: list.map((r) => {
+                const n = names[String(r["updated_by"] ?? "")];
+                return { ...r, updated_by_name: n ? (n.is_support ? `${n.name} (AiDwar)` : n.name) : null };
+              }),
+            });
+          }
+
+          if (!agent) return jsonError("This workspace has no AI employee yet.");
+          let fields = behaviour.fieldsFromPayload(payload, agent.name);
+          let revertedFrom: number | undefined;
+          if (action === "revert_instructions") {
+            const { data: old } = await supabase
+              .from("ai_instructions")
+              .select("*")
+              .eq("id", String(payload["instruction_id"] ?? ""))
+              .eq("organization_id", orgId)
+              .maybeSingle();
+            if (!old) return jsonError("That version is gone.");
+            fields = behaviour.fieldsFromPayload(old as Record<string, unknown>, agent.name);
+            revertedFrom = Number((old as { version?: number }).version ?? 0);
+          }
+          const base = payload["base_version"];
+          const result = await behaviour.saveBehaviourVersion(supabase, {
+            organizationId: orgId,
+            agentId: agent.id,
+            userId: user.id,
+            fields,
+            baseVersion: typeof base === "number" ? base : null,
+            audience: "admin",
+            via: "super_admin",
+            ...(revertedFrom != null ? { reverted_from: revertedFrom } : {}),
+          });
+          if (!result.ok && "conflict" in result)
+            return Response.json(
+              { error: behaviour.conflictMessage(result.conflict), conflict: result.conflict },
+              { status: 409 },
+            );
+          if (!result.ok) return jsonError(result.error);
+          return Response.json({ ok: true, version: result.version });
+        }
+
         if (action === "overview") {
           const [settings, providers, tiers, models, rates, runs, platformSpend] = await Promise.all([
             supabase
