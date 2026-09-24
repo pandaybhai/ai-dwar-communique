@@ -23,6 +23,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminActivityRouteImport } from './routes/admin/activity'
 import { Route as AdminAiRouteImport } from './routes/admin/ai'
+import { Route as AdminAidenRouteImport } from './routes/admin/aiden'
 import { Route as AdminBillingRouteImport } from './routes/admin/billing'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
@@ -183,6 +184,11 @@ const AdminActivityRoute = AdminActivityRouteImport.update({
 const AdminAiRoute = AdminAiRouteImport.update({
   id: '/ai',
   path: '/ai',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminAidenRoute = AdminAidenRouteImport.update({
+  id: '/aiden',
+  path: '/aiden',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminBillingRoute = AdminBillingRouteImport.update({
@@ -675,6 +681,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/aiden': typeof AdminAidenRoute
   '/admin/billing': typeof AdminBillingRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
@@ -780,6 +787,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/aiden': typeof AdminAidenRoute
   '/admin/billing': typeof AdminBillingRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
@@ -888,6 +896,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
+  '/admin/aiden': typeof AdminAidenRoute
   '/admin/billing': typeof AdminBillingRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
@@ -997,6 +1006,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/activity'
     | '/admin/ai'
+    | '/admin/aiden'
     | '/admin/billing'
     | '/admin/customers'
     | '/admin/flags'
@@ -1102,6 +1112,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/activity'
     | '/admin/ai'
+    | '/admin/aiden'
     | '/admin/billing'
     | '/admin/customers'
     | '/admin/flags'
@@ -1209,6 +1220,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/activity'
     | '/admin/ai'
+    | '/admin/aiden'
     | '/admin/billing'
     | '/admin/customers'
     | '/admin/flags'
@@ -1483,6 +1495,13 @@ declare module '@tanstack/react-router' {
       path: '/ai'
       fullPath: '/admin/ai'
       preLoaderRoute: typeof AdminAiRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/aiden': {
+      id: '/admin/aiden'
+      path: '/aiden'
+      fullPath: '/admin/aiden'
+      preLoaderRoute: typeof AdminAidenRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/billing': {
@@ -2128,6 +2147,7 @@ declare module '@tanstack/react-router' {
 interface AdminRouteRouteChildren {
   AdminActivityRoute: typeof AdminActivityRoute
   AdminAiRoute: typeof AdminAiRoute
+  AdminAidenRoute: typeof AdminAidenRoute
   AdminBillingRoute: typeof AdminBillingRoute
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminFlagsRoute: typeof AdminFlagsRoute
@@ -2140,6 +2160,7 @@ interface AdminRouteRouteChildren {
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminActivityRoute: AdminActivityRoute,
   AdminAiRoute: AdminAiRoute,
+  AdminAidenRoute: AdminAidenRoute,
   AdminBillingRoute: AdminBillingRoute,
   AdminCustomersRoute: AdminCustomersRoute,
   AdminFlagsRoute: AdminFlagsRoute,

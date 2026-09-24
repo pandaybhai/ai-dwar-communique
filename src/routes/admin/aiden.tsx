@@ -84,7 +84,7 @@ function WorkspacesTab() {
     return () => clearTimeout(t);
   }, [q]);
 
-  if (error) return <ErrorState title="Couldn't load workspaces" description={error} />;
+  if (error) return <ErrorState message={error} />;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
@@ -138,7 +138,7 @@ function WorkspaceBehaviour({ org }: { org: Org }) {
     void load();
   }, [load]);
 
-  if (error) return <ErrorState title="Couldn't load this workspace" description={error} />;
+  if (error) return <ErrorState message={error} />;
   if (versions === null) return <Skeleton className="h-96 w-full rounded-2xl" />;
   if (!hasAgent)
     return <EmptyState icon={Building2} title={`${org.name} has no AI employee yet`} description="It's created when the workspace finishes onboarding." />;
