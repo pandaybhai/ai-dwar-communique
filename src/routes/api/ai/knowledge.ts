@@ -145,6 +145,7 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               auth.userId,
               { mode: "full" },
             );
+            if (added.limited) return jsonError(added.error ?? "Link limit reached.", 429);
             if (!added.sourceId) return jsonError(added.error ?? "We couldn't add that website.");
             await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "ai_knowledge_added", {
               type: "website",

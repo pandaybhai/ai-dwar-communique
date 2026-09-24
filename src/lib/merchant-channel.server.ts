@@ -736,6 +736,32 @@ export async function handleMerchantInbound(
     }
 
     const firstSite = !session.source_id;
+    const { addWebsiteSource, TRIAL_LINK_LIMIT_REPLY } = await import("@/lib/knowledge.server");
+    const added = await addWebsiteSource(supabase, session.organization_id, link, session.user_id, {
+      mode: "day0",
+    });
+
+    if (added.limited) {
+      await reply(TRIAL_LINK_LIMIT_REPLY);
+      return;
+    }
+    if (!added.ok || !added.sourceId) {
+      await reply(
+        "I couldn't read anything useful from that link. Send another link, or tell me in a few lines what you sell and where you deliver.",
+      );
+      return;
+    }
+    // Read within the last few days: use the saved copy, no new read.
+    if (added.reused) {
+      if (firstSite && added.itemCount > 0) {
+        await patchSession(supabase, session.id, { status: "learning", step: "reading", source_id: added.sourceId });
+        await finishOnboardingCrawl(supabase, added.sourceId, { ok: true, itemCount: added.itemCount });
+      } else {
+        await reply(`I read ${host} recently, so I'm using what I saved. Press "Read changes now" in your dashboard if it changed.`);
+      }
+      return;
+    }
+
     if (firstSite) {
       await patchSession(supabase, session.id, { status: "learning", step: "reading" });
     }
@@ -765,20 +791,6 @@ export async function handleMerchantInbound(
       });
     } else {
       await reply(readingCaption);
-    }
-
-    const { addWebsiteSource } = await import("@/lib/knowledge.server");
-    const added = await addWebsiteSource(supabase, session.organization_id, link, session.user_id, {
-      mode: "day0",
-    });
-
-    if (!added.ok || !added.sourceId) {
-      if (firstSite)
-        await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
-      await reply(
-        "I couldn't read anything useful from that link. Send another link, or tell me in a few lines what you sell and where you deliver.",
-      );
-      return;
     }
 
     // The reading itself happens in the worker; it sends the brief card when
@@ -1271,7 +1283,23 @@ export async function finishOnboardingCrawl(
     .limit(1)
     .maybeSingle();
   const session = sessionRow as OnboardingSession | null;
-  if (!session || !session.wa_id) return;
+
+  // App store / social / marketplace / maps links: one page, then a nudge for a website.
+  const { data: listingSrc } = await supabase
+    .from("knowledge_sources")
+    .select("organization_id, config")
+    .eq("id", sourceId)
+    .maybeSingle();
+  const listingRow = listingSrc as { organization_id: string; config: Record<string, unknown> | null } | null;
+  const listing = typeof listingRow?.config?.["listing"] === "string" ? String(listingRow.config["listing"]) : null;
+  const { listingReply } = await import("@/lib/knowledge.server");
+
+  if (!session || !session.wa_id) {
+    if (listing && result.ok && listingRow) {
+      await notifyOwnerOnOnboardingChannel(supabase, listingRow.organization_id, listingReply(listing)).catch(() => false);
+    }
+    return;
+  }
 
   const channel = await onboardingChannelFor(supabase, session.wa_id);
   if (!channel) return;
@@ -1353,6 +1381,7 @@ export async function finishOnboardingCrawl(
       .map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
     imageUrl: briefCard,
   });
+  if (listing) await sendServiceText(supabase, { ...channel, body: prefix + listingReply(listing) });
 }
 
 /**
