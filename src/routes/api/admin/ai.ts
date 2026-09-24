@@ -216,6 +216,15 @@ export const Route = createFileRoute("/api/admin/ai")({
             content = String(payload["content"] ?? "").trim();
             if (content.length < 10) return jsonError("The rules cannot be empty.");
             if (content.length > 20000) return jsonError("That is too long to send with every message.");
+            const { isScriptKey, SCRIPTS, placeholdersIn } = await import("@/lib/scripts");
+            if (isScriptKey(key)) {
+              const allowed = SCRIPTS[key].vars;
+              const unknown = placeholdersIn(content).filter((v) => !allowed.includes(v));
+              if (unknown.length)
+                return jsonError(
+                  `{${unknown[0]}} can't be filled in here. Use only: ${allowed.length ? allowed.map((v) => `{${v}}`).join(", ") : "no placeholders"}.`,
+                );
+            }
           }
           const nextVersion = row.version + 1;
           // Guarded on the loaded version, so two admins saving at once can't both win.
@@ -237,7 +246,25 @@ export const Route = createFileRoute("/api/admin/ai")({
               version: nextVersion,
               reset: action === "reset_prompt_block",
             });
+          const { clearScriptCache } = await import("@/lib/scripts.server");
+          clearScriptCache();
           return Response.json({ ok: true, version: nextVersion });
+        }
+
+        if (action === "approved_templates") {
+          const nudges = await import("@/lib/onboarding-nudges.server");
+          const names = [nudges.CODE_TEMPLATE_NAME, nudges.RESUME_TEMPLATE_NAME];
+          const { data } = await supabase
+            .from("message_templates")
+            .select("name, language, status")
+            .in("name", names);
+          const rows = (data ?? []) as Array<{ name: string; language: string; status: string }>;
+          return Response.json({
+            templates: [
+              { name: nudges.CODE_TEMPLATE_NAME, body: nudges.CODE_TEMPLATE_BODY },
+              { name: nudges.RESUME_TEMPLATE_NAME, body: nudges.RESUME_TEMPLATE_BODY },
+            ].map((t) => ({ ...t, status: rows.find((r) => r.name === t.name)?.status ?? "unknown" })),
+          });
         }
 
         if (action === "set_markup") {

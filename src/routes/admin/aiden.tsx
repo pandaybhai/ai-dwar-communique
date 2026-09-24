@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Building2, FileText, FlaskConical, Search } from "lucide-react";
+import { BookOpen, Building2, FlaskConical, Lock, Search } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
 import { PromptBlocksEditor } from "@/components/admin/prompt-blocks-editor";
+import { SCRIPT_KEYS } from "@/lib/scripts";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import type { InstructionVersion } from "@/lib/employee-client";
 
@@ -52,7 +53,10 @@ function AidenControl() {
           <PromptBlocksEditor keys={["agent_rules", "merchant_rules"]} heading={false} />
         </TabsContent>
         <TabsContent value="scripts" className="mt-6">
-          <Soon icon={FileText} title="Aiden's fixed texts arrive in the next phase" text="Stranger reply, day-one intro and the rest will be editable here, with safe fallbacks." />
+          <div className="space-y-6">
+            <PromptBlocksEditor keys={SCRIPT_KEYS} heading={false} />
+            <ApprovedTemplates />
+          </div>
         </TabsContent>
         <TabsContent value="workspaces" className="mt-6">
           <WorkspacesTab />
@@ -161,5 +165,38 @@ function WorkspaceBehaviour({ org }: { org: Org }) {
         }}
       />
     </div>
+  );
+}
+
+type Template = { name: string; body: string; status: string };
+
+function ApprovedTemplates() {
+  const [rows, setRows] = useState<Template[] | null>(null);
+  useEffect(() => {
+    void adminApi({ action: "approved_templates" }).then(({ data }) =>
+      setRows((data?.["templates"] as Template[]) ?? []),
+    );
+  }, []);
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-lg font-semibold">Meta-approved templates</h2>
+        <p className="text-sm text-muted-foreground">Approved by Meta — changing it needs a new template.</p>
+      </div>
+      {rows === null ? (
+        <Skeleton className="h-28 w-full rounded-xl" />
+      ) : (
+        rows.map((t) => (
+          <div key={t.name} className="rounded-xl border border-border/70 bg-muted/30 p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Lock className="h-4 w-4 text-muted-foreground" />
+              <span className="font-mono text-sm font-medium">{t.name}</span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{t.status}</span>
+            </div>
+            <p className="mt-3 whitespace-pre-wrap text-sm text-foreground">{t.body}</p>
+          </div>
+        ))
+      )}
+    </section>
   );
 }
