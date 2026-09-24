@@ -30,13 +30,65 @@ export const Route = createFileRoute("/api/admin/ai")({
           let query = supabase.from("organizations").select("id, name").order("name").limit(50);
           if (q) query = query.ilike("name", `%${q.replace(/[%_]/g, "")}%`);
           const { data } = await query;
-          return Response.json({ organizations: data ?? [] });
+          const orgs = (data ?? []) as Array<{ id: string; name: string }>;
+          const ids = orgs.map((o) => o.id);
+          if (!ids.length) return Response.json({ organizations: [] });
+          const month = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
+            .toISOString()
+            .slice(0, 10);
+          const [plans, numbers, agents, instr, sources, credits, supers] = await Promise.all([
+            supabase.from("organizations").select("id, plan_status").in("id", ids),
+            supabase.from("whatsapp_accounts").select("organization_id").in("organization_id", ids).eq("status", "active"),
+            supabase.from("ai_agents").select("organization_id, mode").in("organization_id", ids).eq("is_default", true),
+            supabase.from("ai_instructions").select("organization_id, origin, updated_by").in("organization_id", ids).eq("is_current", true),
+            supabase
+              .from("knowledge_sources")
+              .select("organization_id, type, item_count, pages_seen, last_synced_at, config")
+              .in("organization_id", ids),
+            supabase.from("firecrawl_usage").select("organization_id, credits").in("organization_id", ids).eq("month", month),
+            supabase.from("profiles").select("id").eq("is_super_admin", true),
+          ]);
+          const superIds = new Set(((supers.data ?? []) as Array<{ id: string }>).map((r) => r.id));
+          type Src = { organization_id: string; type: string; item_count: number | null; pages_seen: number | null; last_synced_at: string | null; config: Record<string, unknown> | null };
+          const srcRows = (sources.data ?? []) as Src[];
+          const rows = orgs.map((o) => {
+            const cur = ((instr.data ?? []) as Array<{ organization_id: string; origin: string | null; updated_by: string | null }>).find(
+              (r) => r.organization_id === o.id,
+            );
+            const behaviour = !cur || (!cur.updated_by && !cur.origin)
+              ? "none"
+              : cur.origin === "suggested"
+                ? "suggested"
+                : cur.origin === "admin" || (cur.updated_by && superIds.has(cur.updated_by))
+                  ? "aidwar"
+                  : "owner";
+            const mine = srcRows.filter((r) => r.organization_id === o.id);
+            const sites = mine.filter((r) => r.type === "website");
+            const latest = (list: Src[]) =>
+              list.map((r) => r.last_synced_at).filter(Boolean).sort().at(-1) ?? null;
+            return {
+              ...o,
+              plan: ((plans.data ?? []) as Array<{ id: string; plan_status: string | null }>).find((r) => r.id === o.id)?.plan_status ?? null,
+              numbers: ((numbers.data ?? []) as Array<{ organization_id: string }>).filter((r) => r.organization_id === o.id).length,
+              ai_mode: ((agents.data ?? []) as Array<{ organization_id: string; mode: string }>).find((r) => r.organization_id === o.id)?.mode ?? null,
+              behaviour,
+              sources: mine.length,
+              items: mine.reduce((n, r) => n + Number(r.item_count ?? 0), 0),
+              pages_read: sites.reduce((n, r) => n + Number(r.pages_seen ?? 0), 0),
+              credits_month: ((credits.data ?? []) as Array<{ organization_id: string; credits: number }>).find((r) => r.organization_id === o.id)?.credits ?? 0,
+              last_full_read: latest(sites.filter((r) => r.config?.["mode"] === "full")),
+              last_refresh: latest(sites),
+            };
+          });
+          return Response.json({ organizations: rows });
         }
 
         if (
           action === "behaviour_load" ||
           action === "save_instructions" ||
-          action === "revert_instructions"
+          action === "revert_instructions" ||
+          action === "generate_persona" ||
+          action === "restore_previous"
         ) {
           const orgId = String(payload["organization_id"] ?? "");
           if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
@@ -54,7 +106,7 @@ export const Route = createFileRoute("/api/admin/ai")({
             const { data: rows } = await supabase
               .from("ai_instructions")
               .select(
-                "id, persona_name, tone, instructions, escalation_rules, handover_message, languages, working_hours_behaviour, version, is_current, updated_at, updated_by",
+                "id, persona_name, tone, instructions, escalation_rules, handover_message, languages, working_hours_behaviour, version, is_current, updated_at, updated_by, origin",
               )
               .eq("agent_id", agent.id)
               .order("version", { ascending: false })
@@ -73,13 +125,21 @@ export const Route = createFileRoute("/api/admin/ai")({
           if (!agent) return jsonError("This workspace has no AI employee yet.");
           let fields = behaviour.fieldsFromPayload(payload, agent.name);
           let revertedFrom: number | undefined;
-          if (action === "revert_instructions") {
-            const { data: old } = await supabase
-              .from("ai_instructions")
-              .select("*")
-              .eq("id", String(payload["instruction_id"] ?? ""))
-              .eq("organization_id", orgId)
-              .maybeSingle();
+          let origin: "admin" | "suggested" = "admin";
+          if (action === "generate_persona") {
+            const { generatePersona } = await import("@/lib/persona.server");
+            const generated = await generatePersona(supabase, orgId, { agentId: agent.id, actorUserId: user.id });
+            if (!generated.ok) return jsonError(generated.error);
+            fields = generated.fields;
+            origin = "suggested";
+          }
+          if (action === "revert_instructions" || action === "restore_previous") {
+            let q = supabase.from("ai_instructions").select("*").eq("organization_id", orgId).eq("agent_id", agent.id);
+            q =
+              action === "restore_previous"
+                ? q.eq("is_current", false).order("version", { ascending: false }).limit(1)
+                : q.eq("id", String(payload["instruction_id"] ?? ""));
+            const { data: old } = await q.maybeSingle();
             if (!old) return jsonError("That version is gone.");
             fields = behaviour.fieldsFromPayload(old as Record<string, unknown>, agent.name);
             revertedFrom = Number((old as { version?: number }).version ?? 0);
@@ -93,6 +153,7 @@ export const Route = createFileRoute("/api/admin/ai")({
             baseVersion: typeof base === "number" ? base : null,
             audience: "admin",
             via: "super_admin",
+            origin,
             ...(revertedFrom != null ? { reverted_from: revertedFrom } : {}),
           });
           if (!result.ok && "conflict" in result)
