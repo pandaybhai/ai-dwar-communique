@@ -190,6 +190,88 @@ export function stripUnsupported(answer: string, tokens: string[]): string {
   return `${text}\n\n${CONFIRM_LINE}`;
 }
 
+/** Words that make a sentence a claim about this business's commercial terms. */
+const POLICY_TOPIC =
+  /\b(pric(e|es|ing)|fees?|charge[sd]?|charging|cost(s|ing)?|markup|mark-up|margin|commission|discounts?|offers?|refunds?|returns?|exchanges?|cancell?ations?|deliver(y|ies|ed)|shipping|ships?|dispatch|warrant(y|ies)|guarantee[sd]?|payments?|pay|emi|cod|cash on delivery|upi|billed|billing|rates?|plans?|subscriptions?|trial)\b/i;
+
+/** Split a reply into sentences, keeping the original text of each. */
+function sentencesOf(text: string): string[] {
+  return text.split(/(?<=[.!?\n])\s+/).map((p) => p.trim()).filter(Boolean);
+}
+
+/** Sentences that talk about pricing, fees, refunds, delivery, warranty or payment. */
+export function policyClaimSentences(answer: string): string[] {
+  return sentencesOf(answer).filter(
+    (s) =>
+      POLICY_TOPIC.test(s) &&
+      !/let me confirm/i.test(s) &&
+      !s.trim().endsWith("?") &&
+      // Saying the detail is missing is the honest answer, not a claim.
+      !/\b(don'?t|do not|doesn'?t|haven'?t|not) (have|see|find|know|yet|in my|listed|mentioned|covered)\b/i.test(s),
+  );
+}
+
+/** Remove exact sentences, keep the rest, promise to come back once. */
+export function stripSentences(answer: string, drop: string[]): string {
+  const set = new Set(drop.map((d) => d.trim()));
+  const kept = sentencesOf(answer).filter((s) => !set.has(s));
+  const text = kept.join(" ").replace(/[ \t]{2,}/g, " ").trim();
+  if (!text) return CONFIRM_LINE;
+  if (text.includes(CONFIRM_LINE)) return text;
+  return `${text}\n\n${CONFIRM_LINE}`;
+}
+
+/**
+ * One small model call judging every candidate sentence against this run's
+ * material. Any failure keeps the reply as it is — the check never blocks.
+ */
+async function unsupportedPolicyClaims(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    agentId: string | null;
+    conversationId: string | null;
+    actorUserId: string | null;
+    actingRole: string | null;
+    sentences: string[];
+    sources: string;
+    channel?: RunOptions["channel"];
+  },
+): Promise<string[]> {
+  if (!args.sources.trim()) return args.sentences;
+  const numbered = args.sentences.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  try {
+    const run = await executeRun(supabase, {
+      organizationId: args.organizationId,
+      task: "summarise",
+      agentId: args.agentId,
+      conversationId: args.conversationId,
+      actorUserId: args.actorUserId,
+      actingRole: args.actingRole,
+      tier: "everyday",
+      useKnowledge: false,
+      useTools: false,
+      billingExempt: true,
+      ...(args.channel ? { channel: args.channel } : {}),
+      metadata: { purpose: "policy_claim_check" },
+      system: [
+        "You check whether sentences are directly supported by the sources.",
+        "A sentence is supported only if the sources state the same thing. Paraphrase is fine; a stronger, different or invented claim (e.g. 'zero markup' when sources say 'a small margin') is NOT supported.",
+        'Answer with JSON only: {"answers": ["yes"|"no", ...]} — one entry per numbered sentence, in order.',
+      ].join("\n"),
+      input: `SOURCES:\n${args.sources.slice(0, 24000)}\n\nSENTENCES:\n${numbered}\n\nIs each sentence directly supported by these sources? yes/no`,
+    });
+    if (run.status !== "ok" || !run.output.trim()) throw new Error(`check run ${run.status}: ${run.error ?? "empty"}`);
+    const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { answers?: unknown[] };
+    const answers = Array.isArray(parsed.answers) ? parsed.answers : [];
+    return args.sentences.filter((_, i) => String(answers[i] ?? "yes").toLowerCase().startsWith("n"));
+  } catch (error) {
+    console.log("[policy-grounding] check skipped", error instanceof Error ? error.message : "unknown");
+    return [];
+  }
+}
+
 export type RunResult = {
   runId: string | null;
   status: "ok" | "refused" | "escalated" | "capped" | "error";
@@ -963,6 +1045,8 @@ export async function executeRun(
     outputTokens: null,
   };
 
+  // Extra review data written alongside the caller's metadata.
+  const runMeta: Record<string, unknown> = {};
   const finish = async (result: RunResult): Promise<RunResult> => {
     result.latencyMs = Date.now() - started;
     // Platform-paid runs (the owner's onboarding chat) must never reach the
@@ -1000,7 +1084,7 @@ export async function executeRun(
         status: result.status,
         error: result.error ?? null,
         comparison_id: comparisonId,
-        metadata: options.metadata ?? {},
+        metadata: { ...(options.metadata ?? {}), ...runMeta },
 
         prompt_rules_version: options.promptRulesVersion ?? null,
 
@@ -1391,6 +1475,33 @@ export async function executeRun(
       // to come back on the part we can't stand behind.
       result.output = stripUnsupported(result.output, unsupported);
       result.needsOwner = true;
+    }
+  }
+
+  // ------------------------------------------------- policy-claim grounding
+  // A claim about this business's pricing, fees, refunds, delivery, warranty
+  // or payment terms must come from the material. The cheap check only runs
+  // when such a sentence is present; the numeric guard above is untouched.
+  if (task === "agent_reply" && result.output && !isVisionRead) {
+    const candidates = policyClaimSentences(result.output);
+    if (candidates.length > 0) {
+      const sourceText = [knowledgeBlock, options.system ?? "", ...toolResultTexts].join("\n\n");
+      const unsupported = await unsupportedPolicyClaims(supabase, {
+        organizationId,
+        agentId,
+        conversationId,
+        actorUserId,
+        actingRole,
+        sentences: candidates,
+        channel: options.channel,
+        sources: sourceText,
+      });
+      if (unsupported.length > 0) {
+        console.log("[policy-grounding] stripped", organizationId, unsupported.length);
+        runMeta["policy_claims_stripped"] = unsupported;
+        result.output = stripSentences(result.output, unsupported);
+        result.needsOwner = true;
+      }
     }
   }
 
