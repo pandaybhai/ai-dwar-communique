@@ -54,6 +54,16 @@ export const Route = createFileRoute("/api/ai/employee")({
         };
 
         try {
+          if (action === "behaviour_status") {
+            const { data } = await supabase
+              .from("ai_instructions")
+              .select("id, origin")
+              .eq("organization_id", org)
+              .eq("is_current", true)
+              .maybeSingle();
+            const row = data as { id: string; origin: string | null } | null;
+            return Response.json({ suggested: row?.origin === "suggested", version_id: row?.id ?? null });
+          }
           if (action === "overview") {
             const agent = await agentRow();
             const [
@@ -86,7 +96,7 @@ export const Route = createFileRoute("/api/ai/employee")({
               supabase
                 .from("ai_instructions")
                 .select(
-                  "id, persona_name, tone, instructions, escalation_rules, handover_message, languages, working_hours_behaviour, version, is_current, updated_at, updated_by",
+                  "id, persona_name, tone, instructions, escalation_rules, handover_message, languages, working_hours_behaviour, version, is_current, updated_at, updated_by, origin",
                 )
                 .eq("organization_id", org)
                 .order("version", { ascending: false })
@@ -187,7 +197,10 @@ export const Route = createFileRoute("/api/ai/employee")({
                 const names = await authorNames(rows.map((r) => String(r["updated_by"] ?? "")), "merchant");
                 return rows.map((r) => ({
                   ...r,
-                  updated_by_name: names[String(r["updated_by"] ?? "")]?.name ?? null,
+                  updated_by_name:
+                    r["origin"] === "suggested"
+                      ? "a suggestion from your website"
+                      : (names[String(r["updated_by"] ?? "")]?.name ?? null),
                 }));
               })(),
               sources: sources.data ?? [],
