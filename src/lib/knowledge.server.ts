@@ -532,6 +532,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
 
   consider(start.toString(), start.toString());
   for (const loc of sitemap) consider(loc, origin);
+  for (const loc of mapped) consider(loc, origin);
   for (const href of home?.links ?? []) consider(href, start.toString());
   candidates.delete(start.toString());
 
