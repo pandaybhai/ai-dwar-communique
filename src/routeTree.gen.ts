@@ -79,6 +79,7 @@ import { Route as ApiInternalCampaignWorkerRouteImport } from './routes/api/inte
 import { Route as ApiInternalDemoProofRouteImport } from './routes/api/internal/demo-proof'
 import { Route as ApiInternalFlowScanRouteImport } from './routes/api/internal/flow-scan'
 import { Route as ApiInternalFlowWorkerRouteImport } from './routes/api/internal/flow-worker'
+import { Route as ApiInternalKnowledgeBackfillRouteImport } from './routes/api/internal/knowledge-backfill'
 import { Route as ApiInternalKnowledgeRefreshRouteImport } from './routes/api/internal/knowledge-refresh'
 import { Route as ApiInternalKnowledgeWorkerRouteImport } from './routes/api/internal/knowledge-worker'
 import { Route as ApiInternalPlanBillingRouteImport } from './routes/api/internal/plan-billing'
@@ -470,6 +471,12 @@ const ApiInternalFlowWorkerRoute = ApiInternalFlowWorkerRouteImport.update({
   path: '/api/internal/flow-worker',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalKnowledgeBackfillRoute =
+  ApiInternalKnowledgeBackfillRouteImport.update({
+    id: '/api/internal/knowledge-backfill',
+    path: '/api/internal/knowledge-backfill',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInternalKnowledgeRefreshRoute =
   ApiInternalKnowledgeRefreshRouteImport.update({
     id: '/api/internal/knowledge-refresh',
@@ -738,6 +745,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/demo-proof': typeof ApiInternalDemoProofRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
+  '/api/internal/knowledge-backfill': typeof ApiInternalKnowledgeBackfillRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
   '/api/internal/knowledge-worker': typeof ApiInternalKnowledgeWorkerRoute
   '/api/internal/plan-billing': typeof ApiInternalPlanBillingRoute
@@ -844,6 +852,7 @@ export interface FileRoutesByTo {
   '/api/internal/demo-proof': typeof ApiInternalDemoProofRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
+  '/api/internal/knowledge-backfill': typeof ApiInternalKnowledgeBackfillRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
   '/api/internal/knowledge-worker': typeof ApiInternalKnowledgeWorkerRoute
   '/api/internal/plan-billing': typeof ApiInternalPlanBillingRoute
@@ -953,6 +962,7 @@ export interface FileRoutesById {
   '/api/internal/demo-proof': typeof ApiInternalDemoProofRoute
   '/api/internal/flow-scan': typeof ApiInternalFlowScanRoute
   '/api/internal/flow-worker': typeof ApiInternalFlowWorkerRoute
+  '/api/internal/knowledge-backfill': typeof ApiInternalKnowledgeBackfillRoute
   '/api/internal/knowledge-refresh': typeof ApiInternalKnowledgeRefreshRoute
   '/api/internal/knowledge-worker': typeof ApiInternalKnowledgeWorkerRoute
   '/api/internal/plan-billing': typeof ApiInternalPlanBillingRoute
@@ -1063,6 +1073,7 @@ export interface FileRouteTypes {
     | '/api/internal/demo-proof'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
+    | '/api/internal/knowledge-backfill'
     | '/api/internal/knowledge-refresh'
     | '/api/internal/knowledge-worker'
     | '/api/internal/plan-billing'
@@ -1169,6 +1180,7 @@ export interface FileRouteTypes {
     | '/api/internal/demo-proof'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
+    | '/api/internal/knowledge-backfill'
     | '/api/internal/knowledge-refresh'
     | '/api/internal/knowledge-worker'
     | '/api/internal/plan-billing'
@@ -1277,6 +1289,7 @@ export interface FileRouteTypes {
     | '/api/internal/demo-proof'
     | '/api/internal/flow-scan'
     | '/api/internal/flow-worker'
+    | '/api/internal/knowledge-backfill'
     | '/api/internal/knowledge-refresh'
     | '/api/internal/knowledge-worker'
     | '/api/internal/plan-billing'
@@ -1365,6 +1378,7 @@ export interface RootRouteChildren {
   ApiInternalDemoProofRoute: typeof ApiInternalDemoProofRoute
   ApiInternalFlowScanRoute: typeof ApiInternalFlowScanRoute
   ApiInternalFlowWorkerRoute: typeof ApiInternalFlowWorkerRoute
+  ApiInternalKnowledgeBackfillRoute: typeof ApiInternalKnowledgeBackfillRoute
   ApiInternalKnowledgeRefreshRoute: typeof ApiInternalKnowledgeRefreshRoute
   ApiInternalKnowledgeWorkerRoute: typeof ApiInternalKnowledgeWorkerRoute
   ApiInternalPlanBillingRoute: typeof ApiInternalPlanBillingRoute
@@ -1889,6 +1903,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalFlowWorkerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/knowledge-backfill': {
+      id: '/api/internal/knowledge-backfill'
+      path: '/api/internal/knowledge-backfill'
+      fullPath: '/api/internal/knowledge-backfill'
+      preLoaderRoute: typeof ApiInternalKnowledgeBackfillRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/knowledge-refresh': {
       id: '/api/internal/knowledge-refresh'
       path: '/api/internal/knowledge-refresh'
@@ -2268,6 +2289,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalDemoProofRoute: ApiInternalDemoProofRoute,
   ApiInternalFlowScanRoute: ApiInternalFlowScanRoute,
   ApiInternalFlowWorkerRoute: ApiInternalFlowWorkerRoute,
+  ApiInternalKnowledgeBackfillRoute: ApiInternalKnowledgeBackfillRoute,
   ApiInternalKnowledgeRefreshRoute: ApiInternalKnowledgeRefreshRoute,
   ApiInternalKnowledgeWorkerRoute: ApiInternalKnowledgeWorkerRoute,
   ApiInternalPlanBillingRoute: ApiInternalPlanBillingRoute,
