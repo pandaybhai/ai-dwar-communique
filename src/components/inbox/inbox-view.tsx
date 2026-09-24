@@ -111,7 +111,7 @@ export function InboxView() {
       new Set(rows.map((c) => (c.preview?.type === "template" && !c.preview.body?.trim() ? c.preview.template_name : null)).filter(Boolean) as string[]),
     );
     if (names.length) {
-      const { data: tpls } = await supabase
+      const { data: tpls } = await aidwar
         .from("message_templates")
         .select("name, components")
         .eq("organization_id", orgId)
