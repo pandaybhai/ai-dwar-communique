@@ -199,7 +199,7 @@ function Index() {
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/70 motion-reduce:hidden" />
                   <span className="relative inline-flex size-2 rounded-full bg-primary" />
                 </span>
-                Answers customers 24/7 · Official Business Platform
+                Answers customers 24/7 · Built on the official WhatsApp Business Platform
               </span>
               <h1 className="mt-7 max-w-2xl text-[2.75rem] font-extrabold leading-[1.03] tracking-tight text-foreground sm:text-[3.75rem]">
                 Your AI employee.{" "}
