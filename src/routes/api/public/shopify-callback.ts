@@ -10,7 +10,7 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
     handlers: {
       GET: async ({ request }) => {
         const {
-          shopifyCredentials,
+          resolveShopifyApp,
           normalizeShopDomain,
           verifyOAuthHmac,
           verifyInstallState,
@@ -29,19 +29,20 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           return Response.redirect(target.toString(), 302);
         };
 
-        const creds = shopifyCredentials();
+        const shopDomain = normalizeShopDomain(url.searchParams.get("shop"));
+        // Custom app for this shop when saved, else the public app.
+        const creds = await resolveShopifyApp(shopDomain);
         if (!creds) return settingsUrl({ shopify_error: "not_configured" });
 
         if (!(await verifyOAuthHmac(url, creds.apiSecret))) {
           return settingsUrl({ shopify_error: "signature" });
         }
 
-        const shopDomain = normalizeShopDomain(url.searchParams.get("shop"));
         const code = url.searchParams.get("code") ?? "";
         const state = url.searchParams.get("state") ?? "";
         if (!shopDomain || !code) return settingsUrl({ shopify_error: "invalid_request" });
 
-        const verified = await verifyInstallState(state);
+        const verified = await verifyInstallState(state, creds.apiSecret);
         // The state names the workspace; it must also name this same shop.
         if (!verified || verified.shopDomain !== shopDomain) {
           return settingsUrl({ shopify_error: "state" });

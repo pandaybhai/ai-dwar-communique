@@ -11,22 +11,20 @@ export const Route = createFileRoute("/api/public/shopify-webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { shopifyCredentials, verifyWebhookHmac, normalizeShopDomain, getServiceClient } =
+        const { verifyWebhookForShop, normalizeShopDomain, getServiceClient } =
           await import("@/lib/shopify.server");
-
-        const creds = shopifyCredentials();
-        if (!creds) return new Response("Not configured", { status: 503 });
 
         const rawBody = await request.text();
         const signature = request.headers.get("x-shopify-hmac-sha256");
+        const shopDomain = normalizeShopDomain(request.headers.get("x-shopify-shop-domain"));
 
-        // Nothing is trusted, parsed or stored before the HMAC verifies.
-        if (!(await verifyWebhookHmac(rawBody, signature, creds.apiSecret))) {
+        // Nothing is trusted, parsed or stored before the HMAC verifies — with the
+        // shop's custom app secret, else the public app secret.
+        if (!(await verifyWebhookForShop(rawBody, signature, shopDomain))) {
           return new Response("Invalid signature", { status: 401 });
         }
 
         const topic = request.headers.get("x-shopify-topic") ?? "";
-        const shopDomain = normalizeShopDomain(request.headers.get("x-shopify-shop-domain"));
         const eventId =
           request.headers.get("x-shopify-event-id") ??
           request.headers.get("x-shopify-webhook-id") ??
