@@ -183,11 +183,6 @@ export function CatalogCard({
             <p className="text-sm font-semibold text-foreground">Product catalogue</p>
             {loading ? (
               <Skeleton className="mt-2 h-4 w-56" />
-            ) : !status?.scopes_ok ? (
-              <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Reconnect this number to enable the WhatsApp catalogue — the connection doesn't
-                include catalogue permission yet.
-              </p>
             ) : catalog ? (
               <>
                 <p className="mt-1 max-w-md text-sm text-muted-foreground">
@@ -206,14 +201,23 @@ export function CatalogCard({
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {mode === "linked"
-                    ? "Linked to your existing catalogue — your shop keeps it updated."
-                    : "Managed by AiDwar."}
+                    ? "My store already fills it — AiDwar only reads."
+                    : "AiDwar keeps it in sync."}{" "}
+                  {canManage ? (
+                    <button
+                      type="button"
+                      className="font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
+                      disabled={working !== null}
+                      onClick={() => void changeMode(mode === "linked" ? "managed" : "linked")}
+                    >
+                      Change
+                    </button>
+                  ) : null}
                 </p>
               </>
             ) : (
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Use a catalogue you already have, or let AiDwar create one and send products that
-                have a price and a picture.
+                Connect a catalogue from your Meta business in four short steps.
               </p>
             )}
             {catalog?.last_error ? (
@@ -222,29 +226,14 @@ export function CatalogCard({
           </div>
         </div>
 
-        {loading ? null : !status?.scopes_ok ? (
-          canManage ? (
-            <EmbeddedSignupButton orgId={orgId} onConnected={onReconnected} />
-          ) : null
-        ) : canManage ? (
+        {loading ? null : canManage && catalog ? (
           <div className="flex flex-wrap items-center gap-2">
             {catalog ? (
               <Badge variant="outline" className="rounded-full">
                 {mode === "linked" ? "Your catalogue" : "Managed by AiDwar"}
               </Badge>
             ) : null}
-            {!catalog ? (
-              <Button
-                className="rounded-full"
-                disabled={working !== null}
-                onClick={() => void startEnable()}
-              >
-                {working === "enable" || working === "choose" ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                Enable WhatsApp catalogue
-              </Button>
-            ) : (
+            {
               <Button
                 variant="outline"
                 className="rounded-full"
@@ -258,10 +247,104 @@ export function CatalogCard({
                 )}
                 {mode === "linked" ? "Refresh" : "Sync products"}
               </Button>
-            )}
+            }
           </div>
         ) : null}
       </div>
+
+      {!loading && !catalog && canManage ? (
+        <ol className="mt-4 space-y-4 border-t border-border/60 pt-4 text-sm">
+          <li>
+            <p className="font-semibold text-foreground">A · Pick or create a catalogue in your Meta business</p>
+            <a
+              href="https://business.facebook.com/commerce"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              Open Commerce Manager <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <Input
+              className="mt-2 max-w-xs"
+              inputMode="numeric"
+              placeholder="Paste the catalogue ID"
+              value={catalogInput}
+              onChange={(e) => setCatalogInput(e.target.value.replace(/\s/g, ""))}
+            />
+            <button
+              type="button"
+              className="mt-2 block text-xs font-medium text-muted-foreground hover:text-foreground"
+              onClick={() => setShowHowTo((v) => !v)}
+            >
+              I don't have one
+            </button>
+            {showHowTo ? (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                <li>In Commerce Manager, choose Add catalogue → E-commerce.</li>
+                <li>Pick Upload product info, name it, and create it.</li>
+                <li>Open Settings in the new catalogue and copy its ID here.</li>
+              </ul>
+            ) : null}
+            {checkError?.step === "catalog_id" ? (
+              <p className="mt-2 text-xs text-destructive">{checkError.message}</p>
+            ) : null}
+          </li>
+          <li>
+            <p className="font-semibold text-foreground">B · Share it with AiDwar</p>
+            <p className="mt-1 text-muted-foreground">
+              Business settings → Data sources → Catalogues → your catalogue → Assign partner →
+              Business ID {PARTNER_ID} → Manage catalogue.
+            </p>
+            <Button variant="outline" size="sm" className="mt-2 rounded-full" onClick={() => void copyId()}>
+              {copied ? <Check className="mr-2 h-3.5 w-3.5" /> : <Copy className="mr-2 h-3.5 w-3.5" />}
+              {copied ? "Copied" : `Copy ${PARTNER_ID}`}
+            </Button>
+            {checkError?.step === "share" ? (
+              <p className="mt-2 text-xs text-destructive">{checkError.message}</p>
+            ) : null}
+          </li>
+          <li>
+            <p className="font-semibold text-foreground">C · How should products get in?</p>
+            <p className="mt-1 text-xs text-muted-foreground">You can change this later.</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  ["managed", "AiDwar keeps it in sync", "We add, update and remove products for you."],
+                  ["linked", "My store already fills it", "We only read it — nothing is changed."],
+                ] as const
+              ).map(([value, title, hint]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSetupMode(value)}
+                  className={`rounded-xl border p-3 text-left transition ${
+                    setupMode === value
+                      ? "border-primary bg-primary/5"
+                      : "border-border/70 hover:border-primary/60"
+                  }`}
+                >
+                  <p className="text-sm font-medium text-foreground">{title}</p>
+                  <p className="text-xs text-muted-foreground">{hint}</p>
+                </button>
+              ))}
+            </div>
+          </li>
+          <li>
+            <p className="font-semibold text-foreground">D · Check access</p>
+            <Button
+              className="mt-2 rounded-full"
+              disabled={working !== null || catalogInput.trim().length === 0}
+              onClick={() => void checkAccess()}
+            >
+              {working === "check" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Check access
+            </Button>
+            {checkError && checkError.step !== "catalog_id" && checkError.step !== "share" ? (
+              <p className="mt-2 text-xs text-destructive">{checkError.message}</p>
+            ) : null}
+          </li>
+        </ol>
+      ) : null}
 
       {catalog && canManage ? (
         <div className="mt-4 flex flex-wrap gap-6 border-t border-border/60 pt-4">
@@ -294,44 +377,6 @@ export function CatalogCard({
         </div>
       ) : null}
 
-      <Dialog open={choices !== null} onOpenChange={(open) => (open ? null : setChoices(null))}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Which catalogue should this number use?</DialogTitle>
-            <DialogDescription>
-              We found catalogues on your business already. Link one and we'll only read from it —
-              nothing is added or removed.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            {(choices ?? []).map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className="w-full rounded-xl border border-border/70 p-3 text-left transition hover:border-primary/60 hover:bg-muted/50"
-                onClick={() => void enable(c.id)}
-              >
-                <p className="text-sm font-medium text-foreground">Use existing catalogue {c.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {c.product_count} product{c.product_count === 1 ? "" : "s"}
-                </p>
-              </button>
-            ))}
-            <button
-              type="button"
-              className="w-full rounded-xl border border-dashed border-border p-3 text-left transition hover:border-primary/60 hover:bg-muted/50"
-              onClick={() => void enable(null)}
-            >
-              <p className="text-sm font-medium text-foreground">
-                Create a new one managed by AiDwar
-              </p>
-              <p className="text-xs text-muted-foreground">
-                We'll send products that have a price and a picture.
-              </p>
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
