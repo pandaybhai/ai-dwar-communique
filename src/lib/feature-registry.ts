@@ -625,6 +625,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "reading_settings_updated",
       "aiden_admin_test",
       "ai_prompt_block_updated",
+      "super_admin_granted",
+      "super_admin_revoked",
 
     ],
     settings_path: "/app/settings",
