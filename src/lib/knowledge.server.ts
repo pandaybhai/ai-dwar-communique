@@ -439,6 +439,9 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   let runCap =
     mode === "full" ? Math.max(Math.min(planCap - alreadySeen, RUN_PAGE_CAP), 0) : day0Limit;
   if (runLimit > 0) runCap = Math.min(runCap, runLimit);
+  // App stores, social profiles, marketplaces, maps: that one page only.
+  const singlePage = config["single_page"] === true;
+  if (singlePage) runCap = 0;
   // Firecrawl credits are reserved per call against the monthly caps; once a
   // cap is hit the rest of this read uses our own reader, logged once.
   const budget: FirecrawlBudget = {
@@ -468,13 +471,13 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   onStage?.("sitemap");
   const [blocked, sitemap, , key, settings]: [string[], string[], string[], string | null, { data: unknown }] =
     await Promise.all([
-      disallowedPaths(origin),
-      sitemapUrls(origin),
+      singlePage ? Promise.resolve([] as string[]) : disallowedPaths(origin),
+      singlePage ? Promise.resolve([] as string[]) : sitemapUrls(origin),
       Promise.resolve([] as string[]),
       readerKey(supabase),
       supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
     ]);
-  const mapped = (await mapSite(start.toString(), reading.map_engine, { sitemap, budget, tavilyBudget })).urls;
+  const mapped = singlePage ? [] : (await mapSite(start.toString(), reading.map_engine, { sitemap, budget, tavilyBudget })).urls;
   const costCap = Number(
     (settings.data as { day0_crawl_cost_cap?: number } | null)?.day0_crawl_cost_cap ?? 2,
   );
@@ -521,10 +524,10 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   // The homepage first: it tells us whether this is a shop with public data.
   const home = await readPage(start.toString(), { key, ...readOpts, ...(onStage ? { onStage } : {}) });
   let readerCost = home?.usedReader ? READER_COST : 0;
-  let platform = detectPlatform(home?.html ?? "", home?.headers ?? {});
+  let platform = singlePage ? null : detectPlatform(home?.html ?? "", home?.headers ?? {});
   // If the markup didn't tell us, the catalogue itself will: a shop answers
   // this address with product data and nothing else does.
-  if (!platform) {
+  if (!platform && !singlePage) {
     const probe = await fetchWithTimeout(`${origin}/products.json?limit=1`, 8000);
     if (probe?.ok) {
       const body = (await probe.json().catch(() => null)) as { products?: unknown } | null;
@@ -1151,6 +1154,58 @@ export async function retryPendingEmbeddings(supabase: SupabaseClient, limit = 2
  * implementation, shared by the knowledge screen and the owner's chat with
  * Aiden, so both behave identically.
  */
+/** App stores, social profiles, marketplaces, maps: read that one page only. */
+const LISTING_HOSTS: Array<[RegExp, string]> = [
+  [/(^|\.)play\.google\.com$/, "Play Store"],
+  [/(^|\.)apps\.apple\.com$|(^|\.)itunes\.apple\.com$/, "App Store"],
+  [/(^|\.)instagram\.com$/, "Instagram"],
+  [/(^|\.)facebook\.com$|(^|\.)fb\.com$|(^|\.)fb\.me$/, "Facebook"],
+  [/(^|\.)linktr\.ee$/, "Linktree"],
+  [/(^|\.)maps\.google\.[a-z.]+$|(^|\.)maps\.app\.goo\.gl$|(^|\.)goo\.gl$|(^|\.)g\.page$/, "Google Maps"],
+  [/(^|\.)amazon\.[a-z.]+$|(^|\.)amzn\.(to|in)$/, "Amazon"],
+  [/(^|\.)flipkart\.com$/, "Flipkart"],
+  [/(^|\.)meesho\.com$/, "Meesho"],
+  [/(^|\.)myntra\.com$/, "Myntra"],
+  [/(^|\.)nykaa\.com$/, "Nykaa"],
+  [/(^|\.)etsy\.com$/, "Etsy"],
+  [/(^|\.)justdial\.com$/, "Justdial"],
+  [/(^|\.)indiamart\.com$/, "IndiaMART"],
+  [/(^|\.)zomato\.com$/, "Zomato"],
+  [/(^|\.)swiggy\.com$/, "Swiggy"],
+  [/(^|\.)youtube\.com$|(^|\.)youtu\.be$/, "YouTube"],
+  [/(^|\.)linkedin\.com$/, "LinkedIn"],
+  [/(^|\.)(x|twitter)\.com$/, "X"],
+  [/(^|\.)pinterest\.[a-z.]+$/, "Pinterest"],
+];
+export function listingLabel(url: string): string | null {
+  let host = "";
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+  if (host === "google.com" && /^\/maps/.test(new URL(url).pathname)) return "Google Maps";
+  for (const [re, label] of LISTING_HOSTS) if (re.test(host)) return label;
+  return null;
+}
+export function listingReply(label: string): string {
+  return `Got it — I've read your ${label} page. If you have a website with prices, policies or contact details, send that too and I'll learn it as well.`;
+}
+export const TRIAL_LINK_LIMIT_REPLY =
+  "I've already read enough to get started — connect your number to unlock full reading.";
+
+function sameLink(a: string, b: string): boolean {
+  const norm = (u: string) => {
+    try {
+      const x = new URL(u);
+      return `${x.hostname.replace(/^www\./, "").toLowerCase()}${x.pathname.replace(/\/+$/, "")}${x.search}`;
+    } catch {
+      return u.trim().toLowerCase();
+    }
+  };
+  return norm(a) === norm(b);
+}
+
 export async function addWebsiteSource(
   supabase: SupabaseClient,
   organizationId: string,
@@ -1162,6 +1217,12 @@ export async function addWebsiteSource(
   sourceId: string | null;
   itemCount: number;
   queued?: boolean;
+  /** Same link read within the re-read window: the saved copy is used. */
+  reused?: boolean;
+  /** Trial link limit reached; nothing was queued. */
+  limited?: boolean;
+  /** Set for app store / social / marketplace / maps links (one page only). */
+  listing?: string | null;
   error?: string;
 }> {
   let hostname: string;
@@ -1170,6 +1231,55 @@ export async function addWebsiteSource(
   } catch {
     return { ok: false, sourceId: null, itemCount: 0, error: "That isn't a full web address." };
   }
+  const listing = listingLabel(url);
+  const { loadReadingSettings } = await import("@/lib/reading.server");
+  const reading = await loadReadingSettings(supabase);
+
+  // Same link already read recently → use the saved copy, no new read.
+  const { data: prior } = await supabase
+    .from("knowledge_sources")
+    .select("id, config, last_synced_at, status, item_count, created_at")
+    .eq("organization_id", organizationId)
+    .eq("type", "website")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  const priorRows = (prior ?? []) as Array<{
+    id: string; config: Record<string, unknown> | null; last_synced_at: string | null;
+    status: string; item_count: number; created_at: string;
+  }>;
+  const windowMs = Math.max(Number(reading.link_reread_days) || 0, 0) * 86_400_000;
+  const match = priorRows.find((r) => sameLink(String(r.config?.["url"] ?? ""), url));
+  if (match && windowMs > 0) {
+    const last = Date.parse(match.last_synced_at ?? match.created_at);
+    const inFlight = ["pending", "queued", "syncing"].includes(match.status);
+    if (inFlight || (Number.isFinite(last) && Date.now() - last < windowMs)) {
+      return { ok: true, sourceId: match.id, itemCount: match.item_count, reused: true, listing };
+    }
+  }
+
+  // Trial workspaces: a few new links a day, a small total.
+  const plan = await planLimits(supabase, organizationId);
+  if (!plan.paid) {
+    const dayAgo = Date.now() - 86_400_000;
+    const perDay = Math.max(Number(reading.trial_links_per_day) || 0, 0);
+    const total = Math.max(Number(reading.trial_links_total) || 0, 0);
+    const today = priorRows.filter((r) => Date.parse(r.created_at) > dayAgo).length;
+    if ((perDay > 0 && today >= perDay) || (total > 0 && priorRows.length >= total)) {
+      void logServerActivity(supabase, organizationId, createdBy, "reading_link_limit_reached", {
+        today, total: priorRows.length,
+      }).catch(() => undefined);
+      return { ok: false, sourceId: null, itemCount: 0, limited: true, listing, error: TRIAL_LINK_LIMIT_REPLY };
+    }
+  }
+
+  // A re-send after the window refreshes the existing source instead of adding a copy.
+  if (match) {
+    await supabase
+      .from("knowledge_sources")
+      .update({ status: "pending", queued_at: new Date().toISOString(), sync_started_at: null })
+      .eq("id", match.id);
+    return { ok: true, sourceId: match.id, itemCount: 0, queued: true, listing };
+  }
 
   const { data, error } = await supabase
     .from("knowledge_sources")
@@ -1177,7 +1287,11 @@ export async function addWebsiteSource(
       organization_id: organizationId,
       type: "website",
       name: hostname,
-      config: { url, mode: options?.mode ?? "day0" },
+      config: {
+        url,
+        mode: listing ? "day0" : options?.mode ?? "day0",
+        ...(listing ? { single_page: true, listing } : {}),
+      },
       status: "pending",
       queued_at: new Date().toISOString(),
       refresh_days: 7,
@@ -1191,7 +1305,7 @@ export async function addWebsiteSource(
 
   // Reading a real website takes minutes, so it never happens on the request
   // that asked for it: the worker picks the queued source up within a minute.
-  return { ok: true, sourceId: (data as { id: string }).id, itemCount: 0, queued: true };
+  return { ok: true, sourceId: (data as { id: string }).id, itemCount: 0, queued: true, listing };
 }
 
 /** A merchant's correction becomes a written answer, attributed and dated. */
