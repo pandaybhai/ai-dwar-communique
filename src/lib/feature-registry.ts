@@ -618,6 +618,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "whatsapp_scopes_removed",
       "whatsapp_health_needs_attention",
       "firecrawl_cap_reached",
+      "tavily_cap_reached",
       "knowledge_on_demand_read",
       "knowledge_read_changes",
       "knowledge_read_more",

@@ -32,10 +32,19 @@ export const Route = createFileRoute("/api/admin/ai")({
           const { data } = await query;
           const orgs = (data ?? []) as Array<{ id: string; name: string }>;
           const ids = orgs.map((o) => o.id);
-          if (!ids.length) return Response.json({ organizations: [] });
+          if (!ids.length) return Response.json({ organizations: [], platform_credits: null });
           const month = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
             .toISOString()
             .slice(0, 10);
+          const [tavilyAll, firecrawlAll] = await Promise.all([
+            supabase.from("reader_usage").select("organization_id, credits").eq("engine", "tavily").eq("month", month),
+            supabase.from("firecrawl_usage").select("credits").eq("month", month),
+          ]);
+          const tavilyRows = (tavilyAll.data ?? []) as Array<{ organization_id: string; credits: number }>;
+          const platform_credits = {
+            tavily: tavilyRows.reduce((n, r) => n + Number(r.credits ?? 0), 0),
+            firecrawl: ((firecrawlAll.data ?? []) as Array<{ credits: number }>).reduce((n, r) => n + Number(r.credits ?? 0), 0),
+          };
           const [plans, numbers, agents, instr, sources, credits, supers] = await Promise.all([
             supabase.from("organizations").select("id, plan_status").in("id", ids),
             supabase.from("whatsapp_accounts").select("organization_id").in("organization_id", ids).eq("status", "active"),
@@ -75,12 +84,13 @@ export const Route = createFileRoute("/api/admin/ai")({
               sources: mine.length,
               items: mine.reduce((n, r) => n + Number(r.item_count ?? 0), 0),
               pages_read: sites.reduce((n, r) => n + Number(r.pages_seen ?? 0), 0),
+              tavily_credits_month: tavilyRows.filter((r) => r.organization_id === o.id).reduce((n, r) => n + Number(r.credits ?? 0), 0),
               credits_month: ((credits.data ?? []) as Array<{ organization_id: string; credits: number }>).find((r) => r.organization_id === o.id)?.credits ?? 0,
               last_full_read: latest(sites.filter((r) => r.config?.["mode"] === "full")),
               last_refresh: latest(sites),
             };
           });
-          return Response.json({ organizations: rows });
+          return Response.json({ organizations: rows, platform_credits });
         }
 
         if (
@@ -342,7 +352,7 @@ export const Route = createFileRoute("/api/admin/ai")({
               );
             const incoming = (payload["settings"] ?? {}) as Record<string, unknown>;
             const next: Record<string, unknown> = {};
-            const ints = ["day0_page_limit", "backfill_pages_per_day", "refresh_days", "manual_refresh_cooldown_hours", "firecrawl_monthly_credit_cap", "firecrawl_workspace_monthly_cap"];
+            const ints = ["day0_page_limit", "backfill_pages_per_day", "refresh_days", "manual_refresh_cooldown_hours", "firecrawl_monthly_credit_cap", "firecrawl_workspace_monthly_cap", "tavily_monthly_credit_cap", "tavily_workspace_monthly_cap"];
             for (const k of ints) {
               if (incoming[k] == null) continue;
               const n = Math.floor(Number(incoming[k]));
@@ -350,9 +360,20 @@ export const Route = createFileRoute("/api/admin/ai")({
               next[k] = n;
             }
             if (next["day0_page_limit"] === 0) return jsonError("Quick read needs at least 1 page.");
-            if (incoming["crawl_engine"] != null) {
-              if (!["firecrawl", "auto", "own"].includes(String(incoming["crawl_engine"]))) return jsonError("Unknown reading engine.");
-              next["crawl_engine"] = incoming["crawl_engine"];
+            const ENGINES = ["own", "tavily", "firecrawl"];
+            for (const k of ["reader_primary", "map_engine"]) {
+              if (incoming[k] == null) continue;
+              if (!ENGINES.includes(String(incoming[k]))) return jsonError("Unknown reading engine.");
+              next[k] = incoming[k];
+            }
+            if (incoming["reader_fallback_order"] != null) {
+              const list = Array.isArray(incoming["reader_fallback_order"]) ? incoming["reader_fallback_order"].map(String) : [];
+              if (!list.length || list.some((e) => !ENGINES.includes(e))) return jsonError("Fallback order needs known engines.");
+              next["reader_fallback_order"] = Array.from(new Set(list));
+            }
+            if (incoming["tavily_extract_depth"] != null) {
+              if (!["basic", "advanced"].includes(String(incoming["tavily_extract_depth"]))) return jsonError("Unknown Tavily depth.");
+              next["tavily_extract_depth"] = incoming["tavily_extract_depth"];
             }
             if (incoming["full_crawl_trigger"] != null) {
               if (!["on_number_connected", "on_plan_active", "manual"].includes(String(incoming["full_crawl_trigger"]))) return jsonError("Unknown full-read trigger.");
