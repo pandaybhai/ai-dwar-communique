@@ -179,7 +179,7 @@ async function sitemapUrls(origin: string): Promise<string[]> {
  * How many pages this workspace's plan allows us to read, and whether it is on
  * a paid plan at all. Trial workspaces get the shallow day-one read only.
  */
-async function planLimits(
+export async function planLimits(
   supabase: SupabaseClient,
   organizationId: string,
 ): Promise<{ cap: number; paid: boolean; planId: string | null }> {
