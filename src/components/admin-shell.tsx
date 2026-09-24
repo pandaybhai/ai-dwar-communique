@@ -10,8 +10,7 @@ import {
   LogOut,
   Menu,
   ShieldCheck,
-  Users,
-} from "lucide-react";
+  Users, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -25,6 +24,7 @@ const NAV = [
   { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/flags", label: "Feature Flags", icon: Flag },
   { to: "/admin/ai", label: "AI operations", icon: Bot },
+  { to: "/admin/aiden", label: "Aiden control", icon: Sparkles },
   { to: "/admin/activity", label: "Activity", icon: Activity },
 ] as const;
 
