@@ -27,7 +27,8 @@ import {
   readerKey,
   stripHtml,
 } from "@/lib/web-reader.server";
-import { firecrawlMap } from "@/lib/firecrawl.server";
+import { firecrawlMap, type FirecrawlBudget } from "@/lib/firecrawl.server";
+import { logServerActivity } from "@/lib/whatsapp-api.server";
 
 export type SourceType =
   | "website"
@@ -429,9 +430,29 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const mode = config["mode"] === "full" || plan.paid ? "full" : "day0";
   const resuming = mode === "full" && config["resume"] === true;
   const alreadySeen = resuming ? Number(config["pages_done"] ?? 0) : 0;
-  const planCap = mode === "full" ? plan.cap : 30;
+  const { data: limitRow } = await supabase
+    .from("platform_settings")
+    .select("day0_page_limit")
+    .maybeSingle();
+  const day0Limit = Math.max(
+    Number((limitRow as { day0_page_limit?: number } | null)?.day0_page_limit ?? 15) || 15,
+    1,
+  );
+  const planCap = mode === "full" ? plan.cap : day0Limit;
   const runCap =
-    mode === "full" ? Math.max(Math.min(planCap - alreadySeen, RUN_PAGE_CAP), 0) : 30;
+    mode === "full" ? Math.max(Math.min(planCap - alreadySeen, RUN_PAGE_CAP), 0) : day0Limit;
+  // Firecrawl credits are reserved per call against the monthly caps; once a
+  // cap is hit the rest of this read uses our own reader, logged once.
+  const budget: FirecrawlBudget = {
+    supabase,
+    organizationId,
+    onCapped: () => {
+      void logServerActivity(supabase, organizationId, null, "firecrawl_cap_reached", {
+        source_id: sourceId,
+        mode,
+      }).catch(() => undefined);
+    },
+  };
   const concurrency = mode === "full" ? 6 : 4;
   const deadline = mode === "day0" ? Date.now() + 90_000 : null;
 
@@ -440,7 +461,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     await Promise.all([
       disallowedPaths(origin),
       sitemapUrls(origin),
-      firecrawlMap(start.toString()),
+      firecrawlMap(start.toString(), budget),
       readerKey(supabase),
       supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
     ]);
@@ -480,7 +501,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const productDrafts: ProductDraft[] = [];
 
   // The homepage first: it tells us whether this is a shop with public data.
-  const home = await readPage(start.toString(), { key, ...(onStage ? { onStage } : {}) });
+  const home = await readPage(start.toString(), { key, budget, ...(onStage ? { onStage } : {}) });
   let readerCost = home?.usedReader ? READER_COST : 0;
   let platform = detectPlatform(home?.html ?? "", home?.headers ?? {});
   // If the markup didn't tell us, the catalogue itself will: a shop answers
@@ -574,7 +595,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       const allowReader = readerCost + READER_COST <= costCap;
       let page: Awaited<ReturnType<typeof readPage>> = null;
       try {
-        page = await readPage(next, { key, allowReader, ...(onStage ? { onStage } : {}) });
+        page = await readPage(next, { key, allowReader, budget, ...(onStage ? { onStage } : {}) });
       } catch (error) {
         // One unreadable page must never end the whole crawl.
         console.error(

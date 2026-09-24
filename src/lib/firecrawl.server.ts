@@ -6,7 +6,45 @@
  * timeout so a slow site can never hang a crawl.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 const FIRECRAWL_BASE = "https://api.firecrawl.dev/v2";
+
+/**
+ * Who pays for a call. Every call reserves its credits first against the
+ * platform and workspace monthly caps (platform_settings); a refusal means
+ * "use our own reader", never "stop the crawl".
+ */
+export type FirecrawlBudget = {
+  supabase: SupabaseClient;
+  organizationId: string;
+  /** Set once a call was refused this run, so we stop asking and log once. */
+  capped?: boolean;
+  onCapped?: () => void;
+};
+
+async function reserve(budget: FirecrawlBudget | undefined, credits: number): Promise<boolean> {
+  if (!budget) return false; // unattributed calls are not allowed
+  if (budget.capped) return false;
+  // The counter is service-only, so a merchant-triggered Refresh (user client)
+  // still records its credits.
+  const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+  const { data, error } = await getServiceClient().rpc("firecrawl_try_spend", {
+    _org: budget.organizationId,
+    _credits: credits,
+  });
+  if (error) {
+    console.error("[firecrawl] budget check failed", error.message);
+    return false;
+  }
+  if (data !== true) {
+    budget.capped = true;
+    console.warn("[firecrawl] monthly cap reached", JSON.stringify({ org: budget.organizationId }));
+    budget.onCapped?.();
+    return false;
+  }
+  return true;
+}
 
 function apiKey(): string | null {
   const key = process.env["FIRECRAWL_API_KEY"];
@@ -53,7 +91,12 @@ async function firecrawlPost(
 }
 
 /** Every address Firecrawl can find on the site. Empty when unconfigured. */
-export async function firecrawlMap(url: string, limit = 2000): Promise<string[]> {
+export async function firecrawlMap(
+  url: string,
+  budget: FirecrawlBudget | undefined,
+  limit = 2000,
+): Promise<string[]> {
+  if (!apiKey() || !(await reserve(budget, 1))) return [];
   const data = await firecrawlPost("/map", { url, limit }, 30000);
   const links = data?.["links"];
   if (!Array.isArray(links)) return [];
@@ -72,7 +115,12 @@ export type FirecrawlPage = {
  * the processed HTML stays for product extraction and link discovery.
  * Null means "we could not read it" — the caller falls back to its own fetch.
  */
-export async function firecrawlScrape(url: string, timeoutMs = 25000): Promise<FirecrawlPage | null> {
+export async function firecrawlScrape(
+  url: string,
+  budget: FirecrawlBudget | undefined,
+  timeoutMs = 25000,
+): Promise<FirecrawlPage | null> {
+  if (!apiKey() || !(await reserve(budget, 1))) return null;
   const data = await firecrawlPost(
     "/scrape",
     { url, formats: ["markdown", "html"], onlyMainContent: true },

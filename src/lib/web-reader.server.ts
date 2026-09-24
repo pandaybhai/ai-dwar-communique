@@ -9,7 +9,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { firecrawlScrape } from "@/lib/firecrawl.server";
+import { firecrawlScrape, type FirecrawlBudget } from "@/lib/firecrawl.server";
 
 export const READER_COST = 0.2;
 const READER_ENDPOINT = "https://r.jina.ai/";
@@ -125,6 +125,8 @@ export async function readPage(
     key?: string | null;
     allowReader?: boolean;
     timeoutMs?: number;
+    /** Firecrawl credits are charged here; without it we read with our own fetch. */
+    budget?: FirecrawlBudget;
     onStage?: (stage: "fetch" | "reader" | "extract") => void;
   } = {},
 ): Promise<PageRead | null> {
@@ -134,7 +136,7 @@ export async function readPage(
   // Firecrawl is the primary reader when its key is configured: it renders
   // the page and hands back clean text plus the processed markup. Any
   // failure falls through to our own fetch below.
-  const scraped = await firecrawlScrape(url, timeout);
+  const scraped = await firecrawlScrape(url, options.budget, timeout);
   if (scraped) {
     const { links } = stripHtml(scraped.html);
     return {
