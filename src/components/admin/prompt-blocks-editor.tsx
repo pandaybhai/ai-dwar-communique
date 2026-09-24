@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
+import { SCRIPTS, isScriptKey } from "@/lib/scripts";
 
 type PromptBlock = {
   key: string;
@@ -20,6 +21,7 @@ type PromptBlock = {
 };
 
 const LABELS: Record<string, { name: string; description: string }> = {
+  ...Object.fromEntries(Object.entries(SCRIPTS).map(([k, v]) => [k, { name: v.name, description: v.description }])),
   agent_rules: { name: "Customer rules", description: "Sent with every reply Aiden writes to a merchant's customers." },
   merchant_rules: { name: "Owner rules", description: "Sent with every reply Aiden writes to a business owner on the AiDwar number." },
 };
@@ -96,6 +98,14 @@ export function PromptBlocksEditor({ keys, heading = true }: { keys?: string[]; 
                 <div className="min-w-0">
                   <h3 className="font-semibold">{LABELS[block.key]?.name ?? (block.name || block.key)}</h3>
                   <p className="text-sm text-muted-foreground">{LABELS[block.key]?.description ?? block.description}</p>
+                  {isScriptKey(block.key) ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {SCRIPTS[block.key].vars.length
+                        ? `Fills in: ${SCRIPTS[block.key].vars.map((v) => `{${v}}`).join(", ")}`
+                        : "No placeholders."}{" "}
+                      If anything goes wrong, Aiden sends the built-in wording.
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-xs text-muted-foreground">
                     Last changed {block.updated_by_name ? `by ${block.updated_by_name}, ` : ""}
                     {new Date(block.updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
@@ -107,7 +117,7 @@ export function PromptBlocksEditor({ keys, heading = true }: { keys?: string[]; 
                 </div>
               </div>
               <Textarea
-                className="mt-4 min-h-56 resize-y font-mono text-xs leading-relaxed"
+                className={`mt-4 resize-y font-mono text-xs leading-relaxed ${isScriptKey(block.key) ? "min-h-24" : "min-h-56"}`}
                 value={draft}
                 onChange={(event) =>
                   setDrafts((prev) => ({ ...prev, [block.key]: event.target.value }))

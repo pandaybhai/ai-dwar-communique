@@ -25,6 +25,8 @@ export async function sendServiceText(
     conversationId: string;
     to: string;
     body: string;
+    /** Stored on the message row, e.g. { kind: "stranger_greeting" }. */
+    metadata?: Record<string, unknown>;
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
@@ -77,6 +79,7 @@ export async function sendServiceText(
       direction: "outbound",
       type: "text",
       body: args.body,
+      ...(args.metadata ? { metadata: args.metadata } : {}),
       status: res.ok ? "pending" : "failed",
       status_updated_at: nowIso,
       ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
