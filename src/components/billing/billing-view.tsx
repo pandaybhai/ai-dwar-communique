@@ -49,9 +49,12 @@ const CATEGORY_COPY: Record<string, string> = {
 export function BillingView({
   organizationId,
   planActive = true,
+  onTrial = false,
 }: {
   organizationId: string;
   planActive?: boolean;
+  /** Trial workspace with no plan bought yet: never show a plan name/price. */
+  onTrial?: boolean;
 }) {
   const { can } = usePermissions();
   const [summary, setSummary] = useState<BillingSummary | null>(null);
@@ -161,9 +164,11 @@ export function BillingView({
         <StatCard
           icon={HandCoins}
           label="Your plan"
-          value={summary.plan.name ?? "No plan yet"}
+          value={onTrial ? "Trial — no plan yet" : (summary.plan.name ?? "No plan yet")}
           hint={
-            summary.plan.price_monthly
+            onTrial
+              ? "Pick a plan above to start"
+              : summary.plan.price_monthly
               ? `${money(summary.plan.price_monthly, wallet.currency)} a month`
               : "Talk to us about a plan"
           }

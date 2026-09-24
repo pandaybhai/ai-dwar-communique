@@ -1,3 +1,4 @@
+import { plural } from "@/lib/plural";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { BookOpen, Building2, FlaskConical, Lock, RotateCcw, Search, Sparkles } from "lucide-react";
@@ -168,7 +169,7 @@ function WorkspacesTab() {
                         {BEHAVIOUR_LABEL[o.behaviour ?? "none"]}
                       </span>
                     </td>
-                    <td className="px-2 py-2">{o.sources ?? 0} sources · {o.items ?? 0} items</td>
+                    <td className="px-2 py-2">{plural(o.sources ?? 0, "source")} · {plural(o.items ?? 0, "item")}</td>
                     <td className="px-2 py-2">{o.pages_read ?? 0}</td>
                     <td className="px-2 py-2">{o.tavily_credits_month ?? 0}</td>
                     <td className="px-2 py-2">{o.credits_month ?? 0}</td>
