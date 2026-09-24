@@ -24,6 +24,9 @@ type Settings = {
   firecrawl_monthly_credit_cap: number;
   firecrawl_workspace_monthly_cap: number;
   plan_page_overrides: Record<string, number>;
+  link_reread_days: number;
+  trial_links_per_day: number;
+  trial_links_total: number;
 };
 type Engine = "own" | "tavily" | "firecrawl";
 const ENGINE_OPTS: Array<{ v: Engine; label: string }> = [
@@ -47,6 +50,9 @@ const NUMBERS: Array<{ key: keyof Settings; label: string; help: string }> = [
   { key: "backfill_pages_per_day", label: "Nightly pages per workspace", help: "0 turns the nightly read off." },
   { key: "refresh_days", label: "Refresh every (days)", help: "Changed pages only. 0 turns it off." },
   { key: "manual_refresh_cooldown_hours", label: "\"Read changes now\" cooldown (hours)", help: "How often a merchant can ask." },
+  { key: "link_reread_days", label: "Same link re-read after (days)", help: "Before this, the saved copy is used. 0 turns it off." },
+  { key: "trial_links_per_day", label: "Trial: new links per day", help: "Paid plans have no link limit. 0 = no limit." },
+  { key: "trial_links_total", label: "Trial: new links in total", help: "After this: \"connect your number to unlock full reading\". 0 = no limit." },
   { key: "firecrawl_monthly_credit_cap", label: "Firecrawl credits / month (platform)", help: "After this, our own reader takes over." },
   { key: "firecrawl_workspace_monthly_cap", label: "Firecrawl credits / month (per workspace)", help: "Same fallback, per workspace." },
   { key: "tavily_monthly_credit_cap", label: "Tavily credits / month (platform)", help: "After this, the next reader in the fallback order." },
