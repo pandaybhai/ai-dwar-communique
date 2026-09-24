@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -9,6 +10,7 @@ import {
   Loader2,
   MessageCircleQuestion,
   RefreshCw,
+  BookOpenCheck,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -79,13 +81,26 @@ export function ReadingLine({ source }: { source: KnowledgeSource }) {
       </>
     );
   }
+  const total = source.total_pages ?? 0;
   return (
     <>
-      Read {nf(pages)} pages · {nf(items)} things
-      {products > 0 ? ` · ${nf(products)} ${noun}` : ""} · finished{" "}
-      {whenText(source.last_synced_at)}
+      Read {nf(pages)}
+      {source.type === "website" && total > pages ? ` of ${nf(total)}` : ""} pages
+      {products > 0 ? ` · ${nf(products)} ${noun}` : ""} · updated {whenText(source.last_synced_at)}
     </>
   );
+}
+
+/** "Next: 40 more pages tonight · refreshes every 7 days" — parts that don't apply are hidden. */
+export function NextLine({ source }: { source: KnowledgeSource }) {
+  const r = source.reading;
+  if (!r || isReading(source.status)) return null;
+  const parts = [
+    r.tonight > 0 ? `${nf(r.tonight)} more page${r.tonight === 1 ? "" : "s"} tonight` : null,
+    r.refresh_days > 0 ? `refreshes every ${r.refresh_days} day${r.refresh_days === 1 ? "" : "s"}` : null,
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  return <p className="mt-0.5 text-xs text-muted-foreground">Next: {parts.join(" · ")}</p>;
 }
 
 /** A soft bar that says "working", never a fake percentage. */
@@ -240,6 +255,7 @@ export function KnowledgeManager({
                         {kind.label} · {source.item_count.toLocaleString("en-IN")} items · read once
                       </p>
                     )}
+                    {source.type === "website" ? <NextLine source={source} /> : null}
                     {source.type === "website" && isReading(source.status) ? <ReadingBar /> : null}
                   </div>
                   <Badge variant={source.status === "error" ? "destructive" : "secondary"}>
@@ -277,7 +293,40 @@ export function KnowledgeManager({
                   <Button size="sm" variant="ghost" onClick={() => setOpenSource(source)}>
                     See what it read
                   </Button>
-                  {canConfigure && kind.live ? (
+                  {canConfigure && source.type === "website" && source.reading && !isReading(source.status) ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy || Boolean(source.reading.changes_available_at)}
+                        title={source.reading.changes_available_at ? `Available ${new Date(source.reading.changes_available_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : undefined}
+                        onClick={() => act({ action: "read_changes", source_id: source.id }, source.id, "Checking for changes.")}
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                        {source.reading.changes_available_at
+                          ? `Read changes · ${new Date(source.reading.changes_available_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`
+                          : "Read changes now"}
+                      </Button>
+                      {source.reading.can_read_more ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => act({ action: "read_more", source_id: source.id }, source.id, "Reading more pages.")}
+                        >
+                          <BookOpenCheck className="mr-2 h-4 w-4" aria-hidden="true" />
+                          Read more pages now
+                        </Button>
+                      ) : source.reading.unread > 0 ? (
+                        <Button size="sm" variant="ghost" asChild>
+                          <Link to="/app/billing">
+                            Upgrade to read all {nf((source.total_pages ?? 0) || (source.pages_seen ?? 0) + source.reading.unread)} pages
+                          </Link>
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {canConfigure && kind.live && source.type !== "website" ? (
                     <Button
                       size="sm"
                       variant="ghost"
