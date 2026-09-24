@@ -987,7 +987,11 @@ export async function syncSource(
 /** Pages saved whose search index could not be built yet (per process, reset per sync). */
 let embedDeferred = 0;
 
-/** Store one document and (re)build its chunks when the text has changed. */
+/**
+ * Store one document and (re)build its chunks when the text has changed.
+ * Chunks are only trusted when metadata.chunks_hash matches the current
+ * content hash; otherwise old chunks are removed and rebuilt in this job.
+ */
 export async function upsertDocument(
   supabase: SupabaseClient,
   organizationId: string,
@@ -998,31 +1002,35 @@ export async function upsertDocument(
 
   const { data: existing } = await supabase
     .from("knowledge_documents")
-    .select("id, content_hash")
+    .select("id, content_hash, metadata")
     .eq("source_id", sourceId)
     .eq("source_ref", doc.sourceRef)
     .maybeSingle();
-  const prior = existing as { id: string; content_hash: string | null } | null;
+  const prior = existing as
+    | { id: string; content_hash: string | null; metadata: Record<string, unknown> | null }
+    | null;
+
+  const priorMeta = prior?.metadata ?? {};
+  const chunksCurrent =
+    !!prior && priorMeta["chunks_hash"] === hash && priorMeta["needs_embedding"] !== true;
+  const baseMeta: Record<string, unknown> = { ...(doc.metadata ?? {}) };
+  if (chunksCurrent) baseMeta["chunks_hash"] = hash;
 
   let documentId = prior?.id ?? null;
 
   if (prior) {
-    await supabase
+    const { error } = await supabase
       .from("knowledge_documents")
-      .update({
-        title: doc.title,
-        content: doc.content,
-        metadata: doc.metadata ?? {},
-        content_hash: hash,
-      })
+      .update({ title: doc.title, content: doc.content, metadata: baseMeta, content_hash: hash })
       .eq("id", prior.id);
-    if (prior.content_hash === hash) {
+    if (error) throw new Error(`document update failed: ${error.message}`);
+    if (chunksCurrent) {
       const { count } = await supabase
         .from("knowledge_chunks")
         .select("id", { count: "exact", head: true })
         .eq("document_id", prior.id)
         .eq("embedding_model", EMBEDDING_MODEL);
-      if ((count ?? 0) > 0) return; // unchanged and already read
+      if ((count ?? 0) > 0) return; // unchanged and chunks built from this exact text
     }
   } else {
     const { data: inserted } = await supabase
@@ -1033,7 +1041,7 @@ export async function upsertDocument(
         source_ref: doc.sourceRef,
         title: doc.title,
         content: doc.content,
-        metadata: doc.metadata ?? {},
+        metadata: baseMeta,
         content_hash: hash,
       })
       .select("id")
@@ -1042,32 +1050,54 @@ export async function upsertDocument(
   }
 
   if (!documentId) return;
+  await rebuildChunks(supabase, organizationId, sourceId, documentId, doc.sourceRef, doc.content, hash, baseMeta);
+}
 
-  const chunks = chunkText(doc.content);
-  if (chunks.length === 0) return;
+/** Delete old chunks, re-chunk and re-embed. On failure: no stale chunks, needs_embedding=true. */
+async function rebuildChunks(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  documentId: string,
+  sourceRef: string,
+  content: string,
+  hash: string,
+  meta: Record<string, unknown>,
+): Promise<boolean> {
+  // Old chunks never keep serving answers once the text changed.
+  const { error: delError } = await supabase.from("knowledge_chunks").delete().eq("document_id", documentId);
+  if (delError) throw new Error(`chunk delete failed: ${delError.message}`);
+
+  const markPending = async () => {
+    embedDeferred += 1;
+    await supabase
+      .from("knowledge_documents")
+      .update({ metadata: { ...meta, needs_embedding: true, chunks_hash: null } })
+      .eq("id", documentId);
+  };
+
+  const chunks = chunkText(content);
+  if (chunks.length === 0) {
+    await supabase
+      .from("knowledge_documents")
+      .update({ metadata: { ...meta, needs_embedding: false, chunks_hash: hash } })
+      .eq("id", documentId);
+    return true;
+  }
   let vectors: number[][];
   try {
     vectors = await embedTexts(chunks, { supabase, organizationId });
   } catch (error) {
-    // The page text is already saved. Without chunks it is re-prepared on the
-    // next read (unchanged pages with no chunks are rebuilt), so reading never
-    // stops because the search index couldn't be built right now.
-    console.error("[knowledge] embed deferred", doc.sourceRef, error instanceof Error ? error.message : String(error));
-    embedDeferred += 1;
-    return;
+    console.error("[knowledge] embed deferred", sourceRef, error instanceof Error ? error.message : String(error));
+    await markPending();
+    return false;
   }
-
-  await supabase
-    .from("knowledge_chunks")
-    .delete()
-    .eq("document_id", documentId)
-    .eq("embedding_model", EMBEDDING_MODEL);
 
   const rows = chunks.map((text, index) => ({
     organization_id: organizationId,
     source_id: sourceId,
     document_id: documentId,
-    source_ref: doc.sourceRef,
+    source_ref: sourceRef,
     chunk_index: index,
     text,
     embedding: JSON.stringify(vectors[index] ?? []),
@@ -1076,8 +1106,42 @@ export async function upsertDocument(
   }));
 
   for (let i = 0; i < rows.length; i += 50) {
-    await supabase.from("knowledge_chunks").insert(rows.slice(i, i + 50));
+    const { error } = await supabase.from("knowledge_chunks").insert(rows.slice(i, i + 50));
+    if (error) {
+      console.error("[knowledge] chunk insert failed", sourceRef, error.message);
+      await supabase.from("knowledge_chunks").delete().eq("document_id", documentId);
+      await markPending();
+      return false;
+    }
   }
+  await supabase
+    .from("knowledge_documents")
+    .update({ metadata: { ...meta, needs_embedding: false, chunks_hash: hash } })
+    .eq("id", documentId);
+  return true;
+}
+
+/** Worker tick: retry documents whose chunks couldn't be built. */
+export async function retryPendingEmbeddings(supabase: SupabaseClient, limit = 20): Promise<{ tried: number; built: number }> {
+  const { data } = await supabase
+    .from("knowledge_documents")
+    .select("id, organization_id, source_id, source_ref, content, content_hash, metadata")
+    .eq("metadata->>needs_embedding", "true")
+    .order("updated_at", { ascending: true })
+    .limit(limit);
+  let built = 0;
+  const rows = (data ?? []) as Array<{
+    id: string; organization_id: string; source_id: string; source_ref: string;
+    content: string; content_hash: string | null; metadata: Record<string, unknown> | null;
+  }>;
+  for (const row of rows) {
+    const hash = row.content_hash ?? (await hashText(row.content));
+    const ok = await rebuildChunks(
+      supabase, row.organization_id, row.source_id, row.id, row.source_ref, row.content, hash, row.metadata ?? {},
+    ).catch(() => false);
+    if (ok) built += 1;
+  }
+  return { tried: rows.length, built };
 }
 
 /**

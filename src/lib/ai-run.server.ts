@@ -1505,7 +1505,8 @@ export async function executeRun(
   // A claim about this business's pricing, fees, refunds, delivery, warranty
   // or payment terms must come from the material. The cheap check only runs
   // when such a sentence is present; the numeric guard above is untouched.
-  if (task === "agent_reply" && result.output && !isVisionRead) {
+  // Replies only (owner chat + customer) — never reading, chunking or page summaries.
+  if (task === "agent_reply" && result.output && !isVisionRead && !purpose.startsWith("knowledge_")) {
     const candidates = policyClaimSentences(result.output);
     if (candidates.length > 0) {
       const sourceText = [knowledgeBlock, options.system ?? "", ...toolResultTexts].join("\n\n");

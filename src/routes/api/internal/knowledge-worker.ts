@@ -103,6 +103,14 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             }
           }
 
+          let embeddings = { tried: 0, built: 0 };
+          try {
+            const { retryPendingEmbeddings } = await import("@/lib/knowledge.server");
+            embeddings = await retryPendingEmbeddings(supabase);
+          } catch (error) {
+            console.error("[knowledge-worker] embed retry failed", error instanceof Error ? error.message : String(error));
+          }
+
           // Day-one follow-ups ride on this tick; a failure here never
           // blocks the reads above.
           let nudges: {
