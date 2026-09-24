@@ -14,7 +14,6 @@ type Catalog = {
   catalog_id: string;
   catalog_name: string | null;
   status: string;
-  catalog_name_hint?: never;
   mode: "managed" | "linked";
   last_sync_at: string | null;
   pushed_count: number;
