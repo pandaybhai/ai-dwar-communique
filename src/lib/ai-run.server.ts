@@ -119,6 +119,12 @@ export type RunOptions = {
   billingExempt?: boolean;
   /** Merchant onboarding chats are platform-paid and bypass workspace kill switches. */
   channel?: "onboarding" | null;
+  /**
+   * Super-admin test from /admin/aiden: nothing is sent, nothing is billed
+   * (requires billingExempt), and workspace kill switches don't apply so a
+   * paused workspace can still be tested. The platform cap still does.
+   */
+  preview?: boolean;
   /** A picture to read, as a data URL. Used when a merchant sends a photo. */
   imageDataUrl?: string | null;
 };
@@ -1125,7 +1131,8 @@ export async function executeRun(
   // Merchant onboarding chats are paid by the platform, so workspace AI kill
   // switches (ai_enabled, per-org cap) do not apply. The platform cap still does.
   const isMerchantOnboarding = options.channel === "onboarding";
-  if (!isMerchantOnboarding) {
+  const isAdminPreview = options.preview === true && options.billingExempt === true;
+  if (!isMerchantOnboarding && !isAdminPreview) {
     const { data: settings } = await supabase
       .from("organization_ai_settings")
       .select("ai_enabled")
