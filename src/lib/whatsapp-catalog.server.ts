@@ -37,6 +37,7 @@ async function logGraphCall(
     waba_id?: string | null;
     catalog_id?: string | null;
     items?: number | null;
+    token_type?: "platform" | "merchant";
   },
 ): Promise<void> {
   try {
@@ -50,6 +51,19 @@ async function logGraphCall(
     // logging must never break the action
   }
 }
+
+/**
+ * System-user token from AiDwar's own Meta business. Used ONLY for catalogue
+ * calls on catalogues a merchant has shared with us as a partner — never for
+ * sending messages. Linking to a WABA and commerce settings use the merchant token.
+ */
+export const PLATFORM_PARTNER_BUSINESS_ID = "1451227116580979";
+function platformToken(): string | null {
+  const t = process.env["META_CATALOG_PLATFORM_TOKEN"];
+  return t && t.trim() ? t.trim() : null;
+}
+const PLATFORM_TOKEN_MISSING =
+  "The catalogue connection isn't set up on our side yet. We're on it — please try again shortly.";
 
 type CallArgs = {
   supabase: SupabaseClient;
@@ -77,6 +91,7 @@ async function loggedGraph(
     waba_id: ctx.wabaId ?? null,
     catalog_id: ctx.catalogId ?? null,
     items: items ?? null,
+    token_type: accessToken === platformToken() ? "platform" : "merchant",
   });
   return result;
 }
@@ -441,14 +456,16 @@ type ProductRow = {
   brand: string | null;
   category: string | null;
   availability: string;
+  inventory_quantity: number | null;
 };
 
 function retailerId(row: ProductRow): string {
   return (row.external_id ?? row.sku ?? row.id).slice(0, 100);
 }
 
-function availabilityFor(value: string): string {
+function availabilityFor(value: string, quantity: number | null = null): string {
   if (value === "out_of_stock") return "out of stock";
+  if (typeof quantity === "number" && quantity <= 0) return "out of stock";
   if (value === "preorder") return "preorder";
   return "in stock";
 }
@@ -517,7 +534,8 @@ export async function syncCatalog(args: {
     args.whatsappAccountId,
   );
   if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
-  if (!hasCatalogScopes(ctx.scopes)) return { ok: false, error: SCOPE_MESSAGE };
+  const catalogToken = platformToken();
+  if (!catalogToken) return { ok: false, error: PLATFORM_TOKEN_MISSING };
 
   const row = await getCatalogRow(supabase, organizationId, ctx.wabaId);
   if (!row) return { ok: false, error: "Create the catalogue first, then sync." };
@@ -531,7 +549,7 @@ export async function syncCatalog(args: {
   const { data: products } = await supabase
     .from("products")
     .select(
-      "id, external_id, sku, title, description, price, currency, image_url, product_url, brand, category, availability",
+      "id, external_id, sku, title, description, price, currency, image_url, product_url, brand, category, availability, inventory_quantity",
     )
     .eq("organization_id", organizationId)
     .eq("is_visible", true)
@@ -567,7 +585,7 @@ export async function syncCatalog(args: {
         id: retailerId(p),
         title: p.title.slice(0, 200),
         description: (p.description ?? p.title).slice(0, 9999),
-        availability: availabilityFor(p.availability),
+        availability: availabilityFor(p.availability, p.inventory_quantity),
         condition: "new",
         price: `${Number(p.price).toFixed(2)} ${(p.currency ?? "INR").toUpperCase()}`,
         image_link: p.image_url,
@@ -580,7 +598,7 @@ export async function syncCatalog(args: {
     const result = await loggedGraph(
       callCtx,
       `${row.catalog_id}/items_batch`,
-      ctx.accessToken,
+      catalogToken,
       { method: "POST", body: { item_type: "PRODUCT_ITEM", requests, allow_upsert: true } },
       chunk.length,
     );
@@ -598,7 +616,7 @@ export async function syncCatalog(args: {
     const failedIds = new Set<string>();
     for (const handle of handles) {
       if (typeof handle !== "string" || !handle) continue;
-      const status = await pollBatchStatus(callCtx, row.catalog_id, handle, ctx.accessToken);
+      const status = await pollBatchStatus(callCtx, row.catalog_id, handle, catalogToken);
       failedCount += status.errors.length;
       for (const id of status.failedIds) failedIds.add(id);
       for (const f of status.errors.slice(0, 5)) rejections.push(f);
@@ -647,7 +665,7 @@ export async function syncCatalog(args: {
     const result = await loggedGraph(
       callCtx,
       `${row.catalog_id}/items_batch`,
-      ctx.accessToken,
+      catalogToken,
       {
         method: "POST",
         body: {
@@ -667,7 +685,7 @@ export async function syncCatalog(args: {
     const failedIds = new Set<string>();
     for (const handle of handles) {
       if (typeof handle !== "string" || !handle) continue;
-      const status = await pollBatchStatus(callCtx, row.catalog_id, handle, ctx.accessToken);
+      const status = await pollBatchStatus(callCtx, row.catalog_id, handle, catalogToken);
       for (const id of status.failedIds) failedIds.add(id);
       for (const f of status.errors.slice(0, 5)) rejections.push(f);
     }
@@ -753,7 +771,8 @@ export async function refreshLinkedCatalog(args: {
     args.whatsappAccountId,
   );
   if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
-  if (!hasCatalogScopes(ctx.scopes)) return { ok: false, error: SCOPE_MESSAGE };
+  const catalogToken = platformToken();
+  if (!catalogToken) return { ok: false, error: PLATFORM_TOKEN_MISSING };
 
   const row = await getCatalogRow(supabase, organizationId, ctx.wabaId);
   if (!row) return { ok: false, error: "Link a catalogue first, then refresh." };
@@ -778,7 +797,7 @@ export async function refreshLinkedCatalog(args: {
     const result: Awaited<ReturnType<typeof loggedGraph>> = await loggedGraph(
       callCtx,
       path,
-      ctx.accessToken,
+      catalogToken,
       query ? { query } : {},
     );
     if (!result.ok) {
