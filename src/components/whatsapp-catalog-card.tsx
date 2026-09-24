@@ -1,21 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Loader2, RefreshCw } from "lucide-react";
+import { BookOpen, Check, Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { callApi } from "@/lib/whatsapp-client";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
-import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
 
 type Catalog = {
   catalog_id: string;
@@ -37,7 +30,7 @@ type Status = {
   catalog?: Catalog;
 };
 
-type BusinessCatalog = { id: string; name: string; product_count: number };
+const PARTNER_ID = "1451227116580979";
 
 /**
  * Catalogue controls for one connected number. The enable button only appears
@@ -61,8 +54,12 @@ export function CatalogCard({
   const { enabled: flagOn, loading: flagLoading } = useFeatureFlag("whatsapp_catalog");
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState<"enable" | "sync" | "choose" | "settings" | null>(null);
-  const [choices, setChoices] = useState<BusinessCatalog[] | null>(null);
+  const [working, setWorking] = useState<"check" | "sync" | "mode" | "settings" | null>(null);
+  const [catalogInput, setCatalogInput] = useState("");
+  const [setupMode, setSetupMode] = useState<"managed" | "linked">("managed");
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [checkError, setCheckError] = useState<{ step?: string; message: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,57 +76,50 @@ export function CatalogCard({
 
   if (flagLoading || !flagOn) return null;
 
-  /** Ask Meta what the business already has before creating anything. */
-  async function startEnable() {
-    setWorking("choose");
-    const { data, error } = await callApi<{ catalogs: BusinessCatalog[] }>(
-      "/api/whatsapp/catalog",
-      {
-        body: {
-          organization_id: orgId,
-          whatsapp_account_id: accountId,
-          action: "list_catalogs",
-        },
+  async function checkAccess() {
+    setWorking("check");
+    setCheckError(null);
+    const { error, raw } = await callApi<{ ok: boolean }>("/api/whatsapp/catalog", {
+      body: {
+        organization_id: orgId,
+        whatsapp_account_id: accountId,
+        action: "check_access",
+        catalog_id: catalogInput.trim(),
+        mode: setupMode,
       },
-    );
+    });
     setWorking(null);
     if (error) {
-      toast.error(error);
+      const step = (raw as { step?: string } | null)?.step;
+      setCheckError({ step, message: error });
       return;
     }
-    const existing = data?.catalogs ?? [];
-    if (existing.length === 0) {
-      await enable(null);
-      return;
-    }
-    setChoices(existing);
+    toast.success("Catalogue connected to this number");
+    await load();
   }
 
-  async function enable(catalogId: string | null) {
-    setChoices(null);
-    setWorking("enable");
-    const { data, error } = await callApi<{ mode?: "managed" | "linked" }>(
-      "/api/whatsapp/catalog",
-      {
-        body: {
-          organization_id: orgId,
-          whatsapp_account_id: accountId,
-          action: "enable",
-          ...(catalogId ? { catalog_id: catalogId } : {}),
-        },
-      },
-    );
+  async function changeMode(next: "managed" | "linked") {
+    setWorking("mode");
+    const { error } = await callApi("/api/whatsapp/catalog", {
+      body: { organization_id: orgId, whatsapp_account_id: accountId, action: "set_mode", mode: next },
+    });
     setWorking(null);
     if (error) {
       toast.error(error);
       return;
     }
-    toast.success(
-      data?.mode === "linked"
-        ? "Your existing catalogue is now linked to this number"
-        : "Catalogue ready on your business account",
-    );
+    toast.success(next === "linked" ? "Your store fills it — AiDwar only reads" : "AiDwar keeps it in sync");
     await load();
+  }
+
+  async function copyId() {
+    try {
+      await navigator.clipboard.writeText(PARTNER_ID);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Couldn't copy — select the number and copy it by hand.");
+    }
   }
 
   async function runSync(mode: "managed" | "linked") {
@@ -154,9 +144,7 @@ export function CatalogCard({
     toast.success(
       mode === "linked"
         ? `${data?.imported ?? 0} product${data?.imported === 1 ? "" : "s"} read from your catalogue`
-        : `${data?.pushed ?? 0} sent${data?.removed ? `, ${data.removed} removed` : ""}${
-            data?.rejected ? `, ${data.rejected} refused by Meta` : ""
-          }`,
+        : `${data?.pushed ?? 0} sent · ${data?.removed ?? 0} removed · ${data?.rejected ?? 0} refused`,
     );
 
     await load();
