@@ -89,8 +89,10 @@ export const Route = createFileRoute("/api/integrations/shopify")({
           getShopifyConnection,
         } = await import("@/lib/shopify.server");
 
-        const creds = shopifyCredentials();
-        if (!creds) {
+        const { resolveShopifyApp } = await import("@/lib/shopify.server");
+        const installShop = normalizeShopDomain((payload["shop_domain"] as string) ?? "");
+        const creds = installShop ? await resolveShopifyApp(installShop) : shopifyCredentials();
+        if (action === "install" && !creds) {
           return jsonError(
             "Shopify isn't configured for this deployment yet. Add the app's API key and secret first.",
             400,
@@ -106,7 +108,8 @@ export const Route = createFileRoute("/api/integrations/shopify")({
             );
           }
 
-          const state = await signInstallState({ organizationId, shopDomain, userId });
+          if (!creds) return jsonError("Shopify isn't configured for this store yet.", 400);
+          const state = await signInstallState({ organizationId, shopDomain, userId }, creds.apiSecret);
           return Response.json({
             install_url: buildInstallUrl({
               shopDomain,

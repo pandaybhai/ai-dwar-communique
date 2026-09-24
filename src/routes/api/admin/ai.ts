@@ -221,6 +221,91 @@ export const Route = createFileRoute("/api/admin/ai")({
           return Response.json({ ok: true, version: result.version });
         }
 
+        // ---- Shopify custom-distribution app per store. Secret never returned.
+        if (action === "shopify_app_load" || action === "shopify_app_save" || action === "shopify_app_delete") {
+          const orgId = String(payload["organization_id"] ?? "");
+          if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
+          const { normalizeShopDomain } = await import("@/lib/shopify.server");
+          const { logServerActivity } = await import("@/lib/whatsapp-api.server");
+          const cols = "id, shop_domain, client_id, label, install_link, status, created_at, updated_at, client_secret_vault_name";
+          const shape = (r: Record<string, unknown>) => {
+            const { client_secret_vault_name, ...rest } = r;
+            return { ...rest, secret_set: Boolean(client_secret_vault_name) };
+          };
+
+          if (action === "shopify_app_load") {
+            const { data } = await supabase.from("shopify_app_credentials").select(cols).eq("organization_id", orgId);
+            return Response.json({ apps: ((data ?? []) as Array<Record<string, unknown>>).map(shape) });
+          }
+
+          if (action === "shopify_app_delete") {
+            const id = String(payload["id"] ?? "");
+            const { data: row } = await supabase
+              .from("shopify_app_credentials").select("id, shop_domain").eq("id", id).eq("organization_id", orgId).maybeSingle();
+            if (!row) return jsonError("That app is already gone.", 404);
+            const { error } = await supabase.rpc("shopify_app_delete", { p_id: id });
+            if (error) return jsonError("Couldn't remove it — try again.");
+            await logServerActivity(supabase, orgId, user.id, "shopify_custom_app_deleted", {
+              shop_domain: (row as { shop_domain: string }).shop_domain,
+            });
+            return Response.json({ ok: true });
+          }
+
+          const shop = normalizeShopDomain(String(payload["shop_domain"] ?? ""));
+          if (!shop) return jsonError("Enter the store address, e.g. your-store.myshopify.com.");
+          const clientId = String(payload["client_id"] ?? "").trim();
+          const secret = String(payload["client_secret"] ?? "").trim();
+          const label = String(payload["label"] ?? "").trim().slice(0, 80) || null;
+          const rawLink = String(payload["install_link"] ?? "").trim();
+          let installLink: string | null = null;
+          if (rawLink) {
+            try {
+              const u = new URL(rawLink);
+              if (u.protocol !== "https:") throw new Error();
+              installLink = u.toString();
+            } catch {
+              return jsonError("The install link must be a full https:// link from Shopify.");
+            }
+          }
+
+          const { data: existing } = await supabase
+            .from("shopify_app_credentials").select("id, organization_id, client_id, client_secret_vault_name").eq("shop_domain", shop).maybeSingle();
+          const ex = existing as { id: string; organization_id: string; client_id: string; client_secret_vault_name: string | null } | null;
+          if (ex && ex.organization_id !== orgId) return jsonError("That store already has a custom app in another workspace.", 409);
+          if (!clientId && !ex) return jsonError("Enter the client ID.");
+          if (!secret && !ex?.client_secret_vault_name) return jsonError("Enter the client secret.");
+
+          const nowIso = new Date().toISOString();
+          let id = ex?.id ?? "";
+          if (ex) {
+            await supabase.from("shopify_app_credentials").update({
+              ...(clientId ? { client_id: clientId } : {}),
+              label, install_link: installLink, updated_at: nowIso,
+            }).eq("id", ex.id);
+          } else {
+            const { data: ins, error } = await supabase.from("shopify_app_credentials").insert({
+              organization_id: orgId, shop_domain: shop, client_id: clientId, label, install_link: installLink, created_by: user.id,
+            }).select("id").single();
+            if (error || !ins) return jsonError("Couldn't save the app — try again.");
+            id = (ins as { id: string }).id;
+          }
+          if (secret) {
+            const { error } = await supabase.rpc("shopify_app_set_secret", { p_id: id, p_secret: secret });
+            if (error) {
+              if (!ex) await supabase.from("shopify_app_credentials").delete().eq("id", id);
+              return jsonError("Couldn't store the secret safely — nothing was saved.");
+            }
+          }
+          await logServerActivity(supabase, orgId, user.id, ex ? "shopify_custom_app_updated" : "shopify_custom_app_added", {
+            shop_domain: shop,
+            client_id_changed: Boolean(ex && clientId && clientId !== ex.client_id),
+            secret_changed: Boolean(secret),
+            install_link_set: Boolean(installLink),
+          });
+          const { data: saved } = await supabase.from("shopify_app_credentials").select(cols).eq("id", id).single();
+          return Response.json({ ok: true, app: shape(saved as Record<string, unknown>) });
+        }
+
         if (action === "overview") {
           const [settings, providers, tiers, models, rates, runs, platformSpend] = await Promise.all([
             supabase

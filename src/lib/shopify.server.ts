@@ -44,6 +44,68 @@ export function shopifyCredentials(): { apiKey: string; apiSecret: string } | nu
   return { apiKey, apiSecret };
 }
 
+export type ShopifyApp = {
+  apiKey: string;
+  apiSecret: string;
+  source: "custom" | "public";
+  customId?: string;
+  organizationId?: string;
+};
+
+/** The merchant's custom-distribution app for this shop, if one is saved. */
+export async function customAppForShop(
+  shopDomain: string,
+  supabase?: SupabaseClient,
+): Promise<ShopifyApp | null> {
+  const shop = normalizeShopDomain(shopDomain);
+  if (!shop) return null;
+  try {
+    const client = supabase ?? getServiceClient();
+    const { data } = await client.rpc("shopify_app_for_shop", { p_shop: shop });
+    const row = (Array.isArray(data) ? data[0] : data) as
+      | { id: string; organization_id: string; client_id: string; client_secret: string | null }
+      | undefined;
+    if (!row?.client_id || !row.client_secret) return null;
+    return {
+      apiKey: row.client_id,
+      apiSecret: row.client_secret,
+      source: "custom",
+      customId: row.id,
+      organizationId: row.organization_id,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Custom app for the shop when saved, else the public app. */
+export async function resolveShopifyApp(
+  shopDomain: string,
+  supabase?: SupabaseClient,
+): Promise<ShopifyApp | null> {
+  const custom = await customAppForShop(shopDomain, supabase);
+  if (custom) return custom;
+  const pub = shopifyCredentials();
+  return pub ? { ...pub, source: "public" } : null;
+}
+
+/** Webhook check: the shop's custom app secret first, then the public one. Null = reject. */
+export async function verifyWebhookForShop(
+  rawBody: string,
+  header: string | null,
+  shopDomain: string,
+): Promise<ShopifyApp | null> {
+  const candidates: ShopifyApp[] = [];
+  const custom = await customAppForShop(shopDomain);
+  if (custom) candidates.push(custom);
+  const pub = shopifyCredentials();
+  if (pub) candidates.push({ ...pub, source: "public" });
+  for (const app of candidates) {
+    if (await verifyWebhookHmac(rawBody, header, app.apiSecret)) return app;
+  }
+  return null;
+}
+
 /** Service-role client for the external AiDwar backend. */
 export function getServiceClient(): SupabaseClient {
   const url = process.env["AIDWAR_SUPABASE_URL"] ?? "";
@@ -532,7 +594,7 @@ export async function refreshShopifyToken(
     refreshTokenExpiresAt?: string | null;
   },
 ): Promise<{ ok: true; accessToken: string } | { ok: false; fatal: boolean; error: string }> {
-  const creds = shopifyCredentials();
+  const creds = await resolveShopifyApp(args.shopDomain, supabase);
   if (!creds) return { ok: false, fatal: false, error: "Shopify app credentials are not configured." };
 
   const rtExpiry = args.refreshTokenExpiresAt ? Date.parse(args.refreshTokenExpiresAt) : null;
@@ -648,9 +710,9 @@ export async function signInstallState(payload: {
   organizationId: string;
   shopDomain: string;
   userId: string;
-}): Promise<string> {
-  const creds = shopifyCredentials();
-  if (!creds) throw new Error("Shopify app credentials are not configured.");
+}, secret?: string): Promise<string> {
+  const creds = { apiSecret: shopifyCredentials()?.apiSecret ?? secret ?? "" };
+  if (!creds.apiSecret) throw new Error("Shopify app credentials are not configured.");
   const body = JSON.stringify({ ...payload, ts: Date.now(), nonce: crypto.randomUUID() });
   const encoded = btoa(body).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const signature = toHex(await hmacBytes(creds.apiSecret, encoded));
@@ -659,9 +721,10 @@ export async function signInstallState(payload: {
 
 export async function verifyInstallState(
   state: string,
+  secret?: string,
 ): Promise<{ organizationId: string; shopDomain: string; userId: string } | null> {
-  const creds = shopifyCredentials();
-  if (!creds) return null;
+  const creds = { apiSecret: shopifyCredentials()?.apiSecret ?? secret ?? "" };
+  if (!creds.apiSecret) return null;
   const [encoded, signature] = state.split(".");
   if (!encoded || !signature) return null;
   const expected = toHex(await hmacBytes(creds.apiSecret, encoded));

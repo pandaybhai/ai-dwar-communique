@@ -12,6 +12,7 @@ import { PromptBlocksEditor } from "@/components/admin/prompt-blocks-editor";
 import { SCRIPT_KEYS } from "@/lib/scripts";
 import { AidenTestPanel } from "@/components/admin/aiden-test";
 import { ReadingSettingsPanel } from "@/components/admin/reading-settings";
+import { ShopifyCustomAppPanel } from "@/components/admin/shopify-custom-app";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import type { InstructionVersion } from "@/lib/employee-client";
 
@@ -224,7 +225,12 @@ function WorkspaceBehaviour({ org, onChanged }: { org: Org; onChanged: () => voi
   if (error) return <ErrorState message={error} />;
   if (versions === null) return <Skeleton className="h-96 w-full rounded-2xl" />;
   if (!hasAgent)
-    return <EmptyState icon={Building2} title={`${org.name} has no AI employee yet`} description="It's created when the workspace finishes onboarding." />;
+    return (
+      <div className="space-y-3">
+        <EmptyState icon={Building2} title={`${org.name} has no AI employee yet`} description="It's created when the workspace finishes onboarding." />
+        <ShopifyCustomAppPanel organizationId={org.id} />
+      </div>
+    );
 
   return (
     <div className="space-y-3">
@@ -257,6 +263,7 @@ function WorkspaceBehaviour({ org, onChanged }: { org: Org; onChanged: () => voi
           return { error: err };
         }}
       />
+      <ShopifyCustomAppPanel organizationId={org.id} />
     </div>
   );
 }

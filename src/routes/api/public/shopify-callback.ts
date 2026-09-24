@@ -10,7 +10,7 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
     handlers: {
       GET: async ({ request }) => {
         const {
-          shopifyCredentials,
+          resolveShopifyApp,
           normalizeShopDomain,
           verifyOAuthHmac,
           verifyInstallState,
@@ -29,19 +29,20 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
           return Response.redirect(target.toString(), 302);
         };
 
-        const creds = shopifyCredentials();
+        const shopDomain = normalizeShopDomain(url.searchParams.get("shop"));
+        // Custom app for this shop when saved, else the public app.
+        const creds = await resolveShopifyApp(shopDomain);
         if (!creds) return settingsUrl({ shopify_error: "not_configured" });
 
         if (!(await verifyOAuthHmac(url, creds.apiSecret))) {
           return settingsUrl({ shopify_error: "signature" });
         }
 
-        const shopDomain = normalizeShopDomain(url.searchParams.get("shop"));
         const code = url.searchParams.get("code") ?? "";
         const state = url.searchParams.get("state") ?? "";
         if (!shopDomain || !code) return settingsUrl({ shopify_error: "invalid_request" });
 
-        const verified = await verifyInstallState(state);
+        const verified = await verifyInstallState(state, creds.apiSecret);
         // The state names the workspace; it must also name this same shop.
         if (!verified || verified.shopDomain !== shopDomain) {
           return settingsUrl({ shopify_error: "state" });
@@ -93,6 +94,12 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
 
         const integrationId = (saved as { id: string } | null)?.id;
         if (!integrationId) return settingsUrl({ shopify_error: "save" });
+        if (creds.source === "custom") {
+          await service
+            .from("shopify_app_credentials")
+            .update({ status: "active", updated_at: nowIso })
+            .eq("shop_domain", shopDomain);
+        }
 
         await service.from("integration_credentials").upsert(
           {

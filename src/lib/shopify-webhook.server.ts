@@ -123,6 +123,11 @@ async function handleUninstall(supabase: SupabaseClient, ctx: SyncContext): Prom
     .from("integrations")
     .update({ status: "disconnected", sync_error: null })
     .eq("id", ctx.integrationId);
+  // A custom app row is kept (so a reinstall works) but marked disconnected.
+  await supabase
+    .from("shopify_app_credentials")
+    .update({ status: "disconnected", updated_at: new Date().toISOString() })
+    .eq("shop_domain", ctx.shopDomain);
 
   await emitEvent(supabase, "shopify.disconnected", {
     organizationId: ctx.organizationId,
