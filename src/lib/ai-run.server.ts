@@ -202,7 +202,12 @@ function sentencesOf(text: string): string[] {
 /** Sentences that talk about pricing, fees, refunds, delivery, warranty or payment. */
 export function policyClaimSentences(answer: string): string[] {
   return sentencesOf(answer).filter(
-    (s) => POLICY_TOPIC.test(s) && !/let me confirm/i.test(s) && !s.trim().endsWith("?"),
+    (s) =>
+      POLICY_TOPIC.test(s) &&
+      !/let me confirm/i.test(s) &&
+      !s.trim().endsWith("?") &&
+      // Saying the detail is missing is the honest answer, not a claim.
+      !/\b(don'?t|do not|doesn'?t|haven'?t|not) (have|see|find|know|yet|in my|listed|mentioned|covered)\b/i.test(s),
   );
 }
 
