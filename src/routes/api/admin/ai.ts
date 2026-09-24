@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/admin/ai")({
           const { playgroundAnswer } = await import("@/lib/ai-tasks.server");
           const run = await playgroundAnswer(
             supabase,
-            { organizationId: orgId, actorUserId: user.id, actingRole: "super_admin" } as never,
+            { organizationId: orgId, actorUserId: user.id, actingRole: "owner" },
             question,
             null,
             instructionsOverride,
