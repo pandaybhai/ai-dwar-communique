@@ -254,6 +254,7 @@ async function unsupportedPolicyClaims(
       ].join("\n"),
       input: `SOURCES:\n${args.sources.slice(0, 24000)}\n\nSENTENCES:\n${numbered}\n\nIs each sentence directly supported by these sources? yes/no`,
     });
+    if (run.status !== "ok" || !run.output.trim()) throw new Error(`check run ${run.status}: ${run.error ?? "empty"}`);
     const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { answers?: unknown[] };
     const answers = Array.isArray(parsed.answers) ? parsed.answers : [];
