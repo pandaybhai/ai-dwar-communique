@@ -112,6 +112,20 @@ export function CatalogCard({
     await load();
   }
 
+  async function confirmAttached() {
+    setWorking("settings");
+    const { error } = await callApi("/api/whatsapp/catalog", {
+      body: { organization_id: orgId, whatsapp_account_id: accountId, action: "confirm_attached" },
+    });
+    setWorking(null);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    toast.success("Got it — the catalogue is connected to this number");
+    await load();
+  }
+
   async function copyId() {
     try {
       await navigator.clipboard.writeText(PARTNER_ID);
@@ -226,7 +240,17 @@ export function CatalogCard({
             {catalog?.status === "attach_unconfirmed" ? (
               <p className="mt-2 max-w-md text-xs text-muted-foreground">
                 If the catalogue isn't showing in WhatsApp yet, open WhatsApp Manager → Catalogue and
-                connect {catalog.catalog_name ?? "your catalogue"}.
+                connect {catalog.catalog_name ?? "your catalogue"}.{" "}
+                {canManage ? (
+                  <button
+                    type="button"
+                    className="font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
+                    disabled={working !== null}
+                    onClick={() => void confirmAttached()}
+                  >
+                    I've connected it
+                  </button>
+                ) : null}
               </p>
             ) : null}
           </div>

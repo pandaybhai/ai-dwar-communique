@@ -44,6 +44,7 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
           setCommerceSettings,
           checkCatalogAccess,
           setCatalogMode,
+          confirmCatalogAttached,
         } = await import("@/lib/whatsapp-catalog.server");
 
         if (action === "status") {
@@ -112,6 +113,15 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
           });
           if (!result.ok) return jsonError(result.error ?? "We couldn't change that.", 400);
           await logServerActivity(supabase, organizationId, userId, "whatsapp_catalog_settings_changed", { mode });
+          return Response.json(result);
+        }
+
+        if (action === "confirm_attached") {
+          const result = await confirmCatalogAttached({ supabase, organizationId, whatsappAccountId: accountId });
+          if (!result.ok) return jsonError(result.error ?? "We couldn't save that.", 400);
+          await logServerActivity(supabase, organizationId, userId, "whatsapp_catalog_settings_changed", {
+            attach_confirmed: true,
+          });
           return Response.json(result);
         }
 
