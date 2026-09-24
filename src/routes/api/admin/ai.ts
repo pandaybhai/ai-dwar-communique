@@ -314,7 +314,7 @@ export const Route = createFileRoute("/api/admin/ai")({
         }
 
         if (action === "reading_load" || action === "reading_save") {
-          const { READING_COLUMNS, READING_DEFAULTS, loadReadingSettings } = await import("@/lib/reading.server");
+          const { loadReadingSettings } = await import("@/lib/reading.server");
           const meta = async () => {
             const { data } = await supabase
               .from("platform_settings")
@@ -379,22 +379,21 @@ export const Route = createFileRoute("/api/admin/ai")({
             const changes: Record<string, { from: unknown; to: unknown }> = {};
             for (const [k, v] of Object.entries(next))
               if (JSON.stringify((before as Record<string, unknown>)[k]) !== JSON.stringify(v)) changes[k] = { from: (before as Record<string, unknown>)[k], to: v };
+            const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
             const { logServerActivity } = await import("@/lib/whatsapp-api.server");
-            const { data: platformOrg } = await supabase.from("organizations").select("id").limit(1).maybeSingle();
-            void platformOrg;
-            await logServerActivity(supabase, null, user.id, "reading_settings_updated", {
-              old_version: current.version,
-              version: current.version + 1,
-              changes,
-            }).catch(() => undefined);
+            const platformOrg = await resolvePlatformOrg(supabase).catch(() => null);
+            if (platformOrg)
+              await logServerActivity(supabase, platformOrg, user.id, "reading_settings_updated", {
+                old_version: current.version,
+                version: current.version + 1,
+                changes,
+              }).catch(() => undefined);
           }
           const [settings, m, plans] = await Promise.all([
             loadReadingSettings(supabase),
             meta(),
             supabase.from("plans").select("id, name, plan_versions!inner(limits, is_current)").eq("plan_versions.is_current", true),
           ]);
-          void READING_COLUMNS;
-          void READING_DEFAULTS;
           return Response.json({
             settings,
             meta: m,
