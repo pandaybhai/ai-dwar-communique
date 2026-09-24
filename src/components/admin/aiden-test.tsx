@@ -44,7 +44,9 @@ export function AidenTestPanel() {
     return () => clearTimeout(t);
   }, [q]);
 
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), [chat, busy]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [chat, busy]);
 
   const send = async () => {
     const question = text.trim();
