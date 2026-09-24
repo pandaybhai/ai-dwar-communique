@@ -1483,3 +1483,38 @@ export async function readOnDemand(
     return false;
   }
 }
+
+/**
+ * full_crawl_trigger = on_number_connected: a paid workspace that just
+ * connected a number gets its websites queued for the full read. Never throws.
+ */
+export async function queueFullReadOnConnect(supabase: SupabaseClient, organizationId: string): Promise<void> {
+  try {
+    const { loadReadingSettings } = await import("@/lib/reading.server");
+    const reading = await loadReadingSettings(supabase);
+    if (reading.full_crawl_trigger !== "on_number_connected") return;
+    const plan = await planLimits(supabase, organizationId);
+    if (!plan.paid) return;
+    const { data } = await supabase
+      .from("knowledge_sources")
+      .select("id, config, pages_seen, last_full_read_at")
+      .eq("organization_id", organizationId)
+      .eq("type", "website")
+      .eq("status", "ready");
+    for (const src of (data ?? []) as Array<{ id: string; config: Record<string, unknown> | null; pages_seen: number | null; last_full_read_at: string | null }>) {
+      if (src.last_full_read_at) continue;
+      await supabase
+        .from("knowledge_sources")
+        .update({
+          status: "pending",
+          queued_at: new Date().toISOString(),
+          sync_started_at: null,
+          config: { ...(src.config ?? {}), mode: "full", resume: true, refresh: false, pages_done: Number(src.pages_seen ?? 0), run_limit: null },
+        })
+        .eq("id", src.id)
+        .eq("status", "ready");
+    }
+  } catch (error) {
+    console.error("[full-read-on-connect] failed", error instanceof Error ? error.message : String(error));
+  }
+}
