@@ -15,4 +15,4 @@
 - [x] Phase 4 — Workspaces tab + admin behaviour editor + persona generator (auto after first read, review banner)
 - [x] Phase 5b — reading priority/skip, per-source URL list, nightly backfill, on-demand read, content-hash refresh, merchant buttons + full-read banner/WhatsApp, admin UI for reading settings
 - [x] Phase 6 — Test tab (preview: true → billingExempt)
-- [ ] Phase 7 — /admin → Users: super admin list, add/remove, logged + email — after email is set up
+- [x] Phase 7 — /admin → Users: super admin list, add/remove, logged + email — after email is set up

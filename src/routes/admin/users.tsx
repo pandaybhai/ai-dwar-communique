@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { NoResults, Pagination, TableSkeleton } from "@/components/data-pagination";
 import { aidwar } from "@/integrations/aidwar/client";
+import { SuperAdminsPanel } from "@/components/admin/super-admins-panel";
 
 export const Route = createFileRoute("/admin/users")({
   head: () => ({
@@ -105,6 +106,7 @@ function AdminUsers() {
   return (
     <>
       <PageHeader title="Users" description="Everyone with an AiDwar account and the workspaces they belong to." />
+      <SuperAdminsPanel onChanged={() => void load()} />
       {error ? <div className="mb-6"><ErrorState message={error} /></div> : null}
 
       <div className="mb-6 grid gap-4 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:grid-cols-[1fr_auto] sm:items-end">
