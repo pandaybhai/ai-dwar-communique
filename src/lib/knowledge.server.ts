@@ -149,28 +149,6 @@ function normalizeUrl(href: string, base: string, origin: string): string | null
   }
 }
 
-/**
- * Which pages matter to a customer. A shop's shipping page is worth more than
- * its blog archive, so the useful pages are read first and a small budget
- * still learns the important things.
- */
-function scoreUrl(url: string, origin: string): number {
-  const path = url.slice(origin.length).toLowerCase() || "/";
-  if (/\b(blog|tag|category|cart|checkout|account|login|search|wp-json|feed)\b/.test(path))
-    return -10;
-  if (/\/page\/\d+/.test(path)) return -10;
-  if (ASSET_PATH_RE.test(path) || /\.(?:pdf|xml)(?:$|\/)/i.test(path)) return -10;
-  if (path === "/" || path === "") return 10;
-  if (
-    /(about|contact|faq|help|shipping|delivery|return|refund|pricing|price|plans|policy|terms)/.test(
-      path,
-    )
-  )
-    return 8;
-  if (/(products|collections|shop|menu|services|catalog)/.test(path)) return 6;
-  return 2;
-}
-
 /** Addresses the site itself publishes, sitemap indexes included. */
 async function sitemapUrls(origin: string): Promise<string[]> {
   const found: string[] = [];
@@ -204,7 +182,7 @@ async function sitemapUrls(origin: string): Promise<string[]> {
 async function planLimits(
   supabase: SupabaseClient,
   organizationId: string,
-): Promise<{ cap: number; paid: boolean }> {
+): Promise<{ cap: number; paid: boolean; planId: string | null }> {
   const { data: org } = await supabase
     .from("organizations")
     .select("plan_version_id, plan_status")
@@ -230,15 +208,19 @@ async function planLimits(
     }
   }
 
-  if (!versionId) return { cap: DEFAULT_PAGE_CAP, paid };
+  if (!versionId) return { cap: DEFAULT_PAGE_CAP, paid, planId: null };
   const { data: version } = await supabase
     .from("plan_versions")
-    .select("limits")
+    .select("limits, plan_id")
     .eq("id", versionId)
     .maybeSingle();
-  const limits = (version as { limits?: Record<string, unknown> } | null)?.limits ?? {};
-  const pages = Number(limits["pages"] ?? 0);
-  return { cap: pages > 0 ? pages : DEFAULT_PAGE_CAP, paid };
+  const v = version as { limits?: Record<string, unknown>; plan_id?: string } | null;
+  const limits = v?.limits ?? {};
+  const planId = v?.plan_id ?? null;
+  const { loadReadingSettings } = await import("@/lib/reading.server");
+  const override = planId ? Number((await loadReadingSettings(supabase)).plan_page_overrides[planId] ?? 0) : 0;
+  const pages = override > 0 ? override : Number(limits["pages"] ?? 0);
+  return { cap: pages > 0 ? pages : DEFAULT_PAGE_CAP, paid, planId };
 }
 
 /** Which shop software runs this site, when we can tell. */
@@ -426,21 +408,31 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const origin = start.origin;
 
   const plan = await planLimits(supabase, organizationId);
-  // Paid workspaces read the whole site; trials keep the shallow day-one read.
-  const mode = config["mode"] === "full" || plan.paid ? "full" : "day0";
-  const resuming = mode === "full" && config["resume"] === true;
+  const { loadReadingSettings, urlPriority } = await import("@/lib/reading.server");
+  const reading = await loadReadingSettings(supabase);
+  const engine = reading.crawl_engine;
+  // When the whole site is read is a platform setting (Reading tab).
+  let autoFull = false;
+  if (plan.paid && reading.full_crawl_trigger === "on_plan_active") autoFull = true;
+  if (plan.paid && reading.full_crawl_trigger === "on_number_connected") {
+    const { count } = await supabase
+      .from("whatsapp_accounts")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("status", "active");
+    autoFull = (count ?? 0) > 0;
+  }
+  const mode = config["mode"] === "full" || autoFull ? "full" : "day0";
+  // "Read changes now" / scheduled refresh: re-read only pages already read.
+  const refreshing = config["refresh"] === true;
+  const resuming = mode === "full" && config["resume"] === true && !refreshing;
   const alreadySeen = resuming ? Number(config["pages_done"] ?? 0) : 0;
-  const { data: limitRow } = await supabase
-    .from("platform_settings")
-    .select("day0_page_limit")
-    .maybeSingle();
-  const day0Limit = Math.max(
-    Number((limitRow as { day0_page_limit?: number } | null)?.day0_page_limit ?? 15) || 15,
-    1,
-  );
+  const day0Limit = Math.max(Number(reading.day0_page_limit) || 15, 1);
   const planCap = mode === "full" ? plan.cap : day0Limit;
-  const runCap =
+  const runLimit = Number(config["run_limit"] ?? 0);
+  let runCap =
     mode === "full" ? Math.max(Math.min(planCap - alreadySeen, RUN_PAGE_CAP), 0) : day0Limit;
+  if (runLimit > 0) runCap = Math.min(runCap, runLimit);
   // Firecrawl credits are reserved per call against the monthly caps; once a
   // cap is hit the rest of this read uses our own reader, logged once.
   const budget: FirecrawlBudget = {
@@ -501,7 +493,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const productDrafts: ProductDraft[] = [];
 
   // The homepage first: it tells us whether this is a shop with public data.
-  const home = await readPage(start.toString(), { key, budget, ...(onStage ? { onStage } : {}) });
+  const home = await readPage(start.toString(), { key, budget, engine, ...(onStage ? { onStage } : {}) });
   let readerCost = home?.usedReader ? READER_COST : 0;
   let platform = detectPlatform(home?.html ?? "", home?.headers ?? {});
   // If the markup didn't tell us, the catalogue itself will: a shop answers
@@ -545,8 +537,8 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       const path = new URL(url).pathname;
       if (/^\/(?:products|collections|product-category)(?:\/|$)/i.test(path)) return;
     }
-    const score = scoreUrl(url, origin);
-    if (score <= -10) return;
+    const score = urlPriority(url, origin);
+    if (score == null) return;
     if (blocked.some((p) => new URL(url).pathname.startsWith(p))) return;
     candidates.set(url, score);
   };
@@ -556,6 +548,21 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   for (const loc of mapped) consider(loc, origin);
   for (const href of home?.links ?? []) consider(href, start.toString());
   candidates.delete(start.toString());
+
+  // Refresh re-reads exactly the pages already read; nothing new.
+  const discovered = new Map(candidates);
+  if (refreshing) {
+    const { data: readRows } = await supabase
+      .from("knowledge_urls")
+      .select("url, priority")
+      .eq("source_id", sourceId)
+      .eq("status", "read")
+      .limit(5000);
+    candidates.clear();
+    for (const r of (readRows ?? []) as Array<{ url: string; priority: number }>)
+      if (r.url !== start.toString()) candidates.set(r.url, r.priority);
+    runCap = Math.max(candidates.size + 1, 1);
+  }
 
   const docs: KnowledgeDocument[] = [...carried];
   let seen = 0;
@@ -595,7 +602,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       const allowReader = readerCost + READER_COST <= costCap;
       let page: Awaited<ReturnType<typeof readPage>> = null;
       try {
-        page = await readPage(next, { key, allowReader, budget, ...(onStage ? { onStage } : {}) });
+        page = await readPage(next, { key, allowReader, budget, engine, ...(onStage ? { onStage } : {}) });
       } catch (error) {
         // One unreadable page must never end the whole crawl.
         console.error(
@@ -649,8 +656,39 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   onStage?.("facts");
   const factsCost = await factsPass(supabase, organizationId, docs);
 
-  const totalSeen = alreadySeen + seen;
-  const more = mode === "full" && candidates.size > 0 && totalSeen < planCap;
+  const totalSeen = refreshing ? Number(config["pages_done"] ?? seen) : alreadySeen + seen;
+  const more = !refreshing && mode === "full" && candidates.size > 0 && totalSeen < planCap && runLimit === 0;
+
+  // The full page list per source, read/unread, for backfill and on-demand reads.
+  let totalPages: number | null = null;
+  try {
+    const now = new Date().toISOString();
+    const readRows = Array.from(done).map((url) => ({
+      organization_id: organizationId,
+      source_id: sourceId,
+      url,
+      priority: urlPriority(url, origin) ?? 0,
+      status: "read",
+      read_at: now,
+      read_via: refreshing ? "refresh" : mode,
+    }));
+    const unreadRows = Array.from(refreshing ? discovered : candidates)
+      .filter(([url]) => !done.has(url))
+      .map(([url, priority]) => ({ organization_id: organizationId, source_id: sourceId, url, priority }));
+    for (let i = 0; i < readRows.length; i += 200)
+      await supabase.from("knowledge_urls").upsert(readRows.slice(i, i + 200), { onConflict: "source_id,url" });
+    for (let i = 0; i < unreadRows.length; i += 200)
+      await supabase
+        .from("knowledge_urls")
+        .upsert(unreadRows.slice(i, i + 200), { onConflict: "source_id,url", ignoreDuplicates: true });
+    const { count } = await supabase
+      .from("knowledge_urls")
+      .select("id", { count: "exact", head: true })
+      .eq("source_id", sourceId);
+    totalPages = count ?? null;
+  } catch (error) {
+    console.error("[crawl] url list save failed", error instanceof Error ? error.message : String(error));
+  }
 
   // What the pages themselves said about products, remembered in one place.
   dropSharedImages(productDrafts);
@@ -658,12 +696,15 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   if (!more) await hideMissingCrawledProducts(supabase, organizationId, origin, runStart);
   const productsFound = await countCrawledProducts(supabase, organizationId, origin);
 
+  const fullReadNow = mode === "full" && !more && !refreshing;
   await supabase
     .from("knowledge_sources")
     .update({
       pages_seen: totalSeen,
       products_found: productsFound,
       cost_amount: readerCost + factsCost,
+      ...(totalPages != null ? { total_pages: totalPages } : {}),
+      ...(fullReadNow ? { last_full_read_at: new Date().toISOString() } : {}),
       config: {
         ...config,
         mode,
@@ -671,9 +712,31 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
         page_limit: planCap,
         pages_done: totalSeen,
         resume: more,
+        refresh: false,
+        run_limit: null,
       },
     })
     .eq("id", sourceId);
+
+  // First time the whole site is read: tell the owner on the AiDwar number.
+  if (fullReadNow && !config["full_read_announced"]) {
+    try {
+      const { getScript } = await import("@/lib/scripts.server");
+      const body = await getScript(supabase, "full_read_done", {
+        site: origin.replace(/^https?:\/\//, ""),
+        pages: totalSeen,
+        products: productsFound,
+      });
+      const { notifyOwnerOnOnboardingChannel } = await import("@/lib/merchant-channel.server");
+      await notifyOwnerOnOnboardingChannel(supabase, organizationId, body);
+      await supabase
+        .from("knowledge_sources")
+        .update({ config: { ...config, mode, page_limit: planCap, pages_done: totalSeen, resume: false, refresh: false, run_limit: null, full_read_announced: true, ...(platform ? { platform } : {}) } })
+        .eq("id", sourceId);
+    } catch (error) {
+      console.error("[crawl] full read notice failed", error instanceof Error ? error.message : String(error));
+    }
+  }
 
   return docs;
 };
