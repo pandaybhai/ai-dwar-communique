@@ -123,7 +123,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "@type": "Organization",
           name: "AiDwar",
           legalName: "Meezoy Ventures Private Limited",
-          url: "https://ai-dwar-communique.lovable.app/",
+          url: "https://aidwar.in/",
           email: "support@aidwar.in",
           address: {
             "@type": "PostalAddress",
