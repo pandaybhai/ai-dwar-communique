@@ -362,7 +362,7 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
             ...options,
             engine: engine === "firecrawl" ? "firecrawl" : "own",
             // The paid Jina fallback only runs inside our own reader.
-            allowReader: engine === "own" ? options.allowReader : false,
+            allowReader: engine === "own" ? options.allowReader !== false : false,
           });
         } catch (error) {
           if (last) console.error("[reader] page failed", url, error instanceof Error ? error.message : String(error));
