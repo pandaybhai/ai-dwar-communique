@@ -693,7 +693,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   // What the pages themselves said about products, remembered in one place.
   dropSharedImages(productDrafts);
   await saveCrawledProducts(supabase, organizationId, productDrafts);
-  if (!more) await hideMissingCrawledProducts(supabase, organizationId, origin, runStart);
+  if (!more && runLimit === 0) await hideMissingCrawledProducts(supabase, organizationId, origin, runStart);
   const productsFound = await countCrawledProducts(supabase, organizationId, origin);
 
   const fullReadNow = mode === "full" && !more && !refreshing;
