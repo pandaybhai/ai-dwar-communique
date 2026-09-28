@@ -435,6 +435,42 @@ export async function sendCampaignTemplate(
     );
   }
 
+  // "Open a form" buttons carry a flow_token so the answers match back to our form.
+  const flowButtonComponents: Array<Record<string, unknown>> = [];
+  let flowFormId: string | null = null;
+  {
+    const buttonsComp = (template.components ?? []).find(
+      (c) => String((c as { type?: string }).type ?? "").toUpperCase() === "BUTTONS",
+    ) as { buttons?: Array<{ type?: string; flow_id?: string | number }> } | undefined;
+    const buttons = buttonsComp?.buttons ?? [];
+    for (let i = 0; i < buttons.length; i++) {
+      const b = buttons[i]!;
+      if (String(b.type ?? "").toUpperCase() !== "FLOW") continue;
+      const metaFlowId = b.flow_id != null ? String(b.flow_id) : "";
+      if (metaFlowId && !flowFormId) {
+        const { data: form } = await supabase
+          .from("wa_forms")
+          .select("id")
+          .eq("organization_id", organizationId)
+          .eq("meta_flow_id", metaFlowId)
+          .order("version", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        flowFormId = (form as { id: string } | null)?.id ?? null;
+      }
+      const token = flowFormId
+        ? `f:${flowFormId}:${crypto.randomUUID().slice(0, 8)}`
+        : `t:${crypto.randomUUID().slice(0, 12)}`;
+      flowButtonComponents.push({
+        type: "button",
+        sub_type: "flow",
+        index: String(i),
+        parameters: [{ type: "action", action: { flow_token: token } }],
+      });
+    }
+  }
+  const sendComponents = [...(payload.components ?? []), ...flowButtonComponents];
+
   const result = await graphFetch(`${sender.phoneNumberId}/messages`, sender.accessToken, {
     method: "POST",
     body: {
@@ -444,9 +480,7 @@ export async function sendCampaignTemplate(
       template: {
         name: template.name,
         language: { code: template.language },
-        ...(payload.components && payload.components.length
-          ? { components: payload.components }
-          : {}),
+        ...(sendComponents.length ? { components: sendComponents } : {}),
       },
     },
   });
