@@ -389,7 +389,7 @@ function FormBuilder({
             <div className="space-y-1.5">
               <Label>Publish on</Label>
               <Select
-                value={draft.whatsapp_account_id ?? undefined}
+                value={draft.whatsapp_account_id ?? ""}
                 onValueChange={(v) => onChange({ ...draft, whatsapp_account_id: v })}
               >
                 <SelectTrigger><SelectValue placeholder="Choose a number" /></SelectTrigger>
@@ -450,7 +450,7 @@ function FormBuilder({
                 />
                 <Select
                   value={f.map_to || "none"}
-                  onValueChange={(v) => setField(i, { map_to: v === "none" ? "" : (v as FormField["map_to"]) })}
+                  onValueChange={(v) => setField(i, { map_to: (v === "none" ? "" : v) as NonNullable<FormField["map_to"]> })}
                 >
                   <SelectTrigger aria-label="Save answer to contact"><SelectValue /></SelectTrigger>
                   <SelectContent>

@@ -72,7 +72,7 @@ function EmployeePage() {
   const [overview, setOverview] = useState<EmployeeOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("knows");
-  const formsOn = useFeatureFlag("wa_forms");
+  const formsOn = useFeatureFlag("wa_forms").enabled;
   const [gate, setGate] = useState<{ mode: string; message: string } | null>(null);
   const [compareRequest, setCompareRequest] = useState(0);
   const [dataVersion, setDataVersion] = useState(0);
