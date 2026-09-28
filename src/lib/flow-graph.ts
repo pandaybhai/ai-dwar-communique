@@ -41,7 +41,11 @@ export type NodeType =
   | "goto_flow"
   | "ab_split"
   | "sheets_append"
-  | "payment";
+  | "payment"
+  | "http"
+  | "email_team"
+  | "wait_until"
+  | "order_draft";
 
 export type FlowNode = {
   id: string;
@@ -239,7 +243,10 @@ export function outputsOf(node: FlowNode): string[] {
     case "business_hours":
       return ["open", "closed"];
     case "sheets_append":
+    case "email_team":
       return ["next", "failed"];
+    case "http":
+      return ["success", "failed"];
     case "payment":
       return ["paid", "not_paid", "window_closed"];
     case "ab_split":
@@ -332,13 +339,35 @@ export function validateGraph(graph: FlowGraph): GraphProblem[] {
       if (!(h >= 1 && h <= 312)) problems.push({ nodeId: node.id, message: "Wait between 1 and 312 hours for payment." });
     }
     if (node.type === "goto_flow" && !String(x["flow_id"] ?? "")) problems.push({ nodeId: node.id, message: "Pick the flow to go to." });
+    if (node.type === "http") {
+      const url = String(x["url"] ?? "").trim();
+      if (!/^https?:\/\/\S+$/.test(url)) problems.push({ nodeId: node.id, message: "Add the full address starting with https://" });
+      if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(String(x["method"] ?? "GET"))) problems.push({ nodeId: node.id, message: "Pick GET, POST, PUT, PATCH or DELETE." });
+      const bodyText = String(x["body"] ?? "").trim();
+      if (bodyText && !isJsonTemplate(bodyText)) problems.push({ nodeId: node.id, message: "The body must be valid JSON ({{variables}} are allowed inside quotes)." });
+      for (const m of (x["save"] as Array<{ path?: string; variable?: string }> | undefined) ?? [])
+        if (!String(m.path ?? "").trim() || !/^[a-zA-Z0-9_]+$/.test(String(m.variable ?? ""))) problems.push({ nodeId: node.id, message: "Each saved field needs a response path and a variable name (letters, numbers, _)." });
+    }
+    if (node.type === "email_team") {
+      const users = (x["user_ids"] as string[] | undefined) ?? [];
+      const addrs = String(x["addresses"] ?? "").split(/[,\s]+/).filter(Boolean);
+      if (!users.length && !addrs.length) problems.push({ nodeId: node.id, message: "Pick teammates or add email addresses." });
+      if (addrs.some((a) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a))) problems.push({ nodeId: node.id, message: "One of the email addresses isn't valid." });
+      if (!String(x["subject"] ?? "").trim()) problems.push({ nodeId: node.id, message: "Add a subject." });
+    }
+    if (node.type === "wait_until") {
+      if (x["mode"] === "field" ? !String(x["field"] ?? "").trim() : !String(x["date"] ?? "").trim())
+        problems.push({ nodeId: node.id, message: x["mode"] === "field" ? "Pick the variable or contact field holding the date." : "Pick the date to wait until." });
+    }
     if (node.type === "branch")
       for (const b of (x["branches"] as Branch[] | undefined) ?? [])
         for (const c of b.conditions) if (c.op === "matches" && !safeRegex(String(c.value ?? ""))) problems.push({ nodeId: node.id, message: `"${c.value}" isn't a valid pattern.` });
   }
   // Variables used must be set somewhere (ask nodes or built-ins).
-  const defined = new Set(["name", "phone", "last_answer", "today", "now", "payment_link", "payment_status", "payment_id"]);
+  const defined = new Set(["name", "phone", "last_answer", "today", "now", "payment_link", "payment_status", "payment_id", "order_draft_id", "http_status"]);
   for (const n of graph.nodes) if (["ask", "buttons", "list", "location_request", "set_variable"].includes(n.type) && d(n, "variable")) defined.add(d(n, "variable"));
+  for (const n of graph.nodes)
+    if (n.type === "http") for (const m of (n.data["save"] as Array<{ variable?: string }> | undefined) ?? []) if (m.variable) defined.add(String(m.variable));
   for (const n of graph.nodes) {
     const text = JSON.stringify(n.data);
     for (const m of text.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)) {
@@ -474,4 +503,48 @@ export function evalArith(src: string): number | null {
   };
   const out = expr();
   return i === tokens.length ? out : null;
+}
+
+
+/** JSON body template: valid once every {{variable}} is replaced by a sample. */
+export function isJsonTemplate(text: string): boolean {
+  try {
+    JSON.parse(text.replace(/\{\{\s*[a-zA-Z0-9_.]+\s*\}\}/g, "x"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Read a value from a JSON response by a dotted path: "data.items.0.id". */
+export function readPath(obj: unknown, path: string): unknown {
+  let cur: unknown = obj;
+  for (const part of path.split(".").map((p) => p.trim()).filter(Boolean)) {
+    if (cur == null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+/**
+ * "Wait until": a date written as dd-mm-yyyy or yyyy-mm-dd, optionally with
+ * HH:MM (default 10:00), in the workspace's timezone. null when unreadable.
+ */
+export function parseWaitDate(raw: string, timezone: string): Date | null {
+  const t = raw.trim();
+  let m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?:[ T](\d{1,2}):(\d{2}))?/);
+  let y: number, mo: number, da: number, h = 10, mi = 0;
+  if (m) { da = +m[1]!; mo = +m[2]!; y = +m[3]!; if (m[4]) { h = +m[4]; mi = +m[5]!; } }
+  else {
+    m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/);
+    if (!m) return null;
+    y = +m[1]!; mo = +m[2]!; da = +m[3]!; if (m[4]) { h = +m[4]; mi = +m[5]!; }
+  }
+  if (mo < 1 || mo > 12 || da < 1 || da > 31 || h > 23 || mi > 59) return null;
+  const guess = Date.UTC(y, mo - 1, da, h, mi);
+  // Offset of the timezone at that moment.
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: timezone || "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(guess));
+  const g = (k: string) => Number(p.find((x) => x.type === k)?.value ?? 0);
+  const asTz = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"));
+  return new Date(guess - (asTz - guess));
 }
