@@ -207,7 +207,7 @@ export function InboxView() {
     const { data } = await aidwar
       .from("messages")
       .select(
-        "id, conversation_id, direction, type, body, media_url, media_mime, template_name, status, error_detail, sent_by, detected_language, created_at",
+        "id, conversation_id, direction, type, body, media_url, media_mime, template_name, status, error_detail, sent_by, detected_language, metadata, created_at",
       )
       .eq("conversation_id", id)
       .order("created_at", { ascending: true })
@@ -299,7 +299,7 @@ export function InboxView() {
     const { data } = await aidwar
       .from("messages")
       .select(
-        "id, conversation_id, direction, type, body, media_url, media_mime, template_name, status, error_detail, sent_by, detected_language, created_at",
+        "id, conversation_id, direction, type, body, media_url, media_mime, template_name, status, error_detail, sent_by, detected_language, metadata, created_at",
       )
       .eq("conversation_id", id)
       .order("created_at", { ascending: true })

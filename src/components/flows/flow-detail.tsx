@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
+import { useOrg } from "@/lib/org-context";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { PermissionGate } from "@/components/permission-gate";
 import { SendsLog } from "@/components/flows/sends-log";
@@ -410,6 +412,12 @@ function StepBlock({
   const [editing, setEditing] = useState(false);
   const label = stepLabel(flowKey, step);
   const selected = templates.find((t) => t.id === step.template_id) ?? null;
+  const forms = usePublishedForms();
+  const formId =
+    (step.condition ?? {})["step_type"] === "send_form"
+      ? String((step.condition ?? {})["form_id"] ?? "")
+      : "";
+  const selectedForm = forms.find((f) => f.id === formId) ?? null;
   const pending = selected && selected.status.toUpperCase() !== "APPROVED";
 
   const delayChoices = Array.from(new Set([...DELAY_CHOICES, step.delay_minutes])).sort(
@@ -423,7 +431,13 @@ function StepBlock({
           {formatDelay(step.delay_minutes)}
         </h3>
         <p className="text-sm text-muted-foreground">
-          we send “{selected ? selected.name.replace(/_/g, " ") : "nothing yet"}” ({label})
+          we send “
+          {selectedForm
+            ? `Form: ${selectedForm.name}`
+            : selected
+              ? selected.name.replace(/_/g, " ")
+              : "nothing yet"}
+          ” ({label})
         </p>
       </div>
 
@@ -483,8 +497,20 @@ function StepBlock({
           <div className="space-y-2">
             <Label htmlFor={`tpl-${step.id}`}>Which message to send</Label>
             <Select
-              value={step.template_id ?? NO_TEMPLATE}
-              onValueChange={(v) => onChange({ template_id: v === NO_TEMPLATE ? null : v })}
+              value={formId ? `form:${formId}` : (step.template_id ?? NO_TEMPLATE)}
+              onValueChange={(v) => {
+                const rest = { ...(step.condition ?? {}) };
+                delete rest["step_type"];
+                delete rest["form_id"];
+                if (v.startsWith("form:")) {
+                  onChange({
+                    template_id: null,
+                    condition: { ...rest, step_type: "send_form", form_id: v.slice(5) },
+                  });
+                } else {
+                  onChange({ template_id: v === NO_TEMPLATE ? null : v, condition: rest });
+                }
+              }}
               disabled={!canManage}
             >
               <SelectTrigger id={`tpl-${step.id}`} className="min-h-11">
@@ -496,6 +522,11 @@ function StepBlock({
                   <SelectItem key={t.id} value={t.id}>
                     {t.name.replace(/_/g, " ")}
                     {t.status.toUpperCase() === "APPROVED" ? "" : " (waiting for approval)"}
+                  </SelectItem>
+                ))}
+                {forms.map((f) => (
+                  <SelectItem key={`form-${f.id}`} value={`form:${f.id}`}>
+                    Form: {f.name} (only within 24 hours of their last message)
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -547,4 +578,23 @@ function StepBlock({
       ) : null}
     </div>
   );
+}
+
+
+/** Published WhatsApp forms, only when the forms feature is on. */
+function usePublishedForms(): Array<{ id: string; name: string }> {
+  const { active } = useOrg();
+  const { enabled } = useFeatureFlag("wa_forms");
+  const [forms, setForms] = useState<Array<{ id: string; name: string }>>([]);
+  const orgId = active?.organization.id ?? null;
+  useEffect(() => {
+    if (!enabled || !orgId) return;
+    void aidwar
+      .from("wa_forms")
+      .select("id, name")
+      .eq("organization_id", orgId)
+      .eq("status", "published")
+      .then(({ data }) => setForms((data ?? []) as Array<{ id: string; name: string }>));
+  }, [enabled, orgId]);
+  return enabled ? forms : [];
 }

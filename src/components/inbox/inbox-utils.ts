@@ -41,6 +41,8 @@ export type MessageRow = {
   sent_by?: string | null;
   /** Best guess at the language the customer wrote in. */
   detected_language?: string | null;
+  /** Structured extras, e.g. a filled-in form's answers. */
+  metadata?: Record<string, unknown> | null;
   created_at: string;
 };
 

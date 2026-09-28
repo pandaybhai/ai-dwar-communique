@@ -9,6 +9,8 @@ import { BrainPicker } from "@/components/employee/brain-picker";
 import { CorrectionsList } from "@/components/employee/corrections-list";
 import { KnowledgeManager, UnansweredList } from "@/components/employee/knowledge-manager";
 import { Playground } from "@/components/employee/playground";
+import { FormsManager } from "@/components/employee/forms-manager";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { PromptPreview } from "@/components/employee/prompt-preview";
 import { SkillsManager } from "@/components/employee/skills-manager";
 import { ToolsList } from "@/components/employee/tools-list";
@@ -70,6 +72,7 @@ function EmployeePage() {
   const [overview, setOverview] = useState<EmployeeOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("knows");
+  const formsOn = useFeatureFlag("wa_forms").enabled;
   const [gate, setGate] = useState<{ mode: string; message: string } | null>(null);
   const [compareRequest, setCompareRequest] = useState(0);
   const [dataVersion, setDataVersion] = useState(0);
@@ -263,6 +266,7 @@ function EmployeePage() {
               </TabsTrigger>
               <TabsTrigger value="behaviour">How I behave</TabsTrigger>
               <TabsTrigger value="brains">My brain &amp; tools</TabsTrigger>
+              {formsOn ? <TabsTrigger value="forms">Forms</TabsTrigger> : null}
               <TabsTrigger value="try">Try me</TabsTrigger>
               <TabsTrigger value="work">My work</TabsTrigger>
             </TabsList>
@@ -314,6 +318,12 @@ function EmployeePage() {
               />
 
             </TabsContent>
+
+            {formsOn ? (
+              <TabsContent value="forms">
+                <FormsManager organizationId={active.organization.id} canConfigure={canConfigure} />
+              </TabsContent>
+            ) : null}
 
             <TabsContent value="brains" className="space-y-6">
               <BrainPicker

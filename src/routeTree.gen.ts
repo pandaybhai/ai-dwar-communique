@@ -32,6 +32,7 @@ import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizat
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as ApiCardsRouteImport } from './routes/api/cards'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
+import { Route as ApiFormsRouteImport } from './routes/api/forms'
 import { Route as ApiPermissionsRouteImport } from './routes/api/permissions'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
@@ -231,6 +232,11 @@ const ApiCardsRoute = ApiCardsRouteImport.update({
 const ApiEventsRoute = ApiEventsRouteImport.update({
   id: '/api/events',
   path: '/api/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFormsRoute = ApiFormsRouteImport.update({
+  id: '/api/forms',
+  path: '/api/forms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPermissionsRoute = ApiPermissionsRouteImport.update({
@@ -703,6 +709,7 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
   '/api/events': typeof ApiEventsRoute
+  '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
@@ -811,6 +818,7 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
   '/api/events': typeof ApiEventsRoute
+  '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
@@ -922,6 +930,7 @@ export interface FileRoutesById {
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
   '/api/events': typeof ApiEventsRoute
+  '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
@@ -1034,6 +1043,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/api/cards'
     | '/api/events'
+    | '/api/forms'
     | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
@@ -1142,6 +1152,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/api/cards'
     | '/api/events'
+    | '/api/forms'
     | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
@@ -1252,6 +1263,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/api/cards'
     | '/api/events'
+    | '/api/forms'
     | '/api/permissions'
     | '/app/analytics'
     | '/app/automations'
@@ -1354,6 +1366,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   ApiCardsRoute: typeof ApiCardsRoute
   ApiEventsRoute: typeof ApiEventsRoute
+  ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
   RTokenRoute: typeof RTokenRoute
@@ -1585,6 +1598,13 @@ declare module '@tanstack/react-router' {
       path: '/api/events'
       fullPath: '/api/events'
       preLoaderRoute: typeof ApiEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/forms': {
+      id: '/api/forms'
+      path: '/api/forms'
+      fullPath: '/api/forms'
+      preLoaderRoute: typeof ApiFormsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/permissions': {
@@ -2273,6 +2293,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   ApiCardsRoute: ApiCardsRoute,
   ApiEventsRoute: ApiEventsRoute,
+  ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,
   RTokenRoute: RTokenRoute,

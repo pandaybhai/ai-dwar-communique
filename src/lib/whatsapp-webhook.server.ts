@@ -518,6 +518,7 @@ function messageBody(msg: AnyRecord): { type: string; body: string | null } {
       return { type, body: pick(msg["button"], "text") };
     case "interactive": {
       const i = msg["interactive"] as AnyRecord | undefined;
+      if (String(i?.["type"] ?? "") === "nfm_reply") return { type, body: "Form submitted" };
       return {
         type,
         body: pick(i?.["button_reply"], "title") ?? pick(i?.["list_reply"], "title"),
@@ -1005,6 +1006,38 @@ export async function processWebhookPayload(
               occurredAt,
               properties: { message_type: type, conversation_id: conversation.id },
             });
+          }
+
+          // A filled-in WhatsApp form is handled before any other routing, on
+          // every number (the onboarding number included): it is saved as a
+          // form response and shown in the inbox, never treated as a chat
+          // message for the owner channel, automations or the AI.
+          if (
+            type === "interactive" &&
+            String((msg["interactive"] as AnyRecord | undefined)?.["type"] ?? "") === "nfm_reply"
+          ) {
+            if (!isSystemEcho) {
+              const { handleFormReply } = await import("@/lib/wa-forms.server");
+              let messageRowId = (inserted?.[0]?.id as string | undefined) ?? null;
+              if (!messageRowId) {
+                const { data: existingMsg } = await supabase
+                  .from("messages")
+                  .select("id")
+                  .eq("meta_message_id", String(msg["id"] ?? ""))
+                  .maybeSingle();
+                messageRowId = (existingMsg?.id as string | undefined) ?? null;
+              }
+              await handleFormReply(supabase, {
+                organizationId: orgId,
+                whatsappAccountId: accountId,
+                contactId: contact.id as string,
+                conversationId: conversation.id as string,
+                messageRowId,
+                metaMessageId: String(msg["id"] ?? ""),
+                msg,
+              });
+            }
+            continue;
           }
 
           // The onboarding number is a different conversation entirely: the

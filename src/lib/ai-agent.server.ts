@@ -306,6 +306,23 @@ export async function runAgentOnInbound(
     }
   }
 
+  // The model chose a published form: it goes out after the words, once.
+  if (sent.ok && flags.has("wa_forms")) {
+    const pick = run.toolCalls.find(
+      (c) => c.tool === "send_form" && c.ok && typeof c.args?.["form_id"] === "string",
+    );
+    if (pick) {
+      const { sendFormMessage } = await import("@/lib/wa-forms.server");
+      const formSent = await sendFormMessage(supabase, {
+        organizationId: args.organizationId,
+        conversationId: args.conversationId,
+        formId: String(pick.args!["form_id"]),
+        source: "ai",
+      });
+      if (!formSent.ok) log("form_send_failed", { conversation_id: args.conversationId, error: formSent.error });
+    }
+  }
+
   log(sent.ok ? "replied" : "send_failed", {
     pictures: picturesSent,
     conversation_id: args.conversationId,
