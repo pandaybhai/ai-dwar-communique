@@ -93,6 +93,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
   const navigate = useNavigate();
   const [meta, setMeta] = useState<NonNullable<FlowGraph["meta"]>>(() => initial.meta ?? {});
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [triggersOpen, setTriggersOpen] = useState(false);
   const [genOpen, setGenOpen] = useState(false);
   const [genText, setGenText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -331,6 +332,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
             <Button size="sm" variant="ghost" onClick={() => { commit({ ...snap, nodes: autoLayout(snap) }); setTimeout(() => rf.fitView({ duration: 250 }), 50); }}><LayoutGrid className="mr-1 h-4 w-4" /> Tidy</Button>
           </>)}
           <Button size="sm" variant="ghost" onClick={() => setHistOpen(true)}><History className="mr-1 h-4 w-4" /> Versions</Button>
+          <Button size="sm" variant="ghost" onClick={() => setTriggersOpen(true)}><Zap className="mr-1 h-4 w-4" /> Triggers</Button>
           <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)}><Settings2 className="mr-1 h-4 w-4" /> Flow settings</Button>
           <Button size="icon" variant="ghost" aria-label="Export" title="Export JSON" onClick={exportJson}><Download className="h-4 w-4" /></Button>
           {canEdit && (<>
