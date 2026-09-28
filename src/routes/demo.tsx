@@ -228,7 +228,7 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
   const [industry, setIndustry] = useState("retail");
   // What the form starts with: nothing, unless the link itself names a context.
   // The showcase tabs lower on the page never touch the form.
-  const [formPreset, setFormPreset] = useState<{ industry?: string; need?: string }>({});
+  const [formPreset, setFormPreset] = useState<{ industry?: string | undefined; need?: string | undefined }>({});
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

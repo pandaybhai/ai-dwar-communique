@@ -62,8 +62,8 @@ export function DemoForm({
   onFocusChange,
   onComplete,
 }: {
-  presetBusinessType?: string;
-  presetPrimaryNeed?: string;
+  presetBusinessType?: string | undefined;
+  presetPrimaryNeed?: string | undefined;
   focused?: boolean;
   attached?: boolean;
   onFocusChange?: (focused: boolean) => void;

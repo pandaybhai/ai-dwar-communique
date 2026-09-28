@@ -56,7 +56,7 @@ export const Route = createFileRoute("/api/ai/knowledge")({
                   .select("id", { count: "exact", head: true })
                   .eq("source_id", String(r["id"]))
                   .eq("metadata->>prepare_failed", "true");
-                return { ...r, failed_pages: count ?? 0 };
+                return { ...r, failed_pages: count ?? 0 } as Record<string, unknown>;
               }),
             );
             const sources = await Promise.all(
