@@ -23,7 +23,7 @@ export const Route = createFileRoute("/api/flows/runs")({
         }
         const auth = await requireOrgMember(request, parsed.organization_id);
         if (isResponse(auth)) return auth;
-        const denied = await requirePermission(auth, "inbox.view", "control flows");
+        const denied = await requirePermission(auth, "inbox.reply", "control flows");
         if (denied) return denied;
         const { flowsV2Enabled, controlRun } = await import("@/lib/flow-engine.server");
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");

@@ -354,6 +354,73 @@ async function loadMarkers(
 type KeywordSets = { optOut: string[]; optIn: string[] };
 
 /** Built-in keywords plus the organization's own configured list. */
+/**
+ * Flows v2 inbound hook: a run waiting on this conversation takes the reply;
+ * otherwise inbound triggers may start a run. true → the flow owns this
+ * message and nothing else replies. Never throws.
+ */
+async function flowsV2Inbound(
+  supabase: SupabaseClient,
+  args: {
+    orgId: string;
+    contactId: string;
+    conversationId: string;
+    accountId: string;
+    onlyAccountId: string | null;
+    msg: AnyRecord;
+    body: string | null;
+    contactAge: number;
+  },
+): Promise<boolean> {
+  const { msg } = args;
+  try {
+    const { handleInboundForRuns } = await import("@/lib/flow-engine.server");
+    const flowInteractive = msg["interactive"] as AnyRecord | undefined;
+    const replyId =
+      ((flowInteractive?.["button_reply"] as AnyRecord | undefined)?.["id"] as string | undefined) ??
+      ((flowInteractive?.["list_reply"] as AnyRecord | undefined)?.["id"] as string | undefined) ??
+      ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
+      null;
+    const loc = msg["location"] as AnyRecord | undefined;
+    const taken = await handleInboundForRuns(supabase, {
+      organizationId: args.orgId,
+      contactId: args.contactId,
+      conversationId: args.conversationId,
+      whatsappAccountId: args.accountId,
+      body: args.body || (loc ? `${loc["latitude"]},${loc["longitude"]}` : ""),
+      replyId,
+    });
+    if (taken.consumed) return true;
+
+    const { dispatchInboundTriggers } = await import("@/lib/flow-triggers.server");
+    let campaignButton: { campaignId: string | null; button: string | null } | null = null;
+    const ctxId = (msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined;
+    if (replyId && ctxId) {
+      const { data: ctxMsg } = await supabase
+        .from("messages")
+        .select("campaign_id")
+        .eq("meta_message_id", ctxId)
+        .maybeSingle();
+      const cid = (ctxMsg?.campaign_id as string | null) ?? null;
+      if (cid) campaignButton = { campaignId: cid, button: replyId };
+    }
+    const started = await dispatchInboundTriggers(supabase, {
+      organizationId: args.orgId,
+      contactId: args.contactId,
+      conversationId: args.conversationId,
+      body: args.body ?? "",
+      isFirstMessageEver: args.contactAge >= 0 && args.contactAge < 10_000,
+      isCtwa: Boolean(msg["referral"]),
+      campaignButton,
+      onlyAccountId: args.onlyAccountId,
+    });
+    return started.started;
+  } catch (error) {
+    console.error("[flows-v2] inbound failed", error instanceof Error ? error.message : String(error));
+    return false;
+  }
+}
+
 async function loadOptKeywords(
   supabase: SupabaseClient,
   organizationId: string,
@@ -1049,70 +1116,29 @@ export async function processWebhookPayload(
             continue;
           }
 
-          // Flows v2: when a run is waiting for this contact's reply, the flow
-          // owns the conversation — it takes the message first and nothing else
-          // (owner channel, automations, the AI) auto-replies. Opt-out words
-          // always fall through so STOP keeps working.
-          if (!isSystemEcho && inserted && inserted.length > 0) {
-            const optWord = /^(stop|unsubscribe|opt ?out|cancel)$/i.test((body ?? "").trim());
-            if (!optWord) {
-              try {
-                const { handleInboundForRuns } = await import("@/lib/flow-engine.server");
-                const flowInteractive = msg["interactive"] as AnyRecord | undefined;
-                const replyId =
-                  ((flowInteractive?.["button_reply"] as AnyRecord | undefined)?.["id"] as string | undefined) ??
-                  ((flowInteractive?.["list_reply"] as AnyRecord | undefined)?.["id"] as string | undefined) ??
-                  ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
-                  null;
-                const taken = await handleInboundForRuns(supabase, {
-                  organizationId: orgId,
-                  contactId: contact.id as string,
-                  conversationId: conversation.id as string,
-                  body:
-                    body ||
-                    (msg["location"]
-                      ? `${(msg["location"] as AnyRecord)["latitude"]},${(msg["location"] as AnyRecord)["longitude"]}`
-                      : ""),
-                  replyId,
-                });
-                if (taken.consumed) continue;
-
-                // No run was waiting — see whether this message starts one.
-                // First message ever → CTWA ad → campaign button → keyword;
-                // the first matching trigger wins. Onboarding-number messages
-                // skip this (the owner channel handles them below).
-                if (!(onboardingAccountId && accountId === onboardingAccountId)) {
-                  try {
-                    const { dispatchInboundTriggers } = await import("@/lib/flow-triggers.server");
-                    let campaignButton: { campaignId: string | null; button: string | null } | null = null;
-                    const ctxId = (msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined;
-                    if (replyId && ctxId) {
-                      const { data: ctxMsg } = await supabase
-                        .from("messages")
-                        .select("campaign_id")
-                        .eq("meta_message_id", ctxId)
-                        .maybeSingle();
-                      const cid = (ctxMsg?.campaign_id as string | null) ?? null;
-                      if (cid) campaignButton = { campaignId: cid, button: replyId };
-                    }
-                    const started = await dispatchInboundTriggers(supabase, {
-                      organizationId: orgId,
-                      contactId: contact.id as string,
-                      conversationId: conversation.id as string,
-                      body: body ?? "",
-                      isFirstMessageEver: contactAge >= 0 && contactAge < 10_000,
-                      isCtwa: Boolean(msg["referral"]),
-                      campaignButton,
-                    });
-                    if (started.started) continue;
-                  } catch (error) {
-                    console.error("[flows-v2] triggers failed", error instanceof Error ? error.message : String(error));
-                  }
-                }
-              } catch (error) {
-                console.error("[flows-v2] inbound failed", error instanceof Error ? error.message : String(error));
-              }
-            }
+          // Flows v2 on the onboarding number: that number never runs opt-out,
+          // COD or automations, so a waiting run / keyword trigger pinned to
+          // this number is checked here, before the owner channel. Opt-out
+          // words (defaults + workspace list) never reach a flow.
+          if (
+            onboardingAccountId &&
+            accountId === onboardingAccountId &&
+            !isSystemEcho &&
+            inserted &&
+            inserted.length > 0 &&
+            !matchKeyword(body, (await loadOptKeywords(supabase, orgId, keywordCache)).optOut)
+          ) {
+            const taken = await flowsV2Inbound(supabase, {
+              orgId,
+              contactId: contact.id as string,
+              conversationId: conversation.id as string,
+              accountId,
+              onlyAccountId: onboardingAccountId,
+              msg,
+              body,
+              contactAge,
+            });
+            if (taken) continue;
           }
 
           // The onboarding number is a different conversation entirely: the
@@ -1226,6 +1252,24 @@ export async function processWebhookPayload(
             });
           }
 
+
+          // Flows v2 runs after catalogue orders, opt-out keywords and COD
+          // answers, and before automations: a waiting run takes the reply
+          // first, otherwise a trigger may start one. Either way nothing else
+          // (automations, the AI) replies to this message.
+          if (!isSystemEcho && !optKeywordMatched && !codHandled && inserted && inserted.length > 0) {
+            const taken = await flowsV2Inbound(supabase, {
+              orgId,
+              contactId: contact.id as string,
+              conversationId: conversation.id as string,
+              accountId,
+              onlyAccountId: null,
+              msg,
+              body,
+              contactAge,
+            });
+            if (taken) continue;
+          }
 
           // Automations run last, and never for a message that was an opt-out /
           // opt-in keyword or a cash-on-delivery answer. Inbound only — our own
