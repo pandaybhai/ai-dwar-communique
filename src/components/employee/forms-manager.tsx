@@ -34,6 +34,7 @@ import {
   STARTER_FORMS,
   fieldHasOptions,
   fieldKey,
+  readableAnswers,
   validateForm,
   type FormField,
   type FormFieldType,
@@ -600,18 +601,12 @@ function Responses({
                 </span>
               </p>
               <dl className="mt-2 grid gap-1 sm:grid-cols-2">
-                {form.fields.map((f) =>
-                  r.answers[f.key] !== undefined ? (
-                    <div key={f.key} className="flex gap-2">
-                      <dt className="text-muted-foreground">{f.label}:</dt>
-                      <dd className="font-medium">
-                        {Array.isArray(r.answers[f.key])
-                          ? (r.answers[f.key] as unknown[]).join(", ")
-                          : String(r.answers[f.key])}
-                      </dd>
-                    </div>
-                  ) : null,
-                )}
+                {readableAnswers(form.fields, r.answers).map((a) => (
+                  <div key={a.key} className="flex gap-2">
+                    <dt className="text-muted-foreground">{a.label}:</dt>
+                    <dd className="font-medium">{a.value}</dd>
+                  </div>
+                ))}
               </dl>
             </article>
           ))}
