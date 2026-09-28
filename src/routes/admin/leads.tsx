@@ -187,11 +187,11 @@ function AdminLeads() {
                 <tr
                   key={lead.id}
                   tabIndex={0}
-                  onClick={() => setOpen(lead)}
+                  onClick={() => setOpenId(lead.id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      setOpen(lead);
+                      setOpenId(lead.id);
                     }
                   }}
                   className="cursor-pointer border-t border-border/70 transition-colors hover:bg-muted/40 focus:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
