@@ -412,6 +412,7 @@ async function flowsV2Inbound(
       isFirstMessageEver: args.contactAge >= 0 && args.contactAge < 10_000,
       isCtwa: Boolean(msg["referral"]),
       campaignButton,
+      accountId: args.accountId,
       onlyAccountId: args.onlyAccountId,
     });
     return started.started;
