@@ -1,3 +1,3 @@
 // AUTO-GENERATED at build time by the build-info Vite plugin. Do not edit.
-export const COMMIT_SHA = "b709ba9";
-export const BUILT_AT = "2026-09-28T08:43:37.086Z" as string | null;
+export const COMMIT_SHA = "8c6af0e";
+export const BUILT_AT = "2026-09-28T08:45:01.760Z" as string | null;
