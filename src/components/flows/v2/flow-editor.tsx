@@ -4,7 +4,7 @@ import {
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange, useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles } from "lucide-react";
+import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles, Zap } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +20,7 @@ import { FlowNodeCard, type RFData } from "./flow-node";
 import { NODE_META, uid } from "./node-meta";
 import { NodeConfig, type Pickers } from "./node-config";
 import { SimulatorPanel } from "./simulator-panel";
+import { TriggersPanel } from "./triggers-panel";
 
 type RFNode = Node<RFData>;
 type Snapshot = { nodes: RFNode[]; edges: Edge[] };
