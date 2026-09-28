@@ -32,6 +32,9 @@ function BillingPage() {
   const org = active?.organization;
   const noPlan = Boolean(org) && !org?.plan_version_id;
   const locked = org?.plan_status === "locked";
+  // Top-ups: any workspace with a plan on trial, active, past due or paused.
+  const canTopUp =
+    Boolean(org?.plan_version_id) && ["trial", "active", "past_due", "paused"].includes(org?.plan_status ?? "");
 
   return (
     <>
@@ -54,7 +57,7 @@ function BillingPage() {
             onActivated={() => void reload()}
           />
           {enabled && can("billing.view") ? (
-            <BillingView organizationId={org.id} planActive={org.plan_status === "active"} onTrial={!locked} />
+            <BillingView organizationId={org.id} planActive={canTopUp} onTrial={!locked} />
           ) : null}
         </div>
       ) : !enabled ? (
@@ -70,7 +73,7 @@ function BillingPage() {
           description='You need the "View billing" permission for this workspace. Ask an owner or admin to grant it.'
         />
       ) : (
-        <BillingView organizationId={org.id} planActive={org.plan_status === "active"} />
+        <BillingView organizationId={org.id} planActive={canTopUp} />
       )}
     </>
   );
