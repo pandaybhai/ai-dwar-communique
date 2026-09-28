@@ -226,6 +226,9 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
   const [campaignContext, setCampaignContext] = useState<CampaignContext>("general");
   const [need, setNeed] = useState<DemoNeed>("replies");
   const [industry, setIndustry] = useState("retail");
+  // What the form starts with: nothing, unless the link itself names a context.
+  // The showcase tabs lower on the page never touch the form.
+  const [formPreset, setFormPreset] = useState<{ industry?: string; need?: string }>({});
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -246,6 +249,7 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
     const message = CAMPAIGN_CONTEXTS[matched];
     if (message.industry) setIndustry(message.industry);
     if (message.need) setNeed(message.need);
+    setFormPreset({ industry: message.industry, need: message.need });
     trackMarketing("demo_context_selected", {
       context: matched,
       industry: message.industry,
@@ -364,7 +368,7 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
                  Tell us what you handle today. We’ll show one grounded answer and one owner handoff using the information you share.
               </p>
             </div>
-             <DemoForm presetBusinessType={industry} presetPrimaryNeed={need} focused attached onFocusChange={setFormFocused} onComplete={() => setComplete(true)} />
+             <DemoForm presetBusinessType={formPreset.industry} presetPrimaryNeed={formPreset.need} focused attached onFocusChange={setFormFocused} onComplete={() => setComplete(true)} />
             </section>
           </div>
         </section>
