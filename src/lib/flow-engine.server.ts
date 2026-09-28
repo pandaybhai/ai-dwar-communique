@@ -271,7 +271,7 @@ async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
     ctx: {
       vars: run.variables ?? {},
       contact: { name: c.name, phone: c.phone, attributes: c.attributes ?? {} },
-      tags: ((tagRows ?? []) as Array<{ tags: { name: string } | null }>).map((t) => t.tags?.name ?? "").filter(Boolean),
+      tags: ((tagRows ?? []) as unknown as Array<{ tags: { name: string } | null }>).map((t) => t.tags?.name ?? "").filter(Boolean),
       now: new Date(),
       timezone: settings.timezone,
     },
