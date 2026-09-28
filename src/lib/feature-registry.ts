@@ -621,6 +621,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "tavily_cap_reached",
       "reading_link_limit_reached",
       "knowledge_on_demand_read",
+      "reading_forget_skipped",
       "knowledge_read_changes",
       "knowledge_read_more",
       "reading_settings_updated",

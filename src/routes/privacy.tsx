@@ -112,6 +112,10 @@ function PrivacyPage() {
           for legal, tax, accounting or dispute-resolution purposes. You may request earlier deletion
           at any time.
         </p>
+        <p>
+          Answers customers give in forms sent over WhatsApp are stored only to serve that customer
+          and are deleted on request.
+        </p>
       </Section>
 
       <Section heading="8. Your rights">

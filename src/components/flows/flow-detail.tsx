@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import { usePermissions } from "@/hooks/use-permissions";
+import { usePublishedForms } from "@/hooks/use-published-forms";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { useOrg } from "@/lib/org-context";
 import { EmptyState, ErrorState } from "@/components/empty-state";
@@ -578,23 +579,4 @@ function StepBlock({
       ) : null}
     </div>
   );
-}
-
-
-/** Published WhatsApp forms, only when the forms feature is on. */
-function usePublishedForms(): Array<{ id: string; name: string }> {
-  const { active } = useOrg();
-  const { enabled } = useFeatureFlag("wa_forms");
-  const [forms, setForms] = useState<Array<{ id: string; name: string }>>([]);
-  const orgId = active?.organization.id ?? null;
-  useEffect(() => {
-    if (!enabled || !orgId) return;
-    void aidwar
-      .from("wa_forms")
-      .select("id, name")
-      .eq("organization_id", orgId)
-      .eq("status", "published")
-      .then(({ data }) => setForms((data ?? []) as Array<{ id: string; name: string }>));
-  }, [enabled, orgId]);
-  return enabled ? forms : [];
 }
