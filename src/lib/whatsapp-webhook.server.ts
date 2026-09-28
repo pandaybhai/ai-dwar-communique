@@ -715,6 +715,13 @@ export async function processWebhookPayload(
     const automationCache = new Map<string, AutomationRow[]>();
     const timezoneCache = new Map<string, string>();
     const tokenCache = new Map<string, string>();
+    // Bookkeeping that no reply depends on (analytics events, campaign reply
+    // marks, offer taps) runs alongside the reply path and is awaited before
+    // this payload is marked processed — so a flow answers without waiting on it.
+    const deferred: Array<Promise<unknown>> = [];
+    const later = (p: Promise<unknown>) => {
+      deferred.push(p.catch((e) => console.error("[webhook] deferred step failed", e instanceof Error ? e.message : String(e))));
+    };
     // The number owners write to while Aiden is being set up. Never hardcoded.
     const { data: onboardingSetting } = await supabase
       .from("platform_settings")
@@ -993,13 +1000,13 @@ export async function processWebhookPayload(
           // created_at is the signal for a genuinely new contact.
           const contactAge = Date.now() - new Date(String(contact.created_at)).getTime();
           if (contactAge >= 0 && contactAge < 10_000) {
-            await emitEvent(supabase, "contact.created", {
+            later(emitEvent(supabase, "contact.created", {
               organizationId: orgId,
               whatsappAccountId: accountId,
               entityType: "contact",
               entityId: contact.id as string,
               properties: { contact_source: attribution.source },
-            });
+            }));
           }
 
           let { data: conversation } = await supabase
@@ -1024,13 +1031,13 @@ export async function processWebhookPayload(
               .single();
             conversation = created;
             if (created) {
-              await emitEvent(supabase, "conversation.opened", {
+              later(emitEvent(supabase, "conversation.opened", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
                 entityType: "conversation",
                 entityId: created.id as string,
                 properties: { opened_by: "inbound" },
-              });
+              }));
             }
           }
           if (!conversation) continue;
@@ -1074,15 +1081,15 @@ export async function processWebhookPayload(
                 unread_count: (conversation.unread_count ?? 0) + 1,
               })
               .eq("id", conversation.id);
-            await applyCampaignReply(supabase, orgId, contact.id);
-            await emitEvent(supabase, "message.received", {
+            later(applyCampaignReply(supabase, orgId, contact.id));
+            later(emitEvent(supabase, "message.received", {
               organizationId: orgId,
               whatsappAccountId: accountId,
               entityType: "message",
               entityId: inserted[0]!.id as string,
               occurredAt,
               properties: { message_type: type, conversation_id: conversation.id },
-            });
+            }));
           }
 
           // A filled-in WhatsApp form is handled before any other routing, on
@@ -1240,7 +1247,7 @@ export async function processWebhookPayload(
           if (inserted && inserted.length > 0 && !isSystemEcho) {
             const { recordOfferTap } = await import("@/lib/offers.server");
             const interactiveTap = msg["interactive"] as AnyRecord | undefined;
-            await recordOfferTap(supabase, {
+            later(recordOfferTap(supabase, {
               organizationId: orgId,
               contactId: contact.id as string,
               body,
