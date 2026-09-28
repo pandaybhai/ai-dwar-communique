@@ -47,10 +47,38 @@ const RUN_COLUMNS =
 const DEFAULT_REPLY_TIMEOUT_MIN = 24 * 60;
 const MAX_VISITS_PER_ADVANCE = 25;
 
+// Flag answers are reused for 30 s so one inbound message doesn't re-read
+// the flag tables four times (speed; a switch-off still lands within 30 s).
+const flagMemo = new Map<string, { on: boolean; exp: number }>();
 export async function flowsV2Enabled(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
+  const hit = flagMemo.get(organizationId);
+  if (hit && hit.exp > Date.now()) return hit.on;
   // One source of truth for flags: the same resolver the AI tools use.
   const { enabledFlags } = await import("@/lib/ai-tools.server");
-  return (await enabledFlags(supabase, organizationId)).has("flows_v2");
+  const on = (await enabledFlags(supabase, organizationId)).has("flows_v2");
+  flagMemo.set(organizationId, { on, exp: Date.now() + 30_000 });
+  return on;
+}
+
+/**
+ * Plain log rows (entered/exited/…) collected during one advance and written
+ * in a single insert at the end — each row used to cost a round trip. Rows
+ * carrying an idempotency key (sends) are always written immediately.
+ */
+type EventRow = { organization_id: string; run_id: string; node_id: string | null; event: string; detail: Record<string, unknown>; at: string };
+const eventBuffers = new Map<string, EventRow[]>();
+let lastEventMs = 0;
+function eventTime(): string {
+  // Strictly increasing so buffered rows keep their order in the run log.
+  lastEventMs = Math.max(Date.now(), lastEventMs + 1);
+  return new Date(lastEventMs).toISOString();
+}
+async function flushEvents(supabase: SupabaseClient, runId: string) {
+  const rows = eventBuffers.get(runId);
+  eventBuffers.delete(runId);
+  if (!rows || !rows.length) return;
+  const { error } = await supabase.from("flow_run_events").insert(rows);
+  if (error) throw new Error(`event_log_failed:${error.code ?? ""}:${error.message}`.slice(0, 280));
 }
 
 async function logEvent(
@@ -61,12 +89,18 @@ async function logEvent(
   detail: Record<string, unknown> = {},
   idempotencyKey?: string,
 ): Promise<boolean> {
+  const buffer = idempotencyKey ? null : eventBuffers.get(run.id);
+  if (buffer) {
+    buffer.push({ organization_id: run.organization_id, run_id: run.id, node_id: nodeId, event, detail, at: eventTime() });
+    return true;
+  }
   const { error } = await supabase.from("flow_run_events").insert({
     organization_id: run.organization_id,
     run_id: run.id,
     node_id: nodeId,
     event,
     detail,
+    at: eventTime(),
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
   });
   if (!error) return true;
@@ -126,17 +160,44 @@ export async function startRun(
     .single();
   if (error || !inserted) return { runId: null, reason: error?.code === "23505" ? "already_running" : "insert_failed" };
   const run = inserted as Run;
+  // Every trigger fire is recorded (trigger, flow, contact, run) for the
+  // Triggers panel and stats — written alongside the first step, not before it.
+  const triggerId = String(args.trigger?.["trigger_id"] ?? "");
+  const fireWrite = /^[0-9a-f-]{36}$/.test(triggerId)
+    ? supabase
+        .from("flow_trigger_fires")
+        .insert({ organization_id: args.organizationId, trigger_id: triggerId, flow_id: args.flowId, kind: String(args.trigger?.["kind"] ?? ""), contact_id: args.contactId, run_id: run.id })
+        .then(({ error }) => { if (error) console.error("[flows-v2] trigger fire not recorded", error.message); })
+    : null;
   try {
-    await logEvent(supabase, run, start.id, "started", args.trigger ?? {});
-    await advance(supabase, run, v.graph, null, { fromCustomer: Boolean(args.fromCustomerMessage) });
+    eventBuffers.set(run.id, []);
+    try {
+      await logEvent(supabase, run, start.id, "started", args.trigger ?? {});
+      await advance(supabase, run, v.graph, null, { fromCustomer: Boolean(args.fromCustomerMessage) });
+    } finally {
+      await flushEvents(supabase, run.id);
+    }
   } catch (error) {
     await failSafe(supabase, run, error);
   }
+  if (fireWrite) await fireWrite;
   // The run exists either way, so the trigger counts as consumed.
   return { runId: run.id, reason: null };
 }
 
-/** An inbound message: if a run is waiting for this contact's reply, it takes it. */
+/** How long a message that arrives while the flow is busy is held for it. */
+const HOLD_MS = 12_000;
+const DUPLICATE_WINDOW_MS = 20_000;
+
+/**
+ * An inbound message. While the contact has a run that is running OR waiting,
+ * every inbound belongs to the flow — it never falls through to the AI, the
+ * owner channel or automations:
+ *  - waiting for a reply → the run takes it;
+ *  - busy (running) → held until the run is ready, then handed over; a
+ *    repeat of the tap the run just took is dropped;
+ *  - waiting on a timer/payment → recorded on the run and not answered.
+ */
 export async function handleInboundForRuns(
   supabase: SupabaseClient,
   args: {
@@ -148,19 +209,86 @@ export async function handleInboundForRuns(
     replyId: string | null;
   },
 ): Promise<{ consumed: boolean }> {
-  // Match on this conversation (a run started without one, e.g. from a tag
-  // trigger, is matched by contact + the flow's number instead).
+  const deadline = Date.now() + HOLD_MS;
+  const key = (args.replyId ?? args.body.trim().toLowerCase()).slice(0, 200);
+  let held = false;
+  let flagChecked = false;
+  for (;;) {
+    const run = await activeRunFor(supabase, args);
+    // Nothing active: normal routing — unless we were holding this message
+    // for a run that has since finished (a duplicate tap), which is dropped.
+    if (!run) return { consumed: held };
+    if (!flagChecked) {
+      if (!(await flowsV2Enabled(supabase, args.organizationId))) return { consumed: false };
+      flagChecked = true;
+    }
+
+    if (run.status === "waiting" && run.waiting_for === "reply") {
+      const last = run.variables?.["_last_reply"] as { k?: string; at?: string } | undefined;
+      if (held && last?.k === key && last.at && Date.now() - Date.parse(last.at) < DUPLICATE_WINDOW_MS) {
+        await logEvent(supabase, run, run.current_node_id, "reply_dropped", { reason: "duplicate_tap" }).catch(() => false);
+        return { consumed: true };
+      }
+      const graph = await loadGraph(supabase, run.version_id);
+      if (!graph) return { consumed: true };
+      // Claim: only one of (this reply, another reply, a timeout tick) may advance the run.
+      const { data: claimed } = await supabase
+        .from("flow_runs")
+        .update({ status: "running", claimed_at: new Date().toISOString(), conversation_id: run.conversation_id ?? args.conversationId })
+        .eq("id", run.id)
+        .eq("status", "waiting")
+        .eq("waiting_for", "reply")
+        .select("id");
+      if (claimed && claimed.length > 0) {
+        run.conversation_id = run.conversation_id ?? args.conversationId;
+        run.variables = { ...(run.variables ?? {}), _last_reply: { k: key, at: new Date().toISOString() } };
+        try {
+          await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length, held });
+          // advance() reasons about the state the run was waiting in.
+          await advance(supabase, run, graph, { body: args.body, replyId: args.replyId });
+        } catch (error) {
+          await failSafe(supabase, run, error);
+        }
+        return { consumed: true };
+      }
+      // Lost the claim — the run is busy again; hold and retry.
+    } else if (run.status === "waiting") {
+      await logEvent(supabase, run, run.current_node_id, "reply_ignored", { waiting_for: run.waiting_for, length: args.body.length }).catch(() => false);
+      return { consumed: true };
+    }
+
+    if (!held) {
+      held = true;
+      await logEvent(supabase, run, run.current_node_id, "reply_held", { reply_id: args.replyId, length: args.body.length }).catch(() => false);
+    }
+    if (Date.now() > deadline) {
+      await logEvent(supabase, run, run.current_node_id, "reply_dropped", { reason: "flow_busy" }).catch(() => false);
+      return { consumed: true };
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+/** The contact's running/waiting run on this conversation (or unbound on this number). */
+async function activeRunFor(
+  supabase: SupabaseClient,
+  args: { organizationId: string; contactId: string; conversationId: string; whatsappAccountId?: string | null },
+): Promise<Run | null> {
   const { data } = await supabase
     .from("flow_runs")
-    .select(RUN_COLUMNS)
+    .select(`${RUN_COLUMNS}, updated_at`)
     .eq("organization_id", args.organizationId)
     .eq("contact_id", args.contactId)
-    .eq("status", "waiting")
-    .eq("waiting_for", "reply")
+    .in("status", ["running", "waiting"])
     .or(`conversation_id.eq.${args.conversationId},conversation_id.is.null`)
     .order("updated_at", { ascending: false })
     .limit(5);
-  let candidates = (data ?? []) as Run[];
+  // A run stuck "running" for over 2 minutes crashed mid-step; it must not
+  // swallow the customer's messages.
+  const staleBefore = Date.now() - 120_000;
+  let candidates = ((data ?? []) as Array<Run & { updated_at?: string }>).filter(
+    (r) => r.status !== "running" || !r.updated_at || Date.parse(r.updated_at) > staleBefore,
+  ) as Run[];
   const unbound = candidates.filter((r) => !r.conversation_id);
   if (unbound.length && args.whatsappAccountId) {
     const { data: flows } = await supabase
@@ -174,32 +302,14 @@ export async function handleInboundForRuns(
     );
     candidates = candidates.filter((r) => r.conversation_id || !onOtherNumber.has(r.flow_id));
   }
-  const run = candidates.find((r) => r.conversation_id === args.conversationId) ?? candidates[0];
-  if (!run) return { consumed: false };
-  if (!(await flowsV2Enabled(supabase, args.organizationId))) return { consumed: false };
-  const graph = await loadGraph(supabase, run.version_id);
-  if (!graph) return { consumed: false };
-  // Claim: only one of (this reply, a timeout tick) may advance the run.
-  const { data: claimed } = await supabase
-    .from("flow_runs")
-    .update({ status: "running", claimed_at: new Date().toISOString(), conversation_id: run.conversation_id ?? args.conversationId })
-    .eq("id", run.id)
-    .eq("status", "waiting")
-    .eq("waiting_for", "reply")
-    .select("id");
-  if (!claimed || claimed.length === 0) {
-    // Someone else (the tick) has it right now — the flow still owns the chat.
-    return { consumed: true };
-  }
-  run.conversation_id = run.conversation_id ?? args.conversationId;
-  try {
-    await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length });
-    // advance() reasons about the state the run was waiting in.
-    await advance(supabase, run, graph, { body: args.body, replyId: args.replyId });
-  } catch (error) {
-    await failSafe(supabase, run, error);
-  }
-  return { consumed: true };
+  // Prefer a run waiting for a reply, then this conversation's run.
+  return (
+    candidates.find((r) => r.status === "waiting" && r.waiting_for === "reply" && r.conversation_id === args.conversationId) ??
+    candidates.find((r) => r.status === "waiting" && r.waiting_for === "reply") ??
+    candidates.find((r) => r.conversation_id === args.conversationId) ??
+    candidates[0] ??
+    null
+  );
 }
 
 /** Minute tick: due waits and reply timeouts, plus the 14-day age limit. */
@@ -296,6 +406,20 @@ type Env = {
   settings: import("@/lib/flows.server").SendSettings;
 };
 
+// The number's token is reused for 60 s within this server (speed); it is
+// never written anywhere and never leaves the server.
+type Conn = Awaited<ReturnType<typeof import("@/lib/whatsapp-numbers.server").getWhatsAppConnection>>["connection"];
+const connMemo = new Map<string, { c: Conn; exp: number }>();
+async function connectionFor(supabase: SupabaseClient, organizationId: string, accountId: string | null): Promise<Conn> {
+  const k = `${organizationId}:${accountId ?? ""}`;
+  const hit = connMemo.get(k);
+  if (hit && hit.exp > Date.now()) return hit.c;
+  const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
+  const { connection } = await getWhatsAppConnection(supabase, organizationId, accountId);
+  if (connection) connMemo.set(k, { c: connection, exp: Date.now() + 60_000 });
+  return connection;
+}
+
 async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
   const { loadSendSettings } = await import("@/lib/flows.server");
   const [{ data: contact, error: contactError }, { data: tagRows }, { data: conversation }, { data: flow }, settings] = await Promise.all([
@@ -317,8 +441,7 @@ async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
     opt_in_status: string | null;
   };
   const conv = conversation as { last_customer_message_at?: string | null; whatsapp_account_id?: string | null } | null;
-  const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
-  const { connection } = await getWhatsAppConnection(
+  const connection = await connectionFor(
     supabase,
     run.organization_id,
     conv?.whatsapp_account_id ?? (flow as { whatsapp_account_id?: string | null } | null)?.whatsapp_account_id ?? null,
@@ -345,12 +468,30 @@ async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
  * Walk the graph from the run's current node until it waits, ends or fails.
  * `inbound` is the customer's reply when the run was waiting for one.
  */
+type AdvanceOpts = { woke?: boolean; paid?: boolean; fromCustomer?: boolean };
+
 async function advance(
   supabase: SupabaseClient,
   run: Run,
   graph: FlowGraph,
   inbound: Inbound | null,
-  opts: { woke?: boolean; paid?: boolean; fromCustomer?: boolean } = {},
+  opts: AdvanceOpts = {},
+): Promise<void> {
+  const own = !eventBuffers.has(run.id);
+  if (own) eventBuffers.set(run.id, []);
+  try {
+    await advanceInner(supabase, run, graph, inbound, opts);
+  } finally {
+    if (own) await flushEvents(supabase, run.id);
+  }
+}
+
+async function advanceInner(
+  supabase: SupabaseClient,
+  run: Run,
+  graph: FlowGraph,
+  inbound: Inbound | null,
+  opts: AdvanceOpts,
 ): Promise<void> {
   const env = await loadEnv(supabase, run);
   const vars = env.ctx.vars;
@@ -821,6 +962,92 @@ async function advance(
         }
         await waitFor("payment", hours * 60);
         return;
+      }
+      case "http": {
+        const { runHttpRequest } = await import("@/lib/flow-http.server");
+        const res = await runHttpRequest(d as never, { ...env.ctx, vars });
+        Object.assign(vars, res.saved);
+        vars["http_status"] = res.status == null ? "" : String(res.status);
+        await logEvent(supabase, run, node.id, res.ok ? "http_ok" : "http_failed", { status: res.status, error: res.error, saved: Object.keys(res.saved) });
+        if (!(await follow(node, res.ok ? "success" : "failed"))) return;
+        continue;
+      }
+      case "email_team": {
+        const c = { ...env.ctx, vars };
+        const userIds = ((d["user_ids"] as string[] | undefined) ?? []).filter(Boolean);
+        const addresses = new Set(String(d["addresses"] ?? "").split(/[,\s]+/).map((a) => a.trim().toLowerCase()).filter((a) => a.includes("@")));
+        if (userIds.length) {
+          // Only teammates of this workspace can be emailed.
+          const { data: members } = await supabase.from("organization_members").select("user_id").eq("organization_id", run.organization_id).in("user_id", userIds);
+          const ok = ((members ?? []) as Array<{ user_id: string }>).map((m) => m.user_id);
+          if (ok.length) {
+            const { data: profs } = await supabase.from("profiles").select("email").in("id", ok);
+            for (const p of (profs ?? []) as Array<{ email: string | null }>) if (p.email) addresses.add(p.email.toLowerCase());
+          }
+        }
+        const { sendEmail } = await import("@/lib/email.server");
+        const subject = interpolate(String(d["subject"] ?? "From your chat flow"), c).slice(0, 200);
+        const bodyText = interpolate(String(d["body"] ?? ""), c).slice(0, 5000);
+        let sent = 0;
+        let lastError: string | null = null;
+        for (const to of [...addresses].slice(0, 20)) {
+          const r = await sendEmail({ to, subject, body: bodyText });
+          if (r.ok) sent += 1;
+          else lastError = r.error ?? "email_failed";
+        }
+        // Recipients are counted, never listed, in the run log.
+        await logEvent(supabase, run, node.id, sent ? "email_sent" : "email_failed", { recipients: addresses.size, sent, error: lastError });
+        if (!sent) {
+          if (!(await follow(node, edgeFrom(graph, node.id, "failed") ? "failed" : "next"))) return;
+          continue;
+        }
+        break;
+      }
+      case "wait_until": {
+        if (waitingHere && woke && run.waiting_for === "timer") {
+          woke = false;
+          run.status = "running";
+          break;
+        }
+        const { parseWaitDate } = await import("@/lib/flow-graph");
+        const c = { ...env.ctx, vars };
+        const raw = d["mode"] === "field" ? interpolate(`{{${String(d["field"] ?? "").trim()}}}`, c) : interpolate(String(d["date"] ?? ""), c);
+        const target = parseWaitDate(raw, env.ctx.timezone);
+        if (!target) {
+          await logEvent(supabase, run, node.id, "wait_until_skipped", { reason: "unreadable_date" });
+          break;
+        }
+        const minutes = Math.ceil((target.getTime() - Date.now()) / 60_000);
+        if (minutes <= 0) {
+          await logEvent(supabase, run, node.id, "wait_until_skipped", { reason: "date_passed" });
+          break;
+        }
+        await logEvent(supabase, run, node.id, "wait_until", { until: target.toISOString() });
+        await waitFor("timer", minutes);
+        return;
+      }
+      case "order_draft": {
+        const c = { ...env.ctx, vars };
+        const totalRaw = interpolate(String(d["total"] ?? ""), c).replace(/[^\d.]/g, "");
+        const { data: draft, error } = await supabase
+          .from("flow_order_drafts")
+          .insert({
+            organization_id: run.organization_id,
+            flow_id: run.flow_id,
+            run_id: run.id,
+            contact_id: run.contact_id,
+            conversation_id: run.conversation_id,
+            items: interpolate(String(d["items"] ?? ""), c).slice(0, 2000),
+            total: totalRaw && Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : null,
+            notes: interpolate(String(d["notes"] ?? ""), c).slice(0, 2000),
+          })
+          .select("id")
+          .single();
+        if (error || !draft) throw new Error(`order_draft_failed:${error?.message ?? ""}`);
+        vars["order_draft_id"] = (draft as { id: string }).id;
+        await logEvent(supabase, run, node.id, "order_draft_created", { id: (draft as { id: string }).id });
+        if (d["needs_you"] !== false) await markNeedsYou(supabase, run, "New order draft from a chat flow — please confirm it.");
+        break;
       }
       default:
         await finish("failed", "failed", { error: `unknown_node:${node.type}` });

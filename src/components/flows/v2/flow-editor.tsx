@@ -110,6 +110,30 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
   const past = useRef<Snapshot[]>([]);
   const future = useRef<Snapshot[]>([]);
   const clipboard = useRef<Snapshot | null>(null);
+  const [edCtx, setEdCtx] = useState<{ numbers: Array<{ id: string; label: string; onboarding: boolean }>; pinned: string | null; members: Array<{ id: string; name: string }> }>({ numbers: [], pinned: null, members: [] });
+  useEffect(() => {
+    void callApi<{ numbers: Array<{ id: string; label: string; onboarding: boolean }>; whatsapp_account_id: string | null; members: Array<{ id: string; name: string }> }>("/api/flows/v2", {
+      body: { action: "editor_context", organization_id: organizationId, flow_id: flowId },
+    }).then(({ data }) => {
+      if (data) setEdCtx({ numbers: data.numbers ?? [], pinned: data.whatsapp_account_id ?? null, members: data.members ?? [] });
+    });
+  }, [organizationId, flowId]);
+  const setNumber = async (id: string | null) => {
+    const { error } = await callApi("/api/flows/v2", { body: { action: "set_number", organization_id: organizationId, flow_id: flowId, whatsapp_account_id: id } });
+    if (error) { toast.error(error); return; }
+    setEdCtx((c) => ({ ...c, pinned: id }));
+    toast.success(id ? "This flow now runs only on that number." : "This flow now runs on all your numbers.");
+  };
+  const testHttp = useCallback(async (data: Record<string, unknown>) => {
+    const { data: out, error } = await callApi<{ result: { ok: boolean; status: number | null; error: string | null; saved: Record<string, string>; preview: string } }>("/api/flows/v2", {
+      body: { action: "test_http", organization_id: organizationId, data },
+    });
+    if (error || !out) return error ?? "Couldn't run the test.";
+    const r = out.result;
+    const saved = Object.entries(r.saved).map(([k, v]) => `{{${k}}} = ${v || "(empty)"}`).join("\n");
+    return `${r.ok ? "Success" : "Failed"}${r.status ? ` · HTTP ${r.status}` : ""}${r.error ? ` · ${r.error}` : ""}${saved ? `\n\nSaved:\n${saved}` : ""}${r.preview ? `\n\nResponse:\n${r.preview}` : ""}`;
+  }, [organizationId]);
+  const onboardingNumber = edCtx.numbers.find((n) => n.onboarding) ?? null;
 
   const graph = useMemo(() => ({ ...fromRF(snap), meta }), [snap, meta]);
   const variables = useMemo(
@@ -400,7 +424,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
               <NodeConfig
                 node={{ id: sel.id, type: sel.data.kind, data: sel.data.data }}
                 problems={problemsByNode.get(sel.id) ?? []}
-                pickers={{ ...pickers, variables }}
+                pickers={{ ...pickers, variables, members: edCtx.members, testHttp }}
                 onChange={(d) => updateData(sel.id, d)}
                 onDelete={() => deleteNode(sel.id)}
               />
@@ -427,6 +451,23 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
         <SheetContent className="w-full overflow-y-auto sm:max-w-md">
           <SheetHeader><SheetTitle>Flow settings</SheetTitle></SheetHeader>
           <fieldset disabled={!canEdit} className="mt-4 space-y-6">
+            <section className="space-y-2">
+              <h3 className="font-heading font-semibold">Which number</h3>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                value={edCtx.pinned ?? ""}
+                onChange={(e) => void setNumber(e.target.value || null)}
+              >
+                <option value="">All numbers</option>
+                {edCtx.numbers.map((n) => <option key={n.id} value={n.id}>{n.label}{n.onboarding ? " (AiDwar setup number)" : ""}</option>)}
+              </select>
+              <p className="text-xs text-muted-foreground">Triggers only start this flow on the chosen number. Saved straight away.</p>
+              {onboardingNumber && (
+                <p className="rounded-md border border-border bg-muted/50 p-2 text-xs text-muted-foreground">
+                  On the AiDwar setup number ({onboardingNumber.label}) a flow runs only when it's pinned to that number — “All numbers” doesn't include it.
+                </p>
+              )}
+            </section>
             <section className="space-y-2">
               <h3 className="font-heading font-semibold">When the flow finishes</h3>
               <div className="space-y-1.5"><Label>Add tag</Label><Input value={meta.on_finish?.tag ?? ""} onChange={(e) => updateMeta({ on_finish: { ...meta.on_finish, tag: e.target.value } })} /></div>

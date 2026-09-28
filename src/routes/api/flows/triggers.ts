@@ -24,6 +24,7 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("add"), organization_id: z.string().uuid(), flow_id: z.string().uuid(), trigger: Trigger }),
   z.object({ action: z.literal("update"), organization_id: z.string().uuid(), trigger_id: z.string().uuid(), trigger: Trigger.partial() }),
   z.object({ action: z.literal("remove"), organization_id: z.string().uuid(), trigger_id: z.string().uuid() }),
+  z.object({ action: z.literal("win"), organization_id: z.string().uuid(), trigger_id: z.string().uuid() }),
   z.object({ action: z.literal("start"), organization_id: z.string().uuid(), flow_id: z.string().uuid(), contact_id: z.string().uuid(), conversation_id: z.string().uuid().optional() }),
   z.object({ action: z.literal("node_stats"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
   z.object({ action: z.literal("contact_runs"), organization_id: z.string().uuid(), contact_id: z.string().uuid() }),
@@ -33,7 +34,8 @@ function cleanConfig(kind: string, config: Record<string, unknown>): Record<stri
   switch (kind) {
     case "keyword": {
       const keywords = ((config["keywords"] as string[] | undefined) ?? []).map((k) => String(k).trim()).filter(Boolean).slice(0, 20);
-      return { keywords, match: ["exact", "contains", "starts_with"].includes(String(config["match"])) ? config["match"] : "contains" };
+      const priority = Math.min(Math.max(Math.round(Number(config["priority"] ?? 0)) || 0, 0), 1000);
+      return { keywords, match: ["exact", "contains", "starts_with"].includes(String(config["match"])) ? config["match"] : "contains", priority };
     }
     case "store_event":
       return { event: String(config["event"] ?? "").trim() };
@@ -153,7 +155,44 @@ export const Route = createFileRoute("/api/flows/triggers")({
             .eq("organization_id", org)
             .eq("flow_id", body.flow_id)
             .order("created_at", { ascending: true });
-          return Response.json({ ok: true, triggers: data ?? [] });
+          const mine = (data ?? []) as Array<{ id: string; kind: string; config: Record<string, unknown>; is_enabled: boolean }>;
+          // Fires per trigger (recorded by the engine on every start).
+          const fires: Record<string, { count: number; last: string | null }> = {};
+          if (mine.length) {
+            const { data: fireRows } = await db
+              .from("flow_trigger_fires")
+              .select("trigger_id, fired_at")
+              .eq("organization_id", org)
+              .in("trigger_id", mine.map((t) => t.id))
+              .order("fired_at", { ascending: false })
+              .limit(5000);
+            for (const f of (fireRows ?? []) as Array<{ trigger_id: string; fired_at: string }>) {
+              const e = (fires[f.trigger_id] ??= { count: 0, last: f.fired_at });
+              e.count += 1;
+            }
+          }
+          // Keywords shared with other live (published) flows.
+          const norm = (k: string) => k.trim().toLowerCase().replace(/\s+/g, " ");
+          const conflicts: Array<{ trigger_id: string; keyword: string; other_flow_id: string; other_flow_name: string; other_trigger_id: string; this_wins: boolean }> = [];
+          const myKeyword = mine.filter((t) => t.kind === "keyword" && t.is_enabled);
+          if (myKeyword.length) {
+            const [{ data: others }, { data: live }] = await Promise.all([
+              db.from("flow_triggers").select("id, flow_id, config, flows(name)").eq("organization_id", org).eq("kind", "keyword").eq("is_enabled", true).neq("flow_id", body.flow_id),
+              db.from("flow_versions").select("flow_id").eq("organization_id", org).eq("status", "published"),
+            ]);
+            const liveIds = new Set(((live ?? []) as Array<{ flow_id: string }>).map((v) => v.flow_id));
+            for (const t of myKeyword) {
+              const kws = new Set(((t.config["keywords"] as string[] | undefined) ?? []).map(norm));
+              const pr = Number(t.config["priority"] ?? 0);
+              for (const o of (others ?? []) as unknown as Array<{ id: string; flow_id: string; config: Record<string, unknown>; flows: { name: string } | null }>) {
+                if (!liveIds.has(o.flow_id)) continue;
+                const shared = ((o.config["keywords"] as string[] | undefined) ?? []).map(norm).find((k) => kws.has(k));
+                if (!shared) continue;
+                conflicts.push({ trigger_id: t.id, keyword: shared, other_flow_id: o.flow_id, other_flow_name: o.flows?.name ?? "Another flow", other_trigger_id: o.id, this_wins: pr > Number(o.config["priority"] ?? 0) });
+              }
+            }
+          }
+          return Response.json({ ok: true, triggers: mine, fires, conflicts });
         }
 
         if (body.action === "add") {
@@ -176,6 +215,20 @@ export const Route = createFileRoute("/api/flows/triggers")({
           if (body.trigger.config) patch["config"] = cleanConfig(body.trigger.kind ?? "", body.trigger.config);
           if (body.trigger.is_enabled !== undefined) patch["is_enabled"] = body.trigger.is_enabled;
           await db.from("flow_triggers").update(patch).eq("id", body.trigger_id).eq("organization_id", org);
+          return Response.json({ ok: true });
+        }
+
+        if (body.action === "win") {
+          // This keyword trigger beats every other keyword trigger in the workspace.
+          const [{ data: t }, { data: all }] = await Promise.all([
+            db.from("flow_triggers").select("id, flow_id, config").eq("id", body.trigger_id).eq("organization_id", org).eq("kind", "keyword").maybeSingle(),
+            db.from("flow_triggers").select("id, config").eq("organization_id", org).eq("kind", "keyword"),
+          ]);
+          const row = t as { id: string; flow_id: string; config: Record<string, unknown> } | null;
+          if (!row) return jsonError("Trigger not found.", 404);
+          const top = Math.max(0, ...((all ?? []) as Array<{ id: string; config: Record<string, unknown> }>).filter((x) => x.id !== row.id).map((x) => Number(x.config["priority"] ?? 0)));
+          await db.from("flow_triggers").update({ config: { ...row.config, priority: Math.min(top + 1, 1000) } }).eq("id", row.id).eq("organization_id", org);
+          await logServerActivity(db, org, auth.userId, "flow_v2_keyword_priority_set", { flow_id: row.flow_id });
           return Response.json({ ok: true });
         }
 

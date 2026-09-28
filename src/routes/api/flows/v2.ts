@@ -14,6 +14,9 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("unpublish"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
   z.object({ action: z.literal("generate"), organization_id: z.string().uuid(), description: z.string().min(10).max(1500) }),
   z.object({ action: z.literal("restore"), organization_id: z.string().uuid(), flow_id: z.string().uuid(), version_id: z.string().uuid() }),
+  z.object({ action: z.literal("editor_context"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
+  z.object({ action: z.literal("set_number"), organization_id: z.string().uuid(), flow_id: z.string().uuid(), whatsapp_account_id: z.string().uuid().nullable() }),
+  z.object({ action: z.literal("test_http"), organization_id: z.string().uuid(), data: z.record(z.string(), z.unknown()) }),
 ]);
 
 /**
@@ -52,11 +55,58 @@ export const Route = createFileRoute("/api/flows/v2")({
           return Response.json({ ok: true, graph: out.graph });
         }
 
+        if (body.action === "test_http") {
+          // One real request with sample values, same guards as the live step.
+          const { runHttpRequest } = await import("@/lib/flow-http.server");
+          const res = await runHttpRequest(body.data as never, {
+            vars: { last_answer: "test answer" },
+            contact: { name: "Test Customer", phone: "919999999999", attributes: {} },
+            tags: [],
+            now: new Date(),
+            timezone: "Asia/Kolkata",
+          });
+          await logServerActivity(db, org, auth.userId, "flow_v2_http_tested", { ok: res.ok, status: res.status });
+          return Response.json({ ok: true, result: res });
+        }
+
         const ownFlow = async (flowId: string) => {
           const { data } = await db.from("flows").select("id, name, key").eq("id", flowId).eq("organization_id", org).maybeSingle();
           const f = data as { id: string; name: string; key: string } | null;
           return f && f.key.startsWith("v2:") ? f : null;
         };
+        if (body.action === "editor_context" || body.action === "set_number") {
+          const flow = await ownFlow(body.flow_id);
+          if (!flow) return jsonError("Flow not found.", 404);
+          const [{ data: numbers }, { data: platform }] = await Promise.all([
+            db.from("whatsapp_accounts").select("id, display_phone_number, verified_name").eq("organization_id", org),
+            db.from("platform_settings").select("onboarding_whatsapp_account_id").maybeSingle(),
+          ]);
+          const onboardingId = (platform as { onboarding_whatsapp_account_id?: string | null } | null)?.onboarding_whatsapp_account_id ?? null;
+          const nums = ((numbers ?? []) as Array<{ id: string; display_phone_number: string | null; verified_name: string | null }>).map((n) => ({
+            id: n.id,
+            label: [n.verified_name, n.display_phone_number].filter(Boolean).join(" · ") || "Number",
+            onboarding: n.id === onboardingId,
+          }));
+          if (body.action === "set_number") {
+            if (body.whatsapp_account_id && !nums.some((n) => n.id === body.whatsapp_account_id)) return jsonError("That number isn't in this workspace.");
+            await db.from("flows").update({ whatsapp_account_id: body.whatsapp_account_id }).eq("id", flow.id).eq("organization_id", org);
+            await logServerActivity(db, org, auth.userId, "flow_v2_number_set", { flow_id: flow.id, pinned: Boolean(body.whatsapp_account_id) });
+            return Response.json({ ok: true });
+          }
+          const [{ data: cur }, { data: mem }] = await Promise.all([
+            db.from("flows").select("whatsapp_account_id").eq("id", flow.id).maybeSingle(),
+            db.from("organization_members").select("user_id").eq("organization_id", org),
+          ]);
+          const ids = ((mem ?? []) as Array<{ user_id: string }>).map((m) => m.user_id);
+          const { data: profs } = ids.length ? await db.from("profiles").select("id, full_name, email").in("id", ids) : { data: [] };
+          return Response.json({
+            ok: true,
+            numbers: nums,
+            whatsapp_account_id: (cur as { whatsapp_account_id?: string | null } | null)?.whatsapp_account_id ?? null,
+            members: ((profs ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>).map((p) => ({ id: p.id, name: p.full_name || p.email || "Teammate" })),
+          });
+        }
+
         const nextVersion = async (flowId: string) => {
           const { data } = await db.from("flow_versions").select("version").eq("flow_id", flowId).order("version", { ascending: false }).limit(1);
           return Number(((data ?? []) as Array<{ version: number }>)[0]?.version ?? 0) + 1;

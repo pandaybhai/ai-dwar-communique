@@ -27,6 +27,7 @@ async function enabledTriggersAll(
   return (data ?? []) as Trigger[];
 }
 
+/** Starts the run; the engine records the fire (trigger, flow, contact, run). */
 async function fire(
   supabase: SupabaseClient,
   args: {
@@ -35,11 +36,9 @@ async function fire(
     contactId: string;
     conversationId?: string | null;
     detail?: Record<string, unknown>;
-    /** true → remember the fire so no_reply doesn't re-arm for this contact. */
-    remember?: boolean;
     fromCustomerMessage?: boolean;
   },
-): Promise<string | null> {
+): Promise<{ runId: string | null; active: boolean }> {
   const { startRun } = await import("@/lib/flow-engine.server");
   const { runId, reason } = await startRun(supabase, {
     organizationId: args.organizationId,
@@ -49,20 +48,8 @@ async function fire(
     trigger: { kind: args.trigger.kind, trigger_id: args.trigger.id, ...(args.detail ?? {}) },
     fromCustomerMessage: Boolean(args.fromCustomerMessage),
   });
-  if (runId && args.remember) {
-    await supabase
-      .from("flow_trigger_fires")
-      .upsert(
-        {
-          organization_id: args.organizationId,
-          trigger_id: args.trigger.id,
-          contact_id: args.contactId,
-          run_id: runId,
-        },
-        { onConflict: "trigger_id,contact_id" },
-      );
-  }
-  return runId ?? (reason ? null : null);
+  // already_running: a duplicate "menu" raced the first one — the flow owns it.
+  return { runId, active: Boolean(runId) || reason === "already_running" };
 }
 
 function norm(s: string): string {
@@ -86,8 +73,14 @@ export function keywordMatches(config: Record<string, unknown>, body: string): b
 
 /**
  * Inbound customer message: first_message → ctwa_ad → campaign_button →
- * keyword, first match wins. Called only when no run is waiting for this
- * contact's reply (the flow already owns the conversation then).
+ * keyword, first match wins. Called only when no run is active for this
+ * contact (the flow already owns the conversation then).
+ *
+ * Which number: a flow pinned to a number only starts on that number; an
+ * unpinned flow starts on any number except the onboarding number
+ * (`onlyAccountId`), where only flows pinned to it may run.
+ * Keywords shared by several flows: the trigger with the highest
+ * config.priority wins (the owner sets it in the Triggers panel).
  */
 export async function dispatchInboundTriggers(
   supabase: SupabaseClient,
@@ -99,64 +92,59 @@ export async function dispatchInboundTriggers(
     isFirstMessageEver: boolean;
     isCtwa: boolean;
     campaignButton: { campaignId: string | null; button: string | null } | null;
+    /** The number the message came in on. */
+    accountId?: string | null;
     /** Only flows pinned to this number may start (used for the onboarding number). */
     onlyAccountId?: string | null;
   },
 ): Promise<{ started: boolean; flowId?: string }> {
   const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
-  if (!(await flowsV2Enabled(supabase, args.organizationId))) return { started: false };
-  let allowed: Set<string> | null = null;
-  if (args.onlyAccountId) {
-    const { data } = await supabase
-      .from("flows")
-      .select("id")
+  // One read for every inbound trigger kind, plus the flows' numbers.
+  const [on, { data: trigRows }] = await Promise.all([
+    flowsV2Enabled(supabase, args.organizationId),
+    supabase
+      .from("flow_triggers")
+      .select("id, flow_id, kind, config, flows(whatsapp_account_id)")
       .eq("organization_id", args.organizationId)
-      .eq("whatsapp_account_id", args.onlyAccountId);
-    allowed = new Set(((data ?? []) as Array<{ id: string }>).map((f) => f.id));
-    if (!allowed.size) return { started: false };
-  }
-  const enabledTriggers = async (sb: SupabaseClient, org: string, kind: string) =>
-    (await enabledTriggersAll(sb, org, kind)).filter((t) => !allowed || allowed.has(t.flow_id));
+      .in("kind", ["first_message", "ctwa_ad", "campaign_button", "keyword"])
+      .eq("is_enabled", true),
+  ]);
+  if (!on) return { started: false };
+  const all = ((trigRows ?? []) as unknown as Array<Trigger & { flows: { whatsapp_account_id: string | null } | null }>).filter((t) => {
+    const pinned = t.flows?.whatsapp_account_id ?? null;
+    if (args.onlyAccountId) return pinned === args.onlyAccountId;
+    return !pinned || !args.accountId || pinned === args.accountId;
+  });
+  const ofKind = (kind: string) => all.filter((t) => t.kind === kind);
+  const base = { fromCustomerMessage: true, organizationId: args.organizationId, contactId: args.contactId, conversationId: args.conversationId };
 
   if (args.isFirstMessageEver) {
-    for (const t of await enabledTriggers(supabase, args.organizationId, "first_message")) {
-      const runId = await fire(supabase, { fromCustomerMessage: true, organizationId: args.organizationId, trigger: t, contactId: args.contactId, conversationId: args.conversationId });
-      if (runId) return { started: true, flowId: t.flow_id };
+    for (const t of ofKind("first_message")) {
+      if ((await fire(supabase, { ...base, trigger: t })).active) return { started: true, flowId: t.flow_id };
     }
   }
   if (args.isCtwa) {
-    for (const t of await enabledTriggers(supabase, args.organizationId, "ctwa_ad")) {
-      const runId = await fire(supabase, { fromCustomerMessage: true, organizationId: args.organizationId, trigger: t, contactId: args.contactId, conversationId: args.conversationId });
-      if (runId) return { started: true, flowId: t.flow_id };
+    for (const t of ofKind("ctwa_ad")) {
+      if ((await fire(supabase, { ...base, trigger: t })).active) return { started: true, flowId: t.flow_id };
     }
   }
   if (args.campaignButton) {
-    for (const t of await enabledTriggers(supabase, args.organizationId, "campaign_button")) {
+    for (const t of ofKind("campaign_button")) {
       const cid = (t.config["campaign_id"] as string | null) ?? null;
       const btn = norm(String(t.config["button"] ?? ""));
       if (cid && cid !== args.campaignButton.campaignId) continue;
       if (btn && btn !== norm(args.campaignButton.button ?? "")) continue;
-      const runId = await fire(supabase, { fromCustomerMessage: true,
-        organizationId: args.organizationId,
-        trigger: t,
-        contactId: args.contactId,
-        conversationId: args.conversationId,
-        detail: { campaign_id: args.campaignButton.campaignId, button: args.campaignButton.button },
-      });
-      if (runId) return { started: true, flowId: t.flow_id };
+      const r = await fire(supabase, { ...base, trigger: t, detail: { campaign_id: args.campaignButton.campaignId, button: args.campaignButton.button } });
+      if (r.active) return { started: true, flowId: t.flow_id };
     }
   }
   if (args.body.trim()) {
-    for (const t of await enabledTriggers(supabase, args.organizationId, "keyword")) {
-      if (!keywordMatches(t.config, args.body)) continue;
-      const runId = await fire(supabase, { fromCustomerMessage: true,
-        organizationId: args.organizationId,
-        trigger: t,
-        contactId: args.contactId,
-        conversationId: args.conversationId,
-        detail: { keyword_of: args.body.slice(0, 120) },
-      });
-      if (runId) return { started: true, flowId: t.flow_id };
+    const keyword = ofKind("keyword")
+      .filter((t) => keywordMatches(t.config, args.body))
+      .sort((x, y) => Number(y.config["priority"] ?? 0) - Number(x.config["priority"] ?? 0));
+    for (const t of keyword) {
+      const r = await fire(supabase, { ...base, trigger: t, detail: { keyword_of: args.body.slice(0, 120) } });
+      if (r.active) return { started: true, flowId: t.flow_id };
     }
   }
   return { started: false };
@@ -248,14 +236,21 @@ export async function dispatchNoReply(supabase: SupabaseClient): Promise<{ start
         .in("status", ["running", "waiting"])
         .limit(1);
       if (active && active.length) continue;
-      const runId = await fire(supabase, {
+      // Fires once per contact per no-reply trigger.
+      const { data: firedBefore } = await supabase
+        .from("flow_trigger_fires")
+        .select("id")
+        .eq("trigger_id", t.id)
+        .eq("contact_id", c.contact_id)
+        .limit(1);
+      if (firedBefore && firedBefore.length) continue;
+      const { runId } = await fire(supabase, {
         organizationId: t.organization_id,
         trigger: t,
         contactId: c.contact_id,
         conversationId: c.id,
         detail: { days },
-        remember: true,
-      });
+              });
       if (runId) started += 1;
     }
   }

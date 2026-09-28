@@ -47,6 +47,8 @@ export function TriggersPanel({
   tags: string[];
 }) {
   const [rows, setRows] = useState<TriggerRow[] | null>(null);
+  const [fires, setFires] = useState<Record<string, { count: number; last: string | null }>>({});
+  const [conflicts, setConflicts] = useState<Array<{ trigger_id: string; keyword: string; other_flow_name: string; this_wins: boolean }>>([]);
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<string>("keyword");
   const [keywords, setKeywords] = useState("");
@@ -57,11 +59,13 @@ export function TriggersPanel({
   const [days, setDays] = useState("3");
 
   const load = useCallback(async () => {
-    const { data, error } = await callApi<{ triggers: TriggerRow[] }>("/api/flows/triggers", {
+    const { data, error } = await callApi<{ triggers: TriggerRow[]; fires?: Record<string, { count: number; last: string | null }>; conflicts?: Array<{ trigger_id: string; keyword: string; other_flow_name: string; this_wins: boolean }> }>("/api/flows/triggers", {
       body: { action: "list", organization_id: organizationId, flow_id: flowId },
     });
     if (error) toast.error(error);
     setRows(data?.triggers ?? []);
+    setFires(data?.fires ?? {});
+    setConflicts(data?.conflicts ?? []);
   }, [organizationId, flowId]);
 
   useEffect(() => {
@@ -103,6 +107,13 @@ export function TriggersPanel({
     void load();
   };
 
+  const win = async (triggerId: string) => {
+    const { error } = await callApi("/api/flows/triggers", { body: { action: "win", organization_id: organizationId, trigger_id: triggerId } });
+    if (error) { toast.error(error); return; }
+    toast.success("This flow now wins that keyword.");
+    void load();
+  };
+
   const remove = async (row: TriggerRow) => {
     await callApi("/api/flows/triggers", {
       body: { action: "remove", organization_id: organizationId, trigger_id: row.id },
@@ -133,8 +144,8 @@ export function TriggersPanel({
   return (
     <div className="mt-4 space-y-4">
       <p className="text-sm text-muted-foreground">
-        What starts this flow. A message first goes to a flow that's already waiting for this customer's reply — triggers
-        only fire when no flow is waiting.
+        What starts this flow. While a customer is already in a flow, their messages go to that flow — triggers only
+        fire when no flow is active for them.
       </p>
 
       {rows === null ? (
@@ -154,6 +165,17 @@ export function TriggersPanel({
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{KIND_LABELS[r.kind] ?? r.kind}</p>
                 <p className="truncate text-xs text-muted-foreground">{describe(r)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fires[r.id]?.count ? `Started ${fires[r.id]!.count} time${fires[r.id]!.count === 1 ? "" : "s"}${fires[r.id]!.last ? ` · last ${new Date(fires[r.id]!.last!).toLocaleString()}` : ""}` : "Not started yet"}
+                </p>
+                {conflicts.filter((c) => c.trigger_id === r.id).map((c) => (
+                  <div key={`${c.keyword}:${c.other_flow_name}`} className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                    <p>“{c.keyword}” is also a keyword of the live flow “{c.other_flow_name}”. {c.this_wins ? "This flow wins." : `“${c.other_flow_name}” may win.`}</p>
+                    {canEdit && !c.this_wins && (
+                      <Button size="sm" variant="outline" className="mt-1 h-7" onClick={() => void win(r.id)}>Make this flow win</Button>
+                    )}
+                  </div>
+                ))}
               </div>
               {canEdit && (
                 <>

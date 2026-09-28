@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,10 @@ export type Pickers = {
   segments: string[];
   flows: Array<{ id: string; name: string }>;
   products: Array<{ retailer_id: string; title: string }>;
+  /** Teammates for "Email the team". */
+  members?: Array<{ id: string; name: string }>;
+  /** Runs an HTTP step once with sample values; returns a readable result. */
+  testHttp?: (data: Record<string, unknown>) => Promise<string>;
 };
 
 type Props = { node: FlowNode; problems: string[]; pickers: Pickers; onChange: (data: Record<string, unknown>) => void; onDelete: () => void };
@@ -239,6 +244,55 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
           <p className="text-xs text-muted-foreground">Creates a payment link on your own Razorpay account (Settings → Integrations). Paid goes to "Paid"; otherwise "Not paid" after the wait. {"{{payment_link}}"} and {"{{payment_status}}"} are available afterwards.</p>
         </div>
       )}
+      {node.type === "http" && <HttpConfig d={d} set={set} testHttp={pickers.testHttp} />}
+      {node.type === "email_team" && (
+        <>
+          {(pickers.members ?? []).length > 0 && (
+            <div className="space-y-1.5">
+              <Label>Teammates</Label>
+              {(pickers.members ?? []).map((m) => {
+                const ids = (d["user_ids"] as string[] | undefined) ?? [];
+                return (
+                  <label key={m.id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={ids.includes(m.id)} onChange={(e) => set("user_ids", e.target.checked ? [...ids, m.id] : ids.filter((x) => x !== m.id))} />
+                    {m.name}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <div className="space-y-1.5"><Label>Other email addresses (comma separated)</Label><Input value={String(d["addresses"] ?? "")} onChange={(e) => set("addresses", e.target.value)} placeholder="sales@yourshop.in" /></div>
+          <div className="space-y-1.5"><Label>Subject</Label><Input value={String(d["subject"] ?? "")} onChange={(e) => set("subject", e.target.value)} /></div>
+          {textField("body", "Email text")}
+          <p className="text-xs text-muted-foreground">Emails go out once AiDwar's email sending is switched on. Until then the run log shows “email not sent” and the flow takes the Failed path (or carries on if it isn't connected).</p>
+        </>
+      )}
+      {node.type === "wait_until" && (
+        <>
+          <div className="space-y-1.5">
+            <Label>Wait until</Label>
+            <select className={sel} value={String(d["mode"] ?? "date")} onChange={(e) => set("mode", e.target.value)}>
+              <option value="date">A date</option>
+              <option value="field">A date saved in a variable or contact field</option>
+            </select>
+          </div>
+          {d["mode"] === "field" ? (
+            <div className="space-y-1.5"><Label>Variable or field</Label><Input placeholder="delivery_date or contact.birthday" value={String(d["field"] ?? "")} onChange={(e) => set("field", e.target.value.replace(/[{}\s]/g, ""))} /></div>
+          ) : (
+            <div className="space-y-1.5"><Label>Date and time</Label><Input type="datetime-local" value={String(d["date"] ?? "").replace(" ", "T")} onChange={(e) => set("date", e.target.value.replace("T", " "))} /></div>
+          )}
+          <p className="text-xs text-muted-foreground">Dates like 25-12-2026 or 2026-12-25 (10:00 if no time), in your workspace's timezone. A date that has passed carries straight on. Runs end after 14 days.</p>
+        </>
+      )}
+      {node.type === "order_draft" && (
+        <>
+          {textField("items", "What they want (items)")}
+          <div className="space-y-1.5"><Label>Total (₹, optional)</Label><Input value={String(d["total"] ?? "")} onChange={(e) => set("total", e.target.value)} placeholder="1499 or {{total}}" /></div>
+          <div className="space-y-1.5"><Label>Notes</Label><Input value={String(d["notes"] ?? "")} onChange={(e) => set("notes", e.target.value)} /></div>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={d["needs_you"] !== false} onChange={(e) => set("needs_you", e.target.checked)} /> Mark the chat “Needs you” so the team confirms it</label>
+          <p className="text-xs text-muted-foreground">Saved as a draft — never counted as a sale. The draft's id is in {"{{order_draft_id}}"}.</p>
+        </>
+      )}
       {node.type === "note" && textField("text", "Note (never sent)")}
       {node.type === "buttons" && (<>{textField()}{options("buttons", MAX_BUTTONS, 20)}{saveTo}{typing}{replyRules}</>)}
       {node.type === "list" && (<>{textField()}<div className="space-y-1.5"><Label>List button text</Label><Input maxLength={20} value={String(d["button_text"] ?? "Choose")} onChange={(e) => set("button_text", e.target.value)} /></div>{options("rows", MAX_LIST_ROWS, 24)}{saveTo}{replyRules}</>)}
@@ -327,5 +381,62 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
         </div>
       )}
     </div>
+  );
+}
+
+
+function HttpConfig({ d, set, testHttp }: { d: Record<string, unknown>; set: (k: string, v: unknown) => void; testHttp?: ((data: Record<string, unknown>) => Promise<string>) | undefined }) {
+  const [result, setResult] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const headers = (d["headers"] as Array<{ key: string; value: string }> | undefined) ?? [];
+  const save = (d["save"] as Array<{ path: string; variable: string }> | undefined) ?? [];
+  const method = String(d["method"] ?? "GET");
+  return (
+    <>
+      <div className="flex gap-2">
+        <select className={`${sel} w-28`} value={method} onChange={(e) => set("method", e.target.value)}>
+          {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => <option key={m}>{m}</option>)}
+        </select>
+        <Input placeholder="https://api.example.com/leads" value={String(d["url"] ?? "")} onChange={(e) => set("url", e.target.value)} />
+      </div>
+      <div className="space-y-2">
+        <Label>Headers</Label>
+        {headers.map((h, i) => (
+          <div key={i} className="flex gap-2">
+            <Input placeholder="Authorization" value={h.key} onChange={(e) => set("headers", headers.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} />
+            <Input placeholder="Bearer …" value={h.value} onChange={(e) => set("headers", headers.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
+            <Button variant="ghost" size="icon" aria-label="Remove header" onClick={() => set("headers", headers.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+          </div>
+        ))}
+        {headers.length < 10 && <Button variant="outline" size="sm" onClick={() => set("headers", [...headers, { key: "", value: "" }])}><Plus className="mr-1 h-4 w-4" /> Add header</Button>}
+      </div>
+      {method !== "GET" && (
+        <div className="space-y-1.5">
+          <Label>JSON body</Label>
+          <Textarea rows={6} className="font-mono text-xs" value={String(d["body"] ?? "")} onChange={(e) => set("body", e.target.value)} />
+          <p className="text-xs text-muted-foreground">Use {"{{variables}}"} inside quotes, e.g. "phone": "{"{{phone}}"}".</p>
+        </div>
+      )}
+      <div className="space-y-2">
+        <Label>Save from the response</Label>
+        {save.map((m, i) => (
+          <div key={i} className="flex gap-2">
+            <Input placeholder="data.order_id" value={m.path} onChange={(e) => set("save", save.map((x, j) => (j === i ? { ...x, path: e.target.value } : x)))} />
+            <Input placeholder="variable" value={m.variable} onChange={(e) => set("save", save.map((x, j) => (j === i ? { ...x, variable: e.target.value.replace(/[^a-zA-Z0-9_]/g, "") } : x)))} />
+            <Button variant="ghost" size="icon" aria-label="Remove field" onClick={() => set("save", save.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+          </div>
+        ))}
+        {save.length < 10 && <Button variant="outline" size="sm" onClick={() => set("save", [...save, { path: "", variable: "" }])}><Plus className="mr-1 h-4 w-4" /> Add field</Button>}
+      </div>
+      <p className="text-xs text-muted-foreground">Waits up to 10 seconds. Success when the reply is 2xx; otherwise the Failed path. Private and internal addresses are blocked.</p>
+      {testHttp && (
+        <div className="space-y-2">
+          <Button variant="outline" size="sm" disabled={busy} onClick={async () => { setBusy(true); setResult(await testHttp(d).catch(() => "Couldn't run the test.")); setBusy(false); }}>
+            {busy ? "Sending…" : "Send a test request"}
+          </Button>
+          {result && <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 text-xs">{result}</pre>}
+        </div>
+      )}
+    </>
   );
 }
