@@ -144,8 +144,8 @@ export function TriggersPanel({
   return (
     <div className="mt-4 space-y-4">
       <p className="text-sm text-muted-foreground">
-        What starts this flow. A message first goes to a flow that's already waiting for this customer's reply — triggers
-        only fire when no flow is waiting.
+        What starts this flow. While a customer is already in a flow, their messages go to that flow — triggers only
+        fire when no flow is active for them.
       </p>
 
       {rows === null ? (
@@ -165,6 +165,17 @@ export function TriggersPanel({
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{KIND_LABELS[r.kind] ?? r.kind}</p>
                 <p className="truncate text-xs text-muted-foreground">{describe(r)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fires[r.id]?.count ? `Started ${fires[r.id]!.count} time${fires[r.id]!.count === 1 ? "" : "s"}${fires[r.id]!.last ? ` · last ${new Date(fires[r.id]!.last!).toLocaleString()}` : ""}` : "Not started yet"}
+                </p>
+                {conflicts.filter((c) => c.trigger_id === r.id).map((c) => (
+                  <div key={`${c.keyword}:${c.other_flow_name}`} className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                    <p>“{c.keyword}” is also a keyword of the live flow “{c.other_flow_name}”. {c.this_wins ? "This flow wins." : `“${c.other_flow_name}” may win.`}</p>
+                    {canEdit && !c.this_wins && (
+                      <Button size="sm" variant="outline" className="mt-1 h-7" onClick={() => void win(r.id)}>Make this flow win</Button>
+                    )}
+                  </div>
+                ))}
               </div>
               {canEdit && (
                 <>
