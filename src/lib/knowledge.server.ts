@@ -920,6 +920,7 @@ export async function syncSource(
     .eq("id", sourceId);
 
   try {
+    lastReadForget = null;
     const documents = await connector({
       supabase,
       organizationId: source.organization_id,
@@ -944,7 +945,6 @@ export async function syncSource(
       }
     }
     embedDeferred = 0;
-    if (source.type === "website") lastReadForget = lastReadForget ?? null;
     for (const doc of documents) {
       await upsertDocument(supabase, source.organization_id, sourceId, doc);
     }
