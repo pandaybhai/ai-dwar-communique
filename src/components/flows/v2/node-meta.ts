@@ -1,7 +1,7 @@
 import {
   Bot, Clock, FileText, Flag, GitBranch, ListChecks, MessageSquare, MessageSquareText, MousePointerClick,
   Pencil, Play, StickyNote, Tag, UserPlus, AlertCircle, HelpCircle, Link2, MapPin, Navigation, Contact, GalleryHorizontal,
-  Variable, CalendarClock, Sheet, IndianRupee, NotebookPen, CheckCircle2, BellRing, Users, Shuffle, CornerDownRight, type LucideIcon,
+  Variable, CalendarClock, Sheet, Globe, Mail, CalendarCheck, ClipboardList, IndianRupee, NotebookPen, CheckCircle2, BellRing, Users, Shuffle, CornerDownRight, type LucideIcon,
 } from "lucide-react";
 import type { FlowNode, NodeType } from "@/lib/flow-graph";
 
@@ -41,6 +41,10 @@ export const NODE_META: Record<NodeType, NodeMeta> = {
   sheets_append: { label: "Google Sheets row", group: "Actions", icon: Sheet, defaults: () => ({ sheet: "", tab: "Sheet1", columns: ["{{name}}", "{{phone}}", "{{last_answer}}"] }) },
   payment: { label: "Payment request", group: "Actions", icon: IndianRupee, defaults: () => ({ amount: "", description: "Your order", text: "Here's your payment link:", wait_hours: 24 }) },
   segment: { label: "Segment", group: "Actions", icon: Users, defaults: () => ({ action: "add", segment_name: "" }) },
+  http: { label: "Webhook / HTTP", group: "Actions", icon: Globe, defaults: () => ({ method: "POST", url: "https://", headers: [], body: '{\n  "name": "{{name}}",\n  "phone": "{{phone}}"\n}', save: [] }) },
+  email_team: { label: "Email the team", group: "Actions", icon: Mail, defaults: () => ({ user_ids: [], addresses: "", subject: "New chat lead: {{name}}", body: "{{name}} ({{phone}}) said: {{last_answer}}" }) },
+  wait_until: { label: "Wait until", group: "Logic", icon: CalendarCheck, defaults: () => ({ mode: "date", date: "", field: "" }) },
+  order_draft: { label: "Create order draft", group: "Actions", icon: ClipboardList, defaults: () => ({ items: "{{last_answer}}", total: "", notes: "", needs_you: true }) },
 };
 
 export const AI_ICON = Bot;
@@ -56,6 +60,7 @@ export function handleLabel(node: FlowNode, handle: string): string {
   if (handle === "paid") return "Paid";
   if (handle === "not_paid") return `Not paid in ${Number(node.data["wait_hours"] ?? 24)}h`;
   if (handle === "closed") return "Closed";
+  if (handle === "success") return "Success";
   if (handle === "a") return `A (${Number(node.data["percent_a"] ?? 50)}%)`;
   if (handle === "b") return `B (${100 - Number(node.data["percent_a"] ?? 50)}%)`;
   const opts = [
@@ -90,6 +95,10 @@ export function summary(node: FlowNode): string {
     case "business_hours": return "Open / closed";
     case "sheets_append": return `${((d["columns"] as string[]) ?? []).length} column(s) → sheet`;
     case "payment": return `₹${String(d["amount"] ?? "")} · ${String(d["description"] ?? "")}`;
+    case "http": return `${String(d["method"] ?? "GET")} ${String(d["url"] ?? "")}`;
+    case "email_team": return String(d["subject"] ?? "");
+    case "wait_until": return d["mode"] === "field" ? `Until {{${String(d["field"] ?? "")}}}` : `Until ${String(d["date"] ?? "")}`;
+    case "order_draft": return String(d["items"] ?? "");
     default: return "";
   }
 }
