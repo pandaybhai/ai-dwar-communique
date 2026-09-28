@@ -217,6 +217,45 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             }
           }
 
+          // "Send a form" steps: a WhatsApp form inside the 24-hour window.
+          if ((step.condition ?? {})["step_type"] === "send_form") {
+            const formId = String((step.condition ?? {})["form_id"] ?? "");
+            const { data: convRow } = await supabase
+              .from("conversations")
+              .select("id")
+              .eq("organization_id", orgId)
+              .eq("contact_id", contact.id)
+              .order("last_customer_message_at", { ascending: false, nullsFirst: false })
+              .limit(1)
+              .maybeSingle();
+            if (!convRow) {
+              await finish("skipped", { cancel_reason: "no_conversation" }, {
+                type: "flow.skipped",
+                properties: { ...baseProps, reason: "no_conversation" },
+              });
+              return;
+            }
+            const { sendFormMessage } = await import("@/lib/wa-forms.server");
+            const sentForm = await sendFormMessage(supabase, {
+              organizationId: orgId,
+              conversationId: convRow.id as string,
+              formId,
+              source: "flow",
+            });
+            if (sentForm.ok) {
+              await finish("sent", { message_id: sentForm.messageId }, {
+                type: "flow.sent",
+                properties: { ...baseProps, message_class: messageClass, kind: "form" },
+              });
+            } else {
+              await finish("failed", { error: sentForm.error ?? "Form not sent." }, {
+                type: "flow.failed",
+                properties: { ...baseProps, reason: "form_send_failed", error_detail: sentForm.error },
+              });
+            }
+            return;
+          }
+
           if (!step.template_id) {
             await finish("failed", { error: "No template is configured for this step." }, {
               type: "flow.skipped",

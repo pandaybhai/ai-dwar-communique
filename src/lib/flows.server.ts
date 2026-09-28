@@ -294,7 +294,9 @@ export async function scheduleFlow(
     : steps.filter((s) => !(s.condition ?? {})["event"]);
   if (matched.length === 0) return await skip("no_matching_step", flow);
 
-  const wanted = matched.filter((s) => s.template_id);
+  const wanted = matched.filter(
+    (s) => s.template_id || ((s.condition ?? {})["step_type"] === "send_form" && (s.condition ?? {})["form_id"]),
+  );
   if (wanted.length === 0) return await skip("no_template", flow);
 
   const { data: existing } = await supabase
