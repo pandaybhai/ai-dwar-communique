@@ -1045,7 +1045,7 @@ export async function processWebhookPayload(
           // (owner channel, automations, the AI) auto-replies. Opt-out words
           // always fall through so STOP keeps working.
           if (!isSystemEcho && inserted && inserted.length > 0) {
-            const optWord = /^(stop|unsubscribe|opt ?out|cancel)$/i.test(body.trim());
+            const optWord = /^(stop|unsubscribe|opt ?out|cancel)$/i.test((body ?? "").trim());
             if (!optWord) {
               try {
                 const { handleInboundForRuns } = await import("@/lib/flow-engine.server");
