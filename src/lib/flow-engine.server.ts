@@ -391,6 +391,20 @@ type Env = {
   settings: import("@/lib/flows.server").SendSettings;
 };
 
+// The number's token is reused for 60 s within this server (speed); it is
+// never written anywhere and never leaves the server.
+type Conn = Awaited<ReturnType<typeof import("@/lib/whatsapp-numbers.server").getWhatsAppConnection>>["connection"];
+const connMemo = new Map<string, { c: Conn; exp: number }>();
+async function connectionFor(supabase: SupabaseClient, organizationId: string, accountId: string | null): Promise<Conn> {
+  const k = `${organizationId}:${accountId ?? ""}`;
+  const hit = connMemo.get(k);
+  if (hit && hit.exp > Date.now()) return hit.c;
+  const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
+  const { connection } = await getWhatsAppConnection(supabase, organizationId, accountId);
+  if (connection) connMemo.set(k, { c: connection, exp: Date.now() + 60_000 });
+  return connection;
+}
+
 async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
   const { loadSendSettings } = await import("@/lib/flows.server");
   const [{ data: contact, error: contactError }, { data: tagRows }, { data: conversation }, { data: flow }, settings] = await Promise.all([
@@ -412,8 +426,7 @@ async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
     opt_in_status: string | null;
   };
   const conv = conversation as { last_customer_message_at?: string | null; whatsapp_account_id?: string | null } | null;
-  const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
-  const { connection } = await getWhatsAppConnection(
+  const connection = await connectionFor(
     supabase,
     run.organization_id,
     conv?.whatsapp_account_id ?? (flow as { whatsapp_account_id?: string | null } | null)?.whatsapp_account_id ?? null,
