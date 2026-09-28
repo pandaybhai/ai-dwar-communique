@@ -119,7 +119,7 @@ export const Route = createFileRoute("/api/forms")({
         if (denied) return denied;
 
         if (parsed.action === "save") {
-          const problem = validateForm({ name: parsed.name, fields: parsed.fields as FormField[] });
+          const problem = validateForm({ name: parsed.name, fields: parsed.fields as import("@/lib/wa-forms").FormField[] });
           if (problem) return jsonError(problem);
           const values = {
             name: parsed.name.trim(),
