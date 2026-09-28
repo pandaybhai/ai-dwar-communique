@@ -562,6 +562,19 @@ export async function upsertCheckout(ctx: SyncContext, checkout: AnyRecord): Pro
       triggerType: "abandoned_checkout",
       triggerId: checkoutId,
     });
+    // Flows v2: a "store event" trigger set to abandoned_checkout starts too.
+    // The legacy flow above is untouched and keeps its own scheduler.
+    try {
+      const { dispatchStoreEvent } = await import("@/lib/flow-triggers.server");
+      await dispatchStoreEvent(ctx.supabase, {
+        organizationId: ctx.organizationId,
+        contactId: match.contactId,
+        event: "abandoned_checkout",
+        detail: { checkout_id: checkoutId },
+      });
+    } catch {
+      // a v2 trigger problem must never affect the store sync
+    }
     await warnIfFlowSilent(ctx.supabase, {
       organizationId: ctx.organizationId,
       flowKey: "abandoned_checkout",

@@ -885,6 +885,13 @@ async function applyTag(supabase: SupabaseClient, run: Run, name: string, action
     await supabase
       .from("contact_tags")
       .upsert({ organization_id: run.organization_id, contact_id: run.contact_id, tag_id: tagId }, { onConflict: "contact_id,tag_id", ignoreDuplicates: true });
+    // "Tag added" triggers — the one-active-run-per-flow guard stops loops.
+    try {
+      const { dispatchTagAdded } = await import("@/lib/flow-triggers.server");
+      await dispatchTagAdded(supabase, { organizationId: run.organization_id, contactId: run.contact_id, tag: tagName });
+    } catch {
+      // a trigger problem must never break the running flow
+    }
   } else {
     await supabase.from("contact_tags").delete().eq("contact_id", run.contact_id).eq("tag_id", tagId);
   }
