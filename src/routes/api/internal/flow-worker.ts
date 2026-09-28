@@ -520,6 +520,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
 
         return Response.json({
           flow_runs: flowRuns,
+          no_reply_triggers: noReply,
           claimed: batch.length,
           outcomes,
           cod_expired: codExpired,
