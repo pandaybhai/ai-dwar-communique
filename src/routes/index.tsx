@@ -184,9 +184,6 @@ function Index() {
     return () => io.disconnect();
   }, []);
 
-  const presetBusinessType =
-    audience === "retail" ? "retail" : audience === "services" ? "services" : "other";
-
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader />
@@ -427,7 +424,7 @@ function Index() {
             </Reveal>
 
             <Reveal delay={100}>
-              <DemoForm presetBusinessType={presetBusinessType} />
+              <DemoForm />
             </Reveal>
           </div>
         </section>
