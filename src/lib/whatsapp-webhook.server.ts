@@ -1257,7 +1257,7 @@ export async function processWebhookPayload(
                   | string
                   | undefined) ??
                 null,
-            });
+            }));
           }
 
 
@@ -1500,6 +1500,7 @@ export async function processWebhookPayload(
       }
     }
 
+    await Promise.all(deferred);
     await supabase
       .from("webhook_events")
       .update({
