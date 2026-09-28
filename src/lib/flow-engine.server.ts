@@ -161,8 +161,13 @@ export async function startRun(
   if (error || !inserted) return { runId: null, reason: error?.code === "23505" ? "already_running" : "insert_failed" };
   const run = inserted as Run;
   try {
-    await logEvent(supabase, run, start.id, "started", args.trigger ?? {});
-    await advance(supabase, run, v.graph, null, { fromCustomer: Boolean(args.fromCustomerMessage) });
+    eventBuffers.set(run.id, []);
+    try {
+      await logEvent(supabase, run, start.id, "started", args.trigger ?? {});
+      await advance(supabase, run, v.graph, null, { fromCustomer: Boolean(args.fromCustomerMessage) });
+    } finally {
+      await flushEvents(supabase, run.id);
+    }
   } catch (error) {
     await failSafe(supabase, run, error);
   }
