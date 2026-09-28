@@ -415,6 +415,13 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
         </SheetContent>
       </Sheet>
 
+      <Sheet open={triggersOpen} onOpenChange={setTriggersOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+          <SheetHeader><SheetTitle>Triggers</SheetTitle></SheetHeader>
+          <TriggersPanel organizationId={organizationId} flowId={flowId} canEdit={canEdit} forms={pickers.forms} tags={pickers.segments} />
+        </SheetContent>
+      </Sheet>
+
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-md">
           <SheetHeader><SheetTitle>Flow settings</SheetTitle></SheetHeader>
