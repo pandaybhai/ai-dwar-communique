@@ -1117,19 +1117,36 @@ async function rebuildChunks(
   const { error: delError } = await supabase.from("knowledge_chunks").delete().eq("document_id", documentId);
   if (delError) throw new Error(`chunk delete failed: ${delError.message}`);
 
+  // Up to 3 retries with backoff (2, 8, 32 min), then the page is marked
+  // failed and the source shows "(n) pages couldn't be prepared - retry".
   const markPending = async () => {
     embedDeferred += 1;
+    const attempts = Number(meta["prepare_attempts"] ?? 0) + 1;
+    const failed = attempts > PREPARE_MAX_RETRIES;
     await supabase
       .from("knowledge_documents")
-      .update({ metadata: { ...meta, needs_embedding: true, chunks_hash: null } })
+      .update({
+        metadata: {
+          ...meta,
+          needs_embedding: !failed,
+          prepare_failed: failed,
+          prepare_attempts: attempts,
+          next_prepare_at: failed ? null : new Date(Date.now() + 2 * 4 ** (attempts - 1) * 60_000).toISOString(),
+          chunks_hash: null,
+        },
+      })
       .eq("id", documentId);
+  };
+  const clean = (m: Record<string, unknown>) => {
+    const { prepare_attempts: _a, prepare_failed: _f, next_prepare_at: _n, ...rest } = m;
+    return rest;
   };
 
   const chunks = chunkText(content);
   if (chunks.length === 0) {
     await supabase
       .from("knowledge_documents")
-      .update({ metadata: { ...meta, needs_embedding: false, chunks_hash: hash } })
+      .update({ metadata: { ...clean(meta), needs_embedding: false, chunks_hash: hash } })
       .eq("id", documentId);
     return true;
   }
@@ -1165,9 +1182,35 @@ async function rebuildChunks(
   }
   await supabase
     .from("knowledge_documents")
-    .update({ metadata: { ...meta, needs_embedding: false, chunks_hash: hash } })
+    .update({ metadata: { ...clean(meta), needs_embedding: false, chunks_hash: hash } })
     .eq("id", documentId);
   return true;
+}
+
+const PREPARE_MAX_RETRIES = 3;
+
+/** Owner pressed "retry" on a source: failed pages go back in the queue. */
+export async function retryFailedPreparation(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+): Promise<number> {
+  const { data } = await supabase
+    .from("knowledge_documents")
+    .select("id, metadata")
+    .eq("organization_id", organizationId)
+    .eq("source_id", sourceId)
+    .eq("metadata->>prepare_failed", "true")
+    .limit(5000);
+  const rows = (data ?? []) as Array<{ id: string; metadata: Record<string, unknown> | null }>;
+  for (const row of rows) {
+    const { prepare_attempts: _a, prepare_failed: _f, next_prepare_at: _n, ...rest } = row.metadata ?? {};
+    await supabase
+      .from("knowledge_documents")
+      .update({ metadata: { ...rest, needs_embedding: true } })
+      .eq("id", row.id);
+  }
+  return rows.length;
 }
 
 /** Worker tick: retry documents whose chunks couldn't be built. */
@@ -1176,6 +1219,7 @@ export async function retryPendingEmbeddings(supabase: SupabaseClient, limit = 5
     .from("knowledge_documents")
     .select("id, organization_id, source_id, source_ref, content, content_hash, metadata")
     .eq("metadata->>needs_embedding", "true")
+    .or(`metadata->>next_prepare_at.is.null,metadata->>next_prepare_at.lte.${new Date().toISOString()}`)
     .order("updated_at", { ascending: true })
     .limit(limit);
   let built = 0;
