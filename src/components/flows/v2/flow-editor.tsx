@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { callApi } from "@/lib/whatsapp-client";
-import { validateGraph, type FlowGraph, type GraphProblem, type NodeType } from "@/lib/flow-graph";
+import { maskHttpSecrets, validateGraph, type FlowGraph, type GraphProblem, type NodeType } from "@/lib/flow-graph";
 import { FlowNodeCard, type RFData } from "./flow-node";
 import { NODE_META, uid } from "./node-meta";
 import { NodeConfig, type Pickers } from "./node-config";
@@ -254,9 +254,12 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
 
   const saveDraft = async (): Promise<boolean> => {
     setBusy(true);
-    const { error } = await callApi("/api/flows/v2", { body: { action: "save_draft", organization_id: organizationId, flow_id: flowId, graph, name } });
+    const { data: saved, error } = await callApi<{ graph?: FlowGraph }>("/api/flows/v2", { body: { action: "save_draft", organization_id: organizationId, flow_id: flowId, graph, name } });
     setBusy(false);
     if (error) { toast.error(error); return false; }
+    // Header values were moved to secure storage: keep only the references locally.
+    const sealed = new Map((saved?.graph?.nodes ?? []).filter((n) => n.type === "http").map((n) => [n.id, n.data["headers"]]));
+    if (sealed.size) setSnap((s) => ({ ...s, nodes: s.nodes.map((n) => (sealed.has(n.id) ? { ...n, data: { ...n.data, data: { ...n.data.data, headers: sealed.get(n.id) } } } : n)) }));
     setDirty(false);
     onChanged();
     return true;
@@ -293,7 +296,8 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
   const updateMeta = (patch: Partial<NonNullable<FlowGraph["meta"]>>) => { setMeta((m) => ({ ...m, ...patch })); setDirty(true); };
 
   const exportJson = () => {
-    const blob = new Blob([JSON.stringify({ name, graph }, null, 2)], { type: "application/json" });
+    // Header values are secrets: exports carry header names only.
+    const blob = new Blob([JSON.stringify({ name, graph: maskHttpSecrets(graph) }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "flow"}.json`;
@@ -303,8 +307,10 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
   const importJson = async (file: File) => {
     try {
       const parsed = JSON.parse(await file.text()) as { graph?: FlowGraph } & FlowGraph;
-      const g = parsed.graph ?? parsed;
-      if (!Array.isArray(g.nodes) || !Array.isArray(g.edges)) throw new Error("bad");
+      const raw = parsed.graph ?? parsed;
+      if (!Array.isArray(raw.nodes) || !Array.isArray(raw.edges)) throw new Error("bad");
+      // Imports never bring header values or references to stored secrets.
+      const g = maskHttpSecrets(raw);
       commit(toRF(g));
       setMeta(g.meta ?? {});
       toast.success("Imported into the draft — check it, then save.");

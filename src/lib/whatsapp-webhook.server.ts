@@ -414,6 +414,7 @@ async function flowsV2Inbound(
       campaignButton,
       accountId: args.accountId,
       onlyAccountId: args.onlyAccountId,
+      skipKeywords: Boolean(taken.runActive),
     });
     return started.started;
   } catch (error) {

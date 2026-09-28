@@ -1113,9 +1113,9 @@ async function rebuildChunks(
   hash: string,
   meta: Record<string, unknown>,
 ): Promise<boolean> {
-  // Old chunks never keep serving answers once the text changed.
-  const { error: delError } = await supabase.from("knowledge_chunks").delete().eq("document_id", documentId);
-  if (delError) throw new Error(`chunk delete failed: ${delError.message}`);
+  // New chunks are built (embedded) first; the old ones are only replaced once
+  // the new ones exist, so a failed embedding never leaves the page with no
+  // knowledge — the previous text keeps answering until the retry succeeds.
 
   // Up to 3 retries with backoff (2, 8, 32 min), then the page is marked
   // failed and the source shows "(n) pages couldn't be prepared - retry".
@@ -1144,6 +1144,9 @@ async function rebuildChunks(
 
   const chunks = chunkText(content);
   if (chunks.length === 0) {
+    // The page is empty now: nothing new to build, so the old text goes.
+    const { error: delError } = await supabase.from("knowledge_chunks").delete().eq("document_id", documentId);
+    if (delError) throw new Error(`chunk delete failed: ${delError.message}`);
     await supabase
       .from("knowledge_documents")
       .update({ metadata: { ...clean(meta), needs_embedding: false, chunks_hash: hash } })
@@ -1171,20 +1174,62 @@ async function rebuildChunks(
     dimensions: (vectors[index] ?? []).length || 1536,
   }));
 
-  for (let i = 0; i < rows.length; i += 50) {
-    const { error } = await supabase.from("knowledge_chunks").insert(rows.slice(i, i + 50));
-    if (error) {
-      console.error("[knowledge] chunk insert failed", sourceRef, error.message);
-      await supabase.from("knowledge_chunks").delete().eq("document_id", documentId);
-      await markPending();
-      return false;
-    }
+  const swap = await replaceChunks(supabase, documentId, rows);
+  if (swap.error) {
+    console.error("[knowledge] chunk replace failed", sourceRef, swap.error);
+    await markPending();
+    return false;
   }
   await supabase
     .from("knowledge_documents")
     .update({ metadata: { ...clean(meta), needs_embedding: false, chunks_hash: hash } })
     .eq("id", documentId);
   return true;
+}
+
+type ChunkRow = {
+  organization_id: string;
+  source_id: string;
+  document_id: string;
+  source_ref: string;
+  chunk_index: number;
+  text: string;
+  embedding: string;
+  embedding_model: string;
+  dimensions: number;
+};
+
+/**
+ * Swap a page's chunks for freshly built ones in one step: the
+ * replace_knowledge_chunks RPC deletes and inserts in a single transaction, so
+ * a failure leaves the old chunks in place. Until that migration is applied
+ * the previous delete-then-insert path is used.
+ */
+export async function replaceChunks(
+  supabase: SupabaseClient,
+  documentId: string,
+  rows: ChunkRow[],
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc("replace_knowledge_chunks", {
+    p_document_id: documentId,
+    p_rows: rows.map(({ source_ref, chunk_index, text, embedding, embedding_model, dimensions }) => ({
+      source_ref, chunk_index, text, embedding, embedding_model, dimensions,
+    })),
+  });
+  if (!error) return { error: null };
+  const missing = error.code === "PGRST202" || error.code === "42883";
+  if (!missing) return { error: error.message };
+
+  const { error: delError } = await supabase.from("knowledge_chunks").delete().eq("document_id", documentId);
+  if (delError) return { error: `chunk delete failed: ${delError.message}` };
+  for (let i = 0; i < rows.length; i += 50) {
+    const { error: insError } = await supabase.from("knowledge_chunks").insert(rows.slice(i, i + 50));
+    if (insError) {
+      await supabase.from("knowledge_chunks").delete().eq("document_id", documentId);
+      return { error: insError.message };
+    }
+  }
+  return { error: null };
 }
 
 const PREPARE_MAX_RETRIES = 3;

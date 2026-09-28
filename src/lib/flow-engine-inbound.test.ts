@@ -133,7 +133,7 @@ describe("handleInboundForRuns", () => {
 
   it("timer wait → normal routing (Aiden answers), never reply_ignored", async () => {
     const db = fakeDb([run({ waiting_for: "timer", wake_at: new Date(Date.now() + 3 * 86_400_000).toISOString() })]);
-    expect(await handleInboundForRuns(db.supabase, inbound("where is my order?"))).toEqual({ consumed: false });
+    expect(await handleInboundForRuns(db.supabase, inbound("where is my order?"))).toEqual({ consumed: false, runActive: true });
     expect(db.claimed()).toBe(false);
     expect(db.names()).toContain("reply_released");
     expect(db.names()).not.toContain("reply_ignored");
@@ -141,7 +141,7 @@ describe("handleInboundForRuns", () => {
 
   it("payment wait → normal routing", async () => {
     const db = fakeDb([run({ waiting_for: "payment" })]);
-    expect(await handleInboundForRuns(db.supabase, inbound("paid?"))).toEqual({ consumed: false });
+    expect(await handleInboundForRuns(db.supabase, inbound("paid?"))).toEqual({ consumed: false, runActive: true });
     expect(db.claimed()).toBe(false);
     expect(db.names()).toContain("reply_released");
   });
@@ -166,7 +166,7 @@ describe("handleInboundForRuns", () => {
     const db = fakeDb([run({ status: "running", waiting_for: null }), run({ waiting_for: "timer" })]);
     const p = handleInboundForRuns(db.supabase, inbound("hello?"));
     await vi.advanceTimersByTimeAsync(300);
-    expect(await p).toEqual({ consumed: false });
+    expect(await p).toEqual({ consumed: false, runActive: true });
     expect(db.claimed()).toBe(false);
     const released = db.events.find((e) => e.event === "reply_released");
     expect(released?.detail).toMatchObject({ held: true, waiting_for: "timer" });
@@ -176,7 +176,7 @@ describe("handleInboundForRuns", () => {
     const db = fakeDb([run({ status: "running", waiting_for: null })]);
     const p = handleInboundForRuns(db.supabase, inbound("hello?"));
     await vi.advanceTimersByTimeAsync(13_000);
-    expect(await p).toEqual({ consumed: false });
+    expect(await p).toEqual({ consumed: false, runActive: true });
     expect(db.events.find((e) => e.event === "reply_released")?.detail).toMatchObject({ reason: "flow_busy" });
     expect(db.names()).not.toContain("reply_dropped");
   });
@@ -185,7 +185,7 @@ describe("handleInboundForRuns", () => {
     const db = fakeDb([run({ status: "running", waiting_for: null }), null]);
     const p = handleInboundForRuns(db.supabase, inbound("thanks"));
     await vi.advanceTimersByTimeAsync(300);
-    expect(await p).toEqual({ consumed: false });
+    expect(await p).toEqual({ consumed: false, runActive: false });
   });
 
   it("keeps the duplicate-tap drop: same button id within 20 s while held", async () => {

@@ -1,4 +1,5 @@
--- Flows v2 live-test fixes (28 Sep).
+-- Flows v2 live-test fixes (28 Sep). Safe to re-run: every statement is
+-- guarded (IF [NOT] EXISTS / DROP ... IF EXISTS / NOT EXISTS backfill).
 -- (b) Record EVERY trigger fire (trigger, flow, contact, run). The old
 --     one-row-per-contact constraint silently dropped repeat fires; the
 --     no-reply "fire once" rule is now checked in code.
@@ -37,10 +38,13 @@ CREATE INDEX IF NOT EXISTS flow_order_drafts_org ON public.flow_order_drafts (or
 GRANT SELECT, UPDATE ON public.flow_order_drafts TO authenticated;
 GRANT ALL ON public.flow_order_drafts TO service_role;
 ALTER TABLE public.flow_order_drafts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Members read order drafts" ON public.flow_order_drafts;
 CREATE POLICY "Members read order drafts" ON public.flow_order_drafts
   FOR SELECT TO authenticated USING (public.is_org_member(organization_id));
+DROP POLICY IF EXISTS "Editors update order drafts" ON public.flow_order_drafts;
 CREATE POLICY "Editors update order drafts" ON public.flow_order_drafts
   FOR UPDATE TO authenticated USING (public.has_permission(organization_id, 'flows_v2.edit'))
   WITH CHECK (public.has_permission(organization_id, 'flows_v2.edit'));
+DROP TRIGGER IF EXISTS update_flow_order_drafts_updated_at ON public.flow_order_drafts;
 CREATE TRIGGER update_flow_order_drafts_updated_at BEFORE UPDATE ON public.flow_order_drafts
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
