@@ -27,13 +27,16 @@ export async function requireActivePlan(
 ): Promise<Response | null> {
   const { data } = await supabase
     .from("organizations")
-    .select("plan_status")
+    .select("plan_status, plan_version_id")
     .eq("id", organizationId)
     .maybeSingle();
-  const status = (data as { plan_status?: string | null } | null)?.plan_status ?? null;
-  if (status === "active") return null;
+  const row = data as { plan_status?: string | null; plan_version_id?: string | null } | null;
+  const status = row?.plan_status ?? null;
+  // Trial, active, past due and paused may all top up. Only a workspace with
+  // no plan at all is blocked.
+  if (row?.plan_version_id && ["trial", "active", "past_due", "paused"].includes(status ?? "")) return null;
   return Response.json(
-    { error: "Pick a plan first — credits only work with an active plan." },
+    { error: "Pick a plan first — credits need a plan on the workspace." },
     { status: 409 },
   );
 }

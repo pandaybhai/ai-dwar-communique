@@ -32,5 +32,9 @@
 - [x] Google Sheets step + merchant connects own Google (built)
 - [ ] Google sign-in client for AiDwar — waits on user creating it in Google Cloud
 - [x] Payment request step on merchant's own Razorpay (built)
-- [ ] Drop 3 triggers + per-step counts + inbox run log + live demo (ask before real sends)
-- [ ] Then Step 2 regressions, Forms Phase A, Aiden collects node
+- [x] Drop 3 triggers + per-step counts + inbox run log + live demo
+
+## Sep 28 order
+- [x] Step A regressions (a–i)
+- [ ] Step B Forms Phase A finish + publish; ask before test form to +91 79812 23192
+- [ ] Step C Aiden collects node + start_collect/record_fields (flag aiden_collect, Ai Dwar only)

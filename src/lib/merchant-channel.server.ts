@@ -28,6 +28,7 @@ import {
   ownerOrganizationIds,
   orgNames,
   prefixFor,
+  withPrefix,
   recordOnboardingGap,
 } from "@/lib/owner-replies.server";
 
@@ -285,16 +286,16 @@ export async function handleMerchantInbound(
   // Stage 9: the business prefix is applied here and nowhere else, so a
   // message can never come out as "[Shiva] [Shiva] …".
   let prefix = "";
-  const reply = (text: string) => sendServiceText(supabase, { ...channel, body: prefix + text });
+  const reply = (text: string) => sendServiceText(supabase, { ...channel, body: withPrefix(prefix, text) });
   const replyButtons = (
     text: string,
     buttons: Array<{ id: string; title: string }>,
     imageUrl: string | null,
-  ) => sendServiceButtons(supabase, { ...channel, body: prefix + text, buttons, imageUrl });
+  ) => sendServiceButtons(supabase, { ...channel, body: withPrefix(prefix, text), buttons, imageUrl });
   const replyList = (
     text: string,
     rows: Array<{ id: string; title: string; description?: string }>,
-  ) => sendServiceList(supabase, { ...channel, body: prefix + text, buttonText: "Choose", rows });
+  ) => sendServiceList(supabase, { ...channel, body: withPrefix(prefix, text), buttonText: "Choose", rows });
 
   // Which businesses this number speaks for. More than one and every message
   // says which one it is about.
@@ -311,7 +312,7 @@ export async function handleMerchantInbound(
         greeted === 2 ? " I'll go quiet now until you send a code." : "";
       await sendServiceText(supabase, {
         ...channel,
-        body: prefix + (await getScript(supabase, "stranger_reply")) + quietNote,
+        body: withPrefix(prefix, (await getScript(supabase, "stranger_reply")) + quietNote),
         metadata: { kind: "stranger_greeting" },
       });
     }
@@ -784,7 +785,7 @@ export async function handleMerchantInbound(
       await sendServiceImage(supabase, {
         ...channel,
         imageUrl: notebook,
-        caption: prefix + readingCaption,
+        caption: withPrefix(prefix, readingCaption),
       });
     } else {
       await reply(readingCaption);
@@ -1317,9 +1318,10 @@ export async function finishOnboardingCrawl(
     });
     await sendServiceText(supabase, {
       ...channel,
-      body:
-        prefix +
+      body: withPrefix(
+        prefix,
         "I couldn't read anything useful from that link. Send another link, or tell me in a few lines what you sell and where you deliver.",
+      ),
     });
     return;
   }
@@ -1372,13 +1374,13 @@ export async function finishOnboardingCrawl(
 
   await sendServiceButtons(supabase, {
     ...channel,
-    body: prefix + doneBody,
+    body: withPrefix(prefix, doneBody),
     buttons: first.questions
       .slice(0, 3)
       .map((q, i) => ({ id: `q${i + 1}`, title: q.slice(0, 20) })),
     imageUrl: briefCard,
   });
-  if (listing) await sendServiceText(supabase, { ...channel, body: prefix + listingReply(listing) });
+  if (listing) await sendServiceText(supabase, { ...channel, body: withPrefix(prefix, listingReply(listing)) });
 }
 
 /**

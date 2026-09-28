@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  tagExpression,
   NO_VALUE_OPERATORS,
   normalizeFilters,
   usableConditions,
@@ -97,8 +98,8 @@ async function exprForCondition(
   switch (c.field) {
     case "tag": {
       const ids = await contactIdsForTag(supabase, organizationId, v);
-      if (c.operator === "has") return ids.length ? `id.in.(${ids.join(",")})` : NEVER;
-      return ids.length ? `id.not.in.(${ids.join(",")})` : "id.not.is.null";
+      if (c.operator === "has" && !ids.length) return NEVER;
+      return tagExpression(c.operator, ids);
     }
     case "opt_in_status":
       return ["opted_in", "opted_out", "unknown"].includes(v) ? `opt_in_status.eq.${v}` : null;
@@ -208,10 +209,17 @@ export async function resolveSegmentContactIds(
   limit = 50000,
 ): Promise<string[]> {
   const { match, expressions } = await segmentExpressions(supabase, organizationId, rawFilters);
-  const { data } = await applySegment(
-    supabase.from("contacts").select("id").eq("organization_id", organizationId).limit(limit),
-    match,
-    expressions,
-  );
-  return ((data as { id: string }[]) ?? []).map((r) => r.id);
+  // The Data API returns at most 1000 rows per read: page through.
+  const out: string[] = [];
+  for (let from = 0; from < limit; from += 1000) {
+    const { data } = await applySegment(
+      supabase.from("contacts").select("id").eq("organization_id", organizationId).order("id").range(from, Math.min(from + 999, limit - 1)),
+      match,
+      expressions,
+    );
+    const rows = (data as { id: string }[]) ?? [];
+    out.push(...rows.map((r) => r.id));
+    if (rows.length < 1000) break;
+  }
+  return out;
 }

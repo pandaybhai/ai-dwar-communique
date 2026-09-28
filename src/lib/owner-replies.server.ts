@@ -50,6 +50,9 @@ export async function loadPendingReplies(
     .select(PENDING_COLUMNS)
     .eq("owner_phone", normalizePhone(ownerPhone))
     .eq("status", "pending")
+    // Silent gaps live on the Unanswered tab only: never the owner's WhatsApp
+    // waiting list, never a "Still waiting on your answer".
+    .eq("notify", "ping")
     .order("selected_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(10);
@@ -110,6 +113,19 @@ export function prefixFor(multiBusiness: boolean, businessName: string | null): 
   if (!multiBusiness) return "";
   const name = (businessName ?? "").trim();
   return name ? `[${name}] ` : "";
+}
+
+/**
+ * Put the "[Business] " prefix on exactly once. Any leading "[...] " the text
+ * already carries (the model copies it from the transcript) is dropped first.
+ */
+export function withPrefix(prefix: string, text: string): string {
+  let body = text ?? "";
+  if (prefix) {
+    const tag = prefix.trim();
+    while (body.trimStart().startsWith(tag)) body = body.trimStart().slice(tag.length).trimStart();
+  }
+  return prefix + body;
 }
 
 /** The owner's number: the oldest owner on the workspace, then the signup. */

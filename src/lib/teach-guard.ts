@@ -74,13 +74,16 @@ export function isBareReference(body: string): boolean {
 }
 
 const QUESTION_START =
-  /^(what|which|how|why|when|where|who|is|are|do|does|did|can|could|should|will|would|kya|kaise|kitna|kitne|kab|kahan|kaun|batao|tell me|explain)\b/;
+  /^(what|which|how|why|when|where|who|kya|kaise|kitna|kab|kahan|kaun|batao|tell me|explain)\b/;
 
-/** A question by shape or opening word (English + Hinglish). Never a fact, never an answer. */
+/**
+ * A question only if it STARTS with a question word or ENDS with "?".
+ * A "?" elsewhere, or Do/Is/Can + a statement, is an answer.
+ */
 export function isQuestionText(body: string | null | undefined): boolean {
   const t = (body ?? "").trim().toLowerCase();
   if (!t) return false;
-  if (t.includes("?")) return true;
+  if (/\?\s*$/.test(t)) return true;
   return QUESTION_START.test(t);
 }
 

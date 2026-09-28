@@ -199,7 +199,7 @@ export function BillingView({
         </div>
         {!planActive ? (
           <p className="text-sm text-muted-foreground">
-            Pick a plan first — credits only work with an active plan.
+            Pick a plan first — credits need a plan on the workspace.
           </p>
         ) : null}
       </div>

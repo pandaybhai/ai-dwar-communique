@@ -62,8 +62,8 @@ export function DemoForm({
   onFocusChange,
   onComplete,
 }: {
-  presetBusinessType?: string;
-  presetPrimaryNeed?: string;
+  presetBusinessType?: string | undefined;
+  presetPrimaryNeed?: string | undefined;
   focused?: boolean;
   attached?: boolean;
   onFocusChange?: (focused: boolean) => void;
@@ -86,13 +86,14 @@ export function DemoForm({
   // The example a visitor picked upstream pre-fills step 1 — nobody repeats it.
   useEffect(() => {
     if (presetBusinessType) {
-      setValues((v) => ({ ...v, business_type: presetBusinessType }));
+      // Never overwrite a choice the visitor already made.
+      setValues((v) => (v.business_type ? v : { ...v, business_type: presetBusinessType }));
     }
   }, [presetBusinessType]);
 
   useEffect(() => {
     if (presetPrimaryNeed) {
-      setValues((v) => ({ ...v, primary_need: presetPrimaryNeed }));
+      setValues((v) => (v.primary_need ? v : { ...v, primary_need: presetPrimaryNeed }));
     }
   }, [presetPrimaryNeed]);
 

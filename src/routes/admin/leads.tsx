@@ -68,7 +68,9 @@ function AdminLeads() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<LeadStatus | "all">("all");
   const [search, setSearch] = useState("");
-  const [open, setOpen] = useState<LeadRow | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  // The sheet always shows the freshest copy of the lead from the list.
+  const open = useMemo(() => (data?.leads ?? []).find((l) => l.id === openId) ?? null, [data, openId]);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
 
   const load = useCallback(async () => {
@@ -185,11 +187,11 @@ function AdminLeads() {
                 <tr
                   key={lead.id}
                   tabIndex={0}
-                  onClick={() => setOpen(lead)}
+                  onClick={() => setOpenId(lead.id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      setOpen(lead);
+                      setOpenId(lead.id);
                     }
                   }}
                   className="cursor-pointer border-t border-border/70 transition-colors hover:bg-muted/40 focus:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -232,8 +234,12 @@ function AdminLeads() {
       <LeadSheet
         lead={open}
         admins={data?.admins ?? []}
-        onClose={() => setOpen(null)}
-        onSaved={() => void load()}
+        onClose={() => setOpenId(null)}
+        onSaved={(id, changes) => {
+          // Show the change at once, then confirm it with a fresh read.
+          setData((d) => (d ? { ...d, leads: d.leads.map((l) => (l.id === id ? { ...l, ...changes } : l)) } : d));
+          void load();
+        }}
       />
     </>
   );
@@ -248,7 +254,7 @@ function LeadSheet({
   lead: LeadRow | null;
   admins: Array<{ id: string; name: string }>;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (id: string, changes: Partial<LeadRow>) => void;
 }) {
   const [notes, setNotes] = useState<LeadNote[]>([]);
   const [note, setNote] = useState("");
@@ -266,7 +272,7 @@ function LeadSheet({
       );
       setNotes(data?.notes ?? []);
     })();
-  }, [lead]);
+  }, [lead?.id]);
 
   async function patch(body: Record<string, unknown>) {
     if (!lead) return;
@@ -281,7 +287,7 @@ function LeadSheet({
       return;
     }
     setErr(null);
-    onSaved();
+    onSaved(lead.id, body as Partial<LeadRow>);
   }
 
   return (

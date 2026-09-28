@@ -72,6 +72,8 @@ export type KnowledgeSource = {
   name: string;
   status: "pending" | "syncing" | "ready" | "error" | string;
   item_count: number;
+  /** Pages that failed to prepare after 3 retries. */
+  failed_pages?: number;
   last_synced_at: string | null;
   last_error: string | null;
   refresh_days?: number;

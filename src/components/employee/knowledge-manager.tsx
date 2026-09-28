@@ -277,6 +277,26 @@ export function KnowledgeManager({
                   </p>
                 ) : null}
 
+                {(source.failed_pages ?? 0) > 0 ? (
+                  <p className="mt-3 flex items-center gap-2 rounded-lg bg-destructive/5 p-2 text-xs text-destructive">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {source.failed_pages} {source.failed_pages === 1 ? "page" : "pages"} couldn't be prepared
+                    {canConfigure ? (
+                      <>
+                        {" - "}
+                        <button
+                          type="button"
+                          className="font-medium underline underline-offset-2"
+                          disabled={busy}
+                          onClick={() => act({ action: "retry_failed", source_id: source.id }, source.id, "Retrying those pages.")}
+                        >
+                          retry
+                        </button>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+
                 <div className="mt-4 flex flex-wrap gap-2">
                   {source.status === "error" && canConfigure ? (
                     <Button
