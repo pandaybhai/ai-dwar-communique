@@ -119,7 +119,7 @@ export const Route = createFileRoute("/api/forms")({
         if (denied) return denied;
 
         if (parsed.action === "save") {
-          const problem = validateForm({ name: parsed.name, fields: parsed.fields });
+          const problem = validateForm({ name: parsed.name, fields: parsed.fields as FormField[] });
           if (problem) return jsonError(problem);
           const values = {
             name: parsed.name.trim(),
