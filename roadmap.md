@@ -36,5 +36,6 @@
 
 ## Sep 28 order
 - [x] Step A regressions (a–i)
+- [x] Flows v2 live fixes (a–f): held replies, trigger fires, which number, keyword winner, 4 new steps, speed
 - [ ] Step B Forms Phase A finish + publish; ask before test form to +91 79812 23192
 - [ ] Step C Aiden collects node + start_collect/record_fields (flag aiden_collect, Ai Dwar only)
