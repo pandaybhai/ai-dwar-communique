@@ -127,6 +127,12 @@ export const FLOW_COPY: Record<string, { title: string; promise: string; trigger
       "For things people buy again \u2014 when an order is old enough that they may be running low, we'll offer them a one-tap reorder.",
     trigger: "An order is old enough to be running out",
   },
+  form_followup: {
+    title: "After a form is filled in",
+    promise:
+      "When a customer fills in one of your WhatsApp forms, send them a follow-up message or another form straight away.",
+    trigger: "A customer submits a WhatsApp form",
+  },
   review_request: {
     title: "Ask for a review",
     promise:
@@ -200,6 +206,7 @@ export function stepLabel(flowKey: string, step: FlowStepRow): string {
     order_created: "Order confirmed",
     order_fulfilled: "Order shipped",
     order_delivered: "Order delivered",
+    form_submitted: "Form filled in",
   };
   if (byEvent[event]) return byEvent[event] as string;
   if (flowKey === "abandoned_checkout") {
@@ -253,6 +260,10 @@ export function enableBlocker(
   const byId = new Map(templates.map((t) => [t.id, t]));
   for (const step of enabled.sort((a, b) => a.step_order - b.step_order)) {
     const label = stepLabel(flow.key, step);
+    if ((step.condition ?? {})["step_type"] === "send_form") {
+      if (!(step.condition ?? {})["form_id"]) return `Choose the form to send for “${label}”.`;
+      continue;
+    }
     const tpl = step.template_id ? byId.get(step.template_id) : undefined;
     if (!step.template_id) return `Choose the message to send for “${label}”.`;
     if (!tpl) {
