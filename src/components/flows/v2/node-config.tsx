@@ -261,10 +261,10 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
               })}
             </div>
           )}
-          <div className="space-y-1.5"><Label>Other email addresses (comma separated)</Label><Input value={String(d["addresses"] ?? "")} onChange={(e) => set("addresses", e.target.value)} placeholder="sales@yourshop.in" /></div>
+          <div className="space-y-1.5"><Label>Other email addresses of teammates (comma separated)</Label><Input value={String(d["addresses"] ?? "")} onChange={(e) => set("addresses", e.target.value)} placeholder="sales@yourshop.in" /></div>
           <div className="space-y-1.5"><Label>Subject</Label><Input value={String(d["subject"] ?? "")} onChange={(e) => set("subject", e.target.value)} /></div>
           {textField("body", "Email text")}
-          <p className="text-xs text-muted-foreground">Emails go out once AiDwar's email sending is switched on. Until then the run log shows “email not sent” and the flow takes the Failed path (or carries on if it isn't connected).</p>
+          <p className="text-xs text-muted-foreground">Only people in this workspace can be emailed (at most 5); other addresses are skipped. Emails go out once AiDwar's email sending is switched on. Until then the run log shows “email not sent” and the flow takes the Failed path (or carries on if it isn't connected).</p>
         </>
       )}
       {node.type === "wait_until" && (
@@ -388,7 +388,7 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
 function HttpConfig({ d, set, testHttp }: { d: Record<string, unknown>; set: (k: string, v: unknown) => void; testHttp?: ((data: Record<string, unknown>) => Promise<string>) | undefined }) {
   const [result, setResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const headers = (d["headers"] as Array<{ key: string; value: string }> | undefined) ?? [];
+  const headers = (d["headers"] as Array<{ key: string; value: string; secret_id?: string }> | undefined) ?? [];
   const save = (d["save"] as Array<{ path: string; variable: string }> | undefined) ?? [];
   const method = String(d["method"] ?? "GET");
   return (
@@ -404,7 +404,7 @@ function HttpConfig({ d, set, testHttp }: { d: Record<string, unknown>; set: (k:
         {headers.map((h, i) => (
           <div key={i} className="flex gap-2">
             <Input placeholder="Authorization" value={h.key} onChange={(e) => set("headers", headers.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} />
-            <Input placeholder="Bearer …" value={h.value} onChange={(e) => set("headers", headers.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
+            <Input type="password" autoComplete="off" placeholder={h.secret_id ? "Saved — type to replace" : "Bearer …"} value={h.value} onChange={(e) => set("headers", headers.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
             <Button variant="ghost" size="icon" aria-label="Remove header" onClick={() => set("headers", headers.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
           </div>
         ))}
@@ -428,7 +428,8 @@ function HttpConfig({ d, set, testHttp }: { d: Record<string, unknown>; set: (k:
         ))}
         {save.length < 10 && <Button variant="outline" size="sm" onClick={() => set("save", [...save, { path: "", variable: "" }])}><Plus className="mr-1 h-4 w-4" /> Add field</Button>}
       </div>
-      <p className="text-xs text-muted-foreground">Waits up to 10 seconds. Success when the reply is 2xx; otherwise the Failed path. Private and internal addresses are blocked.</p>
+      <p className="text-xs text-muted-foreground">Waits up to 10 seconds. Success when the reply is 2xx; otherwise the Failed path. Private and internal addresses are blocked, and redirects aren't followed.</p>
+      <p className="text-xs text-muted-foreground">Header values are stored encrypted and can't be viewed again. If you change the address, type them again.</p>
       {testHttp && (
         <div className="space-y-2">
           <Button variant="outline" size="sm" disabled={busy} onClick={async () => { setBusy(true); setResult(await testHttp(d).catch(() => "Couldn't run the test.")); setBusy(false); }}>

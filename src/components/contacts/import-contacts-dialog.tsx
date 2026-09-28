@@ -81,6 +81,7 @@ export function ImportContactsDialog({
   const [rows, setRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<Mapping>({});
   const [consent, setConsent] = useState(false);
+  const [startFlows, setStartFlows] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [running, setRunning] = useState(false);
@@ -99,6 +100,7 @@ export function ImportContactsDialog({
     setRows([]);
     setMapping({});
     setConsent(false);
+    setStartFlows(false);
     setProgress(0);
     setResults(null);
     setRunning(false);
@@ -213,6 +215,7 @@ export function ImportContactsDialog({
             action: "chunk",
             organization_id: organizationId,
             consent: true,
+            start_flows: startFlows,
             import_id: importId,
             rows: chunk,
           },
@@ -433,6 +436,18 @@ export function ImportContactsDialog({
               <p className="mt-3 text-xs text-muted-foreground">
                 This attestation is recorded in your workspace activity log.
               </p>
+              <div className="mt-4 flex items-start gap-3">
+                <Checkbox
+                  id="start-flows"
+                  checked={startFlows}
+                  onCheckedChange={(v) => setStartFlows(v === true)}
+                  className="mt-0.5"
+                />
+                <Label htmlFor="start-flows" className="text-sm leading-relaxed">
+                  Also start flows that begin when these tags are added. Leave this off to
+                  import quietly.
+                </Label>
+              </div>
             </div>
             <div className="flex justify-between">
               <Button variant="ghost" className="rounded-full" onClick={() => setStep(2)}>

@@ -39,6 +39,11 @@ async function fire(
     fromCustomerMessage?: boolean;
   },
 ): Promise<{ runId: string | null; active: boolean }> {
+  // A conversation a teammate has taken over is theirs: no trigger starts a
+  // flow in it (the same rule the AI follows — see ai-agent.server.ts).
+  if (await humanOwnsConversation(supabase, args.organizationId, args.contactId, args.conversationId ?? null)) {
+    return { runId: null, active: false };
+  }
   const { startRun } = await import("@/lib/flow-engine.server");
   const { runId, reason } = await startRun(supabase, {
     organizationId: args.organizationId,
@@ -50,6 +55,27 @@ async function fire(
   });
   // already_running: a duplicate "menu" raced the first one — the flow owns it.
   return { runId, active: Boolean(runId) || reason === "already_running" };
+}
+
+/**
+ * True when a teammate owns the conversation (conversations.assigned_to set).
+ * With no conversation (tag, store event, form) any open conversation of the
+ * contact that a teammate owns counts.
+ */
+export async function humanOwnsConversation(
+  supabase: SupabaseClient,
+  organizationId: string,
+  contactId: string,
+  conversationId: string | null,
+): Promise<boolean> {
+  let q = supabase
+    .from("conversations")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .not("assigned_to", "is", null);
+  q = conversationId ? q.eq("id", conversationId) : q.eq("contact_id", contactId).eq("status", "open");
+  const { data } = await q.limit(1);
+  return Boolean(data && data.length);
 }
 
 function norm(s: string): string {
@@ -96,6 +122,11 @@ export async function dispatchInboundTriggers(
     accountId?: string | null;
     /** Only flows pinned to this number may start (used for the onboarding number). */
     onlyAccountId?: string | null;
+    /**
+     * The contact still has an active run (the message was released to normal
+     * routing during a timer/payment wait): keywords must not start a flow.
+     */
+    skipKeywords?: boolean;
   },
 ): Promise<{ started: boolean; flowId?: string }> {
   const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
@@ -138,7 +169,7 @@ export async function dispatchInboundTriggers(
       if (r.active) return { started: true, flowId: t.flow_id };
     }
   }
-  if (args.body.trim()) {
+  if (args.body.trim() && !args.skipKeywords) {
     const keyword = ofKind("keyword")
       .filter((t) => keywordMatches(t.config, args.body))
       .sort((x, y) => Number(y.config["priority"] ?? 0) - Number(x.config["priority"] ?? 0));
@@ -201,10 +232,17 @@ export async function dispatchStoreEvent(
   }
 }
 
+const NO_REPLY_PER_TICK = 25;
+const NO_REPLY_PAGE = 200;
+const NO_REPLY_MAX_PAGES = 5;
+const NO_REPLY_MAX_ATTEMPTS = 100;
+
 /**
- * Minute tick: "no reply for N days". A contact qualifies when their last
- * inbound message is older than N days (or they never wrote) and this trigger
- * has never fired for them. Batched so a big workspace doesn't stall the tick.
+ * Minute tick: "no reply for N days". A contact qualifies when they have
+ * written to us at least once, their last inbound message is older than N
+ * days, they have no active run, and this trigger has never fired for them.
+ * Pages past contacts that already fired (or are busy) so the same few are
+ * never re-picked every tick; at most 25 starts (100 attempts) per trigger per tick.
  */
 export async function dispatchNoReply(supabase: SupabaseClient): Promise<{ started: number }> {
   const { data: triggers } = await supabase
@@ -217,41 +255,60 @@ export async function dispatchNoReply(supabase: SupabaseClient): Promise<{ start
   for (const t of (triggers ?? []) as Array<Trigger & { organization_id: string }>) {
     const days = Math.min(Math.max(Number(t.config["days"] ?? 3), 1), 90);
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
-    // Contacts whose conversation has gone quiet past the cutoff.
-    const { data: convs } = await supabase
-      .from("conversations")
-      .select("id, contact_id, last_customer_message_at")
-      .eq("organization_id", t.organization_id)
-      .not("contact_id", "is", null)
-      .or(`last_customer_message_at.is.null,last_customer_message_at.lt.${cutoff}`)
-      .order("last_customer_message_at", { ascending: true, nullsFirst: true })
-      .limit(25);
-    for (const c of (convs ?? []) as Array<{ id: string; contact_id: string; last_customer_message_at: string | null }>) {
-      // Skip contacts with an active run on any flow — they're being handled.
-      const { data: active } = await supabase
-        .from("flow_runs")
-        .select("id")
+    const seen = new Set<string>();
+    let picked = 0;
+    let attempts = 0;
+    const full = () => picked >= NO_REPLY_PER_TICK || attempts >= NO_REPLY_MAX_ATTEMPTS;
+    for (let page = 0; page < NO_REPLY_MAX_PAGES && !full(); page += 1) {
+      // Conversations gone quiet past the cutoff — only ones the customer wrote in.
+      const { data: convs } = await supabase
+        .from("conversations")
+        .select("id, contact_id, last_customer_message_at")
         .eq("organization_id", t.organization_id)
-        .eq("contact_id", c.contact_id)
-        .in("status", ["running", "waiting"])
-        .limit(1);
-      if (active && active.length) continue;
-      // Fires once per contact per no-reply trigger.
-      const { data: firedBefore } = await supabase
-        .from("flow_trigger_fires")
-        .select("id")
-        .eq("trigger_id", t.id)
-        .eq("contact_id", c.contact_id)
-        .limit(1);
-      if (firedBefore && firedBefore.length) continue;
-      const { runId } = await fire(supabase, {
-        organizationId: t.organization_id,
-        trigger: t,
-        contactId: c.contact_id,
-        conversationId: c.id,
-        detail: { days },
-              });
-      if (runId) started += 1;
+        .not("contact_id", "is", null)
+        .not("last_customer_message_at", "is", null)
+        .lt("last_customer_message_at", cutoff)
+        .order("last_customer_message_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(page * NO_REPLY_PAGE, page * NO_REPLY_PAGE + NO_REPLY_PAGE - 1);
+      const rows = (convs ?? []) as Array<{ id: string; contact_id: string; last_customer_message_at: string | null }>;
+      const fresh = rows.filter((c) => !seen.has(c.contact_id));
+      for (const c of fresh) seen.add(c.contact_id);
+      const contactIds = [...new Set(fresh.map((c) => c.contact_id))];
+      if (contactIds.length) {
+        // One read each for the whole page: already fired, or busy in a flow.
+        const [{ data: firedRows }, { data: activeRows }] = await Promise.all([
+          supabase.from("flow_trigger_fires").select("contact_id").eq("trigger_id", t.id).in("contact_id", contactIds),
+          supabase
+            .from("flow_runs")
+            .select("contact_id")
+            .eq("organization_id", t.organization_id)
+            .in("contact_id", contactIds)
+            .in("status", ["running", "waiting"]),
+        ]);
+        const skip = new Set(
+          [...((firedRows ?? []) as Array<{ contact_id: string }>), ...((activeRows ?? []) as Array<{ contact_id: string }>)].map((r) => r.contact_id),
+        );
+        const done = new Set<string>();
+        for (const c of fresh) {
+          if (full()) break;
+          if (skip.has(c.contact_id) || done.has(c.contact_id)) continue;
+          done.add(c.contact_id);
+          attempts += 1;
+          const { runId } = await fire(supabase, {
+            organizationId: t.organization_id,
+            trigger: t,
+            contactId: c.contact_id,
+            conversationId: c.id,
+            detail: { days },
+          });
+          if (runId) {
+            started += 1;
+            picked += 1;
+          }
+        }
+      }
+      if (rows.length < NO_REPLY_PAGE) break;
     }
   }
   return { started };

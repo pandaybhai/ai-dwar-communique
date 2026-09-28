@@ -232,14 +232,16 @@ export async function handleInboundForRuns(
     body: string;
     replyId: string | null;
   },
-): Promise<{ consumed: boolean }> {
+): Promise<{ consumed: boolean; runActive?: boolean }> {
   const deadline = Date.now() + HOLD_MS;
   const key = (args.replyId ?? args.body.trim().toLowerCase()).slice(0, 200);
   let heldFor: Run | null = null;
   let flagChecked = false;
-  const release = async (run: Pick<Run, "id" | "organization_id" | "current_node_id">, detail: Record<string, unknown>) => {
+  // runActive: the contact's run is still going (timer/payment wait, or busy),
+  // so normal routing must not let a keyword start another flow.
+  const release = async (run: Pick<Run, "id" | "organization_id" | "current_node_id">, detail: Record<string, unknown>, runActive: boolean) => {
     await logEvent(supabase, run, run.current_node_id, "reply_released", { ...detail, held: Boolean(heldFor), length: args.body.length }).catch(() => false);
-    return { consumed: false };
+    return { consumed: false, runActive };
   };
   for (;;) {
     let run: Run | null = await activeRunFor(supabase, args);
@@ -263,11 +265,11 @@ export async function handleInboundForRuns(
       await logEvent(supabase, run, run.current_node_id, "reply_dropped", { reason: "duplicate_tap" }).catch(() => false);
       return { consumed: true };
     }
-    if (route === "release") return release(run, { status: run.status, waiting_for: run.waiting_for });
+    if (route === "release") return release(run, { status: run.status, waiting_for: run.waiting_for }, active);
 
     if (route === "take") {
       const graph = await loadGraph(supabase, run.version_id);
-      if (!graph) return release(run, { reason: "no_graph" });
+      if (!graph) return release(run, { reason: "no_graph" }, true);
       // Claim: only one of (this reply, another reply, a timeout tick) may advance the run.
       const { data: claimed } = await supabase
         .from("flow_runs")
@@ -295,7 +297,7 @@ export async function handleInboundForRuns(
       heldFor = run;
       await logEvent(supabase, run, run.current_node_id, "reply_held", { reply_id: args.replyId, length: args.body.length }).catch(() => false);
     }
-    if (Date.now() > deadline) return release(run, { reason: "flow_busy" });
+    if (Date.now() > deadline) return release(run, { reason: "flow_busy" }, true);
     await new Promise((r) => setTimeout(r, 300));
   }
 }
@@ -432,6 +434,8 @@ type Env = {
   ctx: RunContext;
   to: string;
   optedOut: boolean;
+  /** Explicit opt-in on file — required before any MARKETING template. */
+  optedIn: boolean;
   windowOpen: boolean;
   conn: { phoneNumberId: string; accessToken: string; accountId: string; wabaId: string } | null;
   settings: import("@/lib/flows.server").SendSettings;
@@ -487,6 +491,7 @@ async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
     },
     to: (c.wa_id ?? c.phone).replace(/\D/g, ""),
     optedOut: String(c.opt_in_status ?? "").toLowerCase() === "opted_out",
+    optedIn: String(c.opt_in_status ?? "").toLowerCase() === "opted_in",
     windowOpen: isServiceWindowOpen(conv),
     conn: connection
       ? { phoneNumberId: connection.phoneNumberId, accessToken: connection.accessToken, accountId: connection.accountId, wabaId: connection.wabaId }
@@ -759,6 +764,8 @@ async function advanceInner(
             await finish("failed", "failed", { error: res.error });
             return;
           }
+          // Marketing without opt-in is never sent; the flow carries on.
+          if (res.skipped) await logEvent(supabase, run, node.id, "template_skipped", { reason: res.skipped });
         }
         break;
       }
@@ -995,8 +1002,8 @@ async function advanceInner(
         return;
       }
       case "http": {
-        const { runHttpRequest } = await import("@/lib/flow-http.server");
-        const res = await runHttpRequest(d as never, { ...env.ctx, vars });
+        const { runHttpRequest, loadHttpSecrets } = await import("@/lib/flow-http.server");
+        const res = await runHttpRequest(await loadHttpSecrets(supabase, run.organization_id, d), { ...env.ctx, vars });
         Object.assign(vars, res.saved);
         vars["http_status"] = res.status == null ? "" : String(res.status);
         await logEvent(supabase, run, node.id, res.ok ? "http_ok" : "http_failed", { status: res.status, error: res.error, saved: Object.keys(res.saved) });
@@ -1005,29 +1012,19 @@ async function advanceInner(
       }
       case "email_team": {
         const c = { ...env.ctx, vars };
-        const userIds = ((d["user_ids"] as string[] | undefined) ?? []).filter(Boolean);
-        const addresses = new Set(String(d["addresses"] ?? "").split(/[,\s]+/).map((a) => a.trim().toLowerCase()).filter((a) => a.includes("@")));
-        if (userIds.length) {
-          // Only teammates of this workspace can be emailed.
-          const { data: members } = await supabase.from("organization_members").select("user_id").eq("organization_id", run.organization_id).in("user_id", userIds);
-          const ok = ((members ?? []) as Array<{ user_id: string }>).map((m) => m.user_id);
-          if (ok.length) {
-            const { data: profs } = await supabase.from("profiles").select("email").in("id", ok);
-            for (const p of (profs ?? []) as Array<{ email: string | null }>) if (p.email) addresses.add(p.email.toLowerCase());
-          }
-        }
+        const { recipients: addresses, dropped } = await emailTeamRecipients(supabase, run.organization_id, d);
         const { sendEmail } = await import("@/lib/email.server");
         const subject = interpolate(String(d["subject"] ?? "From your chat flow"), c).slice(0, 200);
         const bodyText = interpolate(String(d["body"] ?? ""), c).slice(0, 5000);
         let sent = 0;
         let lastError: string | null = null;
-        for (const to of [...addresses].slice(0, 20)) {
+        for (const to of addresses) {
           const r = await sendEmail({ to, subject, body: bodyText });
           if (r.ok) sent += 1;
           else lastError = r.error ?? "email_failed";
         }
         // Recipients are counted, never listed, in the run log.
-        await logEvent(supabase, run, node.id, sent ? "email_sent" : "email_failed", { recipients: addresses.size, sent, error: lastError });
+        await logEvent(supabase, run, node.id, sent ? "email_sent" : "email_failed", { recipients: addresses.length, sent, dropped, error: lastError ?? (addresses.length ? null : "no_allowed_recipients") });
         if (!sent) {
           if (!(await follow(node, edgeFrom(graph, node.id, "failed") ? "failed" : "next"))) return;
           continue;
@@ -1150,13 +1147,18 @@ async function sendPrompt(
   return { ok: r.ok, error: r.error };
 }
 
+/** A MARKETING template may only go to a contact who opted in (same rule as campaigns). */
+export function marketingAllowed(category: string | null | undefined, optedIn: boolean): boolean {
+  return String(category ?? "").toUpperCase() !== "MARKETING" || optedIn;
+}
+
 async function sendTemplate(
   supabase: SupabaseClient,
   run: Run,
   env: Env,
   templateId: string,
   variableSources: string[],
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; skipped?: string }> {
   const { data: template } = await supabase
     .from("message_templates")
     .select("name, language, category, status, components")
@@ -1166,6 +1168,7 @@ async function sendTemplate(
   const t = template as { name: string; language: string | null; category: string | null; status: string; components: unknown } | null;
   if (!t) return { error: "template_missing" };
   if (String(t.status).toUpperCase() !== "APPROVED") return { error: "template_not_approved" };
+  if (!marketingAllowed(t.category, env.optedIn)) return { error: null, skipped: "not_opted_in" };
   const { loadSenderContext, sendCampaignTemplate } = await import("@/lib/campaigns.server");
   const { extractVariables, templateBodyText } = await import("@/lib/templates");
   const sender = await loadSenderContext(supabase, run.organization_id, env.conn?.accountId ?? null);
@@ -1184,6 +1187,41 @@ async function sendTemplate(
     { campaignId: null, category: String(t.category ?? "utility").toLowerCase(), flowId: run.flow_id },
   );
   return { error: outcome.error };
+}
+
+/** Most people one "Email the team" step may email. */
+export const MAX_EMAIL_RECIPIENTS = 5;
+
+/**
+ * Who an "Email the team" step may email: only people who are members of this
+ * workspace — picked teammates, or typed addresses that belong to a member.
+ * Anything else is dropped (counted in the run log, never listed). At most 5.
+ */
+export async function emailTeamRecipients(
+  supabase: SupabaseClient,
+  organizationId: string,
+  d: Record<string, unknown>,
+): Promise<{ recipients: string[]; dropped: number }> {
+  const userIds = ((d["user_ids"] as string[] | undefined) ?? []).filter(Boolean);
+  const typed = [...new Set(String(d["addresses"] ?? "").split(/[,\s]+/).map((a) => a.trim().toLowerCase()).filter((a) => a.includes("@")))];
+  const { data: members } = await supabase.from("organization_members").select("user_id").eq("organization_id", organizationId);
+  const memberIds = ((members ?? []) as Array<{ user_id: string }>).map((m) => m.user_id);
+  const { data: profs } = memberIds.length ? await supabase.from("profiles").select("id, email").in("id", memberIds) : { data: [] };
+  const emailOf = new Map(((profs ?? []) as Array<{ id: string; email: string | null }>).filter((p) => p.email).map((p) => [p.id, p.email!.toLowerCase()]));
+  const memberEmails = new Set(emailOf.values());
+  const out = new Set<string>();
+  let dropped = 0;
+  for (const id of userIds) {
+    const e = emailOf.get(id);
+    if (e) out.add(e);
+    else dropped += 1;
+  }
+  for (const a of typed) {
+    if (memberEmails.has(a)) out.add(a);
+    else dropped += 1;
+  }
+  const all = [...out];
+  return { recipients: all.slice(0, MAX_EMAIL_RECIPIENTS), dropped: dropped + Math.max(0, all.length - MAX_EMAIL_RECIPIENTS) };
 }
 
 async function applyTag(supabase: SupabaseClient, run: Run, name: string, action: "add" | "remove") {

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
+import { cleanConfig, configError } from "@/lib/flow-trigger-config";
 
 const KINDS = [
   "keyword",
@@ -29,40 +30,6 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("node_stats"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
   z.object({ action: z.literal("contact_runs"), organization_id: z.string().uuid(), contact_id: z.string().uuid() }),
 ]);
-
-function cleanConfig(kind: string, config: Record<string, unknown>): Record<string, unknown> {
-  switch (kind) {
-    case "keyword": {
-      const keywords = ((config["keywords"] as string[] | undefined) ?? []).map((k) => String(k).trim()).filter(Boolean).slice(0, 20);
-      const priority = Math.min(Math.max(Math.round(Number(config["priority"] ?? 0)) || 0, 0), 1000);
-      return { keywords, match: ["exact", "contains", "starts_with"].includes(String(config["match"])) ? config["match"] : "contains", priority };
-    }
-    case "store_event":
-      return { event: String(config["event"] ?? "").trim() };
-    case "form_submitted":
-      return { form_id: config["form_id"] ? String(config["form_id"]) : null };
-    case "tag_added":
-      return { tag: String(config["tag"] ?? "").trim() };
-    case "campaign_button":
-      return {
-        campaign_id: config["campaign_id"] ? String(config["campaign_id"]) : null,
-        button: config["button"] ? String(config["button"]).trim() : null,
-      };
-    case "no_reply": {
-      const days = Math.min(Math.max(Number(config["days"] ?? 3), 1), 90);
-      return { days };
-    }
-    default:
-      return {};
-  }
-}
-
-function configError(kind: string, config: Record<string, unknown>): string | null {
-  if (kind === "keyword" && !((config["keywords"] as string[] | undefined) ?? []).length) return "Add at least one keyword.";
-  if (kind === "store_event" && !config["event"]) return "Pick the store event.";
-  if (kind === "tag_added" && !config["tag"]) return "Pick the tag.";
-  return null;
-}
 
 /**
  * Flows v2 triggers: list/add/update/remove per flow, manual start from the
@@ -196,7 +163,7 @@ export const Route = createFileRoute("/api/flows/triggers")({
         }
 
         if (body.action === "add") {
-          const config = cleanConfig(body.trigger.kind, body.trigger.config);
+          const config = cleanConfig(body.trigger.kind, body.trigger.config, "exact");
           const err = configError(body.trigger.kind, config);
           if (err) return jsonError(err);
           const { data, error } = await db

@@ -74,7 +74,7 @@ export function isBareReference(body: string): boolean {
 }
 
 const QUESTION_START =
-  /^(what|which|how|why|when|where|who|kya|kaise|kitna|kab|kahan|kaun|batao|tell me|explain)\b/;
+  /^(what|which|how|why|when|where|who|kya|kaise|kitna|kitne|kab|kahan|kaun|batao|tell me|explain)\b/;
 
 /**
  * A question only if it STARTS with a question word or ENDS with "?".

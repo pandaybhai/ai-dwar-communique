@@ -52,7 +52,7 @@ export function TriggersPanel({
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<string>("keyword");
   const [keywords, setKeywords] = useState("");
-  const [match, setMatch] = useState("contains");
+  const [match, setMatch] = useState("exact");
   const [event, setEvent] = useState("abandoned_checkout");
   const [formId, setFormId] = useState("");
   const [tag, setTag] = useState("");

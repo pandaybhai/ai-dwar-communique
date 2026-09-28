@@ -273,8 +273,39 @@ function requiredOutputs(node: FlowNode): string[] {
 export type GraphProblem = { nodeId: string | null; message: string };
 
 /** Structural checks before publish. Template approval is checked server-side. */
-export function validateGraph(graph: FlowGraph): GraphProblem[] {
+/**
+ * The address a saved HTTP header secret is bound to: scheme, host and path of
+ * the step's URL as written (query and fragment ignored, {{variables}} kept).
+ */
+export function secretScope(url: unknown): string {
+  const m = String(url ?? "").trim().match(/^(https?:\/\/)([^/?#]*)([^?#]*)/i);
+  return m ? `${m[1]!.toLowerCase()}${m[2]!.toLowerCase()}${m[3]}` : "";
+}
+
+/**
+ * HTTP header values are secrets: an exported or imported flow carries header
+ * names only — never values, never references to stored secrets.
+ */
+export function maskHttpSecrets(graph: FlowGraph): FlowGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) =>
+      n.type !== "http"
+        ? n
+        : {
+            ...n,
+            data: {
+              ...n.data,
+              headers: ((n.data["headers"] as Array<{ key?: string }> | undefined) ?? []).map((h) => ({ key: String(h?.key ?? ""), value: "" })),
+            },
+          },
+    ),
+  };
+}
+
+export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: string } = {}): GraphProblem[] {
   const problems: GraphProblem[] = [];
+  const nowMs = (opts.now ?? new Date()).getTime();
   if (graph.nodes.length > MAX_NODES) problems.push({ nodeId: null, message: `A flow can have at most ${MAX_NODES} steps.` });
   const starts = graph.nodes.filter((n) => n.type === "start");
   if (starts.length !== 1) problems.push({ nodeId: null, message: "A flow needs exactly one start." });
@@ -352,12 +383,23 @@ export function validateGraph(graph: FlowGraph): GraphProblem[] {
       const users = (x["user_ids"] as string[] | undefined) ?? [];
       const addrs = String(x["addresses"] ?? "").split(/[,\s]+/).filter(Boolean);
       if (!users.length && !addrs.length) problems.push({ nodeId: node.id, message: "Pick teammates or add email addresses." });
+      if (users.length + addrs.length > 5) problems.push({ nodeId: node.id, message: "Email at most 5 people from one step." });
       if (addrs.some((a) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a))) problems.push({ nodeId: node.id, message: "One of the email addresses isn't valid." });
       if (!String(x["subject"] ?? "").trim()) problems.push({ nodeId: node.id, message: "Add a subject." });
     }
     if (node.type === "wait_until") {
       if (x["mode"] === "field" ? !String(x["field"] ?? "").trim() : !String(x["date"] ?? "").trim())
         problems.push({ nodeId: node.id, message: x["mode"] === "field" ? "Pick the variable or contact field holding the date." : "Pick the date to wait until." });
+      // A fixed date the run can never reach: runs end after MAX_RUN_AGE_DAYS.
+      const raw = String(x["date"] ?? "").trim();
+      if (x["mode"] !== "field" && raw && !raw.includes("{{")) {
+        const target = parseWaitDate(raw, opts.timezone ?? "Asia/Kolkata");
+        if (target && target.getTime() - nowMs > MAX_RUN_AGE_DAYS * 86_400_000)
+          problems.push({
+            nodeId: node.id,
+            message: `This date is more than ${MAX_RUN_AGE_DAYS} days away. A flow run stops after ${MAX_RUN_AGE_DAYS} days, so it would end before this date. Pick a date within ${MAX_RUN_AGE_DAYS} days.`,
+          });
+      }
     }
     if (node.type === "branch")
       for (const b of (x["branches"] as Branch[] | undefined) ?? [])
