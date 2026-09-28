@@ -253,6 +253,22 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
         if (!go(graph, s, node, "paid")) return s;
         continue;
       }
+      case "http": {
+        note(s, `Calls ${String(d["method"] ?? "GET")} ${String(d["url"] ?? "")} (not called in test chat — assumes success)`);
+        for (const m of (d["save"] as Array<{ variable?: string }> | undefined) ?? []) if (m.variable) ctx.vars[m.variable] = `(${m.variable})`;
+        if (!go(graph, s, node, "success")) return s;
+        continue;
+      }
+      case "email_team":
+        note(s, `Emails your team: "${interpolate(String(d["subject"] ?? ""), ctx)}" (not sent in test chat)`);
+        break;
+      case "wait_until":
+        note(s, `Waits until ${d["mode"] === "field" ? `{{${String(d["field"] ?? "")}}}` : String(d["date"] ?? "")} (skipped in test)`);
+        break;
+      case "order_draft":
+        ctx.vars["order_draft_id"] = "(draft)";
+        note(s, `Creates an order draft: ${interpolate(String(d["items"] ?? ""), ctx)} (not saved in test chat)`);
+        break;
       default:
         note(s, `Step "${node.type}" isn't supported yet.`);
     }
