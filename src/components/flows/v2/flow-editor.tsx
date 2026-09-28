@@ -76,6 +76,7 @@ type Props = {
   pickers: Pickers;
   versions: VersionRow[];
   stats?: Record<string, { entered: number; exited: number; dropped: number }>;
+  tags?: string[];
   onChanged: (remount?: boolean) => void;
   aiOn?: boolean;
 };
@@ -88,7 +89,7 @@ export function FlowEditor(props: Props) {
   );
 }
 
-function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, onChanged, aiOn }: Props) {
+function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, tags, onChanged, aiOn }: Props) {
   const rf = useReactFlow();
   const navigate = useNavigate();
   const [meta, setMeta] = useState<NonNullable<FlowGraph["meta"]>>(() => initial.meta ?? {});
@@ -418,7 +419,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
       <Sheet open={triggersOpen} onOpenChange={setTriggersOpen}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-md">
           <SheetHeader><SheetTitle>Triggers</SheetTitle></SheetHeader>
-          <TriggersPanel organizationId={organizationId} flowId={flowId} canEdit={canEdit} forms={pickers.forms} tags={pickers.segments} />
+          <TriggersPanel organizationId={organizationId} flowId={flowId} canEdit={canEdit} forms={pickers.forms} tags={tags ?? []} />
         </SheetContent>
       </Sheet>
 
