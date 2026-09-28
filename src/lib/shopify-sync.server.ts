@@ -353,12 +353,13 @@ export async function upsertOrder(
       // Flows v2 "store event" triggers run alongside the legacy flow.
       try {
         const { dispatchStoreEvent } = await import("@/lib/flow-triggers.server");
-        await dispatchStoreEvent(ctx.supabase, {
-          organizationId: ctx.organizationId,
-          contactId: match.contactId,
-          event,
-          detail: { order_id: orderId },
-        });
+        if (match.contactId)
+          await dispatchStoreEvent(ctx.supabase, {
+            organizationId: ctx.organizationId,
+            contactId: match.contactId,
+            event,
+            detail: { order_id: orderId },
+          });
       } catch {
         // a v2 trigger problem must never affect the store sync
       }
@@ -579,12 +580,13 @@ export async function upsertCheckout(ctx: SyncContext, checkout: AnyRecord): Pro
     // The legacy flow above is untouched and keeps its own scheduler.
     try {
       const { dispatchStoreEvent } = await import("@/lib/flow-triggers.server");
-      await dispatchStoreEvent(ctx.supabase, {
-        organizationId: ctx.organizationId,
-        contactId: match.contactId,
-        event: "abandoned_checkout",
-        detail: { checkout_id: checkoutId },
-      });
+      if (match.contactId)
+        await dispatchStoreEvent(ctx.supabase, {
+          organizationId: ctx.organizationId,
+          contactId: match.contactId,
+          event: "abandoned_checkout",
+          detail: { checkout_id: checkoutId },
+        });
     } catch {
       // a v2 trigger problem must never affect the store sync
     }

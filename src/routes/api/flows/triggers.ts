@@ -126,7 +126,7 @@ export const Route = createFileRoute("/api/flows/triggers")({
             .eq("contact_id", body.contact_id)
             .order("started_at", { ascending: false })
             .limit(20);
-          const rows = (runs ?? []) as Array<{ id: string; flow_id: string; status: string; current_node_id: string | null; started_at: string; ended_at: string | null; trigger: Record<string, unknown>; flows: { name: string } | null }>;
+          const rows = (runs ?? []) as unknown as Array<{ id: string; flow_id: string; status: string; current_node_id: string | null; started_at: string; ended_at: string | null; trigger: Record<string, unknown>; flows: { name: string } | null }>;
           const runIds = rows.map((r) => r.id);
           const { data: events } = runIds.length
             ? await db.from("flow_run_events").select("run_id, node_id, event, detail, at").in("run_id", runIds).order("at", { ascending: true }).limit(500)
