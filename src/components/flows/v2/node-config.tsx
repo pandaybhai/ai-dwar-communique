@@ -210,6 +210,35 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
           <p className="text-xs text-muted-foreground">Adds the tag "Segment: {String(d["segment_name"] || "name")}". Filter a segment on that tag to include these contacts.</p>
         </div>
       )}
+      {node.type === "sheets_append" && (
+        <div className="space-y-2">
+          <Label>Google Sheet link</Label>
+          <Input placeholder="https://docs.google.com/spreadsheets/d/…" value={String(d["sheet"] ?? "")} onChange={(e) => set("sheet", e.target.value)} />
+          <Label>Tab name</Label>
+          <Input value={String(d["tab"] ?? "Sheet1")} onChange={(e) => set("tab", e.target.value)} />
+          <Label>Columns (one value per column, {"{{variables}}"} allowed)</Label>
+          {((d["columns"] as string[]) ?? []).map((c, i, arr) => (
+            <div key={i} className="flex gap-2">
+              <Input value={c} onChange={(e) => set("columns", arr.map((x, j) => (j === i ? e.target.value : x)))} />
+              <Button variant="ghost" size="icon" aria-label="Remove column" onClick={() => set("columns", arr.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+            </div>
+          ))}
+          {((d["columns"] as string[]) ?? []).length < 26 && <Button variant="outline" size="sm" onClick={() => set("columns", [...((d["columns"] as string[]) ?? []), ""])}><Plus className="mr-1 h-4 w-4" /> Add column</Button>}
+          <p className="text-xs text-muted-foreground">Uses the Google account connected in Settings → Integrations. That account must be able to edit the sheet.</p>
+        </div>
+      )}
+      {node.type === "payment" && (
+        <div className="space-y-2">
+          <Label>Amount (₹)</Label>
+          <Input placeholder="499 or {{total}}" value={String(d["amount"] ?? "")} onChange={(e) => set("amount", e.target.value)} />
+          <Label>What it's for</Label>
+          <Input value={String(d["description"] ?? "")} onChange={(e) => set("description", e.target.value)} />
+          {textField("text", "Message sent with the link")}
+          <Label>Wait for payment (hours)</Label>
+          <Input type="number" min={1} max={312} value={Number(d["wait_hours"] ?? 24)} onChange={(e) => set("wait_hours", Number(e.target.value))} />
+          <p className="text-xs text-muted-foreground">Creates a payment link on your own Razorpay account (Settings → Integrations). Paid goes to "Paid"; otherwise "Not paid" after the wait. {"{{payment_link}}"} and {"{{payment_status}}"} are available afterwards.</p>
+        </div>
+      )}
       {node.type === "note" && textField("text", "Note (never sent)")}
       {node.type === "buttons" && (<>{textField()}{options("buttons", MAX_BUTTONS, 20)}{saveTo}{typing}{replyRules}</>)}
       {node.type === "list" && (<>{textField()}<div className="space-y-1.5"><Label>List button text</Label><Input maxLength={20} value={String(d["button_text"] ?? "Choose")} onChange={(e) => set("button_text", e.target.value)} /></div>{options("rows", MAX_LIST_ROWS, 24)}{saveTo}{replyRules}</>)}

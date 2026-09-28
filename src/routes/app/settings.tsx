@@ -27,6 +27,7 @@ import { LeadSourcesTab } from "@/components/contacts/lead-sources-settings";
 import { OptOutKeywordsCard } from "@/components/contacts/opt-out-keywords-settings";
 import { DeleteWorkspaceCard } from "@/components/settings/delete-workspace-card";
 import { IntegrationsTab } from "@/components/integrations/integrations-settings";
+import { FlowConnections } from "@/components/integrations/flow-connections";
 import { SendSettingsTab } from "@/components/settings/send-settings";
 
 
@@ -77,12 +78,15 @@ function SettingsPage() {
 function SettingsTabs() {
   const { enabled: shopifyEnabled } = useFeatureFlag("shopify");
   const { can } = usePermissions();
-  const showIntegrations = shopifyEnabled && can("integrations.view");
+  const { enabled: flowsV2Enabled } = useFeatureFlag("flows_v2");
+  const showShopify = shopifyEnabled && can("integrations.view");
+  const showConnections = flowsV2Enabled && can("integrations.view");
+  const showIntegrations = showShopify || showConnections;
   const { enabled: flowsEnabled } = useFeatureFlag("flows");
   const showSending = flowsEnabled && can("flows.view");
 
   return (
-    <Tabs defaultValue="general" className="max-w-3xl">
+    <Tabs defaultValue={typeof window !== "undefined" && new URLSearchParams(window.location.search).has("google") && showIntegrations ? "integrations" : "general"} className="max-w-3xl">
       <TabsList>
         <TabsTrigger value="general">General</TabsTrigger>
         <TabsTrigger value="team">Team</TabsTrigger>
@@ -104,7 +108,10 @@ function SettingsTabs() {
       </TabsContent>
       {showIntegrations ? (
         <TabsContent value="integrations" className="mt-6">
-          <IntegrationsTab />
+          <div className="space-y-6">
+            {showShopify ? <IntegrationsTab /> : null}
+            {showConnections ? <FlowConnections /> : null}
+          </div>
         </TabsContent>
       ) : null}
       {showSending ? (

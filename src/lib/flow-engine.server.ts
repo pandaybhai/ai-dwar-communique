@@ -296,7 +296,7 @@ async function advance(
   run: Run,
   graph: FlowGraph,
   inbound: Inbound | null,
-  opts: { woke?: boolean } = {},
+  opts: { woke?: boolean; paid?: boolean } = {},
 ): Promise<void> {
   const env = await loadEnv(supabase, run);
   const vars = env.ctx.vars;
@@ -317,7 +317,7 @@ async function advance(
     await logEvent(supabase, run, nodeId, event, detail);
     if (status === "done" && graph.meta?.on_finish) await runOnFinish(supabase, run, graph.meta.on_finish, { ...env.ctx, vars });
   };
-  const waitFor = async (kind: "reply" | "timer", minutes: number) => {
+  const waitFor = async (kind: "reply" | "timer" | "payment", minutes: number) => {
     await save({ status: "waiting", waiting_for: kind, wake_at: new Date(Date.now() + minutes * 60_000).toISOString() });
   };
   /** Move along an output; false when the output isn't connected (run ends). */
@@ -363,13 +363,14 @@ async function advance(
     const d = node.data;
     const waitingHere = run.status === "waiting" && run.current_node_id === node.id && seen === 1;
     const awaitingReply = waitingHere && run.waiting_for === "reply";
+    const payWaiting = waitingHere && run.waiting_for === "payment";
     if (!waitingHere) await logEvent(supabase, run, node.id, "entered", { type: node.type });
 
-    const needsWindow = ["text", "buttons", "list", "ask", "form", "cta_url", "location_request", "location_send", "contact_card", "carousel"].includes(node.type);
+    const needsWindow = ["text", "buttons", "list", "ask", "form", "cta_url", "location_request", "location_send", "contact_card", "carousel", "payment"].includes(node.type);
     const sendsMessage = needsWindow || node.type === "template";
 
     // Quiet hours hold proactive sends (not replies to a message just received).
-    if (sendsMessage && !awaitingReply && !reply && !woke && env.settings.quietHoursEnabled) {
+    if (sendsMessage && !awaitingReply && !payWaiting && !reply && !woke && env.settings.quietHoursEnabled) {
       const { applyQuietHours } = await import("@/lib/flows.server");
       const at = applyQuietHours(new Date(), env.settings, "transactional");
       if (at.getTime() > Date.now() + 60_000) {
@@ -380,18 +381,18 @@ async function advance(
         return;
       }
     }
-    if (needsWindow && !awaitingReply && !env.windowOpen) {
+    if (needsWindow && !awaitingReply && !payWaiting && !env.windowOpen) {
       await logEvent(supabase, run, node.id, "window_closed");
       if (!(await follow(node, "window_closed"))) return;
       continue;
     }
-    if (sendsMessage && !awaitingReply && !env.conn) {
+    if (sendsMessage && !awaitingReply && !payWaiting && !env.conn) {
       await finish("failed", "failed", { error: "no_connected_number" });
       return;
     }
 
     // ---- nodes that wait for the customer ----
-    if (sendsMessage && !awaitingReply && Number(d["typing_seconds"] ?? 0) > 0) {
+    if (sendsMessage && !awaitingReply && !payWaiting && Number(d["typing_seconds"] ?? 0) > 0) {
       // Typing delay: a short, human pause before the message (capped at 5 s).
       await new Promise((r) => setTimeout(r, Math.min(Number(d["typing_seconds"]), 5) * 1000));
     }
@@ -686,6 +687,75 @@ async function advance(
         break;
       case "note":
         break;
+      case "sheets_append": {
+        const { appendSheetRow } = await import("@/lib/flow-connections.server");
+        const values = ((d["columns"] as string[] | undefined) ?? []).map((c) => interpolate(String(c ?? ""), { ...env.ctx, vars }));
+        const res = await appendSheetRow(supabase, run.organization_id, { sheet: String(d["sheet"] ?? ""), tab: String(d["tab"] ?? ""), values });
+        await logEvent(supabase, run, node.id, res.ok ? "sheet_row_added" : "sheet_failed", res.ok ? {} : { error: res.error });
+        if (!res.ok) {
+          if (!(await follow(node, edgeFrom(graph, node.id, "failed") ? "failed" : "next"))) return;
+          continue;
+        }
+        break;
+      }
+      case "payment": {
+        if (payWaiting) {
+          if (opts.paid) {
+            opts.paid = false;
+            vars["payment_status"] = "paid";
+            run.status = "running";
+            await logEvent(supabase, run, node.id, "paid");
+            if (!(await follow(node, "paid"))) return;
+            continue;
+          }
+          if (woke) {
+            woke = false;
+            vars["payment_status"] = "not_paid";
+            run.status = "running";
+            await logEvent(supabase, run, node.id, "not_paid");
+            if (!(await follow(node, "not_paid"))) return;
+            continue;
+          }
+          return;
+        }
+        bumpAttempt(node.id);
+        const key = `${run.id}:${node.id}:${attemptOf(node.id)}`;
+        const hours = Math.min(Math.max(Number(d["wait_hours"] ?? 24), 1), 24 * 13);
+        if (await logEvent(supabase, run, node.id, "send", {}, key)) {
+          const amount = Number(interpolate(String(d["amount"] ?? ""), { ...env.ctx, vars }).replace(/[^\d.]/g, ""));
+          const { createPaymentLink } = await import("@/lib/flow-connections.server");
+          const link = await createPaymentLink(supabase, run.organization_id, {
+            amountRupees: amount,
+            description: interpolate(String(d["description"] ?? "Payment"), { ...env.ctx, vars }),
+            name: env.ctx.contact.name,
+            phone: env.to,
+            expireHours: hours,
+            runId: run.id,
+            nodeId: node.id,
+          });
+          if ("error" in link) {
+            await finish("failed", "failed", { error: link.error });
+            return;
+          }
+          vars["payment_link"] = link.url;
+          const { sendServiceText } = await import("@/lib/service-text.server");
+          const res = await sendServiceText(supabase, {
+            organizationId: run.organization_id,
+            phoneNumberId: env.conn!.phoneNumberId,
+            accessToken: env.conn!.accessToken,
+            conversationId: run.conversation_id!,
+            to: env.to,
+            body: `${interpolate(String(d["text"] ?? "Here's your payment link:"), { ...env.ctx, vars })}\n${link.url}`,
+            metadata: { kind: "flow_v2", run_id: run.id, node_id: node.id },
+          });
+          if (!res.ok) {
+            await finish("failed", "failed", { error: res.error ?? "send_failed" });
+            return;
+          }
+        }
+        await waitFor("payment", hours * 60);
+        return;
+      }
       default:
         await finish("failed", "failed", { error: `unknown_node:${node.type}` });
         return;
@@ -860,6 +930,30 @@ async function runOnFinish(
   if (onFinish.needs_you?.trim()) await markNeedsYou(supabase, run, interpolate(onFinish.needs_you, ctx));
   if (onFinish.close_chat && run.conversation_id)
     await supabase.from("conversations").update({ status: "closed" }).eq("id", run.conversation_id).eq("organization_id", run.organization_id);
+}
+
+/** The merchant's Razorpay says the flow's payment link was paid. */
+export async function resumePaidRun(
+  supabase: SupabaseClient,
+  args: { organizationId: string; runId: string; nodeId: string; paymentLinkId: string },
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("flow_runs")
+    .select(RUN_COLUMNS)
+    .eq("id", args.runId)
+    .eq("organization_id", args.organizationId)
+    .eq("status", "waiting")
+    .eq("waiting_for", "payment")
+    .eq("current_node_id", args.nodeId)
+    .maybeSingle();
+  const run = data as Run | null;
+  if (!run) return false;
+  if (!(await logEvent(supabase, run, args.nodeId, "payment_webhook", { link: args.paymentLinkId }, `${run.id}:${args.nodeId}:paid`))) return false;
+  const graph = await loadGraph(supabase, run.version_id);
+  if (!graph) return false;
+  run.variables = { ...run.variables, payment_id: args.paymentLinkId };
+  await advance(supabase, run, graph, null, { paid: true });
+  return true;
 }
 
 /** STOP / opt-out anywhere: every active run for the contact ends. */

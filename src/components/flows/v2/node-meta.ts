@@ -1,7 +1,7 @@
 import {
   Bot, Clock, FileText, Flag, GitBranch, ListChecks, MessageSquare, MessageSquareText, MousePointerClick,
   Pencil, Play, StickyNote, Tag, UserPlus, AlertCircle, HelpCircle, Link2, MapPin, Navigation, Contact, GalleryHorizontal,
-  Variable, CalendarClock, NotebookPen, CheckCircle2, BellRing, Users, Shuffle, CornerDownRight, type LucideIcon,
+  Variable, CalendarClock, Sheet, IndianRupee, NotebookPen, CheckCircle2, BellRing, Users, Shuffle, CornerDownRight, type LucideIcon,
 } from "lucide-react";
 import type { FlowNode, NodeType } from "@/lib/flow-graph";
 
@@ -38,6 +38,8 @@ export const NODE_META: Record<NodeType, NodeMeta> = {
   internal_note: { label: "Internal note", group: "Actions", icon: NotebookPen, defaults: () => ({ text: "" }) },
   close_chat: { label: "Close chat", group: "Actions", icon: CheckCircle2, defaults: () => ({}) },
   opt: { label: "Opt-in / out", group: "Actions", icon: BellRing, defaults: () => ({ action: "in" }) },
+  sheets_append: { label: "Google Sheets row", group: "Actions", icon: Sheet, defaults: () => ({ sheet: "", tab: "Sheet1", columns: ["{{name}}", "{{phone}}", "{{last_answer}}"] }) },
+  payment: { label: "Payment request", group: "Actions", icon: IndianRupee, defaults: () => ({ amount: "", description: "Your order", text: "Here's your payment link:", wait_hours: 24 }) },
   segment: { label: "Segment", group: "Actions", icon: Users, defaults: () => ({ action: "add", segment_name: "" }) },
 };
 
@@ -50,6 +52,9 @@ export function handleLabel(node: FlowNode, handle: string): string {
   if (handle === "invalid") return "Unexpected";
   if (handle === "timeout") return "No reply";
   if (handle === "open") return "Open";
+  if (handle === "failed") return "Failed";
+  if (handle === "paid") return "Paid";
+  if (handle === "not_paid") return `Not paid in ${Number(node.data["wait_hours"] ?? 24)}h`;
   if (handle === "closed") return "Closed";
   if (handle === "a") return `A (${Number(node.data["percent_a"] ?? 50)}%)`;
   if (handle === "b") return `B (${100 - Number(node.data["percent_a"] ?? 50)}%)`;
@@ -83,6 +88,8 @@ export function summary(node: FlowNode): string {
     case "segment": return `${d["action"] === "remove" ? "Remove from" : "Add to"} ${String(d["segment_name"] ?? "")}`;
     case "goto_flow": return String(d["flow_name"] ?? "Pick a flow");
     case "business_hours": return "Open / closed";
+    case "sheets_append": return `${((d["columns"] as string[]) ?? []).length} column(s) → sheet`;
+    case "payment": return `₹${String(d["amount"] ?? "")} · ${String(d["description"] ?? "")}`;
     default: return "";
   }
 }
