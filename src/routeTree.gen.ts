@@ -72,6 +72,7 @@ import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/pro
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiFlowsRunsRouteImport } from './routes/api/flows/runs'
+import { Route as ApiFlowsV2RouteImport } from './routes/api/flows/v2'
 import { Route as ApiHomeSummaryRouteImport } from './routes/api/home/summary'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-run'
@@ -436,6 +437,11 @@ const ApiFlowsRunsRoute = ApiFlowsRunsRouteImport.update({
   path: '/api/flows/runs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFlowsV2Route = ApiFlowsV2RouteImport.update({
+  id: '/api/flows/v2',
+  path: '/api/flows/v2',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHomeSummaryRoute = ApiHomeSummaryRouteImport.update({
   id: '/api/home/summary',
   path: '/api/home/summary',
@@ -756,6 +762,7 @@ export interface FileRoutesByFullPath {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
+  '/api/flows/v2': typeof ApiFlowsV2Route
   '/api/home/summary': typeof ApiHomeSummaryRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
@@ -866,6 +873,7 @@ export interface FileRoutesByTo {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
+  '/api/flows/v2': typeof ApiFlowsV2Route
   '/api/home/summary': typeof ApiHomeSummaryRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
@@ -979,6 +987,7 @@ export interface FileRoutesById {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
+  '/api/flows/v2': typeof ApiFlowsV2Route
   '/api/home/summary': typeof ApiHomeSummaryRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
@@ -1093,6 +1102,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/flows/runs'
+    | '/api/flows/v2'
     | '/api/home/summary'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
@@ -1203,6 +1213,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/flows/runs'
+    | '/api/flows/v2'
     | '/api/home/summary'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
@@ -1315,6 +1326,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/flows/runs'
+    | '/api/flows/v2'
     | '/api/home/summary'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
@@ -1407,6 +1419,7 @@ export interface RootRouteChildren {
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiFlowsRunsRoute: typeof ApiFlowsRunsRoute
+  ApiFlowsV2Route: typeof ApiFlowsV2Route
   ApiHomeSummaryRoute: typeof ApiHomeSummaryRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalAiRunRoute: typeof ApiInternalAiRunRoute
@@ -1893,6 +1906,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFlowsRunsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/flows/v2': {
+      id: '/api/flows/v2'
+      path: '/api/flows/v2'
+      fullPath: '/api/flows/v2'
+      preLoaderRoute: typeof ApiFlowsV2RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/home/summary': {
       id: '/api/home/summary'
       path: '/api/home/summary'
@@ -2342,6 +2362,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiFlowsRunsRoute: ApiFlowsRunsRoute,
+  ApiFlowsV2Route: ApiFlowsV2Route,
   ApiHomeSummaryRoute: ApiHomeSummaryRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalAiRunRoute: ApiInternalAiRunRoute,
