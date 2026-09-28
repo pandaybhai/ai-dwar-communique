@@ -90,17 +90,25 @@ export async function resolveAudienceContacts(
     ? await segmentExpressions(supabase, organizationId, filters)
     : { match: "all" as const, expressions: [] as string[] };
 
-  const { data } = await applySegment(
-    supabase
-      .from("contacts")
-      .select("id, name, phone, attributes")
-      .eq("organization_id", organizationId)
-      .eq("opt_in_status", "opted_in")
-      .limit(limit),
-    match,
-    expressions,
-  );
-  return (data as AudienceContact[]) ?? [];
+  // The Data API returns at most 1000 rows per read: page through.
+  const out: AudienceContact[] = [];
+  for (let from = 0; from < limit; from += 1000) {
+    const { data } = await applySegment(
+      supabase
+        .from("contacts")
+        .select("id, name, phone, attributes")
+        .eq("organization_id", organizationId)
+        .eq("opt_in_status", "opted_in")
+        .order("id")
+        .range(from, Math.min(from + 999, limit - 1)),
+      match,
+      expressions,
+    );
+    const rows = (data as AudienceContact[]) ?? [];
+    out.push(...rows);
+    if (rows.length < 1000) break;
+  }
+  return out;
 }
 
 export type SenderContext = {

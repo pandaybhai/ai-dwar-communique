@@ -108,3 +108,11 @@ export function describeCondition(c: SegmentCondition, tagName?: string): string
   if (c.operator === "between") return `${subject} ${op} ${c.value} and ${c.value2}`;
   return `${subject} ${op} ${c.field === "tag" ? (tagName ?? c.value) : c.value}`;
 }
+
+/** PostgREST expression for a tag rule, given every contact id carrying that tag. */
+export function tagExpression(operator: string, taggedIds: string[]): string {
+  const never = "id.is.null";
+  if (operator === "has") return taggedIds.length ? `id.in.(${taggedIds.join(",")})` : never;
+  // "does not have": everyone outside the tagged set, including contacts with no tags at all.
+  return taggedIds.length ? `id.not.in.(${taggedIds.join(",")})` : "id.not.is.null";
+}
