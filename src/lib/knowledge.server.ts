@@ -607,6 +607,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   if (home) seen += 1;
   done.add(start.toString());
 
+  const gonePages = new Set<string>();
   /** Highest-scoring address we have not read yet. */
   const takeNext = (): string | null => {
     let best: string | null = null;
@@ -647,6 +648,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       for (const next of batch) {
         const page = pages.get(next) ?? null;
         seen += 1;
+        if (page && (page.status === 404 || page.status === 410)) gonePages.add(next);
         if (page?.usedReader) readerCost += READER_COST;
         if (!page || !page.contentType?.toLowerCase().includes("text/html")) continue;
         // Every page we fetched widens the map of the site.
@@ -729,10 +731,22 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   // What the pages themselves said about products, remembered in one place.
   dropSharedImages(productDrafts);
   await saveCrawledProducts(supabase, organizationId, productDrafts);
-  if (!more && runLimit === 0) await hideMissingCrawledProducts(supabase, organizationId, origin, runStart);
+  const fullReadNow = mode === "full" && !more && !refreshing;
+  // The full site map: every address we know for this source, read or not.
+  const siteMap = new Set<string>([...done, ...mapped, ...candidates.keys()]);
+  if (fullReadNow) {
+    const { data: known } = await supabase
+      .from("knowledge_urls")
+      .select("url")
+      .eq("source_id", sourceId)
+      .limit(20000);
+    for (const row of (known ?? []) as Array<{ url: string }>) siteMap.add(row.url);
+    for (const url of gonePages) siteMap.delete(url);
+  }
+  lastReadForget = { fullReadComplete: fullReadNow, siteMap: Array.from(siteMap), gone: Array.from(gonePages) };
+  await hideMissingCrawledProducts(supabase, organizationId, origin, lastReadForget);
   const productsFound = await countCrawledProducts(supabase, organizationId, origin);
 
-  const fullReadNow = mode === "full" && !more && !refreshing;
   await supabase
     .from("knowledge_sources")
     .update({
@@ -930,6 +944,7 @@ export async function syncSource(
       }
     }
     embedDeferred = 0;
+    if (source.type === "website") lastReadForget = lastReadForget ?? null;
     for (const doc of documents) {
       await upsertDocument(supabase, source.organization_id, sourceId, doc);
     }
@@ -937,14 +952,41 @@ export async function syncSource(
 
     // Anything the source no longer has is forgotten, so a deleted page stops
     // being quoted at customers.
-    const keep = documents.map((d) => d.sourceRef);
-    if (keep.length > 0 && source.type !== "manual_qa") {
-      await supabase
-        .from("knowledge_documents")
-        .delete()
-        .eq("source_id", sourceId)
-        .not("source_ref", "in", `(${keep.map((k) => `"${k.replace(/"/g, '""')}"`).join(",")})`);
+    // Only a completed FULL read may forget pages, and only ones that are gone
+    // or no longer on the site map. Other source types report their whole list
+    // every time, so for them "not in this list" means gone.
+    if (source.type !== "manual_qa") {
+      const forget = source.type === "website" ? lastReadForget : {
+        fullReadComplete: documents.length > 0,
+        siteMap: documents.map((d) => d.sourceRef),
+        gone: [] as string[],
+      };
+      if (forget) {
+        const { planForget } = await import("@/lib/forget-rules");
+        const { data: rows } = await supabase
+          .from("knowledge_documents")
+          .select("id, source_ref")
+          .eq("source_id", sourceId)
+          .limit(20000);
+        const existing = (rows ?? []) as Array<{ id: string; source_ref: string }>;
+        const plan = planForget({ existing: existing.map((r) => r.source_ref), ...forget });
+        if (plan.skipped === "over_cap") {
+          console.error("[crawl] page forget skipped", JSON.stringify({ sourceId, candidates: plan.candidates, total: existing.length }));
+          await supabase.from("activity_log").insert({
+            organization_id: source.organization_id,
+            user_id: null,
+            action: "reading_forget_skipped",
+            details: { kind: "pages", source_id: sourceId, candidates: plan.candidates, total: existing.length },
+          });
+        } else if (plan.remove.length > 0) {
+          const remove = new Set(plan.remove);
+          const ids = existing.filter((r) => remove.has(r.source_ref)).map((r) => r.id);
+          for (let i = 0; i < ids.length; i += 200)
+            await supabase.from("knowledge_documents").delete().in("id", ids.slice(i, i + 200));
+        }
+      }
     }
+    lastReadForget = null;
 
     await supabase
       .from("knowledge_sources")
@@ -991,6 +1033,8 @@ export async function syncSource(
 
 /** Pages saved whose search index could not be built yet (per process, reset per sync). */
 let embedDeferred = 0;
+/** What the website read just finished tells the forget step. Null = unknown. */
+let lastReadForget: { fullReadComplete: boolean; siteMap: string[]; gone: string[] } | null = null;
 
 /**
  * Store one document and (re)build its chunks when the text has changed.

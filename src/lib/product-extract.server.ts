@@ -517,16 +517,40 @@ export async function hideMissingCrawledProducts(
   supabase: SupabaseClient,
   organizationId: string,
   origin: string,
-  since: string,
-): Promise<void> {
-  await supabase
+  read: { fullReadComplete: boolean; siteMap: Iterable<string>; gone: Iterable<string> },
+): Promise<{ hidden: number; skipped: string | null; candidates: number }> {
+  if (!read.fullReadComplete) return { hidden: 0, skipped: "partial_read", candidates: 0 };
+  const { planForget } = await import("@/lib/forget-rules");
+  const { data } = await supabase
     .from("products")
-    .update({ is_visible: false })
+    .select("id, product_url")
     .eq("organization_id", organizationId)
     .eq("source", CRAWL_SOURCE)
     .eq("is_visible", true)
-    .lt("synced_at", since)
-    .like("product_url", `${origin}%`);
+    .like("product_url", `${origin}%`)
+    .limit(10000);
+  const rows = ((data ?? []) as Array<{ id: string; product_url: string | null }>).filter((r) => r.product_url);
+  const plan = planForget({
+    existing: rows.map((r) => r.product_url as string),
+    fullReadComplete: true,
+    siteMap: read.siteMap,
+    gone: read.gone,
+  });
+  if (plan.skipped === "over_cap") {
+    console.error("[crawl] product hide skipped", JSON.stringify({ organizationId, origin, candidates: plan.candidates, total: rows.length }));
+    await supabase.from("activity_log").insert({
+      organization_id: organizationId,
+      user_id: null,
+      action: "reading_forget_skipped",
+      details: { kind: "products", origin, candidates: plan.candidates, total: rows.length },
+    });
+    return { hidden: 0, skipped: "over_cap", candidates: plan.candidates };
+  }
+  const remove = new Set(plan.remove);
+  const ids = rows.filter((r) => remove.has(r.product_url as string)).map((r) => r.id);
+  for (let i = 0; i < ids.length; i += 200)
+    await supabase.from("products").update({ is_visible: false }).in("id", ids.slice(i, i + 200));
+  return { hidden: ids.length, skipped: null, candidates: plan.candidates };
 }
 
 /** Which listing page links to which product, read off the listing pages. */
