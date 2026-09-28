@@ -27,6 +27,9 @@
 ## Flows v2 (flag flows_v2, Ai Dwar only)
 - [x] Drop 1 engine
 - [x] Drop 2a canvas, core steps, validation, publish/unpublish, versions, test chat, starters
-- [ ] Drop 2b competitor extras: CTA URL, location, contact card, carousel, typing delay, quiet nudge, set variable/calc, regex, business hours, note, close chat, opt-in/out + STOP, segments, team email, Google Sheets, round-robin, Razorpay payment, on-finish, duplicate, import/export, generate from description
+- [x] Drop 2b extras (built)
+- [ ] Team email — waits on email domain setup for aidwar.in
+- [ ] Google Sheets append — waits on per-workspace Google connection decision
+- [ ] Razorpay payment node — waits on merchant Razorpay key approach
 - [ ] Drop 3 triggers + per-step counts + inbox run log + live demo (ask before real sends)
 - [ ] Then Step 2 regressions, Forms Phase A, Aiden collects node
