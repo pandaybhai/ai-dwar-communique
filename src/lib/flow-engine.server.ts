@@ -47,10 +47,38 @@ const RUN_COLUMNS =
 const DEFAULT_REPLY_TIMEOUT_MIN = 24 * 60;
 const MAX_VISITS_PER_ADVANCE = 25;
 
+// Flag answers are reused for 30 s so one inbound message doesn't re-read
+// the flag tables four times (speed; a switch-off still lands within 30 s).
+const flagMemo = new Map<string, { on: boolean; exp: number }>();
 export async function flowsV2Enabled(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
+  const hit = flagMemo.get(organizationId);
+  if (hit && hit.exp > Date.now()) return hit.on;
   // One source of truth for flags: the same resolver the AI tools use.
   const { enabledFlags } = await import("@/lib/ai-tools.server");
-  return (await enabledFlags(supabase, organizationId)).has("flows_v2");
+  const on = (await enabledFlags(supabase, organizationId)).has("flows_v2");
+  flagMemo.set(organizationId, { on, exp: Date.now() + 30_000 });
+  return on;
+}
+
+/**
+ * Plain log rows (entered/exited/…) collected during one advance and written
+ * in a single insert at the end — each row used to cost a round trip. Rows
+ * carrying an idempotency key (sends) are always written immediately.
+ */
+type EventRow = { organization_id: string; run_id: string; node_id: string | null; event: string; detail: Record<string, unknown>; at: string };
+const eventBuffers = new Map<string, EventRow[]>();
+let lastEventMs = 0;
+function eventTime(): string {
+  // Strictly increasing so buffered rows keep their order in the run log.
+  lastEventMs = Math.max(Date.now(), lastEventMs + 1);
+  return new Date(lastEventMs).toISOString();
+}
+async function flushEvents(supabase: SupabaseClient, runId: string) {
+  const rows = eventBuffers.get(runId);
+  eventBuffers.delete(runId);
+  if (!rows || !rows.length) return;
+  const { error } = await supabase.from("flow_run_events").insert(rows);
+  if (error) throw new Error(`event_log_failed:${error.code ?? ""}:${error.message}`.slice(0, 280));
 }
 
 async function logEvent(
@@ -61,12 +89,18 @@ async function logEvent(
   detail: Record<string, unknown> = {},
   idempotencyKey?: string,
 ): Promise<boolean> {
+  const buffer = idempotencyKey ? null : eventBuffers.get(run.id);
+  if (buffer) {
+    buffer.push({ organization_id: run.organization_id, run_id: run.id, node_id: nodeId, event, detail, at: eventTime() });
+    return true;
+  }
   const { error } = await supabase.from("flow_run_events").insert({
     organization_id: run.organization_id,
     run_id: run.id,
     node_id: nodeId,
     event,
     detail,
+    at: eventTime(),
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
   });
   if (!error) return true;
