@@ -49,8 +49,18 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               loadReadingSettings(service),
               knowledge.planLimits(service, auth.organizationId),
             ]);
-            const sources = await Promise.all(
+            const withFailed = await Promise.all(
               rows.map(async (r) => {
+                const { count } = await auth.supabase
+                  .from("knowledge_documents")
+                  .select("id", { count: "exact", head: true })
+                  .eq("source_id", String(r["id"]))
+                  .eq("metadata->>prepare_failed", "true");
+                return { ...r, failed_pages: count ?? 0 };
+              }),
+            );
+            const sources = await Promise.all(
+              withFailed.map(async (r) => {
                 if (r["type"] !== "website") return r;
                 const { count } = await auth.supabase
                   .from("knowledge_urls")
@@ -120,6 +130,20 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               .eq("id", src.id);
             await logServerActivity(auth.supabase, auth.organizationId, auth.userId, action === "read_changes" ? "knowledge_read_changes" : "knowledge_read_more", { source_id: src.id }).catch(() => undefined);
             return Response.json({ ok: true });
+          }
+
+          if (action === "retry_failed") {
+            const sourceId = String(payload["source_id"] ?? "");
+            const { data: row } = await auth.supabase
+              .from("knowledge_sources")
+              .select("id")
+              .eq("id", sourceId)
+              .eq("organization_id", auth.organizationId)
+              .maybeSingle();
+            if (!row) return jsonError("That source isn't in this workspace.", 403);
+            const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+            const queued = await knowledge.retryFailedPreparation(getServiceClient(), auth.organizationId, sourceId);
+            return Response.json({ ok: true, queued });
           }
 
           if (action === "open") {
