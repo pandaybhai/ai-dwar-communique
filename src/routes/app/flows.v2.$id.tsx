@@ -60,7 +60,7 @@ function FlowEditorPage() {
 
   if (flagLoading || permsLoading || (!data && !error)) return <Skeleton className="h-[70vh] w-full rounded-2xl" />;
   if (!enabled) return <EmptyState icon={Lock} title="This isn't switched on for you yet" description="Chat flows aren't available on your account yet." />;
-  if (error || !data || !orgId) return <ErrorState title="Couldn't open this flow" description={error ?? "Please try again."} onRetry={() => void load()} />;
+  if (error || !data || !orgId) return <ErrorState message={error ?? "We couldn't open this flow. Refresh to try again."} />;
   if (data.graph.meta?.legacy) return <EmptyState icon={Workflow} title="This is a store flow" description="Store flows are edited on the Automatic messages page." />;
 
   return (

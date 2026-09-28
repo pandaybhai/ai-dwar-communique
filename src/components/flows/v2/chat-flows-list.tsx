@@ -38,14 +38,14 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
     void navigate({ to: "/app/flows/v2/$id", params: { id: data.flow_id } });
   };
 
-  if (error) return <ErrorState title="Couldn't load chat flows" description="Please try again." onRetry={() => void load()} />;
+  if (error) return <ErrorState message="We couldn't load your chat flows. Refresh to try again." />;
   if (!rows) return <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>;
 
   return (
     <div className="space-y-4">
       {canEdit && <div className="flex justify-end"><Button onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4" /> New chat flow</Button></div>}
       {rows.length === 0 ? (
-        <EmptyState icon={Workflow} title="No chat flows yet" description="Build menus, questions and hand-offs that run on their own — no AI needed." action={canEdit ? { label: "Create your first flow", onClick: () => setOpen(true) } : undefined} />
+        <EmptyState icon={Workflow} title="No chat flows yet" description="Build menus, questions and hand-offs that run on their own — no AI needed." action={canEdit ? <Button onClick={() => setOpen(true)}>Create your first flow</Button> : undefined} />
       ) : (
         <ul className="divide-y divide-border rounded-2xl border border-border bg-card">
           {rows.map((r) => (

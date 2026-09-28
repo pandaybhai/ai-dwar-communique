@@ -8,6 +8,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { FlowsView } from "@/components/flows/flows-view";
 import { SendsLog } from "@/components/flows/sends-log";
+import { ChatFlowsList } from "@/components/flows/v2/chat-flows-list";
 import type { FlowRow } from "@/lib/flows";
 
 export const Route = createFileRoute("/app/flows/")({
@@ -37,6 +38,7 @@ function FlowsPage() {
   const { can, loading: permsLoading } = usePermissions();
   const { enabled, loading: flagLoading } = useFeatureFlag("flows");
   const [flows, setFlows] = useState<FlowRow[]>([]);
+  const { enabled: v2 } = useFeatureFlag("flows_v2");
 
   return (
     <>
@@ -68,11 +70,17 @@ function FlowsPage() {
         <Tabs defaultValue="flows">
           <TabsList className="mb-6">
             <TabsTrigger value="flows">Your flows</TabsTrigger>
+            {v2 && <TabsTrigger value="chat">Chat flows</TabsTrigger>}
             <TabsTrigger value="log">What was sent</TabsTrigger>
           </TabsList>
           <TabsContent value="flows">
             <FlowsView organizationId={active.organization.id} onLoaded={setFlows} />
           </TabsContent>
+          {v2 && (
+            <TabsContent value="chat">
+              <ChatFlowsList organizationId={active.organization.id} />
+            </TabsContent>
+          )}
           <TabsContent value="log">
             <SendsLog
               organizationId={active.organization.id}
