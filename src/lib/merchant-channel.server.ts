@@ -312,7 +312,7 @@ export async function handleMerchantInbound(
         greeted === 2 ? " I'll go quiet now until you send a code." : "";
       await sendServiceText(supabase, {
         ...channel,
-        body: withPrefix(prefix, (await getScript(supabase), "stranger_reply")) + quietNote,
+        body: withPrefix(prefix, (await getScript(supabase, "stranger_reply")) + quietNote),
         metadata: { kind: "stranger_greeting" },
       });
     }
