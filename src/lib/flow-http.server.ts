@@ -89,7 +89,7 @@ export async function runHttpRequest(spec: HttpSpec, ctx: RunContext): Promise<H
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url.toString(), { method, headers, body, signal: ctl.signal, redirect: "manual" });
+    const res = await fetch(url.toString(), { method, headers, body: body ?? null, signal: ctl.signal, redirect: "manual" });
     if (res.status >= 300 && res.status < 400) return { ok: false, status: res.status, error: "redirect_not_followed", saved, preview: "" };
     const text = (await res.text()).slice(0, 100_000);
     let json: unknown = null;

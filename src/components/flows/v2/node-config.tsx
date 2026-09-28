@@ -385,7 +385,7 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
 }
 
 
-function HttpConfig({ d, set, testHttp }: { d: Record<string, unknown>; set: (k: string, v: unknown) => void; testHttp?: (data: Record<string, unknown>) => Promise<string> }) {
+function HttpConfig({ d, set, testHttp }: { d: Record<string, unknown>; set: (k: string, v: unknown) => void; testHttp?: ((data: Record<string, unknown>) => Promise<string>) | undefined }) {
   const [result, setResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const headers = (d["headers"] as Array<{ key: string; value: string }> | undefined) ?? [];
