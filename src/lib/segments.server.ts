@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  tagExpression,
   NO_VALUE_OPERATORS,
   normalizeFilters,
   usableConditions,
