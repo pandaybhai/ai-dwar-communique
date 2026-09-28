@@ -59,7 +59,13 @@ export type FlowEdge = {
 export type FlowGraph = {
   nodes: FlowNode[];
   edges: FlowEdge[];
-  meta?: { legacy?: boolean; flow_key?: string };
+  meta?: {
+    legacy?: boolean;
+    flow_key?: string;
+    /** Runs when the flow ends normally. */
+    on_finish?: { tag?: string; needs_you?: string; close_chat?: boolean };
+    business_hours?: BusinessHours;
+  };
 };
 
 export type Condition = {
