@@ -509,6 +509,15 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
           flowRuns = { error: error instanceof Error ? error.message : String(error) };
         }
 
+        // Flows v2 "no reply for N days" triggers. Isolated too.
+        let noReply: Record<string, unknown> = {};
+        try {
+          const { dispatchNoReply } = await import("@/lib/flow-triggers.server");
+          noReply = await dispatchNoReply(supabase);
+        } catch (error) {
+          noReply = { error: error instanceof Error ? error.message : String(error) };
+        }
+
         return Response.json({
           flow_runs: flowRuns,
           claimed: batch.length,

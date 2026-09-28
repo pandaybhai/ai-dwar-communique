@@ -460,5 +460,18 @@ export async function handleFormReply(
     // a flow problem must never lose the saved answers
   }
 
+  // Flows v2: "form submitted" triggers (any form, or one specific form).
+  try {
+    const { dispatchFormSubmitted } = await import("@/lib/flow-triggers.server");
+    await dispatchFormSubmitted(supabase, {
+      organizationId: args.organizationId,
+      contactId: args.contactId,
+      conversationId: args.conversationId,
+      formId: (form?.id as string | undefined) ?? null,
+    });
+  } catch {
+    // same rule: never lose the saved answers
+  }
+
   return { saved: true, text };
 }
