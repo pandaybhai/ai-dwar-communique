@@ -339,7 +339,7 @@ export async function upsertOrder(
     const { scheduleFlow, cancelScheduledSends, cancelRecoveredCheckouts, warnIfFlowSilent } =
       await import("@/lib/flows.server");
     const outcomes: Array<{ scheduled: number; reason?: string }> = [];
-    const schedule = async (event: string) =>
+    const schedule = async (event: string) => {
       outcomes.push(
         await scheduleFlow(ctx.supabase, {
           organizationId: ctx.organizationId,
@@ -350,6 +350,19 @@ export async function upsertOrder(
           event,
         }),
       );
+      // Flows v2 "store event" triggers run alongside the legacy flow.
+      try {
+        const { dispatchStoreEvent } = await import("@/lib/flow-triggers.server");
+        await dispatchStoreEvent(ctx.supabase, {
+          organizationId: ctx.organizationId,
+          contactId: match.contactId,
+          event,
+          detail: { order_id: orderId },
+        });
+      } catch {
+        // a v2 trigger problem must never affect the store sync
+      }
+    };
 
     if (!previous) {
       await schedule("order_created");
