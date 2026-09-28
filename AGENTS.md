@@ -9,3 +9,4 @@
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
 - Flows v2 runs live in flow_runs/flow_versions/flow_run_events and execute only via src/lib/flow-engine.server.ts (minute tick in flow-worker + webhook reply hook); legacy event flows keep flows/flow_steps/scheduled_sends — why: v2 must never change how existing store flows behave.
+- Merchant-owned third-party accounts (Google, Razorpay for flows) live in workspace_connections with secrets only in Vault via service-role RPCs — why: secrets must never reach client-readable tables.

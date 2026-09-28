@@ -29,7 +29,8 @@
 - [x] Drop 2a canvas, core steps, validation, publish/unpublish, versions, test chat, starters
 - [x] Drop 2b extras (built)
 - [ ] Team email — waits on email domain setup for aidwar.in
-- [ ] Google Sheets append — waits on per-workspace Google connection decision
-- [ ] Razorpay payment node — waits on merchant Razorpay key approach
+- [x] Google Sheets step + merchant connects own Google (built)
+- [ ] Google sign-in client for AiDwar — waits on user creating it in Google Cloud
+- [x] Payment request step on merchant's own Razorpay (built)
 - [ ] Drop 3 triggers + per-step counts + inbox run log + live demo (ask before real sends)
 - [ ] Then Step 2 regressions, Forms Phase A, Aiden collects node
