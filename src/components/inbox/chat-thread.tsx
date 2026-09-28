@@ -9,6 +9,7 @@ import {
   Loader2,
   MessageSquareText,
   Paperclip,
+  ClipboardList,
   Send,
   Sparkles,
   Tags,
@@ -26,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { CorrectionDialog } from "@/components/inbox/correction-dialog";
+import { SendFormButton } from "@/components/inbox/send-form-button";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
 import { languageLabel } from "@/lib/languages";
@@ -241,6 +243,26 @@ function useAiRuns(organizationId: string | null, conversationId: string) {
   }, [runs]);
 }
 
+/** A filled-in WhatsApp form, read as "question: answer" rows. */
+function FormAnswers({ name, answers }: { name: string; answers: Array<{ label: string; value: string }> }) {
+  return (
+    <div className="min-w-[200px]">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-primary">
+        <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
+        {name}
+      </p>
+      <dl className="space-y-1">
+        {answers.map((a, i) => (
+          <div key={`${a.label}-${i}`} className="grid grid-cols-[auto_1fr] gap-x-2">
+            <dt className="text-muted-foreground">{a.label}:</dt>
+            <dd className="break-words font-medium">{a.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 function Bubble({
   message,
   organizationId,
@@ -273,7 +295,14 @@ function Bubble({
           {message.media_url ? (
             <MessageMedia message={message} organizationId={organizationId} label={text} />
           ) : null}
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
+          {message.type === "form_reply" && Array.isArray(message.metadata?.["answers"]) ? (
+            <FormAnswers
+              name={String(message.metadata?.["form_name"] ?? "Form")}
+              answers={message.metadata?.["answers"] as Array<{ label: string; value: string }>}
+            />
+          ) : (
+            <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
+          )}
           <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
             <span>{clockTime(message.created_at)}</span>
             {outbound ? <StatusTicks message={message} /> : null}
@@ -725,6 +754,7 @@ export function ChatThread({
               rows={1}
               className="max-h-32 min-h-11 resize-none rounded-2xl"
             />
+            <SendFormButton organizationId={organizationId} conversationId={conversation.id} />
             <Button
               className="h-11 w-11 shrink-0 rounded-full p-0"
               disabled={!draft.trim() || sending}
