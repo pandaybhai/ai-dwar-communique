@@ -392,13 +392,8 @@ export function computeVariable(
       return Number.isFinite(n) ? String(n) : "0";
     });
     if (!/^[\d\s.+\-*/()]+$/.test(replaced) || !replaced.trim()) return null;
-    try {
-      const v = Function(`"use strict"; return (${replaced});`)() as number;
-      if (!Number.isFinite(v)) return null;
-      return String(Math.round(v * 100) / 100);
-    } catch {
-      return null;
-    }
+    const v = evalArith(replaced);
+    return v == null || !Number.isFinite(v) ? null : String(Math.round(v * 100) / 100);
   }
   if (mode === "date") {
     const m = expr.trim().match(/^(.*?)(?:\s*([+-])\s*(\d+))?$/);
@@ -420,4 +415,41 @@ export function computeVariable(
     return fmtDate(out, ctx.timezone);
   }
   return interpolate(expr, ctx);
+}
+
+/** Tiny + - * / ( ) evaluator — no eval (not allowed on the server runtime). */
+export function evalArith(src: string): number | null {
+  const tokens = src.match(/\d+(?:\.\d+)?|[+\-*/()]/g);
+  if (!tokens) return null;
+  let i = 0;
+  const peek = () => tokens[i];
+  const factor = (): number | null => {
+    const t = tokens[i++];
+    if (t === "-") { const f = factor(); return f == null ? null : -f; }
+    if (t === "(") { const v = expr(); if (tokens[i++] !== ")") return null; return v; }
+    if (t != null && /^\d/.test(t)) return Number(t);
+    return null;
+  };
+  const term = (): number | null => {
+    let v = factor();
+    while (v != null && (peek() === "*" || peek() === "/")) {
+      const op = tokens[i++];
+      const r = factor();
+      if (r == null) return null;
+      v = op === "*" ? v * r : v / r;
+    }
+    return v;
+  };
+  const expr = (): number | null => {
+    let v = term();
+    while (v != null && (peek() === "+" || peek() === "-")) {
+      const op = tokens[i++];
+      const r = term();
+      if (r == null) return null;
+      v = op === "+" ? v + r : v - r;
+    }
+    return v;
+  };
+  const out = expr();
+  return i === tokens.length ? out : null;
 }
