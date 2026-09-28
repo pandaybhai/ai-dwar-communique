@@ -67,7 +67,7 @@ function norm(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function keywordMatches(config: Record<string, unknown>, body: string): boolean {
+export function keywordMatches(config: Record<string, unknown>, body: string): boolean {
   const keywords = ((config["keywords"] as string[] | undefined) ?? []).map(norm).filter(Boolean);
   if (!keywords.length) return false;
   const text = norm(body);
