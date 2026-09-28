@@ -1076,6 +1076,39 @@ export async function processWebhookPayload(
                   replyId,
                 });
                 if (taken.consumed) continue;
+
+                // No run was waiting — see whether this message starts one.
+                // First message ever → CTWA ad → campaign button → keyword;
+                // the first matching trigger wins. Onboarding-number messages
+                // skip this (the owner channel handles them below).
+                if (!(onboardingAccountId && accountId === onboardingAccountId)) {
+                  try {
+                    const { dispatchInboundTriggers } = await import("@/lib/flow-triggers.server");
+                    let campaignButton: { campaignId: string | null; button: string | null } | null = null;
+                    const ctxId = (msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined;
+                    if (replyId && ctxId) {
+                      const { data: ctxMsg } = await supabase
+                        .from("messages")
+                        .select("campaign_id")
+                        .eq("meta_message_id", ctxId)
+                        .maybeSingle();
+                      const cid = (ctxMsg?.campaign_id as string | null) ?? null;
+                      if (cid) campaignButton = { campaignId: cid, button: replyId };
+                    }
+                    const started = await dispatchInboundTriggers(supabase, {
+                      organizationId: orgId,
+                      contactId: contact.id as string,
+                      conversationId: conversation.id as string,
+                      body: body ?? "",
+                      isFirstMessageEver: contactAge >= 0 && contactAge < 10_000,
+                      isCtwa: Boolean(msg["referral"]),
+                      campaignButton,
+                    });
+                    if (started.started) continue;
+                  } catch (error) {
+                    console.error("[flows-v2] triggers failed", error instanceof Error ? error.message : String(error));
+                  }
+                }
               } catch (error) {
                 console.error("[flows-v2] inbound failed", error instanceof Error ? error.message : String(error));
               }

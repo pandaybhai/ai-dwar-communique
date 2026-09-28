@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { FlowRunBanner } from "@/components/inbox/flow-run-banner";
+import { FlowRunHistory } from "@/components/inbox/flow-run-history";
 import { SendFormButton } from "@/components/inbox/send-form-button";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -556,6 +557,9 @@ export function ChatThread({
         <Button variant="outline" size="sm" className="rounded-full" onClick={onToggleStatus}>
           {conversation.status === "closed" ? "Reopen" : "Close"}
         </Button>
+        {conversation.contact && organizationId ? (
+          <FlowRunHistory organizationId={organizationId} contactId={conversation.contact.id} conversationId={conversation.id} />
+        ) : null}
       </header>
 
       {conversation.contact && organizationId ? (

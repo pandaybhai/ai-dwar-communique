@@ -4,7 +4,7 @@ import {
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange, useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles } from "lucide-react";
+import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles, Zap } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +20,7 @@ import { FlowNodeCard, type RFData } from "./flow-node";
 import { NODE_META, uid } from "./node-meta";
 import { NodeConfig, type Pickers } from "./node-config";
 import { SimulatorPanel } from "./simulator-panel";
+import { TriggersPanel } from "./triggers-panel";
 
 type RFNode = Node<RFData>;
 type Snapshot = { nodes: RFNode[]; edges: Edge[] };
@@ -75,6 +76,7 @@ type Props = {
   pickers: Pickers;
   versions: VersionRow[];
   stats?: Record<string, { entered: number; exited: number; dropped: number }>;
+  tags?: string[];
   onChanged: (remount?: boolean) => void;
   aiOn?: boolean;
 };
@@ -87,11 +89,12 @@ export function FlowEditor(props: Props) {
   );
 }
 
-function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, onChanged, aiOn }: Props) {
+function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, tags, onChanged, aiOn }: Props) {
   const rf = useReactFlow();
   const navigate = useNavigate();
   const [meta, setMeta] = useState<NonNullable<FlowGraph["meta"]>>(() => initial.meta ?? {});
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [triggersOpen, setTriggersOpen] = useState(false);
   const [genOpen, setGenOpen] = useState(false);
   const [genText, setGenText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -330,6 +333,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
             <Button size="sm" variant="ghost" onClick={() => { commit({ ...snap, nodes: autoLayout(snap) }); setTimeout(() => rf.fitView({ duration: 250 }), 50); }}><LayoutGrid className="mr-1 h-4 w-4" /> Tidy</Button>
           </>)}
           <Button size="sm" variant="ghost" onClick={() => setHistOpen(true)}><History className="mr-1 h-4 w-4" /> Versions</Button>
+          <Button size="sm" variant="ghost" onClick={() => setTriggersOpen(true)}><Zap className="mr-1 h-4 w-4" /> Triggers</Button>
           <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)}><Settings2 className="mr-1 h-4 w-4" /> Flow settings</Button>
           <Button size="icon" variant="ghost" aria-label="Export" title="Export JSON" onClick={exportJson}><Download className="h-4 w-4" /></Button>
           {canEdit && (<>
@@ -409,6 +413,13 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
         <SheetContent className="flex w-full flex-col sm:max-w-md">
           <SheetHeader><SheetTitle>Test this flow</SheetTitle></SheetHeader>
           <div className="min-h-0 flex-1 pt-2">{simOpen && <SimulatorPanel graph={graph} onPath={onPath} />}</div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={triggersOpen} onOpenChange={setTriggersOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+          <SheetHeader><SheetTitle>Triggers</SheetTitle></SheetHeader>
+          <TriggersPanel organizationId={organizationId} flowId={flowId} canEdit={canEdit} forms={pickers.forms} tags={tags ?? []} />
         </SheetContent>
       </Sheet>
 

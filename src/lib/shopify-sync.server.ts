@@ -339,7 +339,7 @@ export async function upsertOrder(
     const { scheduleFlow, cancelScheduledSends, cancelRecoveredCheckouts, warnIfFlowSilent } =
       await import("@/lib/flows.server");
     const outcomes: Array<{ scheduled: number; reason?: string }> = [];
-    const schedule = async (event: string) =>
+    const schedule = async (event: string) => {
       outcomes.push(
         await scheduleFlow(ctx.supabase, {
           organizationId: ctx.organizationId,
@@ -350,6 +350,20 @@ export async function upsertOrder(
           event,
         }),
       );
+      // Flows v2 "store event" triggers run alongside the legacy flow.
+      try {
+        const { dispatchStoreEvent } = await import("@/lib/flow-triggers.server");
+        if (match.contactId)
+          await dispatchStoreEvent(ctx.supabase, {
+            organizationId: ctx.organizationId,
+            contactId: match.contactId,
+            event,
+            detail: { order_id: orderId },
+          });
+      } catch {
+        // a v2 trigger problem must never affect the store sync
+      }
+    };
 
     if (!previous) {
       await schedule("order_created");
@@ -562,6 +576,20 @@ export async function upsertCheckout(ctx: SyncContext, checkout: AnyRecord): Pro
       triggerType: "abandoned_checkout",
       triggerId: checkoutId,
     });
+    // Flows v2: a "store event" trigger set to abandoned_checkout starts too.
+    // The legacy flow above is untouched and keeps its own scheduler.
+    try {
+      const { dispatchStoreEvent } = await import("@/lib/flow-triggers.server");
+      if (match.contactId)
+        await dispatchStoreEvent(ctx.supabase, {
+          organizationId: ctx.organizationId,
+          contactId: match.contactId,
+          event: "abandoned_checkout",
+          detail: { checkout_id: checkoutId },
+        });
+    } catch {
+      // a v2 trigger problem must never affect the store sync
+    }
     await warnIfFlowSilent(ctx.supabase, {
       organizationId: ctx.organizationId,
       flowKey: "abandoned_checkout",

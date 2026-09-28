@@ -180,6 +180,15 @@ export const Route = createFileRoute("/api/contacts/import")({
                 }));
               if (links.length) {
                 await supabase.from("contact_tags").upsert(links, { onConflict: "contact_id,tag_id" });
+                // Flows v2 "tag added" triggers. Fire-and-forget per tag.
+                try {
+                  const { dispatchTagAdded } = await import("@/lib/flow-triggers.server");
+                  for (const n of rowTags) {
+                    await dispatchTagAdded(supabase, { organizationId, contactId: contactId as string, tag: n });
+                  }
+                } catch {
+                  // a trigger problem must never fail the import
+                }
               }
             }
           }
