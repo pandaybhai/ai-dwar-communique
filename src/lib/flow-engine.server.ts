@@ -963,6 +963,92 @@ async function advanceInner(
         await waitFor("payment", hours * 60);
         return;
       }
+      case "http": {
+        const { runHttpRequest } = await import("@/lib/flow-http.server");
+        const res = await runHttpRequest(d as never, { ...env.ctx, vars });
+        Object.assign(vars, res.saved);
+        vars["http_status"] = res.status == null ? "" : String(res.status);
+        await logEvent(supabase, run, node.id, res.ok ? "http_ok" : "http_failed", { status: res.status, error: res.error, saved: Object.keys(res.saved) });
+        if (!(await follow(node, res.ok ? "success" : "failed"))) return;
+        continue;
+      }
+      case "email_team": {
+        const c = { ...env.ctx, vars };
+        const userIds = ((d["user_ids"] as string[] | undefined) ?? []).filter(Boolean);
+        const addresses = new Set(String(d["addresses"] ?? "").split(/[,\s]+/).map((a) => a.trim().toLowerCase()).filter((a) => a.includes("@")));
+        if (userIds.length) {
+          // Only teammates of this workspace can be emailed.
+          const { data: members } = await supabase.from("organization_members").select("user_id").eq("organization_id", run.organization_id).in("user_id", userIds);
+          const ok = ((members ?? []) as Array<{ user_id: string }>).map((m) => m.user_id);
+          if (ok.length) {
+            const { data: profs } = await supabase.from("profiles").select("email").in("id", ok);
+            for (const p of (profs ?? []) as Array<{ email: string | null }>) if (p.email) addresses.add(p.email.toLowerCase());
+          }
+        }
+        const { sendEmail } = await import("@/lib/email.server");
+        const subject = interpolate(String(d["subject"] ?? "From your chat flow"), c).slice(0, 200);
+        const bodyText = interpolate(String(d["body"] ?? ""), c).slice(0, 5000);
+        let sent = 0;
+        let lastError: string | null = null;
+        for (const to of [...addresses].slice(0, 20)) {
+          const r = await sendEmail({ to, subject, body: bodyText });
+          if (r.ok) sent += 1;
+          else lastError = r.error ?? "email_failed";
+        }
+        // Recipients are counted, never listed, in the run log.
+        await logEvent(supabase, run, node.id, sent ? "email_sent" : "email_failed", { recipients: addresses.size, sent, error: lastError });
+        if (!sent) {
+          if (!(await follow(node, edgeFrom(graph, node.id, "failed") ? "failed" : "next"))) return;
+          continue;
+        }
+        break;
+      }
+      case "wait_until": {
+        if (waitingHere && woke && run.waiting_for === "timer") {
+          woke = false;
+          run.status = "running";
+          break;
+        }
+        const { parseWaitDate } = await import("@/lib/flow-graph");
+        const c = { ...env.ctx, vars };
+        const raw = d["mode"] === "field" ? interpolate(`{{${String(d["field"] ?? "").trim()}}}`, c) : interpolate(String(d["date"] ?? ""), c);
+        const target = parseWaitDate(raw, env.ctx.timezone);
+        if (!target) {
+          await logEvent(supabase, run, node.id, "wait_until_skipped", { reason: "unreadable_date" });
+          break;
+        }
+        const minutes = Math.ceil((target.getTime() - Date.now()) / 60_000);
+        if (minutes <= 0) {
+          await logEvent(supabase, run, node.id, "wait_until_skipped", { reason: "date_passed" });
+          break;
+        }
+        await logEvent(supabase, run, node.id, "wait_until", { until: target.toISOString() });
+        await waitFor("timer", minutes);
+        return;
+      }
+      case "order_draft": {
+        const c = { ...env.ctx, vars };
+        const totalRaw = interpolate(String(d["total"] ?? ""), c).replace(/[^\d.]/g, "");
+        const { data: draft, error } = await supabase
+          .from("flow_order_drafts")
+          .insert({
+            organization_id: run.organization_id,
+            flow_id: run.flow_id,
+            run_id: run.id,
+            contact_id: run.contact_id,
+            conversation_id: run.conversation_id,
+            items: interpolate(String(d["items"] ?? ""), c).slice(0, 2000),
+            total: totalRaw && Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : null,
+            notes: interpolate(String(d["notes"] ?? ""), c).slice(0, 2000),
+          })
+          .select("id")
+          .single();
+        if (error || !draft) throw new Error(`order_draft_failed:${error?.message ?? ""}`);
+        vars["order_draft_id"] = (draft as { id: string }).id;
+        await logEvent(supabase, run, node.id, "order_draft_created", { id: (draft as { id: string }).id });
+        if (d["needs_you"] !== false) await markNeedsYou(supabase, run, "New order draft from a chat flow — please confirm it.");
+        break;
+      }
       default:
         await finish("failed", "failed", { error: `unknown_node:${node.type}` });
         return;
