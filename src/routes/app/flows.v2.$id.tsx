@@ -36,6 +36,7 @@ function FlowEditorPage() {
   const orgId = active?.organization.id ?? null;
   const [data, setData] = useState<Loaded | null>(null);
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; status: string }>>([]);
+  const [extra, setExtra] = useState<{ segments: string[]; flows: Array<{ id: string; name: string }>; products: Array<{ retailer_id: string; title: string }>; aiOn: boolean }>({ segments: [], flows: [], products: [], aiOn: false });
   const [error, setError] = useState<string | null>(null);
   const [rev, setRev] = useState(0);
 
@@ -47,6 +48,18 @@ function FlowEditorPage() {
       aidwar.from("message_templates").select("id, name, status").eq("organization_id", orgId).order("name"),
     ]);
     if (e1 || !flow) { setError("We couldn't find this flow."); return; }
+    const [{ data: segs }, { data: others }, { data: prods }, { data: agent }] = await Promise.all([
+      aidwar.from("segments").select("name").eq("organization_id", orgId).order("name"),
+      aidwar.from("flows").select("id, name").eq("organization_id", orgId).like("key", "v2:%").neq("id", id).order("name"),
+      aidwar.from("products").select("id, external_id, sku, title, source, meta_synced_at").eq("organization_id", orgId).or("source.eq.meta_catalog,meta_synced_at.not.is.null").order("title").limit(300),
+      aidwar.from("ai_agents").select("mode").eq("organization_id", orgId).eq("is_default", true).maybeSingle(),
+    ]);
+    setExtra({
+      segments: ((segs ?? []) as Array<{ name: string }>).map((x) => x.name),
+      flows: (others ?? []) as Array<{ id: string; name: string }>,
+      products: ((prods ?? []) as Array<{ id: string; external_id: string | null; sku: string | null; title: string }>).map((x) => ({ retailer_id: x.external_id ?? x.sku ?? x.id, title: x.title })),
+      aiOn: ["draft", "replying"].includes(String((agent as { mode?: string } | null)?.mode ?? "off")),
+    });
     const rows = (vers ?? []) as Array<VersionRow & { graph: FlowGraph }>;
     const draft = rows.find((r) => r.status === "draft");
     const pub = rows.find((r) => r.status === "published");
@@ -74,7 +87,8 @@ function FlowEditorPage() {
         initial={data.graph}
         published={data.published}
         canEdit={can("ai.configure")}
-        pickers={{ templates, forms, variables: [], contactFields: ["email", "city", "pincode"] }}
+        pickers={{ templates, forms, variables: [], contactFields: ["email", "city", "pincode"], segments: extra.segments, flows: extra.flows, products: extra.products }}
+        aiOn={extra.aiOn}
         versions={data.versions}
         onChanged={(remount) => void load().then(() => remount && setRev((r) => r + 1))}
       />

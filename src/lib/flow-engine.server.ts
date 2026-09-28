@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   MAX_RUN_AGE_DAYS,
   MAX_STEPS_PER_RUN,
+  computeVariable,
   edgeFrom,
+  isBusinessOpen,
   interpolate,
   pickBranch,
   startNode,
@@ -313,6 +315,7 @@ async function advance(
   const finish = async (status: "done" | "failed" | "cancelled" | "expired", event: string, detail: Record<string, unknown> = {}) => {
     await save({ status, wake_at: null, waiting_for: null, ended_at: new Date().toISOString(), ...(status === "failed" ? { last_error: String(detail["error"] ?? event) } : {}) });
     await logEvent(supabase, run, nodeId, event, detail);
+    if (status === "done" && graph.meta?.on_finish) await runOnFinish(supabase, run, graph.meta.on_finish, { ...env.ctx, vars });
   };
   const waitFor = async (kind: "reply" | "timer", minutes: number) => {
     await save({ status: "waiting", waiting_for: kind, wake_at: new Date(Date.now() + minutes * 60_000).toISOString() });
@@ -362,7 +365,7 @@ async function advance(
     const awaitingReply = waitingHere && run.waiting_for === "reply";
     if (!waitingHere) await logEvent(supabase, run, node.id, "entered", { type: node.type });
 
-    const needsWindow = ["text", "buttons", "list", "ask", "form"].includes(node.type);
+    const needsWindow = ["text", "buttons", "list", "ask", "form", "cta_url", "location_request", "location_send", "contact_card", "carousel"].includes(node.type);
     const sendsMessage = needsWindow || node.type === "template";
 
     // Quiet hours hold proactive sends (not replies to a message just received).
@@ -388,15 +391,43 @@ async function advance(
     }
 
     // ---- nodes that wait for the customer ----
-    if (node.type === "buttons" || node.type === "list" || node.type === "ask") {
+    if (sendsMessage && !awaitingReply && Number(d["typing_seconds"] ?? 0) > 0) {
+      // Typing delay: a short, human pause before the message (capped at 5 s).
+      await new Promise((r) => setTimeout(r, Math.min(Number(d["typing_seconds"]), 5) * 1000));
+    }
+
+    if (node.type === "buttons" || node.type === "list" || node.type === "ask" || node.type === "location_request") {
+      const timeoutMin = Number(d["timeout_minutes"] ?? DEFAULT_REPLY_TIMEOUT_MIN);
+      const nudgeMin = Number(d["nudge_minutes"] ?? 0);
+      const nudgeText = String(d["nudge_text"] ?? "").trim();
+      const nudged = () => Boolean((vars["_nudged"] as Record<string, boolean> | undefined)?.[node.id]);
       if (!awaitingReply) {
         bumpAttempt(node.id);
+        if (vars["_nudged"]) vars["_nudged"] = { ...(vars["_nudged"] as Record<string, boolean>), [node.id]: false };
         const ok = await sendPrompt(supabase, run, env, node, `${run.id}:${node.id}:${attemptOf(node.id)}`);
         if (!ok.ok) {
           await finish("failed", "failed", { error: ok.error ?? "send_failed" });
           return;
         }
-        await waitFor("reply", Number(d["timeout_minutes"] ?? DEFAULT_REPLY_TIMEOUT_MIN));
+        await waitFor("reply", nudgeMin > 0 && nudgeText && nudgeMin < timeoutMin ? nudgeMin : timeoutMin);
+        return;
+      }
+      // Quiet customer: one reminder, then wait out the rest before the timeout path.
+      if (woke && !reply && nudgeMin > 0 && nudgeText && nudgeMin < timeoutMin && !nudged()) {
+        vars["_nudged"] = { ...((vars["_nudged"] as Record<string, boolean> | undefined) ?? {}), [node.id]: true };
+        if (env.windowOpen && env.conn && (await logEvent(supabase, run, node.id, "nudge", {}, `${run.id}:${node.id}:nudge:${attemptOf(node.id)}`))) {
+          const { sendServiceText } = await import("@/lib/service-text.server");
+          await sendServiceText(supabase, {
+            organizationId: run.organization_id,
+            phoneNumberId: env.conn.phoneNumberId,
+            accessToken: env.conn.accessToken,
+            conversationId: run.conversation_id!,
+            to: env.to,
+            body: interpolate(nudgeText, { ...env.ctx, vars }),
+            metadata: { kind: "flow_v2", run_id: run.id, node_id: node.id },
+          });
+        }
+        await waitFor("reply", timeoutMin - nudgeMin);
         return;
       }
       // Timer woke us: the reply never came.
@@ -441,7 +472,7 @@ async function advance(
         await finish("failed", "failed", { error: ok.error ?? "send_failed" });
         return;
       }
-      await waitFor("reply", Number(d["timeout_minutes"] ?? DEFAULT_REPLY_TIMEOUT_MIN));
+      await waitFor("reply", timeoutMin);
       return;
     }
 
@@ -539,7 +570,7 @@ async function advance(
       }
       case "assign":
         if (run.conversation_id) {
-          const userId = String(d["user_id"] ?? "").trim();
+          const userId = d["mode"] === "round_robin" ? await pickRoundRobin(supabase, run.organization_id) : String(d["user_id"] ?? "").trim();
           await supabase
             .from("conversations")
             .update(userId ? { assigned_to: userId } : { needs_human: true, needs_human_reason: "flow_assign", needs_human_at: new Date().toISOString() })
@@ -548,6 +579,112 @@ async function advance(
         break;
       case "needs_you":
         await markNeedsYou(supabase, run, String(d["note"] ?? "A flow asked for a person."));
+        break;
+      case "cta_url":
+      case "location_send":
+      case "contact_card": {
+        bumpAttempt(node.id);
+        const key = `${run.id}:${node.id}:${attemptOf(node.id)}`;
+        if (await logEvent(supabase, run, node.id, "send", {}, key)) {
+          const { sendServiceRich } = await import("@/lib/service-text.server");
+          const c = { ...env.ctx, vars };
+          const res = await sendServiceRich(supabase, {
+            organizationId: run.organization_id,
+            phoneNumberId: env.conn!.phoneNumberId,
+            accessToken: env.conn!.accessToken,
+            conversationId: run.conversation_id!,
+            to: env.to,
+            kind: node.type === "cta_url" ? "cta_url" : node.type === "location_send" ? "location" : "contact",
+            body: interpolate(String(d["text"] ?? ""), c),
+            buttonText: interpolate(String(d["button_text"] ?? "Open"), c),
+            url: interpolate(String(d["url"] ?? ""), c),
+            latitude: Number(d["latitude"]),
+            longitude: Number(d["longitude"]),
+            name: interpolate(String(d["name"] ?? ""), c),
+            address: interpolate(String(d["address"] ?? ""), c),
+            phone: String(d["phone"] ?? ""),
+          });
+          if (!res.ok) {
+            await finish("failed", "failed", { error: res.error ?? "send_failed" });
+            return;
+          }
+        }
+        break;
+      }
+      case "carousel": {
+        bumpAttempt(node.id);
+        const key = `${run.id}:${node.id}:${attemptOf(node.id)}`;
+        if (await logEvent(supabase, run, node.id, "send", {}, key)) {
+          const ids = ((d["retailer_ids"] as string[] | undefined) ?? []).slice(0, 10);
+          const titles = (d["titles"] as Record<string, string> | undefined) ?? {};
+          const { sendCatalogProducts } = await import("@/lib/whatsapp-catalog.server");
+          const res = await sendCatalogProducts(supabase, {
+            organizationId: run.organization_id,
+            conversationId: run.conversation_id!,
+            phoneNumberId: env.conn!.phoneNumberId,
+            accessToken: env.conn!.accessToken,
+            to: env.to,
+            items: ids.map((id) => ({ retailerId: id, title: titles[id] ?? id, category: null, inCatalog: true })),
+          });
+          if (res.error || res.sent === 0) {
+            await finish("failed", "failed", { error: res.error ?? "catalogue_not_ready" });
+            return;
+          }
+        }
+        break;
+      }
+      case "set_variable": {
+        const name = String(d["variable"] ?? "").trim();
+        if (name) {
+          const v = computeVariable({ mode: String(d["mode"] ?? "value"), expression: String(d["expression"] ?? "") }, { ...env.ctx, vars });
+          vars[name] = v ?? "";
+        }
+        break;
+      }
+      case "business_hours": {
+        const open = isBusinessOpen(graph.meta?.business_hours, new Date(), env.ctx.timezone);
+        if (!(await follow(node, open ? "open" : "closed"))) return;
+        continue;
+      }
+      case "ab_split": {
+        const pa = Math.min(Math.max(Number(d["percent_a"] ?? 50), 0), 100);
+        const side = Math.random() * 100 < pa ? "a" : "b";
+        vars[`_ab_${node.id}`] = side;
+        if (!(await follow(node, side))) return;
+        continue;
+      }
+      case "goto_flow": {
+        await logEvent(supabase, run, node.id, "exited", { handle: "goto" });
+        await finish("done", "ended", { reason: "goto_flow", flow_id: d["flow_id"] });
+        await startRun(supabase, {
+          organizationId: run.organization_id,
+          flowId: String(d["flow_id"] ?? ""),
+          contactId: run.contact_id,
+          conversationId: run.conversation_id,
+          trigger: { kind: "goto_flow", from_run: run.id },
+        });
+        return;
+      }
+      case "internal_note":
+        await logEvent(supabase, run, node.id, "note", { text: interpolate(String(d["text"] ?? ""), { ...env.ctx, vars }).slice(0, 500) });
+        break;
+      case "close_chat":
+        if (run.conversation_id) await supabase.from("conversations").update({ status: "closed" }).eq("id", run.conversation_id).eq("organization_id", run.organization_id);
+        await finish("done", "ended", { reason: "closed_chat" });
+        return;
+      case "opt": {
+        const out = d["action"] === "out";
+        await supabase.from("contacts").update({ opt_in_status: out ? "opted_out" : "opted_in", updated_at: new Date().toISOString() }).eq("id", run.contact_id).eq("organization_id", run.organization_id);
+        if (out) {
+          await finish("cancelled", "opted_out", { by: "flow" });
+          return;
+        }
+        break;
+      }
+      case "segment":
+        await applyTag(supabase, run, `Segment: ${String(d["segment_name"] ?? "").trim()}`, d["action"] === "remove" ? "remove" : "add");
+        break;
+      case "note":
         break;
       default:
         await finish("failed", "failed", { error: `unknown_node:${node.type}` });
@@ -559,6 +696,10 @@ async function advance(
 
 function matchReply(node: FlowNode, reply: Inbound): { ok: true; value: string; handle: string } | { ok: false } {
   const d = node.data;
+  if (node.type === "location_request") {
+    const v = reply.body.trim();
+    return v ? { ok: true, value: v, handle: "next" } : { ok: false };
+  }
   if (node.type === "ask") {
     const v = validateAnswer(d["validation"] as ValidationKind | undefined, reply.body);
     return v == null ? { ok: false } : { ok: true, value: v, handle: "next" };
@@ -590,6 +731,10 @@ async function sendPrompt(
     to: env.to,
     body: text,
   };
+  if (node.type === "location_request") {
+    const r = await svc.sendServiceRich(supabase, { ...base, kind: "location_request" });
+    return { ok: r.ok, error: r.error };
+  }
   if (node.type === "buttons") {
     const buttons = ((d["buttons"] as Array<{ id: string; title: string }> | undefined) ?? []).map((b) => ({
       id: `${node.id}:${b.id}`,
@@ -681,4 +826,48 @@ async function markNeedsYou(supabase: SupabaseClient, run: Run, note: string) {
     .from("conversations")
     .update({ needs_human: true, needs_human_reason: "flow", needs_human_question: note.slice(0, 300), needs_human_at: new Date().toISOString() })
     .eq("id", run.conversation_id);
+}
+
+/** Next teammate in turn: whoever has the fewest open chats assigned right now. */
+async function pickRoundRobin(supabase: SupabaseClient, organizationId: string): Promise<string> {
+  const { data: members } = await supabase
+    .from("organization_members")
+    .select("user_id, role")
+    .eq("organization_id", organizationId)
+    .in("role", ["owner", "admin", "agent", "marketer"])
+    .order("user_id");
+  const ids = ((members ?? []) as Array<{ user_id: string }>).map((m) => m.user_id);
+  if (!ids.length) return "";
+  const { data: open } = await supabase
+    .from("conversations")
+    .select("assigned_to")
+    .eq("organization_id", organizationId)
+    .eq("status", "open")
+    .in("assigned_to", ids);
+  const load = new Map(ids.map((id) => [id, 0]));
+  for (const r of (open ?? []) as Array<{ assigned_to: string }>) load.set(r.assigned_to, (load.get(r.assigned_to) ?? 0) + 1);
+  return [...load.entries()].sort((a, b) => a[1] - b[1])[0]![0];
+}
+
+async function runOnFinish(
+  supabase: SupabaseClient,
+  run: Run,
+  onFinish: NonNullable<FlowGraph["meta"]>["on_finish"],
+  ctx: RunContext,
+) {
+  if (!onFinish) return;
+  if (onFinish.tag?.trim()) await applyTag(supabase, run, onFinish.tag, "add");
+  if (onFinish.needs_you?.trim()) await markNeedsYou(supabase, run, interpolate(onFinish.needs_you, ctx));
+  if (onFinish.close_chat && run.conversation_id)
+    await supabase.from("conversations").update({ status: "closed" }).eq("id", run.conversation_id).eq("organization_id", run.organization_id);
+}
+
+/** STOP / opt-out anywhere: every active run for the contact ends. */
+export async function cancelRunsForContact(supabase: SupabaseClient, organizationId: string, contactId: string) {
+  await supabase
+    .from("flow_runs")
+    .update({ status: "cancelled", wake_at: null, ended_at: new Date().toISOString() })
+    .eq("organization_id", organizationId)
+    .eq("contact_id", contactId)
+    .in("status", ["running", "waiting", "paused"]);
 }

@@ -452,6 +452,15 @@ async function applyOptKeywords(
     return true;
   }
   log("status_updated", { action, next_status: nextStatus });
+  if (optOut) {
+    // Platform-wide STOP: any Flows v2 run for this contact ends too.
+    try {
+      const { cancelRunsForContact } = await import("@/lib/flow-engine.server");
+      await cancelRunsForContact(supabase, args.organizationId, args.contactId);
+    } catch (error) {
+      console.error("[flows-v2] cancel on opt-out failed", error instanceof Error ? error.message : String(error));
+    }
+  }
 
   await emitEvent(supabase, optOut ? "contact.opted_out" : "contact.opted_in", {
     organizationId: args.organizationId,
@@ -1059,7 +1068,11 @@ export async function processWebhookPayload(
                   organizationId: orgId,
                   contactId: contact.id as string,
                   conversationId: conversation.id as string,
-                  body: body ?? "",
+                  body:
+                    body ||
+                    (msg["location"]
+                      ? `${(msg["location"] as AnyRecord)["latitude"]},${(msg["location"] as AnyRecord)["longitude"]}`
+                      : ""),
                   replyId,
                 });
                 if (taken.consumed) continue;

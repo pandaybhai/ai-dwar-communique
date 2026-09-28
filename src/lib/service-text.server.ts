@@ -592,3 +592,102 @@ export async function sendServiceProducts(
     error: res.ok ? null : JSON.stringify(json).slice(0, 300),
   };
 }
+
+/**
+ * Session messages for Flows v2 steps that the other senders don't cover:
+ * link (CTA URL) button, location request, location pin, contact card.
+ * Same rules as the senders above: open service window only, recorded in
+ * messages, conversation touched.
+ */
+export async function sendServiceRich(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    conversationId: string;
+    to: string;
+    kind: "cta_url" | "location_request" | "location" | "contact";
+    body?: string;
+    buttonText?: string;
+    url?: string;
+    latitude?: number;
+    longitude?: number;
+    name?: string;
+    address?: string;
+    phone?: string;
+  },
+): Promise<ServiceTextResult> {
+  if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("last_customer_message_at")
+    .eq("id", args.conversationId)
+    .eq("organization_id", args.organizationId)
+    .maybeSingle();
+  if (!isServiceWindowOpen(conversation)) return { ok: false, messageId: null, error: "service_window_closed" };
+
+  let payload: AnyRecord;
+  let recorded: string;
+  if (args.kind === "cta_url") {
+    payload = {
+      type: "interactive",
+      interactive: {
+        type: "cta_url",
+        body: { text: args.body ?? "" },
+        action: { name: "cta_url", parameters: { display_text: (args.buttonText ?? "Open").slice(0, 20), url: args.url ?? "" } },
+      },
+    };
+    recorded = `${args.body ?? ""} [link: ${args.buttonText ?? "Open"} → ${args.url ?? ""}]`;
+  } else if (args.kind === "location_request") {
+    payload = {
+      type: "interactive",
+      interactive: { type: "location_request_message", body: { text: args.body ?? "" }, action: { name: "send_location" } },
+    };
+    recorded = `${args.body ?? ""} [asks for location]`;
+  } else if (args.kind === "location") {
+    payload = {
+      type: "location",
+      location: { latitude: args.latitude, longitude: args.longitude, ...(args.name ? { name: args.name } : {}), ...(args.address ? { address: args.address } : {}) },
+    };
+    recorded = `[location] ${args.name ?? ""} ${args.address ?? ""} (${args.latitude}, ${args.longitude})`.trim();
+  } else {
+    const digits = (args.phone ?? "").replace(/\D/g, "");
+    payload = {
+      type: "contacts",
+      contacts: [{ name: { formatted_name: args.name ?? "", first_name: args.name ?? "" }, phones: [{ phone: `+${digits}`, wa_id: digits, type: "WORK" }] }],
+    };
+    recorded = `[contact] ${args.name ?? ""} +${digits}`;
+  }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${args.accessToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: args.to, ...payload }),
+  });
+  let json: AnyRecord = {};
+  try {
+    json = (await res.json()) as AnyRecord;
+  } catch {
+    json = {};
+  }
+  const metaMessageId = ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
+  const nowIso = new Date().toISOString();
+  const { data: inserted } = await supabase
+    .from("messages")
+    .insert({
+      organization_id: args.organizationId,
+      conversation_id: args.conversationId,
+      meta_message_id: metaMessageId,
+      direction: "outbound",
+      type: "text",
+      body: recorded,
+      status: res.ok ? "pending" : "failed",
+      status_updated_at: nowIso,
+      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
+    })
+    .select("id")
+    .maybeSingle();
+  await supabase.from("conversations").update({ last_message_at: nowIso }).eq("id", args.conversationId);
+  return { ok: res.ok, messageId: (inserted?.id as string | undefined) ?? null, error: res.ok ? null : JSON.stringify(json).slice(0, 300) };
+}

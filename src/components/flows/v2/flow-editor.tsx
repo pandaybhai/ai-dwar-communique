@@ -4,7 +4,12 @@ import {
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange, useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff } from "lucide-react";
+import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DEFAULT_BUSINESS_HOURS, type BusinessHours } from "@/lib/flow-graph";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +76,7 @@ type Props = {
   versions: VersionRow[];
   stats?: Record<string, { entered: number; exited: number; dropped: number }>;
   onChanged: (remount?: boolean) => void;
+  aiOn?: boolean;
 };
 
 export function FlowEditor(props: Props) {
@@ -81,8 +87,14 @@ export function FlowEditor(props: Props) {
   );
 }
 
-function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, onChanged }: Props) {
+function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, onChanged, aiOn }: Props) {
   const rf = useReactFlow();
+  const navigate = useNavigate();
+  const [meta, setMeta] = useState<NonNullable<FlowGraph["meta"]>>(() => initial.meta ?? {});
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [genOpen, setGenOpen] = useState(false);
+  const [genText, setGenText] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
   const [snap, setSnap] = useState<Snapshot>(() => toRF(initial));
   const [name, setName] = useState(initialName);
   const [selected, setSelected] = useState<string | null>(null);
@@ -96,7 +108,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
   const future = useRef<Snapshot[]>([]);
   const clipboard = useRef<Snapshot | null>(null);
 
-  const graph = useMemo(() => fromRF(snap), [snap]);
+  const graph = useMemo(() => ({ ...fromRF(snap), meta }), [snap, meta]);
   const variables = useMemo(
     () => [...new Set(graph.nodes.map((n) => String(n.data["variable"] ?? "").trim()).filter(Boolean))],
     [graph],
@@ -251,6 +263,50 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     if (error) toast.error(error); else { toast.success("Restored as draft."); setHistOpen(false); onChanged(true); }
   };
 
+  const updateMeta = (patch: Partial<NonNullable<FlowGraph["meta"]>>) => { setMeta((m) => ({ ...m, ...patch })); setDirty(true); };
+
+  const exportJson = () => {
+    const blob = new Blob([JSON.stringify({ name, graph }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "flow"}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  const importJson = async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text()) as { graph?: FlowGraph } & FlowGraph;
+      const g = parsed.graph ?? parsed;
+      if (!Array.isArray(g.nodes) || !Array.isArray(g.edges)) throw new Error("bad");
+      commit(toRF(g));
+      setMeta(g.meta ?? {});
+      toast.success("Imported into the draft — check it, then save.");
+    } catch {
+      toast.error("That file isn't a flow export.");
+    }
+  };
+  const duplicate = async () => {
+    setBusy(true);
+    const { data, error } = await callApi<{ flow_id: string }>("/api/flows/v2", { body: { action: "create", organization_id: organizationId, name: `Copy of ${name}`.slice(0, 80), graph } });
+    setBusy(false);
+    if (error || !data) { toast.error(error ?? "Couldn't duplicate."); return; }
+    toast.success("Duplicated as a draft.");
+    void navigate({ to: "/app/flows/v2/$id", params: { id: data.flow_id } });
+  };
+  const generate = async () => {
+    setBusy(true);
+    const { data, error } = await callApi<{ graph: FlowGraph }>("/api/flows/v2", { body: { action: "generate", organization_id: organizationId, description: genText } });
+    setBusy(false);
+    if (error || !data) { toast.error(error ?? "Couldn't draft the flow."); return; }
+    const s0 = toRF(data.graph);
+    commit({ ...s0, nodes: autoLayout(s0) });
+    setGenOpen(false);
+    setTimeout(() => rf.fitView({ duration: 250 }), 50);
+    toast.success("Draft ready — review each step, then save. Nothing is published.");
+  };
+  const bh: BusinessHours = meta.business_hours ?? DEFAULT_BUSINESS_HOURS;
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
   const pathSet = useMemo(() => new Set(path), [path]);
   const rfNodes = useMemo(
     () => snap.nodes.map((n) => ({ ...n, data: { ...n.data, problems: problemsByNode.get(n.id), stats: stats?.[n.id] }, className: simOpen && pathSet.has(n.id) ? "rounded-2xl ring-2 ring-primary/60" : "" })),
@@ -274,6 +330,14 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
             <Button size="sm" variant="ghost" onClick={() => { commit({ ...snap, nodes: autoLayout(snap) }); setTimeout(() => rf.fitView({ duration: 250 }), 50); }}><LayoutGrid className="mr-1 h-4 w-4" /> Tidy</Button>
           </>)}
           <Button size="sm" variant="ghost" onClick={() => setHistOpen(true)}><History className="mr-1 h-4 w-4" /> Versions</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)}><Settings2 className="mr-1 h-4 w-4" /> Flow settings</Button>
+          <Button size="icon" variant="ghost" aria-label="Export" title="Export JSON" onClick={exportJson}><Download className="h-4 w-4" /></Button>
+          {canEdit && (<>
+            <Button size="icon" variant="ghost" aria-label="Import" title="Import JSON" onClick={() => fileRef.current?.click()}><FileUp className="h-4 w-4" /></Button>
+            <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); e.target.value = ""; }} />
+            <Button size="icon" variant="ghost" aria-label="Duplicate" title="Duplicate flow" disabled={busy} onClick={() => void duplicate()}><Copy className="h-4 w-4" /></Button>
+            {aiOn && <Button size="sm" variant="ghost" onClick={() => setGenOpen(true)}><Sparkles className="mr-1 h-4 w-4" /> Generate</Button>}
+          </>)}
           <Button size="sm" variant="outline" onClick={() => setSimOpen(true)}><Play className="mr-1 h-4 w-4" /> Test</Button>
           {canEdit && (<>
             <Button size="sm" variant="outline" disabled={busy || !dirty} onClick={() => void saveDraft()}><Save className="mr-1 h-4 w-4" /> Save draft</Button>
@@ -347,6 +411,48 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
           <div className="min-h-0 flex-1 pt-2">{simOpen && <SimulatorPanel graph={graph} onPath={onPath} />}</div>
         </SheetContent>
       </Sheet>
+
+      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+          <SheetHeader><SheetTitle>Flow settings</SheetTitle></SheetHeader>
+          <fieldset disabled={!canEdit} className="mt-4 space-y-6">
+            <section className="space-y-2">
+              <h3 className="font-heading font-semibold">When the flow finishes</h3>
+              <div className="space-y-1.5"><Label>Add tag</Label><Input value={meta.on_finish?.tag ?? ""} onChange={(e) => updateMeta({ on_finish: { ...meta.on_finish, tag: e.target.value } })} /></div>
+              <div className="space-y-1.5"><Label>Mark Needs you with note</Label><Input value={meta.on_finish?.needs_you ?? ""} onChange={(e) => updateMeta({ on_finish: { ...meta.on_finish, needs_you: e.target.value } })} /></div>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(meta.on_finish?.close_chat)} onChange={(e) => updateMeta({ on_finish: { ...meta.on_finish, close_chat: e.target.checked } })} /> Close the chat</label>
+            </section>
+            <section className="space-y-2">
+              <h3 className="font-heading font-semibold">Business hours</h3>
+              <p className="text-xs text-muted-foreground">Used by the Business hours step and the "Business hours" branch condition. Workspace time zone.</p>
+              {days.map((dn, i) => {
+                const slot = bh.days[String(i)] ?? null;
+                const setSlot = (v: [string, string] | null) => updateMeta({ business_hours: { ...bh, days: { ...bh.days, [String(i)]: v } } });
+                return (
+                  <div key={dn} className="flex items-center gap-2 text-sm">
+                    <label className="flex w-16 items-center gap-1"><input type="checkbox" checked={!!slot} onChange={(e) => setSlot(e.target.checked ? ["09:00", "18:00"] : null)} /> {dn}</label>
+                    {slot ? (<>
+                      <Input type="time" className="h-8 w-28" value={slot[0]} onChange={(e) => setSlot([e.target.value, slot[1]])} />
+                      <span>–</span>
+                      <Input type="time" className="h-8 w-28" value={slot[1]} onChange={(e) => setSlot([slot[0], e.target.value])} />
+                    </>) : <span className="text-muted-foreground">Closed</span>}
+                  </div>
+                );
+              })}
+              <div className="space-y-1.5"><Label>Holidays (yyyy-mm-dd, comma separated)</Label><Input value={bh.holidays.join(", ")} onChange={(e) => updateMeta({ business_hours: { ...bh, holidays: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) } })} /></div>
+            </section>
+          </fieldset>
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={genOpen} onOpenChange={setGenOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Generate a flow from a description</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">I'll draft it from what I know about your business. It replaces the canvas as an unsaved draft — nothing is published.</p>
+          <Textarea rows={5} placeholder="e.g. Greet customers, ask if they want to shop, track an order or talk to us; for tracking ask the order number and pass it to the team." value={genText} onChange={(e) => setGenText(e.target.value)} />
+          <div className="flex justify-end"><Button disabled={busy || genText.trim().length < 10} onClick={() => void generate()}><Sparkles className="mr-1 h-4 w-4" /> {busy ? "Drafting…" : "Draft it"}</Button></div>
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={histOpen} onOpenChange={setHistOpen}>
         <SheetContent className="w-full sm:max-w-md">

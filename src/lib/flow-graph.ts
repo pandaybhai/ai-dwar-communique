@@ -26,7 +26,20 @@ export type NodeType =
   | "assign"
   | "needs_you"
   | "end"
-  | "note";
+  | "note"
+  | "cta_url"
+  | "location_request"
+  | "location_send"
+  | "contact_card"
+  | "carousel"
+  | "set_variable"
+  | "business_hours"
+  | "internal_note"
+  | "close_chat"
+  | "opt"
+  | "segment"
+  | "goto_flow"
+  | "ab_split";
 
 export type FlowNode = {
   id: string;
@@ -46,13 +59,19 @@ export type FlowEdge = {
 export type FlowGraph = {
   nodes: FlowNode[];
   edges: FlowEdge[];
-  meta?: { legacy?: boolean; flow_key?: string };
+  meta?: {
+    legacy?: boolean;
+    flow_key?: string;
+    /** Runs when the flow ends normally. */
+    on_finish?: { tag?: string; needs_you?: string; close_chat?: boolean };
+    business_hours?: BusinessHours;
+  };
 };
 
 export type Condition = {
   /** "var:<name>" | "contact:<field>" | "tag" | "time_hour" | "weekday" */
   subject: string;
-  op: "eq" | "neq" | "contains" | "not_contains" | "gt" | "lt" | "exists" | "not_exists" | "has" | "not_has";
+  op: "eq" | "neq" | "contains" | "not_contains" | "gt" | "lt" | "exists" | "not_exists" | "has" | "not_has" | "matches";
   value?: string;
 };
 
@@ -90,6 +109,7 @@ export function lookup(key: string, ctx: RunContext): unknown {
   if (key === "name" || key === "contact.name") return ctx.contact.name ?? "";
   if (key === "phone" || key === "contact.phone") return ctx.contact.phone;
   if (key.startsWith("contact.")) return ctx.contact.attributes[key.slice(8)];
+  if (key === "today" && !(key in ctx.vars)) return fmtDate(ctx.now, ctx.timezone);
   return ctx.vars[key];
 }
 
@@ -110,6 +130,10 @@ export function evalCondition(c: Condition, ctx: RunContext): boolean {
   if (c.subject === "tag") {
     const has = ctx.tags.map((t) => t.toLowerCase()).includes(String(c.value ?? "").toLowerCase());
     return c.op === "not_has" || c.op === "neq" ? !has : has;
+  }
+  if (c.subject === "business_hours") {
+    const open = isBusinessOpen(ctx.vars["_business_hours"] as BusinessHours | undefined, ctx.now, ctx.timezone);
+    return (String(c.value ?? "open").toLowerCase() === "open") === open ? c.op !== "neq" : c.op === "neq";
   }
   if (c.subject === "time_hour") subject = zonedParts(ctx.now, ctx.timezone).hour;
   else if (c.subject === "weekday") subject = zonedParts(ctx.now, ctx.timezone).weekday;
@@ -132,6 +156,8 @@ export function evalCondition(c: Condition, ctx: RunContext): boolean {
       return Number(s) > Number(v);
     case "lt":
       return Number(s) < Number(v);
+    case "matches":
+      return safeRegex(String(c.value ?? ""))?.test(subject == null ? "" : String(subject)) ?? false;
     case "exists":
       return s !== "";
     case "not_exists":
@@ -201,7 +227,20 @@ export function outputsOf(node: FlowNode): string[] {
     case "list":
       return [...((d["rows"] as Array<{ id: string }> | undefined) ?? []).map((r) => r.id), "window_closed"];
     case "ask":
+    case "location_request":
       return ["next", "invalid", "timeout", "window_closed"];
+    case "cta_url":
+    case "location_send":
+    case "contact_card":
+    case "carousel":
+      return ["next", "window_closed"];
+    case "business_hours":
+      return ["open", "closed"];
+    case "ab_split":
+      return ["a", "b"];
+    case "goto_flow":
+    case "close_chat":
+      return [];
     case "text":
     case "form":
       return ["next", "window_closed"];
@@ -258,9 +297,32 @@ export function validateGraph(graph: FlowGraph): GraphProblem[] {
     }
     if ((node.type === "tag") && !String(d["tag"] ?? "").trim()) problems.push({ nodeId: node.id, message: "Pick a tag." });
   }
+  for (const node of graph.nodes) {
+    const x = node.data;
+    if (node.type === "cta_url") {
+      if (!/^https?:\/\/\S+$/.test(String(x["url"] ?? ""))) problems.push({ nodeId: node.id, message: "Add a full link starting with https://" });
+      if (!String(x["button_text"] ?? "").trim() || String(x["button_text"]).length > 20) problems.push({ nodeId: node.id, message: "Button text needs 1–20 characters." });
+    }
+    if (node.type === "location_send" && (!Number.isFinite(Number(x["latitude"])) || !Number.isFinite(Number(x["longitude"])) || x["latitude"] === "" || x["longitude"] === ""))
+      problems.push({ nodeId: node.id, message: "Add the latitude and longitude." });
+    if (node.type === "contact_card" && (!String(x["name"] ?? "").trim() || String(x["phone"] ?? "").replace(/\D/g, "").length < 10))
+      problems.push({ nodeId: node.id, message: "Add a name and a phone number." });
+    if (node.type === "carousel") {
+      const ids = (x["retailer_ids"] as string[] | undefined) ?? [];
+      if (!ids.length || ids.length > 10) problems.push({ nodeId: node.id, message: "Pick 1–10 products." });
+    }
+    if (node.type === "set_variable" && !String(x["variable"] ?? "").trim()) problems.push({ nodeId: node.id, message: "Name the variable." });
+    if (node.type === "set_variable" && x["mode"] === "math" && computeVariable({ mode: "math", expression: String(x["expression"] ?? "") }, { vars: {}, contact: { name: "", phone: "", attributes: {} }, tags: [], now: new Date(), timezone: "Asia/Kolkata" }, true) === null)
+      problems.push({ nodeId: node.id, message: "The calculation can only use numbers, {{variables}} and + - * / ( )." });
+    if (node.type === "segment" && !String(x["segment_name"] ?? "").trim()) problems.push({ nodeId: node.id, message: "Pick a segment." });
+    if (node.type === "goto_flow" && !String(x["flow_id"] ?? "")) problems.push({ nodeId: node.id, message: "Pick the flow to go to." });
+    if (node.type === "branch")
+      for (const b of (x["branches"] as Branch[] | undefined) ?? [])
+        for (const c of b.conditions) if (c.op === "matches" && !safeRegex(String(c.value ?? ""))) problems.push({ nodeId: node.id, message: `"${c.value}" isn't a valid pattern.` });
+  }
   // Variables used must be set somewhere (ask nodes or built-ins).
-  const defined = new Set(["name", "phone", "last_answer"]);
-  for (const n of graph.nodes) if (n.type === "ask" && d(n, "variable")) defined.add(d(n, "variable"));
+  const defined = new Set(["name", "phone", "last_answer", "today", "now"]);
+  for (const n of graph.nodes) if (["ask", "buttons", "list", "location_request", "set_variable"].includes(n.type) && d(n, "variable")) defined.add(d(n, "variable"));
   for (const n of graph.nodes) {
     const text = JSON.stringify(n.data);
     for (const m of text.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)) {
@@ -272,4 +334,128 @@ export function validateGraph(graph: FlowGraph): GraphProblem[] {
 
 function d(n: FlowNode, key: string): string {
   return String(n.data[key] ?? "").trim();
+}
+
+
+/** Regex from user input; null when invalid or too long. Case-insensitive. */
+export function safeRegex(pattern: string): RegExp | null {
+  if (!pattern || pattern.length > 200) return null;
+  try {
+    return new RegExp(pattern, "i");
+  } catch {
+    return null;
+  }
+}
+
+export type BusinessHours = {
+  /** 0=Sun..6=Sat → ["09:00","18:00"] or null for closed. */
+  days: Record<string, [string, string] | null>;
+  holidays: string[];
+};
+
+export const DEFAULT_BUSINESS_HOURS: BusinessHours = {
+  days: { "0": null, "1": ["09:00", "18:00"], "2": ["09:00", "18:00"], "3": ["09:00", "18:00"], "4": ["09:00", "18:00"], "5": ["09:00", "18:00"], "6": ["10:00", "14:00"] },
+  holidays: [],
+};
+
+export function isBusinessOpen(bh: BusinessHours | undefined, now: Date, timezone: string): boolean {
+  const h = bh ?? DEFAULT_BUSINESS_HOURS;
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: timezone || "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", weekday: "short" }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const date = `${get("year")}-${get("month")}-${get("day")}`;
+  if (h.holidays.includes(date)) return false;
+  const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
+  const slot = h.days[String(wd)];
+  if (!slot) return false;
+  const hm = `${get("hour")}:${get("minute")}`;
+  return hm >= slot[0] && hm < slot[1];
+}
+
+function fmtDate(d: Date, timezone: string): string {
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: timezone || "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+  return `${g("day")}-${g("month")}-${g("year")}`;
+}
+
+/**
+ * Set variable / calculate.
+ * - value: text with {{variables}}
+ * - math: + - * / ( ) over numbers and {{variables}}
+ * - join: text join (same as value)
+ * - date: "today" | "now" | "today+N" | "{{var}}+N" (days) → dd-mm-yyyy
+ */
+export function computeVariable(
+  spec: { mode?: string; expression?: string },
+  ctx: RunContext,
+  dryRun = false,
+): string | null {
+  const expr = String(spec.expression ?? "");
+  const mode = spec.mode ?? "value";
+  if (mode === "math") {
+    const replaced = expr.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, k: string) => {
+      if (dryRun) return "1";
+      const n = Number(String(lookup(k, ctx) ?? "").replace(/[,\s₹]/g, ""));
+      return Number.isFinite(n) ? String(n) : "0";
+    });
+    if (!/^[\d\s.+\-*/()]+$/.test(replaced) || !replaced.trim()) return null;
+    const v = evalArith(replaced);
+    return v == null || !Number.isFinite(v) ? null : String(Math.round(v * 100) / 100);
+  }
+  if (mode === "date") {
+    const m = expr.trim().match(/^(.*?)(?:\s*([+-])\s*(\d+))?$/);
+    const baseRaw = (m?.[1] ?? "today").trim() || "today";
+    let base: Date;
+    if (baseRaw === "today" || baseRaw === "now") base = ctx.now;
+    else {
+      const v = interpolate(baseRaw, ctx).trim();
+      const dm = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      base = dm ? new Date(`${dm[3]}-${dm[2]!.padStart(2, "0")}-${dm[1]!.padStart(2, "0")}T06:00:00Z`) : new Date(v);
+      if (Number.isNaN(base.getTime())) return null;
+    }
+    const days = m?.[3] ? Number(m[3]) * (m[2] === "-" ? -1 : 1) : 0;
+    const out = new Date(base.getTime() + days * 86_400_000);
+    if (baseRaw === "now" && !days) {
+      const t = new Intl.DateTimeFormat("en-GB", { timeZone: ctx.timezone || "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(out);
+      return `${fmtDate(out, ctx.timezone)} ${t}`;
+    }
+    return fmtDate(out, ctx.timezone);
+  }
+  return interpolate(expr, ctx);
+}
+
+/** Tiny + - * / ( ) evaluator — no eval (not allowed on the server runtime). */
+export function evalArith(src: string): number | null {
+  const tokens = src.match(/\d+(?:\.\d+)?|[+\-*/()]/g);
+  if (!tokens) return null;
+  let i = 0;
+  const peek = () => tokens[i];
+  const factor = (): number | null => {
+    const t = tokens[i++];
+    if (t === "-") { const f = factor(); return f == null ? null : -f; }
+    if (t === "(") { const v = expr(); if (tokens[i++] !== ")") return null; return v; }
+    if (t != null && /^\d/.test(t)) return Number(t);
+    return null;
+  };
+  const term = (): number | null => {
+    let v = factor();
+    while (v != null && (peek() === "*" || peek() === "/")) {
+      const op = tokens[i++];
+      const r = factor();
+      if (r == null) return null;
+      v = op === "*" ? v * r : v / r;
+    }
+    return v;
+  };
+  const expr = (): number | null => {
+    let v = term();
+    while (v != null && (peek() === "+" || peek() === "-")) {
+      const op = tokens[i++];
+      const r = term();
+      if (r == null) return null;
+      v = op === "+" ? v + r : v - r;
+    }
+    return v;
+  };
+  const out = expr();
+  return i === tokens.length ? out : null;
 }
