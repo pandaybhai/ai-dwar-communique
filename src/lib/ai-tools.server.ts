@@ -169,6 +169,26 @@ function looksLikeSentence(text: string): boolean {
  * — the build check fails otherwise.
  */
 export const AI_TOOL_HANDLERS: Record<string, Handler> = {
+  /**
+   * Picks a published form. The form itself goes out after the reply text,
+   * from the reply path — this handler only confirms which one.
+   */
+  async sendForm(ctx, args) {
+    const { data } = await ctx.supabase
+      .from("wa_forms")
+      .select("id, name, purpose")
+      .eq("organization_id", ctx.organizationId)
+      .eq("status", "published")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const forms = (data ?? []) as Array<{ id: string; name: string; purpose: string | null }>;
+    if (forms.length === 0) return empty("This business has no published forms. Carry on in chat.");
+    const wanted = typeof args["form_id"] === "string" ? (args["form_id"] as string) : "";
+    const match = forms.find((f) => f.id === wanted);
+    if (!match) return { ok: true, found: false, data: { published_forms: forms, queued: false } };
+    return { ok: true, data: { form_id: match.id, name: match.name, queued: true } };
+  },
+
   async lookupContact(ctx, args) {
     const { contact, error } = await findContact(ctx, args);
     if (!contact) return empty(error ?? "I couldn't find that contact in this workspace.");
