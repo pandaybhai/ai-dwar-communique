@@ -1040,6 +1040,35 @@ export async function processWebhookPayload(
             continue;
           }
 
+          // Flows v2: when a run is waiting for this contact's reply, the flow
+          // owns the conversation — it takes the message first and nothing else
+          // (owner channel, automations, the AI) auto-replies. Opt-out words
+          // always fall through so STOP keeps working.
+          if (!isSystemEcho && inserted && inserted.length > 0) {
+            const optWord = /^(stop|unsubscribe|opt ?out|cancel)$/i.test(body.trim());
+            if (!optWord) {
+              try {
+                const { handleInboundForRuns } = await import("@/lib/flow-engine.server");
+                const flowInteractive = msg["interactive"] as AnyRecord | undefined;
+                const replyId =
+                  ((flowInteractive?.["button_reply"] as AnyRecord | undefined)?.["id"] as string | undefined) ??
+                  ((flowInteractive?.["list_reply"] as AnyRecord | undefined)?.["id"] as string | undefined) ??
+                  ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
+                  null;
+                const taken = await handleInboundForRuns(supabase, {
+                  organizationId: orgId,
+                  contactId: contact.id as string,
+                  conversationId: conversation.id as string,
+                  body: body ?? "",
+                  replyId,
+                });
+                if (taken.consumed) continue;
+              } catch (error) {
+                console.error("[flows-v2] inbound failed", error instanceof Error ? error.message : String(error));
+              }
+            }
+          }
+
           // The onboarding number is a different conversation entirely: the
           // person writing is a business owner, not a customer. Nothing that
           // follows (opt-out keywords, COD, automations, the customer AI)

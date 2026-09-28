@@ -558,7 +558,7 @@ export function ChatThread({
         </Button>
       </header>
 
-      {conversation.contact ? (
+      {conversation.contact && organizationId ? (
         <FlowRunBanner organizationId={organizationId} contactId={conversation.contact.id} />
       ) : null}
 
