@@ -500,7 +500,17 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
         const { expireCodConfirmations } = await import("@/lib/cod.server");
         const codExpired = await expireCodConfirmations(supabase);
 
+        // Flows v2 runs: due waits and reply timeouts. Isolated from the sends above.
+        let flowRuns: Record<string, unknown> = {};
+        try {
+          const { tickRuns } = await import("@/lib/flow-engine.server");
+          flowRuns = await tickRuns(supabase);
+        } catch (error) {
+          flowRuns = { error: error instanceof Error ? error.message : String(error) };
+        }
+
         return Response.json({
+          flow_runs: flowRuns,
           claimed: batch.length,
           outcomes,
           cod_expired: codExpired,

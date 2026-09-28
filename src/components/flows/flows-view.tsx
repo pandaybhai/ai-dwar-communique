@@ -98,7 +98,7 @@ export function FlowsView({
     }
     // The form follow-up flow disappears cleanly when forms are switched off.
     const flowRows = ((flowRes.data as FlowRow[]) ?? []).filter(
-      (f) => f.key !== "form_followup" || formsEnabled,
+      (f) => !f.key.startsWith("v2:") && (f.key !== "form_followup" || formsEnabled),
     );
     setFlows(flowRows);
     onLoaded?.(flowRows);

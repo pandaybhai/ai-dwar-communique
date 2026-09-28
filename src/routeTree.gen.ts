@@ -71,6 +71,7 @@ import { Route as ApiCatalogImportRouteImport } from './routes/api/catalog/impor
 import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/products'
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
+import { Route as ApiFlowsRunsRouteImport } from './routes/api/flows/runs'
 import { Route as ApiHomeSummaryRouteImport } from './routes/api/home/summary'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-run'
@@ -430,6 +431,11 @@ const ApiContactsImportRoute = ApiContactsImportRouteImport.update({
   path: '/api/contacts/import',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFlowsRunsRoute = ApiFlowsRunsRouteImport.update({
+  id: '/api/flows/runs',
+  path: '/api/flows/runs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHomeSummaryRoute = ApiHomeSummaryRouteImport.update({
   id: '/api/home/summary',
   path: '/api/home/summary',
@@ -749,6 +755,7 @@ export interface FileRoutesByFullPath {
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/home/summary': typeof ApiHomeSummaryRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
@@ -858,6 +865,7 @@ export interface FileRoutesByTo {
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/home/summary': typeof ApiHomeSummaryRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
@@ -970,6 +978,7 @@ export interface FileRoutesById {
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/home/summary': typeof ApiHomeSummaryRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
@@ -1083,6 +1092,7 @@ export interface FileRouteTypes {
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/flows/runs'
     | '/api/home/summary'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
@@ -1192,6 +1202,7 @@ export interface FileRouteTypes {
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/flows/runs'
     | '/api/home/summary'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
@@ -1303,6 +1314,7 @@ export interface FileRouteTypes {
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/flows/runs'
     | '/api/home/summary'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
@@ -1394,6 +1406,7 @@ export interface RootRouteChildren {
   ApiCatalogProductsRoute: typeof ApiCatalogProductsRoute
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
+  ApiFlowsRunsRoute: typeof ApiFlowsRunsRoute
   ApiHomeSummaryRoute: typeof ApiHomeSummaryRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalAiRunRoute: typeof ApiInternalAiRunRoute
@@ -1873,6 +1886,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiContactsImportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/flows/runs': {
+      id: '/api/flows/runs'
+      path: '/api/flows/runs'
+      fullPath: '/api/flows/runs'
+      preLoaderRoute: typeof ApiFlowsRunsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/home/summary': {
       id: '/api/home/summary'
       path: '/api/home/summary'
@@ -2321,6 +2341,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCatalogProductsRoute: ApiCatalogProductsRoute,
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
+  ApiFlowsRunsRoute: ApiFlowsRunsRoute,
   ApiHomeSummaryRoute: ApiHomeSummaryRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalAiRunRoute: ApiInternalAiRunRoute,
