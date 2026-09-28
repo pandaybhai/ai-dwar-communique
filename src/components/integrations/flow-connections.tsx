@@ -16,7 +16,8 @@ type Resp = { google_available: boolean; google: Conn; razorpay: Conn; razorpay_
 
 /** The merchant's own Google and Razorpay accounts, used by flow steps. */
 export function FlowConnections() {
-  const { activeOrgId } = useOrg() as unknown as { activeOrgId: string | null };
+  const { active } = useOrg();
+  const activeOrgId = active?.organization.id ?? null;
   const { can } = usePermissions();
   const manage = can("integrations.manage");
   const [data, setData] = useState<Resp | null>(null);
