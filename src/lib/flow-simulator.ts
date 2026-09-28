@@ -6,6 +6,8 @@ import {
   MAX_STEPS_PER_RUN,
   edgeFrom,
   interpolate,
+  computeVariable,
+  isBusinessOpen,
   pickBranch,
   startNode,
   validateAnswer,
@@ -96,10 +98,11 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
     const ctx = s.ctx;
     if (!s.waiting) s.path.push(node.id);
 
-    if (node.type === "buttons" || node.type === "list" || node.type === "ask") {
+    if (node.type === "buttons" || node.type === "list" || node.type === "ask" || node.type === "location_request") {
       if (!s.waiting) {
         s.attempts[node.id] = (s.attempts[node.id] ?? 0) + 1;
-        s.messages.push({ from: "bot", kind: "text", text: interpolate(String(d["text"] ?? ""), ctx), options: node.type === "ask" ? undefined : optionsOf(node).map((o) => o.title) });
+        s.messages.push({ from: "bot", kind: "text", text: interpolate(String(d["text"] ?? ""), ctx) + (node.type === "location_request" ? "\n[📍 Send location]" : ""), options: node.type === "ask" || node.type === "location_request" ? undefined : optionsOf(node).map((o) => o.title) });
+        if (Number(d["nudge_minutes"] ?? 0) > 0 && String(d["nudge_text"] ?? "").trim()) note(s, `If quiet for ${d["nudge_minutes"]} min: "${String(d["nudge_text"])}"`);
         s.waiting = true;
         return s;
       }
@@ -108,7 +111,8 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
       pending = null;
       let value: string | null = null;
       let handle = "next";
-      if (node.type === "ask") value = validateAnswer(d["validation"] as ValidationKind | undefined, typed);
+      if (node.type === "location_request") value = typed || null;
+      else if (node.type === "ask") value = validateAnswer(d["validation"] as ValidationKind | undefined, typed);
       else {
         const opts = optionsOf(node);
         const hit = opts.find((o) => o.title.trim().toLowerCase() === typed.toLowerCase()) ?? (/^\d+$/.test(typed) ? opts[Number(typed) - 1] : undefined);
@@ -188,6 +192,57 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
         break;
       case "needs_you":
         note(s, "Marks the chat as Needs you");
+        break;
+      case "cta_url":
+        s.messages.push({ from: "bot", kind: "text", text: `${interpolate(String(d["text"] ?? ""), ctx)}\n[🔗 ${String(d["button_text"] ?? "Open")}]` });
+        break;
+      case "location_send":
+        s.messages.push({ from: "bot", kind: "text", text: `📍 ${String(d["name"] || d["address"] || `${d["latitude"]}, ${d["longitude"]}`)}` });
+        break;
+      case "contact_card":
+        s.messages.push({ from: "bot", kind: "text", text: `👤 ${String(d["name"] ?? "")} · ${String(d["phone"] ?? "")}` });
+        break;
+      case "carousel":
+        note(s, `Sends ${((d["retailer_ids"] as string[]) ?? []).length} product card(s)`);
+        break;
+      case "set_variable": {
+        const v = String(d["variable"] ?? "").trim();
+        const val = computeVariable({ mode: String(d["mode"] ?? "value"), expression: String(d["expression"] ?? "") }, ctx) ?? "";
+        if (v) ctx.vars[v] = val;
+        note(s, `${v} = ${val}`);
+        break;
+      }
+      case "business_hours": {
+        const open = isBusinessOpen(graph.meta?.business_hours, new Date(), ctx.timezone);
+        note(s, `Business hours → ${open ? "Open" : "Closed"}`);
+        if (!go(graph, s, node, open ? "open" : "closed")) return s;
+        continue;
+      }
+      case "ab_split": {
+        const side = Math.random() * 100 < Number(d["percent_a"] ?? 50) ? "a" : "b";
+        note(s, `A/B split → ${side.toUpperCase()}`);
+        if (!go(graph, s, node, side)) return s;
+        continue;
+      }
+      case "goto_flow":
+        note(s, `Continues in flow "${String(d["flow_name"] ?? "another flow")}"`);
+        s.done = true;
+        return s;
+      case "internal_note":
+        note(s, `Internal note: ${interpolate(String(d["text"] ?? ""), ctx)}`);
+        break;
+      case "close_chat":
+        note(s, "Closes the chat.");
+        s.done = true;
+        return s;
+      case "opt":
+        note(s, d["action"] === "out" ? "Opts the customer out." : "Opts the customer in.");
+        if (d["action"] === "out") { s.done = true; return s; }
+        break;
+      case "segment":
+        note(s, `${d["action"] === "remove" ? "Removes from" : "Adds to"} segment "${String(d["segment_name"] ?? "")}"`);
+        break;
+      case "note":
         break;
       default:
         note(s, `Step "${node.type}" isn't supported yet.`);
