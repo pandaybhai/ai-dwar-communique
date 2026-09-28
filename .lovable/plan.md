@@ -29,6 +29,11 @@ Existing flows and their steps, button and list replies, inbox rendering, Aiden 
 ## Report
 For each phase: the effective diff per file; a published test form on 91218 81110 sent to +91 79812 23192, with its submission shown in the inbox; a Hinglish transcript of Aiden collecting 3 fields, including one invalid answer; deployment STARTED plus the commit hash.
 
+## Additions (approved)
+1. Form replies are handled first. A form reply (`interactive.nfm_reply`) is caught before the onboarding/owner routing in the webhook, on every number, including the onboarding number 91218 81110. It is always saved as a form response and shown in the inbox, and is never treated as an owner or stranger message. The test on 91218 81110 will confirm this.
+2. Privacy: `wa_form_responses` and `collect_sessions.collected` are removed in every deletion path: contact delete, workspace delete, data-deletion requests, and Shopify/Meta customer-redact. The privacy page gets one line: form answers are stored to serve the customer and deleted on request.
+3. Flags: `wa_forms` and `aiden_collect` are OFF by default for every workspace. They are turned on only for the "Ai Dwar" workspace for testing.
+
 ## Risks
 - Meta has to allow Flows on the Ai Dwar WABA. If publishing is refused, I'll show Meta's exact error and report it.
 - The live submission needs someone to tap and fill in the form on +91 79812 23192. I can't do that step.
