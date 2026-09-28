@@ -201,8 +201,6 @@ export const Route = createFileRoute("/api/forms")({
           .maybeSingle();
         if (!formRow) return jsonError("That form doesn't exist.", 404);
         const { publishForm } = await import("@/lib/wa-forms.server");
-        const { type FormRow: _ } = {} as never;
-        void _;
         const result = await publishForm(supabase, formRow as import("@/lib/wa-forms").FormRow);
         if (result.ok) {
           await log("form_published", { form_id: parsed.id, meta_flow_id: result.metaFlowId });
