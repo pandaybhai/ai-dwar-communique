@@ -253,7 +253,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
 
   const pathSet = useMemo(() => new Set(path), [path]);
   const rfNodes = useMemo(
-    () => snap.nodes.map((n) => ({ ...n, data: { ...n.data, problems: problemsByNode.get(n.id), stats: stats?.[n.id] }, className: simOpen && pathSet.has(n.id) ? "rounded-2xl ring-2 ring-primary/60" : undefined })),
+    () => snap.nodes.map((n) => ({ ...n, data: { ...n.data, problems: problemsByNode.get(n.id), stats: stats?.[n.id] }, className: simOpen && pathSet.has(n.id) ? "rounded-2xl ring-2 ring-primary/60" : "" })),
     [snap.nodes, problemsByNode, stats, simOpen, pathSet],
   );
   const rfEdges = useMemo(() => snap.edges.map((e) => ({ ...e, animated: simOpen && pathSet.has(e.source) && pathSet.has(e.target) })), [snap.edges, simOpen, pathSet]);

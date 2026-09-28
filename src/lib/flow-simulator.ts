@@ -17,7 +17,7 @@ import {
 } from "@/lib/flow-graph";
 
 export type SimMessage =
-  | { from: "bot"; kind: "text"; text: string; options?: string[] }
+  | { from: "bot"; kind: "text"; text: string; options?: string[] | undefined }
   | { from: "bot"; kind: "note"; text: string }
   | { from: "customer"; kind: "text"; text: string };
 

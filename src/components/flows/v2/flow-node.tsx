@@ -3,7 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { outputsOf, type FlowNode, type NodeType } from "@/lib/flow-graph";
 import { NODE_META, handleLabel, summary } from "./node-meta";
 
-export type RFData = { kind: NodeType; data: Record<string, unknown>; problems?: string[]; stats?: { entered: number; exited: number; dropped: number } };
+export type RFData = { kind: NodeType; data: Record<string, unknown>; problems?: string[] | undefined; stats?: { entered: number; exited: number; dropped: number } | undefined };
 
 function FlowNodeView({ id, data, selected }: NodeProps & { data: RFData }) {
   const meta = NODE_META[data.kind];
