@@ -18,6 +18,7 @@ import {
   type ButtonKind,
   type DraftButton,
 } from "@/lib/templates";
+import { usePublishedForms } from "@/hooks/use-published-forms";
 
 /** Adding and editing the tappable buttons under a message. */
 export function ButtonEditor({
@@ -31,6 +32,7 @@ export function ButtonEditor({
   context?: "template" | "card";
   idPrefix: string;
 }) {
+  const publishedForms = usePublishedForms();
   const limit = context === "card" ? MAX_CARD_BUTTONS : MAX_BUTTONS;
   const problems = validateButtons(buttons, context);
   const options = context === "card"
@@ -150,8 +152,32 @@ export function ButtonEditor({
                     <Label htmlFor={`${idPrefix}-flow-${index}`} className="text-xs">
                       Form ID
                     </Label>
+                    {publishedForms.some((f) => f.meta_flow_id) ? (
+                      <Select
+                        value={
+                          publishedForms.some((f) => f.meta_flow_id === button.flow_id)
+                            ? (button.flow_id ?? "")
+                            : ""
+                        }
+                        onValueChange={(v) => update(index, { flow_id: v })}
+                      >
+                        <SelectTrigger id={`${idPrefix}-flow-${index}`} className="mt-1">
+                          <SelectValue placeholder="Pick one of your forms" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {publishedForms
+                            .filter((f) => f.meta_flow_id)
+                            .map((f) => (
+                              <SelectItem key={f.id} value={f.meta_flow_id ?? ""}>
+                                {f.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    ) : null}
                     <Input
-                      id={`${idPrefix}-flow-${index}`}
+                      aria-label="Form ID"
+                      placeholder="Or paste a Form ID"
                       value={button.flow_id ?? ""}
                       onChange={(e) => update(index, { flow_id: e.target.value })}
                       className="mt-1"
