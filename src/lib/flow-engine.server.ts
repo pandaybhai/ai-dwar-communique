@@ -261,14 +261,19 @@ async function activeRunFor(
 ): Promise<Run | null> {
   const { data } = await supabase
     .from("flow_runs")
-    .select(RUN_COLUMNS)
+    .select(`${RUN_COLUMNS}, updated_at`)
     .eq("organization_id", args.organizationId)
     .eq("contact_id", args.contactId)
     .in("status", ["running", "waiting"])
     .or(`conversation_id.eq.${args.conversationId},conversation_id.is.null`)
     .order("updated_at", { ascending: false })
     .limit(5);
-  let candidates = (data ?? []) as Run[];
+  // A run stuck "running" for over 2 minutes crashed mid-step; it must not
+  // swallow the customer's messages.
+  const staleBefore = Date.now() - 120_000;
+  let candidates = ((data ?? []) as Array<Run & { updated_at?: string }>).filter(
+    (r) => r.status !== "running" || !r.updated_at || Date.parse(r.updated_at) > staleBefore,
+  ) as Run[];
   const unbound = candidates.filter((r) => !r.conversation_id);
   if (unbound.length && args.whatsappAccountId) {
     const { data: flows } = await supabase
