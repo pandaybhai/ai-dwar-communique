@@ -53,7 +53,6 @@ function FlowEditorPage() {
     const graph = (draft ?? pub ?? rows[0])?.graph ?? { nodes: [], edges: [] };
     setTemplates((tpl ?? []) as Array<{ id: string; name: string; status: string }>);
     setData({ name: (flow as { name: string }).name, graph, published: Boolean(pub), versions: rows.map(({ graph: _g, ...r }) => r) });
-    setRev((r) => r + 1);
     setError(null);
   }, [id, orgId]);
 
@@ -68,7 +67,7 @@ function FlowEditorPage() {
     <div className="space-y-3">
       <Link to="/app/flows" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> All flows</Link>
       <FlowEditor
-        key={rev === 1 ? "first" : `${id}`}
+        key={`${id}:${rev}`}
         organizationId={orgId}
         flowId={id}
         name={data.name}
@@ -77,7 +76,7 @@ function FlowEditorPage() {
         canEdit={can("ai.configure")}
         pickers={{ templates, forms, variables: [], contactFields: ["email", "city", "pincode"] }}
         versions={data.versions}
-        onChanged={() => void load()}
+        onChanged={(remount) => void load().then(() => remount && setRev((r) => r + 1))}
       />
     </div>
   );

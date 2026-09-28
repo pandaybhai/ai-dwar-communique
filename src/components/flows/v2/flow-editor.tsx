@@ -70,7 +70,7 @@ type Props = {
   pickers: Pickers;
   versions: VersionRow[];
   stats?: Record<string, { entered: number; exited: number; dropped: number }>;
-  onChanged: () => void;
+  onChanged: (remount?: boolean) => void;
 };
 
 export function FlowEditor(props: Props) {
@@ -248,7 +248,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     setBusy(true);
     const { error } = await callApi("/api/flows/v2", { body: { action: "restore", organization_id: organizationId, flow_id: flowId, version_id: versionId } });
     setBusy(false);
-    if (error) toast.error(error); else { toast.success("Restored as draft."); setHistOpen(false); onChanged(); }
+    if (error) toast.error(error); else { toast.success("Restored as draft."); setHistOpen(false); onChanged(true); }
   };
 
   const pathSet = useMemo(() => new Set(path), [path]);
