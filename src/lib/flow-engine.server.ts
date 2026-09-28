@@ -359,13 +359,14 @@ async function advance(
     }
     const d = node.data;
     const waitingHere = run.status === "waiting" && run.current_node_id === node.id && seen === 1;
+    const awaitingReply = waitingHere && run.waiting_for === "reply";
     if (!waitingHere) await logEvent(supabase, run, node.id, "entered", { type: node.type });
 
     const needsWindow = ["text", "buttons", "list", "ask", "form"].includes(node.type);
     const sendsMessage = needsWindow || node.type === "template";
 
     // Quiet hours hold proactive sends (not replies to a message just received).
-    if (sendsMessage && !waitingHere && !reply && env.settings.quietHoursEnabled) {
+    if (sendsMessage && !awaitingReply && !reply && !woke && env.settings.quietHoursEnabled) {
       const { applyQuietHours } = await import("@/lib/flows.server");
       const at = applyQuietHours(new Date(), env.settings, "transactional");
       if (at.getTime() > Date.now() + 60_000) {
@@ -376,19 +377,19 @@ async function advance(
         return;
       }
     }
-    if (needsWindow && !waitingHere && !env.windowOpen) {
+    if (needsWindow && !awaitingReply && !env.windowOpen) {
       await logEvent(supabase, run, node.id, "window_closed");
       if (!(await follow(node, "window_closed"))) return;
       continue;
     }
-    if (sendsMessage && !waitingHere && !env.conn) {
+    if (sendsMessage && !awaitingReply && !env.conn) {
       await finish("failed", "failed", { error: "no_connected_number" });
       return;
     }
 
     // ---- nodes that wait for the customer ----
     if (node.type === "buttons" || node.type === "list" || node.type === "ask") {
-      if (!waitingHere) {
+      if (!awaitingReply) {
         bumpAttempt(node.id);
         const ok = await sendPrompt(supabase, run, env, node, `${run.id}:${node.id}:${attemptOf(node.id)}`);
         if (!ok.ok) {
@@ -451,7 +452,7 @@ async function advance(
         await finish("done", "ended");
         return;
       case "wait": {
-        if (waitingHere && woke) {
+        if (waitingHere && woke && run.waiting_for === "timer") {
           woke = false;
           run.status = "running";
           break;
@@ -669,13 +670,6 @@ async function applyTag(supabase: SupabaseClient, run: Run, name: string, action
     await supabase
       .from("contact_tags")
       .upsert({ organization_id: run.organization_id, contact_id: run.contact_id, tag_id: tagId }, { onConflict: "contact_id,tag_id", ignoreDuplicates: true });
-    const { emitEvent } = await import("@/lib/events.server");
-    await emitEvent(supabase, "contact.tag_added", {
-      organizationId: run.organization_id,
-      entityType: "contact",
-      entityId: run.contact_id,
-      properties: { tag: tagName, source: "flow_v2" },
-    }).catch(() => undefined);
   } else {
     await supabase.from("contact_tags").delete().eq("contact_id", run.contact_id).eq("tag_id", tagId);
   }
