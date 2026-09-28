@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { PermissionGate } from "@/components/permission-gate";
 import { CodPanel } from "@/components/flows/cod-panel";
@@ -42,6 +43,7 @@ export function FlowsView({
 }) {
   const { can } = usePermissions();
   const canManage = can("flows.manage");
+  const { enabled: formsEnabled } = useFeatureFlag("wa_forms");
 
   const [flows, setFlows] = useState<FlowRow[] | null>(null);
   const [steps, setSteps] = useState<FlowStepRow[]>([]);
@@ -94,7 +96,10 @@ export function FlowsView({
       setFlows([]);
       return;
     }
-    const flowRows = (flowRes.data as FlowRow[]) ?? [];
+    // The form follow-up flow disappears cleanly when forms are switched off.
+    const flowRows = ((flowRes.data as FlowRow[]) ?? []).filter(
+      (f) => f.key !== "form_followup" || formsEnabled,
+    );
     setFlows(flowRows);
     onLoaded?.(flowRows);
     setTemplates((tplRes.data as TemplateLite[]) ?? []);
@@ -121,7 +126,7 @@ export function FlowsView({
     } else {
       setSteps([]);
     }
-  }, [organizationId, onLoaded]);
+  }, [organizationId, onLoaded, formsEnabled]);
 
   useEffect(() => {
     void load();
