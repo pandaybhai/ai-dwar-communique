@@ -95,7 +95,7 @@ function FlowEditorPage() {
         name={data.name}
         initial={data.graph}
         published={data.published}
-        canEdit={can("ai.configure")}
+        canEdit={can("flows_v2.edit")}
         pickers={{ templates, forms, variables: [], contactFields: ["email", "city", "pincode"], segments: extra.segments, flows: extra.flows, products: extra.products }}
         aiOn={extra.aiOn}
         versions={data.versions}

@@ -48,17 +48,9 @@ const DEFAULT_REPLY_TIMEOUT_MIN = 24 * 60;
 const MAX_VISITS_PER_ADVANCE = 25;
 
 export async function flowsV2Enabled(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
-  const [{ data: override }, { data: flag }] = await Promise.all([
-    supabase
-      .from("organization_feature_overrides")
-      .select("enabled")
-      .eq("organization_id", organizationId)
-      .eq("flag_key", "flows_v2")
-      .maybeSingle(),
-    supabase.from("feature_flags").select("default_enabled").eq("key", "flows_v2").maybeSingle(),
-  ]);
-  if (override) return Boolean((override as { enabled: boolean }).enabled);
-  return Boolean((flag as { default_enabled?: boolean } | null)?.default_enabled);
+  // One source of truth for flags: the same resolver the AI tools use.
+  const { enabledFlags } = await import("@/lib/ai-tools.server");
+  return (await enabledFlags(supabase, organizationId)).has("flows_v2");
 }
 
 async function logEvent(
@@ -77,8 +69,11 @@ async function logEvent(
     detail,
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
   });
-  // 23505 = this exact send already happened.
-  return !error;
+  if (!error) return true;
+  // 23505 = this exact send already happened → skip it. Any other failure
+  // means we can't prove the send is unique, so the run must fail.
+  if (error.code === "23505") return false;
+  throw new Error(`event_log_failed:${error.code ?? ""}:${error.message}`.slice(0, 280));
 }
 
 async function loadGraph(supabase: SupabaseClient, versionId: string): Promise<FlowGraph | null> {
@@ -97,6 +92,8 @@ export async function startRun(
     conversationId?: string | null;
     trigger?: Record<string, unknown>;
     inbound?: Inbound | null;
+    /** Started by a message the customer just sent (keyword, first message…). */
+    fromCustomerMessage?: boolean;
   },
 ): Promise<{ runId: string | null; reason: string | null }> {
   if (!(await flowsV2Enabled(supabase, args.organizationId))) return { runId: null, reason: "flag_off" };
@@ -129,16 +126,30 @@ export async function startRun(
     .single();
   if (error || !inserted) return { runId: null, reason: error?.code === "23505" ? "already_running" : "insert_failed" };
   const run = inserted as Run;
-  await logEvent(supabase, run, start.id, "started", args.trigger ?? {});
-  await advance(supabase, run, v.graph, null);
+  try {
+    await logEvent(supabase, run, start.id, "started", args.trigger ?? {});
+    await advance(supabase, run, v.graph, null, { fromCustomer: Boolean(args.fromCustomerMessage) });
+  } catch (error) {
+    await failSafe(supabase, run, error);
+  }
+  // The run exists either way, so the trigger counts as consumed.
   return { runId: run.id, reason: null };
 }
 
 /** An inbound message: if a run is waiting for this contact's reply, it takes it. */
 export async function handleInboundForRuns(
   supabase: SupabaseClient,
-  args: { organizationId: string; contactId: string; conversationId: string; body: string; replyId: string | null },
+  args: {
+    organizationId: string;
+    contactId: string;
+    conversationId: string;
+    whatsappAccountId?: string | null;
+    body: string;
+    replyId: string | null;
+  },
 ): Promise<{ consumed: boolean }> {
+  // Match on this conversation (a run started without one, e.g. from a tag
+  // trigger, is matched by contact + the flow's number instead).
   const { data } = await supabase
     .from("flow_runs")
     .select(RUN_COLUMNS)
@@ -146,19 +157,48 @@ export async function handleInboundForRuns(
     .eq("contact_id", args.contactId)
     .eq("status", "waiting")
     .eq("waiting_for", "reply")
+    .or(`conversation_id.eq.${args.conversationId},conversation_id.is.null`)
     .order("updated_at", { ascending: false })
-    .limit(1);
-  const run = ((data ?? []) as Run[])[0];
+    .limit(5);
+  let candidates = (data ?? []) as Run[];
+  const unbound = candidates.filter((r) => !r.conversation_id);
+  if (unbound.length && args.whatsappAccountId) {
+    const { data: flows } = await supabase
+      .from("flows")
+      .select("id, whatsapp_account_id")
+      .in("id", unbound.map((r) => r.flow_id));
+    const onOtherNumber = new Set(
+      ((flows ?? []) as Array<{ id: string; whatsapp_account_id: string | null }>)
+        .filter((f) => f.whatsapp_account_id && f.whatsapp_account_id !== args.whatsappAccountId)
+        .map((f) => f.id),
+    );
+    candidates = candidates.filter((r) => r.conversation_id || !onOtherNumber.has(r.flow_id));
+  }
+  const run = candidates.find((r) => r.conversation_id === args.conversationId) ?? candidates[0];
   if (!run) return { consumed: false };
   if (!(await flowsV2Enabled(supabase, args.organizationId))) return { consumed: false };
   const graph = await loadGraph(supabase, run.version_id);
   if (!graph) return { consumed: false };
-  if (!run.conversation_id) {
-    await supabase.from("flow_runs").update({ conversation_id: args.conversationId }).eq("id", run.id);
-    run.conversation_id = args.conversationId;
+  // Claim: only one of (this reply, a timeout tick) may advance the run.
+  const { data: claimed } = await supabase
+    .from("flow_runs")
+    .update({ status: "running", claimed_at: new Date().toISOString(), conversation_id: run.conversation_id ?? args.conversationId })
+    .eq("id", run.id)
+    .eq("status", "waiting")
+    .eq("waiting_for", "reply")
+    .select("id");
+  if (!claimed || claimed.length === 0) {
+    // Someone else (the tick) has it right now — the flow still owns the chat.
+    return { consumed: true };
   }
-  await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length });
-  await advance(supabase, run, graph, { body: args.body, replyId: args.replyId });
+  run.conversation_id = run.conversation_id ?? args.conversationId;
+  try {
+    await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length });
+    // advance() reasons about the state the run was waiting in.
+    await advance(supabase, run, graph, { body: args.body, replyId: args.replyId });
+  } catch (error) {
+    await failSafe(supabase, run, error);
+  }
   return { consumed: true };
 }
 
@@ -182,7 +222,7 @@ export async function tickRuns(supabase: SupabaseClient): Promise<{ processed: n
       }
       await advance(supabase, run, graph, null, { woke: true });
     } catch (error) {
-      await fail(supabase, run, error instanceof Error ? error.message : String(error));
+      await failSafe(supabase, run, error);
     }
   }
   return { processed: runs.length, expired: (old ?? []).length };
@@ -218,7 +258,11 @@ export async function controlRun(
       .update({
         status: "waiting",
         waiting_for: prev.waiting_for ?? "timer",
-        wake_at: prev.waiting_for === "reply" ? prev.wake_at ?? null : new Date().toISOString(),
+        // Reply waits keep their deadline; timer waits never wake earlier than planned.
+        wake_at:
+          prev.waiting_for === "reply"
+            ? prev.wake_at ?? null
+            : new Date(Math.max(prev.wake_at ? new Date(prev.wake_at).getTime() : 0, Date.now())).toISOString(),
         variables: vars,
       })
       .eq("id", run.id);
@@ -227,12 +271,20 @@ export async function controlRun(
   return { ok: true, error: null };
 }
 
+async function failSafe(supabase: SupabaseClient, run: Run, error: unknown) {
+  try {
+    await fail(supabase, run, error instanceof Error ? error.message : String(error));
+  } catch (e) {
+    console.error("[flows-v2] could not mark run failed", run.id, e instanceof Error ? e.message : String(e));
+  }
+}
+
 async function fail(supabase: SupabaseClient, run: Run, message: string) {
   await supabase
     .from("flow_runs")
     .update({ status: "failed", last_error: message.slice(0, 300), wake_at: null, claimed_at: null, ended_at: new Date().toISOString() })
     .eq("id", run.id);
-  await logEvent(supabase, run, run.current_node_id, "failed", { error: message.slice(0, 300) });
+  await logEvent(supabase, run, run.current_node_id, "failed", { error: message.slice(0, 300) }).catch(() => false);
 }
 
 type Env = {
@@ -246,7 +298,7 @@ type Env = {
 
 async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
   const { loadSendSettings } = await import("@/lib/flows.server");
-  const [{ data: contact }, { data: tagRows }, { data: conversation }, { data: flow }, settings] = await Promise.all([
+  const [{ data: contact, error: contactError }, { data: tagRows }, { data: conversation }, { data: flow }, settings] = await Promise.all([
     supabase.from("contacts").select("name, phone, wa_id, attributes, opt_in_status").eq("id", run.contact_id).maybeSingle(),
     supabase.from("contact_tags").select("tags(name)").eq("contact_id", run.contact_id),
     run.conversation_id
@@ -255,7 +307,9 @@ async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
     supabase.from("flows").select("whatsapp_account_id").eq("id", run.flow_id).maybeSingle(),
     loadSendSettings(supabase, run.organization_id),
   ]);
-  const c = (contact ?? { name: null, phone: "", wa_id: null, attributes: {}, opt_in_status: null }) as {
+  // Without the contact we can't know opt-out or attributes — fail, never guess.
+  if (contactError || !contact) throw new Error(contactError ? `contact_read_failed:${contactError.message}` : "contact_missing");
+  const c = contact as {
     name: string | null;
     phone: string;
     wa_id: string | null;
@@ -296,7 +350,7 @@ async function advance(
   run: Run,
   graph: FlowGraph,
   inbound: Inbound | null,
-  opts: { woke?: boolean; paid?: boolean } = {},
+  opts: { woke?: boolean; paid?: boolean; fromCustomer?: boolean } = {},
 ): Promise<void> {
   const env = await loadEnv(supabase, run);
   const vars = env.ctx.vars;
@@ -305,6 +359,9 @@ async function advance(
   let steps = run.steps;
   let reply = inbound;
   let woke = Boolean(opts.woke);
+  // This whole advance answers a message the customer just sent, so quiet
+  // hours don't apply to any node it reaches.
+  const fromInbound = Boolean(inbound) || Boolean(opts.fromCustomer);
 
   const save = async (patch: Record<string, unknown>) => {
     await supabase
@@ -370,7 +427,7 @@ async function advance(
     const sendsMessage = needsWindow || node.type === "template";
 
     // Quiet hours hold proactive sends (not replies to a message just received).
-    if (sendsMessage && !awaitingReply && !payWaiting && !reply && !woke && env.settings.quietHoursEnabled) {
+    if (sendsMessage && !awaitingReply && !payWaiting && !fromInbound && !woke && env.settings.quietHoursEnabled) {
       const { applyQuietHours } = await import("@/lib/flows.server");
       const at = applyQuietHours(new Date(), env.settings, "transactional");
       if (at.getTime() > Date.now() + 60_000) {
@@ -466,6 +523,10 @@ async function advance(
         if (!(await follow(node, "invalid"))) return;
         continue;
       }
+      if (!env.conn) {
+        await finish("failed", "failed", { error: "no_connected_number" });
+        return;
+      }
       bumpAttempt(node.id);
       const retryText = String(d["retry_text"] ?? "").trim();
       const ok = await sendPrompt(supabase, run, env, node, `${run.id}:${node.id}:${attemptOf(node.id)}`, retryText || null);
@@ -560,11 +621,16 @@ async function advance(
         if (field) {
           const value = interpolate(String(d["value"] ?? ""), { ...env.ctx, vars });
           if (field === "name") await supabase.from("contacts").update({ name: value }).eq("id", run.contact_id);
-          else
-            await supabase
-              .from("contacts")
-              .update({ attributes: { ...env.ctx.contact.attributes, [field]: value } })
-              .eq("id", run.contact_id);
+          else {
+            // Merge one key in the database — never rewrite from a snapshot.
+            const { error } = await supabase.rpc("flow_merge_contact_attribute", {
+              p_contact_id: run.contact_id,
+              p_organization_id: run.organization_id,
+              p_key: field,
+              p_value: value,
+            });
+            if (error) throw new Error(`set_field_failed:${error.message}`);
+          }
           env.ctx.contact.attributes[field] = value;
         }
         break;
@@ -865,12 +931,16 @@ async function sendTemplate(
 async function applyTag(supabase: SupabaseClient, run: Run, name: string, action: "add" | "remove") {
   const tagName = name.trim();
   if (!tagName) return;
-  let { data: tag } = await supabase
+  // Exact name, case-insensitive: escape LIKE wildcards so "50%" or "a_b"
+  // never match other tags.
+  const exact = tagName.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  const { data: tagRows } = await supabase
     .from("tags")
     .select("id")
     .eq("organization_id", run.organization_id)
-    .ilike("name", tagName)
-    .maybeSingle();
+    .ilike("name", exact)
+    .limit(1);
+  let tag = ((tagRows ?? []) as Array<{ id: string }>)[0] ?? null;
   if (!tag && action === "add") {
     const { data: created } = await supabase
       .from("tags")

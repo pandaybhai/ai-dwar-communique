@@ -87,7 +87,7 @@ export const Route = createFileRoute("/api/flows/triggers")({
         const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
         if (!(await flowsV2Enabled(db, org))) return jsonError("Flows v2 isn't switched on for this workspace.", 403);
 
-        // Reads any member can do; writes need ai.configure.
+        // Reads any member can do; writes need flows_v2.edit.
         if (body.action === "node_stats") {
           const { data: published } = await db
             .from("flow_versions")
@@ -143,7 +143,7 @@ export const Route = createFileRoute("/api/flows/triggers")({
           });
         }
 
-        const denied = await requirePermission(auth, "ai.configure", "edit flows");
+        const denied = await requirePermission(auth, "flows_v2.edit", "edit flows");
         if (denied) return denied;
 
         if (body.action === "list") {

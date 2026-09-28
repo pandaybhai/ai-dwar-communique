@@ -18,7 +18,7 @@ const Body = z.discriminatedUnion("action", [
 
 /**
  * Flows v2 editor writes: create, save draft, publish, unpublish, restore.
- * Edit = ai.configure (owners always have it). Org comes from the verified membership.
+ * Edit = flows_v2.edit (owners always have it). Org comes from the verified membership.
  */
 export const Route = createFileRoute("/api/flows/v2")({
   server: {
@@ -35,7 +35,7 @@ export const Route = createFileRoute("/api/flows/v2")({
         }
         const auth = await requireOrgMember(request, body.organization_id);
         if (isResponse(auth)) return auth;
-        const denied = await requirePermission(auth, "ai.configure", "edit flows");
+        const denied = await requirePermission(auth, "flows_v2.edit", "edit flows");
         if (denied) return denied;
         const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");

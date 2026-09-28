@@ -13,7 +13,7 @@ type Trigger = {
   config: Record<string, unknown>;
 };
 
-async function enabledTriggers(
+async function enabledTriggersAll(
   supabase: SupabaseClient,
   organizationId: string,
   kind: string,
@@ -37,6 +37,7 @@ async function fire(
     detail?: Record<string, unknown>;
     /** true → remember the fire so no_reply doesn't re-arm for this contact. */
     remember?: boolean;
+    fromCustomerMessage?: boolean;
   },
 ): Promise<string | null> {
   const { startRun } = await import("@/lib/flow-engine.server");
@@ -46,6 +47,7 @@ async function fire(
     contactId: args.contactId,
     conversationId: args.conversationId ?? null,
     trigger: { kind: args.trigger.kind, trigger_id: args.trigger.id, ...(args.detail ?? {}) },
+    fromCustomerMessage: Boolean(args.fromCustomerMessage),
   });
   if (runId && args.remember) {
     await supabase
@@ -97,20 +99,34 @@ export async function dispatchInboundTriggers(
     isFirstMessageEver: boolean;
     isCtwa: boolean;
     campaignButton: { campaignId: string | null; button: string | null } | null;
+    /** Only flows pinned to this number may start (used for the onboarding number). */
+    onlyAccountId?: string | null;
   },
 ): Promise<{ started: boolean; flowId?: string }> {
   const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
   if (!(await flowsV2Enabled(supabase, args.organizationId))) return { started: false };
+  let allowed: Set<string> | null = null;
+  if (args.onlyAccountId) {
+    const { data } = await supabase
+      .from("flows")
+      .select("id")
+      .eq("organization_id", args.organizationId)
+      .eq("whatsapp_account_id", args.onlyAccountId);
+    allowed = new Set(((data ?? []) as Array<{ id: string }>).map((f) => f.id));
+    if (!allowed.size) return { started: false };
+  }
+  const enabledTriggers = async (sb: SupabaseClient, org: string, kind: string) =>
+    (await enabledTriggersAll(sb, org, kind)).filter((t) => !allowed || allowed.has(t.flow_id));
 
   if (args.isFirstMessageEver) {
     for (const t of await enabledTriggers(supabase, args.organizationId, "first_message")) {
-      const runId = await fire(supabase, { organizationId: args.organizationId, trigger: t, contactId: args.contactId, conversationId: args.conversationId });
+      const runId = await fire(supabase, { fromCustomerMessage: true, organizationId: args.organizationId, trigger: t, contactId: args.contactId, conversationId: args.conversationId });
       if (runId) return { started: true, flowId: t.flow_id };
     }
   }
   if (args.isCtwa) {
     for (const t of await enabledTriggers(supabase, args.organizationId, "ctwa_ad")) {
-      const runId = await fire(supabase, { organizationId: args.organizationId, trigger: t, contactId: args.contactId, conversationId: args.conversationId });
+      const runId = await fire(supabase, { fromCustomerMessage: true, organizationId: args.organizationId, trigger: t, contactId: args.contactId, conversationId: args.conversationId });
       if (runId) return { started: true, flowId: t.flow_id };
     }
   }
@@ -120,7 +136,7 @@ export async function dispatchInboundTriggers(
       const btn = norm(String(t.config["button"] ?? ""));
       if (cid && cid !== args.campaignButton.campaignId) continue;
       if (btn && btn !== norm(args.campaignButton.button ?? "")) continue;
-      const runId = await fire(supabase, {
+      const runId = await fire(supabase, { fromCustomerMessage: true,
         organizationId: args.organizationId,
         trigger: t,
         contactId: args.contactId,
@@ -133,7 +149,7 @@ export async function dispatchInboundTriggers(
   if (args.body.trim()) {
     for (const t of await enabledTriggers(supabase, args.organizationId, "keyword")) {
       if (!keywordMatches(t.config, args.body)) continue;
-      const runId = await fire(supabase, {
+      const runId = await fire(supabase, { fromCustomerMessage: true,
         organizationId: args.organizationId,
         trigger: t,
         contactId: args.contactId,
@@ -153,7 +169,7 @@ export async function dispatchFormSubmitted(
 ): Promise<void> {
   const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
   if (!(await flowsV2Enabled(supabase, args.organizationId))) return;
-  for (const t of await enabledTriggers(supabase, args.organizationId, "form_submitted")) {
+  for (const t of await enabledTriggersAll(supabase, args.organizationId, "form_submitted")) {
     const fid = (t.config["form_id"] as string | null) ?? null;
     if (fid && fid !== args.formId) continue;
     await fire(supabase, {
@@ -174,7 +190,7 @@ export async function dispatchTagAdded(
   const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
   if (!(await flowsV2Enabled(supabase, args.organizationId))) return;
   const tag = norm(args.tag);
-  for (const t of await enabledTriggers(supabase, args.organizationId, "tag_added")) {
+  for (const t of await enabledTriggersAll(supabase, args.organizationId, "tag_added")) {
     if (norm(String(t.config["tag"] ?? "")) !== tag) continue;
     await fire(supabase, { organizationId: args.organizationId, trigger: t, contactId: args.contactId, detail: { tag: args.tag } });
   }
@@ -191,7 +207,7 @@ export async function dispatchStoreEvent(
 ): Promise<void> {
   const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
   if (!(await flowsV2Enabled(supabase, args.organizationId))) return;
-  for (const t of await enabledTriggers(supabase, args.organizationId, "store_event")) {
+  for (const t of await enabledTriggersAll(supabase, args.organizationId, "store_event")) {
     if (String(t.config["event"] ?? "") !== args.event) continue;
     await fire(supabase, { organizationId: args.organizationId, trigger: t, contactId: args.contactId, detail: { event: args.event, ...(args.detail ?? {}) } });
   }

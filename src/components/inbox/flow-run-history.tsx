@@ -139,7 +139,7 @@ export function FlowRunHistory({
             ))}
           </ul>
         )}
-        {can("ai.configure") && manualFlows.length > 0 && (
+        {can("flows_v2.edit") && manualFlows.length > 0 && (
           <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
             <Select value={pick} onValueChange={setPick}>
               <SelectTrigger className="h-8 flex-1 text-xs">

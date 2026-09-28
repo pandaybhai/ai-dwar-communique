@@ -15,7 +15,7 @@ type Row = { id: string; name: string; is_enabled: boolean; updated_at: string }
 
 export function ChatFlowsList({ organizationId }: { organizationId: string }) {
   const { can } = usePermissions();
-  const canEdit = can("ai.configure");
+  const canEdit = can("flows_v2.edit");
   const navigate = useNavigate();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState(false);
