@@ -189,14 +189,38 @@ export async function startRun(
 const HOLD_MS = 12_000;
 const DUPLICATE_WINDOW_MS = 20_000;
 
+export type InboundRoute = "take" | "hold" | "release" | "duplicate";
+
 /**
- * An inbound message. While the contact has a run that is running OR waiting,
- * every inbound belongs to the flow — it never falls through to the AI, the
- * owner channel or automations:
- *  - waiting for a reply → the run takes it;
- *  - busy (running) → held until the run is ready, then handed over; a
- *    repeat of the tap the run just took is dropped;
- *  - waiting on a timer/payment → recorded on the run and not answered.
+ * Who owns one inbound message, given the contact's run (null = none):
+ *  - waiting for this contact's reply → the flow takes it ("take");
+ *  - running → held until the run is ready ("hold");
+ *  - a held repeat of the tap the run just took (same id within 20 s) → dropped ("duplicate");
+ *  - anything else (timer/payment wait, run finished) → normal routing ("release").
+ */
+export function routeInbound(
+  run: Pick<Run, "status" | "waiting_for" | "variables"> | null,
+  held: boolean,
+  key: string,
+  now: number = Date.now(),
+): InboundRoute {
+  if (!run) return "release";
+  if (held) {
+    const last = run.variables?.["_last_reply"] as { k?: string; at?: string } | undefined;
+    if (last?.k === key && last.at && now - Date.parse(last.at) < DUPLICATE_WINDOW_MS) return "duplicate";
+  }
+  if (run.status === "waiting" && run.waiting_for === "reply") return "take";
+  if (run.status === "running") return "hold";
+  return "release";
+}
+
+/**
+ * An inbound message. It belongs to the flow only when the contact's run is
+ * waiting for their reply, or is busy running (held, then handed over when
+ * the run is ready). During timer/payment waits — and whenever a held
+ * message can't be taken — it goes to normal routing (automations, then
+ * the AI); a message is never silently dropped, except a repeat of the tap
+ * the run just took.
  */
 export async function handleInboundForRuns(
   supabase: SupabaseClient,
@@ -211,26 +235,39 @@ export async function handleInboundForRuns(
 ): Promise<{ consumed: boolean }> {
   const deadline = Date.now() + HOLD_MS;
   const key = (args.replyId ?? args.body.trim().toLowerCase()).slice(0, 200);
-  let held = false;
+  let heldFor: Run | null = null;
   let flagChecked = false;
+  const release = async (run: Pick<Run, "id" | "organization_id" | "current_node_id">, detail: Record<string, unknown>) => {
+    await logEvent(supabase, run, run.current_node_id, "reply_released", { ...detail, held: Boolean(heldFor), length: args.body.length }).catch(() => false);
+    return { consumed: false };
+  };
   for (;;) {
-    const run = await activeRunFor(supabase, args);
-    // Nothing active: normal routing — unless we were holding this message
-    // for a run that has since finished (a duplicate tap), which is dropped.
-    if (!run) return { consumed: held };
+    let run: Run | null = await activeRunFor(supabase, args);
+    let active = true;
+    if (!run) {
+      if (!heldFor) return { consumed: false };
+      // The run we were holding for is no longer active: re-read it only to
+      // spot a duplicate tap; anything else goes to normal routing.
+      const { data: last }: { data: unknown } = await supabase.from("flow_runs").select(RUN_COLUMNS).eq("id", heldFor.id).maybeSingle();
+      run = (last as Run | null) ?? heldFor;
+      active = false;
+    }
     if (!flagChecked) {
       if (!(await flowsV2Enabled(supabase, args.organizationId))) return { consumed: false };
       flagChecked = true;
     }
 
-    if (run.status === "waiting" && run.waiting_for === "reply") {
-      const last = run.variables?.["_last_reply"] as { k?: string; at?: string } | undefined;
-      if (held && last?.k === key && last.at && Date.now() - Date.parse(last.at) < DUPLICATE_WINDOW_MS) {
-        await logEvent(supabase, run, run.current_node_id, "reply_dropped", { reason: "duplicate_tap" }).catch(() => false);
-        return { consumed: true };
-      }
+    let route = routeInbound(run, Boolean(heldFor), key);
+    if (!active && route !== "duplicate") route = "release";
+    if (route === "duplicate") {
+      await logEvent(supabase, run, run.current_node_id, "reply_dropped", { reason: "duplicate_tap" }).catch(() => false);
+      return { consumed: true };
+    }
+    if (route === "release") return release(run, { status: run.status, waiting_for: run.waiting_for });
+
+    if (route === "take") {
       const graph = await loadGraph(supabase, run.version_id);
-      if (!graph) return { consumed: true };
+      if (!graph) return release(run, { reason: "no_graph" });
       // Claim: only one of (this reply, another reply, a timeout tick) may advance the run.
       const { data: claimed } = await supabase
         .from("flow_runs")
@@ -243,7 +280,7 @@ export async function handleInboundForRuns(
         run.conversation_id = run.conversation_id ?? args.conversationId;
         run.variables = { ...(run.variables ?? {}), _last_reply: { k: key, at: new Date().toISOString() } };
         try {
-          await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length, held });
+          await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length, held: Boolean(heldFor) });
           // advance() reasons about the state the run was waiting in.
           await advance(supabase, run, graph, { body: args.body, replyId: args.replyId });
         } catch (error) {
@@ -252,19 +289,13 @@ export async function handleInboundForRuns(
         return { consumed: true };
       }
       // Lost the claim — the run is busy again; hold and retry.
-    } else if (run.status === "waiting") {
-      await logEvent(supabase, run, run.current_node_id, "reply_ignored", { waiting_for: run.waiting_for, length: args.body.length }).catch(() => false);
-      return { consumed: true };
     }
 
-    if (!held) {
-      held = true;
+    if (!heldFor) {
+      heldFor = run;
       await logEvent(supabase, run, run.current_node_id, "reply_held", { reply_id: args.replyId, length: args.body.length }).catch(() => false);
     }
-    if (Date.now() > deadline) {
-      await logEvent(supabase, run, run.current_node_id, "reply_dropped", { reason: "flow_busy" }).catch(() => false);
-      return { consumed: true };
-    }
+    if (Date.now() > deadline) return release(run, { reason: "flow_busy" });
     await new Promise((r) => setTimeout(r, 300));
   }
 }
