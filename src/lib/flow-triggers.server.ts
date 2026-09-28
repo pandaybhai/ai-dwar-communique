@@ -27,6 +27,7 @@ async function enabledTriggersAll(
   return (data ?? []) as Trigger[];
 }
 
+/** Starts the run; the engine records the fire (trigger, flow, contact, run). */
 async function fire(
   supabase: SupabaseClient,
   args: {
@@ -35,11 +36,9 @@ async function fire(
     contactId: string;
     conversationId?: string | null;
     detail?: Record<string, unknown>;
-    /** true → remember the fire so no_reply doesn't re-arm for this contact. */
-    remember?: boolean;
     fromCustomerMessage?: boolean;
   },
-): Promise<string | null> {
+): Promise<{ runId: string | null; active: boolean }> {
   const { startRun } = await import("@/lib/flow-engine.server");
   const { runId, reason } = await startRun(supabase, {
     organizationId: args.organizationId,
@@ -49,20 +48,8 @@ async function fire(
     trigger: { kind: args.trigger.kind, trigger_id: args.trigger.id, ...(args.detail ?? {}) },
     fromCustomerMessage: Boolean(args.fromCustomerMessage),
   });
-  if (runId && args.remember) {
-    await supabase
-      .from("flow_trigger_fires")
-      .upsert(
-        {
-          organization_id: args.organizationId,
-          trigger_id: args.trigger.id,
-          contact_id: args.contactId,
-          run_id: runId,
-        },
-        { onConflict: "trigger_id,contact_id" },
-      );
-  }
-  return runId ?? (reason ? null : null);
+  // already_running: a duplicate "menu" raced the first one — the flow owns it.
+  return { runId, active: Boolean(runId) || reason === "already_running" };
 }
 
 function norm(s: string): string {
@@ -248,14 +235,21 @@ export async function dispatchNoReply(supabase: SupabaseClient): Promise<{ start
         .in("status", ["running", "waiting"])
         .limit(1);
       if (active && active.length) continue;
-      const runId = await fire(supabase, {
+      // Fires once per contact per no-reply trigger.
+      const { data: firedBefore } = await supabase
+        .from("flow_trigger_fires")
+        .select("id")
+        .eq("trigger_id", t.id)
+        .eq("contact_id", c.contact_id)
+        .limit(1);
+      if (firedBefore && firedBefore.length) continue;
+      const { runId } = await fire(supabase, {
         organizationId: t.organization_id,
         trigger: t,
         contactId: c.contact_id,
         conversationId: c.id,
         detail: { days },
-        remember: true,
-      });
+              });
       if (runId) started += 1;
     }
   }

@@ -160,6 +160,15 @@ export async function startRun(
     .single();
   if (error || !inserted) return { runId: null, reason: error?.code === "23505" ? "already_running" : "insert_failed" };
   const run = inserted as Run;
+  // Every trigger fire is recorded (trigger, flow, contact, run) for the
+  // Triggers panel and stats — written alongside the first step, not before it.
+  const triggerId = String(args.trigger?.["trigger_id"] ?? "");
+  const fireWrite = /^[0-9a-f-]{36}$/.test(triggerId)
+    ? supabase
+        .from("flow_trigger_fires")
+        .insert({ organization_id: args.organizationId, trigger_id: triggerId, flow_id: args.flowId, kind: String(args.trigger?.["kind"] ?? ""), contact_id: args.contactId, run_id: run.id })
+        .then(({ error }) => { if (error) console.error("[flows-v2] trigger fire not recorded", error.message); })
+    : null;
   try {
     eventBuffers.set(run.id, []);
     try {
@@ -171,6 +180,7 @@ export async function startRun(
   } catch (error) {
     await failSafe(supabase, run, error);
   }
+  if (fireWrite) await fireWrite;
   // The run exists either way, so the trigger counts as consumed.
   return { runId: run.id, reason: null };
 }
