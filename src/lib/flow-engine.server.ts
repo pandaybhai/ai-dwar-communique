@@ -379,12 +379,30 @@ async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
  * Walk the graph from the run's current node until it waits, ends or fails.
  * `inbound` is the customer's reply when the run was waiting for one.
  */
+type AdvanceOpts = { woke?: boolean; paid?: boolean; fromCustomer?: boolean };
+
 async function advance(
   supabase: SupabaseClient,
   run: Run,
   graph: FlowGraph,
   inbound: Inbound | null,
-  opts: { woke?: boolean; paid?: boolean; fromCustomer?: boolean } = {},
+  opts: AdvanceOpts = {},
+): Promise<void> {
+  const own = !eventBuffers.has(run.id);
+  if (own) eventBuffers.set(run.id, []);
+  try {
+    await advanceInner(supabase, run, graph, inbound, opts);
+  } finally {
+    if (own) await flushEvents(supabase, run.id);
+  }
+}
+
+async function advanceInner(
+  supabase: SupabaseClient,
+  run: Run,
+  graph: FlowGraph,
+  inbound: Inbound | null,
+  opts: AdvanceOpts,
 ): Promise<void> {
   const env = await loadEnv(supabase, run);
   const vars = env.ctx.vars;
