@@ -39,7 +39,9 @@ export type NodeType =
   | "opt"
   | "segment"
   | "goto_flow"
-  | "ab_split";
+  | "ab_split"
+  | "sheets_append"
+  | "payment";
 
 export type FlowNode = {
   id: string;
@@ -236,6 +238,10 @@ export function outputsOf(node: FlowNode): string[] {
       return ["next", "window_closed"];
     case "business_hours":
       return ["open", "closed"];
+    case "sheets_append":
+      return ["next", "failed"];
+    case "payment":
+      return ["paid", "not_paid", "window_closed"];
     case "ab_split":
       return ["a", "b"];
     case "goto_flow":
@@ -253,7 +259,7 @@ export function outputsOf(node: FlowNode): string[] {
 
 /** Handles that must be connected for a node to be publishable. */
 function requiredOutputs(node: FlowNode): string[] {
-  const optional = new Set(["window_closed", "invalid", "timeout"]);
+  const optional = new Set(["window_closed", "invalid", "timeout", "failed"]);
   return outputsOf(node).filter((h) => !optional.has(h));
 }
 
@@ -315,13 +321,23 @@ export function validateGraph(graph: FlowGraph): GraphProblem[] {
     if (node.type === "set_variable" && x["mode"] === "math" && computeVariable({ mode: "math", expression: String(x["expression"] ?? "") }, { vars: {}, contact: { name: "", phone: "", attributes: {} }, tags: [], now: new Date(), timezone: "Asia/Kolkata" }, true) === null)
       problems.push({ nodeId: node.id, message: "The calculation can only use numbers, {{variables}} and + - * / ( )." });
     if (node.type === "segment" && !String(x["segment_name"] ?? "").trim()) problems.push({ nodeId: node.id, message: "Pick a segment." });
+    if (node.type === "sheets_append") {
+      if (!String(x["sheet"] ?? "").trim()) problems.push({ nodeId: node.id, message: "Paste the Google Sheet link." });
+      if (!((x["columns"] as string[] | undefined) ?? []).some((c) => String(c).trim())) problems.push({ nodeId: node.id, message: "Add at least one column value." });
+    }
+    if (node.type === "payment") {
+      const amt = String(x["amount"] ?? "").trim();
+      if (!amt || (!/\{\{/.test(amt) && !(Number(amt) >= 1))) problems.push({ nodeId: node.id, message: "Set an amount of at least ₹1 (or a {{variable}})." });
+      const h = Number(x["wait_hours"] ?? 24);
+      if (!(h >= 1 && h <= 312)) problems.push({ nodeId: node.id, message: "Wait between 1 and 312 hours for payment." });
+    }
     if (node.type === "goto_flow" && !String(x["flow_id"] ?? "")) problems.push({ nodeId: node.id, message: "Pick the flow to go to." });
     if (node.type === "branch")
       for (const b of (x["branches"] as Branch[] | undefined) ?? [])
         for (const c of b.conditions) if (c.op === "matches" && !safeRegex(String(c.value ?? ""))) problems.push({ nodeId: node.id, message: `"${c.value}" isn't a valid pattern.` });
   }
   // Variables used must be set somewhere (ask nodes or built-ins).
-  const defined = new Set(["name", "phone", "last_answer", "today", "now"]);
+  const defined = new Set(["name", "phone", "last_answer", "today", "now", "payment_link", "payment_status", "payment_id"]);
   for (const n of graph.nodes) if (["ask", "buttons", "list", "location_request", "set_variable"].includes(n.type) && d(n, "variable")) defined.add(d(n, "variable"));
   for (const n of graph.nodes) {
     const text = JSON.stringify(n.data);

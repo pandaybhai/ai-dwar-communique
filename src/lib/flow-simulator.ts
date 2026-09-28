@@ -244,6 +244,15 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
         break;
       case "note":
         break;
+      case "sheets_append":
+        note(s, `Adds a row to Google Sheets: ${((d["columns"] as string[]) ?? []).map((c) => interpolate(String(c), ctx)).join(" | ")}`);
+        break;
+      case "payment": {
+        s.messages.push({ from: "bot", kind: "text", text: `${interpolate(String(d["text"] ?? "Here's your payment link:"), ctx)}\nhttps://rzp.io/test-link (not created in test chat)` });
+        note(s, "Test chat assumes the customer paid.");
+        if (!go(graph, s, node, "paid")) return s;
+        continue;
+      }
       default:
         note(s, `Step "${node.type}" isn't supported yet.`);
     }

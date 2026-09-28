@@ -74,6 +74,7 @@ import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/imp
 import { Route as ApiFlowsRunsRouteImport } from './routes/api/flows/runs'
 import { Route as ApiFlowsV2RouteImport } from './routes/api/flows/v2'
 import { Route as ApiHomeSummaryRouteImport } from './routes/api/home/summary'
+import { Route as ApiIntegrationsFlowConnectionsRouteImport } from './routes/api/integrations/flow-connections'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-run'
 import { Route as ApiInternalBillingMonthlyRouteImport } from './routes/api/internal/billing-monthly'
@@ -93,6 +94,7 @@ import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/i
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
 import { Route as ApiOnboardingStartRouteImport } from './routes/api/onboarding/start'
 import { Route as ApiPublicDemoLeadsRouteImport } from './routes/api/public/demo-leads'
+import { Route as ApiPublicGoogleOauthCallbackRouteImport } from './routes/api/public/google-oauth-callback'
 import { Route as ApiPublicPlansRouteImport } from './routes/api/public/plans'
 import { Route as ApiPublicRazorpayWebhookRouteImport } from './routes/api/public/razorpay-webhook'
 import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
@@ -113,6 +115,7 @@ import { Route as AppCatalogIndexRouteImport } from './routes/app/catalog.index'
 import { Route as AppCatalogCollectionsRouteImport } from './routes/app/catalog.collections'
 import { Route as AppFlowsIndexRouteImport } from './routes/app/flows.index'
 import { Route as AppFlowsIdRouteImport } from './routes/app/flows.$id'
+import { Route as ApiPublicRazorpayFlowWebhookOrgIdRouteImport } from './routes/api/public/razorpay-flow-webhook/$orgId'
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
 import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/shopify/webhooks/shop-redact'
@@ -448,6 +451,12 @@ const ApiHomeSummaryRoute = ApiHomeSummaryRouteImport.update({
   path: '/api/home/summary',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiIntegrationsFlowConnectionsRoute =
+  ApiIntegrationsFlowConnectionsRouteImport.update({
+    id: '/api/integrations/flow-connections',
+    path: '/api/integrations/flow-connections',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiIntegrationsShopifyRoute = ApiIntegrationsShopifyRouteImport.update({
   id: '/api/integrations/shopify',
   path: '/api/integrations/shopify',
@@ -552,6 +561,12 @@ const ApiPublicDemoLeadsRoute = ApiPublicDemoLeadsRouteImport.update({
   path: '/api/public/demo-leads',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicGoogleOauthCallbackRoute =
+  ApiPublicGoogleOauthCallbackRouteImport.update({
+    id: '/api/public/google-oauth-callback',
+    path: '/api/public/google-oauth-callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicPlansRoute = ApiPublicPlansRouteImport.update({
   id: '/api/public/plans',
   path: '/api/public/plans',
@@ -657,6 +672,12 @@ const AppFlowsIdRoute = AppFlowsIdRouteImport.update({
   path: '/flows/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const ApiPublicRazorpayFlowWebhookOrgIdRoute =
+  ApiPublicRazorpayFlowWebhookOrgIdRouteImport.update({
+    id: '/api/public/razorpay-flow-webhook/$orgId',
+    path: '/api/public/razorpay-flow-webhook/$orgId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiShopifyWebhooksCustomersDataRequestRoute =
   ApiShopifyWebhooksCustomersDataRequestRouteImport.update({
     id: '/api/shopify/webhooks/customers-data-request',
@@ -770,6 +791,7 @@ export interface FileRoutesByFullPath {
   '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/flows/v2': typeof ApiFlowsV2Route
   '/api/home/summary': typeof ApiHomeSummaryRoute
+  '/api/integrations/flow-connections': typeof ApiIntegrationsFlowConnectionsRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/billing-monthly': typeof ApiInternalBillingMonthlyRoute
@@ -789,6 +811,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
+  '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
   '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
@@ -809,6 +832,7 @@ export interface FileRoutesByFullPath {
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/api/public/razorpay-flow-webhook/$orgId': typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
@@ -882,6 +906,7 @@ export interface FileRoutesByTo {
   '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/flows/v2': typeof ApiFlowsV2Route
   '/api/home/summary': typeof ApiHomeSummaryRoute
+  '/api/integrations/flow-connections': typeof ApiIntegrationsFlowConnectionsRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/billing-monthly': typeof ApiInternalBillingMonthlyRoute
@@ -901,6 +926,7 @@ export interface FileRoutesByTo {
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
+  '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
   '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
@@ -921,6 +947,7 @@ export interface FileRoutesByTo {
   '/app/campaigns': typeof AppCampaignsIndexRoute
   '/app/catalog': typeof AppCatalogIndexRoute
   '/app/flows': typeof AppFlowsIndexRoute
+  '/api/public/razorpay-flow-webhook/$orgId': typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
@@ -997,6 +1024,7 @@ export interface FileRoutesById {
   '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/flows/v2': typeof ApiFlowsV2Route
   '/api/home/summary': typeof ApiHomeSummaryRoute
+  '/api/integrations/flow-connections': typeof ApiIntegrationsFlowConnectionsRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
   '/api/internal/billing-monthly': typeof ApiInternalBillingMonthlyRoute
@@ -1016,6 +1044,7 @@ export interface FileRoutesById {
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
+  '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
   '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
@@ -1036,6 +1065,7 @@ export interface FileRoutesById {
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/api/public/razorpay-flow-webhook/$orgId': typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
@@ -1113,6 +1143,7 @@ export interface FileRouteTypes {
     | '/api/flows/runs'
     | '/api/flows/v2'
     | '/api/home/summary'
+    | '/api/integrations/flow-connections'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
     | '/api/internal/billing-monthly'
@@ -1132,6 +1163,7 @@ export interface FileRouteTypes {
     | '/api/internal/version'
     | '/api/onboarding/start'
     | '/api/public/demo-leads'
+    | '/api/public/google-oauth-callback'
     | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
@@ -1152,6 +1184,7 @@ export interface FileRouteTypes {
     | '/app/campaigns/'
     | '/app/catalog/'
     | '/app/flows/'
+    | '/api/public/razorpay-flow-webhook/$orgId'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
@@ -1225,6 +1258,7 @@ export interface FileRouteTypes {
     | '/api/flows/runs'
     | '/api/flows/v2'
     | '/api/home/summary'
+    | '/api/integrations/flow-connections'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
     | '/api/internal/billing-monthly'
@@ -1244,6 +1278,7 @@ export interface FileRouteTypes {
     | '/api/internal/version'
     | '/api/onboarding/start'
     | '/api/public/demo-leads'
+    | '/api/public/google-oauth-callback'
     | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
@@ -1264,6 +1299,7 @@ export interface FileRouteTypes {
     | '/app/campaigns'
     | '/app/catalog'
     | '/app/flows'
+    | '/api/public/razorpay-flow-webhook/$orgId'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
@@ -1339,6 +1375,7 @@ export interface FileRouteTypes {
     | '/api/flows/runs'
     | '/api/flows/v2'
     | '/api/home/summary'
+    | '/api/integrations/flow-connections'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
     | '/api/internal/billing-monthly'
@@ -1358,6 +1395,7 @@ export interface FileRouteTypes {
     | '/api/internal/version'
     | '/api/onboarding/start'
     | '/api/public/demo-leads'
+    | '/api/public/google-oauth-callback'
     | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
@@ -1378,6 +1416,7 @@ export interface FileRouteTypes {
     | '/app/campaigns/'
     | '/app/catalog/'
     | '/app/flows/'
+    | '/api/public/razorpay-flow-webhook/$orgId'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
@@ -1433,6 +1472,7 @@ export interface RootRouteChildren {
   ApiFlowsRunsRoute: typeof ApiFlowsRunsRoute
   ApiFlowsV2Route: typeof ApiFlowsV2Route
   ApiHomeSummaryRoute: typeof ApiHomeSummaryRoute
+  ApiIntegrationsFlowConnectionsRoute: typeof ApiIntegrationsFlowConnectionsRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalAiRunRoute: typeof ApiInternalAiRunRoute
   ApiInternalBillingMonthlyRoute: typeof ApiInternalBillingMonthlyRoute
@@ -1452,6 +1492,7 @@ export interface RootRouteChildren {
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
   ApiOnboardingStartRoute: typeof ApiOnboardingStartRoute
   ApiPublicDemoLeadsRoute: typeof ApiPublicDemoLeadsRoute
+  ApiPublicGoogleOauthCallbackRoute: typeof ApiPublicGoogleOauthCallbackRoute
   ApiPublicPlansRoute: typeof ApiPublicPlansRoute
   ApiPublicRazorpayWebhookRoute: typeof ApiPublicRazorpayWebhookRoute
   ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
@@ -1466,6 +1507,7 @@ export interface RootRouteChildren {
   ApiWhatsappTemplateMediaRoute: typeof ApiWhatsappTemplateMediaRoute
   ApiWhatsappTemplatesRoute: typeof ApiWhatsappTemplatesRoute
   ApiWhatsappTokenStatusRoute: typeof ApiWhatsappTokenStatusRoute
+  ApiPublicRazorpayFlowWebhookOrgIdRoute: typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   ApiShopifyWebhooksCustomersDataRequestRoute: typeof ApiShopifyWebhooksCustomersDataRequestRoute
   ApiShopifyWebhooksCustomersRedactRoute: typeof ApiShopifyWebhooksCustomersRedactRoute
   ApiShopifyWebhooksShopRedactRoute: typeof ApiShopifyWebhooksShopRedactRoute
@@ -1932,6 +1974,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiHomeSummaryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/integrations/flow-connections': {
+      id: '/api/integrations/flow-connections'
+      path: '/api/integrations/flow-connections'
+      fullPath: '/api/integrations/flow-connections'
+      preLoaderRoute: typeof ApiIntegrationsFlowConnectionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/integrations/shopify': {
       id: '/api/integrations/shopify'
       path: '/api/integrations/shopify'
@@ -2063,6 +2112,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/demo-leads'
       fullPath: '/api/public/demo-leads'
       preLoaderRoute: typeof ApiPublicDemoLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/google-oauth-callback': {
+      id: '/api/public/google-oauth-callback'
+      path: '/api/public/google-oauth-callback'
+      fullPath: '/api/public/google-oauth-callback'
+      preLoaderRoute: typeof ApiPublicGoogleOauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/plans': {
@@ -2204,6 +2260,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/flows/$id'
       preLoaderRoute: typeof AppFlowsIdRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/api/public/razorpay-flow-webhook/$orgId': {
+      id: '/api/public/razorpay-flow-webhook/$orgId'
+      path: '/api/public/razorpay-flow-webhook/$orgId'
+      fullPath: '/api/public/razorpay-flow-webhook/$orgId'
+      preLoaderRoute: typeof ApiPublicRazorpayFlowWebhookOrgIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/shopify/webhooks/customers-data-request': {
       id: '/api/shopify/webhooks/customers-data-request'
@@ -2385,6 +2448,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiFlowsRunsRoute: ApiFlowsRunsRoute,
   ApiFlowsV2Route: ApiFlowsV2Route,
   ApiHomeSummaryRoute: ApiHomeSummaryRoute,
+  ApiIntegrationsFlowConnectionsRoute: ApiIntegrationsFlowConnectionsRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalAiRunRoute: ApiInternalAiRunRoute,
   ApiInternalBillingMonthlyRoute: ApiInternalBillingMonthlyRoute,
@@ -2404,6 +2468,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalVersionRoute: ApiInternalVersionRoute,
   ApiOnboardingStartRoute: ApiOnboardingStartRoute,
   ApiPublicDemoLeadsRoute: ApiPublicDemoLeadsRoute,
+  ApiPublicGoogleOauthCallbackRoute: ApiPublicGoogleOauthCallbackRoute,
   ApiPublicPlansRoute: ApiPublicPlansRoute,
   ApiPublicRazorpayWebhookRoute: ApiPublicRazorpayWebhookRoute,
   ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
@@ -2418,6 +2483,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappTemplateMediaRoute: ApiWhatsappTemplateMediaRoute,
   ApiWhatsappTemplatesRoute: ApiWhatsappTemplatesRoute,
   ApiWhatsappTokenStatusRoute: ApiWhatsappTokenStatusRoute,
+  ApiPublicRazorpayFlowWebhookOrgIdRoute:
+    ApiPublicRazorpayFlowWebhookOrgIdRoute,
   ApiShopifyWebhooksCustomersDataRequestRoute:
     ApiShopifyWebhooksCustomersDataRequestRoute,
   ApiShopifyWebhooksCustomersRedactRoute:
