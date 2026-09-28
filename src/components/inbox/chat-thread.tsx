@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { CorrectionDialog } from "@/components/inbox/correction-dialog";
+import { FlowRunBanner } from "@/components/inbox/flow-run-banner";
 import { SendFormButton } from "@/components/inbox/send-form-button";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -556,6 +557,8 @@ export function ChatThread({
           {conversation.status === "closed" ? "Reopen" : "Close"}
         </Button>
       </header>
+
+      <FlowRunBanner organizationId={conversation.organization_id} contactId={conversation.contact_id} />
 
       {conversation.needs_human ? (
         <div className="flex flex-wrap items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">

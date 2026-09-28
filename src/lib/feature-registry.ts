@@ -1223,6 +1223,28 @@ export const FEATURES: readonly FeatureManifest[] = [
     ],
     data_tables: ["wa_forms", "wa_form_responses"],
   },
+  {
+    key: "flows_v2",
+    depends_on: ["inbox"],
+    name: "Flows v2",
+    description:
+      "Visual chat flows — messages, buttons, questions, branches and actions — that run without AI and own the conversation while they wait for a reply.",
+    icon: "sparkles",
+    flag_key: "flows_v2",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "flows_v2.edit",
+        name: "Edit flows",
+        description: "Build, publish and unpublish chat flows.",
+        min_role: "admin",
+      },
+    ],
+    analytics: { event_types: [], metrics: [], dashboard_section: false },
+    activity_actions: ["flow_run_pause", "flow_run_stop", "flow_run_resume"],
+    ai_tools: [],
+    data_tables: ["flow_versions", "flow_runs", "flow_run_events"],
+  },
 ] as const;
 
 export const ROLE_RANK: Record<OrgRole, number> = { owner: 4, admin: 3, marketer: 2, agent: 1 };
