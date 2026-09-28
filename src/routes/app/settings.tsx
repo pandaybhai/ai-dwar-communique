@@ -86,7 +86,7 @@ function SettingsTabs() {
   const showSending = flowsEnabled && can("flows.view");
 
   return (
-    <Tabs defaultValue="general" className="max-w-3xl">
+    <Tabs defaultValue={typeof window !== "undefined" && new URLSearchParams(window.location.search).has("google") && showIntegrations ? "integrations" : "general"} className="max-w-3xl">
       <TabsList>
         <TabsTrigger value="general">General</TabsTrigger>
         <TabsTrigger value="team">Team</TabsTrigger>
