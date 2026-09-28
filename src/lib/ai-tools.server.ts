@@ -38,6 +38,13 @@ export type ToolContext = {
   principal?: ToolPrincipal;
   /** Who started this call — a person clicking, or a model deciding. */
   initiatedBy: "human" | "ai";
+  /**
+   * Set for runs tied to one customer chat. Customer-data tools then only
+   * ever see this contact and this conversation, whatever phone or order the
+   * model names. Absent (owner chat, playground, a member's own call) means
+   * workspace scope.
+   */
+  subject?: { contactId: string | null; conversationId: string | null };
 };
 
 /** The principal a context runs as, falling back to its user (or the agent). */
@@ -107,22 +114,50 @@ async function requireAccount(
   return { account: data as Record<string, unknown>, error: null };
 }
 
+const CONTACT_COLUMNS =
+  "id, name, phone, wa_id, opt_in_status, source, source_detail, attributes, created_at, updated_at";
+
 async function findContact(ctx: ToolContext, args: ToolArgs) {
   const raw = str(args["phone"]);
+  if (ctx.subject) return findSubjectContact(ctx, ctx.subject.contactId, raw);
   if (!raw) return { contact: null, error: "phone is required." };
   const phone = normalizePhone(raw);
   const waId = toWaId(raw);
   const { data } = await ctx.supabase
     .from("contacts")
-    .select(
-      "id, name, phone, wa_id, opt_in_status, source, source_detail, attributes, created_at, updated_at",
-    )
+    .select(CONTACT_COLUMNS)
     .eq("organization_id", ctx.organizationId)
     .or(`phone.eq.${phone},wa_id.eq.${waId ?? phone}`)
     .limit(1)
     .maybeSingle();
   if (!data) return { contact: null, error: "No contact with that number in this workspace." };
   return { contact: data as Record<string, unknown>, error: null };
+}
+
+/**
+ * In a customer chat the only contact is the one being spoken to. A phone the
+ * model names is only accepted when it is that same person's number.
+ */
+async function findSubjectContact(ctx: ToolContext, contactId: string | null, raw: string) {
+  const outside = "I can only look up the customer in this conversation.";
+  if (!contactId) return { contact: null, error: outside };
+  const { data } = await ctx.supabase
+    .from("contacts")
+    .select(CONTACT_COLUMNS)
+    .eq("organization_id", ctx.organizationId)
+    .eq("id", contactId)
+    .maybeSingle();
+  if (!data) return { contact: null, error: outside };
+  const contact = data as Record<string, unknown>;
+  if (raw) {
+    const digits = toWaId(raw);
+    const own = [
+      toWaId(contact["phone"] as string | null),
+      toWaId(contact["wa_id"] as string | null),
+    ];
+    if (!digits || !own.includes(digits)) return { contact: null, error: outside };
+  }
+  return { contact, error: null };
 }
 
 /**
@@ -244,11 +279,14 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     const { contact, error } = await findContact(ctx, args);
     if (!contact) return empty(error ?? "I couldn't find that contact in this workspace.");
     const limit = Math.min(Math.max(num(args["limit"], 20), 1), 50);
-    const { data: conversations } = await ctx.supabase
+    let convQuery = ctx.supabase
       .from("conversations")
       .select("id, whatsapp_account_id, status, last_message_at")
       .eq("organization_id", ctx.organizationId)
       .eq("contact_id", contact["id"] as string);
+    const onlyConversation = ctx.subject?.conversationId;
+    if (onlyConversation) convQuery = convQuery.eq("id", onlyConversation);
+    const { data: conversations } = await convQuery;
     const ids = ((conversations ?? []) as Array<{ id: string }>).map((c) => c.id);
     if (!ids.length) return { ok: true, data: { messages: [] } };
 
@@ -343,7 +381,9 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
   async lookupOrder(ctx, args) {
     const orderNumber = str(args["order_number"]);
     const phone = str(args["phone"]);
-    if (!orderNumber && !phone) return { ok: false, error: "Give an order_number or a phone." };
+    if (!orderNumber && !phone && !ctx.subject) {
+      return { ok: false, error: "Give an order_number or a phone." };
+    }
 
     let query = ctx.supabase
       .from("orders")
@@ -357,6 +397,13 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     if (orderNumber) {
       const withHash = orderNumber.startsWith("#") ? orderNumber : `#${orderNumber}`;
       query = query.in("order_number", [orderNumber, withHash]);
+      // In a customer chat an order number only opens that customer's order.
+      if (ctx.subject) {
+        if (!ctx.subject.contactId) {
+          return empty("I couldn't find a matching order for this customer.");
+        }
+        query = query.eq("contact_id", ctx.subject.contactId);
+      }
     } else {
       const { contact } = await findContact(ctx, args);
       if (!contact) return empty("I couldn't find a contact with that number in this workspace.");

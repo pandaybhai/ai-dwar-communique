@@ -733,6 +733,8 @@ export async function processWebhookPayload(
         ?.onboarding_whatsapp_account_id ?? null;
 
     let routedAny = false;
+    // Messages / statuses that threw; the event is left retryable when any did.
+    const failures: string[] = [];
 
 
     for (const entry of entries) {
@@ -930,594 +932,660 @@ export async function processWebhookPayload(
         // ---- inbound messages ----
         const contactsMeta = (value["contacts"] as AnyRecord[] | undefined) ?? [];
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
-          const waId = toWaId(msg["from"] as string | undefined);
-          if (!waId) continue;
+          try {
+            const waId = toWaId(msg["from"] as string | undefined);
+            if (!waId) continue;
 
-          // On the onboarding number the owner is watching the chat, so mark
-          // the message read and start the typing dots before anything else.
-          // Fire-and-forget: it must never delay or block the reply.
-          if (onboardingAccountId && accountId === onboardingAccountId && accessToken) {
-            void fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({
-                messaging_product: "whatsapp",
-                status: "read",
-                message_id: String(msg["id"] ?? ""),
-                typing_indicator: { type: "text" },
-              }),
-            }).catch(() => {});
-          }
+            // On the onboarding number the owner is watching the chat, so mark
+            // the message read and start the typing dots before anything else.
+            // Fire-and-forget: it must never delay or block the reply.
+            if (onboardingAccountId && accountId === onboardingAccountId && accessToken) {
+              void fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  "content-type": "application/json",
+                },
+                body: JSON.stringify({
+                  messaging_product: "whatsapp",
+                  status: "read",
+                  message_id: String(msg["id"] ?? ""),
+                  typing_indicator: { type: "text" },
+                }),
+              }).catch(() => {});
+            }
 
-          // Our own number appearing as the sender means this is an echo of a
-          // message we sent (confirmation, automation reply). Never automate on it.
-          const selfWaId = toWaId(metadata["display_phone_number"] as string | undefined);
-          const isSystemEcho = Boolean(selfWaId && selfWaId === waId);
-          const profile = contactsMeta.find((c) => c["wa_id"] === waId);
-          const profileName =
-            ((profile?.["profile"] as AnyRecord | undefined)?.["name"] as string | undefined) ??
-            null;
+            // Our own number appearing as the sender means this is an echo of a
+            // message we sent (confirmation, automation reply). Never automate on it.
+            const selfWaId = toWaId(metadata["display_phone_number"] as string | undefined);
+            const isSystemEcho = Boolean(selfWaId && selfWaId === waId);
+            const profile = contactsMeta.find((c) => c["wa_id"] === waId);
+            const profileName =
+              ((profile?.["profile"] as AnyRecord | undefined)?.["name"] as string | undefined) ??
+              null;
 
-          const parsed = messageBody(msg);
-          const attribution = inboundSource(
-            msg,
-            parsed.body,
-            await loadMarkers(supabase, orgId, markerCache),
-          );
+            const parsed = messageBody(msg);
+            const attribution = inboundSource(
+              msg,
+              parsed.body,
+              await loadMarkers(supabase, orgId, markerCache),
+            );
 
-          // source / source_detail are frozen after insert by a DB trigger,
-          // so this only ever applies to brand-new contacts (first touch).
-          const { data: contact } = await supabase
-            .from("contacts")
-            .upsert(
-              {
-                organization_id: orgId,
-                phone: normalizePhone(waId),
-                wa_id: waId,
-                ...(profileName ? { name: profileName } : {}),
-                // Everyone on the onboarding number is a business owner, not a
-                // lead, and is filed that way for good.
-                source:
-                  onboardingAccountId && accountId === onboardingAccountId
-                    ? "onboarding"
-                    : attribution.source,
-                source_detail:
-                  onboardingAccountId && accountId === onboardingAccountId
-                    ? null
-                    : attribution.source_detail,
+            // source / source_detail are frozen after insert by a DB trigger,
+            // so this only ever applies to brand-new contacts (first touch).
+            const { data: contact, error: contactError } = await supabase
+              .from("contacts")
+              .upsert(
+                {
+                  organization_id: orgId,
+                  phone: normalizePhone(waId),
+                  wa_id: waId,
+                  ...(profileName ? { name: profileName } : {}),
+                  // Everyone on the onboarding number is a business owner, not a
+                  // lead, and is filed that way for good.
+                  source:
+                    onboardingAccountId && accountId === onboardingAccountId
+                      ? "onboarding"
+                      : attribution.source,
+                  source_detail:
+                    onboardingAccountId && accountId === onboardingAccountId
+                      ? null
+                      : attribution.source_detail,
 
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "organization_id,phone" },
-            )
-            .select("id, opt_in_status, created_at")
-            .single();
-          if (!contact) continue;
-
-          // The upsert can't tell us whether it inserted, so a freshly stamped
-          // created_at is the signal for a genuinely new contact.
-          const contactAge = Date.now() - new Date(String(contact.created_at)).getTime();
-          if (contactAge >= 0 && contactAge < 10_000) {
-            await emitEvent(supabase, "contact.created", {
-              organizationId: orgId,
-              whatsappAccountId: accountId,
-              entityType: "contact",
-              entityId: contact.id as string,
-              properties: { contact_source: attribution.source },
-            });
-          }
-
-          let { data: conversation } = await supabase
-            .from("conversations")
-            .select("id, unread_count")
-            .eq("organization_id", orgId)
-            .eq("contact_id", contact.id)
-            .eq("whatsapp_account_id", accountId)
-            .eq("status", "open")
-            .maybeSingle();
-
-          if (!conversation) {
-            const { data: created } = await supabase
-              .from("conversations")
-              .insert({
-                organization_id: orgId,
-                contact_id: contact.id,
-                whatsapp_account_id: accountId,
-                status: "open",
-              })
-              .select("id, unread_count")
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "organization_id,phone" },
+              )
+              .select("id, opt_in_status, created_at")
               .single();
-            conversation = created;
-            if (created) {
-              await emitEvent(supabase, "conversation.opened", {
+            if (contactError) throw new Error(`contact upsert failed: ${contactError.message}`);
+            if (!contact) continue;
+
+            // The upsert can't tell us whether it inserted, so a freshly stamped
+            // created_at is the signal for a genuinely new contact.
+            const contactAge = Date.now() - new Date(String(contact.created_at)).getTime();
+            if (contactAge >= 0 && contactAge < 10_000) {
+              await emitEvent(supabase, "contact.created", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
-                entityType: "conversation",
-                entityId: created.id as string,
-                properties: { opened_by: "inbound" },
+                entityType: "contact",
+                entityId: contact.id as string,
+                properties: { contact_source: attribution.source },
               });
             }
-          }
-          if (!conversation) continue;
 
-          const { type, body } = parsed;
-          const media = mediaOf(msg);
-          const tsSeconds = Number(msg["timestamp"] ?? 0);
-          const occurredAt = tsSeconds
-            ? new Date(tsSeconds * 1000).toISOString()
-            : new Date().toISOString();
-
-          const { data: inserted } = await supabase
-            .from("messages")
-            .upsert(
-              {
-                organization_id: orgId,
-                conversation_id: conversation.id,
-                meta_message_id: String(msg["id"] ?? ""),
-                direction: "inbound",
-                type,
-                body,
-                media_url: media.media_url,
-                media_mime: media.media_mime,
-                status: "delivered",
-                status_updated_at: occurredAt,
-                created_at: occurredAt,
-                detected_language: detectLanguage(body),
-
-              },
-              { onConflict: "meta_message_id", ignoreDuplicates: true },
-            )
-            .select("id");
-
-          // Only bump counters when this message was genuinely new.
-          if (inserted && inserted.length > 0) {
-            await supabase
+            let { data: conversation } = await supabase
               .from("conversations")
-              .update({
-                last_message_at: occurredAt,
-                last_customer_message_at: occurredAt,
-                unread_count: (conversation.unread_count ?? 0) + 1,
-              })
-              .eq("id", conversation.id);
-            later(applyCampaignReply(supabase, orgId, contact.id));
-            await emitEvent(supabase, "message.received", {
-              organizationId: orgId,
-              whatsappAccountId: accountId,
-              entityType: "message",
-              entityId: inserted[0]!.id as string,
-              occurredAt,
-              properties: { message_type: type, conversation_id: conversation.id },
-            });
-          }
+              .select("id, unread_count")
+              .eq("organization_id", orgId)
+              .eq("contact_id", contact.id)
+              .eq("whatsapp_account_id", accountId)
+              .eq("status", "open")
+              .maybeSingle();
 
-          // A filled-in WhatsApp form is handled before any other routing, on
-          // every number (the onboarding number included): it is saved as a
-          // form response and shown in the inbox, never treated as a chat
-          // message for the owner channel, automations or the AI.
-          if (
-            type === "interactive" &&
-            String((msg["interactive"] as AnyRecord | undefined)?.["type"] ?? "") === "nfm_reply"
-          ) {
-            if (!isSystemEcho) {
-              const { handleFormReply } = await import("@/lib/wa-forms.server");
-              let messageRowId = (inserted?.[0]?.id as string | undefined) ?? null;
-              if (!messageRowId) {
-                const { data: existingMsg } = await supabase
-                  .from("messages")
-                  .select("id")
-                  .eq("meta_message_id", String(msg["id"] ?? ""))
-                  .maybeSingle();
-                messageRowId = (existingMsg?.id as string | undefined) ?? null;
+            if (!conversation) {
+              const { data: created, error: createError } = await supabase
+                .from("conversations")
+                .insert({
+                  organization_id: orgId,
+                  contact_id: contact.id,
+                  whatsapp_account_id: accountId,
+                  status: "open",
+                })
+                .select("id, unread_count")
+                .single();
+              if (createError) throw new Error(`conversation insert failed: ${createError.message}`);
+              conversation = created;
+              if (created) {
+                await emitEvent(supabase, "conversation.opened", {
+                  organizationId: orgId,
+                  whatsappAccountId: accountId,
+                  entityType: "conversation",
+                  entityId: created.id as string,
+                  properties: { opened_by: "inbound" },
+                });
               }
-              await handleFormReply(supabase, {
+            }
+            if (!conversation) continue;
+
+            const { type, body } = parsed;
+            const media = mediaOf(msg);
+            const tsSeconds = Number(msg["timestamp"] ?? 0);
+            const occurredAt = tsSeconds
+              ? new Date(tsSeconds * 1000).toISOString()
+              : new Date().toISOString();
+
+            const { data: inserted, error: insertError } = await supabase
+              .from("messages")
+              .upsert(
+                {
+                  organization_id: orgId,
+                  conversation_id: conversation.id,
+                  meta_message_id: String(msg["id"] ?? ""),
+                  direction: "inbound",
+                  type,
+                  body,
+                  media_url: media.media_url,
+                  media_mime: media.media_mime,
+                  status: "delivered",
+                  status_updated_at: occurredAt,
+                  created_at: occurredAt,
+                  detected_language: detectLanguage(body),
+
+                },
+                { onConflict: "meta_message_id", ignoreDuplicates: true },
+              )
+              .select("id");
+            // A failed write is not a duplicate: only an empty, error-free
+            // result means Meta sent this message before.
+            if (insertError) throw new Error(`message insert failed: ${insertError.message}`);
+
+            // Only bump counters when this message was genuinely new.
+            if (inserted && inserted.length > 0) {
+              await supabase
+                .from("conversations")
+                .update({
+                  last_message_at: occurredAt,
+                  last_customer_message_at: occurredAt,
+                  unread_count: (conversation.unread_count ?? 0) + 1,
+                })
+                .eq("id", conversation.id);
+              later(applyCampaignReply(supabase, orgId, contact.id));
+              await emitEvent(supabase, "message.received", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
+                entityType: "message",
+                entityId: inserted[0]!.id as string,
+                occurredAt,
+                properties: { message_type: type, conversation_id: conversation.id },
+              });
+            }
+
+            // A filled-in WhatsApp form is handled before any other routing, on
+            // every number (the onboarding number included): it is saved as a
+            // form response and shown in the inbox, never treated as a chat
+            // message for the owner channel, automations or the AI.
+            if (
+              type === "interactive" &&
+              String((msg["interactive"] as AnyRecord | undefined)?.["type"] ?? "") === "nfm_reply"
+            ) {
+              if (!isSystemEcho) {
+                const { handleFormReply } = await import("@/lib/wa-forms.server");
+                let messageRowId = (inserted?.[0]?.id as string | undefined) ?? null;
+                if (!messageRowId) {
+                  const { data: existingMsg } = await supabase
+                    .from("messages")
+                    .select("id")
+                    .eq("meta_message_id", String(msg["id"] ?? ""))
+                    .maybeSingle();
+                  messageRowId = (existingMsg?.id as string | undefined) ?? null;
+                }
+                await handleFormReply(supabase, {
+                  organizationId: orgId,
+                  whatsappAccountId: accountId,
+                  contactId: contact.id as string,
+                  conversationId: conversation.id as string,
+                  messageRowId,
+                  metaMessageId: String(msg["id"] ?? ""),
+                  msg,
+                });
+              }
+              continue;
+            }
+
+            // Flows v2 on the onboarding number: that number never runs opt-out,
+            // COD or automations, so a waiting run / keyword trigger pinned to
+            // this number is checked here, before the owner channel. Opt-out
+            // words (defaults + workspace list) never reach a flow.
+            if (
+              onboardingAccountId &&
+              accountId === onboardingAccountId &&
+              !isSystemEcho &&
+              inserted &&
+              inserted.length > 0 &&
+              !matchKeyword(body, (await loadOptKeywords(supabase, orgId, keywordCache)).optOut)
+            ) {
+              const taken = await flowsV2Inbound(supabase, {
+                orgId,
                 contactId: contact.id as string,
                 conversationId: conversation.id as string,
-                messageRowId,
-                metaMessageId: String(msg["id"] ?? ""),
-                msg,
-              });
-            }
-            continue;
-          }
-
-          // Flows v2 on the onboarding number: that number never runs opt-out,
-          // COD or automations, so a waiting run / keyword trigger pinned to
-          // this number is checked here, before the owner channel. Opt-out
-          // words (defaults + workspace list) never reach a flow.
-          if (
-            onboardingAccountId &&
-            accountId === onboardingAccountId &&
-            !isSystemEcho &&
-            inserted &&
-            inserted.length > 0 &&
-            !matchKeyword(body, (await loadOptKeywords(supabase, orgId, keywordCache)).optOut)
-          ) {
-            const taken = await flowsV2Inbound(supabase, {
-              orgId,
-              contactId: contact.id as string,
-              conversationId: conversation.id as string,
-              accountId,
-              onlyAccountId: onboardingAccountId,
-              msg,
-              body,
-              contactAge,
-            });
-            if (taken) continue;
-          }
-
-          // The onboarding number is a different conversation entirely: the
-          // person writing is a business owner, not a customer. Nothing that
-          // follows (opt-out keywords, COD, automations, the customer AI)
-          // applies to them.
-          if (onboardingAccountId && accountId === onboardingAccountId) {
-            if (!isSystemEcho && inserted && inserted.length > 0) {
-              const { handleMerchantInbound } = await import("@/lib/merchant-channel.server");
-              const merchantInteractive = msg["interactive"] as AnyRecord | undefined;
-              const merchantTapId =
-                ((merchantInteractive?.["button_reply"] as AnyRecord | undefined)?.["id"] as
-                  | string
-                  | undefined) ??
-                ((merchantInteractive?.["list_reply"] as AnyRecord | undefined)?.["id"] as
-                  | string
-                  | undefined) ??
-                null;
-              await handleMerchantInbound(supabase, {
-                organizationId: orgId,
                 accountId,
+                onlyAccountId: onboardingAccountId,
+                msg,
+                body,
+                contactAge,
+              });
+              if (taken) continue;
+            }
+
+            // The onboarding number is a different conversation entirely: the
+            // person writing is a business owner, not a customer. Nothing that
+            // follows (opt-out keywords, COD, automations, the customer AI)
+            // applies to them.
+            if (onboardingAccountId && accountId === onboardingAccountId) {
+              if (!isSystemEcho && inserted && inserted.length > 0) {
+                const { handleMerchantInbound } = await import("@/lib/merchant-channel.server");
+                const merchantInteractive = msg["interactive"] as AnyRecord | undefined;
+                const merchantTapId =
+                  ((merchantInteractive?.["button_reply"] as AnyRecord | undefined)?.["id"] as
+                    | string
+                    | undefined) ??
+                  ((merchantInteractive?.["list_reply"] as AnyRecord | undefined)?.["id"] as
+                    | string
+                    | undefined) ??
+                  null;
+                await handleMerchantInbound(supabase, {
+                  organizationId: orgId,
+                  accountId,
+                  phoneNumberId,
+                  accessToken,
+                  waId,
+                  conversationId: conversation.id as string,
+                  contactId: contact.id as string,
+                  body: body ?? "",
+                  interactiveId: merchantTapId,
+                  mediaUrl: media.media_url,
+                  mediaMime: media.media_mime,
+                  mediaName: media.media_name,
+                });
+              }
+              continue;
+            }
+
+            // A cart sent from the catalogue is an order, not a question: record
+            // it, hand the thread to a person and acknowledge it ourselves. The
+            // AI employee never answers an order message.
+            if (type === "order" && !isSystemEcho && inserted && inserted.length > 0) {
+              const { handleCatalogOrder } = await import("@/lib/whatsapp-orders.server");
+              const handled = await handleCatalogOrder(supabase, {
+                organizationId: orgId,
+                conversationId: conversation.id as string,
+                contactId: (contact.id as string) ?? null,
+                metaMessageId: String(msg["id"] ?? ""),
+                order: (msg["order"] as AnyRecord | undefined) ?? {},
                 phoneNumberId,
                 accessToken,
-                waId,
-                conversationId: conversation.id as string,
-                contactId: contact.id as string,
-                body: body ?? "",
-                interactiveId: merchantTapId,
-                mediaUrl: media.media_url,
-                mediaMime: media.media_mime,
-                mediaName: media.media_name,
+                to: waId,
               });
+              if (handled.handled) continue;
             }
-            continue;
-          }
 
-          // A cart sent from the catalogue is an order, not a question: record
-          // it, hand the thread to a person and acknowledge it ourselves. The
-          // AI employee never answers an order message.
-          if (type === "order" && !isSystemEcho && inserted && inserted.length > 0) {
-            const { handleCatalogOrder } = await import("@/lib/whatsapp-orders.server");
-            const handled = await handleCatalogOrder(supabase, {
+
+            // Opt-out / opt-in runs on EVERY inbound text, independent of whether
+            // the message row was new — it is idempotent (no-op when the status
+            // already matches), so duplicate deliveries cannot swallow a "STOP".
+            const optKeywordMatched = await applyOptKeywords(supabase, {
               organizationId: orgId,
-              conversationId: conversation.id as string,
-              contactId: (contact.id as string) ?? null,
-              metaMessageId: String(msg["id"] ?? ""),
-              order: (msg["order"] as AnyRecord | undefined) ?? {},
+              accountId,
               phoneNumberId,
               accessToken,
-              to: waId,
-            });
-            if (handled.handled) continue;
-          }
-
-
-          // Opt-out / opt-in runs on EVERY inbound text, independent of whether
-          // the message row was new — it is idempotent (no-op when the status
-          // already matches), so duplicate deliveries cannot swallow a "STOP".
-          const optKeywordMatched = await applyOptKeywords(supabase, {
-            organizationId: orgId,
-            accountId,
-            phoneNumberId,
-            accessToken,
-            conversationId: conversation.id as string,
-
-            contactId: contact.id as string,
-            currentStatus: (contact as { opt_in_status?: string }).opt_in_status ?? null,
-            waId,
-            body,
-            keywords: await loadOptKeywords(supabase, orgId, keywordCache),
-          });
-
-          // Cash-on-delivery answers. Button replies quote the message that
-          // asked, which is how the answer finds its order; anything typed is
-          // still stored verbatim so nothing is lost.
-          let codHandled = false;
-          if (!isSystemEcho && !optKeywordMatched) {
-            const { applyCodReply } = await import("@/lib/cod.server");
-            const interactive = msg["interactive"] as AnyRecord | undefined;
-            const buttonReply = interactive?.["button_reply"] as AnyRecord | undefined;
-            const payload =
-              ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
-              (buttonReply?.["id"] as string | undefined) ??
-              null;
-            const contextMetaId =
-              ((msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined) ?? null;
-            codHandled = await applyCodReply(supabase, {
-              organizationId: orgId,
-              contactId: contact.id as string,
-              contextMetaId,
-              body,
-              payload,
-            });
-          }
-
-          // A customer who sends the coupon code back has taken the offer.
-          // Only new messages count, so a redelivered webhook can't inflate it.
-          if (inserted && inserted.length > 0 && !isSystemEcho) {
-            const { recordOfferTap } = await import("@/lib/offers.server");
-            const interactiveTap = msg["interactive"] as AnyRecord | undefined;
-            later(recordOfferTap(supabase, {
-              organizationId: orgId,
-              contactId: contact.id as string,
-              body,
-              payload:
-                ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
-                ((interactiveTap?.["button_reply"] as AnyRecord | undefined)?.["id"] as
-                  | string
-                  | undefined) ??
-                null,
-            }));
-          }
-
-
-          // Flows v2 runs after catalogue orders, opt-out keywords and COD
-          // answers, and before automations: a waiting run takes the reply
-          // first, otherwise a trigger may start one. Either way nothing else
-          // (automations, the AI) replies to this message.
-          if (!isSystemEcho && !optKeywordMatched && !codHandled && inserted && inserted.length > 0) {
-            const taken = await flowsV2Inbound(supabase, {
-              orgId,
-              contactId: contact.id as string,
               conversationId: conversation.id as string,
-              accountId,
-              onlyAccountId: null,
-              msg,
+
+              contactId: contact.id as string,
+              currentStatus: (contact as { opt_in_status?: string }).opt_in_status ?? null,
+              waId,
               body,
-              contactAge,
+              keywords: await loadOptKeywords(supabase, orgId, keywordCache),
             });
-            if (taken) continue;
-          }
 
-          // Automations run last, and never for a message that was an opt-out /
-          // opt-in keyword or a cash-on-delivery answer. Inbound only — our own
-          // outbound sends (including opt-out confirmations and automation
-          // replies) never reach here.
-          const beforeAutomations = new Date().toISOString();
-          await evaluateAutomations(supabase, {
-            organizationId: orgId,
-            phoneNumberId,
-            accessToken,
-            conversationId: conversation.id as string,
-            contactId: contact.id as string,
-            inboundMessageId: String(msg["id"] ?? ""),
-            waId,
-            body,
-            optKeywordMatched: optKeywordMatched || codHandled,
-            isSystemEcho,
-            orgTimezone: await loadOrgTimezone(supabase, orgId, timezoneCache),
-            automations: await loadAutomations(supabase, orgId, automationCache),
-          });
+            // Cash-on-delivery answers. Button replies quote the message that
+            // asked, which is how the answer finds its order; anything typed is
+            // still stored verbatim so nothing is lost.
+            let codHandled = false;
+            if (!isSystemEcho && !optKeywordMatched) {
+              const { applyCodReply } = await import("@/lib/cod.server");
+              const interactive = msg["interactive"] as AnyRecord | undefined;
+              const buttonReply = interactive?.["button_reply"] as AnyRecord | undefined;
+              const payload =
+                ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
+                (buttonReply?.["id"] as string | undefined) ??
+                null;
+              const contextMetaId =
+                ((msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined) ?? null;
+              codHandled = await applyCodReply(supabase, {
+                organizationId: orgId,
+                contactId: contact.id as string,
+                contextMetaId,
+                body,
+                payload,
+              });
+            }
 
-          // The AI employee gets the last word, and only when nothing else
-          // answered this message. Never on our own echoes or on a duplicate
-          // delivery, and never after an automation already replied.
-          if (!isSystemEcho && inserted && inserted.length > 0) {
-            const { count: repliedCount } = await supabase
-              .from("messages")
-              .select("id", { count: "exact", head: true })
-              .eq("conversation_id", conversation.id)
-              .eq("direction", "outbound")
-              .gte("created_at", beforeAutomations);
+            // A customer who sends the coupon code back has taken the offer.
+            // Only new messages count, so a redelivered webhook can't inflate it.
+            if (inserted && inserted.length > 0 && !isSystemEcho) {
+              const { recordOfferTap } = await import("@/lib/offers.server");
+              const interactiveTap = msg["interactive"] as AnyRecord | undefined;
+              later(recordOfferTap(supabase, {
+                organizationId: orgId,
+                contactId: contact.id as string,
+                body,
+                payload:
+                  ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
+                  ((interactiveTap?.["button_reply"] as AnyRecord | undefined)?.["id"] as
+                    | string
+                    | undefined) ??
+                  null,
+              }));
+            }
 
-            try {
-              const alreadyHandled =
-                optKeywordMatched || codHandled || (repliedCount ?? 0) > 0;
-              const optedOut =
-                (contact as { opt_in_status?: string }).opt_in_status === "opted_out";
 
-              // Pictures and voice notes become words first, so a media-only
-              // message is never dropped on the floor.
-              let agentBody = body;
-              let mediaFallback: string | null = null;
-              if (media.media_url && !alreadyHandled && !optedOut) {
-                const converted = await customerMediaToText(supabase, {
+            // Flows v2 runs after catalogue orders, opt-out keywords and COD
+            // answers, and before automations: a waiting run takes the reply
+            // first, otherwise a trigger may start one. Either way nothing else
+            // (automations, the AI) replies to this message.
+            if (!isSystemEcho && !optKeywordMatched && !codHandled && inserted && inserted.length > 0) {
+              const taken = await flowsV2Inbound(supabase, {
+                orgId,
+                contactId: contact.id as string,
+                conversationId: conversation.id as string,
+                accountId,
+                onlyAccountId: null,
+                msg,
+                body,
+                contactAge,
+              });
+              if (taken) continue;
+            }
+
+            // Automations run last, and never for a message that was an opt-out /
+            // opt-in keyword or a cash-on-delivery answer. Inbound only — our own
+            // outbound sends (including opt-out confirmations and automation
+            // replies) never reach here.
+            const beforeAutomations = new Date().toISOString();
+            await evaluateAutomations(supabase, {
+              organizationId: orgId,
+              phoneNumberId,
+              accessToken,
+              conversationId: conversation.id as string,
+              contactId: contact.id as string,
+              inboundMessageId: String(msg["id"] ?? ""),
+              waId,
+              body,
+              optKeywordMatched: optKeywordMatched || codHandled,
+              isSystemEcho,
+              orgTimezone: await loadOrgTimezone(supabase, orgId, timezoneCache),
+              automations: await loadAutomations(supabase, orgId, automationCache),
+            });
+
+            // The AI employee gets the last word, and only when nothing else
+            // answered this message. Never on our own echoes or on a duplicate
+            // delivery, and never after an automation already replied.
+            if (!isSystemEcho && inserted && inserted.length > 0) {
+              const { count: repliedCount } = await supabase
+                .from("messages")
+                .select("id", { count: "exact", head: true })
+                .eq("conversation_id", conversation.id)
+                .eq("direction", "outbound")
+                .gte("created_at", beforeAutomations);
+
+              try {
+                const alreadyHandled =
+                  optKeywordMatched || codHandled || (repliedCount ?? 0) > 0;
+                const optedOut =
+                  (contact as { opt_in_status?: string }).opt_in_status === "opted_out";
+
+                // Pictures and voice notes become words first, so a media-only
+                // message is never dropped on the floor.
+                let agentBody = body;
+                let mediaFallback: string | null = null;
+                if (media.media_url && !alreadyHandled && !optedOut) {
+                  const converted = await customerMediaToText(supabase, {
+                    organizationId: orgId,
+                    conversationId: conversation.id as string,
+                    messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
+                    accessToken,
+                    caption: body,
+                    media,
+                  });
+                  agentBody = converted.body;
+                  mediaFallback = converted.fallback;
+                }
+
+                // Two texts typed a breath apart are one question: wait out the
+                // burst, answer once, and let the overtaken delivery stand down.
+                const burst =
+                  alreadyHandled || optedOut
+                    ? { proceed: true, body: agentBody }
+                    : await coalesceBurst(supabase, {
+                        conversationId: conversation.id as string,
+                        messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
+                        occurredAt,
+                        body: agentBody,
+                      });
+                if (!burst.proceed) {
+                  console.log("[ai-agent] burst_superseded", conversation.id);
+                  continue;
+                }
+                agentBody = burst.body;
+
+                const { runAgentOnInbound } = await import("@/lib/ai-agent.server");
+                const outcome = await runAgentOnInbound(supabase, {
                   organizationId: orgId,
                   conversationId: conversation.id as string,
-                  messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
+                  contactId: contact.id as string,
+                  phoneNumberId,
                   accessToken,
-                  caption: body,
-                  media,
+                  waId,
+                  body: agentBody,
+                  alreadyHandled,
+                  optedOut,
                 });
-                agentBody = converted.body;
-                mediaFallback = converted.fallback;
-              }
 
-              // Two texts typed a breath apart are one question: wait out the
-              // burst, answer once, and let the overtaken delivery stand down.
-              const burst =
-                alreadyHandled || optedOut
-                  ? { proceed: true, body: agentBody }
-                  : await coalesceBurst(supabase, {
+                // Only a live-replying agent speaks; otherwise the thread just
+                // sits unread in the inbox for a person, as it always has.
+                if (mediaFallback && !outcome.acted && outcome.reason === "no_text") {
+                  const { data: agentRow } = await supabase
+                    .from("ai_agents")
+                    .select("mode")
+                    .eq("organization_id", orgId)
+                    .eq("is_default", true)
+                    .maybeSingle();
+                  if ((agentRow as { mode?: string } | null)?.mode === "replying") {
+                    const { sendServiceText } = await import("@/lib/service-text.server");
+                    await sendServiceText(supabase, {
+                      organizationId: orgId,
+                      phoneNumberId,
+                      accessToken,
                       conversationId: conversation.id as string,
-                      messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
-                      occurredAt,
-                      body: agentBody,
+                      to: waId,
+                      body: mediaFallback,
                     });
-              if (!burst.proceed) {
-                console.log("[ai-agent] burst_superseded", conversation.id);
-                continue;
-              }
-              agentBody = burst.body;
-
-              const { runAgentOnInbound } = await import("@/lib/ai-agent.server");
-              const outcome = await runAgentOnInbound(supabase, {
-                organizationId: orgId,
-                conversationId: conversation.id as string,
-                contactId: contact.id as string,
-                phoneNumberId,
-                accessToken,
-                waId,
-                body: agentBody,
-                alreadyHandled,
-                optedOut,
-              });
-
-              // Only a live-replying agent speaks; otherwise the thread just
-              // sits unread in the inbox for a person, as it always has.
-              if (mediaFallback && !outcome.acted && outcome.reason === "no_text") {
-                const { data: agentRow } = await supabase
-                  .from("ai_agents")
-                  .select("mode")
-                  .eq("organization_id", orgId)
-                  .eq("is_default", true)
-                  .maybeSingle();
-                if ((agentRow as { mode?: string } | null)?.mode === "replying") {
-                  const { sendServiceText } = await import("@/lib/service-text.server");
-                  await sendServiceText(supabase, {
-                    organizationId: orgId,
-                    phoneNumberId,
-                    accessToken,
-                    conversationId: conversation.id as string,
-                    to: waId,
-                    body: mediaFallback,
-                  });
+                  }
                 }
+              } catch (error) {
+                console.error(
+                  "[ai-agent] failed",
+                  error instanceof Error ? error.message : String(error),
+                );
               }
-            } catch (error) {
-              console.error(
-                "[ai-agent] failed",
-                error instanceof Error ? error.message : String(error),
-              );
             }
+          } catch (err) {
+            // One bad message never drops the rest of the event; the event
+            // stays retryable (see finishEvent).
+            failures.push(failureNote(`message ${String(msg["id"] ?? "")}`, err));
           }
         }
 
 
         // ---- status updates ----
         for (const st of (value["statuses"] as AnyRecord[] | undefined) ?? []) {
-          const metaId = st["id"] as string | undefined;
-          const nextStatus = String(st["status"] ?? "");
-          if (!metaId || !nextStatus) continue;
+          try {
+            const metaId = st["id"] as string | undefined;
+            const nextStatus = String(st["status"] ?? "");
+            if (!metaId || !nextStatus) continue;
 
-          const { data: existing } = await supabase
-            .from("messages")
-            .select("id, status, type, template_name, conversation_id, campaign_id, flow_id, flow_step_id, scheduled_send_id")
-            .eq("meta_message_id", metaId)
-            .eq("organization_id", orgId)
-            .maybeSingle();
-          if (!existing) continue;
+            const { data: existing } = await supabase
+              .from("messages")
+              .select("id, status, type, template_name, conversation_id, campaign_id, flow_id, flow_step_id, scheduled_send_id")
+              .eq("meta_message_id", metaId)
+              .eq("organization_id", orgId)
+              .maybeSingle();
+            if (!existing) continue;
 
-          // Every per-message event carries the same dimensions as the send.
-          const statusProps = await messageEventDimensions(supabase, orgId, accountWabaId, existing);
+            // Every per-message event carries the same dimensions as the send.
+            const statusProps = await messageEventDimensions(supabase, orgId, accountWabaId, existing);
 
-          const tsSeconds = Number(st["timestamp"] ?? 0);
-          const at = tsSeconds
-            ? new Date(tsSeconds * 1000).toISOString()
-            : new Date().toISOString();
+            const tsSeconds = Number(st["timestamp"] ?? 0);
+            const at = tsSeconds
+              ? new Date(tsSeconds * 1000).toISOString()
+              : new Date().toISOString();
 
-          if (nextStatus === "failed") {
-            const errs = (st["errors"] as AnyRecord[] | undefined) ?? [];
-            const detail = errs.length ? JSON.stringify(errs) : "unknown_error";
+            if (nextStatus === "failed") {
+              const errs = (st["errors"] as AnyRecord[] | undefined) ?? [];
+              const detail = errs.length ? JSON.stringify(errs) : "unknown_error";
+              await supabase
+                .from("messages")
+                .update({ status: "failed", status_updated_at: at, error_detail: detail })
+                .eq("id", existing.id);
+              await applyCampaignStatus(supabase, existing.id, "failed", detail);
+              await emitEvent(supabase, "message.failed", {
+                organizationId: orgId,
+                whatsappAccountId: accountId,
+                entityType: "message",
+                entityId: existing.id as string,
+                occurredAt: at,
+                properties: {
+                  ...statusProps,
+                  whatsapp_account_id: accountId,
+                  error_code: errs[0]?.["code"] != null ? String(errs[0]!["code"]) : null,
+                },
+              });
+              continue;
+            }
+
+            const current = STATUS_RANK[String(existing.status)] ?? -1;
+            const incoming = STATUS_RANK[nextStatus];
+            if (incoming === undefined || incoming <= current) continue; // never downgrade
+            if (existing.status === "failed") continue;
+
+            // What Meta actually charged for. This is authoritative: a utility
+            // message inside an open service window is free, and only a billable
+            // delivered message costs anything. Cost is never inferred from the
+            // fact that a send happened.
+            const pricing = st["pricing"] as AnyRecord | undefined;
+            const pricingPatch = pricing
+              ? {
+                  billable: pricing["billable"] === undefined ? null : Boolean(pricing["billable"]),
+                  pricing_model: pricing["pricing_model"] != null ? String(pricing["pricing_model"]) : null,
+                  pricing_category:
+                    pricing["category"] != null ? String(pricing["category"]).toLowerCase() : null,
+                }
+              : {};
+
             await supabase
               .from("messages")
-              .update({ status: "failed", status_updated_at: at, error_detail: detail })
+              .update({ status: nextStatus, status_updated_at: at, ...pricingPatch })
               .eq("id", existing.id);
-            await applyCampaignStatus(supabase, existing.id, "failed", detail);
-            await emitEvent(supabase, "message.failed", {
-              organizationId: orgId,
-              whatsappAccountId: accountId,
-              entityType: "message",
-              entityId: existing.id as string,
-              occurredAt: at,
-              properties: {
-                ...statusProps,
-                whatsapp_account_id: accountId,
-                error_code: errs[0]?.["code"] != null ? String(errs[0]!["code"]) : null,
-              },
-            });
-            continue;
-          }
+            await applyCampaignStatus(supabase, existing.id, nextStatus, null);
 
-          const current = STATUS_RANK[String(existing.status)] ?? -1;
-          const incoming = STATUS_RANK[nextStatus];
-          if (incoming === undefined || incoming <= current) continue; // never downgrade
-          if (existing.status === "failed") continue;
-
-          // What Meta actually charged for. This is authoritative: a utility
-          // message inside an open service window is free, and only a billable
-          // delivered message costs anything. Cost is never inferred from the
-          // fact that a send happened.
-          const pricing = st["pricing"] as AnyRecord | undefined;
-          const pricingPatch = pricing
-            ? {
-                billable: pricing["billable"] === undefined ? null : Boolean(pricing["billable"]),
-                pricing_model: pricing["pricing_model"] != null ? String(pricing["pricing_model"]) : null,
-                pricing_category:
-                  pricing["category"] != null ? String(pricing["category"]).toLowerCase() : null,
+            // Priced from the rate card, in the database, so a missing rate is a
+            // warning and never a guessed number.
+            if (nextStatus === "delivered" || nextStatus === "read") {
+              const { data: priced, error: priceError } = await supabase.rpc("price_message", {
+                p_message_id: existing.id,
+              });
+              if (priceError || priced === false) {
+                console.warn(
+                  JSON.stringify({
+                    scope: "message_cost",
+                    stage: "no_matching_rate",
+                    message_id: existing.id,
+                    category: (pricingPatch as { pricing_category?: string | null }).pricing_category ?? null,
+                    organization_id: orgId,
+                    error: priceError?.message ?? null,
+                  }),
+                );
               }
-            : {};
-
-          await supabase
-            .from("messages")
-            .update({ status: nextStatus, status_updated_at: at, ...pricingPatch })
-            .eq("id", existing.id);
-          await applyCampaignStatus(supabase, existing.id, nextStatus, null);
-
-          // Priced from the rate card, in the database, so a missing rate is a
-          // warning and never a guessed number.
-          if (nextStatus === "delivered" || nextStatus === "read") {
-            const { data: priced, error: priceError } = await supabase.rpc("price_message", {
-              p_message_id: existing.id,
-            });
-            if (priceError || priced === false) {
-              console.warn(
-                JSON.stringify({
-                  scope: "message_cost",
-                  stage: "no_matching_rate",
-                  message_id: existing.id,
-                  category: (pricingPatch as { pricing_category?: string | null }).pricing_category ?? null,
-                  organization_id: orgId,
-                  error: priceError?.message ?? null,
-                }),
-              );
             }
-          }
 
-          if (nextStatus === "delivered" || nextStatus === "read" || nextStatus === "sent") {
-            await emitEvent(supabase, `message.${nextStatus}`, {
-              organizationId: orgId,
-              whatsappAccountId: accountId,
-              entityType: "message",
-              entityId: existing.id as string,
-              occurredAt: at,
-              properties: { ...statusProps, whatsapp_account_id: accountId },
-            });
-          }
+            if (nextStatus === "delivered" || nextStatus === "read" || nextStatus === "sent") {
+              await emitEvent(supabase, `message.${nextStatus}`, {
+                organizationId: orgId,
+                whatsappAccountId: accountId,
+                entityType: "message",
+                entityId: existing.id as string,
+                occurredAt: at,
+                properties: { ...statusProps, whatsapp_account_id: accountId },
+              });
+            }
 
+          } catch (err) {
+            // One bad status never drops the rest of the event; the event
+            // stays retryable (see finishEvent).
+            failures.push(failureNote(`status ${String(st["id"] ?? "")}`, err));
+          }
         }
 
       }
     }
 
     await Promise.all(deferred);
-    await supabase
-      .from("webhook_events")
-      .update({
-        processed_at: new Date().toISOString(),
-        error: routedAny ? null : "unknown_phone_number_id",
-      })
-      .eq("id", eventId);
+    await finishEvent(supabase, eventId, failures, routedAny ? null : "unknown_phone_number_id");
   } catch (err) {
+    await finishEvent(supabase, eventId, [failureNote("event", err)], null);
+  }
+}
+
+/** Retries an event gets before it is recorded as given up. */
+export const WEBHOOK_MAX_ATTEMPTS = 5;
+
+function failureNote(what: string, err: unknown): string {
+  return `${what}: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200);
+}
+
+/** "retry:2 ..." -> 2. The attempt count lives in the error text, no new column. */
+export function webhookAttempts(error: string | null | undefined): number {
+  const match = /^retry:(\d+) /.exec(error ?? "");
+  return match ? Number(match[1]) : 0;
+}
+
+/**
+ * Close an event. Clean: processed. Anything failed: processed_at goes back to
+ * null so reprocess-events runs it again — messages already stored come back
+ * as duplicates and are never answered twice — until WEBHOOK_MAX_ATTEMPTS,
+ * after which it is recorded as given up.
+ */
+export async function finishEvent(
+  supabase: SupabaseClient,
+  eventId: string,
+  failures: string[],
+  cleanError: string | null,
+): Promise<void> {
+  if (failures.length === 0) {
     await supabase
       .from("webhook_events")
-      .update({
-        processed_at: new Date().toISOString(),
-        error: err instanceof Error ? err.message.slice(0, 500) : "processing_error",
-      })
+      .update({ processed_at: new Date().toISOString(), error: cleanError })
       .eq("id", eventId);
+    return;
   }
+  const { data: prior } = await supabase
+    .from("webhook_events")
+    .select("error")
+    .eq("id", eventId)
+    .maybeSingle();
+  const attempt = webhookAttempts((prior as { error?: string | null } | null)?.error) + 1;
+  const detail = `${failures.length} failed: ${failures.join("; ")}`;
+  const givenUp = attempt >= WEBHOOK_MAX_ATTEMPTS;
+  console.error(
+    JSON.stringify({
+      at: "webhook_event_failed",
+      event_id: eventId,
+      attempt,
+      given_up: givenUp,
+      detail: detail.slice(0, 500),
+    }),
+  );
+  await supabase
+    .from("webhook_events")
+    .update({
+      processed_at: givenUp ? new Date().toISOString() : null,
+      error: (givenUp ? `gave_up:${attempt} ${detail}` : `retry:${attempt} ${detail}`).slice(
+        0,
+        500,
+      ),
+    })
+    .eq("id", eventId);
 }
 
 /**

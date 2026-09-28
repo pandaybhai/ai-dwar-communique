@@ -4,7 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Money around a campaign, in three moves:
  *   hold   — when dispatch starts, reserve the estimate so two campaigns
  *            can't spend the same credits.
- *   charge — what actually went out, counted from sent messages.
+ *   charge — each message, once, by the database when Meta prices it
+ *            (debit_message ledger rows); never charged from here.
  *   release— whatever was reserved and never used comes back.
  * Every function is a no-op when billing is off for the workspace, so
  * nothing changes for those workspaces.
@@ -62,80 +63,95 @@ export async function holdCampaign(
 }
 
 /**
- * Charge for what was actually sent and give back the rest of the hold.
- * Safe to call twice — it only ever charges the difference.
+ * Close the reservation once the campaign finishes.
+ *
+ * The charge itself is never taken here. Each campaign message is charged
+ * exactly once, by the database, as a debit_message ledger row when Meta
+ * reports its price (billing_debit_message, idempotent per message). Those
+ * rows are the only source of truth: charged_amount is read back from them,
+ * never computed and never written unless the ledger calls succeeded.
+ *
+ * Safe to call twice: a settled campaign has held_amount 0, and a campaign
+ * whose release landed but whose row update failed is never released again.
+ * On any failure the campaign row is left untouched (held_amount stays set)
+ * so the settle can be retried.
  */
 export async function settleCampaignSpend(
   supabase: SupabaseClient,
   organizationId: string,
   campaignId: string,
-): Promise<void> {
-  const { billingEnabled, rateFor } = await import("@/lib/billing.server");
+): Promise<{ ok: boolean; error?: string }> {
+  const { billingEnabled } = await import("@/lib/billing.server");
   const { round2 } = await import("@/lib/billing");
-  if (!(await billingEnabled(supabase, organizationId))) return;
+  if (!(await billingEnabled(supabase, organizationId))) return { ok: true };
 
   const campaign = await loadCampaign(supabase, organizationId, campaignId);
-  if (!campaign) return;
+  if (!campaign) return { ok: true };
 
   const held = Number(campaign.held_amount ?? 0);
-  if (held <= 0) return;
+  if (held <= 0) return { ok: true };
 
-  const alreadyCharged = Number(campaign.charged_amount ?? 0);
-  const sent = Number(campaign.sent_count ?? 0);
+  const charged = await campaignLedgerCharge(supabase, organizationId, campaignId);
+  if (charged.error !== null) return { ok: false, error: charged.error };
 
-  let category = "marketing";
-  if (campaign.template_name) {
-    const { data: template } = await supabase
-      .from("message_templates")
-      .select("category")
-      .eq("organization_id", organizationId)
-      .eq("name", campaign.template_name)
-      .limit(1)
-      .maybeSingle();
-    category = String((template as { category?: string } | null)?.category ?? "marketing").toLowerCase();
-  }
-  const { rate } = await rateFor(
-    supabase,
-    organizationId,
-    (["marketing", "utility", "authentication", "service"].includes(category)
-      ? category
-      : "marketing") as "marketing" | "utility" | "authentication" | "service",
-  );
+  // Messages already priced were taken out of the hold as they were charged
+  // (from_hold); only the part never used goes back.
+  const release = round2(Math.max(0, held - charged.amount));
 
-  const spend = round2(Math.min(held, rate * sent));
-  const toCharge = round2(spend - alreadyCharged);
+  const { data: released, error: releasedError } = await supabase
+    .from("wallet_ledger")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("entry_type", "hold_release")
+    .eq("reference_type", "campaign")
+    .eq("reference_id", campaignId)
+    .limit(1);
+  if (releasedError) return { ok: false, error: releasedError.message };
 
-  // Release first: the charge is taken from real balance, not the hold.
-  await supabase.rpc("wallet_apply", {
-    p_org: organizationId,
-    p_type: "hold_release",
-    p_amount: held,
-    p_ref_type: "campaign",
-    p_ref_id: campaignId,
-    p_description: "Campaign reservation released",
-    p_metadata: { campaign_id: campaignId },
-    p_actor: null,
-  });
-
-  if (toCharge > 0) {
-    await supabase.rpc("wallet_apply", {
+  if (release > 0 && !(released ?? []).length) {
+    const { error } = await supabase.rpc("wallet_apply", {
       p_org: organizationId,
-      p_type: "debit",
-      p_amount: toCharge,
+      p_type: "hold_release",
+      p_amount: release,
       p_ref_type: "campaign",
       p_ref_id: campaignId,
-      p_description: "Campaign messages sent",
-      p_metadata: { campaign_id: campaignId, messages: sent },
+      p_description: "Campaign reservation released",
+      p_metadata: { campaign_id: campaignId },
       p_actor: null,
     });
+    if (error) return { ok: false, error: error.message };
   }
 
-  await supabase
+  const { error: updateError } = await supabase
     .from("campaigns")
     .update({
       held_amount: 0,
-      charged_amount: round2(alreadyCharged + Math.max(0, toCharge)),
-      returned_amount: round2(Math.max(0, held - spend)),
+      charged_amount: charged.amount,
+      returned_amount: release,
     })
-    .eq("id", campaignId);
+    .eq("id", campaignId)
+    .eq("organization_id", organizationId);
+  if (updateError) return { ok: false, error: updateError.message };
+  return { ok: true };
+}
+
+/** What the ledger has actually charged for this campaign's messages. */
+async function campaignLedgerCharge(
+  supabase: SupabaseClient,
+  organizationId: string,
+  campaignId: string,
+): Promise<{ amount: number; error: string | null }> {
+  const { round2 } = await import("@/lib/billing");
+  const { data, error } = await supabase
+    .from("wallet_ledger")
+    .select("amount")
+    .eq("organization_id", organizationId)
+    .eq("entry_type", "debit_message")
+    .eq("metadata->>campaign_id", campaignId);
+  if (error) return { amount: 0, error: error.message };
+  const total = ((data ?? []) as Array<{ amount: number | string | null }>).reduce(
+    (sum, row) => sum + Math.abs(Number(row.amount ?? 0)),
+    0,
+  );
+  return { amount: round2(total), error: null };
 }

@@ -764,6 +764,11 @@ async function advanceInner(
             await finish("failed", "failed", { error: res.error });
             return;
           }
+          // Opted out since the run started: stop, exactly as at run start.
+          if (res.skipped === "opted_out") {
+            await finish("cancelled", "opted_out");
+            return;
+          }
           // Marketing without opt-in is never sent; the flow carries on.
           if (res.skipped) await logEvent(supabase, run, node.id, "template_skipped", { reason: res.skipped });
         }
@@ -1152,7 +1157,7 @@ export function marketingAllowed(category: string | null | undefined, optedIn: b
   return String(category ?? "").toUpperCase() !== "MARKETING" || optedIn;
 }
 
-async function sendTemplate(
+export async function sendTemplate(
   supabase: SupabaseClient,
   run: Run,
   env: Env,
@@ -1169,6 +1174,14 @@ async function sendTemplate(
   if (!t) return { error: "template_missing" };
   if (String(t.status).toUpperCase() !== "APPROVED") return { error: "template_not_approved" };
   if (!marketingAllowed(t.category, env.optedIn)) return { error: null, skipped: "not_opted_in" };
+  // Re-read at send time: the customer may have opted out since the run loaded.
+  const { contactOptedOut } = await import("@/lib/opt-out.server");
+  const optOut = await contactOptedOut(supabase, run.organization_id, {
+    contactId: run.contact_id,
+    phone: env.ctx.contact.phone,
+  });
+  if (optOut.error) return { error: "opt_out_check_failed" };
+  if (optOut.optedOut) return { error: null, skipped: "opted_out" };
   const { loadSenderContext, sendCampaignTemplate } = await import("@/lib/campaigns.server");
   const { extractVariables, templateBodyText } = await import("@/lib/templates");
   const sender = await loadSenderContext(supabase, run.organization_id, env.conn?.accountId ?? null);

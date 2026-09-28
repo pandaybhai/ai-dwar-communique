@@ -22,6 +22,7 @@ import {
   userPrincipal,
   agentPrincipal,
   type BrokeredTool,
+  type ToolContext,
   type ToolPrincipal,
 } from "@/lib/ai-tools.server";
 
@@ -1319,6 +1320,7 @@ export async function executeRun(
 
   const principal: ToolPrincipal =
     options.principal ?? (actorUserId ? userPrincipal(actorUserId) : agentPrincipal);
+  const subject = toolSubject({ channel: options.channel, conversationId, contactId });
 
   const tools = useTools
     ? await brokerTools(supabase, organizationId, principal)
@@ -1367,7 +1369,15 @@ export async function executeRun(
         // The function_call items must travel with their outputs.
         items.push(...call.items);
         for (const tc of call.toolCalls) {
-          const result = await runTool(supabase, organizationId, actorUserId, principal, tc.name, tc.args);
+          const result = await runTool(
+            supabase,
+            organizationId,
+            actorUserId,
+            principal,
+            tc.name,
+            tc.args,
+            subject,
+          );
           if (!result.ok) anyToolFailed = true;
           toolCalls.push({
             tool: tc.name,
@@ -1411,7 +1421,15 @@ export async function executeRun(
         if (call.toolCalls.length === 0) break;
         messages.push(call.raw as ChatMessage);
         for (const tc of call.toolCalls) {
-          const result = await runTool(supabase, organizationId, actorUserId, principal, tc.name, tc.args);
+          const result = await runTool(
+            supabase,
+            organizationId,
+            actorUserId,
+            principal,
+            tc.name,
+            tc.args,
+            subject,
+          );
           if (!result.ok) anyToolFailed = true;
           toolCalls.push({
             tool: tc.name,
@@ -1829,6 +1847,20 @@ function modelView(result: { ok: boolean; found?: boolean; data?: unknown; error
   };
 }
 
+/**
+ * A run tied to one customer chat only ever reads that customer. The owner's
+ * onboarding chat and runs with no chat (playground) keep workspace scope.
+ */
+export function toolSubject(options: {
+  channel?: "onboarding" | null | undefined;
+  conversationId?: string | null | undefined;
+  contactId?: string | null | undefined;
+}): ToolContext["subject"] {
+  if (options.channel === "onboarding") return undefined;
+  if (!options.conversationId && !options.contactId) return undefined;
+  return { contactId: options.contactId ?? null, conversationId: options.conversationId ?? null };
+}
+
 async function runTool(
   supabase: SupabaseClient,
   organizationId: string,
@@ -1836,9 +1868,17 @@ async function runTool(
   principal: ToolPrincipal,
   name: string,
   args: Record<string, unknown>,
+  subject: ToolContext["subject"],
 ) {
   return invokeTool(
-    { supabase, organizationId, actorUserId, principal, initiatedBy: "ai" },
+    {
+      supabase,
+      organizationId,
+      actorUserId,
+      principal,
+      initiatedBy: "ai",
+      ...(subject ? { subject } : {}),
+    },
     name,
     args,
   );

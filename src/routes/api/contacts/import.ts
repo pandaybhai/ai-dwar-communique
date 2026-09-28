@@ -19,6 +19,7 @@ export const Route = createFileRoute("/api/contacts/import")({
           "@/lib/whatsapp-api.server"
         );
         const { normalizePhone, toWaId } = await import("@/lib/phone");
+        const { importOptInPatch } = await import("@/lib/opt-out.server");
 
         let payload: AnyRecord;
         try {
@@ -121,7 +122,7 @@ export const Route = createFileRoute("/api/contacts/import")({
 
             const { data: existing } = await supabase
               .from("contacts")
-              .select("id, name, attributes")
+              .select("id, name, attributes, opt_in_status")
               .eq("organization_id", organizationId)
               .eq("phone", phone)
               .maybeSingle();
@@ -140,7 +141,8 @@ export const Route = createFileRoute("/api/contacts/import")({
                 .update({
                   name: name || (existing?.name as string | null) || null,
                   attributes: merged,
-                  ...(consent ? { opt_in_status: "opted_in" } : {}),
+                  // Consent never overrides a customer's own opt-out.
+                  ...importOptInPatch(existing?.opt_in_status as string | null, consent),
                 })
                 .eq("id", contactId);
               if (updErr) {

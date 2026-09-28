@@ -98,7 +98,16 @@ export const Route = createFileRoute("/api/campaigns/control")({
 
           // Whatever was reserved and not spent goes back to the wallet.
           const { settleCampaignSpend } = await import("@/lib/campaign-billing.server");
-          await settleCampaignSpend(supabase, organizationId, campaignId);
+          const settled = await settleCampaignSpend(supabase, organizationId, campaignId);
+          if (!settled.ok) {
+            console.error(
+              JSON.stringify({
+                at: "campaign_settle_failed",
+                campaign_id: campaignId,
+                error: settled.error,
+              }),
+            );
+          }
         }
 
         await logServerActivity(supabase, organizationId, userId, `campaign_${action}d`, {
