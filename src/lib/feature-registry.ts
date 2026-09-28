@@ -1179,6 +1179,42 @@ export const FEATURES: readonly FeatureManifest[] = [
     activity_actions: ["card_branding_updated"],
     data_tables: ["onboarding_card_templates"],
   },
+  {
+    key: "wa_forms",
+    depends_on: ["inbox"],
+    name: "WhatsApp Forms",
+    description:
+      "Tap-to-fill forms inside WhatsApp — bookings, order details, callbacks, feedback — with answers saved to the contact and shown in the inbox.",
+    icon: "sparkles",
+    flag_key: "wa_forms",
+    flag_default_enabled: false,
+    permissions: [],
+    analytics: {
+      event_types: ["form.submitted"],
+      metrics: [],
+      dashboard_section: false,
+    },
+    activity_actions: ["form_created", "form_published", "form_sent", "form_submitted"],
+    ai_tools: [
+      {
+        name: "send_form",
+        description:
+          "Send the customer one of this business's published WhatsApp forms (tap-to-fill) after your reply. Use it when the customer wants to book, order, request a callback or give feedback and a published form fits. Call without form_id to list the published forms first. Only one form per reply.",
+        parameters: {
+          type: "object",
+          properties: {
+            form_id: { type: "string", description: "Id of a published form from the list." },
+          },
+          additionalProperties: false,
+        },
+        required_permission: "inbox.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "sendForm",
+      },
+    ],
+    data_tables: ["wa_forms", "wa_form_responses"],
+  },
 ] as const;
 
 export const ROLE_RANK: Record<OrgRole, number> = { owner: 4, admin: 3, marketer: 2, agent: 1 };
