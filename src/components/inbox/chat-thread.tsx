@@ -558,7 +558,9 @@ export function ChatThread({
         </Button>
       </header>
 
-      <FlowRunBanner organizationId={conversation.organization_id} contactId={conversation.contact_id} />
+      {conversation.contact ? (
+        <FlowRunBanner organizationId={organizationId} contactId={conversation.contact.id} />
+      ) : null}
 
       {conversation.needs_human ? (
         <div className="flex flex-wrap items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
