@@ -12,6 +12,7 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("save_draft"), organization_id: z.string().uuid(), flow_id: z.string().uuid(), graph: Graph, name: z.string().min(1).max(80).optional() }),
   z.object({ action: z.literal("publish"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
   z.object({ action: z.literal("unpublish"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
+  z.object({ action: z.literal("generate"), organization_id: z.string().uuid(), description: z.string().min(10).max(1500) }),
   z.object({ action: z.literal("restore"), organization_id: z.string().uuid(), flow_id: z.string().uuid(), version_id: z.string().uuid() }),
 ]);
 
@@ -42,6 +43,14 @@ export const Route = createFileRoute("/api/flows/v2")({
         const org = auth.organizationId;
         if (!(await flowsV2Enabled(db, org))) return jsonError("Flows v2 isn't switched on for this workspace.", 403);
         const { validateGraph } = await import("@/lib/flow-graph");
+
+        if (body.action === "generate") {
+          const { generateFlowDraft } = await import("@/lib/flow-generate.server");
+          const out = await generateFlowDraft(db, { organizationId: org, userId: auth.userId, description: body.description });
+          if (!out.graph) return jsonError(out.error ?? "I couldn't draft that flow — try describing it in a bit more detail.", out.status ?? 422);
+          await logServerActivity(db, org, auth.userId, "flow_v2_generated", { nodes: out.graph.nodes.length });
+          return Response.json({ ok: true, graph: out.graph });
+        }
 
         const ownFlow = async (flowId: string) => {
           const { data } = await db.from("flows").select("id, name, key").eq("id", flowId).eq("organization_id", org).maybeSingle();
