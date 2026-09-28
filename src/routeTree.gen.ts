@@ -72,6 +72,7 @@ import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/pro
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiFlowsRunsRouteImport } from './routes/api/flows/runs'
+import { Route as ApiFlowsV2RouteImport } from './routes/api/flows/v2'
 import { Route as ApiHomeSummaryRouteImport } from './routes/api/home/summary'
 import { Route as ApiIntegrationsShopifyRouteImport } from './routes/api/integrations/shopify'
 import { Route as ApiInternalAiRunRouteImport } from './routes/api/internal/ai-run'
@@ -116,6 +117,7 @@ import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './ro
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
 import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/shopify/webhooks/shop-redact'
 import { Route as ApiWhatsappMediaIdRouteImport } from './routes/api/whatsapp/media/$id'
+import { Route as AppFlowsV2IdRouteImport } from './routes/app/flows.v2.$id'
 import { Route as ApiPublicShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/public/shopify/webhooks/customers-data-request'
 import { Route as ApiPublicShopifyWebhooksCustomersRedactRouteImport } from './routes/api/public/shopify/webhooks/customers-redact'
 import { Route as ApiPublicShopifyWebhooksShopRedactRouteImport } from './routes/api/public/shopify/webhooks/shop-redact'
@@ -436,6 +438,11 @@ const ApiFlowsRunsRoute = ApiFlowsRunsRouteImport.update({
   path: '/api/flows/runs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFlowsV2Route = ApiFlowsV2RouteImport.update({
+  id: '/api/flows/v2',
+  path: '/api/flows/v2',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHomeSummaryRoute = ApiHomeSummaryRouteImport.update({
   id: '/api/home/summary',
   path: '/api/home/summary',
@@ -673,6 +680,11 @@ const ApiWhatsappMediaIdRoute = ApiWhatsappMediaIdRouteImport.update({
   path: '/api/whatsapp/media/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppFlowsV2IdRoute = AppFlowsV2IdRouteImport.update({
+  id: '/flows/v2/$id',
+  path: '/flows/v2/$id',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const ApiPublicShopifyWebhooksCustomersDataRequestRoute =
   ApiPublicShopifyWebhooksCustomersDataRequestRouteImport.update({
     id: '/api/public/shopify/webhooks/customers-data-request',
@@ -756,6 +768,7 @@ export interface FileRoutesByFullPath {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
+  '/api/flows/v2': typeof ApiFlowsV2Route
   '/api/home/summary': typeof ApiHomeSummaryRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
@@ -800,6 +813,7 @@ export interface FileRoutesByFullPath {
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
+  '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -866,6 +880,7 @@ export interface FileRoutesByTo {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
+  '/api/flows/v2': typeof ApiFlowsV2Route
   '/api/home/summary': typeof ApiHomeSummaryRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
@@ -910,6 +925,7 @@ export interface FileRoutesByTo {
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
+  '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -979,6 +995,7 @@ export interface FileRoutesById {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
+  '/api/flows/v2': typeof ApiFlowsV2Route
   '/api/home/summary': typeof ApiHomeSummaryRoute
   '/api/integrations/shopify': typeof ApiIntegrationsShopifyRoute
   '/api/internal/ai-run': typeof ApiInternalAiRunRoute
@@ -1023,6 +1040,7 @@ export interface FileRoutesById {
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
+  '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -1093,6 +1111,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/flows/runs'
+    | '/api/flows/v2'
     | '/api/home/summary'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
@@ -1137,6 +1156,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
     | '/api/whatsapp/media/$id'
+    | '/app/flows/v2/$id'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
@@ -1203,6 +1223,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/flows/runs'
+    | '/api/flows/v2'
     | '/api/home/summary'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
@@ -1247,6 +1268,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
     | '/api/whatsapp/media/$id'
+    | '/app/flows/v2/$id'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
@@ -1315,6 +1337,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/flows/runs'
+    | '/api/flows/v2'
     | '/api/home/summary'
     | '/api/integrations/shopify'
     | '/api/internal/ai-run'
@@ -1359,6 +1382,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
     | '/api/whatsapp/media/$id'
+    | '/app/flows/v2/$id'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
@@ -1407,6 +1431,7 @@ export interface RootRouteChildren {
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiFlowsRunsRoute: typeof ApiFlowsRunsRoute
+  ApiFlowsV2Route: typeof ApiFlowsV2Route
   ApiHomeSummaryRoute: typeof ApiHomeSummaryRoute
   ApiIntegrationsShopifyRoute: typeof ApiIntegrationsShopifyRoute
   ApiInternalAiRunRoute: typeof ApiInternalAiRunRoute
@@ -1893,6 +1918,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFlowsRunsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/flows/v2': {
+      id: '/api/flows/v2'
+      path: '/api/flows/v2'
+      fullPath: '/api/flows/v2'
+      preLoaderRoute: typeof ApiFlowsV2RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/home/summary': {
       id: '/api/home/summary'
       path: '/api/home/summary'
@@ -2201,6 +2233,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappMediaIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/flows/v2/$id': {
+      id: '/app/flows/v2/$id'
+      path: '/flows/v2/$id'
+      fullPath: '/app/flows/v2/$id'
+      preLoaderRoute: typeof AppFlowsV2IdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/api/public/shopify/webhooks/customers-data-request': {
       id: '/api/public/shopify/webhooks/customers-data-request'
       path: '/api/public/shopify/webhooks/customers-data-request'
@@ -2273,6 +2312,7 @@ interface AppRouteRouteChildren {
   AppCampaignsIndexRoute: typeof AppCampaignsIndexRoute
   AppCatalogIndexRoute: typeof AppCatalogIndexRoute
   AppFlowsIndexRoute: typeof AppFlowsIndexRoute
+  AppFlowsV2IdRoute: typeof AppFlowsV2IdRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
@@ -2293,6 +2333,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppCampaignsIndexRoute: AppCampaignsIndexRoute,
   AppCatalogIndexRoute: AppCatalogIndexRoute,
   AppFlowsIndexRoute: AppFlowsIndexRoute,
+  AppFlowsV2IdRoute: AppFlowsV2IdRoute,
 }
 
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
@@ -2342,6 +2383,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiFlowsRunsRoute: ApiFlowsRunsRoute,
+  ApiFlowsV2Route: ApiFlowsV2Route,
   ApiHomeSummaryRoute: ApiHomeSummaryRoute,
   ApiIntegrationsShopifyRoute: ApiIntegrationsShopifyRoute,
   ApiInternalAiRunRoute: ApiInternalAiRunRoute,

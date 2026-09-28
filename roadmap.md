@@ -23,3 +23,10 @@
 - [x] /pricing + homepage plans in first HTML; sitemap/robots/root use aidwar.in
 - [ ] Email domain aidwar.in — waiting on user to complete setup dialog
 - [ ] Lovable AI credit limit reached — search prep for 6 aidwar.in pages waits on it
+
+## Flows v2 (flag flows_v2, Ai Dwar only)
+- [x] Drop 1 engine
+- [x] Drop 2a canvas, core steps, validation, publish/unpublish, versions, test chat, starters
+- [ ] Drop 2b competitor extras: CTA URL, location, contact card, carousel, typing delay, quiet nudge, set variable/calc, regex, business hours, note, close chat, opt-in/out + STOP, segments, team email, Google Sheets, round-robin, Razorpay payment, on-finish, duplicate, import/export, generate from description
+- [ ] Drop 3 triggers + per-step counts + inbox run log + live demo (ask before real sends)
+- [ ] Then Step 2 regressions, Forms Phase A, Aiden collects node

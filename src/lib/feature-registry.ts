@@ -1241,7 +1241,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: { event_types: [], metrics: [], dashboard_section: false },
-    activity_actions: ["flow_run_pause", "flow_run_stop", "flow_run_resume"],
+    activity_actions: ["flow_run_pause", "flow_run_stop", "flow_run_resume", "flow_v2_created", "flow_v2_published", "flow_v2_unpublished", "flow_v2_restored"],
     ai_tools: [],
     data_tables: ["flow_versions", "flow_runs", "flow_run_events"],
   },

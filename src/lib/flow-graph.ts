@@ -25,7 +25,8 @@ export type NodeType =
   | "set_field"
   | "assign"
   | "needs_you"
-  | "end";
+  | "end"
+  | "note";
 
 export type FlowNode = {
   id: string;
@@ -190,6 +191,7 @@ export function outputsOf(node: FlowNode): string[] {
   const d = node.data;
   switch (node.type) {
     case "end":
+    case "note":
       return [];
     case "buttons":
       return [
