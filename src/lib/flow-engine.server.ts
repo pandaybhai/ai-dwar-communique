@@ -170,7 +170,19 @@ export async function startRun(
   return { runId: run.id, reason: null };
 }
 
-/** An inbound message: if a run is waiting for this contact's reply, it takes it. */
+/** How long a message that arrives while the flow is busy is held for it. */
+const HOLD_MS = 12_000;
+const DUPLICATE_WINDOW_MS = 20_000;
+
+/**
+ * An inbound message. While the contact has a run that is running OR waiting,
+ * every inbound belongs to the flow — it never falls through to the AI, the
+ * owner channel or automations:
+ *  - waiting for a reply → the run takes it;
+ *  - busy (running) → held until the run is ready, then handed over; a
+ *    repeat of the tap the run just took is dropped;
+ *  - waiting on a timer/payment → recorded on the run and not answered.
+ */
 export async function handleInboundForRuns(
   supabase: SupabaseClient,
   args: {
@@ -182,15 +194,77 @@ export async function handleInboundForRuns(
     replyId: string | null;
   },
 ): Promise<{ consumed: boolean }> {
-  // Match on this conversation (a run started without one, e.g. from a tag
-  // trigger, is matched by contact + the flow's number instead).
+  const deadline = Date.now() + HOLD_MS;
+  const key = (args.replyId ?? args.body.trim().toLowerCase()).slice(0, 200);
+  let held = false;
+  let flagChecked = false;
+  for (;;) {
+    const run = await activeRunFor(supabase, args);
+    // Nothing active: normal routing — unless we were holding this message
+    // for a run that has since finished (a duplicate tap), which is dropped.
+    if (!run) return { consumed: held };
+    if (!flagChecked) {
+      if (!(await flowsV2Enabled(supabase, args.organizationId))) return { consumed: false };
+      flagChecked = true;
+    }
+
+    if (run.status === "waiting" && run.waiting_for === "reply") {
+      const last = run.variables?.["_last_reply"] as { k?: string; at?: string } | undefined;
+      if (held && last?.k === key && last.at && Date.now() - Date.parse(last.at) < DUPLICATE_WINDOW_MS) {
+        await logEvent(supabase, run, run.current_node_id, "reply_dropped", { reason: "duplicate_tap" }).catch(() => false);
+        return { consumed: true };
+      }
+      const graph = await loadGraph(supabase, run.version_id);
+      if (!graph) return { consumed: true };
+      // Claim: only one of (this reply, another reply, a timeout tick) may advance the run.
+      const { data: claimed } = await supabase
+        .from("flow_runs")
+        .update({ status: "running", claimed_at: new Date().toISOString(), conversation_id: run.conversation_id ?? args.conversationId })
+        .eq("id", run.id)
+        .eq("status", "waiting")
+        .eq("waiting_for", "reply")
+        .select("id");
+      if (claimed && claimed.length > 0) {
+        run.conversation_id = run.conversation_id ?? args.conversationId;
+        run.variables = { ...(run.variables ?? {}), _last_reply: { k: key, at: new Date().toISOString() } };
+        try {
+          await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length, held });
+          // advance() reasons about the state the run was waiting in.
+          await advance(supabase, run, graph, { body: args.body, replyId: args.replyId });
+        } catch (error) {
+          await failSafe(supabase, run, error);
+        }
+        return { consumed: true };
+      }
+      // Lost the claim — the run is busy again; hold and retry.
+    } else if (run.status === "waiting") {
+      await logEvent(supabase, run, run.current_node_id, "reply_ignored", { waiting_for: run.waiting_for, length: args.body.length }).catch(() => false);
+      return { consumed: true };
+    }
+
+    if (!held) {
+      held = true;
+      await logEvent(supabase, run, run.current_node_id, "reply_held", { reply_id: args.replyId, length: args.body.length }).catch(() => false);
+    }
+    if (Date.now() > deadline) {
+      await logEvent(supabase, run, run.current_node_id, "reply_dropped", { reason: "flow_busy" }).catch(() => false);
+      return { consumed: true };
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+/** The contact's running/waiting run on this conversation (or unbound on this number). */
+async function activeRunFor(
+  supabase: SupabaseClient,
+  args: { organizationId: string; contactId: string; conversationId: string; whatsappAccountId?: string | null },
+): Promise<Run | null> {
   const { data } = await supabase
     .from("flow_runs")
     .select(RUN_COLUMNS)
     .eq("organization_id", args.organizationId)
     .eq("contact_id", args.contactId)
-    .eq("status", "waiting")
-    .eq("waiting_for", "reply")
+    .in("status", ["running", "waiting"])
     .or(`conversation_id.eq.${args.conversationId},conversation_id.is.null`)
     .order("updated_at", { ascending: false })
     .limit(5);
@@ -208,32 +282,14 @@ export async function handleInboundForRuns(
     );
     candidates = candidates.filter((r) => r.conversation_id || !onOtherNumber.has(r.flow_id));
   }
-  const run = candidates.find((r) => r.conversation_id === args.conversationId) ?? candidates[0];
-  if (!run) return { consumed: false };
-  if (!(await flowsV2Enabled(supabase, args.organizationId))) return { consumed: false };
-  const graph = await loadGraph(supabase, run.version_id);
-  if (!graph) return { consumed: false };
-  // Claim: only one of (this reply, a timeout tick) may advance the run.
-  const { data: claimed } = await supabase
-    .from("flow_runs")
-    .update({ status: "running", claimed_at: new Date().toISOString(), conversation_id: run.conversation_id ?? args.conversationId })
-    .eq("id", run.id)
-    .eq("status", "waiting")
-    .eq("waiting_for", "reply")
-    .select("id");
-  if (!claimed || claimed.length === 0) {
-    // Someone else (the tick) has it right now — the flow still owns the chat.
-    return { consumed: true };
-  }
-  run.conversation_id = run.conversation_id ?? args.conversationId;
-  try {
-    await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length });
-    // advance() reasons about the state the run was waiting in.
-    await advance(supabase, run, graph, { body: args.body, replyId: args.replyId });
-  } catch (error) {
-    await failSafe(supabase, run, error);
-  }
-  return { consumed: true };
+  // Prefer a run waiting for a reply, then this conversation's run.
+  return (
+    candidates.find((r) => r.status === "waiting" && r.waiting_for === "reply" && r.conversation_id === args.conversationId) ??
+    candidates.find((r) => r.status === "waiting" && r.waiting_for === "reply") ??
+    candidates.find((r) => r.conversation_id === args.conversationId) ??
+    candidates[0] ??
+    null
+  );
 }
 
 /** Minute tick: due waits and reply timeouts, plus the 14-day age limit. */
