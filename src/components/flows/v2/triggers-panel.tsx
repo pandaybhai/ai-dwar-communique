@@ -47,6 +47,8 @@ export function TriggersPanel({
   tags: string[];
 }) {
   const [rows, setRows] = useState<TriggerRow[] | null>(null);
+  const [fires, setFires] = useState<Record<string, { count: number; last: string | null }>>({});
+  const [conflicts, setConflicts] = useState<Array<{ trigger_id: string; keyword: string; other_flow_name: string; this_wins: boolean }>>([]);
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<string>("keyword");
   const [keywords, setKeywords] = useState("");
@@ -57,11 +59,13 @@ export function TriggersPanel({
   const [days, setDays] = useState("3");
 
   const load = useCallback(async () => {
-    const { data, error } = await callApi<{ triggers: TriggerRow[] }>("/api/flows/triggers", {
+    const { data, error } = await callApi<{ triggers: TriggerRow[]; fires?: Record<string, { count: number; last: string | null }>; conflicts?: Array<{ trigger_id: string; keyword: string; other_flow_name: string; this_wins: boolean }> }>("/api/flows/triggers", {
       body: { action: "list", organization_id: organizationId, flow_id: flowId },
     });
     if (error) toast.error(error);
     setRows(data?.triggers ?? []);
+    setFires(data?.fires ?? {});
+    setConflicts(data?.conflicts ?? []);
   }, [organizationId, flowId]);
 
   useEffect(() => {
@@ -100,6 +104,13 @@ export function TriggersPanel({
     await callApi("/api/flows/triggers", {
       body: { action: "update", organization_id: organizationId, trigger_id: row.id, trigger: { is_enabled: !row.is_enabled } },
     });
+    void load();
+  };
+
+  const win = async (triggerId: string) => {
+    const { error } = await callApi("/api/flows/triggers", { body: { action: "win", organization_id: organizationId, trigger_id: triggerId } });
+    if (error) { toast.error(error); return; }
+    toast.success("This flow now wins that keyword.");
     void load();
   };
 
