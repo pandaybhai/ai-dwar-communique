@@ -1188,7 +1188,14 @@ export const FEATURES: readonly FeatureManifest[] = [
     icon: "sparkles",
     flag_key: "wa_forms",
     flag_default_enabled: false,
-    permissions: [],
+    permissions: [
+      {
+        key: "forms.manage",
+        name: "Manage forms",
+        description: "Build, publish and retire WhatsApp forms.",
+        min_role: "admin",
+      },
+    ],
     analytics: {
       event_types: ["form.submitted"],
       metrics: [],

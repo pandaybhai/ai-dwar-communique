@@ -257,7 +257,7 @@ export async function sendFormMessage(
             flow_token: flowToken,
             flow_id: form.meta_flow_id,
             flow_cta: (form.cta || "Open form").slice(0, 20),
-            flow_action: "navigate",
+            flow_action: String("navigate"),
             flow_action_payload: { screen: FORM_SCREEN },
           },
         },
