@@ -1000,13 +1000,13 @@ export async function processWebhookPayload(
           // created_at is the signal for a genuinely new contact.
           const contactAge = Date.now() - new Date(String(contact.created_at)).getTime();
           if (contactAge >= 0 && contactAge < 10_000) {
-            later(emitEvent(supabase, "contact.created", {
+            await emitEvent(supabase, "contact.created", {
               organizationId: orgId,
               whatsappAccountId: accountId,
               entityType: "contact",
               entityId: contact.id as string,
               properties: { contact_source: attribution.source },
-            }));
+            });
           }
 
           let { data: conversation } = await supabase
@@ -1031,13 +1031,13 @@ export async function processWebhookPayload(
               .single();
             conversation = created;
             if (created) {
-              later(emitEvent(supabase, "conversation.opened", {
+              await emitEvent(supabase, "conversation.opened", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
                 entityType: "conversation",
                 entityId: created.id as string,
                 properties: { opened_by: "inbound" },
-              }));
+              });
             }
           }
           if (!conversation) continue;
@@ -1082,14 +1082,14 @@ export async function processWebhookPayload(
               })
               .eq("id", conversation.id);
             later(applyCampaignReply(supabase, orgId, contact.id));
-            later(emitEvent(supabase, "message.received", {
+            await emitEvent(supabase, "message.received", {
               organizationId: orgId,
               whatsappAccountId: accountId,
               entityType: "message",
               entityId: inserted[0]!.id as string,
               occurredAt,
               properties: { message_type: type, conversation_id: conversation.id },
-            }));
+            });
           }
 
           // A filled-in WhatsApp form is handled before any other routing, on
