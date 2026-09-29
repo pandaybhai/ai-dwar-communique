@@ -17,6 +17,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getScript } from "@/lib/scripts.server";
 import { normalizePhone } from "@/lib/phone";
+import { CODE_RE as CODE_PATTERN } from "@/lib/teach-guard";
 import {
   sendServiceText,
   sendServiceImage,
@@ -49,9 +50,13 @@ export type OnboardingSession = {
   connected_account_id?: string | null;
   /** Last time we mentioned Unanswered here — at most once per ten minutes. */
   last_gap_note_at?: string | null;
+  /** When an unused (pending) code lapses. */
+  expires_at?: string | null;
 };
 
-const CODE_PATTERN = /AD-[A-Z0-9]{4}/i;
+/** Codes that matched no open setup, per sender, before we stop looking codes up. */
+export const WRONG_CODE_LIMIT = 5;
+const WRONG_CODE_WINDOW_MS = 60 * 60 * 1000;
 
 /** The default name the employee answers to when the owner hasn't renamed him. */
 const DEFAULT_PERSONA = "Aiden";
@@ -87,7 +92,7 @@ const UPGRADE_INTENT =
 const STRANGER_QUIET_MS = 24 * 60 * 60 * 1000;
 
 const SESSION_COLUMNS =
-  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions, updated_at, connected_account_id, last_gap_note_at";
+  "id, organization_id, user_id, phone, wa_id, code, status, step, source_id, pending_question, pending_asked_at, suggested_questions, updated_at, connected_account_id, last_gap_note_at, expires_at";
 
 // --------------------------------------------------------------- formatting
 
@@ -132,25 +137,88 @@ export function extractSiteLink(body: string): string | null {
   return null;
 }
 
-/** The session this message belongs to: by code first, then by number. */
+/**
+ * What a code may do for the number that sent it:
+ *  - "bind": an open setup (not completed, not expired, not a lapsed unused
+ *    code). A different number takes it over — the phone that messaged us is
+ *    the one we talk to (24 Sep behaviour).
+ *  - "continue": a completed setup, only for the number it is already bound to.
+ *  - "reject": anything else. A code never hands a finished or expired setup
+ *    to a new number.
+ */
+export function codeVerdict(
+  session: Pick<OnboardingSession, "status" | "phone" | "wa_id" | "expires_at"> | null,
+  waId: string,
+  now: number = Date.now(),
+): "bind" | "continue" | "reject" {
+  if (!session) return "reject";
+  if (session.status === "expired") return "reject";
+  const lapsed =
+    session.status === "pending" &&
+    Boolean(session.expires_at) &&
+    Date.parse(String(session.expires_at)) <= now;
+  if (lapsed) return "reject";
+  if (session.status === "completed") {
+    const sameNumber =
+      normalizePhone(session.phone ?? "") === normalizePhone(waId) ||
+      (Boolean(session.wa_id) && session.wa_id === waId);
+    return sameNumber ? "continue" : "reject";
+  }
+  return "bind";
+}
+
+/** Replies of one kind we sent this sender in the last hour (any delivery status). */
+async function recentRepliesOfKind(
+  supabase: SupabaseClient,
+  conversationId: string,
+  kind: string,
+): Promise<number> {
+  const since = new Date(Date.now() - WRONG_CODE_WINDOW_MS).toISOString();
+  const { data } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .eq("direction", "outbound")
+    .eq("metadata->>kind", kind)
+    .gte("created_at", since);
+  return data?.length ?? 0;
+}
+
+/**
+ * The session this message belongs to: by code first, then by number.
+ * codeState says what happened to a code in the message: "wrong" (matched no
+ * open setup for this number) or "locked" (too many wrong codes this hour, so
+ * it was not looked up at all).
+ */
 async function findSession(
   supabase: SupabaseClient,
   waId: string,
   body: string,
-): Promise<{ session: OnboardingSession | null; byCode: boolean }> {
+  conversationId: string,
+): Promise<{
+  session: OnboardingSession | null;
+  byCode: boolean;
+  codeState?: "wrong" | "locked";
+}> {
   const match = body.match(CODE_PATTERN);
   if (match) {
+    // Every wrong code was answered with a "wrong_code" reply, so the chat log
+    // is the attempt counter: five in an hour and codes stop being looked up.
+    if ((await recentRepliesOfKind(supabase, conversationId, "wrong_code")) >= WRONG_CODE_LIMIT) {
+      return { session: null, byCode: false, codeState: "locked" };
+    }
     const { data } = await supabase
       .from("onboarding_sessions")
       .select(SESSION_COLUMNS)
       .eq("code", match[0].toUpperCase())
       .maybeSingle();
     const byCode = data as OnboardingSession | null;
-    if (byCode && byCode.status !== "expired") return { session: byCode, byCode: true };
+    if (codeVerdict(byCode, waId) !== "reject") return { session: byCode, byCode: true };
+    return { session: null, byCode: false, codeState: "wrong" };
   }
 
-  // No code, or a code we don't know: fall back to the number they gave us
-  // when they signed up. Newest first, so a fresh attempt wins.
+  // No code: fall back to the number they gave us when they signed up.
+  // Newest first, so a fresh attempt wins.
   const { data: rows } = await supabase
     .from("onboarding_sessions")
     .select(SESSION_COLUMNS)
@@ -303,7 +371,34 @@ export async function handleMerchantInbound(
   const multiBusiness = ownerOrgs.length > 1;
 
   // ------------------------------------------------ whose chat this is
-  const { session, byCode } = await findSession(supabase, args.waId, body);
+  const { session, byCode, codeState } = await findSession(
+    supabase,
+    args.waId,
+    body,
+    args.conversationId,
+  );
+
+  // A code that opened nothing is answered and stops here — it never falls
+  // through to this number's own session, so every wrong code is counted.
+  if (codeState === "locked") {
+    // One polite note per hour; after that we stay quiet.
+    if ((await recentRepliesOfKind(supabase, args.conversationId, "code_locked")) === 0) {
+      await sendServiceText(supabase, {
+        ...channel,
+        body: "That's a few codes that didn't match, so I've paused code checks for this number. Please try again in an hour.",
+        metadata: { kind: "code_locked" },
+      });
+    }
+    return;
+  }
+  if (codeState === "wrong") {
+    await sendServiceText(supabase, {
+      ...channel,
+      body: "That code doesn't match an open setup. Please check the code on your AiDwar screen and send it again.",
+      metadata: { kind: "wrong_code" },
+    });
+    return;
+  }
 
   if (!session) {
     const greeted = await strangerGreetCount(supabase, args.conversationId);

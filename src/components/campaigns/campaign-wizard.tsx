@@ -179,6 +179,7 @@ export function CampaignWizard({
   const [mappings, setMappings] = useState<VariableMappings>({});
   const [audience, setAudience] = useState<AudienceSummary | null>(null);
   const [audienceLoading, setAudienceLoading] = useState(false);
+  const [audienceError, setAudienceError] = useState<string | null>(null);
   const [estimate, setEstimate] = useState<CampaignCostEstimate | null>(null);
 
   const [sendNow, setSendNow] = useState(true);
@@ -217,6 +218,7 @@ export function CampaignWizard({
     setTemplateName("");
     setMappings({});
     setAudience(null);
+    setAudienceError(null);
     setSendNow(true);
     setDate("");
     setTime("");
@@ -293,7 +295,7 @@ export function CampaignWizard({
 
   const loadAudience = useCallback(async () => {
     setAudienceLoading(true);
-    const { data } = await callApi<AudienceSummary>("/api/campaigns/audience", {
+    const { data, error } = await callApi<AudienceSummary>("/api/campaigns/audience", {
       body: {
         organization_id: organizationId,
         segment_id: segmentId === "all" ? null : segmentId,
@@ -301,6 +303,7 @@ export function CampaignWizard({
       },
     });
     setAudience(data);
+    setAudienceError(data ? null : error);
     setAudienceLoading(false);
   }, [organizationId, segmentId, accountId]);
 
@@ -604,7 +607,9 @@ export function CampaignWizard({
                 </div>
 
                 <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
-                  {audienceLoading || !audience ? (
+                  {!audienceLoading && audienceError ? (
+                    <p className="text-sm text-destructive">{audienceError}</p>
+                  ) : audienceLoading || !audience ? (
                     <div className="space-y-2">
                       <Skeleton className="h-7 w-28 rounded" />
                       <Skeleton className="h-4 w-52 rounded" />

@@ -7,7 +7,7 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         const { requireOrgMember, isResponse, jsonError, logServerActivity } = await import(
           "@/lib/whatsapp-api.server"
         );
-        const { resolveAudienceContacts } = await import("@/lib/campaigns.server");
+        const { resolveAudienceContacts, isSegmentNotFound } = await import("@/lib/campaigns.server");
         const { extractVariables, templateBodyText } = await import("@/lib/templates");
         const { resolveAllVariables } = await import("@/lib/campaigns");
         const { normalizePhone } = await import("@/lib/phone");
@@ -123,7 +123,13 @@ export const Route = createFileRoute("/api/campaigns/launch")({
           templateBodyText(template.components as never),
         );
 
-        const contacts = await resolveAudienceContacts(supabase, organizationId, segmentId);
+        let contacts: Awaited<ReturnType<typeof resolveAudienceContacts>>;
+        try {
+          contacts = await resolveAudienceContacts(supabase, organizationId, segmentId);
+        } catch (error) {
+          if (isSegmentNotFound(error)) return jsonError(error.message, 404);
+          return jsonError("We couldn't work out this audience. Please try again.", 500);
+        }
         if (contacts.length === 0) {
           return jsonError(
             "No opted-in contacts match this audience yet, so there's nobody to send to.",
