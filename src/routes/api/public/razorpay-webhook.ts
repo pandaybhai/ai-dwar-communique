@@ -4,8 +4,10 @@ import { createFileRoute } from "@tanstack/react-router";
  * Razorpay calls this. The rules of the money path:
  *   verify the signature over the raw body -> record the event once ->
  *   credit the wallet -> answer 200.
- * Anything after a valid signature still answers 200, because a retry storm
- * would only replay work that is already idempotent.
+ * Anything after a valid signature answers 200, except a settlement that
+ * failed after the money was taken: that answers 500 so Razorpay delivers the
+ * event again, and the redelivery (same event id, recorded with an error) is
+ * processed again — crediting is idempotent per payment.
  */
 export const Route = createFileRoute("/api/public/razorpay-webhook")({
   server: {
@@ -35,8 +37,9 @@ export const Route = createFileRoute("/api/public/razorpay-webhook")({
           return new Response("ok");
         }
 
-        // One row per Razorpay event id: a replay is recognised and dropped.
-        const { data: recorded, error: recordError } = await supabase
+        // One row per Razorpay event id: a replay is recognised and dropped —
+        // unless the earlier delivery failed, when it is taken again.
+        const { data: inserted, error: recordError } = await supabase
           .from("webhook_events")
           .insert({
             provider: "razorpay",
@@ -46,7 +49,19 @@ export const Route = createFileRoute("/api/public/razorpay-webhook")({
           })
           .select("id")
           .maybeSingle();
-        if (recordError || !recorded) return new Response("ok");
+        let recorded = inserted as { id: string } | null;
+        if (recordError?.code === "23505" && eventId) {
+          const { data: retry } = await supabase
+            .from("webhook_events")
+            .update({ error: null, processed_at: null })
+            .eq("provider", "razorpay")
+            .eq("external_event_id", eventId)
+            .not("error", "is", null)
+            .select("id")
+            .maybeSingle();
+          recorded = (retry as { id: string } | null) ?? null;
+        }
+        if (!recorded) return new Response("ok");
 
         try {
           await handleEvent(supabase, body);
@@ -62,6 +77,8 @@ export const Route = createFileRoute("/api/public/razorpay-webhook")({
               error: error instanceof Error ? error.message.slice(0, 500) : "unknown error",
             })
             .eq("id", recorded.id);
+          const { isSettleError } = await import("@/lib/billing.server");
+          if (isSettleError(error)) return new Response("retry", { status: 500 });
         }
 
         return new Response("ok");

@@ -348,14 +348,18 @@ export async function startPlanPurchase(
 
 /**
  * Called by settlePayment once a plan_purchase payment is paid. Sets the plan
- * and the status only — the triggers do the rest.
+ * and the status only — the triggers do the rest. False when the plan could
+ * not be set: settlePayment then leaves the payment unpaid and retryable.
  */
 export async function activatePlanFromPayment(
   supabase: SupabaseClient,
   payment: { id: string; organization_id: string; raw: Record<string, unknown> },
-): Promise<void> {
+): Promise<boolean> {
   const planVersionId = payment.raw["plan_version_id"];
-  if (typeof planVersionId !== "string" || !planVersionId) return;
+  if (typeof planVersionId !== "string" || !planVersionId) {
+    console.error("[plan-purchase] payment carries no plan version", payment.id);
+    return false;
+  }
 
   const { error } = await supabase
     .from("organizations")
@@ -367,7 +371,7 @@ export async function activatePlanFromPayment(
       .from("payments")
       .update({ raw: { ...payment.raw, activation_error: error.message.slice(0, 300) } })
       .eq("id", payment.id);
-    return;
+    return false;
   }
 
   await supabase.from("activity_log").insert({
@@ -382,6 +386,7 @@ export async function activatePlanFromPayment(
   });
 
   await startFullSiteRead(supabase, payment.organization_id);
+  return true;
 }
 
 /**

@@ -535,20 +535,133 @@ export async function createCreditPurchase(
   return { url: link.short_url, payment_id: payment.id as string };
 }
 
-/** Credits a paid payment exactly once, then queues the follow-up work. */
+/**
+ * A settlement step failed after the money was taken. The payment is left
+ * unpaid and unclaimed so the next delivery of the webhook (Razorpay retries
+ * a non-2xx answer, and sends payment.captured and payment_link.paid for the
+ * same payment) settles it again — every credit step is idempotent.
+ */
+export class SettleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SettleError";
+  }
+}
+
+export function isSettleError(value: unknown): value is SettleError {
+  return value instanceof SettleError;
+}
+
+/** How long one delivery may hold a payment while it settles it. */
+const SETTLE_CLAIM_MS = 5 * 60 * 1000;
+
+/** What Razorpay should collect for this payment, in paise: the gross frozen on it at link time. */
+export function expectedGrossPaise(raw: Record<string, unknown>): number | null {
+  const gross = Number(raw["gross"] ?? raw["gross_amount"] ?? Number.NaN);
+  return Number.isFinite(gross) && gross > 0 ? Math.round(gross * 100) : null;
+}
+
+/** What the webhook says Razorpay captured: the payment entity, else the link's amount_paid. */
+export function capturedFromWebhook(raw: Record<string, unknown>): {
+  paise: number | null;
+  status: string | null;
+  currency: string | null;
+} {
+  const payload = (raw["payload"] ?? {}) as Record<string, unknown>;
+  const entityOf = (key: string) =>
+    ((payload[key] as Record<string, unknown> | undefined)?.["entity"] ?? null) as Record<
+      string,
+      unknown
+    > | null;
+  const payment = entityOf("payment");
+  const link = entityOf("payment_link");
+  const amount = Number(payment?.["amount"] ?? link?.["amount_paid"] ?? Number.NaN);
+  return {
+    paise: Number.isFinite(amount) && amount > 0 ? Math.round(amount) : null,
+    status: payment ? ((payment["status"] as string | undefined) ?? null) : null,
+    currency: ((payment?.["currency"] ?? link?.["currency"]) as string | undefined) ?? null,
+  };
+}
+
+/** Why a captured amount can't be credited, or null when it matches what we asked for. */
+export function amountProblem(
+  expected: number | null,
+  captured: { paise: number | null; status: string | null; currency: string | null },
+  currency: string,
+): string | null {
+  if (expected === null) return "no expected amount on the payment";
+  if (captured.paise === null) return "no captured amount in the webhook";
+  if (captured.status && captured.status !== "captured") return `payment status ${captured.status}`;
+  if (captured.currency && captured.currency.toUpperCase() !== currency.toUpperCase())
+    return `currency ${captured.currency} not ${currency}`;
+  if (captured.paise !== expected) return `captured ${captured.paise} paise, expected ${expected}`;
+  return null;
+}
+
+/**
+ * One wallet entry for this payment, exactly once. An entry already in the
+ * ledger for the same payment and type means an earlier delivery credited it;
+ * a unique-index conflict (20261009_batch3_safety.sql) means one raced us.
+ */
+async function creditOnce(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    paymentId: string;
+    type: "credit_purchase" | "bonus_credits" | "coupon_credits";
+    amount: number;
+    description: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const { data: existing, error: readError } = await supabase
+    .from("wallet_ledger")
+    .select("id")
+    .eq("reference_type", "payment")
+    .eq("reference_id", input.paymentId)
+    .eq("entry_type", input.type)
+    .eq("metadata->>payment_id", input.paymentId)
+    .limit(1);
+  if (readError) throw new SettleError(`ledger read failed: ${readError.message}`);
+  if ((existing as { id: string }[] | null)?.length) return;
+
+  const { error } = await supabase.rpc("wallet_apply", {
+    p_org: input.organizationId,
+    p_type: input.type,
+    p_amount: input.amount,
+    p_ref_type: "payment",
+    p_ref_id: input.paymentId,
+    p_description: input.description,
+    p_metadata: { ...(input.metadata ?? {}), payment_id: input.paymentId },
+  });
+  if (error && error.code !== "23505") {
+    throw new SettleError(`wallet_apply ${input.type} failed: ${error.message}`);
+  }
+}
+
+/**
+ * Credits a paid payment exactly once, then queues the follow-up work.
+ *
+ * Order: verify the captured amount -> claim the payment (one delivery at a
+ * time) -> credit / activate (idempotent per payment) -> mark paid -> the
+ * follow-up work. The payment is only marked paid once the credit landed; a
+ * failure leaves it unpaid, releases the claim, tells an admin and throws a
+ * SettleError so the webhook is retried.
+ */
 export async function settlePayment(
   supabase: SupabaseClient,
   paymentId: string,
   providerPaymentId: string | null,
   raw: Record<string, unknown>,
 ): Promise<{ credited: boolean }> {
-  const { data: payment } = await supabase
+  const { data: payment, error: loadError } = await supabase
     .from("payments")
     .select(
       "id, organization_id, status, amount, currency, credit_pack_id, coupon_id, purpose, raw",
     )
     .eq("id", paymentId)
     .maybeSingle();
+  if (loadError) throw new SettleError(`payment read failed: ${loadError.message}`);
   if (!payment) return { credited: false };
   if (payment.status === "paid") return { credited: false }; // already settled
 
@@ -557,14 +670,50 @@ export async function settlePayment(
       Record<string, unknown> | undefined
   )?.["entity"] as Record<string, unknown> | undefined;
 
-  // The paid flag is claimed conditionally: a replayed webhook finds no row
-  // left to flip and stops here, so nothing is ever credited twice.
+  const priorRaw = (payment.raw ?? {}) as Record<string, unknown>;
+  const organizationId = (payment.organization_id as string | null) ?? null;
+
+  // Only what we asked for is credited. Anything else waits for a human.
+  const expected = expectedGrossPaise(priorRaw);
+  const captured = capturedFromWebhook(raw);
+  const problem = amountProblem(expected, captured, String(payment.currency ?? "INR"));
+  if (problem) {
+    const already = (priorRaw["amount_check"] as { reason?: string } | undefined)?.reason === problem;
+    if (!already) {
+      const { error } = await supabase
+        .from("payments")
+        .update({
+          raw: {
+            ...priorRaw,
+            amount_check: {
+              reason: problem,
+              expected_paise: expected,
+              captured_paise: captured.paise,
+              provider_payment_id: providerPaymentId,
+              at: new Date().toISOString(),
+            },
+          },
+        })
+        .eq("id", payment.id);
+      if (error) console.error("[billing] amount check not recorded", payment.id, error.message);
+      await notify(supabase, {
+        organizationId,
+        audience: "admin",
+        kind: "settle_failed",
+        payload: {
+          payment_id: payment.id,
+          amount: captured.paise !== null ? round2(captured.paise / 100) : Number(payment.amount ?? 0),
+          reason: `amount mismatch: ${problem}`,
+        },
+      });
+    }
+    console.error("[billing] payment not credited", payment.id, problem);
+    return { credited: false };
+  }
+
   // What Razorpay actually collected, spelled out on the payment itself so a
   // receipt or a reconciliation never has to re-derive it.
-  const priorRaw = (payment.raw ?? {}) as Record<string, unknown>;
-  const grossPaise = Number(entity?.["amount"] ?? 0);
-  const grossAmount =
-    grossPaise > 0 ? round2(grossPaise / 100) : Number(priorRaw["gross"] ?? payment.amount ?? 0);
+  const grossAmount = round2((captured.paise as number) / 100);
   const gstAmount = round2(grossAmount - Number(payment.amount ?? 0));
   // Razorpay reports the family in `method` and the instrument alongside it
   // ('upi' + vpa, 'wallet' + wallet name, 'card' + network).
@@ -575,62 +724,91 @@ export async function settlePayment(
     (entity?.["card_id"] as string | undefined) ??
     null;
 
-  const { data: claimed } = await supabase
+  // Claim: one delivery settles at a time. A claim older than five minutes
+  // belongs to a delivery that died, and can be taken over.
+  const claimedAt = new Date().toISOString();
+  const staleBefore = new Date(Date.now() - SETTLE_CLAIM_MS).toISOString();
+  const workRaw: Record<string, unknown> = { ...priorRaw, settle_claimed_at: claimedAt };
+  delete workRaw["amount_check"];
+  const { data: claimed, error: claimError } = await supabase
     .from("payments")
-    .update({
-      status: "paid",
-      provider_payment_id: providerPaymentId,
-      ...(entity?.["order_id"] ? { provider_order_id: String(entity["order_id"]) } : {}),
-      ...(entity?.["method"] ? { method: String(entity["method"]) } : {}),
-      paid_at: new Date().toISOString(),
-      raw: {
-        ...priorRaw,
-        gst_amount: gstAmount,
-        gross_amount: grossAmount,
-        ...(methodDetail ? { method_detail: methodDetail } : {}),
-        webhook: raw,
-      },
-    })
+    .update({ raw: workRaw })
     .eq("id", payment.id)
     .neq("status", "paid")
+    .or(`raw->>settle_claimed_at.is.null,raw->>settle_claimed_at.lt.${staleBefore}`)
     .select("id");
-
+  if (claimError) throw new SettleError(`payment claim failed: ${claimError.message}`);
   if (!claimed || claimed.length === 0) return { credited: false };
 
-  // A self-serve plan purchase: assign the plan, grant nothing to the wallet,
-  // and raise the one tax invoice for the fee.
-  if (
-    payment.purpose === "plan_fee" &&
-    payment.organization_id &&
-    priorRaw["kind"] === "plan_purchase"
-  ) {
-    const { activatePlanFromPayment } = await import("@/lib/plan-purchase.server");
-    await activatePlanFromPayment(supabase, {
-      id: payment.id as string,
-      organization_id: payment.organization_id as string,
-      raw: priorRaw,
-    });
-    try {
-      const { invoiceForPayment } = await import("@/lib/invoices.server");
-      const result = await invoiceForPayment(supabase, payment.id as string);
-      if ("error" in result) console.error("[billing] plan purchase invoice", payment.id, result.error);
-    } catch (error) {
-      // The plan is live; the nightly backfill raises the invoice.
-      console.error("[billing] plan purchase invoice", payment.id, String((error as Error)?.message ?? error));
-    }
-    return { credited: false };
-  }
+  const saveRaw = async (patch: Record<string, unknown>) => {
+    Object.assign(workRaw, patch);
+    const { error } = await supabase.from("payments").update({ raw: workRaw }).eq("id", payment.id);
+    if (error) throw new SettleError(`payment update failed: ${error.message}`);
+  };
 
-  // A plan-fee invoice paid through its payment link: settle the invoice,
-  // which also lifts any dunning stage. Nothing goes to the wallet.
-  if (payment.purpose === "plan_fee" && payment.organization_id && priorRaw["invoice_id"]) {
-    try {
+  const markPaidNow = async () => {
+    const finalRaw: Record<string, unknown> = {
+      ...workRaw,
+      gst_amount: gstAmount,
+      gross_amount: grossAmount,
+      ...(methodDetail ? { method_detail: methodDetail } : {}),
+      webhook: raw,
+    };
+    delete finalRaw["settle_claimed_at"];
+    delete finalRaw["settle_error"];
+    const { error } = await supabase
+      .from("payments")
+      .update({
+        status: "paid",
+        provider_payment_id: providerPaymentId,
+        ...(entity?.["order_id"] ? { provider_order_id: String(entity["order_id"]) } : {}),
+        ...(entity?.["method"] ? { method: String(entity["method"]) } : {}),
+        paid_at: new Date().toISOString(),
+        raw: finalRaw,
+      })
+      .eq("id", payment.id)
+      .neq("status", "paid");
+    if (error) throw new SettleError(`marking paid failed: ${error.message}`);
+  };
+
+  let credits = 0;
+  let bonus = 0;
+  let packName = (priorRaw["pack_name"] as string | null) ?? null;
+
+  try {
+    // A self-serve plan purchase: assign the plan, grant nothing to the wallet,
+    // and raise the one tax invoice for the fee.
+    if (payment.purpose === "plan_fee" && organizationId && priorRaw["kind"] === "plan_purchase") {
+      const { activatePlanFromPayment } = await import("@/lib/plan-purchase.server");
+      const activated = await activatePlanFromPayment(supabase, {
+        id: payment.id as string,
+        organization_id: organizationId,
+        raw: workRaw,
+      });
+      if (!activated) throw new SettleError("plan activation failed");
+      await markPaidNow();
+      try {
+        const { invoiceForPayment } = await import("@/lib/invoices.server");
+        const result = await invoiceForPayment(supabase, payment.id as string);
+        if ("error" in result) console.error("[billing] plan purchase invoice", payment.id, result.error);
+      } catch (error) {
+        // The plan is live; the nightly backfill raises the invoice.
+        console.error("[billing] plan purchase invoice", payment.id, String((error as Error)?.message ?? error));
+      }
+      return { credited: false };
+    }
+
+    // A plan-fee invoice paid through its payment link: settle the invoice,
+    // which also lifts any dunning stage. Nothing goes to the wallet. The
+    // outstanding check makes a retry a no-op once the invoice took it.
+    if (payment.purpose === "plan_fee" && organizationId && priorRaw["invoice_id"]) {
       const { markPaid } = await import("@/lib/invoices.server");
-      const { data: inv } = await supabase
+      const { data: inv, error: invError } = await supabase
         .from("invoices")
         .select("total, amount_paid")
         .eq("id", String(priorRaw["invoice_id"]))
         .maybeSingle();
+      if (invError) throw new SettleError(`invoice read failed: ${invError.message}`);
       const outstanding = round2(
         Number(inv?.["total"] ?? 0) - Number(inv?.["amount_paid"] ?? 0),
       );
@@ -642,116 +820,134 @@ export async function settlePayment(
           Math.min(outstanding, grossAmount > 0 ? grossAmount : outstanding),
         );
       }
-    } catch (error) {
-      console.error("[billing] plan fee settle", payment.id, String((error as Error)?.message ?? error));
+      await markPaidNow();
+      return { credited: false };
     }
-    return { credited: false };
-  }
 
-  if (payment.purpose !== "credit_purchase" || !payment.organization_id) return { credited: false };
-
-  const stored = (payment.raw ?? {}) as Record<string, unknown>;
-
-  // The pack is the truth about how much to credit. Fall back to the figures
-  // frozen on the payment, and if neither is there, stop and tell a human —
-  // money taken with nothing credited must never pass quietly.
-  let credits = 0;
-  let bonus = 0;
-  let packName = (stored["pack_name"] as string | null) ?? null;
-  if (payment.credit_pack_id) {
-    const { data: pack } = await supabase
-      .from("credit_packs")
-      .select("name, amount, bonus_amount")
-      .eq("id", payment.credit_pack_id)
-      .maybeSingle();
-    if (pack) {
-      credits = Number(pack["amount"] ?? 0);
-      bonus = Number(pack["bonus_amount"] ?? 0);
-      packName = String(pack["name"] ?? packName ?? "");
+    if (payment.purpose !== "credit_purchase" || !organizationId) {
+      await markPaidNow();
+      return { credited: false };
     }
-  }
-  if (credits <= 0) {
-    credits = Number(stored["pack_amount"] ?? 0);
-    bonus = Number(stored["bonus"] ?? 0);
-  }
-  if (credits <= 0) {
-    await notify(supabase, {
-      organizationId: payment.organization_id as string,
-      audience: "admin",
-      kind: "settle_failed",
-      payload: {
-        payment_id: payment.id,
-        amount: Number(payment.amount ?? 0),
-        reason: "no credit pack on the payment",
-      },
-    });
-    return { credited: false };
-  }
 
-  await supabase.rpc("wallet_apply", {
-    p_org: payment.organization_id,
-    p_type: "credit_purchase",
-    p_amount: credits,
-    p_ref_type: "payment",
-    p_ref_id: payment.id,
-    p_description: "Credits bought",
-    p_metadata: { payment_id: payment.id },
-  });
-  if (bonus > 0) {
-    await supabase.rpc("wallet_apply", {
-      p_org: payment.organization_id,
-      p_type: "bonus_credits",
-      p_amount: bonus,
-      p_ref_type: "payment",
-      p_ref_id: payment.id,
-      p_description: "Bonus credits",
-      p_metadata: { payment_id: payment.id },
-    });
-  }
-
-  if (payment.coupon_id) {
-    const { data: coupon } = await supabase
-      .from("coupons")
-      .select("id, kind, value, uses")
-      .eq("id", payment.coupon_id)
-      .maybeSingle();
-    if (coupon) {
-      if (coupon.kind === "bonus_credits" && Number(coupon.value) > 0) {
-        await supabase.rpc("wallet_apply", {
-          p_org: payment.organization_id,
-          p_type: "coupon_credits",
-          p_amount: Number(coupon.value),
-          p_ref_type: "payment",
-          p_ref_id: payment.id,
-          p_description: "Coupon credits",
-          p_metadata: { coupon_id: coupon.id },
-        });
+    // The pack is the truth about how much to credit. Fall back to the figures
+    // frozen on the payment, and if neither is there, stop and tell a human —
+    // money taken with nothing credited must never pass quietly.
+    if (payment.credit_pack_id) {
+      const { data: pack } = await supabase
+        .from("credit_packs")
+        .select("name, amount, bonus_amount")
+        .eq("id", payment.credit_pack_id)
+        .maybeSingle();
+      if (pack) {
+        credits = Number(pack["amount"] ?? 0);
+        bonus = Number(pack["bonus_amount"] ?? 0);
+        packName = String(pack["name"] ?? packName ?? "");
       }
-      await supabase
-        .from("coupons")
-        .update({ uses: Number(coupon.uses ?? 0) + 1 })
-        .eq("id", coupon.id);
     }
+    if (credits <= 0) {
+      credits = Number(priorRaw["pack_amount"] ?? 0);
+      bonus = Number(priorRaw["bonus"] ?? 0);
+    }
+    if (credits <= 0) throw new SettleError("no credit pack on the payment");
+
+    await creditOnce(supabase, {
+      organizationId,
+      paymentId: payment.id as string,
+      type: "credit_purchase",
+      amount: credits,
+      description: "Credits bought",
+    });
+    if (bonus > 0) {
+      await creditOnce(supabase, {
+        organizationId,
+        paymentId: payment.id as string,
+        type: "bonus_credits",
+        amount: bonus,
+        description: "Bonus credits",
+      });
+    }
+
+    if (payment.coupon_id) {
+      const { data: coupon, error: couponError } = await supabase
+        .from("coupons")
+        .select("id, kind, value, uses")
+        .eq("id", payment.coupon_id)
+        .maybeSingle();
+      if (couponError) throw new SettleError(`coupon read failed: ${couponError.message}`);
+      if (coupon) {
+        if (coupon.kind === "bonus_credits" && Number(coupon.value) > 0) {
+          await creditOnce(supabase, {
+            organizationId,
+            paymentId: payment.id as string,
+            type: "coupon_credits",
+            amount: Number(coupon.value),
+            description: "Coupon credits",
+            metadata: { coupon_id: coupon.id },
+          });
+        }
+        // Counted once per payment, however many deliveries settle it.
+        if (!workRaw["coupon_counted"]) {
+          const { error: useError } = await supabase
+            .from("coupons")
+            .update({ uses: Number(coupon.uses ?? 0) + 1 })
+            .eq("id", coupon.id);
+          if (useError) throw new SettleError(`coupon use not counted: ${useError.message}`);
+          await saveRaw({ coupon_counted: true });
+        }
+      }
+    }
+
+    await markPaidNow();
+  } catch (error) {
+    const message = String((error as Error)?.message ?? error).slice(0, 300);
+    // Release the claim so the next delivery can finish the job; tell an
+    // admin once per distinct failure.
+    const released: Record<string, unknown> = { ...workRaw, settle_error: message };
+    delete released["settle_claimed_at"];
+    const { error: releaseError } = await supabase
+      .from("payments")
+      .update({ raw: released })
+      .eq("id", payment.id)
+      .neq("status", "paid");
+    if (releaseError) console.error("[billing] settle claim not released", payment.id, releaseError.message);
+    if (priorRaw["settle_error"] !== message) {
+      await notify(supabase, {
+        organizationId,
+        audience: "admin",
+        kind: "settle_failed",
+        payload: { payment_id: payment.id, amount: Number(payment.amount ?? 0), reason: message },
+      });
+    }
+    console.error("[billing] settle failed", payment.id, message);
+    throw isSettleError(error) ? error : new SettleError(message);
   }
+
+  // From here the credits are in and the payment is paid: nothing below may
+  // undo that, so each step is contained.
+  const orgId = organizationId as string;
 
   // A credit purchase means we owe Meta more float: queue the top-up task.
-  await queueTopupTask(supabase, {
-    organizationId: payment.organization_id as string,
-    trigger: "credit_purchase",
-    creditsAmount: credits + bonus,
-    paymentId: payment.id as string,
-  });
+  try {
+    await queueTopupTask(supabase, {
+      organizationId: orgId,
+      trigger: "credit_purchase",
+      creditsAmount: credits + bonus,
+      paymentId: payment.id as string,
+    });
+  } catch (error) {
+    console.error("[billing] top-up task", payment.id, String((error as Error)?.message ?? error));
+  }
 
   // The balance AFTER everything landed — the merchant is told what they now
   // actually hold, never the size of the purchase.
   const { data: walletAfter } = await supabase
     .from("wallet_balances")
     .select("balance")
-    .eq("organization_id", payment.organization_id as string)
+    .eq("organization_id", orgId)
     .maybeSingle();
 
   await notify(supabase, {
-    organizationId: payment.organization_id as string,
+    organizationId: orgId,
     audience: "client",
     kind: "credits_added",
     payload: {
@@ -785,7 +981,7 @@ export async function settlePayment(
         metadata: { bonus: true },
       });
     }
-    const built = await buildInvoice(supabase, payment.organization_id as string, {
+    const built = await buildInvoice(supabase, orgId, {
       kind: "tax_invoice",
       purpose: "credit_purchase",
       lines,
@@ -795,7 +991,7 @@ export async function settlePayment(
       const issued = await issueInvoice(supabase, built.invoice_id);
       if (!("error" in issued)) {
         // The invoice is paid in full by the gross the customer actually paid.
-        const gross = Number(stored["gross"] ?? 0) || withGst(credits).total;
+        const gross = Number(priorRaw["gross"] ?? 0) || withGst(credits).total;
         await markPaid(supabase, built.invoice_id, payment.id as string, gross);
       }
     }

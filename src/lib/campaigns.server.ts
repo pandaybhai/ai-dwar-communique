@@ -17,19 +17,38 @@ export type AudienceSummary = {
   sample: AudienceContact | null;
 };
 
+/**
+ * A segment id that names no segment in this workspace (deleted, or never
+ * ours). Sending to everyone must be an explicit choice (no segment id), so
+ * this stops the estimate and the launch instead of widening the audience.
+ */
+export class SegmentNotFoundError extends Error {
+  constructor() {
+    super("That audience segment no longer exists. Pick another segment, or choose all contacts.");
+    this.name = "SegmentNotFoundError";
+  }
+}
+
+export function isSegmentNotFound(value: unknown): value is SegmentNotFoundError {
+  return value instanceof SegmentNotFoundError;
+}
+
 async function segmentFiltersFor(
   supabase: SupabaseClient,
   organizationId: string,
   segmentId: string | null,
 ): Promise<unknown | null> {
   if (!segmentId) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("segments")
-    .select("filters")
+    .select("id, filters")
     .eq("id", segmentId)
     .eq("organization_id", organizationId)
     .maybeSingle();
-  return (data?.filters ?? null) as unknown;
+  // A failed read is not "no segment": never fall back to everyone.
+  if (error) throw new Error(`segment lookup failed: ${error.message}`);
+  if (!data) throw new SegmentNotFoundError();
+  return (data.filters ?? null) as unknown;
 }
 
 /** Counts the segment audience and how much of it is actually reachable. */

@@ -9,8 +9,9 @@ import { createFileRoute } from "@tanstack/react-router";
 /** No 0/O/1/I — this gets read off a screen and typed on a phone. */
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+/** Six characters (32^6 ≈ 1 billion) so a code can't be guessed; older four-character codes still work. */
 function newCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
   let out = "";
   for (const b of bytes) out += ALPHABET[b % ALPHABET.length];
   return `AD-${out}`;

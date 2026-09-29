@@ -46,6 +46,17 @@ const RUN_COLUMNS =
   "id, organization_id, flow_id, version_id, contact_id, conversation_id, current_node_id, variables, status, waiting_for, wake_at, steps, started_at";
 const DEFAULT_REPLY_TIMEOUT_MIN = 24 * 60;
 const MAX_VISITS_PER_ADVANCE = 25;
+/** Go-to-flow hand-overs in one chain before the chain is stopped. */
+export const MAX_GOTO_HOPS = 10;
+
+/** How many Go-to-flow hand-overs led to this run (0 for a run started any other way). */
+async function gotoHops(supabase: SupabaseClient, runId: string): Promise<number> {
+  const { data } = await supabase.from("flow_runs").select("trigger").eq("id", runId).maybeSingle();
+  const trigger = ((data as { trigger?: Record<string, unknown> } | null)?.trigger ?? {}) as Record<string, unknown>;
+  if (trigger["kind"] !== "goto_flow") return 0;
+  const hops = Number(trigger["hops"] ?? 1);
+  return Number.isFinite(hops) && hops > 0 ? hops : 1;
+}
 
 // Flag answers are reused for 30 s so one inbound message doesn't re-read
 // the flag tables four times (speed; a switch-off still lands within 30 s).
@@ -354,13 +365,17 @@ export async function tickRuns(supabase: SupabaseClient): Promise<{ processed: n
     .in("status", ["running", "waiting", "paused"])
     .lt("started_at", cutoff)
     .select("id");
+  // The claim moves each run to "running" (20261009_batch3_safety.sql), so a
+  // reply arriving now can't take the same run; the run is advanced from the
+  // wait it was claimed in.
   const { data: claimed } = await supabase.rpc("claim_flow_runs", { p_limit: 50 });
   const runs = (claimed ?? []) as Run[];
   for (const run of runs) {
+    run.status = "waiting";
     try {
       const graph = await loadGraph(supabase, run.version_id);
       if (!graph || !(await flowsV2Enabled(supabase, run.organization_id))) {
-        await supabase.from("flow_runs").update({ claimed_at: null, wake_at: new Date(Date.now() + 3600_000).toISOString() }).eq("id", run.id);
+        await supabase.from("flow_runs").update({ status: "waiting", claimed_at: null, wake_at: new Date(Date.now() + 3600_000).toISOString() }).eq("id", run.id);
         continue;
       }
       await advance(supabase, run, graph, null, { woke: true });
@@ -905,6 +920,13 @@ async function advanceInner(
         continue;
       }
       case "goto_flow": {
+        // Flows that hand over to each other in a circle stop after
+        // MAX_GOTO_HOPS hand-overs instead of running for ever.
+        const hops = await gotoHops(supabase, run.id);
+        if (hops >= MAX_GOTO_HOPS) {
+          await finish("failed", "failed", { error: "goto_limit", hops, flow_id: d["flow_id"] });
+          return;
+        }
         await logEvent(supabase, run, node.id, "exited", { handle: "goto" });
         await finish("done", "ended", { reason: "goto_flow", flow_id: d["flow_id"] });
         await startRun(supabase, {
@@ -912,7 +934,7 @@ async function advanceInner(
           flowId: String(d["flow_id"] ?? ""),
           contactId: run.contact_id,
           conversationId: run.conversation_id,
-          trigger: { kind: "goto_flow", from_run: run.id },
+          trigger: { kind: "goto_flow", from_run: run.id, hops: hops + 1 },
         });
         return;
       }

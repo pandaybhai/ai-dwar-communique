@@ -53,8 +53,12 @@ export function controlWord(body: string): ControlWord | null {
   return null;
 }
 
-/** A workspace code, anywhere in the message: "AD-CMCP". */
-export const CODE_RE = /\bAD-[A-Z0-9]{4}\b/i;
+/**
+ * A workspace code, anywhere in the message: "AD-CMCP" (older codes) or
+ * "AD-CMCP7K" (new codes are six characters). The six-character form is tried
+ * first so a new code is never read as its first four characters.
+ */
+export const CODE_RE = /\bAD-(?:[A-Z0-9]{6}|[A-Z0-9]{4})\b/i;
 
 /**
  * Nothing but an address, a code or a phone number. Storing one of these as a

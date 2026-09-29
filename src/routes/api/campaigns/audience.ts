@@ -36,7 +36,9 @@ export const Route = createFileRoute("/api/campaigns/audience")({
             (payload["segment_id"] as string | null) ?? null,
           );
           return Response.json(summary);
-        } catch {
+        } catch (error) {
+          const { isSegmentNotFound } = await import("@/lib/campaigns.server");
+          if (isSegmentNotFound(error)) return jsonError(error.message, 404);
           return jsonError("We couldn't work out this audience. Please try again.", 500);
         }
 
