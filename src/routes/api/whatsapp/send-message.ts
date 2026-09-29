@@ -158,6 +158,19 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           }
         }
 
+        // A template is never sent to someone who opted out, whoever asks.
+        if (messageType === "template") {
+          const { contactOptedOut } = await import("@/lib/opt-out.server");
+          const optOut = await contactOptedOut(supabase, organizationId, {
+            contactId,
+            phone: toPhone,
+          });
+          if (optOut.error) {
+            return jsonError("We couldn't confirm this contact's opt-in. Try again.", 503);
+          }
+          if (optOut.optedOut) return jsonError("This contact has opted out of messages.", 422);
+        }
+
         // 24-hour customer service window — enforced server-side.
         if (messageType === "text" && !isServiceWindowOpen(conversation)) {
           return jsonError(SERVICE_WINDOW_CLOSED_MESSAGE, 422);

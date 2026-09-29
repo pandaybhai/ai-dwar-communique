@@ -17,6 +17,7 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
         const { loadSenderContext, sendCampaignTemplate } = await import("@/lib/campaigns.server");
         const { extractVariables, templateBodyText } = await import("@/lib/templates");
+        const { contactOptedOut } = await import("@/lib/opt-out.server");
 
         const supabase = getServiceClient();
         const nowIso = new Date().toISOString();
@@ -137,6 +138,24 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
           let failed = 0;
 
           for (const recipient of batch) {
+            // Opt-out is checked at send time, not only when the list was built.
+            const optOut = await contactOptedOut(supabase, orgId, {
+              contactId: recipient.contact_id,
+              phone: recipient.phone,
+            });
+            if (optOut.error || optOut.optedOut) {
+              if (optOut.error) failed += 1;
+              await supabase
+                .from("campaign_recipients")
+                .update(
+                  optOut.error
+                    ? { status: "failed", error: "opt_out_check_failed" }
+                    : { status: "skipped", error: "opted_out" },
+                )
+                .eq("id", recipient.id);
+              continue;
+            }
+
             const outcome = await sendCampaignTemplate(
               supabase,
               orgId,
@@ -229,9 +248,19 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
                   failed_count: finished[0]!.failed_count ?? null,
                 },
               });
-              // Charge for what went out; the unused reservation goes back.
+              // Give back the unused reservation. Each message is charged once,
+              // by the database, when Meta prices it (debit_message).
               const { settleCampaignSpend } = await import("@/lib/campaign-billing.server");
-              await settleCampaignSpend(supabase, orgId, campaignId);
+              const settled = await settleCampaignSpend(supabase, orgId, campaignId);
+              if (!settled.ok) {
+                console.error(
+                  JSON.stringify({
+                    at: "campaign_settle_failed",
+                    campaign_id: campaignId,
+                    error: settled.error,
+                  }),
+                );
+              }
             }
           }
 
