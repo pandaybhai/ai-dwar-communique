@@ -180,6 +180,22 @@ export async function applyCodReply(
 
   let row: CodRow | null = null;
 
+  // The fallback (this contact's latest open ask) is read alongside the
+  // quoted-message lookup rather than after it; it is used only when the
+  // quote leads nowhere, exactly as before.
+  const latestPending = Promise.resolve(
+    supabase
+      .from("cod_confirmations")
+      .select("id, organization_id, order_id, contact_id, status, asked_at")
+      .eq("organization_id", args.organizationId)
+      .eq("contact_id", args.contactId)
+      .eq("status", "pending")
+      .not("asked_at", "is", null)
+      .order("asked_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  );
+
   if (args.contextMetaId) {
     const { data: quoted } = await supabase
       .from("messages")
@@ -206,19 +222,8 @@ export async function applyCodReply(
     }
   }
 
-  if (!row) {
-    const { data } = await supabase
-      .from("cod_confirmations")
-      .select("id, organization_id, order_id, contact_id, status, asked_at")
-      .eq("organization_id", args.organizationId)
-      .eq("contact_id", args.contactId)
-      .eq("status", "pending")
-      .not("asked_at", "is", null)
-      .order("asked_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    row = (data as CodRow | null) ?? null;
-  }
+  const { data: pending } = await latestPending;
+  if (!row) row = (pending as CodRow | null) ?? null;
 
   if (!row || row.status !== "pending") return false;
 

@@ -12,7 +12,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { agentAnswer, suggestReply } from "@/lib/ai-tasks.server";
+import { agentAnswer, agentAnswerPrelude, suggestReply } from "@/lib/ai-tasks.server";
+import type { RunPrelude } from "@/lib/ai-run.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
 import { sendServiceImage, sendServiceText } from "@/lib/service-text.server";
 import { isServiceWindowOpen } from "@/lib/service-window";
@@ -28,7 +29,45 @@ export type AgentInboundArgs = {
   /** True when something else already answered this message. */
   alreadyHandled: boolean;
   optedOut: boolean;
+  /** prepareAgentInbound(), started by the webhook before the burst wait. */
+  prepared?: Promise<AgentPrep>;
 };
+
+/** The workspace's agent set-up, read once per inbound message. */
+export type AgentPrep = {
+  agentRow: { id?: string; mode?: string } | null;
+  flags: Set<string>;
+  aiEnabled: boolean | null;
+  /** Everything the answer run reads before thinking; only when it will reply. */
+  prelude: Promise<RunPrelude> | null;
+};
+
+/**
+ * The agent's set-up (mode, flags, AI switch) read together, and — when it is
+ * going to reply — the answer run's own reads started straight away. The
+ * webhook starts this before it waits out a message burst, so none of it
+ * waits on the timer. Read-only: every check still happens in
+ * runAgentOnInbound, in the same order, after the burst.
+ */
+export function prepareAgentInbound(supabase: SupabaseClient, organizationId: string): Promise<AgentPrep> {
+  const prep = Promise.all([
+    supabase.from("ai_agents").select("id, mode").eq("organization_id", organizationId).eq("is_default", true).maybeSingle(),
+    enabledFlags(supabase, organizationId),
+    supabase.from("organization_ai_settings").select("ai_enabled").eq("organization_id", organizationId).maybeSingle(),
+  ]).then(([{ data: agentRow }, flags, { data: settings }]) => {
+    const row = (agentRow ?? null) as { id?: string; mode?: string } | null;
+    const aiEnabled = (settings as { ai_enabled?: boolean } | null)?.ai_enabled ?? null;
+    const replying = row?.mode === "replying" && flags.has("ai_features") && aiEnabled !== false;
+    return {
+      agentRow: row,
+      flags,
+      aiEnabled,
+      prelude: replying ? agentAnswerPrelude(supabase, organizationId, row?.id ?? null) : null,
+    };
+  });
+  prep.catch(() => {});
+  return prep;
+}
 
 export type AgentInboundOutcome =
   | { acted: false; reason: string }
@@ -48,32 +87,30 @@ export async function runAgentOnInbound(
   if (args.alreadyHandled) return { acted: false, reason: "already_handled" };
   if (args.optedOut) return { acted: false, reason: "contact_opted_out" };
 
-  const { data: agentRow } = await supabase
-    .from("ai_agents")
-    .select("id, mode")
-    .eq("organization_id", args.organizationId)
-    .eq("is_default", true)
-    .maybeSingle();
-  const mode = (agentRow as { mode?: string } | null)?.mode ?? "off";
+  const started = Date.now();
+  const stages: Record<string, number> = {};
+  const mark = (stage: string) => {
+    stages[stage] = Date.now() - started;
+  };
+  const prep = await (args.prepared ?? prepareAgentInbound(supabase, args.organizationId));
+  const agentRow = prep.agentRow;
+  const mode = agentRow?.mode ?? "off";
   if (mode !== "draft" && mode !== "replying") return { acted: false, reason: "mode_off" };
 
-  const flags = await enabledFlags(supabase, args.organizationId);
+  const flags = prep.flags;
   if (!flags.has("ai_features")) return { acted: false, reason: "feature_off" };
 
-  const { data: settings } = await supabase
-    .from("organization_ai_settings")
-    .select("ai_enabled")
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if ((settings as { ai_enabled?: boolean } | null)?.ai_enabled === false) {
+  if (prep.aiEnabled === false) {
     return { acted: false, reason: "ai_disabled" };
   }
 
+  // Read fresh, after the burst wait: a teammate may have just taken over.
   const { data: conversation } = await supabase
     .from("conversations")
     .select("assigned_to, needs_human, handover_state, last_customer_message_at, status")
     .eq("id", args.conversationId)
     .maybeSingle();
+  mark("gates");
   const convo = (conversation ?? null) as {
     assigned_to?: string | null;
     needs_human?: boolean | null;
@@ -105,7 +142,24 @@ export async function runAgentOnInbound(
     return { acted: true, mode: "draft", runId: run.runId, status: run.status };
   }
 
-  const run = await agentAnswer(supabase, common, args.conversationId, question);
+  const run = await agentAnswer(
+    supabase,
+    common,
+    args.conversationId,
+    question,
+    prep.prelude ? { agentId: agentRow?.id ?? null, prelude: prep.prelude } : undefined,
+  );
+  mark("answer");
+  const timing = () =>
+    console.log(
+      JSON.stringify({
+        scope: "ai_timing",
+        conversation_id: args.conversationId,
+        run_id: run.runId,
+        run_latency_ms: run.latencyMs,
+        stages,
+      }),
+    );
   const answer = run.output.trim();
   const shouldSend = run.status === "ok" && answer.length > 0;
 
@@ -157,6 +211,8 @@ export async function runAgentOnInbound(
       }
     }
 
+    mark("handover_sent");
+    timing();
     log("held_back", {
       conversation_id: args.conversationId,
       status: run.status,
@@ -210,6 +266,8 @@ export async function runAgentOnInbound(
     to: args.waId,
     body,
   });
+  mark("sent");
+  timing();
 
   // The customer got a helpful reply; part of it needed the business's own
   // facts. That question waits under Unanswered — the owner is not messaged.

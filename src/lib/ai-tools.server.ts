@@ -547,6 +547,9 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       const closest = await run("", null, 3, true);
       const suggestions = closest.rows ? sortRows(closest.rows, false) : [];
       if (suggestions.length > 0) {
+        const prices = suggestions.map((r) => Number(r["price"])).filter((p) => Number.isFinite(p) && p > 0);
+        const from = prices.length ? Math.floor(Math.min(...prices)) : null;
+        const money = from !== null ? `₹${new Intl.NumberFormat("en-IN").format(from)}` : null;
         return {
           ok: true,
           found: false,
@@ -554,10 +557,15 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
             found: false,
             category: category || null,
             max_price: maxPrice,
+            lowest_price: from,
             closest_above: suggestions,
+            // Say what exists and what it costs; offer only these products —
+            // never another type or budget that wasn't searched.
             reply_hint:
-              `Say: "I don't have ${category || "that"}${maxPrice !== null ? ` under ₹${maxPrice}` : ""} right now — ` +
-              `want me to show the closest above that, or a different type?" Then show these three.`,
+              `Say: "I don't have ${category || "that"}${maxPrice !== null ? ` under ₹${maxPrice}` : ""} right now` +
+              `${money ? ` — our ${category || "closest options"} start at ${money}` : ""}." Then list these ` +
+              `products with their prices and ask if they'd like to see them. Offer only these products: do not ` +
+              `suggest other product types or budgets you have not searched, and do not add "let me confirm".`,
           },
         };
       }
