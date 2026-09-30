@@ -97,6 +97,21 @@ export function keywordMatches(config: Record<string, unknown>, body: string): b
   });
 }
 
+/** The enabled inbound triggers (every inbound kind) with their flows' numbers. Read-only. */
+export function readInboundTriggers(supabase: SupabaseClient, organizationId: string) {
+  return Promise.resolve(
+    supabase
+      .from("flow_triggers")
+      .select("id, flow_id, kind, config, flows(whatsapp_account_id)")
+      .eq("organization_id", organizationId)
+      .in("kind", ["first_message", "ctwa_ad", "campaign_button", "keyword"])
+      .eq("is_enabled", true),
+  ).then(
+    (r) => ({ data: r.data as unknown[] | null }),
+    () => ({ data: null as unknown[] | null }),
+  );
+}
+
 /**
  * Inbound customer message: first_message → ctwa_ad → campaign_button →
  * keyword, first match wins. Called only when no run is active for this
@@ -127,18 +142,15 @@ export async function dispatchInboundTriggers(
      * routing during a timer/payment wait): keywords must not start a flow.
      */
     skipKeywords?: boolean;
+    /** readInboundTriggers() started earlier by the webhook (speed). */
+    triggers?: ReturnType<typeof readInboundTriggers>;
   },
 ): Promise<{ started: boolean; flowId?: string }> {
   const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
   // One read for every inbound trigger kind, plus the flows' numbers.
   const [on, { data: trigRows }] = await Promise.all([
     flowsV2Enabled(supabase, args.organizationId),
-    supabase
-      .from("flow_triggers")
-      .select("id, flow_id, kind, config, flows(whatsapp_account_id)")
-      .eq("organization_id", args.organizationId)
-      .in("kind", ["first_message", "ctwa_ad", "campaign_button", "keyword"])
-      .eq("is_enabled", true),
+    args.triggers ?? readInboundTriggers(supabase, args.organizationId),
   ]);
   if (!on) return { started: false };
   const all = ((trigRows ?? []) as unknown as Array<Trigger & { flows: { whatsapp_account_id: string | null } | null }>).filter((t) => {

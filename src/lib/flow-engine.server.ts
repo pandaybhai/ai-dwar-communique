@@ -155,6 +155,17 @@ export async function startRun(
   const start = startNode(v.graph);
   if (!start) return { runId: null, reason: "no_start" };
 
+  // The run's surroundings (contact, window, number) are read while the run
+  // row is written — neither needs the other. Read-only, so a failed insert
+  // just drops it.
+  const env = loadEnv(supabase, {
+    organization_id: args.organizationId,
+    flow_id: args.flowId,
+    contact_id: args.contactId,
+    conversation_id: args.conversationId ?? null,
+    variables: {},
+  });
+  env.catch(() => {});
   const { data: inserted, error } = await supabase
     .from("flow_runs")
     .insert({
@@ -184,7 +195,7 @@ export async function startRun(
     eventBuffers.set(run.id, []);
     try {
       await logEvent(supabase, run, start.id, "started", args.trigger ?? {});
-      await advance(supabase, run, v.graph, null, { fromCustomer: Boolean(args.fromCustomerMessage) });
+      await advance(supabase, run, v.graph, null, { fromCustomer: Boolean(args.fromCustomerMessage), env });
     } finally {
       await flushEvents(supabase, run.id);
     }
@@ -242,9 +253,15 @@ export async function handleInboundForRuns(
     whatsappAccountId?: string | null;
     body: string;
     replyId: string | null;
+    /** The contact's run as read by peekInboundRun while earlier steps ran (speed). */
+    firstLook?: Promise<Run | null | undefined>;
+    /** The number the message came in on, already resolved by the webhook. */
+    connection?: Conn;
   },
 ): Promise<{ consumed: boolean; runActive?: boolean }> {
   const deadline = Date.now() + HOLD_MS;
+  if (args.connection && args.whatsappAccountId) primeConnection(args.organizationId, args.whatsappAccountId, args.connection);
+  let firstLook = args.firstLook;
   const key = (args.replyId ?? args.body.trim().toLowerCase()).slice(0, 200);
   let heldFor: Run | null = null;
   let flagChecked = false;
@@ -255,7 +272,10 @@ export async function handleInboundForRuns(
     return { consumed: false, runActive };
   };
   for (;;) {
-    let run: Run | null = await activeRunFor(supabase, args);
+    // The first look may already be in hand; undefined means it failed → read again.
+    const looked = firstLook ? await firstLook : undefined;
+    firstLook = undefined;
+    let run: Run | null = looked !== undefined ? looked : await activeRunFor(supabase, args);
     let active = true;
     if (!run) {
       if (!heldFor) return { consumed: false };
@@ -279,23 +299,49 @@ export async function handleInboundForRuns(
     if (route === "release") return release(run, { status: run.status, waiting_for: run.waiting_for }, active);
 
     if (route === "take") {
-      const graph = await loadGraph(supabase, run.version_id);
-      if (!graph) return release(run, { reason: "no_graph" }, true);
-      // Claim: only one of (this reply, another reply, a timeout tick) may advance the run.
-      const { data: claimed } = await supabase
-        .from("flow_runs")
-        .update({ status: "running", claimed_at: new Date().toISOString(), conversation_id: run.conversation_id ?? args.conversationId })
-        .eq("id", run.id)
-        .eq("status", "waiting")
-        .eq("waiting_for", "reply")
-        .select("id");
-      if (claimed && claimed.length > 0) {
-        run.conversation_id = run.conversation_id ?? args.conversationId;
+      const conversationId = run.conversation_id ?? args.conversationId;
+      // Graph, claim and the run's surroundings are independent reads/writes:
+      // one round trip instead of three. The env read is discarded if the
+      // claim is lost.
+      const env = loadEnv(supabase, { ...run, conversation_id: conversationId });
+      env.catch(() => {});
+      const [graph, { data: claimed }] = await Promise.all([
+        loadGraph(supabase, run.version_id),
+        // Claim: only one of (this reply, another reply, a timeout tick) may advance the run.
+        supabase
+          .from("flow_runs")
+          .update({ status: "running", claimed_at: new Date().toISOString(), conversation_id: conversationId })
+          .eq("id", run.id)
+          .eq("status", "waiting")
+          .eq("waiting_for", "reply")
+          .select("id"),
+      ]);
+      const won = Boolean(claimed && claimed.length > 0);
+      if (!graph) {
+        // Put a claimed run back exactly as it was waiting, then release.
+        if (won) {
+          await supabase
+            .from("flow_runs")
+            .update({ status: "waiting", claimed_at: null })
+            .eq("id", run.id)
+            .eq("status", "running");
+        }
+        return release(run, { reason: "no_graph" }, true);
+      }
+      if (won) {
+        run.conversation_id = conversationId;
         run.variables = { ...(run.variables ?? {}), _last_reply: { k: key, at: new Date().toISOString() } };
+        // The reply row is buffered with the rest of this advance (one insert
+        // after the send, not a round trip before it).
+        eventBuffers.set(run.id, []);
         try {
-          await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length, held: Boolean(heldFor) });
-          // advance() reasons about the state the run was waiting in.
-          await advance(supabase, run, graph, { body: args.body, replyId: args.replyId });
+          try {
+            await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length, held: Boolean(heldFor) });
+            // advance() reasons about the state the run was waiting in.
+            await advance(supabase, run, graph, { body: args.body, replyId: args.replyId }, { env });
+          } finally {
+            await flushEvents(supabase, run.id);
+          }
         } catch (error) {
           await failSafe(supabase, run, error);
         }
@@ -311,6 +357,21 @@ export async function handleInboundForRuns(
     if (Date.now() > deadline) return release(run, { reason: "flow_busy" }, true);
     await new Promise((r) => setTimeout(r, 300));
   }
+}
+
+/**
+ * The contact's run, read while the webhook is still busy with the steps
+ * before the flow's turn (opt-out, cash-on-delivery). Read-only: the flow
+ * decides nothing until handleInboundForRuns takes it. Also warms the flag.
+ * Resolves undefined on any failure, so the engine reads again itself.
+ */
+export function peekInboundRun(
+  supabase: SupabaseClient,
+  args: { organizationId: string; contactId: string; conversationId: string; whatsappAccountId?: string | null },
+): Promise<Run | null | undefined> {
+  return Promise.all([activeRunFor(supabase, args), flowsV2Enabled(supabase, args.organizationId).catch(() => false)])
+    .then(([run]) => run)
+    .catch(() => undefined);
 }
 
 /** The contact's running/waiting run on this conversation (or unbound on this number). */
@@ -460,6 +521,10 @@ type Env = {
 // never written anywhere and never leaves the server.
 type Conn = Awaited<ReturnType<typeof import("@/lib/whatsapp-numbers.server").getWhatsAppConnection>>["connection"];
 const connMemo = new Map<string, { c: Conn; exp: number }>();
+/** The webhook already resolved this number's connection; reuse it instead of reading it again. */
+function primeConnection(organizationId: string, accountId: string, connection: Conn) {
+  if (connection) connMemo.set(`${organizationId}:${accountId}`, { c: connection, exp: Date.now() + 60_000 });
+}
 async function connectionFor(supabase: SupabaseClient, organizationId: string, accountId: string | null): Promise<Conn> {
   const k = `${organizationId}:${accountId ?? ""}`;
   const hit = connMemo.get(k);
@@ -470,7 +535,10 @@ async function connectionFor(supabase: SupabaseClient, organizationId: string, a
   return connection;
 }
 
-async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
+async function loadEnv(
+  supabase: SupabaseClient,
+  run: Pick<Run, "organization_id" | "flow_id" | "contact_id" | "conversation_id" | "variables">,
+): Promise<Env> {
   const { loadSendSettings } = await import("@/lib/flows.server");
   const [{ data: contact, error: contactError }, { data: tagRows }, { data: conversation }, { data: flow }, settings] = await Promise.all([
     supabase.from("contacts").select("name, phone, wa_id, attributes, opt_in_status").eq("id", run.contact_id).maybeSingle(),
@@ -519,7 +587,13 @@ async function loadEnv(supabase: SupabaseClient, run: Run): Promise<Env> {
  * Walk the graph from the run's current node until it waits, ends or fails.
  * `inbound` is the customer's reply when the run was waiting for one.
  */
-type AdvanceOpts = { woke?: boolean; paid?: boolean; fromCustomer?: boolean };
+type AdvanceOpts = {
+  woke?: boolean;
+  paid?: boolean;
+  fromCustomer?: boolean;
+  /** The run's surroundings, already being read alongside the claim/insert. */
+  env?: Promise<Env>;
+};
 
 async function advance(
   supabase: SupabaseClient,
@@ -544,7 +618,10 @@ async function advanceInner(
   inbound: Inbound | null,
   opts: AdvanceOpts,
 ): Promise<void> {
-  const env = await loadEnv(supabase, run);
+  const env = opts.env ? await opts.env : await loadEnv(supabase, run);
+  // Variables always come from the run itself (a read started earlier may
+  // predate the reply just recorded on it).
+  env.ctx.vars = run.variables ?? {};
   const vars = env.ctx.vars;
   const visits = new Map<string, number>();
   let nodeId = run.current_node_id;

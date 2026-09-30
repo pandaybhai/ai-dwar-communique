@@ -334,6 +334,11 @@ function inboundSource(
   return { source: "direct", source_detail: null };
 }
 
+// Lead-source markers only label a brand-new contact's first touch, so they
+// are reused for 60 s within this server (speed: one round trip less before
+// the contact is written). Opt-out keywords are never cached this way.
+const markerMemo = new Map<string, { rows: MarkerRow[]; exp: number }>();
+
 async function loadMarkers(
   supabase: SupabaseClient,
   organizationId: string,
@@ -341,6 +346,11 @@ async function loadMarkers(
 ): Promise<MarkerRow[]> {
   const cached = cache.get(organizationId);
   if (cached) return cached;
+  const memo = markerMemo.get(organizationId);
+  if (memo && memo.exp > Date.now()) {
+    cache.set(organizationId, memo.rows);
+    return memo.rows;
+  }
   const { data } = await supabase
     .from("lead_source_markers")
     .select("marker, source")
@@ -348,10 +358,41 @@ async function loadMarkers(
     .order("created_at", { ascending: true });
   const rows = ((data as MarkerRow[]) ?? []).filter((r) => r.marker && r.source);
   cache.set(organizationId, rows);
+  markerMemo.set(organizationId, { rows, exp: Date.now() + 60_000 });
   return rows;
 }
 
 type KeywordSets = { optOut: string[]; optIn: string[] };
+type WaConnection = Awaited<ReturnType<typeof getWhatsAppConnection>>["connection"];
+
+/**
+ * Per-message stage timings, logged once as one JSON line so a slow reply can
+ * be read straight from the logs: ms since this payload started processing,
+ * plus ms since Meta's webhook was stored (received_at) when known.
+ */
+function stageClock(eventId: string, receivedAt: string | null) {
+  const start = Date.now();
+  const lag = receivedAt ? Math.max(0, start - Date.parse(receivedAt)) : null;
+  const stages: Record<string, number> = {};
+  return {
+    mark(stage: string) {
+      if (!(stage in stages)) stages[stage] = Date.now() - start;
+    },
+    log(messageId: string, route: string) {
+      console.log(
+        JSON.stringify({
+          scope: "webhook_timing",
+          event_id: eventId,
+          message_id: messageId,
+          route,
+          received_lag_ms: lag,
+          stages,
+          total_ms: Date.now() - start,
+        }),
+      );
+    },
+  };
+}
 
 /** Built-in keywords plus the organization's own configured list. */
 /**
@@ -370,6 +411,11 @@ async function flowsV2Inbound(
     msg: AnyRecord;
     body: string | null;
     contactAge: number;
+    /** The contact's run, read while the steps before flows ran (speed). */
+    firstLook?: Promise<unknown>;
+    /** The inbound triggers, read at the same time (speed). */
+    triggers?: Promise<{ data: unknown[] | null }>;
+    connection?: WaConnection;
   },
 ): Promise<boolean> {
   const { msg } = args;
@@ -389,6 +435,8 @@ async function flowsV2Inbound(
       whatsappAccountId: args.accountId,
       body: args.body || (loc ? `${loc["latitude"]},${loc["longitude"]}` : ""),
       replyId,
+      ...(args.firstLook ? { firstLook: args.firstLook as NonNullable<Parameters<typeof handleInboundForRuns>[1]["firstLook"]> } : {}),
+      ...(args.connection ? { connection: args.connection } : {}),
     });
     if (taken.consumed) return true;
 
@@ -415,6 +463,7 @@ async function flowsV2Inbound(
       accountId: args.accountId,
       onlyAccountId: args.onlyAccountId,
       skipKeywords: Boolean(taken.runActive),
+      ...(args.triggers ? { triggers: args.triggers } : {}),
     });
     return started.started;
   } catch (error) {
@@ -708,6 +757,8 @@ export async function processWebhookPayload(
   supabase: SupabaseClient,
   eventId: string,
   payload: AnyRecord,
+  /** webhook_events.received_at, for the timing log. */
+  receivedAt: string | null = null,
 ): Promise<void> {
   try {
     const entries = (payload["entry"] as AnyRecord[] | undefined) ?? [];
@@ -715,7 +766,7 @@ export async function processWebhookPayload(
     const keywordCache = new Map<string, KeywordSets>();
     const automationCache = new Map<string, AutomationRow[]>();
     const timezoneCache = new Map<string, string>();
-    const tokenCache = new Map<string, string>();
+    const connectionCache = new Map<string, Promise<WaConnection>>();
     // Bookkeeping that no reply depends on (analytics events, campaign reply
     // marks, offer taps) runs alongside the reply path and is awaited before
     // this payload is marked processed — so a flow answers without waiting on it.
@@ -723,14 +774,22 @@ export async function processWebhookPayload(
     const later = (p: Promise<unknown>) => {
       deferred.push(p.catch((e) => console.error("[webhook] deferred step failed", e instanceof Error ? e.message : String(e))));
     };
+    // Analytics rows no reply depends on: written alongside the reply, still
+    // awaited (never fire-and-forget) before the event is marked processed.
+    const deferEmit = (...a: Parameters<typeof emitEvent>) =>
+      later((async () => {
+        await emitEvent(...a);
+      })());
     // The number owners write to while Aiden is being set up. Never hardcoded.
-    const { data: onboardingSetting } = await supabase
-      .from("platform_settings")
-      .select("onboarding_whatsapp_account_id")
-      .maybeSingle();
-    const onboardingAccountId =
-      (onboardingSetting as { onboarding_whatsapp_account_id?: string | null } | null)
-        ?.onboarding_whatsapp_account_id ?? null;
+    // Read alongside the first account lookup; awaited before it's needed.
+    const onboardingRead = Promise.resolve(
+      supabase.from("platform_settings").select("onboarding_whatsapp_account_id").maybeSingle(),
+    ).then(
+      ({ data }) =>
+        (data as { onboarding_whatsapp_account_id?: string | null } | null)?.onboarding_whatsapp_account_id ?? null,
+      () => null,
+    );
+    let onboardingAccountId: string | null = null;
 
     let routedAny = false;
     // Messages / statuses that threw; the event is left retryable when any did.
@@ -911,6 +970,8 @@ export async function processWebhookPayload(
           .eq("phone_number_id", phoneNumberId)
           .maybeSingle();
 
+        onboardingAccountId = await onboardingRead;
+
         // phone_number_id is globally unique, so an unknown one means the
         // payload isn't ours: it stays recorded and unrouted, never attached
         // to some other account.
@@ -921,17 +982,25 @@ export async function processWebhookPayload(
         const accountWabaId = (account.waba_id as string | null) ?? null;
 
         // Token for THIS number's WABA — replies always go back out on the
-        // number the customer wrote to.
-        let accessToken = tokenCache.get(accountId);
-        if (accessToken === undefined) {
-          const { connection } = await getWhatsAppConnection(supabase, orgId, accountId);
-          accessToken = connection?.accessToken ?? "";
-          tokenCache.set(accountId, accessToken);
+        // number the customer wrote to. Read while the contact and message
+        // are written; awaited before anything that could send.
+        let connectionRead = connectionCache.get(accountId);
+        if (!connectionRead) {
+          connectionRead = getWhatsAppConnection(supabase, orgId, accountId).then(
+            (r) => r.connection,
+            () => null,
+          );
+          connectionCache.set(accountId, connectionRead);
         }
+        const connectionP = connectionRead;
+        let accessToken = "";
+        let connection: WaConnection = null;
 
         // ---- inbound messages ----
         const contactsMeta = (value["contacts"] as AnyRecord[] | undefined) ?? [];
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
+          const clock = stageClock(eventId, receivedAt);
+          let route = "none";
           try {
             const waId = toWaId(msg["from"] as string | undefined);
             if (!waId) continue;
@@ -939,19 +1008,22 @@ export async function processWebhookPayload(
             // On the onboarding number the owner is watching the chat, so mark
             // the message read and start the typing dots before anything else.
             // Fire-and-forget: it must never delay or block the reply.
-            if (onboardingAccountId && accountId === onboardingAccountId && accessToken) {
-              void fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                  "content-type": "application/json",
-                },
-                body: JSON.stringify({
-                  messaging_product: "whatsapp",
-                  status: "read",
-                  message_id: String(msg["id"] ?? ""),
-                  typing_indicator: { type: "text" },
-                }),
+            if (onboardingAccountId && accountId === onboardingAccountId) {
+              void connectionP.then((c) => {
+                if (!c?.accessToken) return;
+                return fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${c.accessToken}`,
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    messaging_product: "whatsapp",
+                    status: "read",
+                    message_id: String(msg["id"] ?? ""),
+                    typing_indicator: { type: "text" },
+                  }),
+                });
               }).catch(() => {});
             }
 
@@ -965,10 +1037,32 @@ export async function processWebhookPayload(
               null;
 
             const parsed = messageBody(msg);
+            // Opt-out keywords are read now and used after the message is stored.
+            const keywordsRead = loadOptKeywords(supabase, orgId, keywordCache);
+            keywordsRead.catch(() => {});
             const attribution = inboundSource(
               msg,
               parsed.body,
               await loadMarkers(supabase, orgId, markerCache),
+            );
+            clock.mark("markers");
+
+            // The open conversation is looked up by the sender's phone at the
+            // same time as the contact is written (one round trip, not two).
+            // Used only when it belongs to the contact the upsert returns.
+            const phone = normalizePhone(waId);
+            const openConversationRead = Promise.resolve(
+              supabase
+                .from("conversations")
+                .select("id, unread_count, contact_id, contacts!inner(phone)")
+                .eq("organization_id", orgId)
+                .eq("contacts.phone", phone)
+                .eq("whatsapp_account_id", accountId)
+                .eq("status", "open")
+                .maybeSingle(),
+            ).then(
+              ({ data }) => data as { id: string; unread_count: number | null; contact_id?: string } | null,
+              () => null,
             );
 
             // source / source_detail are frozen after insert by a DB trigger,
@@ -978,7 +1072,7 @@ export async function processWebhookPayload(
               .upsert(
                 {
                   organization_id: orgId,
-                  phone: normalizePhone(waId),
+                  phone,
                   wa_id: waId,
                   ...(profileName ? { name: profileName } : {}),
                   // Everyone on the onboarding number is a business owner, not a
@@ -1000,12 +1094,13 @@ export async function processWebhookPayload(
               .single();
             if (contactError) throw new Error(`contact upsert failed: ${contactError.message}`);
             if (!contact) continue;
+            clock.mark("contact");
 
             // The upsert can't tell us whether it inserted, so a freshly stamped
             // created_at is the signal for a genuinely new contact.
             const contactAge = Date.now() - new Date(String(contact.created_at)).getTime();
             if (contactAge >= 0 && contactAge < 10_000) {
-              await emitEvent(supabase, "contact.created", {
+              deferEmit(supabase, "contact.created", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
                 entityType: "contact",
@@ -1014,14 +1109,20 @@ export async function processWebhookPayload(
               });
             }
 
-            let { data: conversation } = await supabase
-              .from("conversations")
-              .select("id, unread_count")
-              .eq("organization_id", orgId)
-              .eq("contact_id", contact.id)
-              .eq("whatsapp_account_id", accountId)
-              .eq("status", "open")
-              .maybeSingle();
+            const joined = await openConversationRead;
+            let conversation: { id: string; unread_count: number | null } | null =
+              joined && joined.contact_id === contact.id ? { id: joined.id, unread_count: joined.unread_count } : null;
+            if (!conversation) {
+              const { data: found } = await supabase
+                .from("conversations")
+                .select("id, unread_count")
+                .eq("organization_id", orgId)
+                .eq("contact_id", contact.id)
+                .eq("whatsapp_account_id", accountId)
+                .eq("status", "open")
+                .maybeSingle();
+              conversation = found as typeof conversation;
+            }
 
             if (!conversation) {
               const { data: created, error: createError } = await supabase
@@ -1037,7 +1138,7 @@ export async function processWebhookPayload(
               if (createError) throw new Error(`conversation insert failed: ${createError.message}`);
               conversation = created;
               if (created) {
-                await emitEvent(supabase, "conversation.opened", {
+                deferEmit(supabase, "conversation.opened", {
                   organizationId: orgId,
                   whatsappAccountId: accountId,
                   entityType: "conversation",
@@ -1080,18 +1181,27 @@ export async function processWebhookPayload(
             // result means Meta sent this message before.
             if (insertError) throw new Error(`message insert failed: ${insertError.message}`);
 
-            // Only bump counters when this message was genuinely new.
+            clock.mark("message_stored");
+
+            // Only bump counters when this message was genuinely new. The
+            // write opens the 24-hour window every send checks, so it runs
+            // alongside the reads below and is awaited (`windowReady`) before
+            // anything that could send.
+            let windowReady: Promise<unknown> = Promise.resolve();
             if (inserted && inserted.length > 0) {
-              await supabase
-                .from("conversations")
-                .update({
-                  last_message_at: occurredAt,
-                  last_customer_message_at: occurredAt,
-                  unread_count: (conversation.unread_count ?? 0) + 1,
-                })
-                .eq("id", conversation.id);
+              windowReady = Promise.resolve(
+                supabase
+                  .from("conversations")
+                  .update({
+                    last_message_at: occurredAt,
+                    last_customer_message_at: occurredAt,
+                    unread_count: (conversation.unread_count ?? 0) + 1,
+                  })
+                  .eq("id", conversation.id),
+              );
+              later(windowReady);
               later(applyCampaignReply(supabase, orgId, contact.id));
-              await emitEvent(supabase, "message.received", {
+              deferEmit(supabase, "message.received", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
                 entityType: "message",
@@ -1101,6 +1211,29 @@ export async function processWebhookPayload(
               });
             }
 
+            connection = await connectionP;
+            accessToken = connection?.accessToken ?? "";
+
+            // The contact's flow run, read now so the flow's turn (after opt-out
+            // and cash-on-delivery) doesn't wait on it. Read-only.
+            const isCustomerNumber = !(onboardingAccountId && accountId === onboardingAccountId);
+            const flowLook =
+              isCustomerNumber && !isSystemEcho && inserted && inserted.length > 0 && type !== "order"
+                ? import("@/lib/flow-engine.server").then(({ peekInboundRun }) =>
+                    peekInboundRun(supabase, {
+                      organizationId: orgId,
+                      contactId: contact.id as string,
+                      conversationId: conversation.id as string,
+                      whatsappAccountId: accountId,
+                    }),
+                  )
+                : null;
+            flowLook?.catch(() => {});
+            const triggersLook = flowLook
+              ? import("@/lib/flow-triggers.server").then(({ readInboundTriggers }) => readInboundTriggers(supabase, orgId))
+              : null;
+            triggersLook?.catch(() => {});
+
             // A filled-in WhatsApp form is handled before any other routing, on
             // every number (the onboarding number included): it is saved as a
             // form response and shown in the inbox, never treated as a chat
@@ -1109,7 +1242,9 @@ export async function processWebhookPayload(
               type === "interactive" &&
               String((msg["interactive"] as AnyRecord | undefined)?.["type"] ?? "") === "nfm_reply"
             ) {
+              route = "form";
               if (!isSystemEcho) {
+                await windowReady;
                 const { handleFormReply } = await import("@/lib/wa-forms.server");
                 let messageRowId = (inserted?.[0]?.id as string | undefined) ?? null;
                 if (!messageRowId) {
@@ -1143,8 +1278,9 @@ export async function processWebhookPayload(
               !isSystemEcho &&
               inserted &&
               inserted.length > 0 &&
-              !matchKeyword(body, (await loadOptKeywords(supabase, orgId, keywordCache)).optOut)
+              !matchKeyword(body, (await keywordsRead).optOut)
             ) {
+              await windowReady;
               const taken = await flowsV2Inbound(supabase, {
                 orgId,
                 contactId: contact.id as string,
@@ -1155,7 +1291,10 @@ export async function processWebhookPayload(
                 body,
                 contactAge,
               });
-              if (taken) continue;
+              if (taken) {
+                route = "flow";
+                continue;
+              }
             }
 
             // The onboarding number is a different conversation entirely: the
@@ -1163,7 +1302,9 @@ export async function processWebhookPayload(
             // follows (opt-out keywords, COD, automations, the customer AI)
             // applies to them.
             if (onboardingAccountId && accountId === onboardingAccountId) {
+              route = "merchant";
               if (!isSystemEcho && inserted && inserted.length > 0) {
+                await windowReady;
                 const { handleMerchantInbound } = await import("@/lib/merchant-channel.server");
                 const merchantInteractive = msg["interactive"] as AnyRecord | undefined;
                 const merchantTapId =
@@ -1196,6 +1337,7 @@ export async function processWebhookPayload(
             // it, hand the thread to a person and acknowledge it ourselves. The
             // AI employee never answers an order message.
             if (type === "order" && !isSystemEcho && inserted && inserted.length > 0) {
+              await windowReady;
               const { handleCatalogOrder } = await import("@/lib/whatsapp-orders.server");
               const handled = await handleCatalogOrder(supabase, {
                 organizationId: orgId,
@@ -1207,13 +1349,19 @@ export async function processWebhookPayload(
                 accessToken,
                 to: waId,
               });
-              if (handled.handled) continue;
+              if (handled.handled) {
+                route = "order";
+                continue;
+              }
             }
 
 
             // Opt-out / opt-in runs on EVERY inbound text, independent of whether
             // the message row was new — it is idempotent (no-op when the status
             // already matches), so duplicate deliveries cannot swallow a "STOP".
+            const keywords = await keywordsRead;
+            // A match may send a confirmation, which needs the window write.
+            if (matchKeyword(body, keywords.optOut) || matchKeyword(body, keywords.optIn)) await windowReady;
             const optKeywordMatched = await applyOptKeywords(supabase, {
               organizationId: orgId,
               accountId,
@@ -1225,7 +1373,7 @@ export async function processWebhookPayload(
               currentStatus: (contact as { opt_in_status?: string }).opt_in_status ?? null,
               waId,
               body,
-              keywords: await loadOptKeywords(supabase, orgId, keywordCache),
+              keywords,
             });
 
             // Cash-on-delivery answers. Button replies quote the message that
@@ -1242,14 +1390,21 @@ export async function processWebhookPayload(
                 null;
               const contextMetaId =
                 ((msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined) ?? null;
-              codHandled = await applyCodReply(supabase, {
-                organizationId: orgId,
-                contactId: contact.id as string,
-                contextMetaId,
-                body,
-                payload,
-              });
+              // COD only records the answer (it never sends), so it runs
+              // alongside the window write.
+              [codHandled] = await Promise.all([
+                applyCodReply(supabase, {
+                  organizationId: orgId,
+                  contactId: contact.id as string,
+                  contextMetaId,
+                  body,
+                  payload,
+                }),
+                windowReady,
+              ]);
             }
+            await windowReady;
+            clock.mark("guards_done");
 
             // A customer who sends the coupon code back has taken the offer.
             // Only new messages count, so a redelivered webhook can't inflate it.
@@ -1284,8 +1439,15 @@ export async function processWebhookPayload(
                 msg,
                 body,
                 contactAge,
+                ...(flowLook ? { firstLook: flowLook } : {}),
+                ...(triggersLook ? { triggers: triggersLook } : {}),
+                connection,
               });
-              if (taken) continue;
+              clock.mark("flows");
+              if (taken) {
+                route = "flow";
+                continue;
+              }
             }
 
             // Automations run last, and never for a message that was an opt-out /
@@ -1293,6 +1455,10 @@ export async function processWebhookPayload(
             // outbound sends (including opt-out confirmations and automation
             // replies) never reach here.
             const beforeAutomations = new Date().toISOString();
+            const [orgTimezone, automations] = await Promise.all([
+              loadOrgTimezone(supabase, orgId, timezoneCache),
+              loadAutomations(supabase, orgId, automationCache),
+            ]);
             await evaluateAutomations(supabase, {
               organizationId: orgId,
               phoneNumberId,
@@ -1304,9 +1470,10 @@ export async function processWebhookPayload(
               body,
               optKeywordMatched: optKeywordMatched || codHandled,
               isSystemEcho,
-              orgTimezone: await loadOrgTimezone(supabase, orgId, timezoneCache),
-              automations: await loadAutomations(supabase, orgId, automationCache),
+              orgTimezone,
+              automations,
             });
+            clock.mark("automations");
 
             // The AI employee gets the last word, and only when nothing else
             // answered this message. Never on our own echoes or on a duplicate
@@ -1342,6 +1509,11 @@ export async function processWebhookPayload(
                   mediaFallback = converted.fallback;
                 }
 
+                // The agent's set-up and its answer run's reads start now, so
+                // they are done by the time the burst wait below is over.
+                const { runAgentOnInbound, prepareAgentInbound } = await import("@/lib/ai-agent.server");
+                const prepared = alreadyHandled || optedOut ? undefined : prepareAgentInbound(supabase, orgId);
+
                 // Two texts typed a breath apart are one question: wait out the
                 // burst, answer once, and let the overtaken delivery stand down.
                 const burst =
@@ -1354,12 +1526,14 @@ export async function processWebhookPayload(
                         body: agentBody,
                       });
                 if (!burst.proceed) {
+                  route = "ai_superseded";
                   console.log("[ai-agent] burst_superseded", conversation.id);
                   continue;
                 }
                 agentBody = burst.body;
+                clock.mark("burst");
 
-                const { runAgentOnInbound } = await import("@/lib/ai-agent.server");
+                route = "ai";
                 const outcome = await runAgentOnInbound(supabase, {
                   organizationId: orgId,
                   conversationId: conversation.id as string,
@@ -1370,7 +1544,9 @@ export async function processWebhookPayload(
                   body: agentBody,
                   alreadyHandled,
                   optedOut,
+                  ...(prepared ? { prepared } : {}),
                 });
+                clock.mark("ai_done");
 
                 // Only a live-replying agent speaks; otherwise the thread just
                 // sits unread in the inbox for a person, as it always has.
@@ -1403,7 +1579,10 @@ export async function processWebhookPayload(
           } catch (err) {
             // One bad message never drops the rest of the event; the event
             // stays retryable (see finishEvent).
+            route = "failed";
             failures.push(failureNote(`message ${String(msg["id"] ?? "")}`, err));
+          } finally {
+            clock.log(String(msg["id"] ?? ""), route);
           }
         }
 

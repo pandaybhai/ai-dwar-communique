@@ -4,7 +4,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { executeRun, type RunOptions, type RunResult } from "@/lib/ai-run.server";
+import { executeRun, prepareRun, type RunOptions, type RunPrelude, type RunResult } from "@/lib/ai-run.server";
 
 export type Turn = { role: "user" | "assistant"; content: string };
 
@@ -315,31 +315,42 @@ export async function handoverMessage(
 }
 
 /** The real answer the agent would give a customer. */
+/** The run options agentAnswer uses that don't depend on the chat (for prepareRun). */
+export function agentAnswerPrelude(supabase: SupabaseClient, organizationId: string, agentId: string | null) {
+  return prepareRun(supabase, { organizationId, task: "agent_reply", agentId, actorUserId: null, useTools: true });
+}
+
 export async function agentAnswer(
   supabase: SupabaseClient,
   common: Common,
   conversationId: string,
   question: string,
+  /** Read ahead by the inbound webhook while it waited out a burst (speed). */
+  prepared?: { agentId: string | null; prelude: Promise<RunPrelude> },
 ): Promise<RunResult> {
-  const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { turns, contactId, customerLanguage } = await conversationTurns(
-    supabase,
-    common.organizationId,
-    conversationId,
-  );
+  // The chat, its earlier failures, the agent and the brief are independent
+  // reads (the brief only needs the chat's language to finish its wording).
   const { assembleBrief } = await import("@/lib/ai-brief.server");
-  const brief = await assembleBrief(supabase, common.organizationId, agentId, { customerLanguage });
+  const agentRead = prepared ? Promise.resolve(prepared.agentId) : defaultAgentId(supabase, common.organizationId);
+  const chat = conversationTurns(supabase, common.organizationId, conversationId);
+  const [agentId, { turns, contactId, customerLanguage }, { data: pastRuns }, brief] = await Promise.all([
+    agentRead,
+    chat,
+    // A repeat only matters when the first attempt actually failed.
+    supabase
+      .from("ai_runs")
+      .select("input_summary, status")
+      .eq("organization_id", common.organizationId)
+      .eq("conversation_id", conversationId)
+      .eq("task", "agent_reply")
+      .neq("status", "ok")
+      .order("created_at", { ascending: false })
+      .limit(20),
+    agentRead.then((id) =>
+      assembleBrief(supabase, common.organizationId, id, { customerLanguage: chat.then((c) => c.customerLanguage) }),
+    ),
+  ]);
 
-  // A repeat only matters when the first attempt actually failed.
-  const { data: pastRuns } = await supabase
-    .from("ai_runs")
-    .select("input_summary, status")
-    .eq("organization_id", common.organizationId)
-    .eq("conversation_id", conversationId)
-    .eq("task", "agent_reply")
-    .neq("status", "ok")
-    .order("created_at", { ascending: false })
-    .limit(20);
   const priorFailedQuestions = ((pastRuns ?? []) as Array<{ input_summary: string | null }>)
     .map((r) => (r.input_summary ?? "").trim())
     .filter(Boolean);
@@ -362,6 +373,7 @@ export async function agentAnswer(
     priorFailedQuestions,
     useKnowledge: true,
     useTools: true,
+    ...(prepared ? { prelude: prepared.prelude } : {}),
   });
 }
 

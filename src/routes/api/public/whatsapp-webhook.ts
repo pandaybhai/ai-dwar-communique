@@ -43,14 +43,19 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
         const { data: event } = await supabase
           .from("webhook_events")
           .insert({ provider: "meta", payload, signature_valid: signatureValid })
-          .select("id")
+          .select("id, received_at")
           .single();
 
         // Exactly one processing pass, for this payload only. Catch-up for
         // stale events lives in /api/internal/reprocess-events.
         if (signatureValid && event) {
           try {
-            await processWebhookPayload(supabase, event.id as string, payload);
+            await processWebhookPayload(
+              supabase,
+              event.id as string,
+              payload,
+              (event.received_at as string | null) ?? null,
+            );
           } catch {
             // processWebhookPayload records its own errors
           }

@@ -170,7 +170,8 @@ export async function assembleBrief(
   agentId: string | null,
   options: {
     instructionsOverride?: string | null;
-    customerLanguage?: string | null;
+    /** May still be being read (the chat history): the brief's own reads don't wait on it. */
+    customerLanguage?: string | null | Promise<string | null>;
     /** Who is being spoken to: a customer (default) or the business owner. */
     audience?: "customer" | "merchant";
     /** The owner's business and name, used only for the merchant audience. */
@@ -209,7 +210,7 @@ export async function assembleBrief(
         .join(" ");
 
   const jobs = merchant ? "" : skillsBlock(skills);
-  const spoken = customerLanguageBlock(options.customerLanguage ?? null, instructions.languages);
+  const spoken = customerLanguageBlock((await options.customerLanguage) ?? null, instructions.languages);
   const escalation = merchant ? "" : instructions.escalationRules.trim();
 
   const sections: BriefSection[] = [
