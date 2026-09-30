@@ -275,9 +275,12 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           ] as string) ?? null;
 
         const nowIso = new Date().toISOString();
-        const { headerMediaFromComponents } = await import("@/lib/templates");
+        const { headerMediaFromComponents, templateParamsFromComponents } = await import("@/lib/templates");
         const headerMedia =
           messageType === "template" ? headerMediaFromComponents(templateComponents) : null;
+        // The values it was sent with, so the inbox shows the filled-in text.
+        const templateParams =
+          messageType === "template" ? templateParamsFromComponents(templateComponents) : {};
         const { data: message } = await supabase
           .from("messages")
           .insert({
@@ -291,6 +294,7 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
             ...(headerMedia
               ? { media_url: headerMedia.url, media_mime: headerMedia.kind }
               : {}),
+            ...(Object.keys(templateParams).length ? { metadata: { template_params: templateParams } } : {}),
             status: "pending",
             status_updated_at: nowIso,
             sent_by: userId,

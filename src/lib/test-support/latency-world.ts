@@ -42,6 +42,11 @@ export function latencyWorld(opts: {
   waitingRun: boolean;
   /** Meta redelivered a message we already stored. */
   duplicate?: boolean;
+  /**
+   * Requests in flight at once. A Cloudflare Worker keeps at most six
+   * outgoing connections open per request; the rest queue behind them.
+   */
+  maxConcurrent?: number;
 }) {
   const t0 = { at: 0 };
   const graphSends: Array<{ at: number; body: Record<string, unknown> }> = [];
@@ -115,10 +120,35 @@ export function latencyWorld(opts: {
     if (t === "flow_run_events") return { data: null, error: null };
     return undefined;
   };
-  const slow = <T>(value: T) => new Promise<T>((r) => setTimeout(() => r(value), opts.rttMs));
+  // Start time (ms after t0) of every query, in issue order, for the trace.
+  const starts: Array<{ at: number; table: string; kind: string }> = [];
+  let inFlight = 0;
+  const queue: Array<() => void> = [];
+  const slot = () =>
+    new Promise<void>((r) => {
+      if (!opts.maxConcurrent || inFlight < opts.maxConcurrent) {
+        inFlight += 1;
+        r();
+      } else queue.push(() => { inFlight += 1; r(); });
+    });
+  const release = () => {
+    inFlight -= 1;
+    queue.shift()?.();
+  };
+  const slow = <T>(value: T, label?: { table: string; kind: string }) =>
+    slot().then(
+      () =>
+        new Promise<T>((r) => {
+          if (label) starts.push({ at: Date.now() - t0.at, ...label });
+          setTimeout(() => {
+            release();
+            r(value);
+          }, opts.rttMs);
+        }),
+    );
   const db = fakeDb(
-    (op) => slow(reply(op) ?? { data: null, error: null }) as unknown as Reply,
-    (call: FakeRpc) => slow({ data: call.name === "bump_campaign_counters" ? null : null, error: null }) as unknown as Reply,
+    (op) => slow(reply(op) ?? { data: null, error: null }, { table: op.table, kind: op.kind }) as unknown as Reply,
+    (call: FakeRpc) => slow({ data: null, error: null }, { table: `rpc:${call.name}`, kind: "rpc" }) as unknown as Reply,
   );
   const fetchStub = async (url: string | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -129,7 +159,7 @@ export function latencyWorld(opts: {
     await new Promise((r) => setTimeout(r, opts.graphMs));
     return new Response(JSON.stringify({ messages: [{ id: `wamid.out.${graphSends.length}` }] }), { status: 200 });
   };
-  return { ...db, t0, graphSends, fetchStub };
+  return { ...db, t0, graphSends, fetchStub, starts };
 }
 
 export function inboundPayload(msg: Record<string, unknown>) {

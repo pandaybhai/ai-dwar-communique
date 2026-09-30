@@ -21,7 +21,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
       },
 
       POST: async ({ request }) => {
-        const { getServiceClient, verifyMetaSignature, processWebhookPayload } = await import(
+        const { getServiceClient, verifyMetaSignature, acceptWebhook, waitUntilOf } = await import(
           "@/lib/whatsapp-webhook.server"
         );
 
@@ -32,36 +32,13 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           process.env["META_APP_SECRET"],
         );
 
-        let payload: Record<string, unknown>;
-        try {
-          payload = JSON.parse(rawBody) as Record<string, unknown>;
-        } catch {
-          payload = { _unparsable: rawBody.slice(0, 5000) };
-        }
-
-        const supabase = getServiceClient();
-        const { data: event } = await supabase
-          .from("webhook_events")
-          .insert({ provider: "meta", payload, signature_valid: signatureValid })
-          .select("id, received_at")
-          .single();
-
-        // Exactly one processing pass, for this payload only. Catch-up for
-        // stale events lives in /api/internal/reprocess-events.
-        if (signatureValid && event) {
-          try {
-            await processWebhookPayload(
-              supabase,
-              event.id as string,
-              payload,
-              (event.received_at as string | null) ?? null,
-            );
-          } catch {
-            // processWebhookPayload records its own errors
-          }
-        }
-
-        return new Response("ok", { status: 200 });
+        // Stored, then 200 straight away; processing continues after the
+        // response. Catch-up for stale events lives in /api/internal/reprocess-events.
+        return acceptWebhook(getServiceClient(), {
+          rawBody,
+          signatureValid,
+          waitUntil: waitUntilOf(request),
+        });
       },
 
     },

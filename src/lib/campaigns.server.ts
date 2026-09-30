@@ -541,6 +541,10 @@ export async function sendCampaignTemplate(
       ...(headerMedia
         ? { media_url: headerMedia.url, media_mime: headerMedia.kind }
         : {}),
+      // The values it was sent with, so the inbox shows "Hi Priya", not "Hi {{1}}".
+      ...(Object.keys(recipient.variables).length
+        ? { metadata: { template_params: recipient.variables } }
+        : {}),
       status: "pending",
       status_updated_at: nowIso,
       ...attribution,

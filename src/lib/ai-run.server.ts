@@ -128,6 +128,12 @@ export type RunOptions = {
   preview?: boolean;
   /** A picture to read, as a data URL. Used when a merchant sends a photo. */
   imageDataUrl?: string | null;
+  /**
+   * The daily ai_usage roll-up is handed here instead of being awaited before
+   * the answer returns (the inbound webhook awaits it before it marks the
+   * event processed). Omitted: awaited in place, as always.
+   */
+  deferUsage?: (work: Promise<unknown>) => void;
 };
 
 
@@ -379,6 +385,23 @@ export function policyClaimSentences(answer: string): string[] {
   );
 }
 
+/**
+ * The reply without any "let me confirm…" sentence (added by the guards or
+ * written by the model), line breaks kept. Empty when nothing else was said.
+ */
+export function withoutConfirmLine(answer: string): string {
+  return answer
+    .split("\n")
+    .map((line) =>
+      sentencesOf(line)
+        .filter((s) => !/let me confirm/i.test(s))
+        .join(" "),
+    )
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Remove exact sentences, keep the rest, promise to come back once. */
 export function stripSentences(answer: string, drop: string[]): string {
   const set = new Set(drop.map((d) => d.trim()));
@@ -393,17 +416,41 @@ export function stripSentences(answer: string, drop: string[]): string {
  * One small model call judging every candidate sentence against this run's
  * material. Any failure keeps the reply as it is — the check never blocks.
  */
+type PolicyCheckWho = {
+  organizationId: string;
+  agentId: string | null;
+  conversationId: string | null;
+  actorUserId: string | null;
+  actingRole: string | null;
+  channel?: RunOptions["channel"];
+};
+
+/** The policy check's own run settings, shared by its prelude and the run. */
+function policyCheckRun(args: PolicyCheckWho) {
+  return {
+    organizationId: args.organizationId,
+    task: "summarise" as const,
+    agentId: args.agentId,
+    conversationId: args.conversationId,
+    actorUserId: args.actorUserId,
+    actingRole: args.actingRole,
+    tier: "everyday",
+    useKnowledge: false,
+    useTools: false,
+    billingExempt: true,
+    ...(args.channel ? { channel: args.channel } : {}),
+    metadata: { purpose: "policy_claim_check" },
+  };
+}
+
 async function unsupportedPolicyClaims(
   supabase: SupabaseClient,
-  args: {
-    organizationId: string;
-    agentId: string | null;
-    conversationId: string | null;
-    actorUserId: string | null;
-    actingRole: string | null;
+  args: PolicyCheckWho & {
     sentences: string[];
     sources: string;
-    channel?: RunOptions["channel"];
+    /** The check's reads, started while the answer was being written (speed). */
+    prelude?: Promise<RunPrelude>;
+    deferUsage?: RunOptions["deferUsage"];
   },
 ): Promise<string[]> {
   if (!args.sources.trim()) return args.sentences;
@@ -411,18 +458,9 @@ async function unsupportedPolicyClaims(
   const numbered = args.sentences.map((s, i) => `${i + 1}. ${s}`).join("\n");
   try {
     const run = await executeRun(supabase, {
-      organizationId: args.organizationId,
-      task: "summarise",
-      agentId: args.agentId,
-      conversationId: args.conversationId,
-      actorUserId: args.actorUserId,
-      actingRole: args.actingRole,
-      tier: "everyday",
-      useKnowledge: false,
-      useTools: false,
-      billingExempt: true,
-      ...(args.channel ? { channel: args.channel } : {}),
-      metadata: { purpose: "policy_claim_check" },
+      ...policyCheckRun(args),
+      ...(args.prelude ? { prelude: args.prelude } : {}),
+      ...(args.deferUsage ? { deferUsage: args.deferUsage } : {}),
       system: [
         "You check whether sentences are directly supported by the sources.",
         "A sentence is supported only if the sources state the same thing. Paraphrase is fine; a stronger, different or invented claim (e.g. 'zero markup' when sources say 'a small margin') is NOT supported.",
@@ -1369,7 +1407,9 @@ export async function executeRun(
           );
         }
       }
-      await rollUpUsage(supabase, organizationId, task, result);
+      const usage = rollUpUsage(supabase, organizationId, task, result);
+      if (options.deferUsage) options.deferUsage(usage);
+      else await usage;
     }
     return result;
   };
@@ -1551,6 +1591,21 @@ export async function executeRun(
 
   const tools = prelude.tools;
   const modelStarted = Date.now();
+  // A customer answer may need the policy-claim check afterwards; its own
+  // reads (brain, key, caps) run while this answer is being written instead
+  // of after it. Reads only — unused when the answer makes no policy claim.
+  const policyCheckWho: PolicyCheckWho = {
+    organizationId,
+    agentId,
+    conversationId,
+    actorUserId,
+    actingRole,
+    ...(options.channel ? { channel: options.channel } : {}),
+  };
+  const policyCheckPrelude =
+    task === "agent_reply" && !options.imageDataUrl && !options.dryRun && !purpose.startsWith("knowledge_")
+      ? prepareRun(supabase, policyCheckRun(policyCheckWho))
+      : undefined;
 
   const toolCalls: RunResult["toolCalls"] = [];
   const foundMedia: RunMedia[] = [];
@@ -1778,14 +1833,11 @@ export async function executeRun(
       const unsupported = [
         ...wording.unsupported.filter((u) => !u.replacement).map((u) => u.sentence),
         ...(await unsupportedPolicyClaims(supabase, {
-          organizationId,
-          agentId,
-          conversationId,
-          actorUserId,
-          actingRole,
+          ...policyCheckWho,
           sentences: wording.undecided,
-          channel: options.channel,
           sources: sourceText,
+          ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
+          ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
         })),
       ];
       if (unsupported.length > 0) {
@@ -1858,6 +1910,24 @@ export async function executeRun(
     } else if (signal) {
       result.status = "escalated";
       result.escalationSignal = signal;
+    }
+  }
+
+  // ------------------------------------------ "let me confirm" = hand-over
+  // "Let me confirm that for you" promises that someone will come back. It
+  // is added by the guards above (a stripped number or policy line) and by
+  // the model itself, but only a run that hands the thread to a person keeps
+  // that promise. Anywhere else it goes; the question is still filed under
+  // Unanswered (needsOwner, set above). A reply that was nothing but the
+  // promise becomes the hand-over it describes.
+  if (task === "agent_reply" && result.status === "ok" && /let me confirm/i.test(result.output)) {
+    const rest = withoutConfirmLine(result.output);
+    if (rest) {
+      runMeta["confirm_line_removed"] = true;
+      result.output = rest;
+    } else {
+      result.status = "escalated";
+      result.escalationSignal = numbersStripped ? "unsupported_number" : "no_source";
     }
   }
 

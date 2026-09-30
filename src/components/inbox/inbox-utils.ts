@@ -22,7 +22,13 @@ export type ConversationRow = {
     phone: string;
     opt_in_status?: string | null;
   } | null;
-  preview: { body: string | null; type: string; direction: string; template_name?: string | null } | null;
+  preview: {
+    body: string | null;
+    type: string;
+    direction: string;
+    template_name?: string | null;
+    metadata?: Record<string, unknown> | null;
+  } | null;
 };
 
 
@@ -84,6 +90,21 @@ export function dayLabel(iso: string): string {
   if (same(d, today)) return "Today";
   if (same(d, yest)) return "Yesterday";
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+/**
+ * A template's text with the values it was sent with ({{1}} → "Priya").
+ * Template sends store them as metadata.template_params; a placeholder with
+ * no stored value is left as it is.
+ */
+export function fillTemplateText(text: string, metadata: Record<string, unknown> | null | undefined): string {
+  const params = metadata?.["template_params"];
+  if (!params || typeof params !== "object") return text;
+  const values = params as Record<string, unknown>;
+  return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (whole, key: string) => {
+    const value = values[key];
+    return typeof value === "string" || typeof value === "number" ? String(value) : whole;
+  });
 }
 
 export function previewText(row: ConversationRow): string {

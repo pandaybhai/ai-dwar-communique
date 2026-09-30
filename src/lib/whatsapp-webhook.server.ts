@@ -35,19 +35,27 @@ const BURST_WINDOW_MS = 5000;
  * window: the last text in the burst answers for all of them, every earlier
  * delivery stands down, so the customer gets exactly one reply.
  */
-async function coalesceBurst(
+export async function coalesceBurst(
   supabase: SupabaseClient,
   args: {
     conversationId: string;
     messageId: string | null;
     occurredAt: string;
     body: string | null;
+    /**
+     * When the message row was written (ms). The window runs from there, so
+     * the guards, flows and automations that already ran count toward it
+     * instead of being added in front of it.
+     */
+    storedAt?: number;
   },
 ): Promise<{ proceed: boolean; body: string | null }> {
   const text = (args.body ?? "").trim();
   if (!text || !args.messageId) return { proceed: true, body: args.body };
 
-  await new Promise((resolve) => setTimeout(resolve, BURST_WINDOW_MS));
+  const elapsed = args.storedAt ? Math.max(0, Date.now() - args.storedAt) : 0;
+  const wait = BURST_WINDOW_MS - elapsed;
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
 
   const windowStart = new Date(
     new Date(args.occurredAt).getTime() - BURST_WINDOW_MS,
@@ -103,6 +111,87 @@ export async function verifyMetaSignature(
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
   return safeEqual(provided.toLowerCase(), expected);
+}
+
+/** A runtime's "keep working after the response" hook, when it has one. */
+export type WaitUntil = (work: Promise<unknown>) => void;
+
+/**
+ * The runtime's waitUntil for this request. On Cloudflare, nitro puts it on
+ * the Request itself (request.waitUntil, or runtime.cloudflare.context);
+ * src/server.ts adds it from the worker's ctx when neither is there. null in
+ * dev and tests — the caller then processes before answering, as before.
+ */
+export function waitUntilOf(request: Request): WaitUntil | null {
+  const r = request as Request & {
+    waitUntil?: WaitUntil;
+    runtime?: { cloudflare?: { context?: { waitUntil?: WaitUntil } } };
+  };
+  if (typeof r.waitUntil === "function") return r.waitUntil;
+  const ctx = r.runtime?.cloudflare?.context;
+  if (ctx && typeof ctx.waitUntil === "function") return ctx.waitUntil.bind(ctx);
+  return null;
+}
+
+/**
+ * Meta's webhook POST. The event is stored first, then Meta gets its 200
+ * straight away and the payload is processed after the response (waitUntil),
+ * so a slow reply (the AI can take 20 s) never makes Meta redeliver. Exactly
+ * one processing pass for this payload, as before: dedupe (meta_message_id),
+ * retries (finishEvent) and processed_at are unchanged, and anything the
+ * background pass doesn't finish is picked up by /api/internal/reprocess-events.
+ */
+export async function acceptWebhook(
+  supabase: SupabaseClient,
+  args: {
+    rawBody: string;
+    signatureValid: boolean;
+    waitUntil: WaitUntil | null;
+    process?: typeof processWebhookPayload;
+  },
+): Promise<Response> {
+  const started = Date.now();
+  let payload: AnyRecord;
+  try {
+    payload = JSON.parse(args.rawBody) as AnyRecord;
+  } catch {
+    payload = { _unparsable: args.rawBody.slice(0, 5000) };
+  }
+
+  const { data: event } = await supabase
+    .from("webhook_events")
+    .insert({ provider: "meta", payload, signature_valid: args.signatureValid })
+    .select("id, received_at")
+    .single();
+
+  let background = false;
+  if (args.signatureValid && event) {
+    const run = args.process ?? processWebhookPayload;
+    const work = run(
+      supabase,
+      event.id as string,
+      payload,
+      (event.received_at as string | null) ?? null,
+    ).catch(() => {
+      // processWebhookPayload records its own errors
+    });
+    if (args.waitUntil) {
+      args.waitUntil(work);
+      background = true;
+    } else {
+      await work;
+    }
+  }
+
+  console.log(
+    JSON.stringify({
+      scope: "webhook_ack",
+      event_id: (event?.id as string | undefined) ?? null,
+      background,
+      ack_ms: Date.now() - started,
+    }),
+  );
+  return new Response("ok", { status: 200 });
 }
 
 const STATUS_RANK: Record<string, number> = {
@@ -774,12 +863,19 @@ export async function processWebhookPayload(
     const later = (p: Promise<unknown>) => {
       deferred.push(p.catch((e) => console.error("[webhook] deferred step failed", e instanceof Error ? e.message : String(e))));
     };
-    // Analytics rows no reply depends on: written alongside the reply, still
-    // awaited (never fire-and-forget) before the event is marked processed.
-    const deferEmit = (...a: Parameters<typeof emitEvent>) =>
-      later((async () => {
+    // Bookkeeping no reply depends on starts once this message has been
+    // answered: a Worker keeps at most six requests in flight, and these used
+    // to hold slots the reply path was queueing for. Still awaited (never
+    // fire-and-forget) before the event is marked processed.
+    const afterReply: Array<() => Promise<unknown>> = [];
+    const startAfterReply = () => {
+      for (const step of afterReply.splice(0)) later(Promise.resolve().then(step));
+    };
+    const deferEmit = (...a: Parameters<typeof emitEvent>) => {
+      afterReply.push(async () => {
         await emitEvent(...a);
-      })());
+      });
+    };
     // The number owners write to while Aiden is being set up. Never hardcoded.
     // Read alongside the first account lookup; awaited before it's needed.
     const onboardingRead = Promise.resolve(
@@ -1156,6 +1252,28 @@ export async function processWebhookPayload(
               ? new Date(tsSeconds * 1000).toISOString()
               : new Date().toISOString();
 
+            // The contact's flow run and the inbound triggers, read while the
+            // message is stored so the flow's turn (after opt-out and
+            // cash-on-delivery) doesn't wait on them. Read-only; only used for
+            // a message that turns out to be new.
+            const isCustomerNumber = !(onboardingAccountId && accountId === onboardingAccountId);
+            const flowLook =
+              isCustomerNumber && !isSystemEcho && type !== "order"
+                ? import("@/lib/flow-engine.server").then(({ peekInboundRun }) =>
+                    peekInboundRun(supabase, {
+                      organizationId: orgId,
+                      contactId: contact.id as string,
+                      conversationId: conversation.id as string,
+                      whatsappAccountId: accountId,
+                    }),
+                  )
+                : null;
+            flowLook?.catch(() => {});
+            const triggersLook = flowLook
+              ? import("@/lib/flow-triggers.server").then(({ readInboundTriggers }) => readInboundTriggers(supabase, orgId))
+              : null;
+            triggersLook?.catch(() => {});
+
             const { data: inserted, error: insertError } = await supabase
               .from("messages")
               .upsert(
@@ -1180,6 +1298,7 @@ export async function processWebhookPayload(
             // A failed write is not a duplicate: only an empty, error-free
             // result means Meta sent this message before.
             if (insertError) throw new Error(`message insert failed: ${insertError.message}`);
+            const storedAt = Date.now();
 
             clock.mark("message_stored");
 
@@ -1200,7 +1319,7 @@ export async function processWebhookPayload(
                   .eq("id", conversation.id),
               );
               later(windowReady);
-              later(applyCampaignReply(supabase, orgId, contact.id));
+              afterReply.push(() => applyCampaignReply(supabase, orgId, contact.id));
               deferEmit(supabase, "message.received", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
@@ -1213,26 +1332,6 @@ export async function processWebhookPayload(
 
             connection = await connectionP;
             accessToken = connection?.accessToken ?? "";
-
-            // The contact's flow run, read now so the flow's turn (after opt-out
-            // and cash-on-delivery) doesn't wait on it. Read-only.
-            const isCustomerNumber = !(onboardingAccountId && accountId === onboardingAccountId);
-            const flowLook =
-              isCustomerNumber && !isSystemEcho && inserted && inserted.length > 0 && type !== "order"
-                ? import("@/lib/flow-engine.server").then(({ peekInboundRun }) =>
-                    peekInboundRun(supabase, {
-                      organizationId: orgId,
-                      contactId: contact.id as string,
-                      conversationId: conversation.id as string,
-                      whatsappAccountId: accountId,
-                    }),
-                  )
-                : null;
-            flowLook?.catch(() => {});
-            const triggersLook = flowLook
-              ? import("@/lib/flow-triggers.server").then(({ readInboundTriggers }) => readInboundTriggers(supabase, orgId))
-              : null;
-            triggersLook?.catch(() => {});
 
             // A filled-in WhatsApp form is handled before any other routing, on
             // every number (the onboarding number included): it is saved as a
@@ -1411,7 +1510,7 @@ export async function processWebhookPayload(
             if (inserted && inserted.length > 0 && !isSystemEcho) {
               const { recordOfferTap } = await import("@/lib/offers.server");
               const interactiveTap = msg["interactive"] as AnyRecord | undefined;
-              later(recordOfferTap(supabase, {
+              afterReply.push(() => recordOfferTap(supabase, {
                 organizationId: orgId,
                 contactId: contact.id as string,
                 body,
@@ -1524,6 +1623,7 @@ export async function processWebhookPayload(
                         messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
                         occurredAt,
                         body: agentBody,
+                        storedAt,
                       });
                 if (!burst.proceed) {
                   route = "ai_superseded";
@@ -1545,6 +1645,7 @@ export async function processWebhookPayload(
                   alreadyHandled,
                   optedOut,
                   ...(prepared ? { prepared } : {}),
+                  later,
                 });
                 clock.mark("ai_done");
 
@@ -1583,6 +1684,7 @@ export async function processWebhookPayload(
             failures.push(failureNote(`message ${String(msg["id"] ?? "")}`, err));
           } finally {
             clock.log(String(msg["id"] ?? ""), route);
+            startAfterReply();
           }
         }
 
@@ -1699,6 +1801,7 @@ export async function processWebhookPayload(
       }
     }
 
+    startAfterReply();
     await Promise.all(deferred);
     await finishEvent(supabase, eventId, failures, routedAny ? null : "unknown_phone_number_id");
   } catch (err) {

@@ -326,7 +326,7 @@ export async function agentAnswer(
   conversationId: string,
   question: string,
   /** Read ahead by the inbound webhook while it waited out a burst (speed). */
-  prepared?: { agentId: string | null; prelude: Promise<RunPrelude> },
+  prepared?: { agentId: string | null; prelude: Promise<RunPrelude>; deferUsage?: (work: Promise<unknown>) => void },
 ): Promise<RunResult> {
   // The chat, its earlier failures, the agent and the brief are independent
   // reads (the brief only needs the chat's language to finish its wording).
@@ -374,6 +374,7 @@ export async function agentAnswer(
     useKnowledge: true,
     useTools: true,
     ...(prepared ? { prelude: prepared.prelude } : {}),
+    ...(prepared?.deferUsage ? { deferUsage: prepared.deferUsage } : {}),
   });
 }
 
