@@ -44,9 +44,26 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
+/**
+ * Lets a route keep working after it has answered (the WhatsApp webhook acks
+ * Meta first, then processes). nitro normally sets request.waitUntil itself;
+ * this only fills it in from the worker's ctx when it is missing.
+ */
+function exposeWaitUntil(request: Request, ctx: unknown) {
+  const req = request as Request & { waitUntil?: unknown };
+  const c = ctx as { waitUntil?: (p: Promise<unknown>) => void } | null | undefined;
+  if (typeof req.waitUntil === "function" || typeof c?.waitUntil !== "function") return;
+  try {
+    req.waitUntil = c.waitUntil.bind(c);
+  } catch {
+    // a frozen Request just keeps the runtime's own behaviour
+  }
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      exposeWaitUntil(request, ctx);
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

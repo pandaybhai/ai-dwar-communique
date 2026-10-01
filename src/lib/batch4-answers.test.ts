@@ -271,13 +271,14 @@ describe("end to end through executeRun (the live replies, replayed)", () => {
     expect(String(toolMsg?.content)).toContain("our rings start at ₹16,805");
   });
 
-  it("(4) unchanged: a real 'let me confirm' about an unsourced policy stays (and is filed for the owner)", async () => {
+  it("(4) a 'let me confirm' about an unsourced policy is still filed for the owner (Batch 5: the line itself only stays on a hand-over)", async () => {
     stubModel(
       'Our rings start at ₹16,805. Delivery time — let me confirm that for you.\n{"needs_owner": true}',
       { toolCall: { category: "rings" } },
     );
     const out = await run(runWorld({ chunks: [] }), "rings? and how long is delivery?", true);
-    expect(out.output).toMatch(/let me confirm that for you/i);
+    expect(out.output).toBe("Our rings start at ₹16,805.");
+    expect(out.status).toBe("ok");
     expect(out.needsOwner).toBe(true);
   });
 
@@ -286,5 +287,8 @@ describe("end to end through executeRun (the live replies, replayed)", () => {
     const out = await run(runWorld({ chunks: ["Petal Band — handcrafted ring."] }), "price of petal band?", false);
     expect(out.output).toBe("Let me confirm that for you.");
     expect(out.needsOwner).toBe(true);
+    // Batch 5: nothing but the promise → the run hands over, so the promise is kept.
+    expect(out.status).toBe("escalated");
+    expect(out.escalationSignal).toBe("unsupported_number");
   });
 });

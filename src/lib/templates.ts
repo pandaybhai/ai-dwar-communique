@@ -88,6 +88,24 @@ export function renderTemplate(text: string, values: Record<number, string>): st
   return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_m, n) => values[Number(n)] || `{{${n}}}`);
 }
 
+/**
+ * The body values a template was sent with, keyed like its placeholders
+ * ("1", "2", … or the parameter name), read from the send's components.
+ */
+export function templateParamsFromComponents(
+  components: Array<Record<string, unknown>> | null | undefined,
+): Record<string, string> {
+  const body = (components ?? []).find((c) => String(c["type"] ?? "").toLowerCase() === "body");
+  const params = Array.isArray(body?.["parameters"]) ? (body["parameters"] as Array<Record<string, unknown>>) : [];
+  const out: Record<string, string> = {};
+  params.forEach((p, i) => {
+    if (typeof p["text"] !== "string") return;
+    const name = typeof p["parameter_name"] === "string" && p["parameter_name"] ? p["parameter_name"] : String(i + 1);
+    out[name] = p["text"];
+  });
+  return out;
+}
+
 export function statusBadgeClass(status: string): string {
   switch (status.toUpperCase()) {
     case "APPROVED":

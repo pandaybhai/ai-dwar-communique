@@ -10,6 +10,26 @@ export type ServiceTextResult = {
 };
 
 /**
+ * Free-form messages are only allowed inside the 24-hour service window. A
+ * caller that read the window itself in this same request (the flow engine,
+ * answering a message the customer just sent) passes `windowOpen: true` and
+ * saves a round trip; anything else is read here, as it always was.
+ */
+async function serviceWindowOpen(
+  supabase: SupabaseClient,
+  args: { organizationId: string; conversationId: string; windowOpen?: boolean },
+): Promise<boolean> {
+  if (args.windowOpen === true) return true;
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("last_customer_message_at")
+    .eq("id", args.conversationId)
+    .eq("organization_id", args.organizationId)
+    .maybeSingle();
+  return isServiceWindowOpen(conversation);
+}
+
+/**
  * Sends a single plain-text message through one specific connected number.
  * Used for opt-out / opt-in confirmations and automation replies — always a
  * session message, never a template. The caller resolves the number and its
@@ -24,6 +44,8 @@ export async function sendServiceText(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** The caller read the 24-hour window in this request; true skips the re-read. */
+    windowOpen?: boolean;
     body: string;
     /** Stored on the message row, e.g. { kind: "stranger_greeting" }. */
     metadata?: Record<string, unknown>;
@@ -32,13 +54,7 @@ export async function sendServiceText(
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
 
   // Free-form messages are only allowed inside the 24-hour service window.
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("last_customer_message_at")
-    .eq("id", args.conversationId)
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!isServiceWindowOpen(conversation)) {
+  if (!(await serviceWindowOpen(supabase, args))) {
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
@@ -112,6 +128,8 @@ export async function sendServiceButtons(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** The caller read the 24-hour window in this request; true skips the re-read. */
+    windowOpen?: boolean;
     body: string;
     buttons: Array<{ id: string; title: string }>;
     imageUrl?: string | null;
@@ -126,13 +144,7 @@ export async function sendServiceButtons(
     }
   }
 
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("last_customer_message_at")
-    .eq("id", args.conversationId)
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!isServiceWindowOpen(conversation)) {
+  if (!(await serviceWindowOpen(supabase, args))) {
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
@@ -223,13 +235,7 @@ export async function sendServiceImage(
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
 
   // Free-form messages are only allowed inside the 24-hour service window.
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("last_customer_message_at")
-    .eq("id", args.conversationId)
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!isServiceWindowOpen(conversation)) {
+  if (!(await serviceWindowOpen(supabase, args))) {
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
@@ -307,13 +313,7 @@ export async function sendServiceDocument(
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
 
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("last_customer_message_at")
-    .eq("id", args.conversationId)
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!isServiceWindowOpen(conversation)) {
+  if (!(await serviceWindowOpen(supabase, args))) {
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
@@ -388,6 +388,8 @@ export async function sendServiceList(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** The caller read the 24-hour window in this request; true skips the re-read. */
+    windowOpen?: boolean;
     body: string;
     buttonText: string;
     rows: Array<{ id: string; title: string; description?: string }>;
@@ -402,13 +404,7 @@ export async function sendServiceList(
   }));
   if (rows.length === 0) return { ok: false, messageId: null, error: "no_rows" };
 
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("last_customer_message_at")
-    .eq("id", args.conversationId)
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!isServiceWindowOpen(conversation)) {
+  if (!(await serviceWindowOpen(supabase, args))) {
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
@@ -495,13 +491,7 @@ export async function sendServiceProducts(
   const items = args.items.slice(0, 30);
   if (items.length === 0) return { ok: false, messageId: null, error: "no_items" };
 
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("last_customer_message_at")
-    .eq("id", args.conversationId)
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!isServiceWindowOpen(conversation)) {
+  if (!(await serviceWindowOpen(supabase, args))) {
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
@@ -607,6 +597,8 @@ export async function sendServiceRich(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** The caller read the 24-hour window in this request; true skips the re-read. */
+    windowOpen?: boolean;
     kind: "cta_url" | "location_request" | "location" | "contact";
     body?: string;
     buttonText?: string;
@@ -619,13 +611,7 @@ export async function sendServiceRich(
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("last_customer_message_at")
-    .eq("id", args.conversationId)
-    .eq("organization_id", args.organizationId)
-    .maybeSingle();
-  if (!isServiceWindowOpen(conversation)) return { ok: false, messageId: null, error: "service_window_closed" };
+  if (!(await serviceWindowOpen(supabase, args))) return { ok: false, messageId: null, error: "service_window_closed" };
 
   let payload: AnyRecord;
   let recorded: string;

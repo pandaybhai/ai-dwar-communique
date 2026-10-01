@@ -31,6 +31,8 @@ export type AgentInboundArgs = {
   optedOut: boolean;
   /** prepareAgentInbound(), started by the webhook before the burst wait. */
   prepared?: Promise<AgentPrep>;
+  /** Bookkeeping the reply doesn't wait on; the webhook awaits it before marking the event processed. */
+  later?: (work: Promise<unknown>) => void;
 };
 
 /** The workspace's agent set-up, read once per inbound message. */
@@ -147,7 +149,9 @@ export async function runAgentOnInbound(
     common,
     args.conversationId,
     question,
-    prep.prelude ? { agentId: agentRow?.id ?? null, prelude: prep.prelude } : undefined,
+    prep.prelude
+      ? { agentId: agentRow?.id ?? null, prelude: prep.prelude, ...(args.later ? { deferUsage: args.later } : {}) }
+      : undefined,
   );
   mark("answer");
   const timing = () =>

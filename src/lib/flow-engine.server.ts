@@ -303,7 +303,7 @@ export async function handleInboundForRuns(
       // Graph, claim and the run's surroundings are independent reads/writes:
       // one round trip instead of three. The env read is discarded if the
       // claim is lost.
-      const env = loadEnv(supabase, { ...run, conversation_id: conversationId });
+      const env = loadEnv(supabase, { ...run, conversation_id: conversationId }, args.connection);
       env.catch(() => {});
       const [graph, { data: claimed }] = await Promise.all([
         loadGraph(supabase, run.version_id),
@@ -538,37 +538,45 @@ async function connectionFor(supabase: SupabaseClient, organizationId: string, a
 async function loadEnv(
   supabase: SupabaseClient,
   run: Pick<Run, "organization_id" | "flow_id" | "contact_id" | "conversation_id" | "variables">,
+  /** The number the message came in on, already resolved by the webhook. */
+  known?: Conn,
 ): Promise<Env> {
   const { loadSendSettings } = await import("@/lib/flows.server");
-  const [{ data: contact, error: contactError }, { data: tagRows }, { data: conversation }, { data: flow }, settings] = await Promise.all([
-    supabase.from("contacts").select("name, phone, wa_id, attributes, opt_in_status").eq("id", run.contact_id).maybeSingle(),
-    supabase.from("contact_tags").select("tags(name)").eq("contact_id", run.contact_id),
+  // The flow's own number is only needed when the run has no conversation to
+  // take it from; a Worker has six connections, so it isn't read otherwise.
+  const flowNumber = () =>
+    Promise.resolve(supabase.from("flows").select("whatsapp_account_id").eq("id", run.flow_id).maybeSingle()).then(
+      ({ data }) => (data as { whatsapp_account_id?: string | null } | null)?.whatsapp_account_id ?? null,
+    );
+  const [{ data: contact, error: contactError }, { data: conversation }, settings] = await Promise.all([
+    // Tags come embedded with the contact: one request, not two.
+    supabase.from("contacts").select("name, phone, wa_id, attributes, opt_in_status, contact_tags(tags(name))").eq("id", run.contact_id).maybeSingle(),
     run.conversation_id
       ? supabase.from("conversations").select("last_customer_message_at, whatsapp_account_id").eq("id", run.conversation_id).maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase.from("flows").select("whatsapp_account_id").eq("id", run.flow_id).maybeSingle(),
     loadSendSettings(supabase, run.organization_id),
   ]);
   // Without the contact we can't know opt-out or attributes — fail, never guess.
   if (contactError || !contact) throw new Error(contactError ? `contact_read_failed:${contactError.message}` : "contact_missing");
-  const c = contact as {
+  const c = contact as unknown as {
     name: string | null;
     phone: string;
     wa_id: string | null;
     attributes: Record<string, unknown> | null;
     opt_in_status: string | null;
+    contact_tags?: Array<{ tags: { name: string } | null }> | null;
   };
   const conv = conversation as { last_customer_message_at?: string | null; whatsapp_account_id?: string | null } | null;
-  const connection = await connectionFor(
-    supabase,
-    run.organization_id,
-    conv?.whatsapp_account_id ?? (flow as { whatsapp_account_id?: string | null } | null)?.whatsapp_account_id ?? null,
-  );
+  const accountId = conv?.whatsapp_account_id ?? (await flowNumber());
+  const connection =
+    known && accountId && known.accountId === accountId && known.organizationId === run.organization_id
+      ? known
+      : await connectionFor(supabase, run.organization_id, accountId);
   return {
     ctx: {
       vars: run.variables ?? {},
       contact: { name: c.name, phone: c.phone, attributes: c.attributes ?? {} },
-      tags: ((tagRows ?? []) as unknown as Array<{ tags: { name: string } | null }>).map((t) => t.tags?.name ?? "").filter(Boolean),
+      tags: (c.contact_tags ?? []).map((t) => t.tags?.name ?? "").filter(Boolean),
       now: new Date(),
       timezone: settings.timezone,
     },
@@ -751,6 +759,7 @@ async function advanceInner(
             conversationId: run.conversation_id!,
             to: env.to,
             body: interpolate(nudgeText, { ...env.ctx, vars }),
+            windowOpen: env.windowOpen,
             metadata: { kind: "flow_v2", run_id: run.id, node_id: node.id },
           });
         }
@@ -838,6 +847,7 @@ async function advanceInner(
             conversationId: run.conversation_id!,
             to: env.to,
             body: interpolate(String(d["text"] ?? ""), env.ctx),
+            windowOpen: env.windowOpen,
             metadata: { kind: "flow_v2", run_id: run.id, node_id: node.id },
           });
           if (!res.ok) {
@@ -1095,6 +1105,7 @@ async function advanceInner(
             conversationId: run.conversation_id!,
             to: env.to,
             body: `${interpolate(String(d["text"] ?? "Here's your payment link:"), { ...env.ctx, vars })}\n${link.url}`,
+            windowOpen: env.windowOpen,
             metadata: { kind: "flow_v2", run_id: run.id, node_id: node.id },
           });
           if (!res.ok) {
@@ -1225,6 +1236,7 @@ async function sendPrompt(
     conversationId: run.conversation_id!,
     to: env.to,
     body: text,
+    windowOpen: env.windowOpen,
   };
   if (node.type === "location_request") {
     const r = await svc.sendServiceRich(supabase, { ...base, kind: "location_request" });
