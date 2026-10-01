@@ -5,6 +5,7 @@ const startRun = vi.fn(async (_db: unknown, _a: { contactId: string; flowId: str
 vi.mock("@/lib/flow-engine.server", () => ({
   startRun: (db: unknown, a: { contactId: string; flowId: string }) => startRun(db, a),
   flowsV2Enabled: async () => true,
+  readPublishedVersion: async () => null,
 }));
 
 import { dispatchInboundTriggers, dispatchNoReply, dispatchTagAdded, keywordMatches } from "./flow-triggers.server";

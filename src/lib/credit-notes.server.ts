@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { round2 } from "@/lib/billing";
+import { gstFromGross, round2, toPaise } from "@/lib/billing";
 import { TAX_RATE, loadSupplier } from "@/lib/invoices.server";
 
 /**
@@ -19,6 +19,72 @@ export type CreditNoteInput = {
   refundToWallet: boolean;
   actorId: string;
 };
+
+type CreditNotePlan = {
+  taxable: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  rate: number;
+};
+
+/**
+ * The money on a credit note, worked out in whole paise:
+ *   - the credit can never take the invoice past its total (not even by a
+ *     paisa) once earlier issued notes are counted;
+ *   - the tax treatment mirrors the invoice (intra → CGST+SGST, inter → IGST,
+ *     export → nil), and CGST + SGST always equals the tax backed out;
+ *   - the note that credits the last of the invoice reverses exactly what is
+ *     left of the invoice's taxable value and each tax head, so the notes
+ *     together undo the invoice to the paisa.
+ */
+export function planCreditNote(
+  invoice: Record<string, unknown>,
+  priorNotes: Record<string, unknown>[],
+  amount: number,
+): CreditNotePlan | { error: string } {
+  const sumP = (key: string) =>
+    priorNotes.reduce((s, r) => s + toPaise(Number(r[key] ?? 0)), 0);
+  const amountP = toPaise(amount);
+  const totalP = toPaise(Number(invoice["total"] ?? 0));
+  const remainingP = totalP - sumP("amount");
+  if (amountP > remainingP) {
+    return {
+      error: `That's more than the invoice: ₹${round2(Math.max(remainingP, 0) / 100)} is the most you can still credit.`,
+    };
+  }
+
+  const isExport = invoice["is_export"] === true;
+  const isInterstate = invoice["is_interstate"] === true;
+  const rate = isExport ? 0 : TAX_RATE;
+
+  if (amountP === remainingP) {
+    const left = {
+      taxable: toPaise(Number(invoice["taxable_value"] ?? 0)) - sumP("taxable_value"),
+      cgst: toPaise(Number(invoice["cgst"] ?? 0)) - sumP("cgst"),
+      sgst: toPaise(Number(invoice["sgst"] ?? 0)) - sumP("sgst"),
+      igst: toPaise(Number(invoice["igst"] ?? 0)) - sumP("igst"),
+    };
+    const consistent =
+      left.taxable >= 0 &&
+      left.cgst >= 0 &&
+      left.sgst >= 0 &&
+      left.igst >= 0 &&
+      left.taxable + left.cgst + left.sgst + left.igst === amountP;
+    if (consistent) {
+      return {
+        taxable: left.taxable / 100,
+        cgst: left.cgst / 100,
+        sgst: left.sgst / 100,
+        igst: left.igst / 100,
+        rate,
+      };
+    }
+  }
+
+  const split = gstFromGross(amountP / 100, { isExport, isInterstate, ratePercent: rate });
+  return { taxable: split.taxable, cgst: split.cgst, sgst: split.sgst, igst: split.igst, rate };
+}
 
 export async function issueCreditNote(
   supabase: SupabaseClient,
@@ -50,28 +116,16 @@ export async function issueCreditNote(
 
   const { data: priorNotes } = await supabase
     .from("credit_notes")
-    .select("amount")
+    .select("amount, taxable_value, cgst, sgst, igst")
     .eq("invoice_id", input.invoiceId)
     .eq("status", "issued");
-  const alreadyCredited = round2(
-    ((priorNotes ?? []) as { amount: number }[]).reduce((s, r) => s + Number(r.amount ?? 0), 0),
+  const plan = planCreditNote(
+    invoice as Record<string, unknown>,
+    (priorNotes ?? []) as Record<string, unknown>[],
+    amount,
   );
-  const total = round2(Number(invoice["total"] ?? 0));
-  if (amount + alreadyCredited > total + 0.01) {
-    return {
-      error: `That's more than the invoice: ₹${round2(total - alreadyCredited)} is the most you can still credit.`,
-    };
-  }
-
-  // Same tax treatment as the invoice: back the gross out into taxable + tax.
-  const isExport = invoice["is_export"] === true;
-  const isInterstate = invoice["is_interstate"] === true;
-  const rate = isExport ? 0 : TAX_RATE;
-  const taxable = round2(amount / (1 + rate / 100));
-  const tax = round2(amount - taxable);
-  const cgst = isExport || isInterstate ? 0 : round2(tax / 2);
-  const sgst = isExport || isInterstate ? 0 : round2(tax - cgst);
-  const igst = isInterstate && !isExport ? tax : 0;
+  if ("error" in plan) return plan;
+  const { taxable, cgst, sgst, igst, rate } = plan;
 
   const today = new Date().toISOString().slice(0, 10);
   const { data: numberData, error: numberError } = await supabase.rpc("next_invoice_number", {

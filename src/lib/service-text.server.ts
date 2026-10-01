@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isServiceWindowOpen } from "@/lib/service-window";
+import { timed, type ReplyTimer } from "@/lib/reply-timing";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -29,6 +30,74 @@ async function serviceWindowOpen(
   return isServiceWindowOpen(conversation);
 }
 
+/** One WhatsApp send API call; timed when the caller passed a reply timer. */
+async function sendGraph(
+  args: { phoneNumberId: string; accessToken: string; timer?: ReplyTimer },
+  payload: AnyRecord,
+): Promise<{ res: Response; json: AnyRecord }> {
+  args.timer?.mark("send_start");
+  return timed(args.timer, "send_api", async () => {
+    const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    let json: AnyRecord = {};
+    try {
+      json = (await res.json()) as AnyRecord;
+    } catch {
+      json = {};
+    }
+    return { res, json };
+  });
+}
+
+/**
+ * After the send: the message row and the conversation's last_message_at.
+ * Independent writes, so they go out together (one round trip, not two).
+ */
+async function recordOutbound(
+  supabase: SupabaseClient,
+  args: { organizationId: string; conversationId: string; timer?: ReplyTimer },
+  res: Response,
+  json: AnyRecord,
+  fields: AnyRecord,
+): Promise<ServiceTextResult> {
+  const metaMessageId =
+    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
+  const nowIso = new Date().toISOString();
+  const [{ data: inserted }] = await timed(args.timer, "post_send", () =>
+    Promise.all([
+      supabase
+        .from("messages")
+        .insert({
+          organization_id: args.organizationId,
+          conversation_id: args.conversationId,
+          meta_message_id: metaMessageId,
+          direction: "outbound",
+          ...fields,
+          status: res.ok ? "pending" : "failed",
+          status_updated_at: nowIso,
+          ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
+        })
+        .select("id")
+        .maybeSingle(),
+      supabase
+        .from("conversations")
+        .update({ last_message_at: nowIso })
+        .eq("id", args.conversationId),
+    ]),
+  );
+  return {
+    ok: res.ok,
+    messageId: (inserted?.id as string | undefined) ?? null,
+    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
+  };
+}
+
 /**
  * Sends a single plain-text message through one specific connected number.
  * Used for opt-out / opt-in confirmations and automation replies — always a
@@ -44,6 +113,8 @@ export async function sendServiceText(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** Records the send API call and post-send writes (webhook_events.timing). */
+    timer?: ReplyTimer;
     /** The caller read the 24-hour window in this request; true skips the re-read. */
     windowOpen?: boolean;
     body: string;
@@ -58,61 +129,17 @@ export async function sendServiceText(
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
-
-  const res = await fetch(
-    `https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${args.accessToken}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: args.to,
-        type: "text",
-        text: { body: args.body },
-      }),
-    },
-  );
-
-  let json: AnyRecord = {};
-  try {
-    json = (await res.json()) as AnyRecord;
-  } catch {
-    json = {};
-  }
-  const metaMessageId =
-    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
-  const nowIso = new Date().toISOString();
-
-  const { data: inserted } = await supabase
-    .from("messages")
-    .insert({
-      organization_id: args.organizationId,
-      conversation_id: args.conversationId,
-      meta_message_id: metaMessageId,
-      direction: "outbound",
-      type: "text",
-      body: args.body,
-      ...(args.metadata ? { metadata: args.metadata } : {}),
-      status: res.ok ? "pending" : "failed",
-      status_updated_at: nowIso,
-      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
-    })
-    .select("id")
-    .maybeSingle();
-
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: nowIso })
-    .eq("id", args.conversationId);
-
-  return {
-    ok: res.ok,
-    messageId: (inserted?.id as string | undefined) ?? null,
-    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
-  };
+  const { res, json } = await sendGraph(args, {
+    messaging_product: "whatsapp",
+    to: args.to,
+    type: "text",
+    text: { body: args.body },
+  });
+  return recordOutbound(supabase, args, res, json, {
+    type: "text",
+    body: args.body,
+    ...(args.metadata ? { metadata: args.metadata } : {}),
+  });
 }
 
 /**
@@ -128,6 +155,8 @@ export async function sendServiceButtons(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** Records the send API call and post-send writes (webhook_events.timing). */
+    timer?: ReplyTimer;
     /** The caller read the 24-hour window in this request; true skips the re-read. */
     windowOpen?: boolean;
     body: string;
@@ -148,72 +177,29 @@ export async function sendServiceButtons(
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
-  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${args.accessToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: args.to,
-      type: "interactive",
-      interactive: {
-        type: "button",
-        ...(args.imageUrl
-          ? { header: { type: "image", image: { link: args.imageUrl } } }
-          : {}),
-        body: { text: args.body },
-        action: {
-          buttons: buttons.map((b) => ({
-            type: "reply",
-            reply: { id: b.id, title: b.title },
-          })),
-        },
+  const { res, json } = await sendGraph(args, {
+    messaging_product: "whatsapp",
+    to: args.to,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      ...(args.imageUrl ? { header: { type: "image", image: { link: args.imageUrl } } } : {}),
+      body: { text: args.body },
+      action: {
+        buttons: buttons.map((b) => ({
+          type: "reply",
+          reply: { id: b.id, title: b.title },
+        })),
       },
-    }),
+    },
   });
-
-  let json: AnyRecord = {};
-  try {
-    json = (await res.json()) as AnyRecord;
-  } catch {
-    json = {};
-  }
-  const metaMessageId =
-    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
-  const nowIso = new Date().toISOString();
   const recordedBody = `${args.body} [buttons: ${buttons.map((b) => b.title).join(", ")}]`;
-
-  const { data: inserted } = await supabase
-    .from("messages")
-    .insert({
-      organization_id: args.organizationId,
-      conversation_id: args.conversationId,
-      meta_message_id: metaMessageId,
-      direction: "outbound",
-      type: args.imageUrl ? "image" : "text",
-      body: recordedBody,
-      ...(args.imageUrl ? { media_url: args.imageUrl, media_mime: "image" } : {}),
-      status: res.ok ? "pending" : "failed",
-      status_updated_at: nowIso,
-      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
-    })
-    .select("id")
-    .maybeSingle();
-
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: nowIso })
-    .eq("id", args.conversationId);
-
-  return {
-    ok: res.ok,
-    messageId: (inserted?.id as string | undefined) ?? null,
-    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
-  };
+  return recordOutbound(supabase, args, res, json, {
+    type: args.imageUrl ? "image" : "text",
+    body: recordedBody,
+    ...(args.imageUrl ? { media_url: args.imageUrl, media_mime: "image" } : {}),
+  });
 }
-
 
 /**
  * Sends one product picture as a session image message, with the product name
@@ -228,6 +214,8 @@ export async function sendServiceImage(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** Records the send API call and post-send writes (webhook_events.timing). */
+    timer?: ReplyTimer;
     imageUrl: string;
     caption: string;
   },
@@ -239,58 +227,18 @@ export async function sendServiceImage(
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
-  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${args.accessToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: args.to,
-      type: "image",
-      image: { link: args.imageUrl, caption: args.caption.slice(0, 1024) },
-    }),
+  const { res, json } = await sendGraph(args, {
+    messaging_product: "whatsapp",
+    to: args.to,
+    type: "image",
+    image: { link: args.imageUrl, caption: args.caption.slice(0, 1024) },
   });
-
-  let json: AnyRecord = {};
-  try {
-    json = (await res.json()) as AnyRecord;
-  } catch {
-    json = {};
-  }
-  const metaMessageId =
-    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
-  const nowIso = new Date().toISOString();
-
-  const { data: inserted } = await supabase
-    .from("messages")
-    .insert({
-      organization_id: args.organizationId,
-      conversation_id: args.conversationId,
-      meta_message_id: metaMessageId,
-      direction: "outbound",
-      type: "image",
-      body: args.caption,
-      media_url: args.imageUrl,
-      media_mime: "image",
-      status: res.ok ? "pending" : "failed",
-      status_updated_at: nowIso,
-      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
-    })
-    .select("id")
-    .maybeSingle();
-
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: nowIso })
-    .eq("id", args.conversationId);
-
-  return {
-    ok: res.ok,
-    messageId: (inserted?.id as string | undefined) ?? null,
-    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
-  };
+  return recordOutbound(supabase, args, res, json, {
+    type: "image",
+    body: args.caption,
+    media_url: args.imageUrl,
+    media_mime: "image",
+  });
 }
 
 /**
@@ -306,6 +254,8 @@ export async function sendServiceDocument(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** Records the send API call and post-send writes (webhook_events.timing). */
+    timer?: ReplyTimer;
     documentUrl: string;
     fileName: string;
     caption: string;
@@ -317,62 +267,22 @@ export async function sendServiceDocument(
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
-  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${args.accessToken}`,
-      "content-type": "application/json",
+  const { res, json } = await sendGraph(args, {
+    messaging_product: "whatsapp",
+    to: args.to,
+    type: "document",
+    document: {
+      link: args.documentUrl,
+      filename: args.fileName,
+      caption: args.caption.slice(0, 1024),
     },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: args.to,
-      type: "document",
-      document: {
-        link: args.documentUrl,
-        filename: args.fileName,
-        caption: args.caption.slice(0, 1024),
-      },
-    }),
   });
-
-  let json: AnyRecord = {};
-  try {
-    json = (await res.json()) as AnyRecord;
-  } catch {
-    json = {};
-  }
-  const metaMessageId =
-    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
-  const nowIso = new Date().toISOString();
-
-  const { data: inserted } = await supabase
-    .from("messages")
-    .insert({
-      organization_id: args.organizationId,
-      conversation_id: args.conversationId,
-      meta_message_id: metaMessageId,
-      direction: "outbound",
-      type: "document",
-      body: args.caption,
-      media_url: args.documentUrl,
-      media_mime: "application/pdf",
-      status: res.ok ? "pending" : "failed",
-      status_updated_at: nowIso,
-      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
-    })
-    .select("id")
-    .maybeSingle();
-
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: nowIso })
-    .eq("id", args.conversationId);
-
-  return {
-    ok: res.ok,
-    messageId: (inserted?.id as string | undefined) ?? null,
-    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
-  };
+  return recordOutbound(supabase, args, res, json, {
+    type: "document",
+    body: args.caption,
+    media_url: args.documentUrl,
+    media_mime: "application/pdf",
+  });
 }
 
 /**
@@ -388,6 +298,8 @@ export async function sendServiceList(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** Records the send API call and post-send writes (webhook_events.timing). */
+    timer?: ReplyTimer;
     /** The caller read the 24-hour window in this request; true skips the re-read. */
     windowOpen?: boolean;
     body: string;
@@ -408,63 +320,23 @@ export async function sendServiceList(
     return { ok: false, messageId: null, error: "service_window_closed" };
   }
 
-  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${args.accessToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: args.to,
-      type: "interactive",
-      interactive: {
-        type: "list",
-        body: { text: args.body },
-        action: {
-          button: args.buttonText.slice(0, 20),
-          sections: [{ title: "Choose one", rows }],
-        },
+  const { res, json } = await sendGraph(args, {
+    messaging_product: "whatsapp",
+    to: args.to,
+    type: "interactive",
+    interactive: {
+      type: "list",
+      body: { text: args.body },
+      action: {
+        button: args.buttonText.slice(0, 20),
+        sections: [{ title: "Choose one", rows }],
       },
-    }),
+    },
   });
-
-  let json: AnyRecord = {};
-  try {
-    json = (await res.json()) as AnyRecord;
-  } catch {
-    json = {};
-  }
-  const metaMessageId =
-    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
-  const nowIso = new Date().toISOString();
-
-  const { data: inserted } = await supabase
-    .from("messages")
-    .insert({
-      organization_id: args.organizationId,
-      conversation_id: args.conversationId,
-      meta_message_id: metaMessageId,
-      direction: "outbound",
-      type: "text",
-      body: `${args.body} [list: ${rows.map((r) => r.title).join(", ")}]`,
-      status: res.ok ? "pending" : "failed",
-      status_updated_at: nowIso,
-      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
-    })
-    .select("id")
-    .maybeSingle();
-
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: nowIso })
-    .eq("id", args.conversationId);
-
-  return {
-    ok: res.ok,
-    messageId: (inserted?.id as string | undefined) ?? null,
-    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
-  };
+  return recordOutbound(supabase, args, res, json, {
+    type: "text",
+    body: `${args.body} [list: ${rows.map((r) => r.title).join(", ")}]`,
+  });
 }
 
 /**
@@ -481,6 +353,8 @@ export async function sendServiceProducts(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** Records the send API call and post-send writes (webhook_events.timing). */
+    timer?: ReplyTimer;
     catalogId: string;
     header: string;
     body: string;
@@ -531,56 +405,16 @@ export async function sendServiceProducts(
     };
   }
 
-  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${args.accessToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: args.to,
-      type: "interactive",
-      interactive,
-    }),
+  const { res, json } = await sendGraph(args, {
+    messaging_product: "whatsapp",
+    to: args.to,
+    type: "interactive",
+    interactive,
   });
-
-  let json: AnyRecord = {};
-  try {
-    json = (await res.json()) as AnyRecord;
-  } catch {
-    json = {};
-  }
-  const metaMessageId =
-    ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
-  const nowIso = new Date().toISOString();
-
-  const { data: inserted } = await supabase
-    .from("messages")
-    .insert({
-      organization_id: args.organizationId,
-      conversation_id: args.conversationId,
-      meta_message_id: metaMessageId,
-      direction: "outbound",
-      type: "text",
-      body: `${args.body} [catalogue: ${items.map((i) => i.title).join(", ")}]`,
-      status: res.ok ? "pending" : "failed",
-      status_updated_at: nowIso,
-      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
-    })
-    .select("id")
-    .maybeSingle();
-
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: nowIso })
-    .eq("id", args.conversationId);
-
-  return {
-    ok: res.ok,
-    messageId: (inserted?.id as string | undefined) ?? null,
-    error: res.ok ? null : JSON.stringify(json).slice(0, 300),
-  };
+  return recordOutbound(supabase, args, res, json, {
+    type: "text",
+    body: `${args.body} [catalogue: ${items.map((i) => i.title).join(", ")}]`,
+  });
 }
 
 /**
@@ -597,6 +431,8 @@ export async function sendServiceRich(
     accessToken: string;
     conversationId: string;
     to: string;
+    /** Records the send API call and post-send writes (webhook_events.timing). */
+    timer?: ReplyTimer;
     /** The caller read the 24-hour window in this request; true skips the re-read. */
     windowOpen?: boolean;
     kind: "cta_url" | "location_request" | "location" | "contact";
@@ -611,7 +447,8 @@ export async function sendServiceRich(
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
-  if (!(await serviceWindowOpen(supabase, args))) return { ok: false, messageId: null, error: "service_window_closed" };
+  if (!(await serviceWindowOpen(supabase, args)))
+    return { ok: false, messageId: null, error: "service_window_closed" };
 
   let payload: AnyRecord;
   let recorded: string;
@@ -621,59 +458,59 @@ export async function sendServiceRich(
       interactive: {
         type: "cta_url",
         body: { text: args.body ?? "" },
-        action: { name: "cta_url", parameters: { display_text: (args.buttonText ?? "Open").slice(0, 20), url: args.url ?? "" } },
+        action: {
+          name: "cta_url",
+          parameters: {
+            display_text: (args.buttonText ?? "Open").slice(0, 20),
+            url: args.url ?? "",
+          },
+        },
       },
     };
     recorded = `${args.body ?? ""} [link: ${args.buttonText ?? "Open"} → ${args.url ?? ""}]`;
   } else if (args.kind === "location_request") {
     payload = {
       type: "interactive",
-      interactive: { type: "location_request_message", body: { text: args.body ?? "" }, action: { name: "send_location" } },
+      interactive: {
+        type: "location_request_message",
+        body: { text: args.body ?? "" },
+        action: { name: "send_location" },
+      },
     };
     recorded = `${args.body ?? ""} [asks for location]`;
   } else if (args.kind === "location") {
     payload = {
       type: "location",
-      location: { latitude: args.latitude, longitude: args.longitude, ...(args.name ? { name: args.name } : {}), ...(args.address ? { address: args.address } : {}) },
+      location: {
+        latitude: args.latitude,
+        longitude: args.longitude,
+        ...(args.name ? { name: args.name } : {}),
+        ...(args.address ? { address: args.address } : {}),
+      },
     };
-    recorded = `[location] ${args.name ?? ""} ${args.address ?? ""} (${args.latitude}, ${args.longitude})`.trim();
+    recorded =
+      `[location] ${args.name ?? ""} ${args.address ?? ""} (${args.latitude}, ${args.longitude})`.trim();
   } else {
     const digits = (args.phone ?? "").replace(/\D/g, "");
     payload = {
       type: "contacts",
-      contacts: [{ name: { formatted_name: args.name ?? "", first_name: args.name ?? "" }, phones: [{ phone: `+${digits}`, wa_id: digits, type: "WORK" }] }],
+      contacts: [
+        {
+          name: { formatted_name: args.name ?? "", first_name: args.name ?? "" },
+          phones: [{ phone: `+${digits}`, wa_id: digits, type: "WORK" }],
+        },
+      ],
     };
     recorded = `[contact] ${args.name ?? ""} +${digits}`;
   }
 
-  const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${args.accessToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", to: args.to, ...payload }),
+  const { res, json } = await sendGraph(args, {
+    messaging_product: "whatsapp",
+    to: args.to,
+    ...payload,
   });
-  let json: AnyRecord = {};
-  try {
-    json = (await res.json()) as AnyRecord;
-  } catch {
-    json = {};
-  }
-  const metaMessageId = ((json["messages"] as Array<AnyRecord> | undefined)?.[0]?.["id"] as string) ?? null;
-  const nowIso = new Date().toISOString();
-  const { data: inserted } = await supabase
-    .from("messages")
-    .insert({
-      organization_id: args.organizationId,
-      conversation_id: args.conversationId,
-      meta_message_id: metaMessageId,
-      direction: "outbound",
-      type: "text",
-      body: recorded,
-      status: res.ok ? "pending" : "failed",
-      status_updated_at: nowIso,
-      ...(res.ok ? {} : { error_detail: JSON.stringify(json).slice(0, 300) }),
-    })
-    .select("id")
-    .maybeSingle();
-  await supabase.from("conversations").update({ last_message_at: nowIso }).eq("id", args.conversationId);
-  return { ok: res.ok, messageId: (inserted?.id as string | undefined) ?? null, error: res.ok ? null : JSON.stringify(json).slice(0, 300) };
+  return recordOutbound(supabase, args, res, json, {
+    type: "text",
+    body: recorded,
+  });
 }

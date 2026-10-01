@@ -47,6 +47,8 @@ export function latencyWorld(opts: {
    * outgoing connections open per request; the rest queue behind them.
    */
   maxConcurrent?: number;
+  /** Answers a query before the defaults below (undefined = use the default). */
+  override?: (op: FakeOp) => Reply | undefined;
 }) {
   const t0 = { at: 0 };
   const graphSends: Array<{ at: number; body: Record<string, unknown> }> = [];
@@ -76,9 +78,14 @@ export function latencyWorld(opts: {
     updated_at: new Date().toISOString(),
   };
   const reply = (op: FakeOp): Reply | undefined => {
+    const own = opts.override?.(op);
+    if (own !== undefined) return own;
     const t = op.table;
     if (t === "platform_settings") return { data: { onboarding_whatsapp_account_id: null }, error: null };
-    if (t === "whatsapp_accounts") return { data: account, error: null };
+    // The workspace's markers and opt-out words come embedded (Batch 6); a
+    // reader that didn't ask for them ignores the extra field.
+    if (t === "whatsapp_accounts")
+      return { data: { ...account, organizations: { lead_source_markers: [], opt_out_keywords: [] } }, error: null };
     if (t === "whatsapp_credentials") return { data: { access_token: "tok" }, error: null };
     if (t === "contacts" && op.kind === "upsert")
       return { data: { id: "c1", opt_in_status: "unknown", created_at: "2020-01-01T00:00:00Z" }, error: null };

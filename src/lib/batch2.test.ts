@@ -25,7 +25,9 @@ vi.mock("@/lib/events.server", () => {
   return { emitEvent: mocks.emitEvent, recordUsage: noop };
 });
 vi.mock("@/lib/whatsapp-numbers.server", () => ({
+  ACCOUNT_COLUMNS: "id, organization_id, waba_id",
   getWhatsAppConnection: async () => ({ connection: null }),
+  connectionForAccount: async () => ({ connection: null }),
 }));
 vi.mock("@/lib/service-text.server", () => ({ sendServiceText: async () => ({ ok: true }) }));
 

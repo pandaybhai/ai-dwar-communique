@@ -10,7 +10,13 @@ import {
   qualityLabel,
 } from "@/lib/opt-out";
 import { sendServiceText } from "@/lib/service-text.server";
-import { getWhatsAppConnection } from "@/lib/whatsapp-numbers.server";
+import {
+  ACCOUNT_COLUMNS,
+  connectionForAccount,
+  getWhatsAppConnection,
+  type AccountRow,
+} from "@/lib/whatsapp-numbers.server";
+import { replyTimer, type MessageTiming, type ReplyTimer } from "@/lib/reply-timing";
 import {
   evaluateAutomations,
   loadAutomations,
@@ -48,14 +54,20 @@ export async function coalesceBurst(
      * instead of being added in front of it.
      */
     storedAt?: number;
+    /** Called the moment the wait is over, before the burst is read (the caller's own reads start then). */
+    afterWait?: () => void;
   },
 ): Promise<{ proceed: boolean; body: string | null }> {
   const text = (args.body ?? "").trim();
-  if (!text || !args.messageId) return { proceed: true, body: args.body };
+  if (!text || !args.messageId) {
+    args.afterWait?.();
+    return { proceed: true, body: args.body };
+  }
 
   const elapsed = args.storedAt ? Math.max(0, Date.now() - args.storedAt) : 0;
   const wait = BURST_WINDOW_MS - elapsed;
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  args.afterWait?.();
 
   const windowStart = new Date(
     new Date(args.occurredAt).getTime() - BURST_WINDOW_MS,
@@ -163,6 +175,7 @@ export async function acceptWebhook(
     .insert({ provider: "meta", payload, signature_valid: args.signatureValid })
     .select("id, received_at")
     .single();
+  const storeMs = Date.now() - started;
 
   let background = false;
   if (args.signatureValid && event) {
@@ -172,6 +185,7 @@ export async function acceptWebhook(
       event.id as string,
       payload,
       (event.received_at as string | null) ?? null,
+      { storeMs },
     ).catch(() => {
       // processWebhookPayload records its own errors
     });
@@ -455,19 +469,19 @@ type KeywordSets = { optOut: string[]; optIn: string[] };
 type WaConnection = Awaited<ReturnType<typeof getWhatsAppConnection>>["connection"];
 
 /**
- * Per-message stage timings, logged once as one JSON line so a slow reply can
- * be read straight from the logs: ms since this payload started processing,
- * plus ms since Meta's webhook was stored (received_at) when known.
+ * Per-message stage timings: logged as one JSON line, and stored on
+ * webhook_events.timing with the update that closes the event (see
+ * reply-timing.ts for the stages).
  */
-function stageClock(eventId: string, receivedAt: string | null) {
-  const start = Date.now();
-  const lag = receivedAt ? Math.max(0, start - Date.parse(receivedAt)) : null;
-  const stages: Record<string, number> = {};
+function stageClock(eventId: string, receivedAt: string | null, sink: MessageTiming[]) {
+  const lag = receivedAt ? Math.max(0, Date.now() - Date.parse(receivedAt)) : null;
+  const { timer, result } = replyTimer(lag);
   return {
-    mark(stage: string) {
-      if (!(stage in stages)) stages[stage] = Date.now() - start;
-    },
+    timer,
+    mark: timer.mark,
     log(messageId: string, route: string) {
+      const timing = result(messageId, route);
+      sink.push(timing);
       console.log(
         JSON.stringify({
           scope: "webhook_timing",
@@ -475,15 +489,15 @@ function stageClock(eventId: string, receivedAt: string | null) {
           message_id: messageId,
           route,
           received_lag_ms: lag,
-          stages,
-          total_ms: Date.now() - start,
+          stages: timing.marks,
+          ms: timing.ms,
+          total_ms: timing.total_ms,
         }),
       );
     },
   };
 }
 
-/** Built-in keywords plus the organization's own configured list. */
 /**
  * Flows v2 inbound hook: a run waiting on this conversation takes the reply;
  * otherwise inbound triggers may start a run. true → the flow owns this
@@ -505,8 +519,20 @@ async function flowsV2Inbound(
     /** The inbound triggers, read at the same time (speed). */
     triggers?: Promise<{ data: unknown[] | null }>;
     connection?: WaConnection;
+    /** The window write; the flow sends nothing before it lands. */
+    ready?: Promise<unknown>;
+    /** When the customer sent the message (it opens the 24-hour window). */
+    inboundAt?: string;
+    timer?: ReplyTimer;
   },
 ): Promise<boolean> {
+  const extras = {
+    conversation: { id: args.conversationId, whatsappAccountId: args.accountId },
+    ...(args.ready ? { ready: args.ready } : {}),
+    ...(args.inboundAt ? { inboundAt: args.inboundAt } : {}),
+    ...(args.timer ? { timer: args.timer } : {}),
+    ...(args.connection ? { connection: args.connection } : {}),
+  };
   const { msg } = args;
   try {
     const { handleInboundForRuns } = await import("@/lib/flow-engine.server");
@@ -525,7 +551,7 @@ async function flowsV2Inbound(
       body: args.body || (loc ? `${loc["latitude"]},${loc["longitude"]}` : ""),
       replyId,
       ...(args.firstLook ? { firstLook: args.firstLook as NonNullable<Parameters<typeof handleInboundForRuns>[1]["firstLook"]> } : {}),
-      ...(args.connection ? { connection: args.connection } : {}),
+      ...extras,
     });
     if (taken.consumed) return true;
 
@@ -553,6 +579,7 @@ async function flowsV2Inbound(
       onlyAccountId: args.onlyAccountId,
       skipKeywords: Boolean(taken.runActive),
       ...(args.triggers ? { triggers: args.triggers } : {}),
+      extras,
     });
     return started.started;
   } catch (error) {
@@ -572,8 +599,14 @@ async function loadOptKeywords(
     .from("opt_out_keywords")
     .select("keyword, action")
     .eq("organization_id", organizationId);
-  const rows = (data as Array<{ keyword: string; action: string }> | null) ?? [];
-  const sets: KeywordSets = {
+  const sets = keywordSets((data as Array<{ keyword: string; action: string }> | null) ?? []);
+  cache.set(organizationId, sets);
+  return sets;
+}
+
+/** Built-in keywords plus the organization's own configured list. */
+function keywordSets(rows: Array<{ keyword: string; action: string }>): KeywordSets {
+  return {
     optOut: [
       ...DEFAULT_OPT_OUT_KEYWORDS,
       ...rows.filter((r) => r.action === "opt_out").map((r) => r.keyword),
@@ -583,8 +616,6 @@ async function loadOptKeywords(
       ...rows.filter((r) => r.action === "opt_in").map((r) => r.keyword),
     ],
   };
-  cache.set(organizationId, sets);
-  return sets;
 }
 
 // Plain session sends live in service-text.server.ts so the automations
@@ -838,6 +869,65 @@ async function customerMediaToText(
   };
 }
 
+type InboundAccount = Pick<AccountRow, "id" | "organization_id" | "waba_id"> & Partial<AccountRow>;
+
+/**
+ * The number a message came in on, by phone_number_id — with the workspace's
+ * lead-source markers and opt-out words embedded, so the three reads the
+ * message needs before its contact is written are one round trip. If the
+ * embedded read fails for any reason, the plain read runs as before and the
+ * markers / words are read separately as they always were.
+ */
+async function readInboundAccount(
+  supabase: SupabaseClient,
+  phoneNumberId: string,
+  /** Only for a payload carrying messages (status callbacks don't need them). */
+  caches: { markerCache: Map<string, MarkerRow[]>; keywordCache: Map<string, KeywordSets> } | null,
+): Promise<InboundAccount | null> {
+  if (!caches) {
+    const { data } = await supabase
+      .from("whatsapp_accounts")
+      .select("id, organization_id, waba_id")
+      .eq("phone_number_id", phoneNumberId)
+      .maybeSingle();
+    return (data as InboundAccount | null) ?? null;
+  }
+  const { markerCache, keywordCache } = caches;
+  const embedded = await supabase
+    .from("whatsapp_accounts")
+    .select(
+      `${ACCOUNT_COLUMNS}, organizations(lead_source_markers(marker, source, created_at), opt_out_keywords(keyword, action))`,
+    )
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  if (!embedded.error) {
+    const row = embedded.data as (AccountRow & { organizations?: unknown }) | null;
+    if (!row) return null;
+    const org = row.organizations as {
+      lead_source_markers?: Array<MarkerRow & { created_at?: string | null }> | null;
+      opt_out_keywords?: Array<{ keyword: string; action: string }> | null;
+    } | null;
+    if (org && Array.isArray(org.lead_source_markers)) {
+      const rows = [...org.lead_source_markers]
+        .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")))
+        .map((m) => ({ marker: m.marker, source: m.source }))
+        .filter((r) => r.marker && r.source);
+      markerCache.set(row.organization_id, rows);
+    }
+    if (org && Array.isArray(org.opt_out_keywords)) {
+      keywordCache.set(row.organization_id, keywordSets(org.opt_out_keywords));
+    }
+    const { organizations: _embedded, ...account } = row;
+    return account;
+  }
+  const { data } = await supabase
+    .from("whatsapp_accounts")
+    .select("id, organization_id, waba_id")
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  return (data as InboundAccount | null) ?? null;
+}
+
 /**
  * Process one webhook payload. Routes each change to an organization via
  * phone_number_id, writes inbound messages and applies monotonic status updates.
@@ -848,7 +938,32 @@ export async function processWebhookPayload(
   payload: AnyRecord,
   /** webhook_events.received_at, for the timing log. */
   receivedAt: string | null = null,
+  /** How long storing the event took (acceptWebhook), for webhook_events.timing. */
+  meta: { storeMs?: number } = {},
 ): Promise<void> {
+  const processingStart = Date.now();
+  const timings: MessageTiming[] = [];
+  const timingRecord = (): Record<string, unknown> | null =>
+    timings.length
+      ? {
+          v: 1,
+          store_ms: meta.storeMs ?? null,
+          received_lag_ms: receivedAt ? Math.max(0, processingStart - Date.parse(receivedAt)) : null,
+          total_ms: Date.now() - processingStart,
+          messages: timings,
+        }
+      : null;
+  // The modules a reply may need are loaded while the first reads are in
+  // flight, instead of one by one on the critical path (cold isolate).
+  for (const load of [
+    () => import("@/lib/flow-engine.server"),
+    () => import("@/lib/flow-triggers.server"),
+    () => import("@/lib/flows.server"),
+    () => import("@/lib/feature-flags.server"),
+    () => import("@/lib/cod.server"),
+  ]) {
+    load().catch(() => {});
+  }
   try {
     const entries = (payload["entry"] as AnyRecord[] | undefined) ?? [];
     const markerCache = new Map<string, MarkerRow[]>();
@@ -1060,11 +1175,8 @@ export async function processWebhookPayload(
         const phoneNumberId = metadata["phone_number_id"] as string | undefined;
         if (!phoneNumberId) continue;
 
-        const { data: account } = await supabase
-          .from("whatsapp_accounts")
-          .select("id, organization_id, waba_id")
-          .eq("phone_number_id", phoneNumberId)
-          .maybeSingle();
+        const hasMessages = ((value["messages"] as unknown[] | undefined) ?? []).length > 0;
+        const account = await readInboundAccount(supabase, phoneNumberId, hasMessages ? { markerCache, keywordCache } : null);
 
         onboardingAccountId = await onboardingRead;
 
@@ -1074,6 +1186,13 @@ export async function processWebhookPayload(
         if (!account) continue;
         routedAny = true;
         const orgId = account.organization_id as string;
+        // The Flows v2 flag is read now, beside the contact write, so the
+        // flow's turn finds it ready (it is shared and reused for 30 s).
+        if (hasMessages) {
+          import("@/lib/flow-engine.server")
+            .then(({ flowsV2Enabled }) => flowsV2Enabled(supabase, orgId))
+            .catch(() => {});
+        }
         const accountId = account.id as string;
         const accountWabaId = (account.waba_id as string | null) ?? null;
 
@@ -1082,7 +1201,12 @@ export async function processWebhookPayload(
         // are written; awaited before anything that could send.
         let connectionRead = connectionCache.get(accountId);
         if (!connectionRead) {
-          connectionRead = getWhatsAppConnection(supabase, orgId, accountId).then(
+          // The number's row is already in hand: only its token is read.
+          connectionRead = (
+            account.phone_number_id !== undefined
+              ? connectionForAccount(supabase, account as AccountRow)
+              : getWhatsAppConnection(supabase, orgId, accountId)
+          ).then(
             (r) => r.connection,
             () => null,
           );
@@ -1095,7 +1219,7 @@ export async function processWebhookPayload(
         // ---- inbound messages ----
         const contactsMeta = (value["contacts"] as AnyRecord[] | undefined) ?? [];
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
-          const clock = stageClock(eventId, receivedAt);
+          const clock = stageClock(eventId, receivedAt, timings);
           let route = "none";
           try {
             const waId = toWaId(msg["from"] as string | undefined);
@@ -1141,7 +1265,7 @@ export async function processWebhookPayload(
               parsed.body,
               await loadMarkers(supabase, orgId, markerCache),
             );
-            clock.mark("markers");
+            clock.mark("account");
 
             // The open conversation is looked up by the sender's phone at the
             // same time as the contact is written (one round trip, not two).
@@ -1244,6 +1368,7 @@ export async function processWebhookPayload(
               }
             }
             if (!conversation) continue;
+            clock.mark("conversation");
 
             const { type, body } = parsed;
             const media = mediaOf(msg);
@@ -1252,10 +1377,36 @@ export async function processWebhookPayload(
               ? new Date(tsSeconds * 1000).toISOString()
               : new Date().toISOString();
 
-            // The contact's flow run and the inbound triggers, read while the
-            // message is stored so the flow's turn (after opt-out and
-            // cash-on-delivery) doesn't wait on them. Read-only; only used for
-            // a message that turns out to be new.
+            // The message write goes out first; the reads below share the
+            // Worker's six connections with it.
+            const messageWrite = Promise.resolve(
+              supabase
+                .from("messages")
+                .upsert(
+                  {
+                    organization_id: orgId,
+                    conversation_id: conversation.id,
+                    meta_message_id: String(msg["id"] ?? ""),
+                    direction: "inbound",
+                    type,
+                    body,
+                    media_url: media.media_url,
+                    media_mime: media.media_mime,
+                    status: "delivered",
+                    status_updated_at: occurredAt,
+                    created_at: occurredAt,
+                    detected_language: detectLanguage(body),
+
+                  },
+                  { onConflict: "meta_message_id", ignoreDuplicates: true },
+                )
+                .select("id"),
+            );
+
+            // The contact's flow run, the inbound triggers and the
+            // cash-on-delivery lookups, read while the message is stored so
+            // the guards and the flow's turn don't wait on them. Read-only;
+            // only used for a message that turns out to be new.
             const isCustomerNumber = !(onboardingAccountId && accountId === onboardingAccountId);
             const flowLook =
               isCustomerNumber && !isSystemEcho && type !== "order"
@@ -1273,28 +1424,23 @@ export async function processWebhookPayload(
               ? import("@/lib/flow-triggers.server").then(({ readInboundTriggers }) => readInboundTriggers(supabase, orgId))
               : null;
             triggersLook?.catch(() => {});
+            const tapPayload =
+              ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
+              (((msg["interactive"] as AnyRecord | undefined)?.["button_reply"] as AnyRecord | undefined)?.["id"] as
+                | string
+                | undefined) ??
+              null;
+            const contextMetaId =
+              ((msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined) ?? null;
+            const codReads =
+              isCustomerNumber && !isSystemEcho && type !== "order" && (body || tapPayload)
+                ? import("@/lib/cod.server").then(({ prefetchCodReads }) =>
+                    prefetchCodReads(supabase, { organizationId: orgId, contactId: contact.id as string, contextMetaId }),
+                  )
+                : null;
+            codReads?.catch(() => {});
 
-            const { data: inserted, error: insertError } = await supabase
-              .from("messages")
-              .upsert(
-                {
-                  organization_id: orgId,
-                  conversation_id: conversation.id,
-                  meta_message_id: String(msg["id"] ?? ""),
-                  direction: "inbound",
-                  type,
-                  body,
-                  media_url: media.media_url,
-                  media_mime: media.media_mime,
-                  status: "delivered",
-                  status_updated_at: occurredAt,
-                  created_at: occurredAt,
-                  detected_language: detectLanguage(body),
-
-                },
-                { onConflict: "meta_message_id", ignoreDuplicates: true },
-              )
-              .select("id");
+            const { data: inserted, error: insertError } = await messageWrite;
             // A failed write is not a duplicate: only an empty, error-free
             // result means Meta sent this message before.
             if (insertError) throw new Error(`message insert failed: ${insertError.message}`);
@@ -1481,36 +1627,26 @@ export async function processWebhookPayload(
             let codHandled = false;
             if (!isSystemEcho && !optKeywordMatched) {
               const { applyCodReply } = await import("@/lib/cod.server");
-              const interactive = msg["interactive"] as AnyRecord | undefined;
-              const buttonReply = interactive?.["button_reply"] as AnyRecord | undefined;
-              const payload =
-                ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
-                (buttonReply?.["id"] as string | undefined) ??
-                null;
-              const contextMetaId =
-                ((msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined) ?? null;
               // COD only records the answer (it never sends), so it runs
-              // alongside the window write.
-              [codHandled] = await Promise.all([
-                applyCodReply(supabase, {
-                  organizationId: orgId,
-                  contactId: contact.id as string,
-                  contextMetaId,
-                  body,
-                  payload,
-                }),
-                windowReady,
-              ]);
+              // alongside the window write; its first reads were started
+              // with the message write.
+              const reads = codReads ? await codReads : undefined;
+              codHandled = await applyCodReply(supabase, {
+                organizationId: orgId,
+                contactId: contact.id as string,
+                contextMetaId,
+                body,
+                payload: tapPayload,
+                ...(reads ? { reads } : {}),
+              });
             }
-            await windowReady;
             clock.mark("guards_done");
 
             // A customer who sends the coupon code back has taken the offer.
             // Only new messages count, so a redelivered webhook can't inflate it.
             if (inserted && inserted.length > 0 && !isSystemEcho) {
-              const { recordOfferTap } = await import("@/lib/offers.server");
               const interactiveTap = msg["interactive"] as AnyRecord | undefined;
-              afterReply.push(() => recordOfferTap(supabase, {
+              afterReply.push(async () => (await import("@/lib/offers.server")).recordOfferTap(supabase, {
                 organizationId: orgId,
                 contactId: contact.id as string,
                 body,
@@ -1541,13 +1677,23 @@ export async function processWebhookPayload(
                 ...(flowLook ? { firstLook: flowLook } : {}),
                 ...(triggersLook ? { triggers: triggersLook } : {}),
                 connection,
+                // The flow may claim/start its run while the window write
+                // lands; it sends nothing before it has.
+                ready: windowReady,
+                inboundAt: occurredAt,
+                timer: clock.timer,
               });
               clock.mark("flows");
               if (taken) {
                 route = "flow";
+                // Already landed when the flow sent; a failed write still
+                // fails this message (retryable), as before.
+                await windowReady;
                 continue;
               }
             }
+            // Everything below may send: the window write lands first.
+            await windowReady;
 
             // Automations run last, and never for a message that was an opt-out /
             // opt-in keyword or a cash-on-delivery answer. Inbound only — our own
@@ -1610,8 +1756,12 @@ export async function processWebhookPayload(
 
                 // The agent's set-up and its answer run's reads start now, so
                 // they are done by the time the burst wait below is over.
-                const { runAgentOnInbound, prepareAgentInbound } = await import("@/lib/ai-agent.server");
-                const prepared = alreadyHandled || optedOut ? undefined : prepareAgentInbound(supabase, orgId);
+                const { runAgentOnInbound, prepareAgentInbound, readAgentGate } = await import("@/lib/ai-agent.server");
+                const prepared =
+                  alreadyHandled || optedOut ? undefined : prepareAgentInbound(supabase, orgId, conversation.id as string);
+                // The agent's gate (owner, hand-over, window) is read the
+                // moment the wait ends, alongside the burst read.
+                let gate: ReturnType<typeof readAgentGate> | undefined;
 
                 // Two texts typed a breath apart are one question: wait out the
                 // burst, answer once, and let the overtaken delivery stand down.
@@ -1624,6 +1774,9 @@ export async function processWebhookPayload(
                         occurredAt,
                         body: agentBody,
                         storedAt,
+                        afterWait: () => {
+                          gate = readAgentGate(supabase, conversation.id as string);
+                        },
                       });
                 if (!burst.proceed) {
                   route = "ai_superseded";
@@ -1645,6 +1798,7 @@ export async function processWebhookPayload(
                   alreadyHandled,
                   optedOut,
                   ...(prepared ? { prepared } : {}),
+                  ...(gate ? { gate } : {}),
                   later,
                 });
                 clock.mark("ai_done");
@@ -1803,9 +1957,9 @@ export async function processWebhookPayload(
 
     startAfterReply();
     await Promise.all(deferred);
-    await finishEvent(supabase, eventId, failures, routedAny ? null : "unknown_phone_number_id");
+    await finishEvent(supabase, eventId, failures, routedAny ? null : "unknown_phone_number_id", timingRecord());
   } catch (err) {
-    await finishEvent(supabase, eventId, [failureNote("event", err)], null);
+    await finishEvent(supabase, eventId, [failureNote("event", err)], null, timingRecord());
   }
 }
 
@@ -1833,12 +1987,11 @@ export async function finishEvent(
   eventId: string,
   failures: string[],
   cleanError: string | null,
+  /** Per-stage timings, stored on webhook_events.timing when that column exists. */
+  timing: Record<string, unknown> | null = null,
 ): Promise<void> {
   if (failures.length === 0) {
-    await supabase
-      .from("webhook_events")
-      .update({ processed_at: new Date().toISOString(), error: cleanError })
-      .eq("id", eventId);
+    await updateEvent(supabase, eventId, { processed_at: new Date().toISOString(), error: cleanError }, timing);
     return;
   }
   const { data: prior } = await supabase
@@ -1858,16 +2011,52 @@ export async function finishEvent(
       detail: detail.slice(0, 500),
     }),
   );
-  await supabase
-    .from("webhook_events")
-    .update({
+  await updateEvent(
+    supabase,
+    eventId,
+    {
       processed_at: givenUp ? new Date().toISOString() : null,
       error: (givenUp ? `gave_up:${attempt} ${detail}` : `retry:${attempt} ${detail}`).slice(
         0,
         500,
       ),
-    })
-    .eq("id", eventId);
+    },
+    timing,
+  );
+}
+
+// Set once an update has shown webhook_events.timing doesn't exist yet
+// (migration 20261011_webhook_event_timing.sql not applied); looked for
+// again every 10 minutes so applying it needs no deploy.
+let timingColumnMissingUntil = 0;
+
+/** True when PostgREST/Postgres says the column isn't there. */
+function missingTimingColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  return (code === "PGRST204" || code === "42703") && /timing/i.test(String(error.message ?? ""));
+}
+
+/**
+ * Closes the event with its timings in the same write. Before the timing
+ * column exists the write is repeated without it, so closing an event never
+ * depends on the migration.
+ */
+async function updateEvent(
+  supabase: SupabaseClient,
+  eventId: string,
+  patch: Record<string, unknown>,
+  timing: Record<string, unknown> | null,
+): Promise<void> {
+  if (timing && Date.now() >= timingColumnMissingUntil) {
+    const { error } = await supabase
+      .from("webhook_events")
+      .update({ ...patch, timing })
+      .eq("id", eventId);
+    if (!missingTimingColumn(error)) return;
+    timingColumnMissingUntil = Date.now() + 10 * 60_000;
+  }
+  await supabase.from("webhook_events").update(patch).eq("id", eventId);
 }
 
 /**

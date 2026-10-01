@@ -16,6 +16,7 @@ import {
   type ValidationKind,
 } from "@/lib/flow-graph";
 import { isServiceWindowOpen } from "@/lib/service-window";
+import type { ReplyTimer } from "@/lib/reply-timing";
 
 /**
  * Flows v2 engine. Durable: a run's whole state lives in flow_runs; waits are
@@ -42,6 +43,23 @@ type Run = {
 
 type Inbound = { body: string; replyId: string | null };
 
+/** What the webhook knows about the message a run is answering. */
+export type InboundExtras = {
+  /** Per-stage timings for webhook_events.timing. */
+  timer?: ReplyTimer;
+  /**
+   * The webhook's 24-hour-window write. The run may be claimed/started while
+   * it lands, but nothing is sent before it has.
+   */
+  ready?: Promise<unknown>;
+  /** When the customer's message was sent: it opens the 24-hour window. */
+  inboundAt?: string;
+  /** The number the message came in on, already resolved by the webhook. */
+  connection?: Conn;
+  /** The conversation the message came in on, and its number. */
+  conversation?: { id: string; whatsappAccountId: string };
+};
+
 const RUN_COLUMNS =
   "id, organization_id, flow_id, version_id, contact_id, conversation_id, current_node_id, variables, status, waiting_for, wake_at, steps, started_at";
 const DEFAULT_REPLY_TIMEOUT_MIN = 24 * 60;
@@ -60,14 +78,19 @@ async function gotoHops(supabase: SupabaseClient, runId: string): Promise<number
 
 // Flag answers are reused for 30 s so one inbound message doesn't re-read
 // the flag tables four times (speed; a switch-off still lands within 30 s).
-const flagMemo = new Map<string, { on: boolean; exp: number }>();
-export async function flowsV2Enabled(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
+// A read already in flight is shared too (the webhook warms it as soon as
+// it knows the workspace).
+const flagMemo = new Map<string, { on: Promise<boolean>; exp: number }>();
+export function flowsV2Enabled(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
   const hit = flagMemo.get(organizationId);
   if (hit && hit.exp > Date.now()) return hit.on;
-  // One source of truth for flags: the same resolver the AI tools use.
-  const { enabledFlags } = await import("@/lib/ai-tools.server");
-  const on = (await enabledFlags(supabase, organizationId)).has("flows_v2");
+  // One source of truth for flags: the same resolver the AI tools use (a
+  // small module of its own, so a flow reply never loads the AI tools).
+  const on = import("@/lib/feature-flags.server")
+    .then(({ enabledFlags }) => enabledFlags(supabase, organizationId))
+    .then((flags) => flags.has("flows_v2"));
   flagMemo.set(organizationId, { on, exp: Date.now() + 30_000 });
+  on.catch(() => flagMemo.delete(organizationId));
   return on;
 }
 
@@ -127,6 +150,23 @@ async function loadGraph(supabase: SupabaseClient, versionId: string): Promise<F
   return g && Array.isArray(g.nodes) ? g : null;
 }
 
+type PublishedVersion = { id: string; graph: FlowGraph } | null;
+
+/** The flow's published version. Exported so a trigger can start it while other checks run. */
+export function readPublishedVersion(supabase: SupabaseClient, organizationId: string, flowId: string): Promise<PublishedVersion> {
+  const read = Promise.resolve(
+    supabase
+      .from("flow_versions")
+      .select("id, graph")
+      .eq("flow_id", flowId)
+      .eq("organization_id", organizationId)
+      .eq("status", "published")
+      .maybeSingle(),
+  ).then(({ data }) => data as PublishedVersion);
+  read.catch(() => {});
+  return read;
+}
+
 /** Start a run of the flow's published version. Skips when one is already active. */
 export async function startRun(
   supabase: SupabaseClient,
@@ -139,17 +179,15 @@ export async function startRun(
     inbound?: Inbound | null;
     /** Started by a message the customer just sent (keyword, first message…). */
     fromCustomerMessage?: boolean;
+    /** readPublishedVersion() already started by the caller (speed). */
+    version?: Promise<PublishedVersion>;
+    /** See InboundExtras. */
+    extras?: InboundExtras;
   },
 ): Promise<{ runId: string | null; reason: string | null }> {
+  const version = args.version ?? readPublishedVersion(supabase, args.organizationId, args.flowId);
   if (!(await flowsV2Enabled(supabase, args.organizationId))) return { runId: null, reason: "flag_off" };
-  const { data: version } = await supabase
-    .from("flow_versions")
-    .select("id, graph")
-    .eq("flow_id", args.flowId)
-    .eq("organization_id", args.organizationId)
-    .eq("status", "published")
-    .maybeSingle();
-  const v = version as { id: string; graph: FlowGraph } | null;
+  const v = await version;
   if (!v) return { runId: null, reason: "not_published" };
   if (v.graph.meta?.legacy) return { runId: null, reason: "legacy_flow" };
   const start = startNode(v.graph);
@@ -158,13 +196,18 @@ export async function startRun(
   // The run's surroundings (contact, window, number) are read while the run
   // row is written — neither needs the other. Read-only, so a failed insert
   // just drops it.
-  const env = loadEnv(supabase, {
-    organization_id: args.organizationId,
-    flow_id: args.flowId,
-    contact_id: args.contactId,
-    conversation_id: args.conversationId ?? null,
-    variables: {},
-  });
+  const extras = args.extras ?? {};
+  const env = loadEnv(
+    supabase,
+    {
+      organization_id: args.organizationId,
+      flow_id: args.flowId,
+      contact_id: args.contactId,
+      conversation_id: args.conversationId ?? null,
+      variables: {},
+    },
+    extras,
+  );
   env.catch(() => {});
   const { data: inserted, error } = await supabase
     .from("flow_runs")
@@ -182,6 +225,7 @@ export async function startRun(
     .single();
   if (error || !inserted) return { runId: null, reason: error?.code === "23505" ? "already_running" : "insert_failed" };
   const run = inserted as Run;
+  extras.timer?.mark("flow_routed");
   // Every trigger fire is recorded (trigger, flow, contact, run) for the
   // Triggers panel and stats — written alongside the first step, not before it.
   const triggerId = String(args.trigger?.["trigger_id"] ?? "");
@@ -195,7 +239,12 @@ export async function startRun(
     eventBuffers.set(run.id, []);
     try {
       await logEvent(supabase, run, start.id, "started", args.trigger ?? {});
-      await advance(supabase, run, v.graph, null, { fromCustomer: Boolean(args.fromCustomerMessage), env });
+      await advance(supabase, run, v.graph, null, {
+        fromCustomer: Boolean(args.fromCustomerMessage),
+        env,
+        ...(extras.ready ? { ready: extras.ready } : {}),
+        ...(extras.timer ? { timer: extras.timer } : {}),
+      });
     } finally {
       await flushEvents(supabase, run.id);
     }
@@ -257,7 +306,7 @@ export async function handleInboundForRuns(
     firstLook?: Promise<Run | null | undefined>;
     /** The number the message came in on, already resolved by the webhook. */
     connection?: Conn;
-  },
+  } & InboundExtras,
 ): Promise<{ consumed: boolean; runActive?: boolean }> {
   const deadline = Date.now() + HOLD_MS;
   if (args.connection && args.whatsappAccountId) primeConnection(args.organizationId, args.whatsappAccountId, args.connection);
@@ -303,7 +352,7 @@ export async function handleInboundForRuns(
       // Graph, claim and the run's surroundings are independent reads/writes:
       // one round trip instead of three. The env read is discarded if the
       // claim is lost.
-      const env = loadEnv(supabase, { ...run, conversation_id: conversationId }, args.connection);
+      const env = loadEnv(supabase, { ...run, conversation_id: conversationId }, args);
       env.catch(() => {});
       const [graph, { data: claimed }] = await Promise.all([
         loadGraph(supabase, run.version_id),
@@ -317,6 +366,7 @@ export async function handleInboundForRuns(
           .select("id"),
       ]);
       const won = Boolean(claimed && claimed.length > 0);
+      if (won) args.timer?.mark("flow_routed");
       if (!graph) {
         // Put a claimed run back exactly as it was waiting, then release.
         if (won) {
@@ -338,7 +388,11 @@ export async function handleInboundForRuns(
           try {
             await logEvent(supabase, run, run.current_node_id, "reply", { reply_id: args.replyId, length: args.body.length, held: Boolean(heldFor) });
             // advance() reasons about the state the run was waiting in.
-            await advance(supabase, run, graph, { body: args.body, replyId: args.replyId }, { env });
+            await advance(supabase, run, graph, { body: args.body, replyId: args.replyId }, {
+              env,
+              ...(args.ready ? { ready: args.ready } : {}),
+              ...(args.timer ? { timer: args.timer } : {}),
+            });
           } finally {
             await flushEvents(supabase, run.id);
           }
@@ -515,6 +569,8 @@ type Env = {
   windowOpen: boolean;
   conn: { phoneNumberId: string; accessToken: string; accountId: string; wabaId: string } | null;
   settings: import("@/lib/flows.server").SendSettings;
+  /** Set for a run answering a webhook message; records the send timings. */
+  timer?: ReplyTimer;
 };
 
 // The number's token is reused for 60 s within this server (speed); it is
@@ -535,13 +591,37 @@ async function connectionFor(supabase: SupabaseClient, organizationId: string, a
   return connection;
 }
 
+// Quiet hours and the timezone are reused for 30 s within this server, like
+// the flags (speed: two reads less beside the claim; a change lands within 30 s).
+type SendSettings = import("@/lib/flows.server").SendSettings;
+const settingsMemo = new Map<string, { s: Promise<SendSettings>; exp: number }>();
+async function sendSettingsFor(supabase: SupabaseClient, organizationId: string): Promise<SendSettings> {
+  const hit = settingsMemo.get(organizationId);
+  if (hit && hit.exp > Date.now()) return hit.s;
+  const { loadSendSettings } = await import("@/lib/flows.server");
+  const s = loadSendSettings(supabase, organizationId);
+  settingsMemo.set(organizationId, { s, exp: Date.now() + 30_000 });
+  s.catch(() => settingsMemo.delete(organizationId));
+  return s;
+}
+
 async function loadEnv(
   supabase: SupabaseClient,
   run: Pick<Run, "organization_id" | "flow_id" | "contact_id" | "conversation_id" | "variables">,
-  /** The number the message came in on, already resolved by the webhook. */
-  known?: Conn,
+  /** What the webhook already knows about the message this run answers. */
+  extras: InboundExtras = {},
 ): Promise<Env> {
-  const { loadSendSettings } = await import("@/lib/flows.server");
+  const known = extras.connection;
+  // The customer's message being answered opens the window, even if a
+  // conversation read would predate its write.
+  const inboundAt = extras.inboundAt;
+  const inboundOpen = inboundAt ? isServiceWindowOpen({ last_customer_message_at: inboundAt }) : false;
+  // The conversation the message came in on: its number is known and the
+  // message just opened its window, so it isn't read again.
+  const knownConversation =
+    inboundOpen && extras.conversation && extras.conversation.id === run.conversation_id
+      ? { last_customer_message_at: inboundAt, whatsapp_account_id: extras.conversation.whatsappAccountId }
+      : null;
   // The flow's own number is only needed when the run has no conversation to
   // take it from; a Worker has six connections, so it isn't read otherwise.
   const flowNumber = () =>
@@ -551,10 +631,12 @@ async function loadEnv(
   const [{ data: contact, error: contactError }, { data: conversation }, settings] = await Promise.all([
     // Tags come embedded with the contact: one request, not two.
     supabase.from("contacts").select("name, phone, wa_id, attributes, opt_in_status, contact_tags(tags(name))").eq("id", run.contact_id).maybeSingle(),
-    run.conversation_id
+    knownConversation
+      ? Promise.resolve({ data: knownConversation })
+      : run.conversation_id
       ? supabase.from("conversations").select("last_customer_message_at, whatsapp_account_id").eq("id", run.conversation_id).maybeSingle()
       : Promise.resolve({ data: null }),
-    loadSendSettings(supabase, run.organization_id),
+    sendSettingsFor(supabase, run.organization_id),
   ]);
   // Without the contact we can't know opt-out or attributes — fail, never guess.
   if (contactError || !contact) throw new Error(contactError ? `contact_read_failed:${contactError.message}` : "contact_missing");
@@ -583,7 +665,7 @@ async function loadEnv(
     to: (c.wa_id ?? c.phone).replace(/\D/g, ""),
     optedOut: String(c.opt_in_status ?? "").toLowerCase() === "opted_out",
     optedIn: String(c.opt_in_status ?? "").toLowerCase() === "opted_in",
-    windowOpen: isServiceWindowOpen(conv),
+    windowOpen: isServiceWindowOpen(conv) || inboundOpen,
     conn: connection
       ? { phoneNumberId: connection.phoneNumberId, accessToken: connection.accessToken, accountId: connection.accountId, wabaId: connection.wabaId }
       : null,
@@ -601,6 +683,9 @@ type AdvanceOpts = {
   fromCustomer?: boolean;
   /** The run's surroundings, already being read alongside the claim/insert. */
   env?: Promise<Env>;
+  /** Awaited before anything is sent (the webhook's window write). */
+  ready?: Promise<unknown>;
+  timer?: ReplyTimer;
 };
 
 async function advance(
@@ -627,6 +712,12 @@ async function advanceInner(
   opts: AdvanceOpts,
 ): Promise<void> {
   const env = opts.env ? await opts.env : await loadEnv(supabase, run);
+  // Nothing below sends before the webhook's window write has landed.
+  if (opts.ready) await opts.ready;
+  if (opts.timer) {
+    env.timer = opts.timer;
+    opts.timer.mark("flow_env");
+  }
   // Variables always come from the run itself (a read started earlier may
   // predate the reply just recorded on it).
   env.ctx.vars = run.variables ?? {};
@@ -848,6 +939,7 @@ async function advanceInner(
             to: env.to,
             body: interpolate(String(d["text"] ?? ""), env.ctx),
             windowOpen: env.windowOpen,
+            ...(env.timer ? { timer: env.timer } : {}),
             metadata: { kind: "flow_v2", run_id: run.id, node_id: node.id },
           });
           if (!res.ok) {
@@ -956,6 +1048,7 @@ async function advanceInner(
             name: interpolate(String(d["name"] ?? ""), c),
             address: interpolate(String(d["address"] ?? ""), c),
             phone: String(d["phone"] ?? ""),
+            ...(env.timer ? { timer: env.timer } : {}),
           });
           if (!res.ok) {
             await finish("failed", "failed", { error: res.error ?? "send_failed" });
@@ -1237,6 +1330,7 @@ async function sendPrompt(
     to: env.to,
     body: text,
     windowOpen: env.windowOpen,
+    ...(env.timer ? { timer: env.timer } : {}),
   };
   if (node.type === "location_request") {
     const r = await svc.sendServiceRich(supabase, { ...base, kind: "location_request" });

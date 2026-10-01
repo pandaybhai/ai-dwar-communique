@@ -114,16 +114,17 @@ async function matchingContacts(
   organizationId: string,
   phone: string,
   email: string,
-): Promise<Array<{ id: string; source: string }>> {
-  const results = new Map<string, { id: string; source: string }>();
+): Promise<Array<{ id: string; source: string; source_detail: AnyRecord | null }>> {
+  type Row = { id: string; source: string; source_detail: AnyRecord | null };
+  const results = new Map<string, Row>();
 
   if (phone) {
     const { data } = await service
       .from("contacts")
-      .select("id, source")
+      .select("id, source, source_detail")
       .eq("organization_id", organizationId)
       .eq("phone", phone);
-    for (const row of (data ?? []) as Array<{ id: string; source: string }>) {
+    for (const row of (data ?? []) as Row[]) {
       results.set(row.id, row);
     }
   }
@@ -131,10 +132,10 @@ async function matchingContacts(
   if (email) {
     const { data } = await service
       .from("contacts")
-      .select("id, source")
+      .select("id, source, source_detail")
       .eq("organization_id", organizationId)
       .eq("attributes->>email", email);
-    for (const row of (data ?? []) as Array<{ id: string; source: string }>) {
+    for (const row of (data ?? []) as Row[]) {
       results.set(row.id, row);
     }
   }
@@ -204,104 +205,225 @@ export async function handleCustomersDataRequest(delivery: VerifiedDelivery): Pr
   }
 }
 
-/** customers/redact — hard-delete everything we hold about that one shopper. */
-export async function handleCustomersRedact(delivery: VerifiedDelivery): Promise<void> {
-  const { service, shopDomain, payload, eventRowId } = delivery;
+const CHUNK = 200;
+
+function chunks<T>(list: T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += CHUNK) out.push(list.slice(i, i + CHUNK));
+  return out;
+}
+
+async function ids(query: PromiseLike<{ data: unknown }>): Promise<string[]> {
+  const { data } = await query;
+  return ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
+}
+
+/**
+ * Of these contacts, the ones this shop's sync created (source 'shopify',
+ * source_detail.shop_domain = this shop) and that never chatted with the
+ * workspace. A contact the merchant added, or one with a WhatsApp
+ * conversation, is the workspace's own relationship and is never deleted.
+ */
+async function shopOnlyContacts(
+  service: SupabaseClient,
+  organizationId: string,
+  shopDomain: string,
+  candidates: Array<{ id: string; source: string; source_detail?: AnyRecord | null }>,
+): Promise<string[]> {
+  const fromShop = candidates
+    .filter((c) => c.source === "shopify" && str(c.source_detail?.["shop_domain"]) === shopDomain)
+    .map((c) => c.id);
+  const chatted = new Set<string>();
+  for (const part of chunks(fromShop)) {
+    const { data } = await service
+      .from("conversations")
+      .select("contact_id")
+      .eq("organization_id", organizationId)
+      .in("contact_id", part);
+    for (const r of (data ?? []) as Array<{ contact_id: string }>) chatted.add(r.contact_id);
+  }
+  return fromShop.filter((id) => !chatted.has(id));
+}
+
+async function deleteContacts(service: SupabaseClient, organizationId: string, contactIds: string[]): Promise<void> {
+  for (const part of chunks(contactIds)) {
+    await service.from("contact_tags").delete().in("contact_id", part);
+    await service.from("contacts").delete().eq("organization_id", organizationId).in("id", part);
+  }
+}
+
+export type CustomerRedactResult = {
+  organizationId: string;
+  integrationId: string;
+  ordersDeleted: number;
+  checkoutsDeleted: number;
+  contactsDeleted: number;
+};
+
+/**
+ * customers/redact: erase one shopper's shop-sourced data, in every
+ * workspace connected to this shop. Orders and abandoned checkouts are
+ * matched within that shop's integration by Shopify customer id, email, or a
+ * contact with the shopper's phone/email; the contact itself is deleted only
+ * when this shop's sync created it (see shopOnlyContacts). Raw webhook
+ * deliveries from this shop about this customer go too (keepEventId — the
+ * redact request itself — stays as the audit/idempotency record).
+ */
+export async function redactShopCustomer(
+  service: SupabaseClient,
+  shopDomain: string,
+  payload: AnyRecord,
+  keepEventId: string | null = null,
+): Promise<CustomerRedactResult[]> {
   const customer = (payload["customer"] as AnyRecord | undefined) ?? {};
   const externalCustomerId = str(customer["id"]);
   const phone = normalizePhone(str(customer["phone"]));
   const email = str(customer["email"]).toLowerCase();
+  const results: CustomerRedactResult[] = [];
+  if (!shopDomain || (!externalCustomerId && !phone && !email)) return results;
+
+  for (const integration of await findIntegrations(service, shopDomain)) {
+    const orgId = integration.organization_id;
+    const contacts = await matchingContacts(service, orgId, phone, email);
+    const contactIds = contacts.map((c) => c.id);
+
+    const scoped = (table: "orders" | "abandoned_checkouts") =>
+      service.from(table).select("id").eq("organization_id", orgId).eq("integration_id", integration.id);
+
+    let orderIds: string[] = [];
+    let checkoutIds: string[] = [];
+    if (externalCustomerId) {
+      orderIds.push(...(await ids(scoped("orders").eq("external_customer_id", externalCustomerId))));
+      // Checkouts carry no external_customer_id column: read it off the payload.
+      checkoutIds.push(...(await ids(scoped("abandoned_checkouts").eq("raw->customer->>id", externalCustomerId))));
+    }
+    if (email) {
+      // Case-insensitive exact match (LIKE wildcards escaped).
+      const exact = email.replace(/[\\%_]/g, "\\$&");
+      orderIds.push(...(await ids(scoped("orders").ilike("raw->>email", exact))));
+      checkoutIds.push(...(await ids(scoped("abandoned_checkouts").ilike("raw->>email", exact))));
+    }
+    if (contactIds.length) {
+      orderIds.push(...(await ids(scoped("orders").in("contact_id", contactIds))));
+      checkoutIds.push(...(await ids(scoped("abandoned_checkouts").in("contact_id", contactIds))));
+    }
+    orderIds = Array.from(new Set(orderIds));
+    checkoutIds = Array.from(new Set(checkoutIds));
+
+    for (const part of chunks(orderIds)) {
+      await service.from("order_items").delete().eq("organization_id", orgId).in("order_id", part);
+      await service.from("orders").delete().eq("organization_id", orgId).eq("integration_id", integration.id).in("id", part);
+    }
+    for (const part of chunks(checkoutIds)) {
+      await service.from("abandoned_checkouts").delete().eq("organization_id", orgId).eq("integration_id", integration.id).in("id", part);
+    }
+
+    const removable = await shopOnlyContacts(service, orgId, shopDomain, contacts);
+    await deleteContacts(service, orgId, removable);
+
+    results.push({
+      organizationId: orgId,
+      integrationId: integration.id,
+      ordersDeleted: orderIds.length,
+      checkoutsDeleted: checkoutIds.length,
+      contactsDeleted: removable.length,
+    });
+  }
+
+  // Raw deliveries from this shop that carry this shopper's details.
+  if (externalCustomerId) {
+    const events = () => {
+      const q = service.from("webhook_events").delete().eq("provider", "shopify").eq("payload->>shop_domain", shopDomain);
+      return keepEventId ? q.neq("id", keepEventId) : q;
+    };
+    await events().eq("payload->body->customer->>id", externalCustomerId);
+    await events().in("payload->>topic", ["customers/create", "customers/update"]).eq("payload->body->>id", externalCustomerId);
+  }
+  return results;
+}
+
+export type ShopRedactResult = {
+  organizationId: string;
+  integrationId: string;
+  ordersDeleted: number;
+  contactsDeleted: number;
+};
+
+/**
+ * shop/redact (48h after uninstall): everything imported from this shop, in
+ * every workspace connected to it, all scoped by that shop's integration id
+ * (or source_detail.shop_domain for contacts): orders + items, abandoned
+ * checkouts, synced products, sync jobs, the stored token, contacts this
+ * shop's sync created that never chatted, and the integration itself; then
+ * this shop's raw webhook deliveries. Data the merchant created in AiDwar
+ * (crawled/manual products, WhatsApp contacts and chats) is untouched.
+ */
+export async function redactShopData(
+  service: SupabaseClient,
+  shopDomain: string,
+  keepEventId: string | null = null,
+): Promise<ShopRedactResult[]> {
+  const results: ShopRedactResult[] = [];
+  if (!shopDomain) return results;
+
+  for (const integration of await findIntegrations(service, shopDomain)) {
+    const orgId = integration.organization_id;
+    const orderIds = await ids(
+      service.from("orders").select("id").eq("organization_id", orgId).eq("integration_id", integration.id),
+    );
+    for (const part of chunks(orderIds)) {
+      await service.from("order_items").delete().eq("organization_id", orgId).in("order_id", part);
+    }
+    await service.from("orders").delete().eq("organization_id", orgId).eq("integration_id", integration.id);
+    await service.from("abandoned_checkouts").delete().eq("organization_id", orgId).eq("integration_id", integration.id);
+    await service.from("products").delete().eq("organization_id", orgId).eq("integration_id", integration.id);
+    await service.from("integration_sync_jobs").delete().eq("organization_id", orgId).eq("integration_id", integration.id);
+    await service.from("integration_credentials").delete().eq("integration_id", integration.id);
+
+    const { data: imported } = await service
+      .from("contacts")
+      .select("id, source, source_detail")
+      .eq("organization_id", orgId)
+      .eq("source", "shopify")
+      .eq("source_detail->>shop_domain", shopDomain);
+    const removable = await shopOnlyContacts(
+      service,
+      orgId,
+      shopDomain,
+      (imported ?? []) as Array<{ id: string; source: string; source_detail: AnyRecord | null }>,
+    );
+    await deleteContacts(service, orgId, removable);
+
+    await service.from("integrations").delete().eq("organization_id", orgId).eq("id", integration.id);
+    results.push({ organizationId: orgId, integrationId: integration.id, ordersDeleted: orderIds.length, contactsDeleted: removable.length });
+  }
+
+  const events = service.from("webhook_events").delete().eq("provider", "shopify").eq("payload->>shop_domain", shopDomain);
+  await (keepEventId ? events.neq("id", keepEventId) : events);
+  return results;
+}
+
+/** customers/redact — erase that one shopper's shop-sourced data. */
+export async function handleCustomersRedact(delivery: VerifiedDelivery): Promise<void> {
+  const { service, shopDomain, payload, eventRowId } = delivery;
+  const customer = (payload["customer"] as AnyRecord | undefined) ?? {};
+  const externalCustomerId = str(customer["id"]);
 
   try {
-    for (const integration of await findIntegrations(service, shopDomain)) {
-      const orgId = integration.organization_id;
-
-      // Orders belonging to this shopper, plus their line items.
-      let orderIds: string[] = [];
-      if (externalCustomerId) {
-        const { data } = await service
-          .from("orders")
-          .select("id")
-          .eq("integration_id", integration.id)
-          .eq("external_customer_id", externalCustomerId);
-        orderIds = ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
-      }
-
-      const contacts = await matchingContacts(service, orgId, phone, email);
-      const contactIds = contacts.map((c) => c.id);
-
-      if (contactIds.length) {
-        const { data } = await service
-          .from("orders")
-          .select("id")
-          .eq("integration_id", integration.id)
-          .in("contact_id", contactIds);
-        for (const row of (data ?? []) as Array<{ id: string }>) orderIds.push(row.id);
-      }
-
-      orderIds = Array.from(new Set(orderIds));
-      if (orderIds.length) {
-        await service.from("order_items").delete().in("order_id", orderIds);
-        await service.from("orders").delete().in("id", orderIds);
-      }
-
-      // Checkouts carry no external_customer_id column, so the shopper is
-      // identified from the stored payload as well as any matched contact.
-      let checkoutIds: string[] = [];
-      if (externalCustomerId) {
-        const { data } = await service
-          .from("abandoned_checkouts")
-          .select("id")
-          .eq("integration_id", integration.id)
-          .eq("raw->customer->>id", externalCustomerId);
-        checkoutIds = ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
-      }
-      if (contactIds.length) {
-        const { data } = await service
-          .from("abandoned_checkouts")
-          .select("id")
-          .eq("integration_id", integration.id)
-          .in("contact_id", contactIds);
-        for (const row of (data ?? []) as Array<{ id: string }>) checkoutIds.push(row.id);
-      }
-      checkoutIds = Array.from(new Set(checkoutIds));
-      if (checkoutIds.length) {
-        await service.from("abandoned_checkouts").delete().in("id", checkoutIds);
-      }
-
-      if (contactIds.length) {
-
-
-        const { data: convos } = await service
-          .from("conversations")
-          .select("id")
-          .eq("organization_id", orgId)
-          .in("contact_id", contactIds);
-        const conversationIds = ((convos ?? []) as Array<{ id: string }>).map((c) => c.id);
-        if (conversationIds.length) {
-          await service.from("messages").delete().in("conversation_id", conversationIds);
-          await service.from("conversations").delete().in("id", conversationIds);
-        }
-
-        await service.from("contact_tags").delete().in("contact_id", contactIds);
-        await service.from("contacts").delete().in("id", contactIds);
-      }
-
+    for (const r of await redactShopCustomer(service, shopDomain, payload, eventRowId)) {
       await service.from("activity_log").insert({
-        organization_id: orgId,
+        organization_id: r.organizationId,
         action: "shopify_customer_redacted",
         details: {
           provider: "shopify",
           shop_domain: shopDomain,
           external_customer_id: externalCustomerId || null,
-          contacts_deleted: contactIds.length,
-          orders_deleted: orderIds.length,
-          checkouts_deleted: checkoutIds.length,
-
+          contacts_deleted: r.contactsDeleted,
+          orders_deleted: r.ordersDeleted,
+          checkouts_deleted: r.checkoutsDeleted,
         },
       });
     }
-
     await markProcessed(service, eventRowId);
   } catch (err) {
     await markProcessed(service, eventRowId, err instanceof Error ? err.message : "Failed");
@@ -313,28 +435,13 @@ export async function handleShopRedact(delivery: VerifiedDelivery): Promise<void
   const { service, shopDomain, eventRowId } = delivery;
 
   try {
-    for (const integration of await findIntegrations(service, shopDomain)) {
-      const { data: orders } = await service
-        .from("orders")
-        .select("id")
-        .eq("integration_id", integration.id);
-      const orderIds = ((orders ?? []) as Array<{ id: string }>).map((r) => r.id);
-      if (orderIds.length) await service.from("order_items").delete().in("order_id", orderIds);
-
-      await service.from("orders").delete().eq("integration_id", integration.id);
-      await service.from("abandoned_checkouts").delete().eq("integration_id", integration.id);
-      await service.from("products").delete().eq("integration_id", integration.id);
-      await service.from("integration_sync_jobs").delete().eq("integration_id", integration.id);
-      await service.from("integration_credentials").delete().eq("integration_id", integration.id);
-      await service.from("integrations").delete().eq("id", integration.id);
-
+    for (const r of await redactShopData(service, shopDomain, eventRowId)) {
       await service.from("activity_log").insert({
-        organization_id: integration.organization_id,
+        organization_id: r.organizationId,
         action: "shopify_shop_redacted",
-        details: { provider: "shopify", shop_domain: shopDomain, orders_deleted: orderIds.length },
+        details: { provider: "shopify", shop_domain: shopDomain, orders_deleted: r.ordersDeleted, contacts_deleted: r.contactsDeleted },
       });
     }
-
     await markProcessed(service, eventRowId);
   } catch (err) {
     await markProcessed(service, eventRowId, err instanceof Error ? err.message : "Failed");
