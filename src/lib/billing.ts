@@ -126,8 +126,97 @@ export function rateMoney(value: number | null | undefined, currency = "INR"): s
 
 export function withGst(amount: number): { base: number; gst: number; total: number } {
   const base = round2(amount);
-  const gst = round2(base * GST_RATE);
+  // Same integer-paise arithmetic as the invoice, so what is collected and
+  // what the invoice states can never drift apart by a paisa.
+  const gst = gstOnTaxable(base).tax;
   return { base, gst, total: round2(base + gst) };
+}
+
+/** Rupees → whole paise, rounding half away from zero (sign-symmetric). */
+export function toPaise(value: number): number {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  const abs = Math.round(Math.abs(n) * 100 + 1e-7);
+  return n < 0 ? -abs : abs;
+}
+
+const fromPaise = (paise: number): number => (paise === 0 ? 0 : paise / 100);
+
+/** Integer division of paise, half away from zero. */
+function divRound(numerator: number, denominator: number): number {
+  const abs = Math.floor((Math.abs(numerator) * 2 + denominator) / (2 * denominator));
+  return numerator < 0 ? -abs : abs;
+}
+
+export type GstSplit = {
+  taxable: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  tax: number;
+  total: number;
+};
+
+/**
+ * Splits a whole-paise tax into CGST/SGST (intra-state), IGST (inter-state)
+ * or nil (export). The halves always add up to the tax: an odd paisa goes to
+ * CGST.
+ */
+function splitTax(
+  taxableP: number,
+  taxP: number,
+  opts: { isExport?: boolean; isInterstate?: boolean },
+): GstSplit {
+  let cgstP = 0;
+  let sgstP = 0;
+  let igstP = 0;
+  if (opts.isExport) {
+    taxP = 0;
+  } else if (opts.isInterstate) {
+    igstP = taxP;
+  } else {
+    const half = Math.ceil(Math.abs(taxP) / 2);
+    cgstP = taxP < 0 ? -half : half;
+    sgstP = taxP - cgstP;
+  }
+  return {
+    taxable: fromPaise(taxableP),
+    cgst: fromPaise(cgstP),
+    sgst: fromPaise(sgstP),
+    igst: fromPaise(igstP),
+    tax: fromPaise(taxP),
+    total: fromPaise(taxableP + taxP),
+  };
+}
+
+/**
+ * GST on a tax-exclusive taxable value, in integer paise: tax is rounded once
+ * at the rate, then split so CGST + SGST equals it exactly, and
+ * taxable + tax equals the total exactly.
+ */
+export function gstOnTaxable(
+  taxable: number,
+  opts: { isExport?: boolean; isInterstate?: boolean; ratePercent?: number } = {},
+): GstSplit {
+  const rate = opts.isExport ? 0 : (opts.ratePercent ?? Math.round(GST_RATE * 100));
+  const taxableP = toPaise(taxable);
+  const taxP = divRound(taxableP * rate, 100);
+  return splitTax(taxableP, taxP, opts);
+}
+
+/**
+ * Backs GST out of a tax-inclusive gross (e.g. a refund of what the buyer
+ * paid): taxable = gross / (1 + rate), tax = gross - taxable, so the parts
+ * always add back up to the gross to the paisa.
+ */
+export function gstFromGross(
+  gross: number,
+  opts: { isExport?: boolean; isInterstate?: boolean; ratePercent?: number } = {},
+): GstSplit {
+  const rate = opts.isExport ? 0 : (opts.ratePercent ?? Math.round(GST_RATE * 100));
+  const grossP = toPaise(gross);
+  const taxableP = divRound(grossP * 100, 100 + rate);
+  return splitTax(taxableP, grossP - taxableP, opts);
 }
 
 export function round2(value: number): number {

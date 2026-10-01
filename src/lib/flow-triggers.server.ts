@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { InboundExtras } from "@/lib/flow-engine.server";
 
 /**
  * Flows v2 triggers. One matcher per kind; every match ends in startRun()
@@ -37,15 +38,21 @@ async function fire(
     conversationId?: string | null;
     detail?: Record<string, unknown>;
     fromCustomerMessage?: boolean;
+    extras?: InboundExtras;
   },
 ): Promise<{ runId: string | null; active: boolean }> {
+  // The flow's published version is read alongside the ownership check (one
+  // round trip, not two); it is only used when no teammate owns the thread.
+  const { startRun, readPublishedVersion } = await import("@/lib/flow-engine.server");
+  const version = readPublishedVersion(supabase, args.organizationId, args.trigger.flow_id);
   // A conversation a teammate has taken over is theirs: no trigger starts a
   // flow in it (the same rule the AI follows — see ai-agent.server.ts).
   if (await humanOwnsConversation(supabase, args.organizationId, args.contactId, args.conversationId ?? null)) {
     return { runId: null, active: false };
   }
-  const { startRun } = await import("@/lib/flow-engine.server");
   const { runId, reason } = await startRun(supabase, {
+    version,
+    ...(args.extras ? { extras: args.extras } : {}),
     organizationId: args.organizationId,
     flowId: args.trigger.flow_id,
     contactId: args.contactId,
@@ -144,6 +151,8 @@ export async function dispatchInboundTriggers(
     skipKeywords?: boolean;
     /** readInboundTriggers() started earlier by the webhook (speed). */
     triggers?: ReturnType<typeof readInboundTriggers>;
+    /** Timings, the window write and the message time (see InboundExtras). */
+    extras?: InboundExtras;
   },
 ): Promise<{ started: boolean; flowId?: string }> {
   const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
@@ -159,7 +168,13 @@ export async function dispatchInboundTriggers(
     return !pinned || !args.accountId || pinned === args.accountId;
   });
   const ofKind = (kind: string) => all.filter((t) => t.kind === kind);
-  const base = { fromCustomerMessage: true, organizationId: args.organizationId, contactId: args.contactId, conversationId: args.conversationId };
+  const base = {
+    fromCustomerMessage: true,
+    organizationId: args.organizationId,
+    contactId: args.contactId,
+    conversationId: args.conversationId,
+    ...(args.extras ? { extras: args.extras } : {}),
+  };
 
   if (args.isFirstMessageEver) {
     for (const t of ofKind("first_message")) {

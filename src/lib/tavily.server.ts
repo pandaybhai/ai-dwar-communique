@@ -10,6 +10,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { urlBlocked } from "@/lib/safe-fetch.server";
+
 const TAVILY_BASE = "https://api.tavily.com";
 
 export type TavilyBudget = {
@@ -95,7 +97,8 @@ export async function tavilyExtract(
   timeoutMs = 30000,
 ): Promise<{ pages: Map<string, TavilyPage>; failure: TavilyFailure | null; credits: number }> {
   const pages = new Map<string, TavilyPage>();
-  const batch = urls.slice(0, 5);
+  // Private/internal addresses are never handed to Tavily (no credit spent).
+  const batch = urls.filter((u) => !urlBlocked(u)).slice(0, 5);
   if (!batch.length) return { pages, failure: null, credits: 0 };
   if (!apiKey()) return { pages, failure: "unconfigured", credits: 0 };
   const credits = depth === "advanced" ? 2 : 1;
@@ -124,7 +127,7 @@ export async function tavilyExtract(
 
 /** Site discovery. Empty when unconfigured, capped or failed. */
 export async function tavilyMap(url: string, budget: TavilyBudget | undefined, limit = 500): Promise<string[]> {
-  if (!apiKey() || !(await reserve(budget, 1))) return [];
+  if (urlBlocked(url) || !apiKey() || !(await reserve(budget, 1))) return [];
   const { data } = await tavilyPost("/map", { url, limit, max_depth: 2 }, 45000);
   const results = data?.["results"];
   if (!Array.isArray(results)) return [];

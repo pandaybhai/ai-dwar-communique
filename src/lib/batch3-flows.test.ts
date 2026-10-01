@@ -3,8 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { fakeDb, type FakeOp } from "./test-support/fake-db";
 
 vi.mock("@/lib/ai-tools.server", () => ({ enabledFlags: async () => new Set(["flows_v2"]) }));
+vi.mock("@/lib/feature-flags.server", () => ({ enabledFlags: async () => new Set(["flows_v2"]) }));
 vi.mock("@/lib/flows.server", () => ({ loadSendSettings: async () => ({ timezone: "Asia/Kolkata" }) }));
-vi.mock("@/lib/whatsapp-numbers.server", () => ({ getWhatsAppConnection: async () => ({ connection: null }) }));
+vi.mock("@/lib/whatsapp-numbers.server", () => ({
+  ACCOUNT_COLUMNS: "id, organization_id, waba_id",
+  getWhatsAppConnection: async () => ({ connection: null }),
+  connectionForAccount: async () => ({ connection: null }),
+}));
 
 import { MAX_GOTO_HOPS, tickRuns } from "./flow-engine.server";
 

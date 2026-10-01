@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { firecrawlMap, firecrawlScrape, type FirecrawlBudget } from "@/lib/firecrawl.server";
 import { tavilyExtract, tavilyMap, type TavilyBudget } from "@/lib/tavily.server";
+import { guardedFetch, urlBlocked } from "@/lib/safe-fetch.server";
 
 /** The three readers behind one interface. */
 export type ReaderEngine = "own" | "tavily" | "firecrawl";
@@ -84,7 +85,11 @@ export const BROWSER_HEADERS: Record<string, string> = {
   "Accept-Language": "en-IN,en;q=0.9",
 };
 
-/** A fetch that always gives up rather than hanging a crawl. */
+/**
+ * A fetch that always gives up rather than hanging a crawl. Private/internal
+ * addresses (as written, as resolved, or reached by a redirect) are refused
+ * with the Flows HTTP step's guard: null, like any unreadable page.
+ */
 export async function fetchWithTimeout(
   url: string,
   timeoutMs: number,
@@ -93,8 +98,7 @@ export async function fetchWithTimeout(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, {
-      redirect: "follow",
+    return await guardedFetch(url, {
       ...init,
       headers: { ...BROWSER_HEADERS, ...(init?.headers as Record<string, string> | undefined) },
       signal: controller.signal,
@@ -285,6 +289,9 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
   const order = options.order?.length ? options.order : (["own"] as ReaderEngine[]);
   const timeout = options.timeoutMs ?? 20000;
   const out = new Map<string, PageRead | null>();
+  // Private/internal addresses are never read, by us or by a paid reader.
+  for (const url of urls) if (urlBlocked(url)) out.set(url, null);
+  urls = urls.filter((url) => !out.has(url));
   const thin = new Map<string, PageRead>();
   const keepThin = (url: string, page: PageRead | null) => {
     if (!page) return;
@@ -471,6 +478,7 @@ export async function mapSite(
   engine: ReaderEngine,
   opts: { sitemap: string[]; budget?: FirecrawlBudget; tavilyBudget?: TavilyBudget },
 ): Promise<{ urls: string[]; engine: ReaderEngine | "sitemap" }> {
+  if (urlBlocked(url)) return { urls: [], engine };
   if (engine === "firecrawl") return { urls: await firecrawlMap(url, opts.budget), engine };
   if (engine === "tavily") return { urls: await tavilyMap(url, opts.tavilyBudget), engine };
   if (opts.sitemap.length) return { urls: [], engine: "sitemap" };

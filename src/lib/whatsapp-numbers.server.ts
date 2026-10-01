@@ -26,7 +26,7 @@ export type WhatsAppConnection = {
 
 export type ConnectionResult = { connection: WhatsAppConnection | null; error: string | null };
 
-type AccountRow = {
+export type AccountRow = {
   id: string;
   organization_id: string;
   waba_id: string | null;
@@ -36,7 +36,7 @@ type AccountRow = {
   is_default: boolean;
 };
 
-const ACCOUNT_COLUMNS =
+export const ACCOUNT_COLUMNS =
   "id, organization_id, waba_id, phone_number_id, display_phone_number, status, is_default";
 
 /**
@@ -87,7 +87,18 @@ export async function getWhatsAppConnection(
 ): Promise<ConnectionResult> {
   const { account, error } = await resolveAccount(supabase, organizationId, whatsappAccountId);
   if (!account) return { connection: null, error };
+  return connectionForAccount(supabase, account);
+}
 
+/**
+ * The connection for an account row the caller already read (the webhook
+ * reads the number by phone_number_id): only the WABA's token is read.
+ */
+export async function connectionForAccount(
+  supabase: SupabaseClient,
+  account: AccountRow,
+): Promise<ConnectionResult> {
+  const organizationId = account.organization_id;
   if (!account.waba_id || !account.phone_number_id) {
     return {
       connection: null,

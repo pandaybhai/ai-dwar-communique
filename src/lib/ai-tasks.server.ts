@@ -21,24 +21,26 @@ export async function conversationTurns(
   /** The language of the customer's most recent message, when we could tell. */
   customerLanguage: string | null;
 }> {
-  const { data: convo } = await supabase
-    .from("conversations")
-    .select("id, contact_id, contacts(name)")
-    .eq("id", conversationId)
-    .eq("organization_id", organizationId)
-    .maybeSingle();
+  // Independent reads: one round trip, not two.
+  const [{ data: convo }, { data: rows }] = await Promise.all([
+    supabase
+      .from("conversations")
+      .select("id, contact_id, contacts(name)")
+      .eq("id", conversationId)
+      .eq("organization_id", organizationId)
+      .maybeSingle(),
+    supabase
+      .from("messages")
+      .select("direction, body, detected_language, created_at")
+      .eq("organization_id", organizationId)
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+  ]);
   const c = convo as {
     contact_id: string | null;
     contacts?: { name?: string | null } | null;
   } | null;
-
-  const { data: rows } = await supabase
-    .from("messages")
-    .select("direction, body, detected_language, created_at")
-    .eq("organization_id", organizationId)
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
 
   const all = (rows ?? []) as Array<{
     direction: string;
@@ -320,35 +322,74 @@ export function agentAnswerPrelude(supabase: SupabaseClient, organizationId: str
   return prepareRun(supabase, { organizationId, task: "agent_reply", agentId, actorUserId: null, useTools: true });
 }
 
+export type AnswerReadsAhead = {
+  pastRuns: Promise<{ data: unknown[] | null }>;
+  brief: Promise<import("@/lib/ai-brief.server").AssembledBrief>;
+  /** The customer's language, once the chat (read after the burst) has it. */
+  setLanguage: (language: Promise<string | null>) => void;
+};
+
+/**
+ * The answer's reads that don't depend on the chat itself: the agent's
+ * earlier failed answers in this conversation and its brief. Started by the
+ * webhook before the burst wait; the brief finishes its wording once the
+ * chat's language is known. Read-only.
+ */
+export function answerReadsAhead(
+  supabase: SupabaseClient,
+  organizationId: string,
+  conversationId: string,
+  agentId: Promise<string | null>,
+): AnswerReadsAhead {
+  let setLanguage!: (language: Promise<string | null>) => void;
+  const language = new Promise<string | null>((resolve) => {
+    setLanguage = (l) => l.then(resolve, () => resolve(null));
+  });
+  // A repeat only matters when the first attempt actually failed.
+  const pastRuns = Promise.resolve(
+    supabase
+      .from("ai_runs")
+      .select("input_summary, status")
+      .eq("organization_id", organizationId)
+      .eq("conversation_id", conversationId)
+      .eq("task", "agent_reply")
+      .neq("status", "ok")
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ) as Promise<{ data: unknown[] | null }>;
+  const brief = Promise.all([import("@/lib/ai-brief.server"), agentId]).then(([{ assembleBrief }, id]) =>
+    assembleBrief(supabase, organizationId, id, { customerLanguage: language }),
+  );
+  pastRuns.catch(() => {});
+  brief.catch(() => {});
+  return { pastRuns, brief, setLanguage };
+}
+
 export async function agentAnswer(
   supabase: SupabaseClient,
   common: Common,
   conversationId: string,
   question: string,
   /** Read ahead by the inbound webhook while it waited out a burst (speed). */
-  prepared?: { agentId: string | null; prelude: Promise<RunPrelude>; deferUsage?: (work: Promise<unknown>) => void },
+  prepared?: {
+    agentId: string | null;
+    prelude: Promise<RunPrelude>;
+    deferUsage?: (work: Promise<unknown>) => void;
+    /** Earlier failures and the brief, read during the burst wait (answerReadsAhead). */
+    ahead?: AnswerReadsAhead;
+  },
 ): Promise<RunResult> {
   // The chat, its earlier failures, the agent and the brief are independent
   // reads (the brief only needs the chat's language to finish its wording).
-  const { assembleBrief } = await import("@/lib/ai-brief.server");
   const agentRead = prepared ? Promise.resolve(prepared.agentId) : defaultAgentId(supabase, common.organizationId);
   const chat = conversationTurns(supabase, common.organizationId, conversationId);
+  const ahead = prepared?.ahead ?? answerReadsAhead(supabase, common.organizationId, conversationId, agentRead);
+  ahead.setLanguage(chat.then((c) => c.customerLanguage));
   const [agentId, { turns, contactId, customerLanguage }, { data: pastRuns }, brief] = await Promise.all([
     agentRead,
     chat,
-    // A repeat only matters when the first attempt actually failed.
-    supabase
-      .from("ai_runs")
-      .select("input_summary, status")
-      .eq("organization_id", common.organizationId)
-      .eq("conversation_id", conversationId)
-      .eq("task", "agent_reply")
-      .neq("status", "ok")
-      .order("created_at", { ascending: false })
-      .limit(20),
-    agentRead.then((id) =>
-      assembleBrief(supabase, common.organizationId, id, { customerLanguage: chat.then((c) => c.customerLanguage) }),
-    ),
+    ahead.pastRuns,
+    ahead.brief,
   ]);
 
   const priorFailedQuestions = ((pastRuns ?? []) as Array<{ input_summary: string | null }>)

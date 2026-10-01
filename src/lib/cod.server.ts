@@ -153,6 +153,51 @@ async function settle(
   });
 }
 
+type Read = PromiseLike<{ data: unknown }>;
+export type CodReads = { latestPending: Read; quoted: Read | null };
+
+/**
+ * The reads a cash-on-delivery answer starts with: the contact's latest open
+ * ask, and the message the customer quoted. Read-only, so the webhook starts
+ * them while the message itself is being stored (speed).
+ */
+export function prefetchCodReads(
+  supabase: SupabaseClient,
+  args: { organizationId: string; contactId: string; contextMetaId: string | null },
+): CodReads {
+  // Errors still surface where the read is awaited (as before); this only
+  // keeps a read nobody ends up awaiting from being reported as unhandled.
+  const settle = (q: PromiseLike<{ data: unknown }>): Read => {
+    const p = Promise.resolve(q);
+    p.catch(() => {});
+    return p;
+  };
+  return {
+    latestPending: settle(
+      supabase
+        .from("cod_confirmations")
+        .select("id, organization_id, order_id, contact_id, status, asked_at")
+        .eq("organization_id", args.organizationId)
+        .eq("contact_id", args.contactId)
+        .eq("status", "pending")
+        .not("asked_at", "is", null)
+        .order("asked_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ),
+    quoted: args.contextMetaId
+      ? settle(
+          supabase
+            .from("messages")
+            .select("id, scheduled_send_id")
+            .eq("organization_id", args.organizationId)
+            .eq("meta_message_id", args.contextMetaId)
+            .maybeSingle(),
+        )
+      : null,
+  };
+}
+
 /**
  * Handles one inbound WhatsApp message that might be an answer to a COD ask.
  *
@@ -173,6 +218,8 @@ export async function applyCodReply(
     body: string | null;
     /** Button payload id, when the reply came from a button. */
     payload: string | null;
+    /** The two first reads, started earlier by the webhook (prefetchCodReads). */
+    reads?: CodReads;
   },
 ): Promise<boolean> {
   const raw = [args.body, args.payload].filter(Boolean).join(" | ") || null;
@@ -183,26 +230,14 @@ export async function applyCodReply(
   // The fallback (this contact's latest open ask) is read alongside the
   // quoted-message lookup rather than after it; it is used only when the
   // quote leads nowhere, exactly as before.
-  const latestPending = Promise.resolve(
-    supabase
-      .from("cod_confirmations")
-      .select("id, organization_id, order_id, contact_id, status, asked_at")
-      .eq("organization_id", args.organizationId)
-      .eq("contact_id", args.contactId)
-      .eq("status", "pending")
-      .not("asked_at", "is", null)
-      .order("asked_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  );
+  const reads =
+    args.reads && (args.reads.quoted !== null || !args.contextMetaId)
+      ? args.reads
+      : prefetchCodReads(supabase, args);
+  const latestPending = reads.latestPending;
 
-  if (args.contextMetaId) {
-    const { data: quoted } = await supabase
-      .from("messages")
-      .select("id, scheduled_send_id")
-      .eq("organization_id", args.organizationId)
-      .eq("meta_message_id", args.contextMetaId)
-      .maybeSingle();
+  if (args.contextMetaId && reads.quoted) {
+    const { data: quoted } = await reads.quoted;
     const sendId = (quoted as { scheduled_send_id?: string | null } | null)?.scheduled_send_id;
     if (sendId) {
       const { data: send } = await supabase

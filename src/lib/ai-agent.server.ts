@@ -12,7 +12,13 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { agentAnswer, agentAnswerPrelude, suggestReply } from "@/lib/ai-tasks.server";
+import {
+  agentAnswer,
+  agentAnswerPrelude,
+  answerReadsAhead,
+  suggestReply,
+  type AnswerReadsAhead,
+} from "@/lib/ai-tasks.server";
 import type { RunPrelude } from "@/lib/ai-run.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
 import { sendServiceImage, sendServiceText } from "@/lib/service-text.server";
@@ -33,7 +39,31 @@ export type AgentInboundArgs = {
   prepared?: Promise<AgentPrep>;
   /** Bookkeeping the reply doesn't wait on; the webhook awaits it before marking the event processed. */
   later?: (work: Promise<unknown>) => void;
+  /** readAgentGate(), started by the webhook the moment the burst wait ended. */
+  gate?: Promise<AgentGate>;
 };
+
+type AgentGate = {
+  assigned_to?: string | null;
+  needs_human?: boolean | null;
+  last_customer_message_at?: string | null;
+} | null;
+
+/**
+ * Who owns the thread and whether WhatsApp lets us answer — always read
+ * after the burst wait (a teammate may have just taken over).
+ */
+export function readAgentGate(supabase: SupabaseClient, conversationId: string): Promise<AgentGate> {
+  const read = Promise.resolve(
+    supabase
+      .from("conversations")
+      .select("assigned_to, needs_human, handover_state, last_customer_message_at, status")
+      .eq("id", conversationId)
+      .maybeSingle(),
+  ).then(({ data }) => (data ?? null) as AgentGate);
+  read.catch(() => {});
+  return read;
+}
 
 /** The workspace's agent set-up, read once per inbound message. */
 export type AgentPrep = {
@@ -42,6 +72,8 @@ export type AgentPrep = {
   aiEnabled: boolean | null;
   /** Everything the answer run reads before thinking; only when it will reply. */
   prelude: Promise<RunPrelude> | null;
+  /** The answer's earlier-failures and brief reads; only when it will reply. */
+  ahead?: AnswerReadsAhead | null;
 };
 
 /**
@@ -51,7 +83,12 @@ export type AgentPrep = {
  * waits on the timer. Read-only: every check still happens in
  * runAgentOnInbound, in the same order, after the burst.
  */
-export function prepareAgentInbound(supabase: SupabaseClient, organizationId: string): Promise<AgentPrep> {
+export function prepareAgentInbound(
+  supabase: SupabaseClient,
+  organizationId: string,
+  /** When given, the answer's chat-independent reads start too (they finish during the burst wait). */
+  conversationId?: string,
+): Promise<AgentPrep> {
   const prep = Promise.all([
     supabase.from("ai_agents").select("id, mode").eq("organization_id", organizationId).eq("is_default", true).maybeSingle(),
     enabledFlags(supabase, organizationId),
@@ -65,6 +102,10 @@ export function prepareAgentInbound(supabase: SupabaseClient, organizationId: st
       flags,
       aiEnabled,
       prelude: replying ? agentAnswerPrelude(supabase, organizationId, row?.id ?? null) : null,
+      ahead:
+        replying && conversationId
+          ? answerReadsAhead(supabase, organizationId, conversationId, Promise.resolve(row?.id ?? null))
+          : null,
     };
   });
   prep.catch(() => {});
@@ -107,17 +148,8 @@ export async function runAgentOnInbound(
   }
 
   // Read fresh, after the burst wait: a teammate may have just taken over.
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("assigned_to, needs_human, handover_state, last_customer_message_at, status")
-    .eq("id", args.conversationId)
-    .maybeSingle();
+  const convo = await (args.gate ?? readAgentGate(supabase, args.conversationId));
   mark("gates");
-  const convo = (conversation ?? null) as {
-    assigned_to?: string | null;
-    needs_human?: boolean | null;
-    last_customer_message_at?: string | null;
-  } | null;
 
   // A thread a person owns, or one already waiting on a person, is theirs.
   // And we never pay for an answer WhatsApp wouldn't let us send.
@@ -150,7 +182,12 @@ export async function runAgentOnInbound(
     args.conversationId,
     question,
     prep.prelude
-      ? { agentId: agentRow?.id ?? null, prelude: prep.prelude, ...(args.later ? { deferUsage: args.later } : {}) }
+      ? {
+          agentId: agentRow?.id ?? null,
+          prelude: prep.prelude,
+          ...(args.later ? { deferUsage: args.later } : {}),
+          ...(prep.ahead ? { ahead: prep.ahead } : {}),
+        }
       : undefined,
   );
   mark("answer");
@@ -269,6 +306,8 @@ export async function runAgentOnInbound(
     conversationId: args.conversationId,
     to: args.waId,
     body,
+    // The window was checked on the gate read above, in this same request.
+    windowOpen: isServiceWindowOpen(convo),
   });
   mark("sent");
   timing();

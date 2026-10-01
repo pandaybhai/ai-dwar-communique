@@ -6,7 +6,6 @@ import {
   upsertOrder,
   type SyncContext,
 } from "@/lib/shopify-sync.server";
-import { normalizePhone } from "@/lib/phone";
 import { emitEvent } from "@/lib/events.server";
 
 type AnyRecord = Record<string, unknown>;
@@ -37,7 +36,7 @@ export async function processShopifyWebhook(args: {
 
   // GDPR topics arrive for shops that may already be uninstalled.
   if (topic === "shop/redact") {
-    await redactShop(supabase, shopDomain);
+    await redactShop(supabase, shopDomain, args.eventRowId);
     return void (await mark());
   }
 
@@ -99,7 +98,7 @@ export async function processShopifyWebhook(args: {
         break;
 
       case "customers/redact":
-        await redactCustomer(supabase, ctx, payload);
+        await redactCustomer(supabase, ctx, payload, args.eventRowId);
         break;
 
       default:
@@ -116,36 +115,58 @@ export async function processShopifyWebhook(args: {
   }
 }
 
-/** Uninstall: the token is dead, so it is destroyed rather than kept. */
+/**
+ * Uninstall: the token is dead, so it is destroyed rather than kept — for
+ * every workspace connected to this shop. Queued/running sync jobs are
+ * stopped so the worker never runs (and marks "error") against a removed
+ * store. Imported data stays until shop/redact (48h later), per Shopify.
+ */
 async function handleUninstall(supabase: SupabaseClient, ctx: SyncContext): Promise<void> {
-  await supabase.from("integration_credentials").delete().eq("integration_id", ctx.integrationId);
-  await supabase
+  const { data } = await supabase
     .from("integrations")
-    .update({ status: "disconnected", sync_error: null })
-    .eq("id", ctx.integrationId);
+    .select("id, organization_id")
+    .eq("provider", "shopify")
+    .eq("shop_domain", ctx.shopDomain);
+  const all = (data ?? []) as Array<{ id: string; organization_id: string }>;
+  if (!all.some((i) => i.id === ctx.integrationId)) all.push({ id: ctx.integrationId, organization_id: ctx.organizationId });
+  const now = new Date().toISOString();
+
+  for (const item of all) {
+    await supabase.from("integration_credentials").delete().eq("integration_id", item.id);
+    await supabase
+      .from("integration_sync_jobs")
+      .update({ status: "failed", error: "Shopify app uninstalled.", finished_at: now, updated_at: now })
+      .eq("integration_id", item.id)
+      .in("status", ["queued", "running"]);
+    await supabase
+      .from("integrations")
+      .update({ status: "disconnected", sync_error: null })
+      .eq("id", item.id);
+
+    await emitEvent(supabase, "shopify.disconnected", {
+      organizationId: item.organization_id,
+      entityType: "integration",
+      entityId: item.id,
+      properties: {
+        integration_id: item.id,
+        shop_domain: ctx.shopDomain,
+        provider: "shopify",
+        reason: "app_uninstalled",
+      },
+    });
+
+    await supabase.from("activity_log").insert({
+      organization_id: item.organization_id,
+      action: "integration_disconnected",
+      details: { provider: "shopify", shop_domain: ctx.shopDomain, reason: "app_uninstalled" },
+    });
+  }
+
   // A custom app row is kept (so a reinstall works) but marked disconnected.
   await supabase
     .from("shopify_app_credentials")
-    .update({ status: "disconnected", updated_at: new Date().toISOString() })
+    .update({ status: "disconnected", updated_at: now })
     .eq("shop_domain", ctx.shopDomain);
-
-  await emitEvent(supabase, "shopify.disconnected", {
-    organizationId: ctx.organizationId,
-    entityType: "integration",
-    entityId: ctx.integrationId,
-    properties: {
-      integration_id: ctx.integrationId,
-      shop_domain: ctx.shopDomain,
-      provider: "shopify",
-      reason: "app_uninstalled",
-    },
-  });
-
-  await supabase.from("activity_log").insert({
-    organization_id: ctx.organizationId,
-    action: "integration_disconnected",
-    details: { provider: "shopify", shop_domain: ctx.shopDomain, reason: "app_uninstalled" },
-  });
 }
 
 /** customers/data_request — recorded for the workspace to answer, never auto-answered. */
@@ -167,75 +188,37 @@ async function logDataRequest(
   });
 }
 
-/** customers/redact — erase what we hold about that one shopper. */
+/** customers/redact — erase that one shopper's shop-sourced data (shared with the compliance route). */
 async function redactCustomer(
   supabase: SupabaseClient,
   ctx: SyncContext,
   payload: AnyRecord,
+  eventRowId: string | null,
 ): Promise<void> {
   const customer = (payload["customer"] as AnyRecord | undefined) ?? {};
   const externalCustomerId = str(customer["id"]);
-  const phone = normalizePhone(str(customer["phone"]));
-
-  if (externalCustomerId) {
-    await supabase
-      .from("orders")
-      .update({ raw: {}, external_customer_id: null, contact_id: null })
-      .eq("integration_id", ctx.integrationId)
-      .eq("external_customer_id", externalCustomerId);
+  const { redactShopCustomer } = await import("@/lib/shopify-compliance.server");
+  const results = await redactShopCustomer(supabase, ctx.shopDomain, payload, eventRowId);
+  const orgs = new Set([ctx.organizationId, ...results.map((r) => r.organizationId)]);
+  for (const organizationId of orgs) {
+    await supabase.from("activity_log").insert({
+      organization_id: organizationId,
+      action: "integration_customer_redacted",
+      details: {
+        provider: "shopify",
+        shop_domain: ctx.shopDomain,
+        external_customer_id: externalCustomerId || null,
+      },
+    });
   }
-
-  if (phone) {
-    const { data: contact } = await supabase
-      .from("contacts")
-      .select("id, source")
-      .eq("organization_id", ctx.organizationId)
-      .eq("phone", phone)
-      .maybeSingle();
-    const found = contact as { id: string; source: string } | null;
-    if (found) {
-      await supabase
-        .from("abandoned_checkouts")
-        .update({ contact_id: null, raw: {} })
-        .eq("integration_id", ctx.integrationId)
-        .eq("contact_id", found.id);
-      // Only a contact this store created is ours to erase; a WhatsApp-sourced
-      // contact belongs to the workspace, so it is only unlinked above.
-      if (found.source === "shopify") {
-        await supabase.from("contacts").delete().eq("id", found.id);
-      }
-    }
-  }
-
-  await supabase.from("activity_log").insert({
-    organization_id: ctx.organizationId,
-    action: "integration_customer_redacted",
-    details: {
-      provider: "shopify",
-      shop_domain: ctx.shopDomain,
-      external_customer_id: externalCustomerId || null,
-    },
-  });
 }
 
-/** shop/redact — 48h after uninstall: remove everything synced from that shop. */
-async function redactShop(supabase: SupabaseClient, shopDomain: string): Promise<void> {
-  const { data: integrations } = await supabase
-    .from("integrations")
-    .select("id, organization_id")
-    .eq("provider", "shopify")
-    .eq("shop_domain", shopDomain);
-
-  for (const item of (integrations ?? []) as Array<{ id: string; organization_id: string }>) {
-    await supabase.from("integration_credentials").delete().eq("integration_id", item.id);
-    await supabase.from("products").delete().eq("integration_id", item.id);
-    await supabase.from("abandoned_checkouts").delete().eq("integration_id", item.id);
-    await supabase.from("orders").delete().eq("integration_id", item.id);
-    await supabase.from("integration_sync_jobs").delete().eq("integration_id", item.id);
-    await supabase.from("integrations").delete().eq("id", item.id);
-
+/** shop/redact — 48h after uninstall: remove everything synced from that shop (shared with the compliance route). */
+async function redactShop(supabase: SupabaseClient, shopDomain: string, eventRowId: string | null): Promise<void> {
+  const { redactShopData } = await import("@/lib/shopify-compliance.server");
+  for (const item of await redactShopData(supabase, shopDomain, eventRowId)) {
     await supabase.from("activity_log").insert({
-      organization_id: item.organization_id,
+      organization_id: item.organizationId,
       action: "integration_shop_redacted",
       details: { provider: "shopify", shop_domain: shopDomain },
     });

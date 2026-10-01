@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { round2 } from "@/lib/billing";
+import { gstOnTaxable, round2, withGst } from "@/lib/billing";
 
 /**
  * The invoice engine.
@@ -164,11 +164,13 @@ export async function buildInvoice(
   });
 
   taxable = round2(taxable);
-  const taxTotal = round2((taxable * taxRate) / 100);
-  const cgst = isExport || isInterstate ? 0 : round2(taxTotal / 2);
-  const sgst = cgst;
-  const igst = isInterstate && !isExport ? taxTotal : 0;
-  const total = round2(taxable + cgst + sgst + igst);
+  // Integer paise: CGST + SGST always equals 18% of the taxable value (an odd
+  // paisa goes to CGST) and matches withGst(), which priced the payment.
+  const { cgst, sgst, igst, total } = gstOnTaxable(taxable, {
+    isExport,
+    isInterstate,
+    ratePercent: taxRate,
+  });
 
   const tdsExpected =
     buyer["tds_applicable"] === true ? round2(Math.abs(taxable) * 0.02) * sign : 0;
@@ -253,7 +255,8 @@ export function checkInvoiceIssuable(
   const cgst = n(invoice["cgst"]);
   const sgst = n(invoice["sgst"]);
   const igst = n(invoice["igst"]);
-  const expectedTax = isExport ? 0 : round2((taxable * TAX_RATE) / 100);
+  const expected = gstOnTaxable(taxable, { isExport, isInterstate, ratePercent: TAX_RATE });
+  const expectedTax = expected.tax;
 
   if (isExport) {
     if (cgst || sgst || igst) return "an export invoice must be zero-rated";
@@ -262,9 +265,10 @@ export function checkInvoiceIssuable(
     if (Math.abs(igst - expectedTax) > 0.02) return `IGST ${igst} should be ${expectedTax}`;
   } else {
     if (igst) return "an intra-state invoice carries CGST and SGST only";
-    const half = round2(expectedTax / 2);
-    if (Math.abs(cgst - half) > 0.02 || Math.abs(sgst - half) > 0.02) {
-      return `CGST/SGST ${cgst}/${sgst} should be ${half} each`;
+    // Tolerant by a paisa or two so drafts built before the integer-paise
+    // split (equal halves, each rounded) can still be issued.
+    if (Math.abs(cgst - expected.cgst) > 0.02 || Math.abs(sgst - expected.sgst) > 0.02) {
+      return `CGST/SGST ${cgst}/${sgst} should be ${expected.cgst}/${expected.sgst}`;
     }
   }
 
@@ -678,6 +682,19 @@ export async function invoiceForPayment(
   return { invoice_id: built.invoice_id, invoice_number: issued.invoice_number, created: true };
 }
 
+/**
+ * What the buyer actually paid for a payment row. payments.amount is stored
+ * ex-GST; the collected gross lives in raw (gross_amount, or gross on a credit
+ * purchase link). Without either, the gross is re-derived from the base.
+ */
+export function paymentGross(payment: Record<string, unknown> | null | undefined): number {
+  const raw = ((payment?.["raw"] ?? {}) as Record<string, unknown>) ?? {};
+  const stated = Number(raw["gross_amount"] ?? raw["gross"] ?? Number.NaN);
+  if (Number.isFinite(stated) && stated > 0) return round2(stated);
+  const base = Number(payment?.["amount"] ?? 0);
+  return base > 0 ? withGst(base).total : 0;
+}
+
 export async function markPaid(
   supabase: SupabaseClient,
   invoiceId: string,
@@ -882,7 +899,7 @@ export async function issuePendingInvoices(
 
     const { data: payment } = await supabase
       .from("payments")
-      .select("id, status, amount")
+      .select("id, status, amount, raw")
       .eq("id", paymentId)
       .maybeSingle();
     if ((payment as { status?: string } | null)?.status !== "paid") continue;
@@ -902,7 +919,10 @@ export async function issuePendingInvoices(
     // Only settle what is still outstanding — never bank the same rupee twice.
     const total = Number((before as Record<string, unknown> | null)?.["total"] ?? 0);
     const already = Number((before as Record<string, unknown> | null)?.["amount_paid"] ?? 0);
-    const outstanding = round2(Math.min(Number((payment as { amount?: number }).amount ?? 0), total - already));
+    // payments.amount is ex-GST; the buyer paid the gross.
+    const outstanding = round2(
+      Math.min(paymentGross(payment as Record<string, unknown>), total - already),
+    );
     if (outstanding > 0) await markPaid(supabase, invoiceId, paymentId, outstanding);
     issued.push(result.invoice_number);
   }
@@ -1001,7 +1021,9 @@ export async function voidAndReissueInvoice(
       {
         line_type: "credits",
         description: packName ? `Message credits — ${packName}` : "Message credits",
-        sac_code: "998314",
+        // Same SAC as every other credit-purchase invoice (settle and
+        // invoiceForPayment), not a hard-coded one.
+        sac_code: (await loadSupplier(supabase)).sac_messaging,
         quantity: 1,
         unit_price: base,
       },
@@ -1015,7 +1037,14 @@ export async function voidAndReissueInvoice(
     return issued;
   }
 
-  await markPaid(supabase, built.invoice_id, paymentId, round2(Number(payment["amount"] ?? 0)) || base);
+  // What the buyer actually paid (gross, GST included) — payments.amount is
+  // ex-GST and would leave the replacement "partially paid".
+  await markPaid(
+    supabase,
+    built.invoice_id,
+    paymentId,
+    paymentGross(payment as Record<string, unknown>) || withGst(base).total,
+  );
 
   const oldNotes = (invoice["notes"] as string | null) ?? null;
   await supabase

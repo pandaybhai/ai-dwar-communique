@@ -30,6 +30,7 @@ import {
 } from "@/lib/web-reader.server";
 import { type FirecrawlBudget } from "@/lib/firecrawl.server";
 import type { TavilyBudget } from "@/lib/tavily.server";
+import { urlBlocked } from "@/lib/safe-fetch.server";
 import { logServerActivity } from "@/lib/whatsapp-api.server";
 
 export type SourceType =
@@ -409,6 +410,8 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const startUrl = String(config["url"] ?? "").trim();
   if (!startUrl) throw new Error("Add the address of the website first.");
   const start = new URL(startUrl);
+  // Same guard as the Flows HTTP step: no private/internal addresses.
+  if (urlBlocked(start.toString())) throw new Error("This address points to a private network and can't be read.");
   const origin = start.origin;
 
   const plan = await planLimits(supabase, organizationId);

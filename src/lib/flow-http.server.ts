@@ -137,15 +137,29 @@ export async function runHttpRequest(spec: HttpSpec, ctx: RunContext): Promise<H
   }
 }
 
-async function send(spec: HttpSpec, ctx: RunContext, url: URL, method: string, saved: Record<string, string>, signal: AbortSignal): Promise<HttpResult> {
-  // The name must not resolve to anything internal (checked on every address).
+/**
+ * The name must not resolve to anything internal (checked on every address).
+ * An IP literal has nothing to resolve. Null when the host is fine; otherwise
+ * the error code. Callers check blockedHost(url.hostname) first. Shared with
+ * the website reader (safe-fetch.server.ts).
+ */
+export async function resolvedHostError(
+  url: URL,
+  signal?: AbortSignal,
+  resolve: (host: string, signal?: AbortSignal) => Promise<string[] | null> = resolveHost,
+): Promise<"dns_lookup_failed" | "dns_no_address" | "private_address_blocked" | null> {
   const bare = url.hostname.replace(/^\[|\]$/g, "");
-  if (!IP_LITERAL.test(bare)) {
-    const addrs = await resolveHost(bare, signal);
-    if (addrs === null) return { ok: false, status: null, error: "dns_lookup_failed", saved, preview: "" };
-    if (!addrs.length) return { ok: false, status: null, error: "dns_no_address", saved, preview: "" };
-    if (addrs.some(blockedAddress)) return { ok: false, status: null, error: "private_address_blocked", saved, preview: "" };
-  }
+  if (IP_LITERAL.test(bare)) return null;
+  const addrs = await resolve(bare, signal);
+  if (addrs === null) return "dns_lookup_failed";
+  if (!addrs.length) return "dns_no_address";
+  if (addrs.some(blockedAddress)) return "private_address_blocked";
+  return null;
+}
+
+async function send(spec: HttpSpec, ctx: RunContext, url: URL, method: string, saved: Record<string, string>, signal: AbortSignal): Promise<HttpResult> {
+  const dnsError = await resolvedHostError(url, signal);
+  if (dnsError) return { ok: false, status: null, error: dnsError, saved, preview: "" };
 
   const headers = new Headers({ "user-agent": "AiDwar-Flows/1.0" });
   for (const h of spec.headers ?? []) {

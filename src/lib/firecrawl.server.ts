@@ -8,6 +8,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { urlBlocked } from "@/lib/safe-fetch.server";
+
 const FIRECRAWL_BASE = "https://api.firecrawl.dev/v2";
 
 /**
@@ -96,7 +98,8 @@ export async function firecrawlMap(
   budget: FirecrawlBudget | undefined,
   limit = 2000,
 ): Promise<string[]> {
-  if (!apiKey() || !(await reserve(budget, 1))) return [];
+  // Private/internal addresses are refused before Firecrawl (or a credit) is used.
+  if (urlBlocked(url) || !apiKey() || !(await reserve(budget, 1))) return [];
   const data = await firecrawlPost("/map", { url, limit }, 30000);
   const links = data?.["links"];
   if (!Array.isArray(links)) return [];
@@ -120,7 +123,7 @@ export async function firecrawlScrape(
   budget: FirecrawlBudget | undefined,
   timeoutMs = 25000,
 ): Promise<FirecrawlPage | null> {
-  if (!apiKey() || !(await reserve(budget, 1))) return null;
+  if (urlBlocked(url) || !apiKey() || !(await reserve(budget, 1))) return null;
   const data = await firecrawlPost(
     "/scrape",
     { url, formats: ["markdown", "html"], onlyMainContent: true },

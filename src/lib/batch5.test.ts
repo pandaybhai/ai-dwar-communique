@@ -177,7 +177,9 @@ describe("(2) flow replies: fewer round trips before the send", () => {
     const windowReads = w.ops.filter(
       (o) => o.table === "conversations" && o.kind === "select" && o.filters.some(([f, a]) => f === "eq" && a[0] === "id"),
     );
-    expect(windowReads).toHaveLength(1);
+    // Batch 6: the message just written opened the window, so the engine
+    // doesn't read the conversation at all (was one read).
+    expect(windowReads).toHaveLength(0);
     // Tags come with the contact; the flow's number isn't read when the conversation has one.
     expect(w.ops.some((o) => o.table === "contact_tags")).toBe(false);
     expect(w.ops.some((o) => o.table === "flows")).toBe(false);
