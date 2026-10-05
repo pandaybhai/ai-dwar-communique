@@ -10,6 +10,7 @@ import {
   productQueryOf,
   cardOfNode,
   startNode,
+  tagOfNode,
   validateAnswer,
   type Branch,
   type FlowGraph,
@@ -995,13 +996,18 @@ async function advanceInner(
         break;
       }
       case "branch": {
-        const handle = pickBranch((d["branches"] as Branch[] | undefined) ?? [], { ...env.ctx, vars });
+        const handle = pickBranch((d["branches"] as Branch[] | undefined) ?? [], { ...env.ctx, vars, businessHours: graph.meta?.business_hours });
         if (!(await follow(node, handle))) return;
         continue;
       }
-      case "tag":
-        await applyTag(supabase, run, String(d["tag"] ?? ""), d["action"] === "remove" ? "remove" : "add");
+      case "tag": {
+        // A plain name goes exactly as before; {{variables}} are filled in, and
+        // a tag that comes out empty is skipped (noted, never an error).
+        const tag = tagOfNode(d, { ...env.ctx, vars });
+        if (String(d["tag"] ?? "").includes("{{") && !tag) await logEvent(supabase, run, node.id, "tag_skipped", { reason: "empty_after_variables" });
+        else await applyTag(supabase, run, tag, d["action"] === "remove" ? "remove" : "add");
         break;
+      }
       case "set_field": {
         const field = String(d["field"] ?? "").trim();
         if (field) {

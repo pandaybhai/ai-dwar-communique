@@ -14,6 +14,8 @@ import {
 import { aidwar } from "@/integrations/aidwar/client";
 import { useOrg } from "@/lib/org-context";
 import { usePendingGapCount } from "@/hooks/use-pending-gaps";
+import { useAutomationsCount } from "@/hooks/use-automations-count";
+import { automationsNavHidden } from "@/lib/automations";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 import { navFeatures } from "@/lib/feature-registry";
@@ -35,6 +37,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { isFeatureEnabled, flagsLoading, active } = useOrg();
   const gapCount = usePendingGapCount(active?.organization.id ?? null);
+  const automationsCount = useAutomationsCount(active?.organization.id ?? null);
   const { can, loading: permsLoading } = usePermissions();
   const status = active?.organization.plan_status;
   const restricted = status === "locked" || status === "paused";
@@ -46,7 +49,9 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     : NAV.filter(
         (item) =>
           (!item.flag || flagsLoading || isFeatureEnabled(item.flag)) &&
-          (!item.perm || permsLoading || can(item.perm)),
+          (!item.perm || permsLoading || can(item.perm)) &&
+          // No automations at all: new replies are made in Flows (templates there).
+          !(item.to === "/app/automations" && automationsNavHidden(automationsCount)),
       );
   return (
     <nav className="space-y-1">

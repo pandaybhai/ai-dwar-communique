@@ -94,14 +94,20 @@ const WITH_SHOP: FlowGraph = {
 };
 
 function flowsWorld(graph: FlowGraph, catalogs: Array<{ id: string }>) {
-  const db = fakeDb((op) => {
-    if (op.table === "flows" && op.kind === "select") return { data: { id: FLOW_ID, name: "Welcome menu", key: "v2:abc", whatsapp_account_id: null }, error: null };
-    if (op.table === "flow_versions" && op.kind === "select") return { data: [{ id: "ver-2", graph, version: 2 }], error: null };
-    if (op.table === "whatsapp_catalogs") return { data: catalogs, error: null };
-    if (op.table === "whatsapp_accounts") return { data: [], error: null };
-    if (op.table === "organization_members") return { data: [], error: null };
-    return undefined;
-  });
+  const db = fakeDb(
+    (op) => {
+      if (op.table === "flows" && op.kind === "select") return { data: { id: FLOW_ID, name: "Welcome menu", key: "v2:abc", whatsapp_account_id: null }, error: null };
+      if (op.table === "flow_versions" && op.kind === "select") return { data: [{ id: "ver-2", graph, version: 2 }], error: null };
+      // Batch 10C: publishing a draft returns the row it published.
+      if (op.table === "flow_versions" && op.kind === "update") return { data: [{ id: "ver-2" }], error: null };
+      if (op.table === "whatsapp_catalogs") return { data: catalogs, error: null };
+      if (op.table === "whatsapp_accounts") return { data: [], error: null };
+      if (op.table === "organization_members") return { data: [], error: null };
+      return undefined;
+    },
+    // Batch 10C: the live database doesn't have flow_publish_version yet, so publish runs step by step.
+    (call) => (call.name === "flow_publish_version" ? { data: null, error: { code: "PGRST202", message: "Could not find the function public.flow_publish_version" } } : undefined),
+  );
   h.db = db;
   return db;
 }

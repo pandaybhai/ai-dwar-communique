@@ -12,10 +12,16 @@
  * returns null and the caller sends its words without a picture. A card must
  * never be the reason a message doesn't arrive.
  *
- * Money: rendering costs ₹0.10, charged (via ai_usage, task "card_render")
- * only when the cacheKey misses locally — a repeat of the same card with the
- * same values is free. wallet_apply stays the only ledger writer; this is
- * usage metering, not a wallet debit.
+ * Reuse: a card is stored by render-card under its cacheKey (workspace +
+ * design + a hash of its values, brand paint included). Before asking for a
+ * render we look for that stored picture — in this server's memory, then in
+ * storage — so a restart or another server never draws the same card twice.
+ *
+ * Usage: every real render (never a reuse) is recorded on ai_usage — task
+ * "card_render" for cards sent to customers, "card_preview" for the
+ * merchant's own previews — through the service client (ai_usage is
+ * read-only to members). Recording only: nothing here charges the wallet
+ * (wallet debits come from ai_runs, never ai_usage) and no price changes.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -62,7 +68,11 @@ export const CUSTOMER_CARD_META: Record<
 };
 
 const RENDER_TIMEOUT_MS = 6000;
-const CARD_RENDER_COST = 0.1; // ₹ per uncached render
+/** How long the stored-card lookup may take before we just render. */
+const LOOKUP_TIMEOUT_MS = 2500;
+const CARD_RENDER_COST = 0.1; // ₹ per real render — recorded, not charged
+/** render-card's bucket (it writes there itself). */
+const CARD_BUCKET = "onboarding-cards";
 
 /** Short, stable fingerprint of the values a card was drawn with. */
 function varsHash(vars: Record<string, string>): string {
@@ -76,6 +86,81 @@ function varsHash(vars: Record<string, string>): string {
 }
 
 const urlCache = new Map<string, string>();
+
+/** The key a card is stored under: workspace, design and its values (brand paint included). */
+export function cardCacheKey(organizationId: string, kind: string, vars: Record<string, string>): string {
+  return `org/${organizationId}/${kind}-${varsHash(vars)}`;
+}
+
+/** The public address render-card stores a card at (same cleaning as render-card). */
+export function storedCardUrl(baseUrl: string, cacheKey: string): string {
+  const path = `${cacheKey.replace(/[^a-zA-Z0-9/_-]/g, "_")}.png`;
+  return `${baseUrl.replace(/\/$/, "")}/storage/v1/object/public/${CARD_BUCKET}/${path}`;
+}
+
+/**
+ * The already-stored picture for a cacheKey, or null. Only a real image
+ * counts; a miss, an error or a slow answer is null and the card is drawn.
+ */
+async function lookUpStoredCard(baseUrl: string, cacheKey: string): Promise<string | null> {
+  const url = storedCardUrl(baseUrl, cacheKey);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { method: "HEAD", signal: controller.signal });
+    const type = res.headers.get("content-type") ?? "";
+    return res.ok && type.startsWith("image/") ? url : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Card values with the workspace's brand paint under them (an explicit value wins). */
+async function paintedVars(
+  supabase: SupabaseClient,
+  organizationId: string,
+  vars: Record<string, string>,
+): Promise<Record<string, string>> {
+  const branding = await loadCardBranding(supabase, organizationId);
+  return { ...branding, ...vars };
+}
+
+/**
+ * The card already drawn for these values, without drawing anything: memory,
+ * then storage. Used by the Cards page to show each design's last preview.
+ */
+export async function findStoredCustomerCard(
+  supabase: SupabaseClient,
+  args: { organizationId: string; kind: string; vars: Record<string, string> },
+): Promise<string | null> {
+  if (!(CUSTOMER_CARD_KINDS as readonly string[]).includes(args.kind)) return null;
+  const vars = await paintedVars(supabase, args.organizationId, args.vars);
+  const cacheKey = cardCacheKey(args.organizationId, args.kind, vars);
+  const cached = urlCache.get(cacheKey);
+  if (cached) return cached;
+  const baseUrl = process.env["AIDWAR_SUPABASE_URL"];
+  if (!baseUrl) return null;
+  const stored = await lookUpStoredCard(baseUrl, cacheKey);
+  if (stored) urlCache.set(cacheKey, stored);
+  return stored;
+}
+
+/**
+ * Records one real render on ai_usage. Written with the service client:
+ * members can only read ai_usage, so the caller's client would be refused
+ * (that is why no card_render row was ever written). Never throws.
+ */
+async function recordCardRender(organizationId: string, task: "card_render" | "card_preview"): Promise<void> {
+  try {
+    const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+    const { meterAiUsage } = await import("@/lib/ai-run.server");
+    await meterAiUsage(getServiceClient(), organizationId, task, { costAmount: CARD_RENDER_COST, runs: 1 });
+  } catch (error) {
+    console.error("[customer-cards] usage not recorded", error instanceof Error ? error.message : String(error));
+  }
+}
 
 /** Whether the cards feature is switched on for this workspace. */
 export async function cardsEnabled(
@@ -127,7 +212,8 @@ export function fillCardVars(
 
 /**
  * Render one customer card and return a public URL, or null when anything
- * gets in the way. Only an uncached render is metered (₹0.10).
+ * gets in the way. A card already stored for the same values is reused;
+ * only a real render is recorded on ai_usage.
  */
 export async function renderCustomerCard(
   supabase: SupabaseClient,
@@ -135,17 +221,16 @@ export async function renderCustomerCard(
     organizationId: string;
     kind: string;
     vars: Record<string, string>;
-    /** Skip the charge — used for live previews the merchant asked for. */
+    /** false: a preview the merchant asked for (recorded as "card_preview", not "card_render"). */
     meter?: boolean;
   },
 ): Promise<string | null> {
   if (!(CUSTOMER_CARD_KINDS as readonly string[]).includes(args.kind)) return null;
 
-  const branding = await loadCardBranding(supabase, args.organizationId);
   // Brand paint is the default; an explicit value from the caller wins.
-  const vars: Record<string, string> = { ...branding, ...args.vars };
+  const vars = await paintedVars(supabase, args.organizationId, args.vars);
 
-  const cacheKey = `org/${args.organizationId}/${args.kind}-${varsHash(vars)}`;
+  const cacheKey = cardCacheKey(args.organizationId, args.kind, vars);
   const cached = urlCache.get(cacheKey);
   if (cached) return cached;
 
@@ -154,6 +239,13 @@ export async function renderCustomerCard(
 
   try {
     if (!baseUrl || !serviceKey) throw new Error("renderer credentials are not configured");
+
+    // Drawn before (by this server or another, before a restart): reuse it.
+    const stored = await lookUpStoredCard(baseUrl, cacheKey);
+    if (stored) {
+      urlCache.set(cacheKey, stored);
+      return stored;
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), RENDER_TIMEOUT_MS);
@@ -173,7 +265,7 @@ export async function renderCustomerCard(
     }
 
     const payload = (await res.json().catch(() => null)) as
-      | { url?: string; error?: string }
+      | { url?: string; error?: string; cached?: boolean }
       | null;
     if (!res.ok) throw new Error(`render-card ${res.status}: ${payload?.error ?? "no body"}`);
     const url = payload?.url;
@@ -181,13 +273,8 @@ export async function renderCustomerCard(
 
     urlCache.set(cacheKey, url);
 
-    if (args.meter !== false) {
-      const { meterAiUsage } = await import("@/lib/ai-run.server");
-      await meterAiUsage(supabase, args.organizationId, "card_render", {
-        costAmount: CARD_RENDER_COST,
-        runs: 1,
-      });
-    }
+    // render-card found it stored after all: a reuse, not a render.
+    if (payload?.cached !== true) await recordCardRender(args.organizationId, args.meter === false ? "card_preview" : "card_render");
 
     return url;
   } catch (error) {

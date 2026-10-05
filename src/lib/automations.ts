@@ -113,3 +113,12 @@ export function skipLabel(reason: string | null): string {
   if (!reason) return "—";
   return SKIP_LABELS[reason] ?? reason;
 }
+
+/**
+ * Automations now live on as Flows templates (Welcome message, Keyword reply,
+ * Away message). The menu is hidden only for a workspace known to have zero
+ * automations; one that has any keeps it, and an unknown count keeps it too.
+ */
+export function automationsNavHidden(count: number | null): boolean {
+  return count === 0;
+}

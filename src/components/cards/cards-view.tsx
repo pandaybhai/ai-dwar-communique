@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, ImageIcon, Loader2, MapPin, Palette } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -70,9 +70,22 @@ export function CardsView({
     setLoading(false);
   }, [organizationId]);
 
+  // Each design's last preview stays: the one already drawn for today's brand
+  // paint is found again (nothing is drawn). New paint means no preview yet.
+  const lookup = useRef(0);
+  const loadStoredPreviews = useCallback(async () => {
+    const mine = (lookup.current += 1);
+    const { data } = await callApi<{ urls: Record<string, string> }>("/api/cards", {
+      body: { action: "stored_previews", organization_id: organizationId },
+    });
+    // Only the latest lookup counts; a preview drawn meanwhile wins.
+    if (mine === lookup.current) setPreviews((p) => ({ ...(data?.urls ?? {}), ...p }));
+  }, [organizationId]);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadStoredPreviews();
+  }, [load, loadStoredPreviews]);
 
   async function save() {
     setSaving(true);
@@ -84,8 +97,10 @@ export function CardsView({
       toast.error(error);
       return;
     }
-    // New paint means new cards — old previews no longer apply.
+    // New paint means new cards — old previews no longer apply (unless this
+    // exact paint was previewed before).
     setPreviews({});
+    void loadStoredPreviews();
     void logActivity("card_branding_updated", organizationId, {
       has_logo: Boolean(branding.brand_logo_url),
     });
