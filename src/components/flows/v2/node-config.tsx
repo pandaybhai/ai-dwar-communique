@@ -119,6 +119,7 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
         <div className="flex items-center gap-2 font-heading font-semibold"><meta.icon className="h-4 w-4 text-primary" /> {meta.label}</div>
         {node.type !== "start" && <Button variant="ghost" size="sm" onClick={onDelete}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button>}
       </div>
+      {meta.hint && <p className="text-xs text-muted-foreground">{meta.hint}</p>}
       {problems.length > 0 && (
         <ul className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
           {problems.map((p, i) => <li key={i}>{p}</li>)}
@@ -153,9 +154,9 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
       )}
       {node.type === "carousel" && (
         <div className="space-y-2">
-          <Label>Products from your WhatsApp catalogue (max 10)</Label>
+          <Label>Products in your WhatsApp shop (max 10)</Label>
           {pickers.products.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No catalogue products yet — sync your catalogue in Settings → WhatsApp first.</p>
+            <p className="text-sm text-muted-foreground">No WhatsApp shop products yet — connect and sync your WhatsApp shop on the Products page first.</p>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
               {pickers.products.map((p) => {

@@ -132,7 +132,37 @@ export async function settleCampaignSpend(
     .eq("id", campaignId)
     .eq("organization_id", organizationId);
   if (updateError) return { ok: false, error: updateError.message };
+  // A message priced while this settle ran must not leave the total behind.
+  await syncCampaignCharged(supabase, organizationId, campaignId);
   return { ok: true };
+}
+
+/**
+ * campaigns.charged_amount = the sum of this campaign's debit_message rows.
+ *
+ * Meta prices messages after a campaign finishes (often seconds after the
+ * settle), so each price that lands brings the total up to date. It is a
+ * fresh read of the ledger every time, never an addition, so nothing is
+ * counted twice; and it only ever raises the stored total (the ledger only
+ * grows), so two prices arriving together can't leave it short. No debit
+ * rows (billing off, free messages) writes nothing.
+ */
+export async function syncCampaignCharged(
+  supabase: SupabaseClient,
+  organizationId: string,
+  campaignId: string,
+): Promise<{ ok: boolean; amount: number; error?: string }> {
+  const charged = await campaignLedgerCharge(supabase, organizationId, campaignId);
+  if (charged.error !== null) return { ok: false, amount: 0, error: charged.error };
+  if (charged.amount <= 0) return { ok: true, amount: 0 };
+  const { error } = await supabase
+    .from("campaigns")
+    .update({ charged_amount: charged.amount })
+    .eq("id", campaignId)
+    .eq("organization_id", organizationId)
+    .lt("charged_amount", charged.amount);
+  if (error) return { ok: false, amount: charged.amount, error: error.message };
+  return { ok: true, amount: charged.amount };
 }
 
 /** What the ledger has actually charged for this campaign's messages. */

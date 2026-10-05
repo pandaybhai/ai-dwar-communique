@@ -5,7 +5,8 @@ import {
 } from "lucide-react";
 import type { FlowNode, NodeType } from "@/lib/flow-graph";
 
-export type NodeMeta = { label: string; group: "Messages" | "Ask" | "Logic" | "Actions" | "Other"; icon: LucideIcon; defaults: () => Record<string, unknown> };
+/** label/hint are wording only; the NodeType key (e.g. "carousel") is what saved flows store and must never change. */
+export type NodeMeta = { label: string; hint?: string; group: "Messages" | "Ask" | "Logic" | "Actions" | "Other"; icon: LucideIcon; defaults: () => Record<string, unknown> };
 
 let seq = 0;
 export const uid = (p = "n") => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -30,7 +31,7 @@ export const NODE_META: Record<NodeType, NodeMeta> = {
   location_request: { label: "Ask location", group: "Ask", icon: MapPin, defaults: () => ({ text: "Please share your location.", variable: "location", timeout_minutes: 1440, retries: 1, on_unexpected: "repeat" }) },
   location_send: { label: "Send location", group: "Messages", icon: Navigation, defaults: () => ({ latitude: "", longitude: "", name: "", address: "" }) },
   contact_card: { label: "Contact card", group: "Messages", icon: Contact, defaults: () => ({ name: "", phone: "" }) },
-  carousel: { label: "Products", group: "Messages", icon: GalleryHorizontal, defaults: () => ({ header: "Our picks", text: "Take a look:", retailer_ids: [] }) },
+  carousel: { label: "WhatsApp shop", hint: "Opens your WhatsApp catalogue with add-to-cart. Needs WhatsApp shop connected.", group: "Messages", icon: GalleryHorizontal, defaults: () => ({ header: "Our picks", text: "Take a look:", retailer_ids: [] }) },
   set_variable: { label: "Set variable", group: "Logic", icon: Variable, defaults: () => ({ variable: "total", mode: "value", expression: "" }) },
   business_hours: { label: "Business hours", group: "Logic", icon: CalendarClock, defaults: () => ({}) },
   ab_split: { label: "A/B split", group: "Logic", icon: Shuffle, defaults: () => ({ percent_a: 50 }) },
@@ -45,7 +46,7 @@ export const NODE_META: Record<NodeType, NodeMeta> = {
   email_team: { label: "Email the team", group: "Actions", icon: Mail, defaults: () => ({ user_ids: [], addresses: "", subject: "New chat lead: {{name}}", body: "{{name}} ({{phone}}) said: {{last_answer}}" }) },
   wait_until: { label: "Wait until", group: "Logic", icon: CalendarCheck, defaults: () => ({ mode: "date", date: "", field: "" }) },
   order_draft: { label: "Create order draft", group: "Actions", icon: ClipboardList, defaults: () => ({ items: "{{last_answer}}", total: "", notes: "", needs_you: true }) },
-  show_products: { label: "Show products", group: "Messages", icon: ShoppingBag, defaults: () => ({ category: "", budget: "", min_price: "", max_price: "", max_items: 5 }) },
+  show_products: { label: "Show products", hint: "Sends matching products as photos with price and link. Works for every business.", group: "Messages", icon: ShoppingBag, defaults: () => ({ category: "", budget: "", min_price: "", max_price: "", max_items: 5 }) },
 };
 
 export const AI_ICON = Bot;

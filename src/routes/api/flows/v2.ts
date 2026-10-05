@@ -94,9 +94,11 @@ export const Route = createFileRoute("/api/flows/v2")({
             await logServerActivity(db, org, auth.userId, "flow_v2_number_set", { flow_id: flow.id, pinned: Boolean(body.whatsapp_account_id) });
             return Response.json({ ok: true });
           }
-          const [{ data: cur }, { data: mem }] = await Promise.all([
+          const { whatsappShopConnected } = await import("@/lib/whatsapp-catalog.server");
+          const [{ data: cur }, { data: mem }, shopConnected] = await Promise.all([
             db.from("flows").select("whatsapp_account_id").eq("id", flow.id).maybeSingle(),
             db.from("organization_members").select("user_id").eq("organization_id", org),
+            whatsappShopConnected(db, org),
           ]);
           const ids = ((mem ?? []) as Array<{ user_id: string }>).map((m) => m.user_id);
           const { data: profs } = ids.length ? await db.from("profiles").select("id, full_name, email").in("id", ids) : { data: [] };
@@ -104,6 +106,7 @@ export const Route = createFileRoute("/api/flows/v2")({
             ok: true,
             numbers: nums,
             whatsapp_account_id: (cur as { whatsapp_account_id?: string | null } | null)?.whatsapp_account_id ?? null,
+            whatsapp_shop_connected: shopConnected,
             members: ((profs ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>).map((p) => ({ id: p.id, name: p.full_name || p.email || "Teammate" })),
           });
         }
@@ -165,7 +168,15 @@ export const Route = createFileRoute("/api/flows/v2")({
           if (sealed.error) return jsonError(sealed.error, 500);
           const graph = sealed.graph;
           const { loadSendSettings } = await import("@/lib/flows.server");
-          const problems = validateGraph(graph, { timezone: (await loadSendSettings(db, org)).timezone });
+          // A WhatsApp shop step needs a connected catalogue; flows without one never look.
+          const hasShopStep = graph.nodes.some((n) => n.type === "carousel");
+          const whatsappShop = hasShopStep
+            ? await (await import("@/lib/whatsapp-catalog.server")).whatsappShopConnected(db, org)
+            : undefined;
+          const problems = validateGraph(graph, {
+            timezone: (await loadSendSettings(db, org)).timezone,
+            ...(whatsappShop === undefined ? {} : { whatsappShop }),
+          });
           // Templates must be APPROVED at publish time.
           const templateIds = graph.nodes.filter((n) => n.type === "template").map((n) => String(n.data["template_id"] ?? "")).filter(Boolean);
           if (templateIds.length) {

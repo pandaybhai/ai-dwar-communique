@@ -115,12 +115,19 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
   const past = useRef<Snapshot[]>([]);
   const future = useRef<Snapshot[]>([]);
   const clipboard = useRef<Snapshot | null>(null);
-  const [edCtx, setEdCtx] = useState<{ numbers: Array<{ id: string; label: string; onboarding: boolean }>; pinned: string | null; members: Array<{ id: string; name: string }> }>({ numbers: [], pinned: null, members: [] });
+  // shop: whether a WhatsApp shop (catalogue) is connected; unknown until the context loads.
+  const [edCtx, setEdCtx] = useState<{ numbers: Array<{ id: string; label: string; onboarding: boolean }>; pinned: string | null; members: Array<{ id: string; name: string }>; shop?: boolean }>({ numbers: [], pinned: null, members: [] });
   useEffect(() => {
-    void callApi<{ numbers: Array<{ id: string; label: string; onboarding: boolean }>; whatsapp_account_id: string | null; members: Array<{ id: string; name: string }> }>("/api/flows/v2", {
+    void callApi<{ numbers: Array<{ id: string; label: string; onboarding: boolean }>; whatsapp_account_id: string | null; members: Array<{ id: string; name: string }>; whatsapp_shop_connected?: boolean }>("/api/flows/v2", {
       body: { action: "editor_context", organization_id: organizationId, flow_id: flowId },
     }).then(({ data }) => {
-      if (data) setEdCtx({ numbers: data.numbers ?? [], pinned: data.whatsapp_account_id ?? null, members: data.members ?? [] });
+      if (data)
+        setEdCtx({
+          numbers: data.numbers ?? [],
+          pinned: data.whatsapp_account_id ?? null,
+          members: data.members ?? [],
+          ...(typeof data.whatsapp_shop_connected === "boolean" ? { shop: data.whatsapp_shop_connected } : {}),
+        });
     });
   }, [organizationId, flowId]);
   const setNumber = async (id: string | null) => {
@@ -154,7 +161,8 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     () => [...new Set(graph.nodes.map((n) => String(n.data["variable"] ?? "").trim()).filter(Boolean))],
     [graph],
   );
-  const problems = useMemo(() => [...validateGraph(graph), ...serverProblems], [graph, serverProblems]);
+  const validateOpts = useMemo(() => (edCtx.shop === undefined ? {} : { whatsappShop: edCtx.shop }), [edCtx.shop]);
+  const problems = useMemo(() => [...validateGraph(graph, validateOpts), ...serverProblems], [graph, validateOpts, serverProblems]);
   const problemsByNode = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const p of problems) if (p.nodeId) m.set(p.nodeId, [...(m.get(p.nodeId) ?? []), p.message]);
@@ -280,7 +288,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
   };
 
   const publish = async () => {
-    const local = validateGraph(graph);
+    const local = validateGraph(graph, validateOpts);
     if (local.length) { toast.error(`Fix ${local.length} problem${local.length === 1 ? "" : "s"} before publishing.`); return; }
     if (!(await saveDraft())) return;
     setBusy(true);
@@ -418,8 +426,12 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
                 {(Object.keys(NODE_META) as NodeType[]).filter((k) => k !== "start" && NODE_META[k].group === g).map((k) => {
                   const M = NODE_META[k];
                   return (
-                    <button key={k} type="button" onClick={() => addNode(k)} className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-muted">
-                      <M.icon className="h-4 w-4 text-primary" /> {M.label}
+                    <button key={k} type="button" title={M.hint} onClick={() => addNode(k)} className="mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-muted">
+                      <M.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <span className="min-w-0">
+                        {M.label}
+                        {M.hint && <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{M.hint}</span>}
+                      </span>
                     </button>
                   );
                 })}

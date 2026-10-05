@@ -16,6 +16,7 @@ import {
   countCrawledProducts,
   dropSharedImages,
   extractProduct,
+  fillMissingPhotos,
   hideMissingCrawledProducts,
   saveCrawledProducts,
   type ProductDraft,
@@ -732,6 +733,8 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   }
 
   // What the pages themselves said about products, remembered in one place.
+  // Products found without a photo: take it from the product page itself.
+  await fillMissingPhotos(supabase, organizationId, productDrafts).catch(() => 0);
   dropSharedImages(productDrafts);
   await saveCrawledProducts(supabase, organizationId, productDrafts);
   const fullReadNow = mode === "full" && !more && !refreshing;

@@ -164,6 +164,64 @@ export function relativeTime(iso: string | null | undefined): string {
   return `${months} month${months === 1 ? "" : "s"} ago`;
 }
 
+// ------------------------------------------------------- Products page words
+
+/** Products a store platform hands us (vs. "crawl": read off the website). */
+export const STORE_PRODUCT_SOURCES = ["shopify", "woocommerce"] as const;
+
+/**
+ * Catalogue states in which Meta shows the catalogue on a number. The same
+ * test the WhatsApp shop flow step uses before it sends anything.
+ */
+export const WHATSAPP_SHOP_CONNECTED_STATUSES = ["linked", "attach_unconfirmed"] as const;
+
+/** "from your website", "from your store", both, or nothing when it's all hand-made. */
+export function productSourceWords(counts: { website: number; store: number }): string | null {
+  if (counts.website > 0 && counts.store > 0) return "from your website and store";
+  if (counts.website > 0) return "from your website";
+  if (counts.store > 0) return "from your store";
+  return null;
+}
+
+/** "131 products · from your website · updated 2 hr ago" */
+export function productsSummaryLine(input: {
+  total: number;
+  website: number;
+  store: number;
+  lastUpdated: string | null;
+}): string {
+  const parts = [`${input.total.toLocaleString("en-IN")} product${input.total === 1 ? "" : "s"}`];
+  const source = productSourceWords(input);
+  if (source) parts.push(source);
+  if (input.total > 0 && input.lastUpdated) parts.push(`updated ${relativeTime(input.lastUpdated)}`);
+  return parts.join(" · ");
+}
+
+export type WhatsAppShopRow = {
+  waba_id: string;
+  status: string;
+  mode?: "managed" | "linked" | null;
+  pushed_count: number | null;
+  last_sync_at: string | null;
+};
+
+/** The workspace's WhatsApp shop: the first catalogue that is connected to a number, if any. */
+export function whatsappShopState(rows: WhatsAppShopRow[]): {
+  connected: boolean;
+  row: WhatsAppShopRow | null;
+  synced: number;
+  lastSynced: string | null;
+} {
+  const row =
+    rows.find((r) => (WHATSAPP_SHOP_CONNECTED_STATUSES as readonly string[]).includes(r.status)) ?? null;
+  return {
+    connected: row !== null,
+    row,
+    synced: Number(row?.pushed_count ?? 0),
+    lastSynced: row?.last_sync_at ?? null,
+  };
+}
+
 export function slugify(name: string): string {
   return (
     name

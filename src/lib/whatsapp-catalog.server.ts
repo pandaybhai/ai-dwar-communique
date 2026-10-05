@@ -6,6 +6,7 @@ import {
   logServerActivity,
 } from "@/lib/whatsapp-api.server";
 import { getWhatsAppConnection } from "@/lib/whatsapp-numbers.server";
+import { WHATSAPP_SHOP_CONNECTED_STATUSES } from "@/lib/catalog";
 
 /**
  * WhatsApp catalogue: create a Meta product catalogue for the connected
@@ -111,6 +112,24 @@ export type CatalogRow = {
   is_cart_enabled: boolean | null;
 };
 
+
+
+/**
+ * "WhatsApp shop connected": any number in the workspace has a catalogue
+ * linked to it. A WhatsApp shop flow step needs this to send anything.
+ */
+export async function whatsappShopConnected(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("whatsapp_catalogs")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .in("status", [...WHATSAPP_SHOP_CONNECTED_STATUSES])
+    .limit(1);
+  return ((data ?? []) as unknown[]).length > 0;
+}
 
 export async function getCatalogRow(
   supabase: SupabaseClient,
