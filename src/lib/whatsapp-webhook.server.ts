@@ -1920,6 +1920,22 @@ export async function processWebhookPayload(
               const { data: priced, error: priceError } = await supabase.rpc("price_message", {
                 p_message_id: existing.id,
               });
+              if (!priceError && priced !== false && existing.campaign_id) {
+                // The debit for this message was just written (by the database,
+                // with the price); keep the campaign's total in step with it.
+                try {
+                  const { syncCampaignCharged } = await import("@/lib/campaign-billing.server");
+                  await syncCampaignCharged(supabase, orgId, String(existing.campaign_id));
+                } catch (error) {
+                  console.warn(
+                    JSON.stringify({
+                      scope: "campaign_charged",
+                      campaign_id: existing.campaign_id,
+                      error: error instanceof Error ? error.message : String(error),
+                    }),
+                  );
+                }
+              }
               if (priceError || priced === false) {
                 console.warn(
                   JSON.stringify({

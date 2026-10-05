@@ -1064,7 +1064,8 @@ export const FEATURES: readonly FeatureManifest[] = [
   {
     key: "catalog",
     depends_on: ["templates"],
-    name: "Catalogue",
+    // Sidebar wording only: the key, route (/app/catalog), flag and permission keys stay "catalog".
+    name: "Products",
     description:
       "One product list the business can actually use: synced from the store, uploaded from a file, or added by hand.",
     icon: "package",

@@ -432,6 +432,119 @@ function chooseImage(
   return null;
 }
 
+// --------------------------------------------- d) the product's own photo
+
+/** "${img}" / "{{ image }}": a picture slot a script fills in, not a picture. */
+const TEMPLATE_RE = /\$\{|\{\{|%7B%7B|\$%7B/i;
+/** Site furniture, never a product photo. */
+const FURNITURE_RE = /(?:^|[/_.-])(?:logos?|icons?|sprites?|favicon|loader|spinner|badges?|spacer)(?:[/_.-]|$)|\.svg$/i;
+
+function usablePhoto(raw: unknown, pageUrl: string): string | null {
+  if (typeof raw !== "string") return null;
+  const text = decode(raw.replace(/\\\//g, "/")).trim();
+  if (!text || TEMPLATE_RE.test(text)) return null;
+  const url = absolute(text, pageUrl);
+  if (!url) return null;
+  const path = new URL(url).pathname;
+  if (path === "/" || PLACEHOLDER_RE.test(path) || FURNITURE_RE.test(path)) return null;
+  return url;
+}
+
+/** JSON-LD "image": a link, a list of links, or ImageObjects. */
+function imageList(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value.flatMap((v) => imageList(v));
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return [record["url"] ?? record["contentUrl"]];
+  }
+  return [value];
+}
+
+/** What names this product in a picture's address: its page id/slug and its SKU. */
+function identityTokens(pageUrl: string, sku: string | null | undefined): string[] {
+  const squash = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const tokens: string[] = [];
+  try {
+    const last = decodeURIComponent(new URL(pageUrl).pathname.split("/").filter(Boolean).pop() ?? "");
+    const slug = squash(last.replace(/\.(?:html?|php|aspx?)$/i, ""));
+    // Long enough to name one product, not a word many products share.
+    if (slug.length >= 8) tokens.push(slug);
+  } catch {
+    // An address we cannot read names nothing.
+  }
+  if (sku && squash(sku).length >= 5 && /[a-z]/.test(squash(sku)) && /\d/.test(squash(sku))) tokens.push(squash(sku));
+  return tokens;
+}
+
+/** Class names shop themes give the big picture in a product's own gallery. */
+const MAIN_IMAGE_CLASS_RE =
+  /class=["'][^"']*\b(?:main[-_]?(?:swiper[-_]?)?image|product[-_](?:main|featured)[-_]image|featured[-_]image|wp-post-image|product__media-image)\b/i;
+/** Where other products start: anything below this belongs to someone else. */
+const OTHER_PRODUCTS_RE = /related products|you may also like|similar products|recommended for you|customers also/i;
+
+/**
+ * The main picture of this product's gallery. A picture counts only when its
+ * address names this product (page id or SKU) or the theme marks it as the
+ * main gallery picture above any "related products" block — a nearby picture
+ * of another product is worse than none.
+ */
+function mainGalleryPhoto(html: string, pageUrl: string, sku: string | null | undefined): string | null {
+  const tokens = identityTokens(pageUrl, sku);
+  const named = (url: string) => {
+    const squashed = url.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return tokens.some((t) => squashed.includes(t));
+  };
+  const candidates: Array<{ at: number; url: string; marked: boolean }> = [];
+  // Galleries a script builds from a data attribute: data-images='["…","…"]'.
+  for (const attr of html.matchAll(/data-(?:images|gallery|zoom-images?)=(["'])([\s\S]*?)\1/gi)) {
+    const body = decode(attr[2] ?? "").replace(/\\\//g, "/");
+    for (const link of body.matchAll(/(?:https?:)?\/\/[^"'\s,\]]+|\/[^"'\s,\]]+\.(?:jpe?g|png|webp|avif)/gi))
+      candidates.push({ at: attr.index ?? 0, url: link[0], marked: false });
+  }
+  for (const tag of html.matchAll(/<img\b[^>]*>/gi)) {
+    const markup = tag[0] ?? "";
+    const marked = MAIN_IMAGE_CLASS_RE.test(markup);
+    for (const name of ["data-zoom-image", "data-large_image", "data-src", "src"]) {
+      const src = markup.match(new RegExp(`\\b${name}=["']([^"']+)["']`, "i"))?.[1];
+      if (src) candidates.push({ at: tag.index ?? 0, url: src, marked });
+    }
+  }
+  candidates.sort((a, b) => a.at - b.at);
+  for (const c of candidates) {
+    const url = usablePhoto(c.url, pageUrl);
+    if (url && named(url)) return url;
+  }
+  const otherProductsAt = html.search(OTHER_PRODUCTS_RE);
+  for (const c of candidates) {
+    if (!c.marked) continue;
+    if (otherProductsAt > -1 && c.at > otherProductsAt) break;
+    const url = usablePhoto(c.url, pageUrl);
+    if (url) return url;
+  }
+  return null;
+}
+
+/**
+ * The product's photo as its own page publishes it: the social preview
+ * (og:image), then the product's structured data, then the main picture of
+ * its own gallery. Null when the page shows no photo of this product.
+ */
+export function productPagePhoto(html: string, pageUrl: string, sku?: string | null): string | null {
+  if (!html) return null;
+  const og = usablePhoto(metaContent(html, "og:image"), pageUrl);
+  if (og) return og;
+  for (const node of jsonLdNodes(html)) {
+    if (!isProductNode(node) || !nameOf(node["name"])) continue;
+    // Only the page's own product; later Product nodes are other products.
+    for (const candidate of imageList(node["image"])) {
+      const url = usablePhoto(candidate, pageUrl);
+      if (url) return url;
+    }
+    break;
+  }
+  return mainGalleryPhoto(html, pageUrl, sku);
+}
+
 function fromPageShape(html: string, pageUrl: string): ProductDraft | null {
   const plain = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ");
   const all = Array.from(plain.matchAll(PRICE_RE));
@@ -518,7 +631,10 @@ export function extractProduct(
     if (shape?.price != null && shape.title.toLowerCase() === draft.title.toLowerCase()) draft.price = shape.price;
   }
 
-  draft.imageUrl = chooseImage(html, pageUrl, draft.imageUrl, priceAnchor(html, draft.price));
+  draft.imageUrl =
+    chooseImage(html, pageUrl, draft.imageUrl, priceAnchor(html, draft.price)) ??
+    // Nothing the usual way: the main picture of this product's own gallery.
+    productPagePhoto(html, pageUrl, draft.sku);
 
   const crumbs = breadcrumbText(html);
   const docTitle = pageTitle(html);
@@ -594,11 +710,11 @@ export async function saveCrawledProducts(
     };
     const { data: existing } = await supabase
       .from("products")
-      .select("id, source")
+      .select("id, source, image_url")
       .eq("organization_id", organizationId)
       .eq("external_id", draft.externalId)
       .maybeSingle();
-    const prior = existing as { id: string; source: string } | null;
+    const prior = existing as { id: string; source: string; image_url?: string | null } | null;
     if (prior) {
       // A product a shop platform owns is never overwritten by a page read.
       if (prior.source !== CRAWL_SOURCE) continue;
@@ -606,6 +722,8 @@ export async function saveCrawledProducts(
       // and wipes nothing out: what the last read found stays.
       const update: Record<string, unknown> = { ...row };
       for (const key of ["price", "category", "description"] as const) if (update[key] == null) delete update[key];
+      // A photo the product already has is never replaced or wiped by a read.
+      if (prior.image_url) delete update["image_url"];
       const { error } = await supabase.from("products").update(update).eq("id", prior.id);
       if (!error) saved += 1;
     } else {
@@ -614,6 +732,71 @@ export async function saveCrawledProducts(
     }
   }
   return saved;
+}
+
+type FetchHtml = (url: string) => Promise<string | null>;
+
+async function fetchProductPage(url: string): Promise<string | null> {
+  const res = await fetchWithTimeout(url, 10000);
+  if (!res?.ok) return null;
+  if (!(res.headers.get("content-type") ?? "").toLowerCase().includes("text/html")) return null;
+  return res.text().catch(() => null);
+}
+
+/**
+ * Products the read found without a photo, whose saved row has none either:
+ * open the product page itself (the full page, head included — a rendered
+ * reader can drop og:image and structured data) and take the photo it
+ * publishes. Never touches a product that already has a photo or that a shop
+ * platform owns. Bounded per read; the next read carries on.
+ */
+export async function fillMissingPhotos(
+  supabase: SupabaseClient,
+  organizationId: string,
+  drafts: ProductDraft[],
+  opts: { fetchHtml?: FetchHtml; maxPages?: number; budgetMs?: number } = {},
+): Promise<number> {
+  const missing = drafts.filter((d) => !d.imageUrl);
+  if (missing.length === 0) return 0;
+  const known = new Map<string, { source: string; image_url: string | null }>();
+  const ids = [...new Set(missing.map((d) => d.externalId))];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await supabase
+      .from("products")
+      .select("external_id, source, image_url")
+      .eq("organization_id", organizationId)
+      .in("external_id", ids.slice(i, i + 100));
+    for (const row of (data ?? []) as Array<{ external_id: string; source: string; image_url: string | null }>)
+      known.set(row.external_id, row);
+  }
+  const queue = missing
+    .filter((d) => {
+      const row = known.get(d.externalId);
+      return !row || (row.source === CRAWL_SOURCE && !row.image_url);
+    })
+    .slice(0, opts.maxPages ?? 40);
+  const fetchHtml = opts.fetchHtml ?? fetchProductPage;
+  const deadline = Date.now() + (opts.budgetMs ?? 45_000);
+  let filled = 0;
+  const workers = Array.from({ length: 4 }, async () => {
+    for (;;) {
+      if (Date.now() > deadline) return;
+      const draft = queue.shift();
+      if (!draft) return;
+      try {
+        const html = await fetchHtml(draft.externalId);
+        const photo = html ? productPagePhoto(html, draft.externalId, draft.sku) : null;
+        if (photo) {
+          draft.imageUrl = photo;
+          filled += 1;
+        }
+      } catch {
+        // One page we cannot open never stops the rest.
+      }
+    }
+  });
+  await Promise.all(workers);
+  return filled;
 }
 
 /** Products from this site that the latest read no longer finds. */
@@ -765,6 +948,7 @@ export async function backfillProductsFromSource(
     }
   });
   await Promise.all(workers);
+  await fillMissingPhotos(supabase, source.organization_id, drafts).catch(() => 0);
   dropSharedImages(drafts);
 
   const saved = await saveCrawledProducts(supabase, source.organization_id, drafts);

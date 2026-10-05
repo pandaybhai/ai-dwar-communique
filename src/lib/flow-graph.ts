@@ -311,7 +311,15 @@ export function maskHttpSecrets(graph: FlowGraph): FlowGraph {
   };
 }
 
-export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: string } = {}): GraphProblem[] {
+/** Shown on a WhatsApp shop step (internal type "carousel") when the workspace has no connected WhatsApp catalogue. */
+export const WHATSAPP_SHOP_REQUIRED = "Connect WhatsApp shop first";
+
+/**
+ * opts.whatsappShop: whether the workspace has a connected WhatsApp catalogue.
+ * Only `false` adds a problem, and only on WhatsApp shop steps; left out (as
+ * every older caller does) nothing changes.
+ */
+export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: string; whatsappShop?: boolean } = {}): GraphProblem[] {
   const problems: GraphProblem[] = [];
   const nowMs = (opts.now ?? new Date()).getTime();
   if (graph.nodes.length > MAX_NODES) problems.push({ nodeId: null, message: `A flow can have at most ${MAX_NODES} steps.` });
@@ -322,6 +330,8 @@ export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: s
     if (!ids.has(e.source) || !ids.has(e.target)) problems.push({ nodeId: e.source, message: "A connection points to a step that no longer exists." });
   }
   for (const node of graph.nodes) {
+    // First, so the step itself says what's missing.
+    if (node.type === "carousel" && opts.whatsappShop === false) problems.push({ nodeId: node.id, message: WHATSAPP_SHOP_REQUIRED });
     for (const h of requiredOutputs(node)) {
       if (!edgeFrom(graph, node.id, h))
         problems.push({ nodeId: node.id, message: h === "next" ? "Connect this step to what happens next (or an End)." : `Output “${h}” isn't connected.` });
