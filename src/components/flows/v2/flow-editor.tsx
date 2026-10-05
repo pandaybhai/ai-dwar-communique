@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { callApi } from "@/lib/whatsapp-client";
+import { callApi, uploadApi } from "@/lib/whatsapp-client";
 import { maskHttpSecrets, validateGraph, type FlowGraph, type GraphProblem, type NodeType } from "@/lib/flow-graph";
 import { FlowNodeCard, type RFData } from "./flow-node";
 import { NODE_META, uid } from "./node-meta";
@@ -132,6 +132,15 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     const r = out.result;
     const saved = Object.entries(r.saved).map(([k, v]) => `{{${k}}} = ${v || "(empty)"}`).join("\n");
     return `${r.ok ? "Success" : "Failed"}${r.status ? ` · HTTP ${r.status}` : ""}${r.error ? ` · ${r.error}` : ""}${saved ? `\n\nSaved:\n${saved}` : ""}${r.preview ? `\n\nResponse:\n${r.preview}` : ""}`;
+  }, [organizationId]);
+  // Step pictures go to the same public image store as product pictures.
+  const uploadImage = useCallback(async (file: File) => {
+    const form = new FormData();
+    form.append("organization_id", organizationId);
+    form.append("purpose", "flow");
+    form.append("file", file);
+    const { data, error } = await uploadApi<{ url: string }>("/api/catalog/image", form);
+    return { url: data?.url ?? null, error };
   }, [organizationId]);
   const onboardingNumber = edCtx.numbers.find((n) => n.onboarding) ?? null;
 
@@ -430,7 +439,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
               <NodeConfig
                 node={{ id: sel.id, type: sel.data.kind, data: sel.data.data }}
                 problems={problemsByNode.get(sel.id) ?? []}
-                pickers={{ ...pickers, variables, members: edCtx.members, testHttp }}
+                pickers={{ ...pickers, variables, members: edCtx.members, testHttp, uploadImage }}
                 onChange={(d) => updateData(sel.id, d)}
                 onDelete={() => deleteNode(sel.id)}
               />

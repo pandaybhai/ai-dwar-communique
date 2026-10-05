@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { ImagePlus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { MAX_BRANCHES, MAX_BUTTONS, MAX_CONDITIONS, MAX_LIST_ROWS, type Branch, type Condition, type FlowNode } from "@/lib/flow-graph";
+import { IMAGE_MAX_BYTES, IMAGE_TYPES, MAX_BRANCHES, MAX_BUTTONS, MAX_CONDITIONS, MAX_LIST_ROWS, MAX_PRODUCT_ITEMS, imageProblem, parseBudget, type Branch, type Condition, type FlowNode } from "@/lib/flow-graph";
 import { NODE_META, uid } from "./node-meta";
 
 export type Pickers = {
@@ -19,6 +19,8 @@ export type Pickers = {
   members?: Array<{ id: string; name: string }>;
   /** Runs an HTTP step once with sample values; returns a readable result. */
   testHttp?: (data: Record<string, unknown>) => Promise<string>;
+  /** Uploads a step picture; returns its public https link, or an error. */
+  uploadImage?: (file: File) => Promise<{ url: string | null; error: string | null }>;
 };
 
 type Props = { node: FlowNode; problems: string[]; pickers: Pickers; onChange: (data: Record<string, unknown>) => void; onDelete: () => void };
@@ -125,7 +127,7 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
       <div className="space-y-1.5"><Label>Step name (optional)</Label><Input value={String(d["label"] ?? "")} onChange={(e) => set("label", e.target.value)} /></div>
 
       {node.type === "start" && <p className="text-sm text-muted-foreground">The flow begins here. Triggers (keywords, events) are set up on the flow's Triggers tab.</p>}
-      {node.type === "text" && (<>{textField()}{typing}</>)}
+      {node.type === "text" && (<><ImageField d={d} set={set} upload={pickers.uploadImage} caption />{textField()}{typing}</>)}
       {node.type === "cta_url" && (
         <>
           {textField()}
@@ -294,7 +296,8 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
         </>
       )}
       {node.type === "note" && textField("text", "Note (never sent)")}
-      {node.type === "buttons" && (<>{textField()}{options("buttons", MAX_BUTTONS, 20)}{saveTo}{typing}{replyRules}</>)}
+      {node.type === "show_products" && <ShowProductsConfig d={d} set={set} variables={pickers.variables} />}
+      {node.type === "buttons" && (<><ImageField d={d} set={set} upload={pickers.uploadImage} />{textField()}{options("buttons", MAX_BUTTONS, 20)}{saveTo}{typing}{replyRules}</>)}
       {node.type === "list" && (<>{textField()}<div className="space-y-1.5"><Label>List button text</Label><Input maxLength={20} value={String(d["button_text"] ?? "Choose")} onChange={(e) => set("button_text", e.target.value)} /></div>{options("rows", MAX_LIST_ROWS, 24)}{saveTo}{replyRules}</>)}
       {node.type === "ask" && (
         <>
@@ -438,6 +441,95 @@ function HttpConfig({ d, set, testHttp }: { d: Record<string, unknown>; set: (k:
           {result && <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 text-xs">{result}</pre>}
         </div>
       )}
+    </>
+  );
+}
+
+/**
+ * An optional picture above a Message or Buttons step: upload a JPG/PNG (up to
+ * 5 MB, WhatsApp's limit) or paste an https link.
+ */
+function ImageField({ d, set, upload, caption = false }: { d: Record<string, unknown>; set: (k: string, v: unknown) => void; upload: Pickers["uploadImage"]; caption?: boolean }) {
+  const url = String(d["image_url"] ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pick = async (file: File | undefined) => {
+    if (!file || !upload) return;
+    if (!IMAGE_TYPES.includes(file.type)) return setError("WhatsApp pictures must be JPG or PNG.");
+    if (file.size > IMAGE_MAX_BYTES) return setError("WhatsApp pictures must be under 5 MB.");
+    setBusy(true);
+    setError(null);
+    const res = await upload(file);
+    setBusy(false);
+    if (res.url) set("image_url", res.url);
+    else setError(res.error ?? "We couldn't upload that picture.");
+  };
+  const problem = error ?? imageProblem(url);
+  return (
+    <div className="space-y-1.5">
+      <Label>Picture (optional)</Label>
+      {url && !imageProblem(url) && <img src={url} alt="" className="max-h-32 w-full rounded-lg border border-border object-cover" />}
+      <div className="flex gap-2">
+        <Input placeholder="https://… (JPG or PNG)" value={url} onChange={(e) => set("image_url", e.target.value.trim())} />
+        {upload && (
+          <Button type="button" variant="outline" size="icon" aria-label="Upload picture" title="Upload a JPG or PNG (max 5 MB)" disabled={busy} onClick={() => fileRef.current?.click()}>
+            <ImagePlus className="h-4 w-4" />
+          </Button>
+        )}
+        {url && <Button type="button" variant="ghost" size="icon" aria-label="Remove picture" onClick={() => set("image_url", "")}><Trash2 className="h-4 w-4" /></Button>}
+      </div>
+      <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
+      {busy && <p className="text-xs text-muted-foreground">Uploading…</p>}
+      {problem && <p className="text-xs text-destructive">{problem}</p>}
+      <p className="text-xs text-muted-foreground">{caption ? "With a picture, the message is sent as the picture's caption (max 1,024 characters)." : "Shown above the message and its buttons."} JPG or PNG, up to 5 MB.</p>
+    </div>
+  );
+}
+
+/** "Show products": the shelf and budget to search, fixed or from an earlier answer. */
+function ShowProductsConfig({ d, set, variables }: { d: Record<string, unknown>; set: (k: string, v: unknown) => void; variables: string[] }) {
+  const budget = String(d["budget"] ?? "");
+  const range = budget && !budget.includes("{{") ? parseBudget(budget) : null;
+  const inr = (n: number) => `₹${new Intl.NumberFormat("en-IN").format(n)}`;
+  const chips = (key: string) => (
+    <div className="flex flex-wrap gap-1">
+      {variables.map((v) => (
+        <button key={v} type="button" onClick={() => set(key, `{{${v}}}`)} className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground transition hover:border-primary hover:text-foreground">
+          {`{{${v}}}`}
+        </button>
+      ))}
+    </div>
+  );
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label>Category</Label>
+        <Input placeholder="Rings, or {{category}}" value={String(d["category"] ?? "")} onChange={(e) => set("category", e.target.value)} />
+        {chips("category")}
+        <p className="text-xs text-muted-foreground">A fixed shelf, or the variable a List/Buttons step saved the customer's choice to. Leave empty for all products.</p>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Budget</Label>
+        <Input placeholder="Under 25k, 25-50k, 1L+ — or {{budget}}" value={budget} onChange={(e) => set("budget", e.target.value)} />
+        {chips("budget")}
+        <p className="text-xs text-muted-foreground">
+          {range
+            ? `Searches ${range.min !== null && range.max !== null ? `${inr(range.min)} – ${inr(range.max)}` : range.max !== null ? `up to ${inr(range.max)}` : `from ${inr(range.min!)}`}.`
+            : 'Choices like "Under 25k", "25-50k", "50k-1L" and "1L+" are read as price ranges (k = thousand, L = lakh).'}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5"><Label>Lowest price (₹, optional)</Label><Input value={String(d["min_price"] ?? "")} onChange={(e) => set("min_price", e.target.value)} placeholder="Overrides the budget" /></div>
+        <div className="space-y-1.5"><Label>Highest price (₹, optional)</Label><Input value={String(d["max_price"] ?? "")} onChange={(e) => set("max_price", e.target.value)} placeholder="Overrides the budget" /></div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Show at most</Label>
+        <Input type="number" min={1} max={MAX_PRODUCT_ITEMS} value={Number(d["max_items"] ?? 5)} onChange={(e) => set("max_items", Math.min(Math.max(Math.round(Number(e.target.value)) || 1, 1), MAX_PRODUCT_ITEMS))} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Each product goes out as its picture with name, price and link. If nothing matches, the customer is told what you do have and its real starting price (e.g. "our pendants start at ₹27,000") with the closest products, and the flow takes the "None match" path. No AI is used and nothing is made up.
+      </p>
     </>
   );
 }

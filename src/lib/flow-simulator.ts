@@ -9,6 +9,7 @@ import {
   computeVariable,
   isBusinessOpen,
   pickBranch,
+  productQueryOf,
   startNode,
   validateAnswer,
   type Branch,
@@ -19,7 +20,7 @@ import {
 } from "@/lib/flow-graph";
 
 export type SimMessage =
-  | { from: "bot"; kind: "text"; text: string; options?: string[] | undefined }
+  | { from: "bot"; kind: "text"; text: string; options?: string[] | undefined; image?: string | undefined }
   | { from: "bot"; kind: "note"; text: string }
   | { from: "customer"; kind: "text"; text: string };
 
@@ -81,6 +82,13 @@ function go(graph: FlowGraph, s: SimState, node: FlowNode, handle: string): bool
   return true;
 }
 
+/** The picture on a Message or Buttons step, when it has one. */
+function imageOf(node: FlowNode): string | undefined {
+  if (node.type !== "text" && node.type !== "buttons") return undefined;
+  const url = String(node.data["image_url"] ?? "").trim();
+  return url || undefined;
+}
+
 function optionsOf(node: FlowNode): Array<{ id: string; title: string }> {
   return ((node.type === "buttons" ? node.data["buttons"] : node.data["rows"]) as Array<{ id: string; title: string }> | undefined) ?? [];
 }
@@ -101,7 +109,7 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
     if (node.type === "buttons" || node.type === "list" || node.type === "ask" || node.type === "location_request") {
       if (!s.waiting) {
         s.attempts[node.id] = (s.attempts[node.id] ?? 0) + 1;
-        s.messages.push({ from: "bot", kind: "text", text: interpolate(String(d["text"] ?? ""), ctx) + (node.type === "location_request" ? "\n[📍 Send location]" : ""), options: node.type === "ask" || node.type === "location_request" ? undefined : optionsOf(node).map((o) => o.title) });
+        s.messages.push({ from: "bot", kind: "text", text: interpolate(String(d["text"] ?? ""), ctx) + (node.type === "location_request" ? "\n[📍 Send location]" : ""), options: node.type === "ask" || node.type === "location_request" ? undefined : optionsOf(node).map((o) => o.title), image: imageOf(node) });
         if (Number(d["nudge_minutes"] ?? 0) > 0 && String(d["nudge_text"] ?? "").trim()) note(s, `If quiet for ${d["nudge_minutes"]} min: "${String(d["nudge_text"])}"`);
         s.waiting = true;
         return s;
@@ -154,8 +162,16 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
         note(s, "Flow ended.");
         return s;
       case "text":
-        s.messages.push({ from: "bot", kind: "text", text: interpolate(String(d["text"] ?? ""), ctx) });
+        s.messages.push({ from: "bot", kind: "text", text: interpolate(String(d["text"] ?? ""), ctx), image: imageOf(node) });
         break;
+      case "show_products": {
+        const q = productQueryOf(d, ctx);
+        const money = (n: number) => `₹${new Intl.NumberFormat("en-IN").format(n)}`;
+        const range = q.minPrice !== null && q.maxPrice !== null ? ` ${money(q.minPrice)}–${money(q.maxPrice)}` : q.maxPrice !== null ? ` under ${money(q.maxPrice)}` : q.minPrice !== null ? ` from ${money(q.minPrice)}` : "";
+        note(s, `Shows up to ${q.limit} ${q.category || "products"}${range} from your catalogue, each with its picture, price and link (searched live — test chat assumes some match).`);
+        if (!go(graph, s, node, "found")) return s;
+        continue;
+      }
       case "template":
         note(s, `Sends template "${String(d["template_name"] ?? "template")}"`);
         break;

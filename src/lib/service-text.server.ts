@@ -216,8 +216,12 @@ export async function sendServiceImage(
     to: string;
     /** Records the send API call and post-send writes (webhook_events.timing). */
     timer?: ReplyTimer;
+    /** The caller read the 24-hour window in this request; true skips the re-read. */
+    windowOpen?: boolean;
     imageUrl: string;
     caption: string;
+    /** Stored on the message row, e.g. { kind: "flow_v2" }. */
+    metadata?: Record<string, unknown>;
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
@@ -238,6 +242,7 @@ export async function sendServiceImage(
     body: args.caption,
     media_url: args.imageUrl,
     media_mime: "image",
+    ...(args.metadata ? { metadata: args.metadata } : {}),
   });
 }
 

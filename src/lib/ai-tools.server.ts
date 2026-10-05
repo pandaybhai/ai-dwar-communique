@@ -468,12 +468,23 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     const maxPriceRaw = args["max_price"];
     const maxPrice =
       typeof maxPriceRaw === "number" && Number.isFinite(maxPriceRaw) ? maxPriceRaw : null;
+    // Not in the agent's manifest: a flow's "Show products" step passes a
+    // budget floor ("1L+", "25-50k"). Absent, the search is exactly as before.
+    const minPriceRaw = args["min_price"];
+    const minPrice =
+      typeof minPriceRaw === "number" && Number.isFinite(minPriceRaw) ? minPriceRaw : null;
     const availability = isAvailability(args["availability"]) ? args["availability"] : null;
     // A whole sentence in `query` matches nothing; once we know the shelf and
     // the budget, the words the customer typed are noise.
     const query = category && looksLikeSentence(rawQuery) ? "" : rawQuery;
 
-    const run = async (withQuery: string, withMaxPrice: number | null, rowLimit: number, cheapestFirst = false) => {
+    const run = async (
+      withQuery: string,
+      withMaxPrice: number | null,
+      rowLimit: number,
+      cheapestFirst = false,
+      withMinPrice: number | null = minPrice,
+    ) => {
       const { toTsQuery } = await import("@/lib/catalog");
       let request = ctx.supabase
         .from("products")
@@ -503,6 +514,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       }
 
       if (withMaxPrice !== null) request = request.lte("price", withMaxPrice);
+      if (withMinPrice !== null) request = request.gte("price", withMinPrice);
       if (availability) request = request.eq("availability", availability);
       if (category) request = request.ilike("category", `%${category}%`);
       if (gender) {
@@ -532,7 +544,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     let searched = Boolean(query);
 
     // Words that matched nothing shouldn't hide a shelf we can browse.
-    if (first.rows!.length === 0 && query && (category || maxPrice !== null)) {
+    if (first.rows!.length === 0 && query && (category || maxPrice !== null || minPrice !== null)) {
       const retry = await run("", maxPrice, limit);
       if (retry.error) return { ok: false, error: retry.error };
       first = retry;
@@ -544,8 +556,8 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
     // Nothing at that budget: offer the nearest three above it rather than a
     // dead end.
-    if (category || maxPrice !== null) {
-      const closest = await run("", null, 3, true);
+    if (category || maxPrice !== null || minPrice !== null) {
+      const closest = await run("", null, 3, true, null);
       const suggestions = closest.rows ? sortRows(closest.rows, false) : [];
       if (suggestions.length > 0) {
         const prices = suggestions.map((r) => Number(r["price"])).filter((p) => Number.isFinite(p) && p > 0);

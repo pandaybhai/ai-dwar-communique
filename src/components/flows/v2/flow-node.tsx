@@ -27,6 +27,9 @@ function FlowNodeView({ id, data, selected }: NodeProps & { data: RFData }) {
           </span>
         )}
       </div>
+      {(data.kind === "text" || data.kind === "buttons") && String(data.data["image_url"] ?? "").trim() && (
+        <img src={String(data.data["image_url"])} alt="" loading="lazy" className="mx-3 mt-2 h-20 w-[calc(100%-1.5rem)] rounded-lg object-cover" />
+      )}
       {summary(node) && <p className="line-clamp-3 whitespace-pre-wrap px-3 py-2 text-xs text-muted-foreground">{summary(node)}</p>}
       {bad && <p className="px-3 pb-2 text-xs text-destructive">{data.problems![0]}</p>}
       {outs.length > 0 && (
