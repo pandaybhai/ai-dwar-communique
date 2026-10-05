@@ -25,6 +25,8 @@ export type ProductDraft = {
   availability: "in_stock" | "out_of_stock";
   sku: string | null;
   brand: string | null;
+  /** What it is made of and a short line about it, as the page prints them. */
+  description?: string | null;
 };
 
 const PRICE_RE = /(?:₹|Rs\.?|INR)\s*([\d][\d,]*(?:\.\d{1,2})?)/gi;
@@ -76,8 +78,13 @@ const SKU_WORDS: Array<[RegExp, string]> = [
   [/\bZPNDS?\b|\bZPND/i, "pendants"],
   [/\bZBSL/i, "bracelets"],
   [/\bZTNM/i, "tanmaniya"],
-  [/\bZERG/i, "earrings"],
-  [/\bZNCK/i, "necklaces"],
+  [/\bZERG|\bZERN/i, "earrings"],
+  [/\bZNCK|\bZNEK/i, "necklaces"],
+];
+
+/** Product-name words that only ever mean one shelf. */
+const TITLE_WORDS: Array<[RegExp, string]> = [
+  [/\bstuds?\b|\bdrops\b|\bdanglers?\b|\bjhumk|\bhoops?\b/i, "earrings"],
 ];
 
 const ROUTE_WORDS =
@@ -155,6 +162,80 @@ function categoryFromCode(...parts: Array<string | null | undefined>): string | 
   if (!text) return null;
   for (const [pattern, word] of SKU_WORDS) if (pattern.test(text)) return word;
   return null;
+}
+
+/**
+ * A shelf word inside a product name or a page address ("Solitaire Ring",
+ * /rings/solitaire). Only the fixed shelf words count — a name is never a shelf.
+ */
+function categoryWord(...parts: Array<string | null | undefined>): string | null {
+  const text = parts.filter(Boolean).join(" ").replace(/[-_/]+/g, " ");
+  if (!text) return null;
+  for (const [pattern, word] of [...CATEGORY_WORDS, ...TITLE_WORDS]) if (pattern.test(text)) return word;
+  return null;
+}
+
+/** The page's own <title>: "Golden Petal || ZERN-0004" often carries the item code. */
+function pageTitle(html: string): string | null {
+  const raw = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+  return raw ? decode(raw) || null : null;
+}
+
+/** The page as lines of visible text, one line per paragraph, row or option. */
+function textLines(html: string): string[] {
+  return html
+    .replace(/<(script|style|noscript|svg)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/<\/(?:p|li|div|tr|dd|h[1-6]|option|section|ul|ol|select|button)>|<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .split("\n")
+    .map((line) => decode(line))
+    .filter(Boolean);
+}
+
+const SPEC_RE =
+  /^(metals?|material|purity|karat|carat|gold purity|stones?|gemstones?|diamond(?: quality)?|quality|gross weight|net weight|weight|finish|plating)\s*:\s*(.+)$/i;
+
+/**
+ * What the product is made of, as the page prints it: "Metal: Gold, Diamond",
+ * "Gross weight: 1.05 gm", "Purity: 18K". Only labelled lines are kept —
+ * nothing is guessed.
+ */
+function specLines(html: string): string[] {
+  const lines = textLines(html);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < lines.length && out.length < 4; i++) {
+    const line = lines[i]!;
+    const spec = line.match(SPEC_RE);
+    if (spec) {
+      const label = spec[1]!.toLowerCase();
+      const value = spec[2]!.trim();
+      if (seen.has(label) || value.length > 80 || /[₹{}<>]/.test(value)) continue;
+      seen.add(label);
+      out.push(`${spec[1]!.charAt(0).toUpperCase()}${spec[1]!.slice(1).toLowerCase()}: ${value}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * A shop's own description, minus the theme's placeholder words ("Sort
+ * Description", "Product Specification") and the item code. Too little left
+ * means there was no real description.
+ */
+function cleanDescription(raw: unknown, title: string, sku: string | null): string | null {
+  if (typeof raw !== "string") return null;
+  let text = decode(raw.replace(/<[^>]+>/g, " "));
+  if (sku) text = text.split(sku).join(" ");
+  text = text
+    .replace(/\b(?:product\s+)?(?:full|short|sort)?\s*(?:description|specification)(?:\s+(?:sort|short|full))?\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s.,;:|-]+|[\s,;:|-]+$/g, "")
+    .trim();
+  if (text.split(/\s+/).filter((word) => /[a-z]{2}/i.test(word)).length < 2) return null;
+  if (text.toLowerCase() === title.trim().toLowerCase()) return null;
+  return text.slice(0, 300);
 }
 
 /** Who a shelf is meant for, when the shop says it out loud. */
@@ -251,6 +332,11 @@ function fromJsonLd(html: string, pageUrl: string): ProductDraft | null {
           : "in_stock",
       sku: typeof node["sku"] === "string" ? decode(node["sku"]).slice(0, 100) : null,
       brand: nameOf(node["brand"]),
+      description: cleanDescription(
+        node["description"],
+        title,
+        typeof node["sku"] === "string" ? decode(node["sku"]) : null,
+      ),
     };
   }
   return null;
@@ -287,6 +373,7 @@ function fromOpenGraph(html: string, pageUrl: string): ProductDraft | null {
     availability: soldOut(html) ? "out_of_stock" : "in_stock",
     sku: null,
     brand: metaContent(html, "og:site_name"),
+    description: cleanDescription(metaContent(html, "og:description"), title, null),
   };
 }
 
@@ -424,16 +511,28 @@ export function extractProduct(
     fromJsonLd(html, pageUrl) ?? fromOpenGraph(html, pageUrl) ?? fromPageShape(html, pageUrl);
   if (!draft || !draft.title) return null;
 
+  // Structured data without a price: the price printed beside this same
+  // product's heading is the one the shop charges.
+  if (draft.price === null) {
+    const shape = fromPageShape(html, pageUrl);
+    if (shape?.price != null && shape.title.toLowerCase() === draft.title.toLowerCase()) draft.price = shape.price;
+  }
+
   draft.imageUrl = chooseImage(html, pageUrl, draft.imageUrl, priceAnchor(html, draft.price));
 
   const crumbs = breadcrumbText(html);
+  const docTitle = pageTitle(html);
   draft.category =
     normalizeCategory(draft.category, draft.title) ??
     normalizeCategory(crumbs, draft.title) ??
     categoryFromReferrer(context.referrer ?? null, draft.title) ??
-    categoryFromCode(draft.sku, draft.title, draft.imageUrl) ??
+    categoryFromCode(draft.sku, draft.title, draft.imageUrl, docTitle) ??
+    categoryWord(draft.title, docTitle, new URL(pageUrl).pathname) ??
     null;
   draft.gender = genderHint(crumbs, context.referrer ?? null, draft.title);
+
+  const about = [...specLines(html), ...(draft.description ? [draft.description] : [])];
+  draft.description = about.length > 0 ? about.join(". ").replace(/\.\./g, ".").slice(0, 500) : null;
 
   if (draft.price === null && !draft.imageUrl) return null;
   return draft;
@@ -488,6 +587,7 @@ export async function saveCrawledProducts(
       availability: draft.availability,
       sku: draft.sku,
       brand: draft.brand,
+      description: draft.description ?? null,
       is_visible: true,
       synced_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -502,7 +602,11 @@ export async function saveCrawledProducts(
     if (prior) {
       // A product a shop platform owns is never overwritten by a page read.
       if (prior.source !== CRAWL_SOURCE) continue;
-      const { error } = await supabase.from("products").update(row).eq("id", prior.id);
+      // A read that can't see a price, shelf or description fills nothing in
+      // and wipes nothing out: what the last read found stays.
+      const update: Record<string, unknown> = { ...row };
+      for (const key of ["price", "category", "description"] as const) if (update[key] == null) delete update[key];
+      const { error } = await supabase.from("products").update(update).eq("id", prior.id);
       if (!error) saved += 1;
     } else {
       const { error } = await supabase.from("products").insert(row);

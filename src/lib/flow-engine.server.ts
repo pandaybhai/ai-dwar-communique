@@ -7,6 +7,7 @@ import {
   isBusinessOpen,
   interpolate,
   pickBranch,
+  productQueryOf,
   startNode,
   validateAnswer,
   type Branch,
@@ -791,7 +792,7 @@ async function advanceInner(
     const payWaiting = waitingHere && run.waiting_for === "payment";
     if (!waitingHere) await logEvent(supabase, run, node.id, "entered", { type: node.type });
 
-    const needsWindow = ["text", "buttons", "list", "ask", "form", "cta_url", "location_request", "location_send", "contact_card", "carousel", "payment"].includes(node.type);
+    const needsWindow = ["text", "buttons", "list", "ask", "form", "cta_url", "location_request", "location_send", "contact_card", "carousel", "payment", "show_products"].includes(node.type);
     const sendsMessage = needsWindow || node.type === "template";
 
     // Quiet hours hold proactive sends (not replies to a message just received).
@@ -930,18 +931,23 @@ async function advanceInner(
         bumpAttempt(node.id);
         const key = `${run.id}:${node.id}:${attemptOf(node.id)}`;
         if (await logEvent(supabase, run, node.id, "send", {}, key)) {
-          const { sendServiceText } = await import("@/lib/service-text.server");
-          const res = await sendServiceText(supabase, {
+          const { sendServiceText, sendServiceImage } = await import("@/lib/service-text.server");
+          const message = {
             organizationId: run.organization_id,
             phoneNumberId: env.conn!.phoneNumberId,
             accessToken: env.conn!.accessToken,
             conversationId: run.conversation_id!,
             to: env.to,
-            body: interpolate(String(d["text"] ?? ""), env.ctx),
             windowOpen: env.windowOpen,
             ...(env.timer ? { timer: env.timer } : {}),
             metadata: { kind: "flow_v2", run_id: run.id, node_id: node.id },
-          });
+          };
+          const body = interpolate(String(d["text"] ?? ""), env.ctx);
+          // With a picture, the message goes out as that picture with the words as its caption.
+          const imageUrl = String(d["image_url"] ?? "").trim();
+          const res = imageUrl
+            ? await sendServiceImage(supabase, { ...message, imageUrl, caption: body })
+            : await sendServiceText(supabase, { ...message, body });
           if (!res.ok) {
             await finish("failed", "failed", { error: res.error ?? "send_failed" });
             return;
@@ -1078,6 +1084,35 @@ async function advanceInner(
           }
         }
         break;
+      }
+      case "show_products": {
+        bumpAttempt(node.id);
+        const key = `${run.id}:${node.id}:${attemptOf(node.id)}`;
+        // Already sent on an earlier pass: carry on as if products were found.
+        let handle = "found";
+        if (await logEvent(supabase, run, node.id, "send", {}, key)) {
+          const { showProducts } = await import("@/lib/flow-products.server");
+          const res = await showProducts(supabase, {
+            organizationId: run.organization_id,
+            contactId: run.contact_id,
+            conversationId: run.conversation_id!,
+            to: env.to,
+            phoneNumberId: env.conn!.phoneNumberId,
+            accessToken: env.conn!.accessToken,
+            windowOpen: env.windowOpen,
+            ...(env.timer ? { timer: env.timer } : {}),
+            metadata: { kind: "flow_v2", run_id: run.id, node_id: node.id },
+            query: productQueryOf(d, { ...env.ctx, vars }),
+          });
+          if (!res.ok) {
+            await finish("failed", "failed", { error: res.error ?? "send_failed" });
+            return;
+          }
+          handle = res.found ? "found" : "none";
+          await logEvent(supabase, run, node.id, "products_shown", { found: res.found, shown: res.shown });
+        }
+        if (!(await follow(node, handle))) return;
+        continue;
       }
       case "set_variable": {
         const name = String(d["variable"] ?? "").trim();
@@ -1341,7 +1376,8 @@ async function sendPrompt(
       id: `${node.id}:${b.id}`,
       title: interpolate(b.title, env.ctx).slice(0, 20),
     }));
-    const r = await svc.sendServiceButtons(supabase, { ...base, buttons });
+    const imageUrl = String(d["image_url"] ?? "").trim();
+    const r = await svc.sendServiceButtons(supabase, { ...base, buttons, ...(imageUrl ? { imageUrl } : {}) });
     return { ok: r.ok, error: r.error };
   }
   if (node.type === "list") {

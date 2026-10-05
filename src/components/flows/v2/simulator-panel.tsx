@@ -37,6 +37,7 @@ export function SimulatorPanel({ graph, onPath }: { graph: FlowGraph; onPath: (i
           ) : (
             <div key={i} className={`flex ${m.from === "customer" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${m.from === "customer" ? "rounded-br-sm bg-primary/15" : "rounded-bl-sm bg-card"}`}>
+                {"image" in m && m.image && <img src={m.image} alt="" className="mb-2 max-h-40 w-full rounded-lg object-cover" />}
                 <p className="whitespace-pre-wrap">{m.text}</p>
                 {m.from === "bot" && m.options && (
                   <div className="mt-2 flex flex-col gap-1">

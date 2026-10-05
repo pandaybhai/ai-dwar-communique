@@ -21,7 +21,7 @@ import {
 } from "@/lib/ai-tasks.server";
 import type { RunPrelude } from "@/lib/ai-run.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
-import { sendServiceImage, sendServiceText } from "@/lib/service-text.server";
+import { sendServiceText } from "@/lib/service-text.server";
 import { isServiceWindowOpen } from "@/lib/service-window";
 
 export type AgentInboundArgs = {
@@ -352,59 +352,19 @@ export async function runAgentOnInbound(
   // Catalogue answers travel with pictures: one image per product named,
   // sent after the text so the words arrive first.
   let picturesSent = 0;
-  const cardsOn = flags.has("cards");
-  let cardSent = false;
   if (sent.ok && catalogSent === 0 && pictures.length > 0) {
-
-    for (const item of pictures) {
-      const price =
-        item.price === null
-          ? ""
-          : ` — ${new Intl.NumberFormat("en-IN", {
-              style: "currency",
-              currency: item.currency || "INR",
-              maximumFractionDigits: 0,
-            }).format(item.price)}`;
-      // Cards on? The first product's picture goes out as a branded card;
-      // any failure falls back to the bare image below.
-      if (cardsOn && !cardSent) {
-        try {
-          const { sendCardToContact } = await import("@/lib/customer-cards.server");
-          const card = await sendCardToContact(supabase, {
-            organizationId: args.organizationId,
-            contactId: args.contactId,
-            phone: args.waId,
-            sender: { phoneNumberId: args.phoneNumberId, accessToken: args.accessToken },
-            kind: "customer_product",
-            vars: {
-              name: item.title,
-              price: price.replace(/^ — /, ""),
-              image_url: item.imageUrl,
-              one_liner: "",
-            },
-            caption: `${item.title}${price}`,
-          });
-          if (card.sent) {
-            cardSent = true;
-            picturesSent += 1;
-            continue;
-          }
-        } catch {
-          // fall through to the plain picture
-        }
-      }
-      const picture = await sendServiceImage(supabase, {
-        organizationId: args.organizationId,
-        phoneNumberId: args.phoneNumberId,
-        accessToken: args.accessToken,
-        conversationId: args.conversationId,
-        to: args.waId,
-        imageUrl: item.imageUrl,
-        caption: `${item.title}${price}`,
-      });
-      if (picture.ok) picturesSent += 1;
-      else log("picture_failed", { conversation_id: args.conversationId, error: picture.error });
-    }
+    const { sendProductPictures } = await import("@/lib/product-pictures.server");
+    picturesSent = await sendProductPictures(supabase, {
+      organizationId: args.organizationId,
+      contactId: args.contactId,
+      conversationId: args.conversationId,
+      to: args.waId,
+      phoneNumberId: args.phoneNumberId,
+      accessToken: args.accessToken,
+      items: pictures,
+      cards: flags.has("cards"),
+      onFailure: (error) => log("picture_failed", { conversation_id: args.conversationId, error }),
+    });
   }
 
   // The model chose a published form: it goes out after the words, once.

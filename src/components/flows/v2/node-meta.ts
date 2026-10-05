@@ -1,7 +1,7 @@
 import {
   Bot, Clock, FileText, Flag, GitBranch, ListChecks, MessageSquare, MessageSquareText, MousePointerClick,
   Pencil, Play, StickyNote, Tag, UserPlus, AlertCircle, HelpCircle, Link2, MapPin, Navigation, Contact, GalleryHorizontal,
-  Variable, CalendarClock, Sheet, Globe, Mail, CalendarCheck, ClipboardList, IndianRupee, NotebookPen, CheckCircle2, BellRing, Users, Shuffle, CornerDownRight, type LucideIcon,
+  Variable, CalendarClock, Sheet, Globe, Mail, CalendarCheck, ClipboardList, IndianRupee, NotebookPen, CheckCircle2, BellRing, Users, Shuffle, CornerDownRight, ShoppingBag, type LucideIcon,
 } from "lucide-react";
 import type { FlowNode, NodeType } from "@/lib/flow-graph";
 
@@ -45,6 +45,7 @@ export const NODE_META: Record<NodeType, NodeMeta> = {
   email_team: { label: "Email the team", group: "Actions", icon: Mail, defaults: () => ({ user_ids: [], addresses: "", subject: "New chat lead: {{name}}", body: "{{name}} ({{phone}}) said: {{last_answer}}" }) },
   wait_until: { label: "Wait until", group: "Logic", icon: CalendarCheck, defaults: () => ({ mode: "date", date: "", field: "" }) },
   order_draft: { label: "Create order draft", group: "Actions", icon: ClipboardList, defaults: () => ({ items: "{{last_answer}}", total: "", notes: "", needs_you: true }) },
+  show_products: { label: "Show products", group: "Messages", icon: ShoppingBag, defaults: () => ({ category: "", budget: "", min_price: "", max_price: "", max_items: 5 }) },
 };
 
 export const AI_ICON = Bot;
@@ -61,6 +62,8 @@ export function handleLabel(node: FlowNode, handle: string): string {
   if (handle === "not_paid") return `Not paid in ${Number(node.data["wait_hours"] ?? 24)}h`;
   if (handle === "closed") return "Closed";
   if (handle === "success") return "Success";
+  if (handle === "found") return "Found";
+  if (handle === "none") return "None match";
   if (handle === "a") return `A (${Number(node.data["percent_a"] ?? 50)}%)`;
   if (handle === "b") return `B (${100 - Number(node.data["percent_a"] ?? 50)}%)`;
   const opts = [
@@ -99,6 +102,10 @@ export function summary(node: FlowNode): string {
     case "email_team": return String(d["subject"] ?? "");
     case "wait_until": return d["mode"] === "field" ? `Until {{${String(d["field"] ?? "")}}}` : `Until ${String(d["date"] ?? "")}`;
     case "order_draft": return String(d["items"] ?? "");
+    case "show_products": {
+      const price = [d["min_price"] ? `from ₹${String(d["min_price"])}` : "", d["max_price"] ? `up to ₹${String(d["max_price"])}` : ""].filter(Boolean).join(" ");
+      return `Up to ${Number(d["max_items"] ?? 5)} ${String(d["category"] ?? "") || "products"}${String(d["budget"] ?? "") ? ` · ${String(d["budget"])}` : ""}${price ? ` · ${price}` : ""}`;
+    }
     default: return "";
   }
 }

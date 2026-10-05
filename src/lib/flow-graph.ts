@@ -10,6 +10,11 @@ export const MAX_BUTTONS = 3;
 export const MAX_LIST_ROWS = 10;
 export const MAX_BRANCHES = 10;
 export const MAX_CONDITIONS = 10;
+/** Pictures shown by one "Show products" step. */
+export const MAX_PRODUCT_ITEMS = 10;
+/** WhatsApp image messages and image headers: JPEG or PNG, at most 5 MB. */
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+export const IMAGE_TYPES = ["image/jpeg", "image/png"];
 
 export type NodeType =
   | "start"
@@ -45,7 +50,8 @@ export type NodeType =
   | "http"
   | "email_team"
   | "wait_until"
-  | "order_draft";
+  | "order_draft"
+  | "show_products";
 
 export type FlowNode = {
   id: string;
@@ -247,6 +253,8 @@ export function outputsOf(node: FlowNode): string[] {
       return ["next", "failed"];
     case "http":
       return ["success", "failed"];
+    case "show_products":
+      return ["found", "none", "window_closed"];
     case "payment":
       return ["paid", "not_paid", "window_closed"];
     case "ab_split":
@@ -320,6 +328,9 @@ export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: s
     }
     const d = node.data;
     if (node.type === "text" && !String(d["text"] ?? "").trim()) problems.push({ nodeId: node.id, message: "Write the message." });
+    if ((node.type === "text" || node.type === "buttons") && imageProblem(d["image_url"])) problems.push({ nodeId: node.id, message: imageProblem(d["image_url"])! });
+    if (node.type === "text" && String(d["image_url"] ?? "").trim() && String(d["text"] ?? "").length > 1024)
+      problems.push({ nodeId: node.id, message: "With a picture, the message is its caption: keep it under 1,024 characters." });
     if (node.type === "buttons") {
       const b = (d["buttons"] as Array<{ title?: string }> | undefined) ?? [];
       if (!b.length || b.length > MAX_BUTTONS) problems.push({ nodeId: node.id, message: `Use 1–${MAX_BUTTONS} buttons.` });
@@ -387,6 +398,17 @@ export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: s
       if (addrs.some((a) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a))) problems.push({ nodeId: node.id, message: "One of the email addresses isn't valid." });
       if (!String(x["subject"] ?? "").trim()) problems.push({ nodeId: node.id, message: "Add a subject." });
     }
+    if (node.type === "show_products") {
+      const items = Number(x["max_items"] ?? 5);
+      if (!(Number.isInteger(items) && items >= 1 && items <= MAX_PRODUCT_ITEMS)) problems.push({ nodeId: node.id, message: `Show 1–${MAX_PRODUCT_ITEMS} products.` });
+      const budget = String(x["budget"] ?? "").trim();
+      if (budget && !budget.includes("{{") && !parseBudget(budget)) problems.push({ nodeId: node.id, message: `"${budget}" isn't a budget we can read — try "Under 25k", "25-50k" or "1L+".` });
+      const lo = String(x["min_price"] ?? "").trim();
+      const hi = String(x["max_price"] ?? "").trim();
+      for (const v of [lo, hi]) if (v && !v.includes("{{") && !(Number(v.replace(/[,₹\s]/g, "")) >= 0)) problems.push({ nodeId: node.id, message: "Prices must be numbers (or a {{variable}})." });
+      if (lo && hi && !lo.includes("{{") && !hi.includes("{{") && Number(lo.replace(/[,₹\s]/g, "")) > Number(hi.replace(/[,₹\s]/g, "")))
+        problems.push({ nodeId: node.id, message: "The lowest price is above the highest." });
+    }
     if (node.type === "wait_until") {
       if (x["mode"] === "field" ? !String(x["field"] ?? "").trim() : !String(x["date"] ?? "").trim())
         problems.push({ nodeId: node.id, message: x["mode"] === "field" ? "Pick the variable or contact field holding the date." : "Pick the date to wait until." });
@@ -417,6 +439,59 @@ export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: s
     }
   }
   return problems;
+}
+
+/**
+ * A picture on a Message or Buttons step: a full https link to a JPEG or PNG
+ * (WhatsApp's image formats). A link without a file ending is allowed — the
+ * upload and Meta check the file itself. null when fine or empty.
+ */
+export function imageProblem(url: unknown): string | null {
+  const u = String(url ?? "").trim();
+  if (!u) return null;
+  if (!/^https:\/\/[^\s]+$/i.test(u)) return "The picture needs a full link starting with https://";
+  const ext = u.split(/[?#]/)[0]!.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase();
+  if (ext && !["jpg", "jpeg", "png"].includes(ext)) return "WhatsApp pictures must be JPG or PNG.";
+  return null;
+}
+
+/**
+ * A budget a customer picked, as a price range: "Under 25k" → up to 25,000,
+ * "25-50k" → 25,000–50,000, "50k-1L" → 50,000–1,00,000, "1L+" → from
+ * 1,00,000. Understands k, L/lakh, cr, ₹ and Rs. null when there's no amount.
+ */
+export function parseBudget(text: unknown): { min: number | null; max: number | null } | null {
+  const t = String(text ?? "").toLowerCase().replace(/(\d),(?=\d)/g, "$1").replace(/₹|\brs\.?|\binr\b/g, " ");
+  const units: Record<string, number> = { k: 1e3, thousand: 1e3, l: 1e5, lac: 1e5, lacs: 1e5, lakh: 1e5, lakhs: 1e5, cr: 1e7, crore: 1e7, crores: 1e7 };
+  const found = Array.from(t.matchAll(/(\d+(?:\.\d+)?)\s*(k|thousand|lakhs|lakh|lacs|lac|l|crores|crore|cr)?(?![a-z])/g)).map((m) => ({ n: Number(m[1]), unit: m[2] ?? "" }));
+  if (!found.length) return null;
+  // "25-50k": the first amount takes the unit written after the second.
+  for (let i = found.length - 2; i >= 0; i--) if (!found[i]!.unit && found[i + 1]!.unit) found[i]!.unit = found[i + 1]!.unit;
+  const values = found.map((f) => Math.round(f.n * (units[f.unit] ?? 1)));
+  if (values.length >= 2) return { min: Math.min(values[0]!, values[1]!), max: Math.max(values[0]!, values[1]!) };
+  const v = values[0]!;
+  if (/\+|above|over|more than|plus|onwards|and up|min(?:imum)?\b|from|starting/.test(t)) return { min: v, max: null };
+  return { min: null, max: v };
+}
+
+/**
+ * What a "Show products" step searches for, with this run's answers filled
+ * in: the shelf, and a price range from the budget (fixed or a {{variable}}),
+ * where an explicit lowest/highest price wins.
+ */
+export function productQueryOf(data: Record<string, unknown>, ctx: RunContext): { category: string; minPrice: number | null; maxPrice: number | null; limit: number } {
+  const range = parseBudget(interpolate(String(data["budget"] ?? ""), ctx));
+  const price = (key: string): number | null => {
+    const raw = interpolate(String(data[key] ?? ""), ctx).replace(/[,₹\s]/g, "");
+    return raw && Number.isFinite(Number(raw)) ? Number(raw) : null;
+  };
+  const limit = Math.min(Math.max(Math.round(Number(data["max_items"] ?? 5)) || 5, 1), MAX_PRODUCT_ITEMS);
+  return {
+    category: interpolate(String(data["category"] ?? ""), ctx).trim(),
+    minPrice: price("min_price") ?? range?.min ?? null,
+    maxPrice: price("max_price") ?? range?.max ?? null,
+    limit,
+  };
 }
 
 function d(n: FlowNode, key: string): string {
