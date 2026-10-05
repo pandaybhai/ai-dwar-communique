@@ -26,11 +26,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const NEVER = "id.eq.00000000-0000-0000-0000-000000000000";
 
 /** Quote a value for a PostgREST filter expression. */
-function q(value: string): string {
+export function q(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-function like(value: string): string {
+export function like(value: string): string {
   return value.replace(/[*]/g, "");
 }
 

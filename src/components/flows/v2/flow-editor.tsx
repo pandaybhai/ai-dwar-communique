@@ -4,7 +4,7 @@ import {
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange, useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles, Zap } from "lucide-react";
+import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles, Zap, Table2, Workflow } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +21,7 @@ import { NODE_META, uid } from "./node-meta";
 import { NodeConfig, type Pickers } from "./node-config";
 import { SimulatorPanel } from "./simulator-panel";
 import { TriggersPanel } from "./triggers-panel";
+import { ResponsesPanel } from "./responses-panel";
 
 type RFNode = Node<RFData>;
 type Snapshot = { nodes: RFNode[]; edges: Edge[] };
@@ -79,6 +80,9 @@ type Props = {
   tags?: string[];
   onChanged: (remount?: boolean) => void;
   aiOn?: boolean;
+  /** Responses tab: contacts.view to see it, contacts.export for the CSV (the server checks both again). */
+  canViewResponses?: boolean;
+  canExportResponses?: boolean;
 };
 
 export function FlowEditor(props: Props) {
@@ -89,12 +93,13 @@ export function FlowEditor(props: Props) {
   );
 }
 
-function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, tags, onChanged, aiOn }: Props) {
+function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, tags, onChanged, aiOn, canViewResponses, canExportResponses }: Props) {
   const rf = useReactFlow();
   const navigate = useNavigate();
   const [meta, setMeta] = useState<NonNullable<FlowGraph["meta"]>>(() => initial.meta ?? {});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [triggersOpen, setTriggersOpen] = useState(false);
+  const [view, setView] = useState<"canvas" | "responses">("canvas");
   const [genOpen, setGenOpen] = useState(false);
   const [genText, setGenText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -241,7 +246,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, select, [contenteditable]")) return;
       const mod = e.metaKey || e.ctrlKey;
-      if (!mod || !canEdit) return;
+      if (!mod || !canEdit || view !== "canvas") return;
       const k = e.key.toLowerCase();
       if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
       else if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); redo(); }
@@ -259,7 +264,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [snap, canEdit, undo, redo, commit]);
+  }, [snap, canEdit, undo, redo, commit, view]);
 
   const saveDraft = async (): Promise<boolean> => {
     setBusy(true);
@@ -365,6 +370,16 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
         <Input className="h-9 w-56 font-semibold" value={name} disabled={!canEdit} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{published ? "Published" : "Draft only"}</span>
         {dirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
+        {canViewResponses && (
+          <div role="tablist" aria-label="Flow view" className="inline-flex rounded-lg border border-border p-0.5">
+            {([["canvas", "Canvas", Workflow], ["responses", "Responses", Table2]] as const).map(([v, label, Icon]) => (
+              <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition ${view === v ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                <Icon className="h-3.5 w-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-1">
           {canEdit && (<>
             <Button size="icon" variant="ghost" aria-label="Undo" onClick={undo}><Undo2 className="h-4 w-4" /></Button>
@@ -389,7 +404,12 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
           </>)}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1">
+      {view === "responses" && (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ResponsesPanel organizationId={organizationId} flowId={flowId} canExport={Boolean(canExportResponses)} />
+        </div>
+      )}
+      <div className={`flex min-h-0 flex-1${view === "responses" ? " hidden" : ""}`}>
         {canEdit && (
           <aside className="hidden w-48 shrink-0 overflow-y-auto border-r border-border p-3 md:block">
             {groups.map((g) => (
