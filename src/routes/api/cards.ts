@@ -5,6 +5,7 @@ import { createFileRoute } from "@tanstack/react-router";
  *
  * POST { action: "save_branding", organization_id, branding }
  * POST { action: "preview", organization_id, kind, vars? }
+ * POST { action: "stored_previews", organization_id } → { urls: { [kind]: url } }
  * POST { action: "save_usage", organization_id, product_cards }
  * POST { action: "send", organization_id, conversation_id, kind, vars, caption? }
  *
@@ -14,7 +15,10 @@ import { createFileRoute } from "@tanstack/react-router";
  *
  * Branding lives on organizations.branding (white-label column). Preview
  * renders go through the same render-card backend and cache as live sends;
- * a preview is unmetered — merchants shouldn't pay to look at their own card.
+ * a preview is never charged (its render is recorded as "card_preview").
+ * "stored_previews" draws nothing: it finds each design's sample preview
+ * already stored for today's brand paint, so the Cards page keeps it across
+ * visits and days — and loses it only when the logo, name or colours change.
  */
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -100,12 +104,7 @@ export const Route = createFileRoute("/api/cards")({
 
           // The merchant's own values when given (live preview), else samples.
           const given = payload["vars"] && typeof payload["vars"] === "object" ? (payload["vars"] as Record<string, unknown>) : null;
-          const samples: Record<string, string> = {};
-          for (const v of meta.vars) {
-            const own = given ? String(given[v] ?? "").trim().slice(0, 300) : "";
-            samples[v] = given ? own : sampleValue(v);
-          }
-          if (samples["image_url"] && !/^https:\/\//i.test(samples["image_url"])) samples["image_url"] = "";
+          const samples = previewVars(meta.vars, given);
           const url = await renderCustomerCard(supabase, {
             organizationId,
             kind,
@@ -114,6 +113,21 @@ export const Route = createFileRoute("/api/cards")({
           });
           if (!url) return jsonError("The card couldn't be drawn just now — try again in a moment.");
           return Response.json({ url });
+        }
+
+        if (action === "stored_previews") {
+          const denied = await requirePermission(auth, "cards.view", "preview cards");
+          if (denied) return denied;
+          const { CUSTOMER_CARD_META, findStoredCustomerCard } = await import("@/lib/customer-cards.server");
+          const found = await Promise.all(
+            Object.entries(CUSTOMER_CARD_META).map(async ([kind, meta]) => {
+              const url = await findStoredCustomerCard(supabase, { organizationId, kind, vars: previewVars(meta.vars, null) });
+              return [kind, url] as const;
+            }),
+          );
+          const urls: Record<string, string> = {};
+          for (const [kind, url] of found) if (url) urls[kind] = url;
+          return Response.json({ urls });
         }
 
         if (action === "save_usage") {
@@ -152,6 +166,14 @@ export const Route = createFileRoute("/api/cards")({
     },
   },
 });
+
+/** A preview's values: the merchant's own (trimmed) when given, else the samples. Only https pictures. */
+function previewVars(keys: string[], given: Record<string, unknown> | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const v of keys) out[v] = given ? String(given[v] ?? "").trim().slice(0, 300) : sampleValue(v);
+  if (out["image_url"] && !/^https:\/\//i.test(out["image_url"])) out["image_url"] = "";
+  return out;
+}
 
 function sampleValue(key: string): string {
   const samples: Record<string, string> = {

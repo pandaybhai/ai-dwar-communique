@@ -163,6 +163,20 @@ export function spreadsheetId(input: string): string {
   return m ? m[1]! : input.trim();
 }
 
+/**
+ * The append address for one row. The tab name is always quoted, so tabs like
+ * "Leads 2026" or "Rao's" work. valueInputOption=RAW: every value lands
+ * exactly as the customer wrote it — "+91 98…" stays a phone number, "007"
+ * keeps its zeros, "1-2" isn't turned into a date and "=…" is never run as a
+ * formula (USER_ENTERED re-read customer answers as if typed into the sheet).
+ */
+export function sheetAppendUrl(sheet: string, tab: string): string {
+  const id = spreadsheetId(sheet);
+  const name = (tab || "Sheet1").replace(/'/g, "''");
+  const range = encodeURIComponent(`'${name}'!A1`);
+  return `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+}
+
 export async function appendSheetRow(
   supabase: SupabaseClient,
   organizationId: string,
@@ -175,12 +189,11 @@ export async function appendSheetRow(
     await markError(supabase, organizationId, "google", "Google access was removed. Reconnect Google in Settings → Integrations.");
     return { ok: false, error: "google_access_revoked" };
   }
-  const id = spreadsheetId(args.sheet);
-  const range = encodeURIComponent(`${args.tab || "Sheet1"}!A1`);
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ values: [args.values] }) },
-  );
+  const res = await fetch(sheetAppendUrl(args.sheet, args.tab), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ values: [args.values] }),
+  });
   if (!res.ok) return { ok: false, error: res.status === 404 ? "sheet_not_found" : res.status === 403 ? "sheet_no_access" : "sheet_append_failed" };
   return { ok: true, error: null };
 }

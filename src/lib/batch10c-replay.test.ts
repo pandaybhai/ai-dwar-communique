@@ -30,7 +30,23 @@ import {
 
 vi.mock("@/lib/feature-flags.server", () => ({ enabledFlags: async () => new Set(["flows_v2"]) }));
 
-const ALLOWED: Array<{ shape: string; part: "validate" | "sim" | "engine"; script: string; why: string }> = [];
+const ALLOWED: Array<{ shape: string; part: "validate" | "sim" | "engine"; script: string; why: string }> = [
+  // Item 6 (date answers validated) — Ai Dwar "Appointment request" ("Which
+  // date suits you? (dd-mm-yyyy)", validation "date"). On main these answers
+  // were saved as dates nobody meant: "1" → 2001-01-01, "2" → 2001-02-01,
+  // "9" → 2001-09-01, "12" → 2001-12-01, "110001" → "+110001-01",
+  // "31-02-2026" → 2026-03-03, "5 Nov" → 2001-11-05. Now the step asks again
+  // (its normal retry), as it already did for "tomorrow" or "12/13/2026".
+  // Real dates ("25-12-2026", "2026-12-25") give exactly what they gave.
+  ...["\"1\"", "\"2\"", "\"9\"", "\"12\"", "\"110001\"", "\"31-02-2026\"", "\"5 Nov\""].flatMap((script) =>
+    (["sim", "engine"] as const).map((part) => ({
+      shape: "2beb029bc421ff9027c8b9551ac3ae0c",
+      part,
+      script,
+      why: "date answer that isn't a real dd-mm-yyyy / yyyy-mm-dd date is asked again instead of saved",
+    })),
+  ),
+];
 
 const NOW = new Date("2026-10-05T05:30:00Z"); // Monday 11:00 in Asia/Kolkata
 
@@ -88,6 +104,7 @@ describe("live flows replay", () => {
     expect(base, "baseline.json is missing — record it on main with REPLAY_WRITE=1").not.toBeNull();
     const now = await replay(base);
     const diffs: string[] = [];
+    const used = new Set<string>();
     for (const [shape, cur] of Object.entries(now) as Array<[string, Record<string, Record<string, unknown>>]>) {
       const was = (base![shape] ?? {}) as Record<string, Record<string, unknown>>;
       if (JSON.stringify(cur["validate"]) !== JSON.stringify(was["validate"])) diffs.push(`${shape} validate`);
@@ -95,11 +112,18 @@ describe("live flows replay", () => {
         const keys = new Set([...Object.keys(cur[part] ?? {}), ...Object.keys(was[part] ?? {})]);
         for (const k of keys) {
           if (JSON.stringify(cur[part]![k]) === JSON.stringify(was[part]?.[k])) continue;
-          if (ALLOWED.some((a) => a.shape === shape && a.part === part && a.script === k)) continue;
+          if (ALLOWED.some((a) => a.shape === shape && a.part === part && a.script === k)) {
+            used.add(`${shape} ${part} ${k}`);
+            // An allowed date difference is always the step asking again.
+            expect((cur[part]![k] as { node?: string; run?: { node?: string; status?: string } }).node ?? (cur[part]![k] as { run: { node: string } }).run.node).toBe("date");
+            continue;
+          }
           diffs.push(`${shape} ${part} [${k}]\n  was: ${JSON.stringify(was[part]?.[k])}\n  now: ${JSON.stringify(cur[part]![k])}`);
         }
       }
     }
     expect(diffs.join("\n\n")).toBe("");
+    // Every allowed difference really happened (the list never goes stale).
+    expect([...used].sort()).toEqual(ALLOWED.map((a) => `${a.shape} ${a.part} ${a.script}`).sort());
   });
 });

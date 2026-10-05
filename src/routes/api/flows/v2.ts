@@ -139,7 +139,11 @@ export const Route = createFileRoute("/api/flows/v2")({
             await db.from("flows").delete().eq("id", flowId).eq("organization_id", org);
             return jsonError(sealed.error, 500);
           }
-          await db.from("flow_versions").insert({ organization_id: org, flow_id: flowId, version: 1, status: "draft", graph: sealed.graph, created_by: auth.userId });
+          const { error: draftError } = await db.from("flow_versions").insert({ organization_id: org, flow_id: flowId, version: 1, status: "draft", graph: sealed.graph, created_by: auth.userId });
+          if (draftError) {
+            await db.from("flows").delete().eq("id", flowId).eq("organization_id", org);
+            return jsonError("Couldn't create the flow.", 500);
+          }
           await logServerActivity(db, org, auth.userId, "flow_v2_created", { flow_id: flowId });
           return Response.json({ ok: true, flow_id: flowId });
         }
@@ -151,12 +155,20 @@ export const Route = createFileRoute("/api/flows/v2")({
           const sealed = await seal(flow.id, body.graph);
           if (sealed.error) return jsonError(sealed.error, 500);
           const draft = await draftOf(flow.id);
-          if (draft) await db.from("flow_versions").update({ graph: sealed.graph }).eq("id", draft.id);
-          else
-            await db.from("flow_versions").insert({
-              organization_id: org, flow_id: flow.id, version: await nextVersion(flow.id), status: "draft", graph: sealed.graph, created_by: auth.userId,
-            });
-          if (body.name && body.name !== flow.name) await db.from("flows").update({ name: body.name }).eq("id", flow.id);
+          // A write that didn't land is said out loud — the editor keeps the changes and shows why.
+          const { error: saveError } = draft
+            ? await db.from("flow_versions").update({ graph: sealed.graph }).eq("id", draft.id)
+            : await db.from("flow_versions").insert({
+                organization_id: org, flow_id: flow.id, version: await nextVersion(flow.id), status: "draft", graph: sealed.graph, created_by: auth.userId,
+              });
+          if (saveError) {
+            console.error("[flows-v2] draft not saved", saveError.message);
+            return jsonError("Your changes weren't saved — please try again.", 500);
+          }
+          if (body.name && body.name !== flow.name) {
+            const { error: nameError } = await db.from("flows").update({ name: body.name }).eq("id", flow.id);
+            if (nameError) return jsonError("Your steps were saved, but the new name wasn't — please try again.", 500);
+          }
           return Response.json({ ok: true, graph: sealed.graph });
         }
 
@@ -193,9 +205,10 @@ export const Route = createFileRoute("/api/flows/v2")({
                 problems.push({ nodeId: n.id, message: "This template isn't approved by Meta yet." });
           }
           if (problems.length) return Response.json({ ok: false, problems }, { status: 422 });
-          await db.from("flow_versions").update({ status: "archived" }).eq("flow_id", flow.id).eq("status", "published");
-          await db.from("flow_versions").update({ status: "published", graph, published_at: new Date().toISOString(), published_by: auth.userId }).eq("id", draft.id);
-          await db.from("flows").update({ is_enabled: true }).eq("id", flow.id);
+          // All or nothing: never an archived old version with no new one, or a published flow left off.
+          const { publishFlowVersion } = await import("@/lib/flow-publish.server");
+          const published = await publishFlowVersion(db, { organizationId: org, flowId: flow.id, versionId: draft.id, graph, userId: auth.userId });
+          if (!published.ok) return jsonError(published.error, 500);
           await logServerActivity(db, org, auth.userId, "flow_v2_published", { flow_id: flow.id, version: draft.version });
           return Response.json({ ok: true, version: draft.version });
         }
@@ -204,9 +217,16 @@ export const Route = createFileRoute("/api/flows/v2")({
           const { data: pub } = await db.from("flow_versions").select("id, graph").eq("flow_id", flow.id).eq("status", "published").maybeSingle();
           if (!pub) return jsonError("This flow isn't published.");
           const draft = await draftOf(flow.id);
-          if (draft) await db.from("flow_versions").update({ status: "archived" }).eq("id", pub.id);
-          else await db.from("flow_versions").update({ status: "draft", published_at: null }).eq("id", pub.id);
-          await db.from("flows").update({ is_enabled: false }).eq("id", flow.id);
+          // Switch the flow off first: if that fails nothing has changed.
+          const { error: offError } = await db.from("flows").update({ is_enabled: false }).eq("id", flow.id);
+          if (offError) return jsonError("We couldn't unpublish this flow — nothing was changed. Please try again.", 500);
+          const { error: verError } = draft
+            ? await db.from("flow_versions").update({ status: "archived" }).eq("id", pub.id)
+            : await db.from("flow_versions").update({ status: "draft", published_at: null }).eq("id", pub.id);
+          if (verError) {
+            await db.from("flows").update({ is_enabled: true }).eq("id", flow.id);
+            return jsonError("We couldn't unpublish this flow — nothing was changed. Please try again.", 500);
+          }
           await logServerActivity(db, org, auth.userId, "flow_v2_unpublished", { flow_id: flow.id });
           return Response.json({ ok: true });
         }
@@ -218,8 +238,10 @@ export const Route = createFileRoute("/api/flows/v2")({
         const restored = await seal(flow.id, (old as { graph: unknown }).graph);
         if (restored.error) return jsonError(restored.error, 500);
         const g = restored.graph;
-        if (draft) await db.from("flow_versions").update({ graph: g }).eq("id", draft.id);
-        else await db.from("flow_versions").insert({ organization_id: org, flow_id: flow.id, version: await nextVersion(flow.id), status: "draft", graph: g, created_by: auth.userId });
+        const { error: restoreError } = draft
+          ? await db.from("flow_versions").update({ graph: g }).eq("id", draft.id)
+          : await db.from("flow_versions").insert({ organization_id: org, flow_id: flow.id, version: await nextVersion(flow.id), status: "draft", graph: g, created_by: auth.userId });
+        if (restoreError) return jsonError("That version couldn't be restored — please try again.", 500);
         await logServerActivity(db, org, auth.userId, "flow_v2_restored", { flow_id: flow.id, from_version: (old as { version: number }).version });
         return Response.json({ ok: true });
       },

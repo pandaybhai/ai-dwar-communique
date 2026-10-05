@@ -339,6 +339,7 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
         <div className="grid grid-cols-3 gap-2">
           <select className={sel} value={String(d["action"] ?? "add")} onChange={(e) => set("action", e.target.value)}><option value="add">Add</option><option value="remove">Remove</option></select>
           <Input className="col-span-2" placeholder="Tag name" value={String(d["tag"] ?? "")} onChange={(e) => set("tag", e.target.value)} />
+          <p className="col-span-3 text-xs text-muted-foreground">You can use answers: lead-{"{{product}}"}-{"{{budget}}"}. If they come out empty, no tag is added.</p>
         </div>
       )}
       {node.type === "set_field" && (

@@ -112,6 +112,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
   const [name, setName] = useState(initialName);
   const [selected, setSelected] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [serverProblems, setServerProblems] = useState<GraphProblem[]>([]);
   const [simOpen, setSimOpen] = useState(false);
@@ -284,9 +285,19 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
 
   const saveDraft = async (): Promise<boolean> => {
     setBusy(true);
-    const { data: saved, error } = await callApi<{ graph?: FlowGraph }>("/api/flows/v2", { body: { action: "save_draft", organization_id: organizationId, flow_id: flowId, graph, name } });
-    setBusy(false);
-    if (error) { toast.error(error); return false; }
+    // A save that fails — refused, or never reached us (offline) — is said out
+    // loud and the changes stay marked unsaved; it never fails silently.
+    let saved: { graph?: FlowGraph } | null = null;
+    let error: string | null = null;
+    try {
+      ({ data: saved, error } = await callApi<{ graph?: FlowGraph }>("/api/flows/v2", { body: { action: "save_draft", organization_id: organizationId, flow_id: flowId, graph, name } }));
+    } catch {
+      error = "Your changes weren't saved — check your connection and try again.";
+    } finally {
+      setBusy(false);
+    }
+    if (error) { setSaveError(error); toast.error(error); return false; }
+    setSaveError(null);
     // Header values were moved to secure storage: keep only the references locally.
     const sealed = new Map((saved?.graph?.nodes ?? []).filter((n) => n.type === "http").map((n) => [n.id, n.data["headers"]]));
     if (sealed.size) setSnap((s) => ({ ...s, nodes: s.nodes.map((n) => (sealed.has(n.id) ? { ...n, data: { ...n.data, data: { ...n.data.data, headers: sealed.get(n.id) } } } : n)) }));
@@ -300,8 +311,15 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     if (local.length) { toast.error(`Fix ${local.length} problem${local.length === 1 ? "" : "s"} before publishing.`); return; }
     if (!(await saveDraft())) return;
     setBusy(true);
-    const { error, raw } = await callApi<{ ok: boolean; version?: number }>("/api/flows/v2", { body: { action: "publish", organization_id: organizationId, flow_id: flowId } });
-    setBusy(false);
+    let error: string | null = null;
+    let raw: unknown = null;
+    try {
+      ({ error, raw } = await callApi<{ ok: boolean; version?: number }>("/api/flows/v2", { body: { action: "publish", organization_id: organizationId, flow_id: flowId } }));
+    } catch {
+      error = "We couldn't reach the server — the flow wasn't published. Try again.";
+    } finally {
+      setBusy(false);
+    }
     const r = raw as { problems?: GraphProblem[] } | null;
     if (r?.problems?.length) { setServerProblems(r.problems); toast.error("Some steps need fixing before publishing."); return; }
     if (error) { toast.error(error); return; }
@@ -385,7 +403,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <Input className="h-9 w-56 font-semibold" value={name} disabled={!canEdit} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{published ? "Published" : "Draft only"}</span>
-        {dirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
+        {dirty && (saveError ? <span className="text-xs font-medium text-destructive" role="alert" title={saveError}>Not saved — {saveError}</span> : <span className="text-xs text-muted-foreground">Unsaved changes</span>)}
         {canViewResponses && (
           <div role="tablist" aria-label="Flow view" className="inline-flex rounded-lg border border-border p-0.5">
             {([["canvas", "Canvas", Workflow], ["responses", "Responses", Table2]] as const).map(([v, label, Icon]) => (

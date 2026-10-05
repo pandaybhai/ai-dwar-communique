@@ -266,7 +266,13 @@ function FormAnswers({ name, answers }: { name: string; answers: Array<{ label: 
   );
 }
 
-function Bubble({
+/** Alt text / file name for a media message without words. */
+function mediaLabel(message: MessageRow): string {
+  const kind = mediaKind(message);
+  return kind === "image" ? "Picture" : kind === "video" ? "Video" : kind === "audio" ? "Voice note" : "Document";
+}
+
+export function Bubble({
   message,
   organizationId,
   aiRun,
@@ -281,9 +287,11 @@ function Bubble({
   onTeach?: (question: string, said: string) => void;
 }) {
   const outbound = message.direction === "outbound";
-  const text =
-    message.body?.trim() ||
-    (message.template_name ? `Template: ${message.template_name}` : `[${message.type}]`);
+  const body = message.body?.trim() ?? "";
+  const text = body || (message.template_name ? `Template: ${message.template_name}` : `[${message.type}]`);
+  // A picture (a card, a photo) with no words is just the picture: the
+  // "[image]" stand-in is ours, the customer never saw it.
+  const mediaOnly = Boolean(message.media_url) && !body && !message.template_name;
   return (
     <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
       <div className="max-w-[80%] sm:max-w-[68%]">
@@ -296,14 +304,14 @@ function Bubble({
           ].join(" ")}
         >
           {message.media_url ? (
-            <MessageMedia message={message} organizationId={organizationId} label={text} />
+            <MessageMedia message={message} organizationId={organizationId} label={mediaOnly ? mediaLabel(message) : text} />
           ) : null}
           {message.type === "form_reply" && Array.isArray(message.metadata?.["answers"]) ? (
             <FormAnswers
               name={String(message.metadata?.["form_name"] ?? "Form")}
               answers={message.metadata?.["answers"] as Array<{ label: string; value: string }>}
             />
-          ) : (
+          ) : mediaOnly ? null : (
             <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
           )}
           <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">

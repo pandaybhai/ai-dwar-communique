@@ -19,6 +19,51 @@ export const STARTERS: Starter[] = [
     description: "Start from an empty canvas.",
     graph: () => build([["start", "start", {}], ["end", "end", {}]], [["start", "end"]]),
   },
+  // The three Automations, as flows: one message each. They start only once
+  // published and given a trigger (Triggers in the editor).
+  {
+    key: "welcome_message",
+    name: "Welcome message",
+    description: "One hello for new customers. Add a “First message ever” trigger.",
+    graph: () =>
+      build(
+        [
+          ["start", "start", {}],
+          ["hello", "text", { text: "Hi {{name}}! 👋 Thanks for messaging us — how can we help you today?" }],
+          ["end", "end", {}],
+        ],
+        [["start", "hello"], ["hello", "end"]],
+      ),
+  },
+  {
+    key: "keyword_reply",
+    name: "Keyword reply",
+    description: "One reply when a customer sends a word like “price”. Add a Keyword trigger.",
+    graph: () =>
+      build(
+        [
+          ["start", "start", {}],
+          ["reply", "text", { text: "Thanks for asking! Here are the details you wanted:" }],
+          ["end", "end", {}],
+        ],
+        [["start", "reply"], ["reply", "end"]],
+      ),
+  },
+  {
+    key: "away_message",
+    name: "Away message",
+    description: "One reply outside your business hours (set them in Flow settings); nothing while you're open.",
+    graph: () =>
+      build(
+        [
+          ["start", "start", {}],
+          ["hours", "business_hours", {}],
+          ["away", "text", { text: "Thanks for your message! We're away right now and will reply as soon as we're back." }],
+          ["end", "end", {}],
+        ],
+        [["start", "hours"], ["hours", "away", "closed"], ["hours", "end", "open"], ["away", "end"]],
+      ),
+  },
   {
     key: "welcome_menu",
     name: "Welcome menu",

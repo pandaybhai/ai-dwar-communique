@@ -99,6 +99,8 @@ export type RunContext = {
   tags: string[];
   now: Date;
   timezone: string;
+  /** The flow's weekly schedule (graph.meta.business_hours), for "Business hours" conditions. */
+  businessHours?: BusinessHours | undefined;
 };
 
 export function edgeFrom(graph: FlowGraph, nodeId: string, handle: string = "next"): FlowEdge | null {
@@ -146,7 +148,8 @@ export function evalCondition(c: Condition, ctx: RunContext): boolean {
     return c.op === "not_has" || c.op === "neq" ? !has : has;
   }
   if (c.subject === "business_hours") {
-    const open = isBusinessOpen(ctx.vars["_business_hours"] as BusinessHours | undefined, ctx.now, ctx.timezone);
+    // The flow's own weekly schedule (Flow settings), as the Business hours step uses.
+    const open = isBusinessOpen((ctx.businessHours ?? ctx.vars["_business_hours"]) as BusinessHours | undefined, ctx.now, ctx.timezone);
     return (String(c.value ?? "open").toLowerCase() === "open") === open ? c.op !== "neq" : c.op === "neq";
   }
   if (c.subject === "time_hour") subject = zonedParts(ctx.now, ctx.timezone).hour;
@@ -211,19 +214,47 @@ export function validateAnswer(kind: ValidationKind | undefined, raw: string): s
       const d = text.replace(/\s/g, "");
       return /^[1-9]\d{5}$/.test(d) ? d : null;
     }
-    case "date": {
-      const m = text.match(/^(\d{1,2})[/\-. ](\d{1,2})[/\-. ](\d{2,4})$/);
-      if (m) {
-        const y = m[3]!.length === 2 ? `20${m[3]}` : m[3]!;
-        const d = new Date(`${y}-${m[2]!.padStart(2, "0")}-${m[1]!.padStart(2, "0")}T00:00:00Z`);
-        return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
-      }
-      const d = new Date(text);
-      return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
-    }
+    case "date":
+      return parseDateAnswer(text);
     default:
       return text;
   }
+}
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+/** 1–12 for a month's full name or its three-letter short form ("sept" too), else 0. */
+function monthNumber(name: string): number {
+  const n = name.toLowerCase();
+  const i = MONTHS.findIndex((m) => m === n || m.slice(0, 3) === n || (m === "september" && n === "sept"));
+  return i + 1;
+}
+
+/** yyyy-mm-dd when it's a real calendar day (no 31 February), else null. */
+function calendarDay(y: number, m: number, d: number): string | null {
+  if (!(y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1)) return null;
+  if (d > new Date(Date.UTC(y, m, 0)).getUTCDate()) return null;
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/**
+ * A customer's date answer as yyyy-mm-dd. Takes dd-mm-yyyy (also / . or
+ * space, two-digit years as 20yy), yyyy-mm-dd, and "25 Dec 2026" /
+ * "December 25, 2026". Anything else — a bare number, a pincode, "tomorrow",
+ * a day that doesn't exist, a date without a year — is null, so the step asks
+ * again instead of saving a wrong date.
+ */
+export function parseDateAnswer(raw: string): string | null {
+  const text = raw.trim();
+  let m = text.match(/^(\d{1,2})[/\-. ](\d{1,2})[/\-. ](\d{2}|\d{4})$/);
+  if (m) return calendarDay(m[3]!.length === 2 ? 2000 + Number(m[3]) : Number(m[3]), Number(m[2]), Number(m[1]));
+  m = text.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$/);
+  if (m) return calendarDay(Number(m[1]), Number(m[2]), Number(m[3]));
+  m = text.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s-]+([a-z]{3,9})\.?,?[\s-]+(\d{4})$/i);
+  if (m && monthNumber(m[2]!)) return calendarDay(Number(m[3]), monthNumber(m[2]!), Number(m[1]));
+  m = text.match(/^([a-z]{3,9})\.?[\s-]+(\d{1,2})(?:st|nd|rd|th)?,?[\s-]+(\d{4})$/i);
+  if (m && monthNumber(m[1]!)) return calendarDay(Number(m[3]), monthNumber(m[1]!), Number(m[2]));
+  return null;
 }
 
 /** Output handles each node type offers. */
@@ -312,6 +343,22 @@ export function maskHttpSecrets(graph: FlowGraph): FlowGraph {
           },
     ),
   };
+}
+
+/** Longest tag a Tag step makes from {{variables}} (a customer's answer can be long). */
+export const MAX_FILLED_TAG = 100;
+
+/**
+ * The tag a Tag step adds or removes. A name without {{ }} is returned exactly
+ * as written — the step behaves as it always has. With {{variables}} they're
+ * filled in from this run ("lead-{{product}}-{{budget}}" → "lead-Rings-Under
+ * 25k"), spaces tidied, at most MAX_FILLED_TAG characters; "" means the
+ * variables came out empty and the step is skipped.
+ */
+export function tagOfNode(data: Record<string, unknown>, ctx: RunContext): string {
+  const raw = String(data["tag"] ?? "");
+  if (!raw.includes("{{")) return raw;
+  return interpolate(raw, ctx).replace(/\s+/g, " ").trim().slice(0, MAX_FILLED_TAG).trim();
 }
 
 /** Shown on a Send card step when the workspace has the cards feature switched off. */
@@ -559,9 +606,22 @@ export const DEFAULT_BUSINESS_HOURS: BusinessHours = {
   holidays: [],
 };
 
+/** The workspace's timezone when it's one Intl knows, else Asia/Kolkata (never a crash mid-flow). */
+export function safeTimezone(timezone: string | null | undefined): string {
+  const tz = String(timezone ?? "").trim();
+  if (!tz) return "Asia/Kolkata";
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: tz });
+    return tz;
+  } catch {
+    return "Asia/Kolkata";
+  }
+}
+
+/** Open or closed right now, by the weekly schedule and holidays, in the workspace's timezone. */
 export function isBusinessOpen(bh: BusinessHours | undefined, now: Date, timezone: string): boolean {
   const h = bh ?? DEFAULT_BUSINESS_HOURS;
-  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: timezone || "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", weekday: "short" }).formatToParts(now);
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: safeTimezone(timezone), year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", weekday: "short" }).formatToParts(now);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const date = `${get("year")}-${get("month")}-${get("day")}`;
   if (h.holidays.includes(date)) return false;

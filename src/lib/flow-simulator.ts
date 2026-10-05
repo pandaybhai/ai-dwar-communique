@@ -9,9 +9,11 @@ import {
   computeVariable,
   isBusinessOpen,
   pickBranch,
+  safeTimezone,
   productQueryOf,
   cardOfNode,
   startNode,
+  tagOfNode,
   validateAnswer,
   type Branch,
   type FlowGraph,
@@ -36,12 +38,16 @@ export type SimState = {
   messages: SimMessage[];
 };
 
-export function simStart(graph: FlowGraph, contactName = "Test customer"): SimState {
+/**
+ * opts.timezone: the workspace's timezone, so Business hours answers Open or
+ * Closed as the live flow would (left out: Asia/Kolkata, as before).
+ */
+export function simStart(graph: FlowGraph, contactName = "Test customer", opts: { timezone?: string | null } = {}): SimState {
   const s: SimState = {
     nodeId: startNode(graph)?.id ?? null,
     waiting: false,
     done: false,
-    ctx: { vars: {}, contact: { name: contactName, phone: "919999999999", attributes: {} }, tags: [], now: new Date(), timezone: "Asia/Kolkata" },
+    ctx: { vars: {}, contact: { name: contactName, phone: "919999999999", attributes: {} }, tags: [], now: new Date(), timezone: safeTimezone(opts.timezone) },
     path: [],
     attempts: {},
     messages: [],
@@ -196,14 +202,18 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
         note(s, `Waits ${Number(d["minutes"] ?? 0)} min (skipped in test)`);
         break;
       case "branch": {
-        const h = pickBranch((d["branches"] as Branch[] | undefined) ?? [], ctx);
+        const h = pickBranch((d["branches"] as Branch[] | undefined) ?? [], { ...ctx, businessHours: graph.meta?.business_hours });
         const br = ((d["branches"] as Branch[] | undefined) ?? []).find((b) => b.id === h);
         note(s, `Branch → ${br?.label || (h === "else" ? "Else" : h)}`);
         if (!go(graph, s, node, h)) return s;
         continue;
       }
       case "tag": {
-        const t = String(d["tag"] ?? "").trim();
+        const t = tagOfNode(d, ctx).trim();
+        if (String(d["tag"] ?? "").includes("{{") && !t) {
+          note(s, "Skips the tag — its {{variables}} came out empty.");
+          break;
+        }
         if (d["action"] === "remove") ctx.tags = ctx.tags.filter((x) => x.toLowerCase() !== t.toLowerCase());
         else if (t && !ctx.tags.includes(t)) ctx.tags.push(t);
         note(s, `${d["action"] === "remove" ? "Removes" : "Adds"} tag "${t}"`);

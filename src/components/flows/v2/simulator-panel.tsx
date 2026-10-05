@@ -5,10 +5,13 @@ import { Input } from "@/components/ui/input";
 import type { FlowGraph } from "@/lib/flow-graph";
 import { simReply, simStart, simTimeout, type SimState } from "@/lib/flow-simulator";
 import { CardPreview } from "@/components/cards/card-preview";
+import { useOrg } from "@/lib/org-context";
 
 /** Chat as a test customer. Nothing is sent or billed. */
 export function SimulatorPanel({ graph, onPath }: { graph: FlowGraph; onPath: (ids: string[]) => void }) {
-  const [state, setState] = useState<SimState>(() => simStart(graph));
+  // Business hours answer in the workspace's own timezone, as the live flow does.
+  const timezone = useOrg().active?.organization.timezone ?? null;
+  const [state, setState] = useState<SimState>(() => simStart(graph, undefined, { timezone }));
   const [text, setText] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +32,7 @@ export function SimulatorPanel({ graph, onPath }: { graph: FlowGraph; onPath: (i
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border pb-2">
         <p className="text-xs text-muted-foreground">Test chat — nothing is sent, nothing is billed.</p>
-        <Button size="sm" variant="ghost" onClick={() => setState(simStart(graph))}><RotateCcw className="mr-1 h-4 w-4" /> Restart</Button>
+        <Button size="sm" variant="ghost" onClick={() => setState(simStart(graph, undefined, { timezone }))}><RotateCcw className="mr-1 h-4 w-4" /> Restart</Button>
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto rounded-xl bg-muted/40 p-3">
         {state.messages.map((m, i) =>

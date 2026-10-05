@@ -60,6 +60,8 @@ let sends: Array<Record<string, unknown>> = [];
 
 function stubFetch(render: "ok" | "down") {
   vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
+    // Batch 10C: before drawing, the stored card is looked up — none here.
+    if (init?.method === "HEAD") return new Response(null, { status: 404 });
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
     if (String(url).includes("/functions/v1/render-card")) {
       renders.push(body);
@@ -193,13 +195,16 @@ describe("inbox Send card (/api/cards send)", () => {
     expect(update.payload).toEqual({ branding: { product_cards_in_answers: false } });
   });
 
-  it("live preview draws the merchant's values, unmetered", async () => {
+  it("live preview draws the merchant's values; never charged (its render is recorded as card_preview, not card_render)", async () => {
     stubFetch("ok");
     h.db = cardsDb({ cards: true });
     const res = await cardsCall({ action: "preview", kind: "customer_offer", vars: { headline: `Preview ${(n += 1)}`, offer: "Buy 1 get 1" } });
     expect(await res.json()).toEqual({ url: CARD_URL });
     expect(renders[0]).toMatchObject({ vars: { headline: `Preview ${n}`, offer: "Buy 1 get 1", validity: "", code: "" } });
-    expect(h.db.ops.some((o) => o.table === "ai_usage")).toBe(false);
+    // Batch 10C: a real render is recorded (usage only) — a preview under its own task.
+    const usage = h.db.ops.filter((o) => o.table === "ai_usage" && o.kind !== "select");
+    expect(usage.map((o) => (o.payload as { task?: string }).task)).toEqual(["card_preview"]);
+    expect(h.db.ops.some((o) => o.table === "wallet_ledger") || h.db.rpcs.some((r) => r.name.startsWith("wallet"))).toBe(false);
   });
 });
 
