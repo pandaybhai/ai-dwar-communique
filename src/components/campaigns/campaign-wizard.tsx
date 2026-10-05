@@ -40,6 +40,7 @@ import {
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
 import { CardAttachmentPicker } from "@/components/cards/card-attachment-picker";
+import { CardPreview } from "@/components/cards/card-preview";
 import type { CardAttachment } from "@/lib/customer-cards";
 import {
   TemplatePreview,
@@ -1073,6 +1074,8 @@ export function CampaignWizard({
                   value={card}
                   onChange={setCard}
                   hint="Write {{1}}, {{2}} and so on to reuse each contact's own details."
+                  explanation="Optional: a branded picture (offer, product, receipt…) sent to each contact right after this template. No card is sent unless you pick one."
+                  organizationId={organizationId}
                 />
               </div>
             )}
@@ -1167,6 +1170,14 @@ export function CampaignWizard({
                     }
                   />
                 )}
+                {card ? (
+                  <div className="space-y-2 rounded-2xl border border-border/70 bg-card p-4">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Then this picture card, right after the template
+                    </p>
+                    <CardPreview kind={card.kind} vars={card.vars} className="max-w-[240px]" />
+                  </div>
+                ) : null}
 
               </div>
             )}

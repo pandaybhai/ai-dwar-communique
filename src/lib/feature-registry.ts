@@ -1178,7 +1178,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       metrics: [],
       dashboard_section: false,
     },
-    activity_actions: ["card_branding_updated"],
+    activity_actions: ["card_branding_updated", "card_usage_updated", "card_sent_inbox"],
     data_tables: ["onboarding_card_templates"],
   },
   {

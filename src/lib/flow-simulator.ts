@@ -10,6 +10,7 @@ import {
   isBusinessOpen,
   pickBranch,
   productQueryOf,
+  cardOfNode,
   startNode,
   validateAnswer,
   type Branch,
@@ -18,9 +19,10 @@ import {
   type RunContext,
   type ValidationKind,
 } from "@/lib/flow-graph";
+import type { CardAttachment } from "@/lib/customer-cards";
 
 export type SimMessage =
-  | { from: "bot"; kind: "text"; text: string; options?: string[] | undefined; image?: string | undefined }
+  | { from: "bot"; kind: "text"; text: string; options?: string[] | undefined; image?: string | undefined; card?: CardAttachment | undefined }
   | { from: "bot"; kind: "note"; text: string }
   | { from: "customer"; kind: "text"; text: string };
 
@@ -171,6 +173,18 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
         note(s, `Shows up to ${q.limit} ${q.category || "products"}${range} from your catalogue, each with its picture, price and link (searched live — test chat assumes some match).`);
         if (!go(graph, s, node, "found")) return s;
         continue;
+      }
+      case "send_card": {
+        const card = cardOfNode(d, ctx);
+        if (!card) {
+          note(s, "Send card: pick a design first.");
+          if (!go(graph, s, node, edgeFrom(graph, node.id, "failed") ? "failed" : "next")) return s;
+          continue;
+        }
+        s.messages.push({ from: "bot", kind: "text", text: interpolate(String(d["caption"] ?? ""), ctx), card });
+        const fallback = interpolate(String(d["fallback_text"] ?? ""), ctx).trim();
+        note(s, `The card is drawn with your logo and colours when it's sent${fallback ? `; if it can't be drawn, this goes instead: "${fallback}"` : " (test chat assumes it can be drawn)"}.`);
+        break;
       }
       case "template":
         note(s, `Sends template "${String(d["template_name"] ?? "template")}"`);
