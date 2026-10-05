@@ -8,6 +8,7 @@ import {
   interpolate,
   pickBranch,
   productQueryOf,
+  cardOfNode,
   startNode,
   validateAnswer,
   type Branch,
@@ -793,7 +794,8 @@ async function advanceInner(
     if (!waitingHere) await logEvent(supabase, run, node.id, "entered", { type: node.type });
 
     const needsWindow = ["text", "buttons", "list", "ask", "form", "cta_url", "location_request", "location_send", "contact_card", "carousel", "payment", "show_products"].includes(node.type);
-    const sendsMessage = needsWindow || node.type === "template";
+    // A Send card step needs the window too, but handles a closed one itself (its failed path).
+    const sendsMessage = needsWindow || node.type === "template" || node.type === "send_card";
 
     // Quiet hours hold proactive sends (not replies to a message just received).
     if (sendsMessage && !awaitingReply && !payWaiting && !fromInbound && !woke && env.settings.quietHoursEnabled) {
@@ -1110,6 +1112,44 @@ async function advanceInner(
           }
           handle = res.found ? "found" : "none";
           await logEvent(supabase, run, node.id, "products_shown", { found: res.found, shown: res.shown });
+        }
+        if (!(await follow(node, handle))) return;
+        continue;
+      }
+      case "send_card": {
+        bumpAttempt(node.id);
+        const key = `${run.id}:${node.id}:${attemptOf(node.id)}`;
+        // Already sent on an earlier pass: carry on as if it went.
+        let handle = "next";
+        if (await logEvent(supabase, run, node.id, "send", {}, key)) {
+          const c = { ...env.ctx, vars };
+          const card = cardOfNode(d, c);
+          const fallback = interpolate(String(d["fallback_text"] ?? ""), c);
+          let res: { card: boolean; fallback: boolean; reason?: string };
+          if (!env.windowOpen) res = { card: false, fallback: false, reason: "window_closed" };
+          else if (!card) res = { card: false, fallback: false, reason: "no_design" };
+          else {
+            // Cards off for the workspace: never a card, only the plain fallback.
+            const cards = await import("@/lib/customer-cards.server");
+            const cardsOn = await cards.cardsEnabled(supabase, run.organization_id).catch(() => false);
+            res = await cards.sendCardOrFallback(supabase, {
+              organizationId: run.organization_id,
+              contactId: run.contact_id,
+              conversationId: run.conversation_id!,
+              phone: env.to,
+              sender: { phoneNumberId: env.conn!.phoneNumberId, accessToken: env.conn!.accessToken },
+              kind: card.kind,
+              vars: card.vars,
+              caption: interpolate(String(d["caption"] ?? ""), c),
+              fallback,
+              cardsOn,
+              windowOpen: env.windowOpen,
+              metadata: { kind: "flow_v2", run_id: run.id, node_id: node.id },
+            });
+          }
+          await logEvent(supabase, run, node.id, res.card ? "card_sent" : "card_failed", res.card ? {} : { reason: res.reason ?? null, fallback_sent: res.fallback });
+          // A card that didn't go takes the failed path when it's connected; otherwise the flow carries on.
+          if (!res.card && edgeFrom(graph, node.id, "failed")) handle = "failed";
         }
         if (!(await follow(node, handle))) return;
         continue;

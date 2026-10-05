@@ -90,7 +90,9 @@ export async function showProducts(
     windowOpen: args.windowOpen,
     ...(args.timer ? { timer: args.timer } : {}),
   };
-  const cards = (await enabledFlags(supabase, args.organizationId).catch(() => new Set<string>())).has("cards");
+  // The cards flag plus the Cards page switch (on unless the merchant turned it off).
+  const { productCardsOn } = await import("@/lib/customer-cards.server");
+  const cards = await productCardsOn(supabase, args.organizationId, await enabledFlags(supabase, args.organizationId).catch(() => new Set<string>()));
   let failure: string | null = null;
   const send = async (rows: Row[]): Promise<number> => {
     const { pictures, plain } = split(rows, collect);

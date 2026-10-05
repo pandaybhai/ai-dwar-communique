@@ -120,6 +120,8 @@ export async function sendServiceText(
     body: string;
     /** Stored on the message row, e.g. { kind: "stranger_greeting" }. */
     metadata?: Record<string, unknown>;
+    /** The teammate who sent it (inbox); left out for automatic messages. */
+    sentBy?: string;
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
@@ -139,6 +141,7 @@ export async function sendServiceText(
     type: "text",
     body: args.body,
     ...(args.metadata ? { metadata: args.metadata } : {}),
+    ...(args.sentBy ? { sent_by: args.sentBy } : {}),
   });
 }
 
@@ -222,6 +225,8 @@ export async function sendServiceImage(
     caption: string;
     /** Stored on the message row, e.g. { kind: "flow_v2" }. */
     metadata?: Record<string, unknown>;
+    /** The teammate who sent it (inbox); left out for automatic messages. */
+    sentBy?: string;
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
@@ -243,6 +248,7 @@ export async function sendServiceImage(
     media_url: args.imageUrl,
     media_mime: "image",
     ...(args.metadata ? { metadata: args.metadata } : {}),
+    ...(args.sentBy ? { sent_by: args.sentBy } : {}),
   });
 }
 

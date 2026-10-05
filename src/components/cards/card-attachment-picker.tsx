@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { CUSTOMER_CARD_DESIGNS, type CardAttachment, type CustomerCardKind } from "@/lib/customer-cards";
+import { CardPreview, RealCardPreview } from "@/components/cards/card-preview";
 
 const NONE = "__none__";
 
@@ -25,12 +26,18 @@ export function CardAttachmentPicker({
   onChange,
   disabled,
   hint,
+  explanation,
+  organizationId,
 }: {
   idPrefix: string;
   value: CardAttachment | null;
   onChange: (next: CardAttachment | null) => void;
   disabled?: boolean;
   hint?: string;
+  /** One line under the title saying what the card is for (campaign builder). */
+  explanation?: string;
+  /** With it, a live preview and "See the real card" appear once a design is picked. */
+  organizationId?: string | null;
 }) {
   const { enabled, loading } = useFeatureFlag("cards");
   if (loading || !enabled) return null;
@@ -45,6 +52,7 @@ export function CardAttachmentPicker({
           Add a picture card (optional)
         </Label>
       </div>
+      {explanation ? <p className="text-xs text-muted-foreground">{explanation}</p> : null}
       <Select
         value={value?.kind ?? NONE}
         onValueChange={(v) =>
@@ -95,6 +103,17 @@ export function CardAttachmentPicker({
               "Write {{1}}, {{2}} and so on to reuse the same details you filled into the message."}{" "}
             The card is sent right after the message — if it can't be drawn, the message still goes.
           </p>
+          {organizationId ? (
+            <div className="grid gap-3 sm:grid-cols-[220px_1fr] sm:items-start">
+              <CardPreview kind={design.kind} vars={value?.vars ?? {}} />
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {"{{1}}"}-style values show as typed here; each contact gets their own details.
+                </p>
+                <RealCardPreview organizationId={organizationId} kind={design.kind} vars={value?.vars ?? {}} />
+              </div>
+            </div>
+          ) : null}
         </>
       ) : null}
     </div>

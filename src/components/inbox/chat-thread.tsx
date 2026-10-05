@@ -30,6 +30,7 @@ import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { FlowRunBanner } from "@/components/inbox/flow-run-banner";
 import { FlowRunHistory } from "@/components/inbox/flow-run-history";
 import { SendFormButton } from "@/components/inbox/send-form-button";
+import { SendCardButton } from "@/components/inbox/send-card-button";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
 import { languageLabel } from "@/lib/languages";
@@ -764,6 +765,7 @@ export function ChatThread({
               className="max-h-32 min-h-11 resize-none rounded-2xl"
             />
             <SendFormButton organizationId={organizationId} conversationId={conversation.id} />
+            <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen />
             <Button
               className="h-11 w-11 shrink-0 rounded-full p-0"
               disabled={!draft.trim() || sending}
@@ -779,14 +781,17 @@ export function ChatThread({
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <p>Outside the 24-hour window — send a template instead.</p>
             </div>
-            <Button
-              size="sm"
-              className="shrink-0 rounded-full"
-              onClick={() => setPickerOpen(true)}
-            >
-              <MessageSquareText className="mr-2 h-4 w-4" />
-              Send a template
-            </Button>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen={false} />
+              <Button
+                size="sm"
+                className="shrink-0 rounded-full"
+                onClick={() => setPickerOpen(true)}
+              >
+                <MessageSquareText className="mr-2 h-4 w-4" />
+                Send a template
+              </Button>
+            </div>
           </div>
         )}
       </div>

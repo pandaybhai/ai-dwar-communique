@@ -173,9 +173,15 @@ export const Route = createFileRoute("/api/flows/v2")({
           const whatsappShop = hasShopStep
             ? await (await import("@/lib/whatsapp-catalog.server")).whatsappShopConnected(db, org)
             : undefined;
+          // Likewise a Send card step needs cards switched on; flows without one never look.
+          const hasCardStep = graph.nodes.some((n) => n.type === "send_card");
+          const cards = hasCardStep
+            ? await (await import("@/lib/customer-cards.server")).cardsEnabled(db, org).catch(() => false)
+            : undefined;
           const problems = validateGraph(graph, {
             timezone: (await loadSendSettings(db, org)).timezone,
             ...(whatsappShop === undefined ? {} : { whatsappShop }),
+            ...(cards === undefined ? {} : { cards }),
           });
           // Templates must be APPROVED at publish time.
           const templateIds = graph.nodes.filter((n) => n.type === "template").map((n) => String(n.data["template_id"] ?? "")).filter(Boolean);

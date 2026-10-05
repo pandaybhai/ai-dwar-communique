@@ -354,6 +354,9 @@ export async function runAgentOnInbound(
   let picturesSent = 0;
   if (sent.ok && catalogSent === 0 && pictures.length > 0) {
     const { sendProductPictures } = await import("@/lib/product-pictures.server");
+    // The Cards page switch; without the cards flag nothing extra is read.
+    const { productCardsOn } = await import("@/lib/customer-cards.server");
+    const cards = await productCardsOn(supabase, args.organizationId, flags);
     picturesSent = await sendProductPictures(supabase, {
       organizationId: args.organizationId,
       contactId: args.contactId,
@@ -362,7 +365,7 @@ export async function runAgentOnInbound(
       phoneNumberId: args.phoneNumberId,
       accessToken: args.accessToken,
       items: pictures,
-      cards: flags.has("cards"),
+      cards,
       onFailure: (error) => log("picture_failed", { conversation_id: args.conversationId, error }),
     });
   }

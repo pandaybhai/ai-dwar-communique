@@ -17,7 +17,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { callApi, uploadApi } from "@/lib/whatsapp-client";
 import { maskHttpSecrets, validateGraph, type FlowGraph, type GraphProblem, type NodeType } from "@/lib/flow-graph";
 import { FlowNodeCard, type RFData } from "./flow-node";
-import { NODE_META, uid } from "./node-meta";
+import { NODE_META, paletteTypes, uid } from "./node-meta";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { NodeConfig, type Pickers } from "./node-config";
 import { SimulatorPanel } from "./simulator-panel";
 import { TriggersPanel } from "./triggers-panel";
@@ -83,6 +84,8 @@ type Props = {
   /** Responses tab: contacts.view to see it, contacts.export for the CSV (the server checks both again). */
   canViewResponses?: boolean;
   canExportResponses?: boolean;
+  /** Open straight on the Responses view (the flows list's Responses link). */
+  initialView?: "canvas" | "responses";
 };
 
 export function FlowEditor(props: Props) {
@@ -93,13 +96,15 @@ export function FlowEditor(props: Props) {
   );
 }
 
-function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, tags, onChanged, aiOn, canViewResponses, canExportResponses }: Props) {
+function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, tags, onChanged, aiOn, canViewResponses, canExportResponses, initialView }: Props) {
   const rf = useReactFlow();
   const navigate = useNavigate();
   const [meta, setMeta] = useState<NonNullable<FlowGraph["meta"]>>(() => initial.meta ?? {});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [triggersOpen, setTriggersOpen] = useState(false);
-  const [view, setView] = useState<"canvas" | "responses">("canvas");
+  const [view, setView] = useState<"canvas" | "responses">(initialView === "responses" && canViewResponses ? "responses" : "canvas");
+  // Cards off: no Send card in the palette, and any Send card step is flagged.
+  const { enabled: cardsOn, loading: cardsLoading } = useFeatureFlag("cards");
   const [genOpen, setGenOpen] = useState(false);
   const [genText, setGenText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -161,7 +166,10 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     () => [...new Set(graph.nodes.map((n) => String(n.data["variable"] ?? "").trim()).filter(Boolean))],
     [graph],
   );
-  const validateOpts = useMemo(() => (edCtx.shop === undefined ? {} : { whatsappShop: edCtx.shop }), [edCtx.shop]);
+  const validateOpts = useMemo(
+    () => ({ ...(edCtx.shop === undefined ? {} : { whatsappShop: edCtx.shop }), ...(cardsLoading ? {} : { cards: cardsOn }) }),
+    [edCtx.shop, cardsOn, cardsLoading],
+  );
   const problems = useMemo(() => [...validateGraph(graph, validateOpts), ...serverProblems], [graph, validateOpts, serverProblems]);
   const problemsByNode = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -423,7 +431,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
             {groups.map((g) => (
               <div key={g} className="mb-4">
                 <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g}</p>
-                {(Object.keys(NODE_META) as NodeType[]).filter((k) => k !== "start" && NODE_META[k].group === g).map((k) => {
+                {paletteTypes({ cards: !cardsLoading && cardsOn }).filter((k) => NODE_META[k].group === g).map((k) => {
                   const M = NODE_META[k];
                   return (
                     <button key={k} type="button" title={M.hint} onClick={() => addNode(k)} className="mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-muted">

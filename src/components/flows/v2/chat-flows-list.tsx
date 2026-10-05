@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Workflow } from "lucide-react";
+import { Plus, Table2, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
 import { usePermissions } from "@/hooks/use-permissions";
 import { STARTERS } from "@/lib/flow-starters";
+import { relativeTime } from "@/lib/catalog";
+import { responsesLine, type FlowResponseCount } from "@/lib/flow-responses";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/empty-state";
@@ -13,9 +15,31 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 type Row = { id: string; name: string; is_enabled: boolean; updated_at: string };
 
+/**
+ * How many runs (Responses rows) each flow has and when the latest started:
+ * one head count and one newest-row read per flow, both on the
+ * (flow_id, started_at) index — never the runs themselves.
+ */
+async function loadResponseCounts(organizationId: string, ids: string[]): Promise<Record<string, FlowResponseCount>> {
+  const pairs = await Promise.all(
+    ids.map(async (id) => {
+      const [{ count }, { data }] = await Promise.all([
+        aidwar.from("flow_runs").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("flow_id", id),
+        aidwar.from("flow_runs").select("started_at").eq("organization_id", organizationId).eq("flow_id", id).order("started_at", { ascending: false }).limit(1),
+      ]);
+      const last = ((data ?? []) as Array<{ started_at: string | null }>)[0]?.started_at ?? null;
+      return [id, { count: count ?? 0, last }] as const;
+    }),
+  );
+  return Object.fromEntries(pairs);
+}
+
 export function ChatFlowsList({ organizationId }: { organizationId: string }) {
   const { can } = usePermissions();
   const canEdit = can("flows_v2.edit");
+  // The Responses view needs contacts.view, same as inside the editor.
+  const canViewResponses = can("contacts.view");
+  const [counts, setCounts] = useState<Record<string, FlowResponseCount>>({});
   const navigate = useNavigate();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState(false);
@@ -25,7 +49,10 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
   const load = useCallback(async () => {
     const { data, error: e } = await aidwar.from("flows").select("id, name, is_enabled, updated_at").eq("organization_id", organizationId).like("key", "v2:%").order("updated_at", { ascending: false });
     if (e) { setError(true); return; }
-    setRows((data ?? []) as Row[]);
+    const list = (data ?? []) as Row[];
+    setRows(list);
+    // Counts arrive after the list; a failed count just leaves the line out.
+    void loadResponseCounts(organizationId, list.map((r) => r.id)).then(setCounts).catch(() => {});
   }, [organizationId]);
   useEffect(() => { void load(); }, [load]);
 
@@ -49,11 +76,21 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
       ) : (
         <ul className="divide-y divide-border rounded-2xl border border-border bg-card">
           {rows.map((r) => (
-            <li key={r.id}>
-              <Link to="/app/flows/v2/$id" params={{ id: r.id }} className="flex items-center justify-between px-4 py-3 transition hover:bg-muted/50">
-                <span className="font-medium">{r.name}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${r.is_enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{r.is_enabled ? "Published" : "Draft"}</span>
+            <li key={r.id} className="flex items-center gap-2 pr-3 transition hover:bg-muted/50">
+              <Link to="/app/flows/v2/$id" params={{ id: r.id }} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{r.name}</span>
+                  {counts[r.id] ? (
+                    <span className="block text-xs text-muted-foreground">{responsesLine(counts[r.id]!, relativeTime)}</span>
+                  ) : null}
+                </span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${r.is_enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{r.is_enabled ? "Published" : "Draft"}</span>
               </Link>
+              {canViewResponses ? (
+                <Link to="/app/flows/v2/$id" params={{ id: r.id }} search={{ view: "responses" }} className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary transition hover:bg-primary/10">
+                  <Table2 className="h-3.5 w-3.5" /> Responses
+                </Link>
+              ) : null}
             </li>
           ))}
         </ul>
