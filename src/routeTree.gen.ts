@@ -71,6 +71,7 @@ import { Route as ApiCatalogImportRouteImport } from './routes/api/catalog/impor
 import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/products'
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
+import { Route as ApiFlowsResponsesRouteImport } from './routes/api/flows/responses'
 import { Route as ApiFlowsRunsRouteImport } from './routes/api/flows/runs'
 import { Route as ApiFlowsTriggersRouteImport } from './routes/api/flows/triggers'
 import { Route as ApiFlowsV2RouteImport } from './routes/api/flows/v2'
@@ -437,6 +438,11 @@ const ApiContactsImportRoute = ApiContactsImportRouteImport.update({
   path: '/api/contacts/import',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFlowsResponsesRoute = ApiFlowsResponsesRouteImport.update({
+  id: '/api/flows/responses',
+  path: '/api/flows/responses',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiFlowsRunsRoute = ApiFlowsRunsRouteImport.update({
   id: '/api/flows/runs',
   path: '/api/flows/runs',
@@ -794,6 +800,7 @@ export interface FileRoutesByFullPath {
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/flows/responses': typeof ApiFlowsResponsesRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/flows/triggers': typeof ApiFlowsTriggersRoute
   '/api/flows/v2': typeof ApiFlowsV2Route
@@ -910,6 +917,7 @@ export interface FileRoutesByTo {
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/flows/responses': typeof ApiFlowsResponsesRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/flows/triggers': typeof ApiFlowsTriggersRoute
   '/api/flows/v2': typeof ApiFlowsV2Route
@@ -1029,6 +1037,7 @@ export interface FileRoutesById {
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/flows/responses': typeof ApiFlowsResponsesRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/flows/triggers': typeof ApiFlowsTriggersRoute
   '/api/flows/v2': typeof ApiFlowsV2Route
@@ -1149,6 +1158,7 @@ export interface FileRouteTypes {
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/flows/responses'
     | '/api/flows/runs'
     | '/api/flows/triggers'
     | '/api/flows/v2'
@@ -1265,6 +1275,7 @@ export interface FileRouteTypes {
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/flows/responses'
     | '/api/flows/runs'
     | '/api/flows/triggers'
     | '/api/flows/v2'
@@ -1383,6 +1394,7 @@ export interface FileRouteTypes {
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/flows/responses'
     | '/api/flows/runs'
     | '/api/flows/triggers'
     | '/api/flows/v2'
@@ -1481,6 +1493,7 @@ export interface RootRouteChildren {
   ApiCatalogProductsRoute: typeof ApiCatalogProductsRoute
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
+  ApiFlowsResponsesRoute: typeof ApiFlowsResponsesRoute
   ApiFlowsRunsRoute: typeof ApiFlowsRunsRoute
   ApiFlowsTriggersRoute: typeof ApiFlowsTriggersRoute
   ApiFlowsV2Route: typeof ApiFlowsV2Route
@@ -1964,6 +1977,13 @@ declare module '@tanstack/react-router' {
       path: '/api/contacts/import'
       fullPath: '/api/contacts/import'
       preLoaderRoute: typeof ApiContactsImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/flows/responses': {
+      id: '/api/flows/responses'
+      path: '/api/flows/responses'
+      fullPath: '/api/flows/responses'
+      preLoaderRoute: typeof ApiFlowsResponsesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/flows/runs': {
@@ -2465,6 +2485,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCatalogProductsRoute: ApiCatalogProductsRoute,
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
+  ApiFlowsResponsesRoute: ApiFlowsResponsesRoute,
   ApiFlowsRunsRoute: ApiFlowsRunsRoute,
   ApiFlowsTriggersRoute: ApiFlowsTriggersRoute,
   ApiFlowsV2Route: ApiFlowsV2Route,

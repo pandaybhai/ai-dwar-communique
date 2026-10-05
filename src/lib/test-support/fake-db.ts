@@ -6,9 +6,11 @@ export type FakeOp = {
   kind: "select" | "update" | "insert" | "delete" | "upsert";
   filters: Array<[string, unknown[]]>;
   payload?: unknown;
+  /** Arguments given to .select(columns, options). */
+  select?: unknown[];
 };
 export type FakeRpc = { name: string; args: Record<string, unknown> };
-type Reply = { data: unknown; error: { code?: string; message: string } | null };
+type Reply = { data: unknown; error: { code?: string; message: string } | null; count?: number | null };
 
 export function fakeDb(
   onQuery: (op: FakeOp) => Reply | undefined,
@@ -25,7 +27,10 @@ export function fakeDb(
           op.filters.push([m, a]);
           return b;
         };
-      b["select"] = () => b;
+      b["select"] = (...a: unknown[]) => {
+        op.select = a;
+        return b;
+      };
       for (const k of ["update", "insert", "upsert"] as const)
         b[k] = (p: unknown) => {
           op.kind = k;

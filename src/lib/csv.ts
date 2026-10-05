@@ -52,6 +52,15 @@ export function toCsv(rows: (string | number | null | undefined)[][]): string {
     .join("\n");
 }
 
+/**
+ * Spreadsheet formula-injection guard: a cell starting with = + - @ (or a
+ * tab / carriage return) gets a leading apostrophe so it opens as text.
+ */
+export function csvSafeCell(cell: string | number | null | undefined): string {
+  const value = cell === null || cell === undefined ? "" : String(cell);
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 export function downloadCsv(filename: string, content: string): void {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);

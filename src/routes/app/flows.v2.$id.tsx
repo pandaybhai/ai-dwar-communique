@@ -96,6 +96,8 @@ function FlowEditorPage() {
         initial={data.graph}
         published={data.published}
         canEdit={can("flows_v2.edit")}
+        canViewResponses={can("contacts.view")}
+        canExportResponses={can("contacts.export")}
         pickers={{ templates, forms, variables: [], contactFields: ["email", "city", "pincode"], segments: extra.segments, flows: extra.flows, products: extra.products }}
         aiOn={extra.aiOn}
         versions={data.versions}
