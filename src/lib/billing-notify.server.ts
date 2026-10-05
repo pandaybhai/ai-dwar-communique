@@ -88,6 +88,13 @@ export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
     body: "Your AiDwar trial for {{1}} ends in {{2}} days. Choose a plan at {{3}} to keep Aiden working — nothing is deleted.",
     examples: ["Sharma Textiles", "3", "aidwar.in/app/billing"],
   },
+  {
+    // AI provider trouble (credit/quota/outage, or the backup answering).
+    // Raised at most once an hour by ai-fallback.server.ts.
+    name: "admin_ai_provider_alert",
+    body: "AiDwar AI alert: {{1}}. Right now {{2}}. Details are here: {{3}} — please check.",
+    examples: ["Lovable AI gateway is out of credit or quota", "Aiden is answering on the anthropic backup", "https://aidwar.in/admin/ai"],
+  },
 ];
 
 /** audience:kind -> template name. Anything unmapped stays an in-app notice. */
@@ -106,6 +113,7 @@ const TEMPLATE_FOR: Record<string, string> = {
   "client:invoice_overdue": "client_invoice_overdue",
   "client:payment_failed": "client_payment_failed",
   "client:trial_ending": "client_trial_ending",
+  "admin:ai_provider_alert": "admin_ai_provider_alert",
 };
 
 /**
@@ -358,6 +366,12 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
       return [orgName, String(payload["days"] ?? 3), "aidwar.in/app/billing"];
     case "campaign_approval":
       return [orgName, money(Number(payload["estimate"] ?? 0)), link];
+    case "ai_provider_alert":
+      return [
+        String(payload["headline"] ?? "the AI provider is failing"),
+        String(payload["detail"] ?? "Aiden replies may be failing"),
+        String(payload["link"] ?? "https://aidwar.in/admin/ai"),
+      ];
     default:
       return [orgName, money(Number(amount ?? 0)), link];
   }

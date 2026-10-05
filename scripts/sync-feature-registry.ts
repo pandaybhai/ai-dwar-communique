@@ -147,7 +147,9 @@ on conflict do nothing;`);
 lines.push("");
 
 lines.push(`-- Drift: rows the database still holds that no manifest declares.
-create or replace view public.feature_registry_drift as
+-- security_invoker: runs with the reader's rights (Batch 10B security advisor fix);
+-- create or replace resets view options, so it must be restated every time.
+create or replace view public.feature_registry_drift with (security_invoker = true) as
   select 'feature_flag'::text as kind, ff.key as identifier, null::text as detail
   from public.feature_flags ff
   where not exists (select 1 from public.feature_registry r where r.flag_key = ff.key)
@@ -172,7 +174,8 @@ lines.push(
   ).join(", ")}));`,
 );
 lines.push("");
-lines.push("grant select on public.feature_registry_drift to authenticated;");
+// A review aid for the platform team only: never exposed to anon/authenticated.
+lines.push("revoke all on public.feature_registry_drift from public, anon, authenticated;");
 lines.push("grant select on public.feature_registry_drift to service_role;");
 
 process.stdout.write(lines.join("\n") + "\n");

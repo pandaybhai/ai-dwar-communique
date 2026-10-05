@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { detectLanguage } from "@/lib/languages";
+import { readCodIntent } from "@/lib/cod";
 import { normalizePhone, toWaId } from "@/lib/phone";
 import {
   DEFAULT_OPT_IN_KEYWORDS,
@@ -170,6 +171,9 @@ export async function acceptWebhook(
     payload = { _unparsable: args.rawBody.slice(0, 5000) };
   }
 
+  // Only for a signed payload with customer messages: the first reads start
+  // alongside the store (they never write anything).
+  const prefetch = args.signatureValid ? prefetchInbound(supabase, payload) : undefined;
   const { data: event } = await supabase
     .from("webhook_events")
     .insert({ provider: "meta", payload, signature_valid: args.signatureValid })
@@ -185,7 +189,7 @@ export async function acceptWebhook(
       event.id as string,
       payload,
       (event.received_at as string | null) ?? null,
-      { storeMs },
+      { storeMs, ...(prefetch ? { prefetch } : {}) },
     ).catch(() => {
       // processWebhookPayload records its own errors
     });
@@ -871,6 +875,58 @@ async function customerMediaToText(
 
 type InboundAccount = Pick<AccountRow, "id" | "organization_id" | "waba_id"> & Partial<AccountRow>;
 
+type EmbeddedAccountRead = { data: unknown; error: unknown };
+
+/** The number's row with its workspace's markers and opt-out words embedded. Never rejects. */
+function readEmbeddedAccount(supabase: SupabaseClient, phoneNumberId: string): Promise<EmbeddedAccountRead> {
+  return Promise.resolve(
+    supabase
+      .from("whatsapp_accounts")
+      .select(
+        `${ACCOUNT_COLUMNS}, organizations(lead_source_markers(marker, source, created_at), opt_out_keywords(keyword, action))`,
+      )
+      .eq("phone_number_id", phoneNumberId)
+      .maybeSingle(),
+  ).then(
+    (r) => ({ data: r.data as unknown, error: r.error as unknown }),
+    (error: unknown) => ({ data: null, error: error ?? new Error("read failed") }),
+  );
+}
+
+/**
+ * The reads a payload carrying customer messages starts with — the number
+ * (with markers and opt-out words embedded) and the onboarding number — begun
+ * while the event itself is being stored, instead of one round trip after.
+ * Read-only and identical to the reads processWebhookPayload would make;
+ * nothing is written before the event is stored. Status-only payloads get none.
+ */
+export type InboundPrefetch = {
+  accounts: Map<string, Promise<EmbeddedAccountRead>>;
+  onboarding: Promise<{ data: unknown }>;
+};
+
+export function prefetchInbound(supabase: SupabaseClient, payload: AnyRecord): InboundPrefetch | undefined {
+  const accounts = new Map<string, Promise<EmbeddedAccountRead>>();
+  for (const entry of (payload["entry"] as AnyRecord[] | undefined) ?? []) {
+    for (const change of (entry["changes"] as AnyRecord[] | undefined) ?? []) {
+      const value = (change["value"] as AnyRecord | undefined) ?? {};
+      const phoneNumberId = ((value["metadata"] as AnyRecord | undefined) ?? {})["phone_number_id"] as string | undefined;
+      const hasMessages = ((value["messages"] as unknown[] | undefined) ?? []).length > 0;
+      if (phoneNumberId && hasMessages && !accounts.has(phoneNumberId)) {
+        accounts.set(phoneNumberId, readEmbeddedAccount(supabase, phoneNumberId));
+      }
+    }
+  }
+  if (accounts.size === 0) return undefined;
+  const onboarding = Promise.resolve(
+    supabase.from("platform_settings").select("onboarding_whatsapp_account_id").maybeSingle(),
+  ).then(
+    (r) => ({ data: r.data as unknown }),
+    () => ({ data: null }),
+  );
+  return { accounts, onboarding };
+}
+
 /**
  * The number a message came in on, by phone_number_id — with the workspace's
  * lead-source markers and opt-out words embedded, so the three reads the
@@ -883,6 +939,8 @@ async function readInboundAccount(
   phoneNumberId: string,
   /** Only for a payload carrying messages (status callbacks don't need them). */
   caches: { markerCache: Map<string, MarkerRow[]>; keywordCache: Map<string, KeywordSets> } | null,
+  /** The same embedded read, started while the event was being stored (speed). */
+  prefetched?: Promise<EmbeddedAccountRead>,
 ): Promise<InboundAccount | null> {
   if (!caches) {
     const { data } = await supabase
@@ -893,13 +951,7 @@ async function readInboundAccount(
     return (data as InboundAccount | null) ?? null;
   }
   const { markerCache, keywordCache } = caches;
-  const embedded = await supabase
-    .from("whatsapp_accounts")
-    .select(
-      `${ACCOUNT_COLUMNS}, organizations(lead_source_markers(marker, source, created_at), opt_out_keywords(keyword, action))`,
-    )
-    .eq("phone_number_id", phoneNumberId)
-    .maybeSingle();
+  const embedded = await (prefetched ?? readEmbeddedAccount(supabase, phoneNumberId));
   if (!embedded.error) {
     const row = embedded.data as (AccountRow & { organizations?: unknown }) | null;
     if (!row) return null;
@@ -939,15 +991,20 @@ export async function processWebhookPayload(
   /** webhook_events.received_at, for the timing log. */
   receivedAt: string | null = null,
   /** How long storing the event took (acceptWebhook), for webhook_events.timing. */
-  meta: { storeMs?: number } = {},
+  meta: { storeMs?: number; prefetch?: InboundPrefetch } = {},
 ): Promise<void> {
   const processingStart = Date.now();
   const timings: MessageTiming[] = [];
+  let accountMs: number | null = null;
   const timingRecord = (): Record<string, unknown> | null =>
     timings.length
       ? {
           v: 1,
           store_ms: meta.storeMs ?? null,
+          // How long the number's lookup held the first message up (0 when it
+          // finished during the store), and whether it started there.
+          account_ms: accountMs,
+          prefetched: Boolean(meta.prefetch),
           received_lag_ms: receivedAt ? Math.max(0, processingStart - Date.parse(receivedAt)) : null,
           total_ms: Date.now() - processingStart,
           messages: timings,
@@ -994,7 +1051,8 @@ export async function processWebhookPayload(
     // The number owners write to while Aiden is being set up. Never hardcoded.
     // Read alongside the first account lookup; awaited before it's needed.
     const onboardingRead = Promise.resolve(
-      supabase.from("platform_settings").select("onboarding_whatsapp_account_id").maybeSingle(),
+      meta.prefetch?.onboarding ??
+        supabase.from("platform_settings").select("onboarding_whatsapp_account_id").maybeSingle(),
     ).then(
       ({ data }) =>
         (data as { onboarding_whatsapp_account_id?: string | null } | null)?.onboarding_whatsapp_account_id ?? null,
@@ -1176,7 +1234,14 @@ export async function processWebhookPayload(
         if (!phoneNumberId) continue;
 
         const hasMessages = ((value["messages"] as unknown[] | undefined) ?? []).length > 0;
-        const account = await readInboundAccount(supabase, phoneNumberId, hasMessages ? { markerCache, keywordCache } : null);
+        const lookupStarted = Date.now();
+        const account = await readInboundAccount(
+          supabase,
+          phoneNumberId,
+          hasMessages ? { markerCache, keywordCache } : null,
+          hasMessages ? meta.prefetch?.accounts.get(phoneNumberId) : undefined,
+        );
+        if (hasMessages && accountMs === null) accountMs = Date.now() - lookupStarted;
 
         onboardingAccountId = await onboardingRead;
 
@@ -1432,8 +1497,12 @@ export async function processWebhookPayload(
               null;
             const contextMetaId =
               ((msg["context"] as AnyRecord | undefined)?.["id"] as string | undefined) ?? null;
+            // A text with no yes/confirm/no/cancel in it can never settle a
+            // cash-on-delivery ask (readCodIntent), so its reads stay off the
+            // reply's path; it is still saved on an open ask, after the reply.
+            const codMayAnswer = readCodIntent([body, tapPayload].filter(Boolean).join(" | ") || null) !== null;
             const codReads =
-              isCustomerNumber && !isSystemEcho && type !== "order" && (body || tapPayload)
+              isCustomerNumber && !isSystemEcho && type !== "order" && (body || tapPayload) && codMayAnswer
                 ? import("@/lib/cod.server").then(({ prefetchCodReads }) =>
                     prefetchCodReads(supabase, { organizationId: orgId, contactId: contact.id as string, contextMetaId }),
                   )
@@ -1625,7 +1694,20 @@ export async function processWebhookPayload(
             // asked, which is how the answer finds its order; anything typed is
             // still stored verbatim so nothing is lost.
             let codHandled = false;
-            if (!isSystemEcho && !optKeywordMatched) {
+            if (!isSystemEcho && !optKeywordMatched && !codMayAnswer) {
+              // Can't be an answer (applyCodReply would return false): the
+              // verbatim save on an open ask runs once this message is
+              // answered, and is awaited before the event is closed.
+              afterReply.push(async () =>
+                (await import("@/lib/cod.server")).applyCodReply(supabase, {
+                  organizationId: orgId,
+                  contactId: contact.id as string,
+                  contextMetaId,
+                  body,
+                  payload: tapPayload,
+                }),
+              );
+            } else if (!isSystemEcho && !optKeywordMatched) {
               const { applyCodReply } = await import("@/lib/cod.server");
               // COD only records the answer (it never sends), so it runs
               // alongside the window write; its first reads were started

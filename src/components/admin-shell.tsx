@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { aidwar } from "@/integrations/aidwar/client";
 import { cn } from "@/lib/utils";
+import { AiProviderBanner } from "@/components/admin/ai-provider-banner";
 
 const NAV = [
   { to: "/admin/organizations", label: "Organizations", icon: Building2 },
@@ -102,7 +103,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <aside className="hidden w-64 shrink-0 border-r border-border/70 bg-background px-4 py-6 lg:block">
           <AdminNav />
         </aside>
-        <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-10">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-10">
+          <AiProviderBanner />
+          {children}
+        </main>
       </div>
     </div>
   );
