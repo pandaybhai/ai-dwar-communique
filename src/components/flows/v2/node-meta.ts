@@ -1,9 +1,10 @@
 import {
   Bot, Clock, FileText, Flag, GitBranch, ListChecks, MessageSquare, MessageSquareText, MousePointerClick,
   Pencil, Play, StickyNote, Tag, UserPlus, AlertCircle, HelpCircle, Link2, MapPin, Navigation, Contact, GalleryHorizontal,
-  Variable, CalendarClock, Sheet, Globe, Mail, CalendarCheck, ClipboardList, IndianRupee, NotebookPen, CheckCircle2, BellRing, Users, Shuffle, CornerDownRight, ShoppingBag, type LucideIcon,
+  Variable, CalendarClock, Sheet, Globe, Mail, CalendarCheck, ClipboardList, IndianRupee, NotebookPen, CheckCircle2, BellRing, Users, Shuffle, CornerDownRight, ShoppingBag, IdCard, type LucideIcon,
 } from "lucide-react";
 import type { FlowNode, NodeType } from "@/lib/flow-graph";
+import { CUSTOMER_CARD_DESIGNS } from "@/lib/customer-cards";
 
 /** label/hint are wording only; the NodeType key (e.g. "carousel") is what saved flows store and must never change. */
 export type NodeMeta = { label: string; hint?: string; group: "Messages" | "Ask" | "Logic" | "Actions" | "Other"; icon: LucideIcon; defaults: () => Record<string, unknown> };
@@ -46,10 +47,19 @@ export const NODE_META: Record<NodeType, NodeMeta> = {
   email_team: { label: "Email the team", group: "Actions", icon: Mail, defaults: () => ({ user_ids: [], addresses: "", subject: "New chat lead: {{name}}", body: "{{name}} ({{phone}}) said: {{last_answer}}" }) },
   wait_until: { label: "Wait until", group: "Logic", icon: CalendarCheck, defaults: () => ({ mode: "date", date: "", field: "" }) },
   order_draft: { label: "Create order draft", group: "Actions", icon: ClipboardList, defaults: () => ({ items: "{{last_answer}}", total: "", notes: "", needs_you: true }) },
+  send_card: { label: "Send card", hint: "A branded picture card — offer, product, order update, receipt or appointment.", group: "Messages", icon: IdCard, defaults: () => ({ kind: "customer_offer", vars: {}, caption: "", fallback_text: "" }) },
   show_products: { label: "Show products", hint: "Sends matching products as photos with price and link. Works for every business.", group: "Messages", icon: ShoppingBag, defaults: () => ({ category: "", budget: "", min_price: "", max_price: "", max_items: 5 }) },
 };
 
 export const AI_ICON = Bot;
+
+/**
+ * Step types offered in the editor's palette. Send card only appears when the
+ * workspace has cards switched on; every other step is offered as before.
+ */
+export function paletteTypes(opts: { cards: boolean }): NodeType[] {
+  return (Object.keys(NODE_META) as NodeType[]).filter((k) => k !== "start" && (k !== "send_card" || opts.cards));
+}
 
 export function handleLabel(node: FlowNode, handle: string): string {
   if (handle === "next") return "";
@@ -103,6 +113,12 @@ export function summary(node: FlowNode): string {
     case "email_team": return String(d["subject"] ?? "");
     case "wait_until": return d["mode"] === "field" ? `Until {{${String(d["field"] ?? "")}}}` : `Until ${String(d["date"] ?? "")}`;
     case "order_draft": return String(d["items"] ?? "");
+    case "send_card": {
+      const design = CUSTOMER_CARD_DESIGNS.find((x) => x.kind === d["kind"]);
+      const vars = (d["vars"] as Record<string, string> | undefined) ?? {};
+      const first = design?.vars.map((v) => String(vars[v.key] ?? "").trim()).find((v) => v && !v.startsWith("https://")) ?? "";
+      return design ? `${design.title} card${first ? ` · ${first}` : ""}` : "Pick a card design";
+    }
     case "show_products": {
       const price = [d["min_price"] ? `from ₹${String(d["min_price"])}` : "", d["max_price"] ? `up to ₹${String(d["max_price"])}` : ""].filter(Boolean).join(" ");
       return `Up to ${Number(d["max_items"] ?? 5)} ${String(d["category"] ?? "") || "products"}${String(d["budget"] ?? "") ? ` · ${String(d["budget"])}` : ""}${price ? ` · ${price}` : ""}`;

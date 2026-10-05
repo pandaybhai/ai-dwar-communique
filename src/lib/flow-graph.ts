@@ -2,6 +2,7 @@
  * Flows v2 graph model — shared by the engine, editor and simulator.
  * Browser-safe: no server imports.
  */
+import { cardDesign, isCardKind, type CardAttachment } from "@/lib/customer-cards";
 
 export const MAX_NODES = 200;
 export const MAX_STEPS_PER_RUN = 500;
@@ -51,7 +52,8 @@ export type NodeType =
   | "email_team"
   | "wait_until"
   | "order_draft"
-  | "show_products";
+  | "show_products"
+  | "send_card";
 
 export type FlowNode = {
   id: string;
@@ -250,6 +252,7 @@ export function outputsOf(node: FlowNode): string[] {
       return ["open", "closed"];
     case "sheets_append":
     case "email_team":
+    case "send_card":
       return ["next", "failed"];
     case "http":
       return ["success", "failed"];
@@ -311,6 +314,18 @@ export function maskHttpSecrets(graph: FlowGraph): FlowGraph {
   };
 }
 
+/** Shown on a Send card step when the workspace has the cards feature switched off. */
+export const CARDS_REQUIRED = "Cards are switched off for this workspace — remove this step or ask us to switch cards on.";
+
+/** A Send card step's design and its values with this run's answers filled in. */
+export function cardOfNode(data: Record<string, unknown>, ctx: RunContext): CardAttachment | null {
+  if (!isCardKind(data["kind"])) return null;
+  const raw = (data["vars"] as Record<string, unknown> | undefined) ?? {};
+  const vars: Record<string, string> = {};
+  for (const v of cardDesign(data["kind"])!.vars) vars[v.key] = interpolate(String(raw[v.key] ?? ""), ctx).trim();
+  return { kind: data["kind"], vars };
+}
+
 /** Shown on a WhatsApp shop step (internal type "carousel") when the workspace has no connected WhatsApp catalogue. */
 export const WHATSAPP_SHOP_REQUIRED = "Connect WhatsApp shop first";
 
@@ -318,8 +333,10 @@ export const WHATSAPP_SHOP_REQUIRED = "Connect WhatsApp shop first";
  * opts.whatsappShop: whether the workspace has a connected WhatsApp catalogue.
  * Only `false` adds a problem, and only on WhatsApp shop steps; left out (as
  * every older caller does) nothing changes.
+ * opts.cards: whether the workspace has the cards feature on. Only `false`
+ * adds a problem, and only on Send card steps.
  */
-export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: string; whatsappShop?: boolean } = {}): GraphProblem[] {
+export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: string; whatsappShop?: boolean; cards?: boolean } = {}): GraphProblem[] {
   const problems: GraphProblem[] = [];
   const nowMs = (opts.now ?? new Date()).getTime();
   if (graph.nodes.length > MAX_NODES) problems.push({ nodeId: null, message: `A flow can have at most ${MAX_NODES} steps.` });
@@ -332,6 +349,7 @@ export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: s
   for (const node of graph.nodes) {
     // First, so the step itself says what's missing.
     if (node.type === "carousel" && opts.whatsappShop === false) problems.push({ nodeId: node.id, message: WHATSAPP_SHOP_REQUIRED });
+    if (node.type === "send_card" && opts.cards === false) problems.push({ nodeId: node.id, message: CARDS_REQUIRED });
     for (const h of requiredOutputs(node)) {
       if (!edgeFrom(graph, node.id, h))
         problems.push({ nodeId: node.id, message: h === "next" ? "Connect this step to what happens next (or an End)." : `Output “${h}” isn't connected.` });
@@ -418,6 +436,17 @@ export function validateGraph(graph: FlowGraph, opts: { now?: Date; timezone?: s
       for (const v of [lo, hi]) if (v && !v.includes("{{") && !(Number(v.replace(/[,₹\s]/g, "")) >= 0)) problems.push({ nodeId: node.id, message: "Prices must be numbers (or a {{variable}})." });
       if (lo && hi && !lo.includes("{{") && !hi.includes("{{") && Number(lo.replace(/[,₹\s]/g, "")) > Number(hi.replace(/[,₹\s]/g, "")))
         problems.push({ nodeId: node.id, message: "The lowest price is above the highest." });
+    }
+    if (node.type === "send_card") {
+      if (!isCardKind(x["kind"])) problems.push({ nodeId: node.id, message: "Pick a card design." });
+      else {
+        const vars = (x["vars"] as Record<string, unknown> | undefined) ?? {};
+        const filled = cardDesign(x["kind"])!.vars.filter((v) => v.key !== "image_url" && String(vars[v.key] ?? "").trim());
+        if (!filled.length) problems.push({ nodeId: node.id, message: "Fill in at least one detail on the card." });
+        const photo = String(vars["image_url"] ?? "").trim();
+        if (photo && !photo.includes("{{") && !/^https:\/\/\S+$/i.test(photo)) problems.push({ nodeId: node.id, message: "The picture needs a full link starting with https://" });
+      }
+      if (String(x["caption"] ?? "").length > 1024) problems.push({ nodeId: node.id, message: "Keep the words under the card under 1,024 characters." });
     }
     if (node.type === "wait_until") {
       if (x["mode"] === "field" ? !String(x["field"] ?? "").trim() : !String(x["date"] ?? "").trim())

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { FlowGraph } from "@/lib/flow-graph";
 import { simReply, simStart, simTimeout, type SimState } from "@/lib/flow-simulator";
+import { CardPreview } from "@/components/cards/card-preview";
 
 /** Chat as a test customer. Nothing is sent or billed. */
 export function SimulatorPanel({ graph, onPath }: { graph: FlowGraph; onPath: (ids: string[]) => void }) {
@@ -38,6 +39,7 @@ export function SimulatorPanel({ graph, onPath }: { graph: FlowGraph; onPath: (i
             <div key={i} className={`flex ${m.from === "customer" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${m.from === "customer" ? "rounded-br-sm bg-primary/15" : "rounded-bl-sm bg-card"}`}>
                 {"image" in m && m.image && <img src={m.image} alt="" className="mb-2 max-h-40 w-full rounded-lg object-cover" />}
+                {"card" in m && m.card && <CardPreview kind={m.card.kind} vars={m.card.vars} className="mb-2" />}
                 <p className="whitespace-pre-wrap">{m.text}</p>
                 {m.from === "bot" && m.options && (
                   <div className="mt-2 flex flex-col gap-1">

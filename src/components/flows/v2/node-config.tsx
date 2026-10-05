@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { IMAGE_MAX_BYTES, IMAGE_TYPES, MAX_BRANCHES, MAX_BUTTONS, MAX_CONDITIONS, MAX_LIST_ROWS, MAX_PRODUCT_ITEMS, imageProblem, parseBudget, type Branch, type Condition, type FlowNode } from "@/lib/flow-graph";
 import { NODE_META, uid } from "./node-meta";
+import { SendCardConfig } from "./send-card-config";
 
 export type Pickers = {
   templates: Array<{ id: string; name: string; status: string }>;
@@ -298,6 +299,7 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
       )}
       {node.type === "note" && textField("text", "Note (never sent)")}
       {node.type === "show_products" && <ShowProductsConfig d={d} set={set} variables={pickers.variables} />}
+      {node.type === "send_card" && (<><SendCardConfig d={d} onChange={onChange} variables={pickers.variables} />{typing}</>)}
       {node.type === "buttons" && (<><ImageField d={d} set={set} upload={pickers.uploadImage} />{textField()}{options("buttons", MAX_BUTTONS, 20)}{saveTo}{typing}{replyRules}</>)}
       {node.type === "list" && (<>{textField()}<div className="space-y-1.5"><Label>List button text</Label><Input maxLength={20} value={String(d["button_text"] ?? "Choose")} onChange={(e) => set("button_text", e.target.value)} /></div>{options("rows", MAX_LIST_ROWS, 24)}{saveTo}{replyRules}</>)}
       {node.type === "ask" && (

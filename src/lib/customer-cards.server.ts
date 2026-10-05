@@ -215,19 +215,30 @@ export async function sendCardToContact(
     kind: string;
     vars: Record<string, string>;
     caption: string;
+    /** The thread to send into; left out, the contact's first conversation is used (as before). */
+    conversationId?: string;
+    /** The caller read the 24-hour window in this request. */
+    windowOpen?: boolean;
+    /** Stored on the message row. */
+    metadata?: Record<string, unknown>;
+    /** The teammate who sent it from the inbox. */
+    sentBy?: string;
   },
-): Promise<{ sent: boolean; reason?: string }> {
+): Promise<{ sent: boolean; reason?: string; messageId?: string | null }> {
   try {
     if (!args.contactId) return { sent: false, reason: "no_contact" };
 
-    const { data: conversation } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("organization_id", args.organizationId)
-      .eq("contact_id", args.contactId)
-      .limit(1)
-      .maybeSingle();
-    const conversationId = (conversation as { id?: string } | null)?.id ?? null;
+    let conversationId = args.conversationId ?? null;
+    if (!conversationId) {
+      const { data: conversation } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("organization_id", args.organizationId)
+        .eq("contact_id", args.contactId)
+        .limit(1)
+        .maybeSingle();
+      conversationId = (conversation as { id?: string } | null)?.id ?? null;
+    }
     if (!conversationId) return { sent: false, reason: "no_conversation" };
 
     const url = await renderCustomerCard(supabase, {
@@ -246,6 +257,9 @@ export async function sendCardToContact(
       to: args.phone,
       imageUrl: url,
       caption: args.caption,
+      ...(args.windowOpen ? { windowOpen: true } : {}),
+      ...(args.metadata ? { metadata: args.metadata } : {}),
+      ...(args.sentBy ? { sentBy: args.sentBy } : {}),
     });
     if (!result.ok) {
       // The 24-hour rule deserves plain words, not a code.
@@ -266,12 +280,120 @@ export async function sendCardToContact(
       entityId: conversationId,
       properties: { kind: args.kind, contact_id: args.contactId },
     });
-    return { sent: true };
+    return { sent: true, messageId: result.messageId };
   } catch (error) {
     console.error(
       "[customer-cards] send",
       error instanceof Error ? error.message : String(error),
     );
     return { sent: false, reason: "exception" };
+  }
+}
+
+/** Why a card didn't go that a plain message couldn't fix either. */
+const NO_FALLBACK = new Set(["no_contact", "no_conversation"]);
+const WINDOW_CLOSED = "Outside the 24-hour window — send a template first.";
+
+export type CardOrFallbackResult = {
+  /** The branded card went out. */
+  card: boolean;
+  /** The plain photo/text went out instead. */
+  fallback: boolean;
+  reason?: string;
+  messageId?: string | null;
+};
+
+/**
+ * Sends a card the merchant chose (inbox, a flow's Send card step). When the
+ * card can't go — cards switched off, the renderer down, the picture rejected —
+ * the plain words go instead, the same way product-pictures.server.ts falls
+ * back to the plain photo: a Product card's photo with the words as its
+ * caption, otherwise a text. An empty `fallback` sends nothing extra.
+ * Never throws.
+ */
+export async function sendCardOrFallback(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    contactId: string | null;
+    conversationId: string;
+    phone: string;
+    sender: { phoneNumberId: string; accessToken: string };
+    kind: string;
+    vars: Record<string, string>;
+    caption: string;
+    fallback: string;
+    /** The workspace has the cards flag on; false never draws a card. */
+    cardsOn: boolean;
+    windowOpen?: boolean;
+    metadata?: Record<string, unknown>;
+    sentBy?: string;
+  },
+): Promise<CardOrFallbackResult> {
+  let reason = "cards_off";
+  if (args.cardsOn) {
+    const card = await sendCardToContact(supabase, {
+      organizationId: args.organizationId,
+      contactId: args.contactId,
+      phone: args.phone,
+      sender: args.sender,
+      kind: args.kind,
+      vars: args.vars,
+      caption: args.caption,
+      conversationId: args.conversationId,
+      ...(args.windowOpen ? { windowOpen: true } : {}),
+      ...(args.metadata ? { metadata: { ...args.metadata, card_kind: args.kind } } : {}),
+      ...(args.sentBy ? { sentBy: args.sentBy } : {}),
+    });
+    if (card.sent) return { card: true, fallback: false, messageId: card.messageId ?? null };
+    reason = card.reason ?? "send_failed";
+    if (NO_FALLBACK.has(reason) || reason === WINDOW_CLOSED) return { card: false, fallback: false, reason };
+  }
+
+  const text = args.fallback.trim();
+  if (!text) return { card: false, fallback: false, reason };
+  try {
+    const { sendServiceImage, sendServiceText } = await import("@/lib/service-text.server");
+    const base = {
+      organizationId: args.organizationId,
+      phoneNumberId: args.sender.phoneNumberId,
+      accessToken: args.sender.accessToken,
+      conversationId: args.conversationId,
+      to: args.phone,
+      ...(args.windowOpen ? { windowOpen: true } : {}),
+      ...(args.metadata ? { metadata: { ...args.metadata, card_fallback: reason } } : {}),
+      ...(args.sentBy ? { sentBy: args.sentBy } : {}),
+    };
+    const photo = String(args.vars["image_url"] ?? "").trim();
+    const res = /^https:\/\/\S+$/i.test(photo)
+      ? await sendServiceImage(supabase, { ...base, imageUrl: photo, caption: text })
+      : await sendServiceText(supabase, { ...base, body: text });
+    if (res.ok) return { card: false, fallback: true, reason, messageId: res.messageId };
+    const closed = typeof res.error === "string" && res.error.includes("service_window_closed");
+    return { card: false, fallback: false, reason: closed ? WINDOW_CLOSED : res.error ?? reason };
+  } catch (error) {
+    console.error("[customer-cards] fallback", error instanceof Error ? error.message : String(error));
+    return { card: false, fallback: false, reason };
+  }
+}
+
+/**
+ * Whether Aiden's product answers and the Show products step send their first
+ * product as a card: the cards flag, and the Cards page switch (on unless the
+ * merchant turned it off). Workspaces without the flag never read anything.
+ */
+export async function productCardsOn(
+  supabase: SupabaseClient,
+  organizationId: string,
+  flags: Set<string>,
+): Promise<boolean> {
+  if (!flags.has("cards")) return false;
+  try {
+    const { productCardsInAnswers } = await import("@/lib/customer-cards");
+    const { data } = await supabase.from("organizations").select("branding").eq("id", organizationId).maybeSingle();
+    return productCardsInAnswers(true, (data as { branding?: Record<string, unknown> | null } | null)?.branding ?? null);
+  } catch {
+    // Can't read the switch: keep today's behaviour.
+    return true;
   }
 }

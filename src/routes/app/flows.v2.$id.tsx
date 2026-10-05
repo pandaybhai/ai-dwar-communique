@@ -22,6 +22,9 @@ export const Route = createFileRoute("/app/flows/v2/$id")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
+  // ?view=responses opens the flow on its Responses view (the flows list's Responses link).
+  validateSearch: (search: Record<string, unknown>): { view?: "responses" } =>
+    search["view"] === "responses" ? { view: "responses" } : {},
   component: FlowEditorPage,
 });
 
@@ -29,6 +32,7 @@ type Loaded = { name: string; graph: FlowGraph; published: boolean; versions: Ve
 
 function FlowEditorPage() {
   const { id } = Route.useParams();
+  const { view } = Route.useSearch();
   const { active } = useOrg();
   const { can, loading: permsLoading } = usePermissions();
   const { enabled, loading: flagLoading } = useFeatureFlag("flows_v2");
@@ -98,6 +102,7 @@ function FlowEditorPage() {
         canEdit={can("flows_v2.edit")}
         canViewResponses={can("contacts.view")}
         canExportResponses={can("contacts.export")}
+        {...(view === "responses" ? { initialView: "responses" as const } : {})}
         pickers={{ templates, forms, variables: [], contactFields: ["email", "city", "pincode"], segments: extra.segments, flows: extra.flows, products: extra.products }}
         aiOn={extra.aiOn}
         versions={data.versions}

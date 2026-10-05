@@ -261,3 +261,13 @@ export function rangeBounds(range: ResponsesRange, custom: { from: string; to: s
   };
   return { from: day(custom.from), to: day(custom.to, 1) };
 }
+
+/** A flow's runs on the flows list: how many, and when the newest started. */
+export type FlowResponseCount = { count: number; last: string | null };
+
+/** "12 responses · last 3 hr ago", or "No responses yet". */
+export function responsesLine(c: FlowResponseCount, relative: (iso: string) => string): string {
+  if (!c.count) return "No responses yet";
+  const n = `${c.count.toLocaleString("en-IN")} response${c.count === 1 ? "" : "s"}`;
+  return c.last ? `${n} · last ${relative(c.last)}` : n;
+}

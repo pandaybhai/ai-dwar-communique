@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Eye, ImageIcon, Loader2, Palette } from "lucide-react";
+import { Eye, ImageIcon, Loader2, MapPin, Palette } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { CARD_USES, PRODUCT_CARDS_SETTING, productCardsInAnswers } from "@/lib/customer-cards";
 
 const CARD_KINDS = [
   { kind: "customer_offer", title: "Offer", blurb: "A headline offer with a coupon code and validity date.", vars: "headline · offer · validity · code" },
@@ -43,6 +45,9 @@ export function CardsView({
   const [saving, setSaving] = useState(false);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [previewing, setPreviewing] = useState<string | null>(null);
+  // "Use product cards in Aiden's answers and Show products" — on unless turned off.
+  const [productCards, setProductCards] = useState(true);
+  const [savingUsage, setSavingUsage] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,6 +66,7 @@ export function CardsView({
       brand_primary: str(b["brand_primary"]),
       brand_accent: str(b["brand_accent"]),
     });
+    setProductCards(productCardsInAnswers(true, b));
     setLoading(false);
   }, [organizationId]);
 
@@ -84,6 +90,26 @@ export function CardsView({
       has_logo: Boolean(branding.brand_logo_url),
     });
     toast.success("Card branding saved — every new card uses it from here.");
+  }
+
+  async function saveProductCards(next: boolean) {
+    const before = productCards;
+    setProductCards(next);
+    setSavingUsage(true);
+    const { error } = await callApi("/api/cards", {
+      body: { action: "save_usage", organization_id: organizationId, product_cards: next },
+    });
+    setSavingUsage(false);
+    if (error) {
+      setProductCards(before);
+      toast.error(error);
+      return;
+    }
+    toast.success(
+      next
+        ? "Aiden and Show products will send the first product as a card."
+        : "Aiden and Show products will send plain product photos.",
+    );
   }
 
   async function preview(kind: string) {
@@ -196,11 +222,48 @@ export function CardsView({
         )}
       </section>
 
+      <section className="max-w-4xl rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
+        <div className="flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-primary" />
+          <h2 className="text-base font-semibold text-foreground">Where cards are used</h2>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          A card goes out only where you add one. If a card can’t be drawn, the plain photo or text
+          goes instead — your message always arrives.
+        </p>
+        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+          {CARD_USES.map((use) => (
+            <li key={use.key} className="rounded-xl border border-border/60 bg-muted/20 p-4">
+              <p className="text-sm font-semibold text-foreground">{use.title}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{use.how}</p>
+              <p className="mt-2 text-xs italic text-muted-foreground/90">e.g. {use.example}</p>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-5 flex items-start justify-between gap-4 rounded-xl border border-border/60 p-4">
+          <div>
+            <label htmlFor={`switch-${PRODUCT_CARDS_SETTING}`} className="text-sm font-medium text-foreground">
+              Use product cards in Aiden’s answers and Show products
+            </label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              On: the first product goes as a branded Product card, the rest as photos. Off: every
+              product goes as a plain photo with its name and price.
+            </p>
+          </div>
+          <Switch
+            id={`switch-${PRODUCT_CARDS_SETTING}`}
+            checked={productCards}
+            disabled={!canManage || savingUsage}
+            onCheckedChange={(v) => void saveProductCards(v)}
+          />
+        </div>
+      </section>
+
       <section>
         <h2 className="text-base font-semibold text-foreground">The five designs</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Attach any of these to a campaign or a flow step; Aiden also uses the product card when
-          it answers with a product.
+          Send any of these from the inbox, a flow’s Send card step or a campaign; Aiden can also
+          use the product card when it answers with a product.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {CARD_KINDS.map((card) => {
