@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readCodIntent } from "@/lib/cod";
 
 /**
  * Cash-on-delivery confirmation.
@@ -87,14 +88,8 @@ export async function noteCodAsk(
     .eq("status", "pending");
 }
 
-/** "Yes, confirm" / "No, cancel" — read from the button title or its payload. */
-export function readCodIntent(raw: string | null | undefined): "confirmed" | "cancelled" | null {
-  const text = String(raw ?? "").toLowerCase();
-  if (!text.trim()) return null;
-  if (/\b(no|cancel|don'?t ship|do not ship)\b/.test(text)) return "cancelled";
-  if (/\b(yes|confirm|confirmed|ok|okay)\b/.test(text)) return "confirmed";
-  return null;
-}
+// Lives in cod.ts so the webhook can check it without loading this module.
+export { readCodIntent } from "@/lib/cod";
 
 async function orderProps(
   supabase: SupabaseClient,

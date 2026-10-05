@@ -722,6 +722,9 @@ export const FEATURES: readonly FeatureManifest[] = [
       "ai_knowledge_added",
       "ai_knowledge_removed",
       "ai_answer_corrected",
+      // Platform-level (organization_id null): the AI provider ran out of
+      // credit/quota or a backup answered (ai-fallback.server.ts).
+      "ai_provider_alert",
     ],
     settings_path: "/app/employee",
     usage_meters: [

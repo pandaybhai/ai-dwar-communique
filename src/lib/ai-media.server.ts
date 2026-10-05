@@ -48,8 +48,9 @@ function audioExtension(mime: string | null | undefined): string {
 
 /**
  * A voice note -> its words. Uses the platform's OpenAI credential (the same
- * one the chat runs resolve) and falls back to the Lovable gateway. Metered
- * as `transcription` on the workspace.
+ * one the chat runs resolve), falls back to the Lovable gateway, then to the
+ * platform's backup OPENAI_API_KEY when set. Metered as `transcription` on
+ * the workspace.
  */
 export async function transcribeAudio(
   supabase: SupabaseClient,
@@ -74,6 +75,16 @@ export async function transcribeAudio(
       base: GATEWAY,
       headers: { Authorization: `Bearer ${gatewayKey}` },
       model: "openai/gpt-4o-mini-transcribe",
+    });
+  }
+  // The platform's backup OpenAI key (ANTHROPIC/OPENAI fallback, Batch 10B)
+  // is tried last, after the gateway, and only when it is set.
+  const backupKey = process.env["OPENAI_API_KEY"];
+  if (backupKey && !(cred.direct && cred.key === backupKey)) {
+    attempts.push({
+      base: "https://api.openai.com/v1",
+      headers: { Authorization: `Bearer ${backupKey}` },
+      model: "gpt-4o-mini-transcribe",
     });
   }
   if (attempts.length === 0) return { text: null, error: "No transcription credential." };

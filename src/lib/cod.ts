@@ -114,3 +114,12 @@ export const COD_PERIODS = [
   { value: "30", label: "Last 30 days" },
   { value: "90", label: "Last 90 days" },
 ] as const;
+
+/** "Yes, confirm" / "No, cancel" — read from the button title or its payload. */
+export function readCodIntent(raw: string | null | undefined): "confirmed" | "cancelled" | null {
+  const text = String(raw ?? "").toLowerCase();
+  if (!text.trim()) return null;
+  if (/\b(no|cancel|don'?t ship|do not ship)\b/.test(text)) return "cancelled";
+  if (/\b(yes|confirm|confirmed|ok|okay)\b/.test(text)) return "confirmed";
+  return null;
+}

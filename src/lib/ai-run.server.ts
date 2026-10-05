@@ -25,6 +25,20 @@ import {
   type ToolContext,
   type ToolPrincipal,
 } from "@/lib/ai-tools.server";
+import {
+  BACKUP_RATES_INR,
+  ProviderHttpError,
+  ProviderStreamCut,
+  anthropicConversation,
+  backupRoutes,
+  outageOf,
+  reportProviderTrouble,
+  type BackupConversation,
+  type BackupRoute,
+  type BackupStep,
+  type NeutralTurn,
+  type Outage,
+} from "@/lib/ai-fallback.server";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
@@ -735,7 +749,7 @@ async function resolveApiKey(
   supabase: SupabaseClient,
   organizationId: string,
   provider: string,
-): Promise<{ key: string | null; base: string; direct: boolean }> {
+): Promise<{ key: string | null; base: string; direct: boolean; owner?: "workspace" }> {
   const directBase = DIRECT_ENDPOINTS[provider];
   const vendor = (key: string) =>
     directBase ? { key, base: directBase, direct: true } : { key, base: GATEWAY, direct: false };
@@ -752,7 +766,8 @@ async function resolveApiKey(
     supabase,
     (own as { vault_secret_name?: string } | null)?.vault_secret_name,
   );
-  if (ownKey) return vendor(ownKey);
+  // The workspace's own account never falls back onto the platform's backup.
+  if (ownKey) return { ...vendor(ownKey), owner: "workspace" as const };
 
   // 2. Platform credentials, held once for everyone.
   const { data: platform } = await supabase
@@ -960,7 +975,8 @@ async function callChatCompletions(
   });
 
   if (!res.ok) {
-    throw new Error(gatewayErrorMessage(res.status, await res.text()));
+    const text = await res.text();
+    throw new ProviderHttpError(gatewayErrorMessage(res.status, text), res.status, text);
   }
   const json = (await res.json()) as {
     choices?: Array<{
@@ -1014,7 +1030,8 @@ async function callResponses(
     body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) {
-    throw new Error(gatewayErrorMessage(res.status, res.ok ? "" : await res.text()));
+    const text = res.ok ? "" : await res.text();
+    throw new ProviderHttpError(gatewayErrorMessage(res.status, text), res.status, text);
   }
 
   const reader = res.body.getReader();
@@ -1045,7 +1062,7 @@ async function callResponses(
     }
   }
 
-  if (!completed) throw new Error("The AI stopped before it finished answering.");
+  if (!completed) throw new ProviderStreamCut();
 
   const output = (completed["output"] ?? []) as Array<Record<string, unknown>>;
   const text = output
@@ -1095,6 +1112,127 @@ function strictSchema(schema: BrokeredTool["parameters"]): Record<string, unknow
 
 const isOpenAiModel = (model: string) => model.startsWith("openai/");
 
+/** The Responses API input for a conversation: system, prior turns, then the question. */
+function responsesInput(
+  system: string,
+  history: { role: "user" | "assistant"; content: string }[],
+  input: string,
+  imageDataUrl: string | null,
+): unknown[] {
+  const items: unknown[] = [];
+  if (system) items.push({ role: "system", content: [{ type: "input_text", text: system }] });
+  for (const turn of history) {
+    items.push({
+      role: turn.role,
+      content: [
+        turn.role === "assistant"
+          ? { type: "output_text", text: turn.content }
+          : { type: "input_text", text: turn.content },
+      ],
+    });
+  }
+  items.push({
+    role: "user",
+    content: imageDataUrl
+      ? [
+          { type: "input_text", text: input },
+          { type: "input_image", image_url: imageDataUrl },
+        ]
+      : [{ type: "input_text", text: input }],
+  });
+  return items;
+}
+
+// ------------------------------------------------------------ backup I/O
+
+/**
+ * The same conversation on OpenAI directly (OPENAI_API_KEY), streamed through
+ * the Responses path the platform already uses for OpenAI. Turns taken on the
+ * primary are replayed as function_call / function_call_output items.
+ */
+function openAiBackupConversation(
+  route: BackupRoute,
+  req: {
+    system: string;
+    history: { role: "user" | "assistant"; content: string }[];
+    input: string;
+    imageDataUrl: string | null;
+    turns: NeutralTurn[];
+    tools: BrokeredTool[];
+  },
+): BackupConversation {
+  const items = responsesInput(req.system, req.history, req.input, req.imageDataUrl);
+  for (const turn of req.turns) {
+    if (turn.text.trim()) items.push({ role: "assistant", content: [{ type: "output_text", text: turn.text }] });
+    for (const c of turn.calls) {
+      items.push({ type: "function_call", call_id: c.id, name: c.name, arguments: JSON.stringify(c.args) });
+    }
+    for (const o of turn.outputs) items.push({ type: "function_call_output", call_id: o.id, output: o.output });
+  }
+  return {
+    async step(): Promise<BackupStep> {
+      const call = await callResponses(DIRECT_ENDPOINTS["openai"]!, route.key, route.model, items, req.tools, true);
+      items.push(...call.items);
+      return {
+        text: call.text,
+        toolCalls: call.toolCalls,
+        inputTokens: call.inputTokens,
+        outputTokens: call.outputTokens,
+        model: route.model,
+      };
+    },
+    addToolResults(outputs) {
+      for (const o of outputs) items.push({ type: "function_call_output", call_id: o.id, output: o.output });
+    },
+  };
+}
+
+/**
+ * Cost of a run a backup finished: the primary's tokens (if it got that far)
+ * at the primary's rate, plus the backup's at the backup's rate — the rate
+ * card first, then the backup list prices. Both amounts go on the run's
+ * metadata so the split stays visible.
+ */
+async function priceWithBackup(
+  supabase: SupabaseClient,
+  brain: ResolvedBrain,
+  primary: { inputTokens: number; outputTokens: number },
+  served: { route: BackupRoute; model: string; inputTokens: number; outputTokens: number },
+  runMeta: Record<string, unknown>,
+): Promise<Awaited<ReturnType<typeof priceRun>>> {
+  const first =
+    primary.inputTokens || primary.outputTokens
+      ? await priceRun(supabase, brain.provider, brain.model_id, primary.inputTokens, primary.outputTokens)
+      : { amount: 0, currency: null, source: "rate_card" as const };
+  let second = await priceRun(supabase, served.route.provider, served.model, served.inputTokens, served.outputTokens);
+  let rateSource = "rate_card";
+  if (second.source === "unknown" && (served.inputTokens || served.outputTokens)) {
+    const rate =
+      BACKUP_RATES_INR[`${served.route.provider}:${served.model}`] ??
+      BACKUP_RATES_INR[`${served.route.provider}:${served.route.model}`];
+    if (rate) {
+      const amount = (served.inputTokens * rate.input + served.outputTokens * rate.output) / 1_000_000;
+      second = { amount: Number(amount.toFixed(6)), currency: "INR", source: "rate_card" };
+      rateSource = "backup_list_price";
+    }
+  }
+  const fallback = (runMeta["fallback"] ?? {}) as Record<string, unknown>;
+  runMeta["fallback"] = {
+    ...fallback,
+    cost_by_provider: { [brain.provider]: first.amount, [served.route.provider]: second.amount },
+    backup_rate_source: rateSource,
+  };
+  const amount =
+    first.amount === null && second.amount === null
+      ? null
+      : Number(((first.amount ?? 0) + (second.amount ?? 0)).toFixed(6));
+  return {
+    amount,
+    currency: second.currency ?? first.currency,
+    source: first.source === "rate_card" && second.source === "rate_card" ? "rate_card" : "unknown",
+  };
+}
+
 // -------------------------------------------------------------- embeddings
 
 /** Rupees per million embedding tokens. Platform-internal. */
@@ -1142,23 +1280,58 @@ export async function meterAiUsage(
   else await supabase.from("ai_usage").insert(row);
 }
 
+/**
+ * One embedding request: the gateway first, exactly as before. Only when it
+ * is out of credit, over quota, failing or unreachable — and OPENAI_API_KEY is
+ * set — is the same model asked directly. Throws the gateway's error otherwise.
+ */
+async function embedBatch(key: string | null, openAiKey: string | null, batch: string[]): Promise<Response> {
+  let failure: unknown = null;
+  if (key) {
+    try {
+      const res = await fetch(`${GATEWAY}/embeddings`, {
+        method: "POST",
+        headers: gatewayHeaders(key),
+        body: JSON.stringify({ model: EMBEDDING_MODEL, input: batch }),
+      });
+      if (res.ok) return res;
+      const text = await res.text();
+      failure = new ProviderHttpError(gatewayErrorMessage(res.status, text), res.status, text);
+    } catch (error) {
+      failure = error;
+    }
+    if (!openAiKey || !outageOf(failure)) throw failure;
+    console.error("[ai] embeddings: gateway unavailable, using OpenAI directly", failure instanceof Error ? failure.message : "");
+  }
+  const res = await fetch(`${DIRECT_ENDPOINTS["openai"]}/embeddings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
+    body: JSON.stringify({ model: wireModel("openai", EMBEDDING_MODEL), input: batch }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ProviderHttpError(gatewayErrorMessage(res.status, text), res.status, text);
+  }
+  return res;
+}
+
 /** The only embedding call in the codebase. Returns one vector per input. */
 export async function embedTexts(
   texts: string[],
   meter?: { supabase: SupabaseClient; organizationId: string },
 ): Promise<number[][]> {
   const key = process.env["LOVABLE_API_KEY"];
-  if (!key) throw new Error("AI isn't connected on this deployment.");
+  // The only embedding backup is OpenAI's own text-embedding-3-small: the
+  // model the gateway serves, so vectors stay comparable with the stored ones.
+  // Anthropic has no embeddings, so with only ANTHROPIC_API_KEY set,
+  // embeddings stay on the gateway.
+  const openAiKey = process.env["OPENAI_API_KEY"];
+  if (!key && !openAiKey) throw new Error("AI isn't connected on this deployment.");
   const out: number[][] = [];
   // The gateway caps batch size; 64 keeps every request comfortably inside it.
   for (let i = 0; i < texts.length; i += 64) {
     const batch = texts.slice(i, i + 64);
-    const res = await fetch(`${GATEWAY}/embeddings`, {
-      method: "POST",
-      headers: gatewayHeaders(key),
-      body: JSON.stringify({ model: EMBEDDING_MODEL, input: batch }),
-    });
-    if (!res.ok) throw new Error(gatewayErrorMessage(res.status, await res.text()));
+    const res = await embedBatch(key ?? null, openAiKey ?? null, batch);
     const json = (await res.json()) as { data?: Array<{ embedding: number[] }> };
     for (const row of json.data ?? []) out.push(row.embedding);
 
@@ -1337,7 +1510,8 @@ export async function executeRun(
   };
 
   // Extra review data written alongside the caller's metadata.
-  const runMeta: Record<string, unknown> = { timing_ms: timing };
+  // metadata.provider: who actually answered (a backup overrides it below).
+  const runMeta: Record<string, unknown> = { timing_ms: timing, provider: brain.provider };
   const finish = async (result: RunResult): Promise<RunResult> => {
     result.latencyMs = Date.now() - started;
     // Platform-paid runs (the owner's onboarding chat) must never reach the
@@ -1458,7 +1632,8 @@ export async function executeRun(
   const { key, base: apiBase, direct } = prelude.api;
   const wire = direct ? wireModel(brain.provider, brain.model_id) : brain.model_id;
 
-  if (!key) {
+  // No key and no backup: stop before anything is read or spent, as before.
+  if (!key && (prelude.api.owner === "workspace" || backupRoutes(brain.tier).length === 0)) {
     return finish({
       ...base,
       status: "error",
@@ -1617,123 +1792,199 @@ export async function executeRun(
   let outputTokens = 0;
   let answer = "";
 
-  try {
-    if (isOpenAiModel(brain.model_id) || (direct && brain.provider === "openai")) {
-      const items: unknown[] = [];
-      if (system) items.push({ role: "system", content: [{ type: "input_text", text: system }] });
-      for (const turn of history) {
-        items.push({
-          role: turn.role,
-          content: [
-            turn.role === "assistant"
-              ? { type: "output_text", text: turn.content }
-              : { type: "input_text", text: turn.content },
-          ],
+  /** Runs one turn's tool calls in order; returns what the model sees of each. */
+  const runToolCalls = async (calls: { id: string; name: string; args: Record<string, unknown> }[]): Promise<string[]> => {
+    const views: string[] = [];
+    for (const tc of calls) {
+      const result = await runTool(
+        supabase,
+        organizationId,
+        actorUserId,
+        principal,
+        tc.name,
+        tc.args,
+        subject,
+      );
+      if (!result.ok) anyToolFailed = true;
+      toolCalls.push({
+        tool: tc.name,
+        ok: result.ok,
+        ...(result.error ? { error: result.error } : {}),
+        ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
+        activityLogId: result.activityLogId ?? null,
+        args: result.arguments ?? {},
+        resultSummary: result.resultSummary ?? {},
+      });
+      sources.push({ kind: "tool", label: tc.name });
+      collectProductMedia(tc.name, result, foundMedia);
+      const view = JSON.stringify(modelView(result)).slice(0, 6000);
+      toolResultTexts.push(view);
+      views.push(view);
+    }
+    return views;
+  };
+
+  // The finished turns, in a vendor-neutral shape, so a backup provider can
+  // pick the conversation up where the primary dropped it (tools already run
+  // are never run twice).
+  const turns: NeutralTurn[] = [];
+  const noteTurn = (call: { text: string; toolCalls: NeutralTurn["calls"] }, views: string[]) =>
+    turns.push({
+      text: call.text,
+      calls: call.toolCalls,
+      outputs: call.toolCalls.map((tc, i) => ({ id: tc.id, output: views[i] ?? "" })),
+    });
+
+  // The platform's backups. None configured (no ANTHROPIC_API_KEY /
+  // OPENAI_API_KEY), or a workspace on its own account: none are tried.
+  const backups =
+    prelude.api.owner === "workspace"
+      ? []
+      : backupRoutes(brain.tier).filter((r) => !(direct && r.provider === brain.provider));
+
+  let modelError: unknown = null;
+  if (key) {
+    try {
+      if (isOpenAiModel(brain.model_id) || (direct && brain.provider === "openai")) {
+        const items = responsesInput(system, history, input, options.imageDataUrl ?? null);
+
+        for (let step = 0; step < maxSteps; step += 1) {
+          const call = await callResponses(apiBase, key, wire, items, tools, direct);
+          inputTokens += call.inputTokens ?? 0;
+          outputTokens += call.outputTokens ?? 0;
+          answer = call.text || answer;
+          if (call.toolCalls.length === 0) break;
+          // The function_call items must travel with their outputs.
+          items.push(...call.items);
+          const views = await runToolCalls(call.toolCalls);
+          call.toolCalls.forEach((tc, i) =>
+            items.push({
+              type: "function_call_output",
+              call_id: tc.id,
+              output: views[i],
+            }),
+          );
+          noteTurn(call, views);
+        }
+      } else {
+        const messages: ChatMessage[] = [];
+        if (system) messages.push({ role: "system", content: system });
+        for (const turn of history) messages.push({ role: turn.role, content: turn.content });
+        messages.push({
+          role: "user",
+          content: options.imageDataUrl
+            ? [
+                { type: "text", text: input },
+                { type: "image_url", image_url: { url: options.imageDataUrl } },
+              ]
+            : input,
         });
-      }
-      items.push({
-        role: "user",
-        content: options.imageDataUrl
-          ? [
-              { type: "input_text", text: input },
-              { type: "input_image", image_url: options.imageDataUrl },
-            ]
-          : [{ type: "input_text", text: input }],
-      });
 
-      for (let step = 0; step < maxSteps; step += 1) {
-        const call = await callResponses(apiBase, key, wire, items, tools, direct);
-        inputTokens += call.inputTokens ?? 0;
-        outputTokens += call.outputTokens ?? 0;
-        answer = call.text || answer;
-        if (call.toolCalls.length === 0) break;
-        // The function_call items must travel with their outputs.
-        items.push(...call.items);
-        for (const tc of call.toolCalls) {
-          const result = await runTool(
-            supabase,
-            organizationId,
-            actorUserId,
-            principal,
-            tc.name,
-            tc.args,
-            subject,
+        for (let step = 0; step < maxSteps; step += 1) {
+          const call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
+          inputTokens += call.inputTokens ?? 0;
+          outputTokens += call.outputTokens ?? 0;
+          answer = call.text || answer;
+          if (call.toolCalls.length === 0) break;
+          messages.push(call.raw as ChatMessage);
+          const views = await runToolCalls(call.toolCalls);
+          call.toolCalls.forEach((tc, i) =>
+            messages.push({
+              role: "tool",
+              tool_call_id: tc.id,
+              content: views[i],
+            }),
           );
-          if (!result.ok) anyToolFailed = true;
-          toolCalls.push({
-            tool: tc.name,
-            ok: result.ok,
-            ...(result.error ? { error: result.error } : {}),
-            ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
-            activityLogId: result.activityLogId ?? null,
-            args: result.arguments ?? {},
-            resultSummary: result.resultSummary ?? {},
-          });
-          sources.push({ kind: "tool", label: tc.name });
-          collectProductMedia(tc.name, result, foundMedia);
-          const view = JSON.stringify(modelView(result)).slice(0, 6000);
-          toolResultTexts.push(view);
-          items.push({
-            type: "function_call_output",
-            call_id: tc.id,
-            output: view,
-          });
+          noteTurn(call, views);
         }
       }
-    } else {
-      const messages: ChatMessage[] = [];
-      if (system) messages.push({ role: "system", content: system });
-      for (const turn of history) messages.push({ role: turn.role, content: turn.content });
-      messages.push({
-        role: "user",
-        content: options.imageDataUrl
-          ? [
-              { type: "text", text: input },
-              { type: "image_url", image_url: { url: options.imageDataUrl } },
-            ]
-          : input,
-      });
+    } catch (error) {
+      modelError = error;
+    }
+  }
 
-      for (let step = 0; step < maxSteps; step += 1) {
-        const call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
-        inputTokens += call.inputTokens ?? 0;
-        outputTokens += call.outputTokens ?? 0;
-        answer = call.text || answer;
-        if (call.toolCalls.length === 0) break;
-        messages.push(call.raw as ChatMessage);
-        for (const tc of call.toolCalls) {
-          const result = await runTool(
-            supabase,
-            organizationId,
-            actorUserId,
-            principal,
-            tc.name,
-            tc.args,
-            subject,
-          );
-          if (!result.ok) anyToolFailed = true;
-          toolCalls.push({
-            tool: tc.name,
-            ok: result.ok,
-            ...(result.error ? { error: result.error } : {}),
-            ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
-            activityLogId: result.activityLogId ?? null,
-            args: result.arguments ?? {},
-            resultSummary: result.resultSummary ?? {},
-          });
-          sources.push({ kind: "tool", label: tc.name });
-          collectProductMedia(tc.name, result, foundMedia);
-          const view = JSON.stringify(modelView(result)).slice(0, 6000);
-          toolResultTexts.push(view);
-          messages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: view,
-          });
+  // ---------------------------------------------------------------- backup
+  // The primary is out of credit, over quota, failing or unreachable (or has
+  // no key): the same conversation continues on a backup, from the turn it
+  // stopped at. Any other failure (a bad request) is returned as before.
+  const outage: Outage | null = !key ? { kind: "no_key", status: null } : modelError ? outageOf(modelError) : null;
+  let served: { route: BackupRoute; model: string; inputTokens: number; outputTokens: number } | null = null;
+  if (outage && backups.length > 0) {
+    const attempts: Array<Record<string, unknown>> = [];
+    for (const route of backups) {
+      const used = { inputTokens: 0, outputTokens: 0, model: route.model };
+      try {
+        const convo: BackupConversation =
+          route.provider === "anthropic"
+            ? anthropicConversation(route, {
+                system,
+                history,
+                input,
+                imageDataUrl: options.imageDataUrl ?? null,
+                turns: turns.slice(),
+                tools,
+                tier: brain.tier,
+              })
+            : openAiBackupConversation(route, { system, history, input, imageDataUrl: options.imageDataUrl ?? null, turns: turns.slice(), tools });
+        for (let step = turns.length; step < maxSteps; step += 1) {
+          const call = await convo.step();
+          used.inputTokens += call.inputTokens ?? 0;
+          used.outputTokens += call.outputTokens ?? 0;
+          used.model = call.model;
+          answer = call.text || answer;
+          if (call.toolCalls.length === 0) break;
+          const views = await runToolCalls(call.toolCalls);
+          convo.addToolResults(call.toolCalls.map((tc, i) => ({ id: tc.id, output: views[i] ?? "" })));
+          noteTurn(call, views);
         }
+        served = { route, model: used.model, inputTokens: used.inputTokens, outputTokens: used.outputTokens };
+        attempts.push({ provider: route.provider, model: used.model, ok: true });
+        modelError = null;
+        break;
+      } catch (error) {
+        const again = outageOf(error);
+        attempts.push({ provider: route.provider, model: route.model, ok: false, kind: again?.kind ?? "error" });
+        // A backup that is itself down passes to the next; any other error stops here.
+        modelError = error;
+        // Tokens a failed backup spent are still owed.
+        inputTokens += used.inputTokens;
+        outputTokens += used.outputTokens;
+        if (!again) break;
       }
     }
-  } catch (error) {
+    runMeta["fallback"] = {
+      from_provider: brain.provider,
+      from_model: brain.model_id,
+      reason: outage.kind,
+      status: outage.status,
+      attempts,
+    };
+  }
+  if (outage) {
+    const report = reportProviderTrouble(supabase, {
+      provider: brain.provider,
+      model: brain.model_id,
+      outage,
+      servedBy: served ? served.route.provider : null,
+      backupConfigured: backups.length > 0,
+      task,
+      organizationId,
+      error: modelError instanceof Error ? modelError.message : outage.kind,
+    }).catch(() => false);
+    if (options.deferUsage) options.deferUsage(report);
+    else await report;
+  }
+
+  if (!key && !served) {
+    return finish({
+      ...base,
+      status: "error",
+      error: `My "${brain.display_name}" setup has no working connection behind it, so I couldn't think at all. This isn't a bad answer — it's a broken connection. Ask the platform team to check the key for this setup.`,
+    });
+  }
+
+  if (modelError) {
+    const error = modelError;
     const message = error instanceof Error ? error.message : "The AI couldn't complete that.";
     const priced = await priceRun(supabase, brain.provider, brain.model_id, inputTokens, outputTokens);
     return finish({
@@ -1755,7 +2006,17 @@ export async function executeRun(
 
   timing["model"] = Date.now() - modelStarted;
   const checksStarted = Date.now();
-  const priced = await priceRun(supabase, brain.provider, brain.model_id, inputTokens, outputTokens);
+  const priced = served
+    ? await priceWithBackup(supabase, brain, { inputTokens, outputTokens }, served, runMeta)
+    : await priceRun(supabase, brain.provider, brain.model_id, inputTokens, outputTokens);
+  if (served) {
+    base.provider = served.route.provider;
+    base.model = served.model;
+    runMeta["provider"] = served.route.provider;
+    inputTokens += served.inputTokens;
+    outputTokens += served.outputTokens;
+  }
+
 
   // The model's own "was I missing business information?" line comes off
   // before anything else reads the answer.
