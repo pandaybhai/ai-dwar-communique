@@ -70,6 +70,21 @@ export const Route = createFileRoute("/api/admin/ai")({
         }
 
         // ---- Aiden control centre: behaviour for any workspace (one shared save path).
+        // ---- Aiden control centre: Workspaces → website reading.
+        if (action === "reading_log" || action === "reading_force_full") {
+          const orgId = String(payload["organization_id"] ?? "");
+          if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
+          const knowledge = await import("@/lib/knowledge.server");
+          if (action === "reading_log") return Response.json(await knowledge.readingLog(supabase, orgId));
+          const sourceId = typeof payload["source_id"] === "string" && payload["source_id"] ? String(payload["source_id"]) : null;
+          const result = await knowledge.forceFullRead(supabase, orgId, {
+            sourceId,
+            ignorePaidCaps: payload["ignore_paid_caps"] === true,
+            userId: user.id,
+          });
+          return Response.json(result);
+        }
+
         if (action === "aiden_orgs") {
           const q = String(payload["q"] ?? "").trim();
           let query = supabase.from("organizations").select("id, name").order("name").limit(50);
