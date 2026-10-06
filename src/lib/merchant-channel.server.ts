@@ -850,7 +850,7 @@ export async function handleMerchantInbound(
         await patchSession(supabase, session.id, { status: "learning", step: "reading", source_id: added.sourceId });
         await finishOnboardingCrawl(supabase, added.sourceId, { ok: true, itemCount: added.itemCount });
       } else {
-        await reply(`I read ${host} recently, so I'm using what I saved. Press "Read changes now" in your dashboard if it changed.`);
+        await reply(`I read ${host} recently, so I'm using what I saved. Press "Re-read whole site" in your dashboard if it changed.`);
       }
       return;
     }

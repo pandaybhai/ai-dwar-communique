@@ -708,6 +708,28 @@ export function dropSharedImages(drafts: ProductDraft[], limit = 3): void {
   }
 }
 
+/**
+ * The same rule one page at a time: a picture more than `limit` crawled
+ * products already use is the shop's fallback graphic, so this product goes
+ * without a picture rather than with the wrong one.
+ */
+export async function dropImageIfShared(
+  supabase: SupabaseClient,
+  organizationId: string,
+  draft: ProductDraft,
+  limit = 3,
+): Promise<void> {
+  if (!draft.imageUrl) return;
+  const { count } = await supabase
+    .from("products")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("source", CRAWL_SOURCE)
+    .eq("image_url", draft.imageUrl)
+    .neq("external_id", draft.externalId);
+  if ((count ?? 0) >= limit) draft.imageUrl = null;
+}
+
 // ------------------------------------------------------------------ storing
 
 const CRAWL_SOURCE = "crawl";
@@ -984,6 +1006,65 @@ export async function hideMissingCrawledProducts(
   for (let i = 0; i < ids.length; i += 200)
     await supabase.from("products").update({ is_visible: false }).in("id", ids.slice(i, i + 200));
   return { hidden: ids.length, skipped: null, candidates: plan.candidates };
+}
+
+/**
+ * A site that moved address (myzoori.com → www.myzoori.com) left its
+ * products saved under the old one. After a completed full read on the new
+ * address they are hidden — never deleted: at once when the same page is
+ * saved under the new address, otherwise by the usual forget rule (gone or
+ * off the site map, and never more than its share in one go).
+ */
+export async function hideAliasHostProducts(
+  supabase: SupabaseClient,
+  organizationId: string,
+  origin: string,
+  aliases: string[],
+  read: { fullReadComplete: boolean; siteMap: Iterable<string>; gone: Iterable<string> },
+): Promise<{ hidden: number; twins: number; skipped: string | null }> {
+  if (!read.fullReadComplete || aliases.length === 0) return { hidden: 0, twins: 0, skipped: "partial_read" };
+  const { planForget, normalizeRef } = await import("@/lib/forget-rules");
+  const { canonicalPageUrl } = await import("@/lib/site-urls");
+  const old: Array<{ id: string; canonical: string }> = [];
+  for (const alias of aliases) {
+    if (alias === origin) continue;
+    const { data } = await supabase
+      .from("products")
+      .select("id, product_url")
+      .eq("organization_id", organizationId)
+      .eq("source", CRAWL_SOURCE)
+      .eq("is_visible", true)
+      .like("product_url", `${alias}/%`)
+      .limit(10000);
+    for (const row of (data ?? []) as Array<{ id: string; product_url: string | null }>) {
+      if (!row.product_url) continue;
+      try {
+        if (new URL(row.product_url).origin !== alias) continue;
+      } catch {
+        continue;
+      }
+      const canonical = canonicalPageUrl(row.product_url, row.product_url, origin);
+      if (canonical) old.push({ id: row.id, canonical });
+    }
+  }
+  if (old.length === 0) return { hidden: 0, twins: 0, skipped: null };
+  const { data: live } = await supabase
+    .from("products")
+    .select("external_id")
+    .eq("organization_id", organizationId)
+    .eq("source", CRAWL_SOURCE)
+    .eq("is_visible", true)
+    .like("product_url", `${origin}/%`)
+    .limit(20000);
+  const current = new Set(((live ?? []) as Array<{ external_id: string | null }>).map((r) => normalizeRef(r.external_id ?? "")));
+  const twins = old.filter((o) => current.has(normalizeRef(o.canonical)));
+  const rest = old.filter((o) => !current.has(normalizeRef(o.canonical)));
+  const plan = planForget({ existing: rest.map((r) => r.canonical), fullReadComplete: true, siteMap: read.siteMap, gone: read.gone });
+  const remove = new Set(plan.skipped ? [] : plan.remove);
+  const ids = [...twins.map((t) => t.id), ...rest.filter((r) => remove.has(r.canonical)).map((r) => r.id)];
+  for (let i = 0; i < ids.length; i += 200)
+    await supabase.from("products").update({ is_visible: false }).in("id", ids.slice(i, i + 200));
+  return { hidden: ids.length, twins: twins.length, skipped: plan.skipped };
 }
 
 /** Which listing page links to which product, read off the listing pages. */

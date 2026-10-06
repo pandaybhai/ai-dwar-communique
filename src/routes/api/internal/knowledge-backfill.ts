@@ -19,7 +19,15 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
         const { loadReadingSettings } = await import("@/lib/reading.server");
         const supabase = getServiceClient();
         const reading = await loadReadingSettings(supabase);
-        if (reading.backfill_pages_per_day <= 0) return Response.json({ off: true });
+        // Deleted websites past their 7-day Undo window are removed for good.
+        let purged = 0;
+        try {
+          const { purgeDeletedSources } = await import("@/lib/knowledge.server");
+          purged = await purgeDeletedSources(supabase);
+        } catch (error) {
+          console.error("[knowledge-backfill] purge failed", error instanceof Error ? error.message : String(error));
+        }
+        if (reading.backfill_pages_per_day <= 0) return Response.json({ off: true, purged });
 
         try {
           const { data } = await supabase
@@ -58,7 +66,7 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
               .eq("status", "ready");
             queued += 1;
           }
-          return Response.json({ queued, commit: buildInfo().commit });
+          return Response.json({ queued, purged, commit: buildInfo().commit });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Backfill failed";
           console.error("[knowledge-backfill] failed", message);

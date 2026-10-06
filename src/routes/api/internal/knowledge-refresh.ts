@@ -27,7 +27,7 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
             .from("knowledge_sources")
             .select("id, type, refresh_days, last_synced_at, config, status")
             .or("refresh_days.gt.0,and(type.eq.website,refresh_days.is.null)")
-            .neq("status", "syncing")
+            .not("status", "in", "(syncing,pending,disabled)")
             .order("last_synced_at", { ascending: true, nullsFirst: true })
             .limit(25);
 
@@ -47,11 +47,25 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
 
           let refreshed = 0;
           let failed = 0;
+          let queued = 0;
           for (const source of due) {
-            // Websites: re-read only pages already read; unchanged pages aren't re-embedded.
+            // Websites: re-read only pages already read; unchanged pages aren't
+            // re-embedded. The worker reads them in bounded runs, never here.
             const src = data.find((d) => d.id === source.id);
-            if (src?.type === "website")
-              await supabase.from("knowledge_sources").update({ config: { ...(src.config ?? {}), refresh: true } }).eq("id", source.id);
+            if (src?.type === "website") {
+              await supabase
+                .from("knowledge_sources")
+                .update({
+                  config: { ...(src.config ?? {}), refresh: true, refresh_started_at: null },
+                  status: "pending",
+                  queued_at: new Date().toISOString(),
+                  sync_started_at: null,
+                })
+                .eq("id", source.id)
+                .not("status", "in", "(syncing,pending,disabled)");
+              queued += 1;
+              continue;
+            }
             const result = await syncSource(supabase, source.id);
             if (result.ok) refreshed += 1;
             else failed += 1;
@@ -61,6 +75,7 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
             considered: (data ?? []).length,
             due: due.length,
             refreshed,
+            queued,
             failed,
             commit: buildInfo().commit,
           });

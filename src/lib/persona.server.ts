@@ -17,7 +17,8 @@ async function websitePages(supabase: SupabaseClient, organizationId: string) {
     .from("knowledge_sources")
     .select("id")
     .eq("organization_id", organizationId)
-    .eq("type", "website");
+    .eq("type", "website")
+    .neq("status", "disabled");
   const ids = ((sources ?? []) as Array<{ id: string }>).map((s) => s.id);
   if (!ids.length) return [];
   const { data } = await supabase

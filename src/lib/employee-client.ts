@@ -91,7 +91,11 @@ export type KnowledgeSource = {
     refresh_days: number;
     can_read_more: boolean;
     changes_available_at: string | null;
+    /** Which customer answers the pages read cover (by address or title). */
+    coverage?: Partial<Record<"faq" | "shipping" | "returns" | "size_guide" | "contact", boolean>>;
   };
+  /** Deleted website kept for Undo until purge_after. */
+  deleted?: { at: string; purge_after: string; products: number };
 };
 
 export type KnowledgeItem = {
