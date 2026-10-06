@@ -1162,6 +1162,35 @@ export const FEATURES: readonly FeatureManifest[] = [
         requires_confirmation: false,
         handler: "catalogSearch",
       },
+      {
+        name: "send_products",
+        description:
+          "Send product pictures to the customer. Nothing is attached automatically: a product reaches the customer only when you send it here. Give each product's product_id (from catalog_search) and the caption you want under its picture, written the way this business's instructions ask (for example name, price and link). Each product goes out as its own picture (or as a text message when it has no photo), in the order you list them. Text you write in the same turn as this call is sent before the pictures; your final reply is sent after them. Prices and links in a caption must be the product's own, exactly as catalog_search gave them.",
+        parameters: {
+          type: "object",
+          properties: {
+            products: {
+              type: "array",
+              description: "The products to send, in the order the customer should see them (at most 5).",
+              items: {
+                type: "object",
+                properties: {
+                  product_id: { type: "string", description: "The product_id from catalog_search." },
+                  caption: { type: "string", description: "The caption under this product's picture, in your words." },
+                },
+                required: ["product_id", "caption"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["products"],
+          additionalProperties: false,
+        },
+        required_permission: "catalog.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "sendProducts",
+      },
     ],
     data_tables: ["products", "product_collections", "product_collection_items", "catalog_imports"],
   },

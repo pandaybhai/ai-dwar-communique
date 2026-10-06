@@ -19,7 +19,7 @@ import {
   suggestReply,
   type AnswerReadsAhead,
 } from "@/lib/ai-tasks.server";
-import type { RunPrelude } from "@/lib/ai-run.server";
+import type { ChosenProduct, RunPrelude } from "@/lib/ai-run.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
 import { sendServiceText } from "@/lib/service-text.server";
 import { isServiceWindowOpen } from "@/lib/service-window";
@@ -41,6 +41,8 @@ export type AgentInboundArgs = {
   later?: (work: Promise<unknown>) => void;
   /** readAgentGate(), started by the webhook the moment the burst wait ended. */
   gate?: Promise<AgentGate>;
+  /** WhatsApp reply-to: the id of our message the customer replied to, if any. */
+  replyToMetaId?: string | null;
 };
 
 type AgentGate = {
@@ -189,6 +191,7 @@ export async function runAgentOnInbound(
           ...(prep.ahead ? { ahead: prep.ahead } : {}),
         }
       : undefined,
+    args.replyToMetaId ? { replyToMetaId: args.replyToMetaId } : undefined,
   );
   mark("answer");
   const timing = () =>
@@ -202,7 +205,9 @@ export async function runAgentOnInbound(
       }),
     );
   const answer = run.output.trim();
-  const shouldSend = run.status === "ok" && answer.length > 0;
+  // Pictures the model sent are an answer even without words.
+  const shouldSend =
+    run.status === "ok" && (answer.length > 0 || Boolean(run.parts?.some((p) => p.kind === "products")));
 
   if (!shouldSend) {
     // The customer must never be left in silence. Say a person is coming,
@@ -292,23 +297,96 @@ export async function runAgentOnInbound(
     return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
   }
 
-  // A discovery answer ends with an easy way to keep looking.
-  const pictures = run.media.slice(0, 3);
-  const body =
-    pictures.length > 0 && !/different budget or style/i.test(answer)
-      ? `${answer}\n\nWant a different budget or style?`
-      : answer;
-
-  const sent = await sendServiceText(supabase, {
+  // What the customer gets is exactly what the model wrote, in its order:
+  // its words, and the products it sent (send_products) where it put them.
+  // Code adds nothing to it.
+  const windowOpen = isServiceWindowOpen(convo);
+  const sender = {
     organizationId: args.organizationId,
     phoneNumberId: args.phoneNumberId,
     accessToken: args.accessToken,
     conversationId: args.conversationId,
     to: args.waId,
-    body,
-    // The window was checked on the gate read above, in this same request.
-    windowOpen: isServiceWindowOpen(convo),
-  });
+  };
+  let anySent = false;
+  let sendError: string | null = null;
+  let picturesSent = 0;
+  const sendText = async (body: string, metadata?: Record<string, unknown>): Promise<boolean> => {
+    const res = await sendServiceText(supabase, {
+      ...sender,
+      body,
+      // The window was checked on the gate read above, in this same request.
+      windowOpen,
+      ...(metadata ? { metadata } : {}),
+    });
+    if (res.ok) anySent = true;
+    else sendError ??= res.error ?? "send_failed";
+    return res.ok;
+  };
+
+  // The Cards page switch, read once and only when a picture goes out.
+  let cardsOn: Promise<boolean> | null = null;
+  let cardTried = false;
+  const cards = () =>
+    (cardsOn ??= import("@/lib/customer-cards.server").then(({ productCardsOn }) =>
+      productCardsOn(supabase, args.organizationId, flags),
+    ));
+
+  /** One products part: catalogue cards when the shop is on, else each product as the model captioned it. */
+  const sendProducts = async (items: ChosenProduct[]): Promise<void> => {
+    if (flags.has("whatsapp_catalog")) {
+      const { sendCatalogProducts } = await import("@/lib/whatsapp-catalog.server");
+      const result = await sendCatalogProducts(supabase, {
+        ...sender,
+        items: items.map((p) => ({ retailerId: p.retailerId, title: p.title, category: p.category, inCatalog: p.inCatalog })),
+      });
+      if (result.error) log("catalog_send_failed", { conversation_id: args.conversationId, error: result.error });
+      if (result.sent > 0) {
+        anySent = true;
+        picturesSent += result.sent;
+        return;
+      }
+    }
+    const { sendProductPictures } = await import("@/lib/product-pictures.server");
+    // In the model's order: a run of products with photos goes as pictures,
+    // one without a photo as its caption in a text message.
+    for (let i = 0; i < items.length; ) {
+      const item = items[i]!;
+      const metadata = { kind: "ai_product", product_id: item.productId };
+      if (!item.hasPhoto) {
+        if (item.caption.trim()) await sendText(item.caption, metadata);
+        i += 1;
+        continue;
+      }
+      const run: ChosenProduct[] = [];
+      while (i < items.length && items[i]!.hasPhoto) run.push(items[i++]!);
+      const withCard = !cardTried && (await cards());
+      cardTried ||= withCard;
+      const shown = await sendProductPictures(supabase, {
+        ...sender,
+        contactId: args.contactId,
+        windowOpen,
+        items: run.map((p) => ({ ...p, metadata: { kind: "ai_product", product_id: p.productId } })),
+        cards: withCard,
+        onFailure: (error) => log("picture_failed", { conversation_id: args.conversationId, error }),
+      });
+      if (shown > 0) anySent = true;
+      picturesSent += shown;
+    }
+  };
+
+  if (run.parts && run.parts.length > 0) {
+    for (const part of run.parts) {
+      if (part.kind === "text") {
+        // A text that can't go out (the window closed) stops the rest.
+        if (!(await sendText(part.text))) break;
+      } else {
+        await sendProducts(part.items);
+      }
+    }
+  } else {
+    await sendText(answer);
+  }
   mark("sent");
   timing();
 
@@ -326,19 +404,16 @@ export async function runAgentOnInbound(
     log("gap_filed", { conversation_id: args.conversationId, recorded });
   }
 
-  // Products that live in the number's WhatsApp catalogue go out as real
-  // catalogue cards the customer can add to a cart; everything else still
-  // travels as pictures.
+  // No send_products tool in this workspace (no catalogue): the answer's
+  // products still travel as pictures after the words, as before — with
+  // nothing added to the words.
+  const legacyPictures = run.parts ? [] : run.media.slice(0, 3);
   let catalogSent = 0;
-  if (sent.ok && pictures.length > 0 && flags.has("whatsapp_catalog")) {
+  if (anySent && legacyPictures.length > 0 && flags.has("whatsapp_catalog")) {
     const { sendCatalogProducts } = await import("@/lib/whatsapp-catalog.server");
     const result = await sendCatalogProducts(supabase, {
-      organizationId: args.organizationId,
-      conversationId: args.conversationId,
-      phoneNumberId: args.phoneNumberId,
-      accessToken: args.accessToken,
-      to: args.waId,
-      items: pictures.map((p) => ({
+      ...sender,
+      items: legacyPictures.map((p) => ({
         retailerId: p.retailerId,
         title: p.title,
         category: p.category,
@@ -348,27 +423,17 @@ export async function runAgentOnInbound(
     if (result.sent > 0) catalogSent = result.sent;
     if (result.error) log("catalog_send_failed", { conversation_id: args.conversationId, error: result.error });
   }
-
-  // Catalogue answers travel with pictures: one image per product named,
-  // sent after the text so the words arrive first.
-  let picturesSent = 0;
-  if (sent.ok && catalogSent === 0 && pictures.length > 0) {
+  if (anySent && catalogSent === 0 && legacyPictures.length > 0) {
     const { sendProductPictures } = await import("@/lib/product-pictures.server");
-    // The Cards page switch; without the cards flag nothing extra is read.
-    const { productCardsOn } = await import("@/lib/customer-cards.server");
-    const cards = await productCardsOn(supabase, args.organizationId, flags);
-    picturesSent = await sendProductPictures(supabase, {
-      organizationId: args.organizationId,
+    picturesSent += await sendProductPictures(supabase, {
+      ...sender,
       contactId: args.contactId,
-      conversationId: args.conversationId,
-      to: args.waId,
-      phoneNumberId: args.phoneNumberId,
-      accessToken: args.accessToken,
-      items: pictures,
-      cards,
+      items: legacyPictures,
+      cards: await cards(),
       onFailure: (error) => log("picture_failed", { conversation_id: args.conversationId, error }),
     });
   }
+  const sent = { ok: anySent, error: anySent ? null : sendError };
 
   // The model chose a published form: it goes out after the words, once.
   if (sent.ok && flags.has("wa_forms")) {

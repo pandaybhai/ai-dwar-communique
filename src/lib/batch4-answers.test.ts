@@ -33,8 +33,8 @@ vi.mock("@/lib/ai-tools.server", async (importOriginal) => {
 
 import {
   checkPolicyWording,
-  closestShelfLine,
   executeRun,
+  productToolView,
   policyClaimSentences,
   stripCitationMarkers,
   unsearchedShelfOffers,
@@ -156,11 +156,17 @@ describe("(4) nothing at the budget: say what exists, offer only what search ret
     expect(unsearchedShelfOffers("Our rings start at ₹16,805 and pair well with chains.", "rings under 2000", results)).toEqual([]);
   });
 
-  it("the starting price line is added only when the answer lacks it", () => {
-    const results = [JSON.stringify({ ok: true, found: false, data: { found: false, category: "rings", closest_above: RINGS } })];
-    expect(closestShelfLine(results, "I don’t have rings under ₹2000 right now.")).toBe("Our rings start at ₹16,805.");
-    expect(closestShelfLine(results, "Rings start at ₹16,805 — want to see them?")).toBeNull();
-    expect(closestShelfLine([JSON.stringify({ ok: true, found: true, data: RINGS })], "Here you go.")).toBeNull();
+  it("Batch 14: the starting price is the model's to say — the tool view carries it, code never appends a line", () => {
+    const view = productToolView("catalog_search", {
+      ok: true,
+      found: false,
+      data: { found: false, category: "rings", max_price: 2000, lowest_price: 16805, closest_above: RINGS, reply_hint: "Say: …" },
+    });
+    const data = view.data as unknown as { lowest_price: string; closest_above: Array<Record<string, unknown>>; note: string; reply_hint?: string };
+    expect(data.lowest_price).toBe("₹16,805");
+    expect(data.closest_above.map((r) => r["price"])).toEqual(["₹16,805", "₹18,990", "₹21,263"]);
+    expect(data.reply_hint).toBeUndefined();
+    expect(data.note).toMatch(/offer only products a search returned/);
   });
 });
 
@@ -243,11 +249,13 @@ describe("end to end through executeRun (the live replies, replayed)", () => {
       useTools,
     });
 
-  it("(2)+(3) badges only: no [2], and the returns/maintenance promises become the site's own words", async () => {
+  it("(2)+(3) badges only: no [2], and the promises the site never makes are blocked (Batch 14: code no longer writes the site's line in their place)", async () => {
     stubModel(`${LIVE_ANSWER} [2]\n{"needs_owner": false}`);
     const out = await run(runWorld({ chunks: [BADGES.split("\n").slice(2).join("\n")] }), "What is your return policy?", false);
-    expect(out.output).toBe("20-Day Free Returns. Lifelong Maintenance.");
-    expect(out.output).not.toMatch(/\[\d\]|no questions|free maintenance/i);
+    expect(out.output).not.toMatch(/\[\d\]|no questions|free maintenance|20-Day Free Returns/i);
+    // Nothing true was left to say: the run hands over, as any fully blocked reply does.
+    expect(out.status).toBe("escalated");
+    expect(out.needsOwner).toBe(true);
   });
 
   it("(3) unchanged: with the FAQ retrieved, the same answer is sent as written (minus the marker)", async () => {
@@ -263,12 +271,13 @@ describe("end to end through executeRun (the live replies, replayed)", () => {
       { toolCall: { category: "rings", max_price: 2000, limit: 5 } },
     );
     const out = await run(runWorld({ chunks: [] }), "Hi, do you have silver rings under 2000?", true);
-    expect(out.output).toBe("I don’t have rings under ₹2000 right now.\n\nOur rings start at ₹16,805.");
+    // Batch 14: nothing is appended — the starting price is in the tool
+    // result for the model to say; the unsearched offer is still blocked.
+    expect(out.output).toBe("I don’t have rings under ₹2000 right now.");
     expect(out.needsOwner).toBe(false);
     expect(out.status).toBe("ok");
-    // The model was told the same thing by the tool.
     const toolMsg = calls.at(-1)!.messages.find((m) => m.role === "tool");
-    expect(String(toolMsg?.content)).toContain("our rings start at ₹16,805");
+    expect(String(toolMsg?.content)).toContain('"lowest_price":"₹16,805"');
   });
 
   it("(4) a 'let me confirm' about an unsourced policy is still filed for the owner (Batch 5: the line itself only stays on a hand-over)", async () => {

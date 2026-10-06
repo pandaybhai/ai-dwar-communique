@@ -2,13 +2,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RunMedia } from "@/lib/ai-run.server";
 
 /**
- * Product pictures in a customer chat: one image per product with its name
- * and price as the caption (and the product's link, when asked for). Shared by
- * Aiden's catalogue answers and the flows "Show products" step, so a product
- * looks the same however the customer reached it.
+ * Product pictures in a customer chat: one image per product. The flows
+ * "Show products" step captions each with its name and price (and link, when
+ * asked for); Aiden sends the caption the model wrote (send_products). One
+ * sender, so a product picture goes out the same way however it was chosen.
  */
 
-export type PictureItem = Pick<RunMedia, "title" | "imageUrl" | "price" | "currency" | "productUrl">;
+export type PictureItem = Pick<RunMedia, "title" | "imageUrl" | "price" | "currency" | "productUrl"> & {
+  /** The caption Aiden wrote for this product (send_products); absent: name and price, as always. */
+  caption?: string;
+  /** Stored on this picture's message row, over the call's own metadata. */
+  metadata?: Record<string, unknown>;
+};
 
 /** "₹19,604", or "" when the product has no price. */
 export function productPrice(item: Pick<RunMedia, "price" | "currency">): string {
@@ -54,7 +59,8 @@ export async function sendProductPictures(
   let sent = 0;
   let cardSent = false;
   for (const item of args.items) {
-    const caption = productCaption(item, args.withLink);
+    const caption = typeof item.caption === "string" ? item.caption : productCaption(item, args.withLink);
+    const metadata = item.metadata ? { ...(args.metadata ?? {}), ...item.metadata } : args.metadata;
     if (args.cards && !cardSent) {
       try {
         const { sendCardToContact } = await import("@/lib/customer-cards.server");
@@ -66,6 +72,7 @@ export async function sendProductPictures(
           kind: "customer_product",
           vars: { name: item.title, price: productPrice(item), image_url: item.imageUrl, one_liner: "" },
           caption,
+          ...(item.metadata ? { metadata } : {}),
         });
         if (card.sent) {
           cardSent = true;
@@ -85,7 +92,7 @@ export async function sendProductPictures(
       imageUrl: item.imageUrl,
       caption,
       ...(args.windowOpen ? { windowOpen: true } : {}),
-      ...(args.metadata ? { metadata: args.metadata } : {}),
+      ...(metadata ? { metadata } : {}),
     });
     if (picture.ok) sent += 1;
     else args.onFailure?.(picture.error);
