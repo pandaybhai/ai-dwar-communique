@@ -93,10 +93,32 @@ export type KnowledgeSource = {
     changes_available_at: string | null;
     /** Which customer answers the pages read cover (by address or title). */
     coverage?: Partial<Record<"faq" | "shipping" | "returns" | "size_guide" | "contact", boolean>>;
+    products_by_category?: Record<string, number>;
+    products_without_photo?: number;
+    /** Pages a paid reader read in the latest read, against the plan's limit. */
+    paid_pages?: number;
+    paid_cap?: number;
+    /** Some pages needed a paid reader after the plan's limit was used. */
+    paid_capped?: boolean;
+    /** The latest full re-read kept the live version, and why. */
+    swap_blocked?: { at: string; reasons: string[]; previous_products: number; new_products: number } | null;
+    unchanged_skipped?: number | null;
+    discovery?: "crawl" | "sitemap" | "links" | string;
+    keep_query?: boolean;
   };
   /** Deleted website kept for Undo until purge_after. */
   deleted?: { at: string; purge_after: string; products: number };
 };
+
+export type WebsiteLink = {
+  url: string;
+  title: string | null;
+  type: "home" | "info" | "category" | "product" | "blog" | "junk" | "other";
+  tab: "read" | "not_found" | "excluded" | "waiting";
+  chars: number | null;
+  read_at: string | null;
+};
+export type ExcludeRuleView = { op: "starts_with" | "contains" | "ends_with" | "exact"; value: string };
 
 export type KnowledgeItem = {
   id: string;
