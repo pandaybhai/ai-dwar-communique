@@ -203,7 +203,38 @@ export type WhatsAppShopRow = {
   mode?: "managed" | "linked" | null;
   pushed_count: number | null;
   last_sync_at: string | null;
+  catalog_name?: string | null;
+  is_catalog_visible?: boolean | null;
+  is_cart_enabled?: boolean | null;
 };
+
+/** What Meta said the last time it was asked (see checkShopVisibility). */
+export type ShopVisibilityCheck = {
+  attached: boolean | null;
+  is_catalog_visible: boolean | null;
+  is_cart_enabled: boolean | null;
+  visible: boolean;
+  errors: string[];
+  checked_at: string;
+};
+
+/**
+ * Can customers see the WhatsApp shop, and if not, what is left to do.
+ * A fresh check from Meta wins; otherwise the stored row says it (an
+ * attach proven by Meta is status 'linked'). Unknown is never "visible".
+ */
+export function shopVisibilityState(
+  row: WhatsAppShopRow | null,
+  check: ShopVisibilityCheck | null = null,
+): { visible: boolean; todo: Array<"attach" | "shop_button">; known: boolean } {
+  if (!row) return { visible: false, todo: [], known: false };
+  const attached = check?.attached ?? (row.status === "linked" ? true : null);
+  const shopButton = check ? check.is_catalog_visible : (row.is_catalog_visible ?? null);
+  const todo: Array<"attach" | "shop_button"> = [];
+  if (attached !== true) todo.push("attach");
+  if (shopButton !== true) todo.push("shop_button");
+  return { visible: todo.length === 0, todo, known: attached !== null || shopButton !== null };
+}
 
 /** The workspace's WhatsApp shop: the first catalogue that is connected to a number, if any. */
 export function whatsappShopState(rows: WhatsAppShopRow[]): {

@@ -17,6 +17,7 @@ import {
   dropSharedImages,
   extractProduct,
   fillMissingPhotos,
+  fillMissingProductDetails,
   hideMissingCrawledProducts,
   saveCrawledProducts,
   type ProductDraft,
@@ -737,6 +738,19 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   await fillMissingPhotos(supabase, organizationId, productDrafts).catch(() => 0);
   dropSharedImages(productDrafts);
   await saveCrawledProducts(supabase, organizationId, productDrafts);
+  // "Refresh from website" also fills products that are still missing a
+  // photo, description or shelf, from their own pages — even pages whose text
+  // hasn't changed. Empty fields only; nothing is re-embedded.
+  if (refreshing && config["fill_products"] === true) {
+    const filled = await fillMissingProductDetails(supabase, organizationId, origin).catch((error) => {
+      console.error("[crawl] product fill failed", error instanceof Error ? error.message : String(error));
+      return null;
+    });
+    if (filled) console.info("[crawl] product fill", JSON.stringify({ source: sourceId, ...filled }));
+  }
+  // The request to fill is used up by this read.
+  const keptConfig: Record<string, unknown> = { ...config };
+  delete keptConfig["fill_products"];
   const fullReadNow = mode === "full" && !more && !refreshing;
   // The full site map: every address we know for this source, read or not.
   const siteMap = new Set<string>([...done, ...mapped, ...candidates.keys()]);
@@ -762,7 +776,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       ...(totalPages != null ? { total_pages: totalPages } : {}),
       ...(fullReadNow ? { last_full_read_at: new Date().toISOString() } : {}),
       config: {
-        ...config,
+        ...keptConfig,
         mode,
         ...(platform ? { platform } : {}),
         page_limit: planCap,
@@ -787,7 +801,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       await notifyOwnerOnOnboardingChannel(supabase, organizationId, body);
       await supabase
         .from("knowledge_sources")
-        .update({ config: { ...config, mode, page_limit: planCap, pages_done: totalSeen, resume: false, refresh: false, run_limit: null, full_read_announced: true, ...(platform ? { platform } : {}) } })
+        .update({ config: { ...keptConfig, mode, page_limit: planCap, pages_done: totalSeen, resume: false, refresh: false, run_limit: null, full_read_announced: true, ...(platform ? { platform } : {}) } })
         .eq("id", sourceId);
     } catch (error) {
       console.error("[crawl] full read notice failed", error instanceof Error ? error.message : String(error));

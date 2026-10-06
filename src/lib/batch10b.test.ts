@@ -196,7 +196,7 @@ const anthropicMessage = (
     id: "msg_1",
     type: "message",
     role: "assistant",
-    model: "claude-opus-5-5",
+    model: "claude-sonnet-5-5",
     content,
     stop_reason: stop,
     stop_sequence: null,
@@ -332,12 +332,12 @@ describe("(1) Anthropic backup", () => {
     expect(out.status).toBe("ok");
     expect(out.output).toBe("Yes, the Petal Band is a gold ring.");
     expect(out.provider).toBe("anthropic");
-    expect(out.model).toBe("claude-opus-5-5");
+    expect(out.model).toBe("claude-sonnet-5-5");
 
     const call = seen.find((s) => s.url.includes("api.anthropic.com"))!;
     expect(call.url).toMatch(/\/v1\/messages/);
     expect(call.headers["x-api-key"]).toBe("sk-ant-test");
-    expect(call.body["model"]).toBe("claude-opus-5-5");
+    expect(call.body["model"]).toBe("claude-sonnet-5-5");
     // The same system prompt the gateway got: material + answer policy.
     const gatewaySystem = String(
       (seen[1]!.body["messages"] as Array<{ content: unknown }>)[0]!.content,
@@ -356,7 +356,7 @@ describe("(1) Anthropic backup", () => {
 
     const row = runRow(db);
     expect(row["provider"]).toBe("anthropic");
-    expect(row["model"]).toBe("claude-opus-5-5");
+    expect(row["model"]).toBe("claude-sonnet-5-5");
     expect(row.metadata["provider"]).toBe("anthropic");
     expect(row.metadata["fallback"]).toMatchObject({
       from_provider: "lovable",
@@ -364,7 +364,7 @@ describe("(1) Anthropic backup", () => {
       reason: "credit",
       status: 402,
     });
-    const rate = BACKUP_RATES_INR["anthropic:claude-opus-5-5"]!;
+    const rate = BACKUP_RATES_INR["anthropic:claude-sonnet-5-5"]!;
     const cost = (1000 * rate.input + 100 * rate.output) / 1e6;
     expect(row["cost_amount"]).toBeCloseTo(cost, 6);
     expect(row["cost_source"]).toBe("rate_card");
@@ -557,7 +557,7 @@ describe("(1) OpenAI backup, and the order between backups", () => {
     const out = await run(db);
     expect(out.provider).toBe("openai");
     expect((runRow(db).metadata["fallback"] as { attempts: unknown[] }).attempts).toEqual([
-      { provider: "anthropic", model: "claude-opus-5-5", ok: false, kind: "server" },
+      { provider: "anthropic", model: "claude-sonnet-5-5", ok: false, kind: "server" },
       { provider: "openai", model: "gpt-5.4-mini", ok: true },
     ]);
   });
@@ -575,12 +575,13 @@ describe("(1) OpenAI backup, and the order between backups", () => {
   });
 
   it("backupRoutes: order, keys and model overrides", () => {
+    // Batch 11B: the default Anthropic backup model is Sonnet (was Opus).
     expect(backupRoutes("everyday", {})).toEqual([]);
     expect(
       backupRoutes("careful", { OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a" }).map(
         (r) => `${r.provider}:${r.model}`,
       ),
-    ).toEqual(["anthropic:claude-opus-5-5", "openai:gpt-5.4"]);
+    ).toEqual(["anthropic:claude-sonnet-5-5", "openai:gpt-5.4"]);
     expect(
       backupRoutes("everyday", {
         OPENAI_API_KEY: "o",

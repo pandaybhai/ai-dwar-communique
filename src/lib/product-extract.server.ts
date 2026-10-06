@@ -838,6 +838,113 @@ export async function fillMissingPhotos(
   return filled;
 }
 
+/** The fields a refresh may fill on a crawled product — only ever when empty. */
+const FILLABLE = ["image_url", "description", "category"] as const;
+type Fillable = (typeof FILLABLE)[number];
+
+export type FillReport = {
+  /** Crawled products from this site that were missing something. */
+  missing: number;
+  /** Product pages opened for them. */
+  checked: number;
+  /** Products that got at least one field. */
+  filled: number;
+  fields: Record<Fillable, number>;
+};
+
+/**
+ * "Refresh from website": crawled products from this site still missing a
+ * photo, a description (the metal / stone / weight line) or a shelf get their
+ * product page read again with today's extractor — even when the page text is
+ * unchanged since the last read, because the page was last read by an older
+ * extractor (or, before the page list existed, never re-read at all).
+ *
+ * Only empty fields are filled; a value a product already has is never
+ * replaced (each write is guarded on the field still being empty). Only rows
+ * the website reader saved — a shop platform's products are never touched,
+ * nor a hidden row. The page is fetched directly for its HTML and nothing
+ * goes into knowledge documents, so no text is re-embedded. Bounded per
+ * refresh; the next refresh carries on.
+ */
+export async function fillMissingProductDetails(
+  supabase: SupabaseClient,
+  organizationId: string,
+  origin: string,
+  opts: { fetchHtml?: FetchHtml; maxPages?: number; budgetMs?: number } = {},
+): Promise<FillReport> {
+  const report: FillReport = { missing: 0, checked: 0, filled: 0, fields: { image_url: 0, description: 0, category: 0 } };
+  const { data } = await supabase
+    .from("products")
+    .select("id, external_id, product_url, sku, image_url, description, category")
+    .eq("organization_id", organizationId)
+    .eq("source", CRAWL_SOURCE)
+    .eq("is_visible", true)
+    .like("product_url", `${origin}%`)
+    .or("image_url.is.null,description.is.null,category.is.null")
+    .order("updated_at", { ascending: true })
+    .limit(1000);
+  const rows = ((data ?? []) as Array<{
+    id: string;
+    external_id: string | null;
+    product_url: string | null;
+    sku: string | null;
+    image_url: string | null;
+    description: string | null;
+    category: string | null;
+  }>).filter((r) => r.product_url && FILLABLE.some((f) => !r[f]));
+  report.missing = rows.length;
+  if (rows.length === 0) return report;
+
+  const queue = rows.slice(0, opts.maxPages ?? 200);
+  const fetchHtml = opts.fetchHtml ?? fetchProductPage;
+  const deadline = Date.now() + (opts.budgetMs ?? 45_000);
+  const found: Array<{ row: (typeof rows)[number]; draft: ProductDraft }> = [];
+  const workers = Array.from({ length: 6 }, async () => {
+    for (;;) {
+      if (Date.now() > deadline) return;
+      const row = queue.shift();
+      if (!row) return;
+      const url = row.product_url as string;
+      try {
+        const html = await fetchHtml(url);
+        report.checked += 1;
+        const draft = html ? extractProduct(html, url) : null;
+        if (draft) found.push({ row, draft });
+      } catch {
+        // One page we cannot open never stops the rest.
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  // The shop's fallback graphic on many pages is not a product photo.
+  dropSharedImages(found.map((f) => f.draft));
+
+  for (const { row, draft } of found) {
+    const values: Record<Fillable, string | null> = {
+      image_url: draft.imageUrl,
+      description: draft.description ?? null,
+      category: draft.category,
+    };
+    const patch: Record<string, unknown> = {};
+    for (const field of FILLABLE) if (!row[field] && values[field]) patch[field] = values[field];
+    const keys = Object.keys(patch) as Fillable[];
+    if (keys.length === 0) continue;
+    let write = supabase
+      .from("products")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .eq("source", CRAWL_SOURCE);
+    // Never overwrite: each field is written only while it is still empty.
+    for (const field of keys) write = write.is(field, null);
+    const { error } = await write;
+    if (error) continue;
+    report.filled += 1;
+    for (const field of keys) report.fields[field] += 1;
+  }
+  return report;
+}
+
 /** Products from this site that the latest read no longer finds. */
 export async function hideMissingCrawledProducts(
   supabase: SupabaseClient,

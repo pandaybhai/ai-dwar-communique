@@ -7,6 +7,7 @@ import {
 } from "@/lib/whatsapp-api.server";
 import { getWhatsAppConnection } from "@/lib/whatsapp-numbers.server";
 import { WHATSAPP_SHOP_CONNECTED_STATUSES } from "@/lib/catalog";
+import { looksLikeLegalClause } from "@/lib/product-extract.server";
 
 /**
  * WhatsApp catalogue: create a Meta product catalogue for the connected
@@ -496,7 +497,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * items_batch is async: Meta returns handles, and the per-item errors only
  * appear once the batch is finished. Polls the handle (max ~10 tries, 2s
- * apart) and returns one message per rejected item.
+ * apart) and returns one message per rejected item. Meta answers
+ * { data: [{ status, errors, ... }] } — one status node per handle.
  */
 async function pollBatchStatus(
   callCtx: CallArgs,
@@ -513,16 +515,18 @@ async function pollBatchStatus(
       { query: { handle } },
     );
     if (!result.ok) return { errors: [graphErrorMessage(result.body)], failedIds: [] };
-    const status = String(result.body["status"] ?? "").toLowerCase();
-    const errors = (result.body["errors"] ?? []) as Array<{
+    const node = batchStatusNode(result.body);
+    const status = String(node["status"] ?? "").toLowerCase();
+    const errors = (Array.isArray(node["errors"]) ? node["errors"] : []) as Array<{
       retailer_id?: string;
+      id?: string;
       message?: string;
     }>;
     if (status === "finished" || errors.length > 0) {
       return {
-        errors: errors.map((e) => `${e.retailer_id ?? "item"}: ${e.message ?? "rejected"}`),
+        errors: errors.map((e) => `${e.retailer_id ?? e.id ?? "item"}: ${e.message ?? "rejected"}`),
         failedIds: errors
-          .map((e) => e.retailer_id)
+          .map((e) => e.retailer_id ?? e.id)
           .filter((id): id is string => typeof id === "string" && id.length > 0),
       };
     }
@@ -530,6 +534,44 @@ async function pollBatchStatus(
   return { errors: [], failedIds: [] };
 }
 
+/** The one status node of a check_batch_request_status answer (older shape: the body itself). */
+export function batchStatusNode(body: Record<string, unknown>): Record<string, unknown> {
+  const data = body["data"];
+  if (Array.isArray(data) && data[0] && typeof data[0] === "object") return data[0] as Record<string, unknown>;
+  return body;
+}
+
+/** A product that must never be in a WhatsApp shop: hidden, or a legal page's clause heading. */
+function neverInShop(p: { title: string; is_visible?: boolean | null }): boolean {
+  return p.is_visible === false || looksLikeLegalClause(p.title);
+}
+
+/**
+ * The retailer ids Meta holds in this catalogue (up to 5,000), or null when
+ * the list can't be read. Used only to find our own products that are in the
+ * catalogue but shouldn't be — items we never pushed are never touched.
+ */
+async function catalogRetailerIds(
+  callCtx: CallArgs,
+  catalogId: string,
+  accessToken: string,
+): Promise<Set<string> | null> {
+  const ids = new Set<string>();
+  let after: string | null = null;
+  for (let page = 0; page < 10; page += 1) {
+    const query: Record<string, string> = { fields: "retailer_id", limit: "500" };
+    if (after) query["after"] = after;
+    const result = await loggedGraph(callCtx, `${catalogId}/products`, accessToken, { query });
+    if (!result.ok) return null;
+    for (const item of (result.body["data"] ?? []) as Array<{ retailer_id?: string }>) {
+      if (typeof item.retailer_id === "string" && item.retailer_id) ids.add(item.retailer_id);
+    }
+    const paging = (result.body["paging"] ?? {}) as { next?: string; cursors?: { after?: string } };
+    if (!paging.next || !paging.cursors?.after) break;
+    after = paging.cursors.after;
+  }
+  return ids;
+}
 
 /** Pushes every visible product that has both a price and a picture. */
 export async function syncCatalog(args: {
@@ -544,6 +586,8 @@ export async function syncCatalog(args: {
   pushed?: number;
   rejected?: number;
   removed?: number;
+  /** When this sync finished, as stored on the catalogue row. */
+  last_sync_at?: string;
 
   error?: string;
   rejections?: string[];
@@ -579,8 +623,10 @@ export async function syncCatalog(args: {
     .order("updated_at", { ascending: false })
     .limit(1000);
 
+  // Hidden products are never pushed (the query asks for visible ones), and
+  // neither is a legal page's numbered clause, whatever its flag says.
   const rows = ((products ?? []) as ProductRow[]).filter(
-    (p) => p.price != null && Boolean(p.image_url) && p.title.trim().length > 0,
+    (p) => p.price != null && Boolean(p.image_url) && p.title.trim().length > 0 && !neverInShop(p),
   );
   const callCtx: CallArgs = {
     supabase,
@@ -681,6 +727,33 @@ export async function syncCatalog(args: {
     .map((p) => ({ id: p.id, retailer: (p.external_id ?? p.sku ?? p.id).slice(0, 100) }))
     .filter((p) => !liveIds.has(p.retailer));
 
+  // A hidden product (or a legal clause) that is still in Meta's catalogue
+  // is removed even without our marker — e.g. pushed before it was hidden by
+  // a path that didn't keep the marker. Only our own products are matched;
+  // anything else in the catalogue is left alone.
+  const inMeta = await catalogRetailerIds(callCtx, row.catalog_id, catalogToken);
+  if (inMeta && inMeta.size > 0) {
+    const { data: ours } = await supabase
+      .from("products")
+      .select("id, external_id, sku, title, is_visible")
+      .eq("organization_id", organizationId)
+      .limit(5000);
+    const staleIds = new Set(stale.map((p) => p.retailer));
+    for (const p of (ours ?? []) as Array<{
+      id: string;
+      external_id: string | null;
+      sku: string | null;
+      title: string;
+      is_visible: boolean | null;
+    }>) {
+      const retailer = (p.external_id ?? p.sku ?? p.id).slice(0, 100);
+      if (!inMeta.has(retailer) || liveIds.has(retailer) || staleIds.has(retailer)) continue;
+      if (!neverInShop({ title: p.title ?? "", is_visible: p.is_visible })) continue;
+      stale.push({ id: p.id, retailer });
+      staleIds.add(retailer);
+    }
+  }
+
   for (let i = 0; i < stale.length; i += CHUNK) {
     const chunk = stale.slice(i, i + CHUNK);
     const result = await loggedGraph(
@@ -723,10 +796,11 @@ export async function syncCatalog(args: {
   }
 
 
+  const syncedAt = new Date().toISOString();
   await supabase
     .from("whatsapp_catalogs")
     .update({
-      last_sync_at: new Date().toISOString(),
+      last_sync_at: syncedAt,
       pushed_count: pushed,
       rejected_count: rejected,
       last_error: rejections[0] ?? null,
@@ -741,6 +815,7 @@ export async function syncCatalog(args: {
     pushed,
     rejected,
     removed,
+    last_sync_at: syncedAt,
 
     rejections: rejections.slice(0, 5),
   };
@@ -783,7 +858,7 @@ export async function refreshLinkedCatalog(args: {
   organizationId: string;
   userId: string;
   whatsappAccountId: string | null;
-}): Promise<{ ok: boolean; catalog_id?: string; imported?: number; error?: string }> {
+}): Promise<{ ok: boolean; catalog_id?: string; imported?: number; last_sync_at?: string; error?: string }> {
   const { supabase, organizationId, userId } = args;
   const { ctx, error } = await resolveCatalogContext(
     supabase,
@@ -894,10 +969,11 @@ export async function refreshLinkedCatalog(args: {
     .eq("is_visible", true)
     .lt("synced_at", startedAt);
 
+  const syncedAt = new Date().toISOString();
   await supabase
     .from("whatsapp_catalogs")
     .update({
-      last_sync_at: new Date().toISOString(),
+      last_sync_at: syncedAt,
       pushed_count: imported,
       rejected_count: 0,
       last_error: null,
@@ -905,7 +981,7 @@ export async function refreshLinkedCatalog(args: {
     .eq("organization_id", organizationId)
     .eq("waba_id", ctx.wabaId);
 
-  return { ok: true, catalog_id: row.catalog_id, imported };
+  return { ok: true, catalog_id: row.catalog_id, imported, last_sync_at: syncedAt };
 }
 
 /**
@@ -1120,4 +1196,109 @@ export async function confirmCatalogAttached(args: {
     .eq("waba_id", ctx.wabaId)
     .eq("status", ATTACH_UNCONFIRMED);
   return dbError ? { ok: false, error: "We couldn't save that. Please try again." } : { ok: true };
+}
+
+export type ShopVisibility = {
+  /** Meta lists this catalogue on the number's business account: true / false, or null when it couldn't be read. */
+  attached: boolean | null;
+  /** The number's whatsapp_commerce_settings, or null when they couldn't be read. */
+  is_catalog_visible: boolean | null;
+  is_cart_enabled: boolean | null;
+  /** Customers can see the shop: attached, and the shop button is on. */
+  visible: boolean;
+  /** What stopped a reading, in Meta's words (never a token). */
+  errors: string[];
+  checked_at: string;
+};
+
+/**
+ * Asks Meta, after a sync or on demand, whether customers can actually see
+ * the shop: is the catalogue attached to the business account (WABA) behind
+ * the number, and are the number's shop button and cart on. Read-only at
+ * Meta. What it learns is stored on the catalogue row: a confirmed attach
+ * moves 'attach_unconfirmed' to 'linked' (a 'linked' row is never moved back
+ * — a product card Meta accepted already proved the attach), and the
+ * commerce settings are saved as Meta reports them. A reading that fails
+ * changes nothing stored.
+ */
+export async function checkShopVisibility(args: {
+  supabase: SupabaseClient;
+  organizationId: string;
+  userId: string | null;
+  whatsappAccountId: string | null;
+}): Promise<{ ok: boolean; visibility?: ShopVisibility; catalog?: CatalogRow | null; error?: string }> {
+  const { supabase, organizationId, userId } = args;
+  const { ctx, error } = await resolveCatalogContext(supabase, organizationId, args.whatsappAccountId);
+  if (!ctx) return { ok: false, error: error ?? "This number isn't connected." };
+  const row = await getCatalogRow(supabase, organizationId, ctx.wabaId);
+  if (!row) return { ok: false, error: "Connect a catalogue first." };
+
+  const callCtx: CallArgs = { supabase, organizationId, userId, wabaId: ctx.wabaId, catalogId: row.catalog_id };
+  const platform = platformToken();
+  const tokens = [ctx.accessToken, ...(platform && platform !== ctx.accessToken ? [platform] : [])];
+  const errors: string[] = [];
+
+  // 1. Is the catalogue attached to the business account behind the number?
+  let attached: boolean | null = null;
+  for (const token of tokens) {
+    const listed = await loggedGraph(callCtx, `${ctx.wabaId}/product_catalogs`, token, {
+      query: { fields: "id,name" },
+    });
+    if (listed.ok) {
+      const ids = ((listed.body["data"] ?? []) as Array<{ id?: string }>).map((c) => String(c.id ?? ""));
+      attached = ids.includes(row.catalog_id);
+      break;
+    }
+    errors.push(`attach: ${graphErrorMessage(listed.body)}`);
+  }
+
+  // 2. The number's shop button and cart, as Meta has them.
+  let commerce: { is_catalog_visible: boolean; is_cart_enabled: boolean } | null = null;
+  for (const token of tokens) {
+    const read = await loggedGraph(callCtx, `${ctx.phoneNumberId}/whatsapp_commerce_settings`, token);
+    if (read.ok) {
+      const node = ((read.body["data"] ?? []) as Array<Record<string, unknown>>)[0] ?? {};
+      commerce = {
+        is_catalog_visible: node["is_catalog_visible"] === true,
+        is_cart_enabled: node["is_cart_enabled"] === true,
+      };
+      break;
+    }
+    errors.push(`shop button: ${graphErrorMessage(read.body)}`);
+  }
+
+  const update: Record<string, unknown> = {};
+  if (attached === true && row.status === ATTACH_UNCONFIRMED) update["status"] = "linked";
+  if (commerce) {
+    update["is_catalog_visible"] = commerce.is_catalog_visible;
+    update["is_cart_enabled"] = commerce.is_cart_enabled;
+  }
+  if (Object.keys(update).length > 0) {
+    await supabase
+      .from("whatsapp_catalogs")
+      .update(update)
+      .eq("organization_id", organizationId)
+      .eq("waba_id", ctx.wabaId);
+  }
+
+  const visibility: ShopVisibility = {
+    attached,
+    is_catalog_visible: commerce?.is_catalog_visible ?? null,
+    is_cart_enabled: commerce?.is_cart_enabled ?? null,
+    visible: attached === true && commerce?.is_catalog_visible === true,
+    // A later token that worked makes an earlier one's failure irrelevant.
+    errors: [
+      ...(attached === null ? errors.filter((e) => e.startsWith("attach:")) : []),
+      ...(commerce === null ? errors.filter((e) => e.startsWith("shop button:")) : []),
+    ].slice(0, 4),
+    checked_at: new Date().toISOString(),
+  };
+  await logServerActivity(supabase, organizationId, userId, "whatsapp_catalog_visibility_checked", {
+    catalog_id: row.catalog_id,
+    attached: visibility.attached,
+    is_catalog_visible: visibility.is_catalog_visible,
+    is_cart_enabled: visibility.is_cart_enabled,
+    visible: visibility.visible,
+  }).catch(() => undefined);
+  return { ok: true, visibility, catalog: await getCatalogRow(supabase, organizationId, ctx.wabaId) };
 }

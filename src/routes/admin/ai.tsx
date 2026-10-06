@@ -41,8 +41,15 @@ type Model = {
 };
 type BackupStatus = {
   order: string[];
-  anthropic: { configured: boolean; model: string };
-  openai: { configured: boolean; model: string; careful_model: string };
+  anthropic: {
+    configured: boolean;
+    model: string;
+    key_source?: "vault" | "env" | null;
+    chosen_model?: string | null;
+    env_override?: boolean;
+    models?: Array<{ id: string; label: string }>;
+  };
+  openai: { configured: boolean; model: string; careful_model: string; key_source?: "vault" | "env" | null };
 };
 type BackupResult = {
   provider: string;
@@ -157,7 +164,7 @@ function AdminAi() {
         onSave={() => act("set_platform_cap", { amount: Number(platformCap) }, "platform_cap")}
       />
 
-      {data.backup ? <BackupCard backup={data.backup} /> : null}
+      {data.backup ? <BackupCard backup={data.backup} onChanged={load} /> : null}
 
       <section className="space-y-4">
         <div>
@@ -324,16 +331,37 @@ const REASON_WORDS: Record<string, string> = {
   other: "Error",
 };
 
+const KEY_SOURCE_WORDS: Record<string, string> = {
+  vault: "key from Platform providers",
+  env: "key from server settings",
+};
+
 /**
  * The AI backup (used only when the Lovable gateway is out of credit or
- * failing): which backup keys are set — never the keys themselves — the
- * models, and a live test that sends one tiny prompt to each.
+ * failing): which backup keys are set — never the keys themselves — and where
+ * they come from, the models (the Anthropic one is chosen here), and a live
+ * test that sends one tiny prompt to each.
  */
-function BackupCard({ backup }: { backup: BackupStatus }) {
+function BackupCard({ backup, onChanged }: { backup: BackupStatus; onChanged: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<BackupResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [savingModel, setSavingModel] = useState(false);
   const none = !backup.anthropic.configured && !backup.openai.configured;
+  const models = backup.anthropic.models ?? [];
+
+  async function chooseModel(model: string) {
+    setSavingModel(true);
+    setError(null);
+    const result = await callApi<{ ok: boolean }>("/api/admin/ai", { body: { action: "set_backup_model", anthropic_model: model } });
+    setSavingModel(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    setResults(null);
+    await onChanged();
+  }
 
   async function test() {
     setBusy(true);
@@ -347,12 +375,19 @@ function BackupCard({ backup }: { backup: BackupStatus }) {
     setResults(result.data.results);
   }
 
-  const rows: Array<{ provider: string; label: string; configured: boolean; models: string }> = [
-    { provider: "anthropic", label: "Anthropic", configured: backup.anthropic.configured, models: backup.anthropic.model },
+  const rows: Array<{ provider: string; label: string; configured: boolean; source: string | null; models: string }> = [
+    {
+      provider: "anthropic",
+      label: "Anthropic",
+      configured: backup.anthropic.configured,
+      source: backup.anthropic.key_source ?? null,
+      models: backup.anthropic.model,
+    },
     {
       provider: "openai",
       label: "OpenAI",
       configured: backup.openai.configured,
+      source: backup.openai.key_source ?? null,
       models:
         backup.openai.model === backup.openai.careful_model
           ? backup.openai.model
@@ -368,7 +403,7 @@ function BackupCard({ backup }: { backup: BackupStatus }) {
           <div>
             <h2 className="font-semibold">AI backup</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Answers only when the Lovable AI gateway is out of credit, rate-limited past its quota, failing or unreachable — never for a workspace on its own key. Keys are server settings (ANTHROPIC_API_KEY / OPENAI_API_KEY) and are never shown here.
+              Answers only when the Lovable AI gateway is out of credit, rate-limited past its quota, failing or unreachable — never for a workspace on its own key. It uses the Anthropic and OpenAI keys stored under Platform providers below (else the server settings ANTHROPIC_API_KEY / OPENAI_API_KEY). Keys are never shown here.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -380,10 +415,39 @@ function BackupCard({ backup }: { backup: BackupStatus }) {
                     {row.configured ? "Configured: yes" : "Configured: no"}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">Model: {row.models}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Model: {row.models}
+                  {row.source ? ` · ${KEY_SOURCE_WORDS[row.source] ?? row.source}` : ""}
+                </p>
               </div>
             ))}
           </div>
+          {models.length ? (
+            <div className="max-w-md space-y-2">
+              <Label htmlFor="backup-anthropic-model">Anthropic backup model</Label>
+              <Select
+                value={backup.anthropic.chosen_model ?? models[0]!.id}
+                onValueChange={(next) => void chooseModel(next)}
+                disabled={savingModel || Boolean(backup.anthropic.env_override)}
+              >
+                <SelectTrigger id="backup-anthropic-model">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {models.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.label} · {m.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {backup.anthropic.env_override
+                  ? `The server setting ANTHROPIC_BACKUP_MODEL is set, so ${backup.anthropic.model} is used whatever is chosen here.`
+                  : "Sonnet answers well for much less than Opus. Saved for the whole platform."}
+              </p>
+            </div>
+          ) : null}
           {backup.order.length > 1 ? (
             <p className="text-xs text-muted-foreground">Tried in this order: {backup.order.join(" → ")}</p>
           ) : null}

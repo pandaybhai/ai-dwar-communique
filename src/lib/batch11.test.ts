@@ -74,12 +74,13 @@ describe("(1) AI backup card", () => {
     const none = backupStatus({});
     expect(none.anthropic.configured).toBe(false);
     expect(none.openai.configured).toBe(false);
-    expect(none.anthropic.model).toBe("claude-opus-5-5");
+    // Batch 11B: the default Anthropic backup is Sonnet (was Opus) to keep cost down.
+    expect(none.anthropic.model).toBe("claude-sonnet-5-5");
     expect(none.openai.model).toBe("gpt-5.4-mini");
     expect(none.openai.careful_model).toBe("gpt-5.4");
     const both = backupStatus({ ANTHROPIC_API_KEY: "sk-ant-secret", OPENAI_API_KEY: "sk-openai-secret", OPENAI_BACKUP_MODEL: "gpt-x" });
     expect(both.anthropic.configured).toBe(true);
-    expect(both.openai).toEqual({ configured: true, model: "gpt-x", careful_model: "gpt-x" });
+    expect(both.openai).toEqual({ configured: true, model: "gpt-x", careful_model: "gpt-x", key_source: "env" });
     expect(JSON.stringify(both)).not.toContain("secret");
   });
 
@@ -103,7 +104,7 @@ describe("(1) AI backup card", () => {
       return json({ error: { message: "Incorrect API key provided: sk-...abc.", type: "invalid_request_error", code: "invalid_api_key" } }, 401);
     });
     const results = await testBackupProviders({ ANTHROPIC_API_KEY: "sk-ant", OPENAI_API_KEY: "sk-oa" });
-    expect(results.map((r) => `${r.provider}:${r.model}`)).toEqual(["anthropic:claude-opus-5-5", "openai:gpt-5.4-mini", "openai:gpt-5.4"]);
+    expect(results.map((r) => `${r.provider}:${r.model}`)).toEqual(["anthropic:claude-sonnet-5-5", "openai:gpt-5.4-mini", "openai:gpt-5.4"]);
     expect(results[0]).toMatchObject({ ok: true, reason: null, error: null });
     expect(typeof results[0]!.seconds).toBe("number");
     expect(results[1]).toMatchObject({ ok: false, reason: "bad_key", error: "invalid_api_key: Incorrect API key provided: sk-...abc." });
