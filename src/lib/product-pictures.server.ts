@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RunMedia } from "@/lib/ai-run.server";
+import type { ReplyTimer } from "@/lib/reply-timing";
 
 /**
  * Product pictures in a customer chat: one image per product. The flows
@@ -23,6 +24,15 @@ export function productPrice(item: Pick<RunMedia, "price" | "currency">): string
     currency: item.currency || "INR",
     maximumFractionDigits: 0,
   }).format(item.price);
+}
+
+/**
+ * The values a product's branded card is drawn from. One place, so a card
+ * drawn ahead of time (Aiden's prewarm) is the very card the send reuses
+ * (same cacheKey in customer-cards.server.ts).
+ */
+export function productCardVars(item: PictureItem): Record<string, string> {
+  return { name: item.title, price: productPrice(item), image_url: item.imageUrl, one_liner: "" };
 }
 
 /** "Name — ₹19,604", plus the product's link on its own line when withLink. */
@@ -52,6 +62,8 @@ export async function sendProductPictures(
     /** The caller read the 24-hour window in this request. */
     windowOpen?: boolean;
     metadata?: Record<string, unknown>;
+    /** The webhook's reply timer (Aiden's sends); left out, nothing is timed. */
+    timer?: ReplyTimer;
     onFailure?: (error: string | null) => void;
   },
 ): Promise<number> {
@@ -70,9 +82,10 @@ export async function sendProductPictures(
           phone: args.to,
           sender: { phoneNumberId: args.phoneNumberId, accessToken: args.accessToken },
           kind: "customer_product",
-          vars: { name: item.title, price: productPrice(item), image_url: item.imageUrl, one_liner: "" },
+          vars: productCardVars(item),
           caption,
           ...(item.metadata ? { metadata } : {}),
+          ...(args.timer ? { timer: args.timer } : {}),
         });
         if (card.sent) {
           cardSent = true;
@@ -93,6 +106,7 @@ export async function sendProductPictures(
       caption,
       ...(args.windowOpen ? { windowOpen: true } : {}),
       ...(metadata ? { metadata } : {}),
+      ...(args.timer ? { timer: args.timer } : {}),
     });
     if (picture.ok) sent += 1;
     else args.onFailure?.(picture.error);

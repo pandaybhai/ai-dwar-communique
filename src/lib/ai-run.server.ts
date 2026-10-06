@@ -150,6 +150,12 @@ export type RunOptions = {
    * event processed). Omitted: awaited in place, as always.
    */
   deferUsage?: (work: Promise<unknown>) => void;
+  /**
+   * Called (never awaited) the moment send_products queues products, while
+   * the model is still writing its closing words — the reply path uses it to
+   * draw the first branded card ahead of time. Must not throw or block.
+   */
+  onProductsQueued?: (items: ChosenProduct[]) => void;
 };
 
 
@@ -1921,6 +1927,7 @@ export async function executeRun(
         tc.name,
         tc.args,
         subject,
+        tools,
       );
       // A product id the model got wrong is answered to the model (it can
       // try again); it is not a broken tool.
@@ -1946,7 +1953,13 @@ export async function executeRun(
     }
     if (chosen.length > 0) {
       if (turnText.trim()) segments.push({ kind: "text", text: turnText });
-      segments.push({ kind: "products", items: chosen.map(({ facts: _facts, ...item }) => item) });
+      const items = chosen.map(({ facts: _facts, ...item }) => item);
+      segments.push({ kind: "products", items });
+      try {
+        options.onProductsQueued?.(items);
+      } catch {
+        // a head start only; never the run's problem
+      }
     }
     return views;
   };
@@ -2216,12 +2229,13 @@ export async function executeRun(
   const isVisionRead = Boolean(options.imageDataUrl);
   let numbersStripped = false;
   if (task === "agent_reply" && result.output && !isVisionRead) {
-    const unsupported = unsupportedNumbers(result.output, [
-      knowledgeBlock,
-      options.system ?? "",
-      input,
-      ...toolResultTexts,
-    ]);
+    // Times, days and durations: the same rule, but the customer's own
+    // question is not support for them.
+    const material = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts];
+    const unsupported = [
+      ...unsupportedNumbers(result.output, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts]),
+      ...unsupportedTimeFacts(result.output, material),
+    ];
     if (unsupported.length > 0) {
       numbersStripped = true;
       console.log(
@@ -2239,7 +2253,10 @@ export async function executeRun(
     // material plus the product's own record. A caption never gets a promise
     // line: the number's sentence just goes.
     for (const item of chosenMedia) {
-      const guessed = unsupportedNumbers(item.caption, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts, ...chosenFacts]);
+      const guessed = [
+        ...unsupportedNumbers(item.caption, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts, ...chosenFacts]),
+        ...unsupportedTimeFacts(item.caption, material),
+      ];
       if (guessed.length === 0) continue;
       numbersStripped = true;
       result.needsOwner = true;
@@ -2650,6 +2667,95 @@ export function unsupportedNumbers(answer: string, support: string[]): string[] 
   return out;
 }
 
+// ------------------------------------------------ time, day, duration guard
+
+const TIME_RE =
+  /\b(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)(?![a-z])|\b([01]?\d|2[0-3]):([0-5]\d)\b/gi;
+/** Day words: full names any case; the short forms only capitalised ("Sun", not "sun"). */
+const DAY_NAMES: Array<[RegExp, RegExp | null, string]> = [
+  [/\bmondays?\b|\bsomvaa?r\b/gi, /\bMon\b/g, "mon"],
+  [/\btuesdays?\b|\bmangalvaa?r\b/gi, /\bTues?\b/g, "tue"],
+  [/\bwednesdays?\b|\bbudhvaa?r\b/gi, /\bWed\b/g, "wed"],
+  [/\bthursdays?\b|\bguruvaa?r\b/gi, /\bThu(?:rs)?\b/g, "thu"],
+  [/\bfridays?\b|\bshukravaa?r\b/gi, /\bFri\b/g, "fri"],
+  [/\bsaturdays?\b|\bshanivaa?r\b/gi, /\bSat\b/g, "sat"],
+  [/\bsundays?\b|\bravivaa?r\b|\bitvaa?r\b/gi, /\bSun\b/g, "sun"],
+  [/\bweekdays?\b/gi, null, "weekdays"],
+  [/\bweekends?\b/gi, null, "weekends"],
+  [/\b(?:all|7|seven) days(?: a| of the)? week\b|\ball days\b/gi, null, "alldays"],
+];
+const DURATION_RE =
+  /\b(\d{1,3})(?:\s*(?:-|–|—|to)\s*(\d{1,3}))?[\s-]*(?:working\s+|business\s+)?(minutes?|mins?|hours?|hrs?|ghante|days?|din|weeks?|hafte|months?)\b/gi;
+const PHRASE_RE = /\bsame[\s-]day\b|\bnext[\s-]day\b|\bovernight\b|\bwithin (?:a|an|one) (?:day|hour|week)\b/gi;
+/** A source line that says something is NOT so supports nothing ("Never promise same-day delivery"). */
+const NEGATION = /\b(never|not|don'?t|do not|cannot|can'?t|won'?t|nahi|nahin|mat)\b/i;
+
+function minutesOf(m: RegExpMatchArray): number | null {
+  if (m[3]) {
+    const h = Number(m[1]);
+    const min = m[2] ? Number(m[2]) : 0;
+    if (h < 1 || h > 12 || min > 59) return null;
+    const pm = /^p/i.test(m[3]);
+    return ((h % 12) + (pm ? 12 : 0)) * 60 + min;
+  }
+  return Number(m[4]) * 60 + Number(m[5]);
+}
+
+function unitOf(raw: string): string {
+  const u = raw.toLowerCase();
+  if (/^(min|minute)/.test(u)) return "minute";
+  if (/^(h|ghante)/.test(u)) return "hour";
+  if (/^(day|din)/.test(u)) return "day";
+  if (/^(week|hafte)/.test(u)) return "week";
+  return "month";
+}
+
+type TimeFact = { token: string; key: string };
+
+/** Every clock time, day and duration a text states, each with a comparable key. */
+function timeFacts(text: string): TimeFact[] {
+  const out: TimeFact[] = [];
+  const plain = text.replace(/https?:\/\/\S+/gi, " ");
+  for (const m of plain.matchAll(TIME_RE)) {
+    const mins = minutesOf(m);
+    if (mins !== null) out.push({ token: m[0].trim(), key: `t${mins}` });
+  }
+  for (const [full, short, day] of DAY_NAMES) {
+    for (const re of short ? [full, short] : [full]) for (const m of plain.matchAll(re)) out.push({ token: m[0].trim(), key: `d${day}` });
+  }
+  for (const m of plain.matchAll(DURATION_RE)) {
+    const lo = Number(m[1]);
+    const hi = m[2] ? Number(m[2]) : lo;
+    out.push({ token: m[0].trim(), key: `p${Math.min(lo, hi)}-${Math.max(lo, hi)}${unitOf(m[3]!)}` });
+  }
+  for (const m of plain.matchAll(PHRASE_RE)) out.push({ token: m[0].trim(), key: `x${m[0].toLowerCase().replace(/[\s-]+/g, " ")}` });
+  return out;
+}
+
+/**
+ * The clock times ("10:30 AM", "10 am–8 pm"), opening days ("Monday to
+ * Saturday", "weekends") and durations ("3–5 days", "24 hours", "same day")
+ * an answer states that nothing behind it states — the number guard's rule
+ * for facts it couldn't see as numbers. "10 am" and "10:00" are the same
+ * time. A line of the material that says something is not so ("Never
+ * promise same-day delivery") supports nothing. The customer's own question
+ * is not support: a day they ask about is not a day the shop is open.
+ */
+export function unsupportedTimeFacts(answer: string, support: string[]): string[] {
+  const facts = timeFacts(answer);
+  if (!facts.length) return [];
+  const known = new Set<string>();
+  for (const text of support) {
+    for (const line of text.split(/(?<=[.!?])\s+|\n+/)) {
+      if (NEGATION.test(line)) continue;
+      for (const f of timeFacts(line)) known.add(f.key);
+    }
+  }
+  const out: string[] = [];
+  for (const f of facts) if (!known.has(f.key) && !out.includes(f.token)) out.push(f.token);
+  return out;
+}
+
 /** Observable signals only — never the model's own opinion of its certainty. */
 export function decideEscalation(input: {
   question: string;
@@ -2777,6 +2883,8 @@ async function runTool(
   name: string,
   args: Record<string, unknown>,
   subject: ToolContext["subject"],
+  /** The tools this run offered, brokered for this principal at its start. */
+  brokered: BrokeredTool[],
 ) {
   return invokeTool(
     {
@@ -2789,6 +2897,7 @@ async function runTool(
     },
     name,
     args,
+    { brokered },
   );
 }
 

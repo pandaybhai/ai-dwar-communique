@@ -61,6 +61,7 @@ type BackupResult = {
 };
 type Overview = {
   backup?: BackupStatus;
+  burst_wait?: { ms: number; saved: boolean; default_ms: number };
   markup: number;
   platform_cap: { amount: number; currency: string; spent: number };
   providers: Provider[];
@@ -165,6 +166,8 @@ function AdminAi() {
       />
 
       {data.backup ? <BackupCard backup={data.backup} onChanged={load} /> : null}
+
+      {data.burst_wait ? <BurstWaitCard wait={data.burst_wait} onChanged={load} /> : null}
 
       <section className="space-y-4">
         <div>
@@ -335,6 +338,71 @@ const KEY_SOURCE_WORDS: Record<string, string> = {
   vault: "key from Platform providers",
   env: "key from server settings",
 };
+
+/**
+ * How long Aiden waits for a second text before answering. Two texts inside
+ * the wait get one reply; a longer wait means every reply arrives later.
+ */
+function BurstWaitCard({
+  wait,
+  onChanged,
+}: {
+  wait: { ms: number; saved: boolean; default_ms: number };
+  onChanged: () => Promise<void>;
+}) {
+  const [seconds, setSeconds] = useState(String(wait.ms / 1000));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const result = await callApi<{ ok: boolean }>("/api/admin/ai", {
+      body: { action: "set_burst_wait", ms: Math.round(Number(seconds) * 1000) },
+    });
+    setBusy(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    await onChanged();
+  }
+
+  return (
+    <section className="rounded-xl border border-border/70 bg-card p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <Gauge className="mt-0.5 h-5 w-5 text-primary" />
+        <div className="flex-1 space-y-3">
+          <div>
+            <h2 className="font-semibold">Wait for a second message</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              How long Aiden waits after a customer's message in case another follows, so both get one answer. Every
+              reply arrives this much later. {wait.saved ? "" : `Using the default (${wait.default_ms / 1000} s).`}
+            </p>
+          </div>
+          <div className="flex max-w-sm items-end gap-3">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="burst-wait">Seconds (0–10)</Label>
+              <Input
+                id="burst-wait"
+                type="number"
+                min={0}
+                max={10}
+                step={0.5}
+                value={seconds}
+                onChange={(e) => setSeconds(e.target.value)}
+              />
+            </div>
+            <Button disabled={busy} onClick={() => void save()}>
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save
+            </Button>
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 /**
  * The AI backup (used only when the Lovable gateway is out of credit or

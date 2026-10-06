@@ -425,7 +425,44 @@ export const Route = createFileRoute("/api/admin/ai")({
               const { backupStatus, loadPlatformBackup } = await import("@/lib/ai-fallback.server");
               return backupStatus(process.env, await loadPlatformBackup(supabase, { fresh: true }));
             })(),
+            // How long Aiden waits for a second text (null: the column isn't there yet).
+            burst_wait: await (async () => {
+              const { DEFAULT_BURST_WINDOW_MS } = await import("@/lib/whatsapp-webhook.server");
+              const { data: row, error: readError } = await supabase
+                .from("platform_settings")
+                .select("ai_burst_wait_ms")
+                .eq("id", true)
+                .maybeSingle();
+              const saved = readError ? null : ((row as { ai_burst_wait_ms?: number } | null)?.ai_burst_wait_ms ?? null);
+              return { ms: saved ?? DEFAULT_BURST_WINDOW_MS, saved: saved !== null, default_ms: DEFAULT_BURST_WINDOW_MS };
+            })(),
           });
+        }
+
+        // How long Aiden waits for a second text before answering (the burst window).
+        if (action === "set_burst_wait") {
+          const { MAX_BURST_WINDOW_MS, resetBurstWindowCache } = await import("@/lib/whatsapp-webhook.server");
+          const ms = Number(payload["ms"]);
+          if (!Number.isInteger(ms) || ms < 0 || ms > MAX_BURST_WINDOW_MS)
+            return jsonError(`Choose a wait between 0 and ${MAX_BURST_WINDOW_MS / 1000} seconds.`);
+          const { error } = await supabase
+            .from("platform_settings")
+            .update({ ai_burst_wait_ms: ms, updated_at: new Date().toISOString() })
+            .eq("id", true);
+          if (error) {
+            return /ai_burst_wait_ms/.test(error.message ?? "")
+              ? jsonError("The wait can't be saved until the database update 20261020_ai_burst_wait.sql is applied.", 409)
+              : jsonError("The wait could not be saved.", 500);
+          }
+          resetBurstWindowCache();
+          await supabase
+            .from("activity_log")
+            .insert({ organization_id: null, user_id: user.id, action: "ai_burst_wait_set", details: { ms } })
+            .then(
+              () => undefined,
+              () => undefined,
+            );
+          return Response.json({ ok: true, ms });
         }
 
         // One tiny prompt to each configured backup provider: how long it took,

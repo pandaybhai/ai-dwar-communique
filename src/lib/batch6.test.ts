@@ -418,6 +418,8 @@ describe("(3) Aiden: same gates and burst, less waiting around them", () => {
         occurredAt: new Date().toISOString(),
         body: "hi",
         storedAt: Date.now() - 1000,
+        // The mechanism at a 5 s window (Batch 15A: the default is now 1 s).
+        windowMs: 5000,
         afterWait: () => (calledAt = Date.now() - start),
       });
       await vi.advanceTimersByTimeAsync(3999);

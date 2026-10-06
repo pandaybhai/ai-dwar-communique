@@ -411,8 +411,9 @@ describe("ZERN earrings whose photo is named 'zpnds-…' are earrings", () => {
       category: "rings",
       price: 49196.55,
     });
-    // A read that does see a gender still writes it.
-    await saveCrawledProducts(db.supabase, ORG, [{ ...draft, gender: "women" }]);
-    expect(db.rows("products")[0]!["gender"]).toBe("women");
+    // Batch 15A: a gender already set is never changed by a read, even one
+    // that sees a different one (an owner's tag wins).
+    await saveCrawledProducts(db.supabase, ORG, [{ ...draft, gender: "female" }]);
+    expect(db.rows("products")[0]!["gender"]).toBe("male");
   });
 });

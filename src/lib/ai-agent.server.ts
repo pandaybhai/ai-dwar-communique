@@ -22,6 +22,7 @@ import {
 import type { ChosenProduct, RunPrelude } from "@/lib/ai-run.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
 import { sendServiceText } from "@/lib/service-text.server";
+import type { ReplyTimer } from "@/lib/reply-timing";
 import { isServiceWindowOpen } from "@/lib/service-window";
 
 export type AgentInboundArgs = {
@@ -43,6 +44,13 @@ export type AgentInboundArgs = {
   gate?: Promise<AgentGate>;
   /** WhatsApp reply-to: the id of our message the customer replied to, if any. */
   replyToMetaId?: string | null;
+  /** The webhook's reply timer: Aiden's stages and sends land on webhook_events.timing. */
+  timer?: ReplyTimer;
+  /**
+   * Called once the gates pass and a live reply is coming (not for drafts):
+   * the webhook marks the message read and shows the typing dots. Never awaited.
+   */
+  onWillReply?: () => void;
 };
 
 type AgentGate = {
@@ -137,6 +145,11 @@ export async function runAgentOnInbound(
   const mark = (stage: string) => {
     stages[stage] = Date.now() - started;
   };
+  // The webhook's timer sees Aiden's stages too; its first send is
+  // "ai_first_send" (a flow's is "send_start").
+  const timer: ReplyTimer | undefined = args.timer
+    ? { mark: (s) => args.timer!.mark(s === "send_start" ? "ai_first_send" : s), span: (n, ms) => args.timer!.span(n, ms) }
+    : undefined;
   const prep = await (args.prepared ?? prepareAgentInbound(supabase, args.organizationId));
   const agentRow = prep.agentRow;
   const mode = agentRow?.mode ?? "off";
@@ -171,6 +184,40 @@ export async function runAgentOnInbound(
   }
 
   const common = { organizationId: args.organizationId, actorUserId: null, actingRole: null };
+  timer?.mark("ai_gates");
+  if (mode === "replying") {
+    try {
+      args.onWillReply?.();
+    } catch {
+      // the dots are a courtesy
+    }
+  }
+
+  // The Cards page switch, read once and only when a picture goes out (or is
+  // about to: the first card is drawn while the model writes its closing words).
+  let cardsOn: Promise<boolean> | null = null;
+  let cardTried = false;
+  const cards = () =>
+    (cardsOn ??= import("@/lib/customer-cards.server").then(({ productCardsOn }) =>
+      productCardsOn(supabase, args.organizationId, flags),
+    ));
+  let prewarmed = false;
+  const prewarmCard = (items: ChosenProduct[]) => {
+    const first = items.find((p) => p.hasPhoto);
+    // A product that will go as a WhatsApp catalogue card needs no picture card.
+    if (prewarmed || !first || !flags.has("cards") || (flags.has("whatsapp_catalog") && first.inCatalog)) return;
+    prewarmed = true;
+    void cards()
+      .then(async (on) => {
+        if (!on) return;
+        const [{ renderCustomerCard }, { productCardVars }] = await Promise.all([
+          import("@/lib/customer-cards.server"),
+          import("@/lib/product-pictures.server"),
+        ]);
+        await renderCustomerCard(supabase, { organizationId: args.organizationId, kind: "customer_product", vars: productCardVars(first) });
+      })
+      .catch(() => {});
+  };
 
   if (mode === "draft") {
     const run = await suggestReply(supabase, common, args.conversationId);
@@ -191,9 +238,13 @@ export async function runAgentOnInbound(
           ...(prep.ahead ? { ahead: prep.ahead } : {}),
         }
       : undefined,
-    args.replyToMetaId ? { replyToMetaId: args.replyToMetaId } : undefined,
+    {
+      ...(args.replyToMetaId ? { replyToMetaId: args.replyToMetaId } : {}),
+      onProductsQueued: prewarmCard,
+    },
   );
   mark("answer");
+  timer?.mark("ai_run");
   const timing = () =>
     console.log(
       JSON.stringify({
@@ -318,19 +369,12 @@ export async function runAgentOnInbound(
       // The window was checked on the gate read above, in this same request.
       windowOpen,
       ...(metadata ? { metadata } : {}),
+      ...(timer ? { timer } : {}),
     });
     if (res.ok) anySent = true;
     else sendError ??= res.error ?? "send_failed";
     return res.ok;
   };
-
-  // The Cards page switch, read once and only when a picture goes out.
-  let cardsOn: Promise<boolean> | null = null;
-  let cardTried = false;
-  const cards = () =>
-    (cardsOn ??= import("@/lib/customer-cards.server").then(({ productCardsOn }) =>
-      productCardsOn(supabase, args.organizationId, flags),
-    ));
 
   /** One products part: catalogue cards when the shop is on, else each product as the model captioned it. */
   const sendProducts = async (items: ChosenProduct[]): Promise<void> => {
@@ -348,31 +392,38 @@ export async function runAgentOnInbound(
       }
     }
     const { sendProductPictures } = await import("@/lib/product-pictures.server");
-    // In the model's order: a run of products with photos goes as pictures,
-    // one without a photo as its caption in a text message.
-    for (let i = 0; i < items.length; ) {
-      const item = items[i]!;
+    // With branded cards on, the first product with a photo goes as the card.
+    const cardItem = items.find((p) => p.hasPhoto) ?? null;
+    const withCard = Boolean(cardItem) && !cardTried && (await cards());
+    cardTried ||= withCard;
+    const sendOne = async (item: ChosenProduct): Promise<void> => {
       const metadata = { kind: "ai_product", product_id: item.productId };
+      // No photo: its caption as a text message.
       if (!item.hasPhoto) {
         if (item.caption.trim()) await sendText(item.caption, metadata);
-        i += 1;
-        continue;
+        return;
       }
-      const run: ChosenProduct[] = [];
-      while (i < items.length && items[i]!.hasPhoto) run.push(items[i++]!);
-      const withCard = !cardTried && (await cards());
-      cardTried ||= withCard;
       const shown = await sendProductPictures(supabase, {
         ...sender,
         contactId: args.contactId,
         windowOpen,
-        items: run.map((p) => ({ ...p, metadata: { kind: "ai_product", product_id: p.productId } })),
-        cards: withCard,
+        ...(timer ? { timer } : {}),
+        items: [{ ...item, metadata }],
+        cards: withCard && item === cardItem,
         onFailure: (error) => log("picture_failed", { conversation_id: args.conversationId, error }),
       });
-      if (shown > 0) anySent = true;
+      if (shown > 0) {
+        anySent = true;
+        timer?.mark("ai_first_photo");
+      }
       picturesSent += shown;
-    }
+    };
+    // The first product goes at once; the rest go together, not one after
+    // another (WhatsApp keeps no order between separate sends, so only the
+    // first is guaranteed to arrive first). The words after them wait for all.
+    const [first, ...rest] = items;
+    if (first) await sendOne(first);
+    await Promise.all(rest.map(sendOne));
   };
 
   if (run.parts && run.parts.length > 0) {

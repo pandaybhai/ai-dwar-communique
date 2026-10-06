@@ -813,6 +813,13 @@ async function writeRateLimited(
 export type InvokeOptions = {
   /** Set by the caller once a human has approved a confirmation-gated tool. */
   confirmed?: boolean;
+  /**
+   * The tools brokerTools already gave this same principal for this run
+   * (executeRun's prelude). Each call then skips re-reading flags, settings
+   * and role permissions — 3 round trips per tool call. Left out, they are
+   * read here as always.
+   */
+  brokered?: BrokeredTool[];
 };
 
 /**
@@ -860,7 +867,7 @@ export async function invokeTool(
   options: InvokeOptions = {},
 ): Promise<ToolResult> {
   const startedAt = Date.now();
-  const available = await brokerTools(ctx.supabase, ctx.organizationId, contextPrincipal(ctx));
+  const available = options.brokered ?? (await brokerTools(ctx.supabase, ctx.organizationId, contextPrincipal(ctx)));
   const tool = available.find((t) => t.name === toolName);
 
   /** Returns the activity_log row id so the caller can join a run to its trace. */
