@@ -1,8 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { buildInfo } from "@/lib/build-info";
 
-const CLAIM_LIMIT = 30;
-
+/**
+ * The campaign sender. pg_cron calls it (one call per lane; body
+ * {"lane": i, "lanes": n}, or no body for a single lane). Each call sends for
+ * up to CAMPAIGN_WORKER_BUDGET_MS across every running campaign — see
+ * src/lib/campaign-dispatch.server.ts.
+ */
 export const Route = createFileRoute("/api/internal/campaign-worker")({
   server: {
     handlers: {
@@ -14,265 +18,21 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
           return Response.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
-        const { loadSenderContext, sendCampaignTemplate } = await import("@/lib/campaigns.server");
-        const { extractVariables, templateBodyText } = await import("@/lib/templates");
-        const { contactOptedOut } = await import("@/lib/opt-out.server");
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown> | null;
+        const { getServiceClient, waitUntilOf } = await import("@/lib/whatsapp-webhook.server");
+        const { dispatchConfig, runCampaignDispatch } =
+          await import("@/lib/campaign-dispatch.server");
 
         const supabase = getServiceClient();
-        const nowIso = new Date().toISOString();
+        const cfg = dispatchConfig({ lane: body?.["lane"], lanes: body?.["lanes"] });
+        const work = runCampaignDispatch(supabase, cfg);
+        // The caller (pg_net) may hang up before the run ends; the run still
+        // finishes its in-flight sends and puts unsent recipients back.
+        const waitUntil = waitUntilOf(request);
+        if (waitUntil) waitUntil(work.catch(() => {}));
+        const report = await work;
 
-        const { data: campaigns } = await supabase
-          .from("campaigns")
-          .select(
-            "id, organization_id, whatsapp_account_id, status, template_name, template_language, scheduled_at, started_at, send_settings",
-          )
-          .or(`status.eq.sending,and(status.eq.scheduled,scheduled_at.lte.${nowIso})`)
-          .order("created_at", { ascending: true })
-          .limit(5);
-
-        const report: Array<Record<string, unknown>> = [];
-
-        for (const campaign of (campaigns ?? []) as Array<Record<string, unknown>>) {
-          const campaignId = campaign["id"] as string;
-          const orgId = campaign["organization_id"] as string;
-
-          if (campaign["status"] === "scheduled") {
-            await supabase
-              .from("campaigns")
-              .update({ status: "sending", started_at: campaign["started_at"] ?? nowIso })
-              .eq("id", campaignId);
-          }
-
-          // Reserve the credits before the first message leaves.
-          const { holdCampaign } = await import("@/lib/campaign-billing.server");
-          const hold = await holdCampaign(supabase, orgId, campaignId);
-          if (!hold.ok) {
-            await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
-            report.push({ campaign_id: campaignId, paused: "insufficient_credits" });
-            continue;
-          }
-
-
-          const templateName = (campaign["template_name"] as string | null) ?? "";
-          if (!templateName) {
-            await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaignId);
-            continue;
-          }
-
-          // The campaign carries the number it was created for.
-          const sender = await loadSenderContext(
-            supabase,
-            orgId,
-            (campaign["whatsapp_account_id"] as string | null) ?? null,
-          );
-          if (!sender) {
-            await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
-            report.push({ campaign_id: campaignId, paused: "no_active_whatsapp_account" });
-            continue;
-          }
-
-          const { data: template } = await supabase
-            .from("message_templates")
-            .select("components, category")
-            .eq("organization_id", orgId)
-            // Template libraries are per business account.
-            .eq("waba_id", sender.wabaId)
-            .eq("name", templateName)
-            .limit(1)
-            .maybeSingle();
-          const templateCategory = String(
-            (template as { category?: string } | null)?.category ?? "marketing",
-          ).toLowerCase();
-          const variableOrder = extractVariables(
-            templateBodyText((template?.components ?? []) as never),
-          );
-
-          // Media chosen when the campaign was created — the header file and
-          // one file per carousel card. Anything left blank falls back to the
-          // file the template itself was authored with.
-          const settings = (campaign["send_settings"] ?? {}) as Record<string, unknown>;
-          const headerMediaUrl = (settings["header_media_url"] as string | null) ?? null;
-          // A carousel card can carry its own coupon — "20% off shoes" on one
-          // card, "buy one get one" on the next — so codes travel per card.
-          const settingCards = Array.isArray(settings["cards"])
-            ? (settings["cards"] as Array<{
-                media_url?: string | null;
-                coupon_code?: string | null;
-              }>).map((c) => ({
-                mediaUrl: c?.media_url ?? null,
-                couponCode: c?.coupon_code ?? null,
-              }))
-            : [];
-
-          // Offer details chosen when the campaign was created.
-          const couponCode = (settings["coupon_code"] as string | null) ?? null;
-          const offerExpiresAt = (settings["offer_expires_at"] as string | null) ?? null;
-
-          // A branded picture card attached at creation time, sent after each
-          // template. Only when the workspace has cards on; failures never
-          // affect the template send.
-          const cardCfg = (settings["card"] ?? null) as {
-            kind?: string;
-            vars?: Record<string, string>;
-          } | null;
-          const cardTools = cardCfg?.kind
-            ? await import("@/lib/customer-cards.server").catch(() => null)
-            : null;
-          const cardsOn = cardTools
-            ? await cardTools.cardsEnabled(supabase, orgId).catch(() => false)
-            : false;
-
-          const { data: claimed } = await supabase.rpc("claim_campaign_recipients", {
-            p_campaign_id: campaignId,
-            p_limit: CLAIM_LIMIT,
-          });
-          const batch = (claimed ?? []) as Array<{
-            id: string;
-            contact_id: string | null;
-            phone: string;
-            resolved_variables: Record<string, string> | null;
-          }>;
-
-          let sent = 0;
-          let failed = 0;
-
-          for (const recipient of batch) {
-            // Opt-out is checked at send time, not only when the list was built.
-            const optOut = await contactOptedOut(supabase, orgId, {
-              contactId: recipient.contact_id,
-              phone: recipient.phone,
-            });
-            if (optOut.error || optOut.optedOut) {
-              if (optOut.error) failed += 1;
-              await supabase
-                .from("campaign_recipients")
-                .update(
-                  optOut.error
-                    ? { status: "failed", error: "opt_out_check_failed" }
-                    : { status: "skipped", error: "opted_out" },
-                )
-                .eq("id", recipient.id);
-              continue;
-            }
-
-            const outcome = await sendCampaignTemplate(
-              supabase,
-              orgId,
-              sender,
-              {
-                contactId: recipient.contact_id,
-                phone: recipient.phone,
-                variables: recipient.resolved_variables ?? {},
-              },
-              {
-                name: templateName,
-                language: (campaign["template_language"] as string) ?? "en_US",
-                variableOrder,
-                components: (template?.components ?? null) as never,
-              },
-              {
-                campaignId,
-                category: templateCategory,
-                ...(headerMediaUrl ? { headerMediaUrl } : {}),
-                ...(settingCards.length ? { cards: settingCards } : {}),
-                ...(couponCode ? { couponCode } : {}),
-                ...(offerExpiresAt ? { offerExpiresAt } : {}),
-              },
-            );
-
-            if (outcome.error) {
-              failed += 1;
-              await supabase
-                .from("campaign_recipients")
-                .update({ status: "failed", error: outcome.error, message_id: outcome.messageId })
-                .eq("id", recipient.id);
-            } else {
-              sent += 1;
-              if (cardsOn && cardTools && cardCfg?.kind) {
-                try {
-                  await cardTools.sendCardToContact(supabase, {
-                    organizationId: orgId,
-                    contactId: recipient.contact_id,
-                    phone: recipient.phone,
-                    sender,
-                    kind: cardCfg.kind,
-                    vars: cardTools.fillCardVars(cardCfg.vars ?? {}, recipient.resolved_variables ?? {}),
-                    caption: templateName,
-                  });
-                } catch {
-                  // card is decoration; the template already arrived
-                }
-              }
-              await supabase
-                .from("campaign_recipients")
-                .update({ status: "sent", message_id: outcome.messageId, error: null })
-                .eq("id", recipient.id);
-            }
-          }
-
-          if (sent || failed) {
-            await supabase.rpc("bump_campaign_counters", {
-              p_campaign_id: campaignId,
-              p_sent: sent,
-              p_failed: failed,
-            });
-          }
-
-          const { count: remaining } = await supabase
-            .from("campaign_recipients")
-            .select("id", { count: "exact", head: true })
-            .eq("campaign_id", campaignId)
-            .in("status", ["queued", "sending"]);
-
-          if (!remaining) {
-            const { data: finished } = await supabase
-              .from("campaigns")
-              .update({ status: "completed", completed_at: new Date().toISOString() })
-              .eq("id", campaignId)
-              .eq("status", "sending")
-              .select("id, sent_count, failed_count");
-            // Only the run that actually flipped the row emits, so a retry of
-            // the worker can't double-count a completion.
-            if (finished && finished.length > 0) {
-              const { emitEvent } = await import("@/lib/events.server");
-              await emitEvent(supabase, "campaign.completed", {
-                organizationId: campaign["organization_id"] as string,
-                whatsappAccountId: (campaign["whatsapp_account_id"] as string | null) ?? null,
-                entityType: "campaign",
-                entityId: campaignId,
-                properties: {
-                  campaign_id: campaignId,
-                  template_name: (campaign["template_name"] as string | null) ?? null,
-                  sent_count: finished[0]!.sent_count ?? null,
-                  failed_count: finished[0]!.failed_count ?? null,
-                },
-              });
-              // Give back the unused reservation. Each message is charged once,
-              // by the database, when Meta prices it (debit_message).
-              const { settleCampaignSpend } = await import("@/lib/campaign-billing.server");
-              const settled = await settleCampaignSpend(supabase, orgId, campaignId);
-              if (!settled.ok) {
-                console.error(
-                  JSON.stringify({
-                    at: "campaign_settle_failed",
-                    campaign_id: campaignId,
-                    error: settled.error,
-                  }),
-                );
-              }
-            }
-          }
-
-
-          report.push({ campaign_id: campaignId, sent, failed, remaining: remaining ?? 0 });
-        }
-
-        return Response.json({
-          processed: report.length,
-          campaigns: report,
-          commit: buildInfo().commit,
-        });
+        return Response.json({ ...report, commit: buildInfo().commit });
       },
     },
   },

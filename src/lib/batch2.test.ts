@@ -209,12 +209,16 @@ describe("(B) campaign money: charged once, from the ledger", () => {
     op.filters.some(([n, a]) => n === "eq" && a[0] === col && a[1] === val);
   const update = (db: ReturnType<typeof world>) =>
     db.ops.find((o) => o.table === "campaigns" && o.kind === "update");
+  // Batch 12: the ledger total is first asked of campaign_ledger_charge(); this
+  // fake has no such function, so the rows are read as before.
+  const walletCalls = (db: ReturnType<typeof world>) =>
+    db.rpcs.filter((r) => r.name !== "campaign_ledger_charge");
 
   it("never posts a 'debit' row: releases only the unused hold, charged_amount comes from debit_message rows", async () => {
     const db = world({ debits: [1.04] });
     expect(await settleCampaignSpend(db.supabase, "org", "camp")).toEqual({ ok: true });
-    expect(db.rpcs.map((r) => r.args["p_type"])).toEqual(["hold_release"]);
-    expect(db.rpcs[0]!.args["p_amount"]).toBe(1.04);
+    expect(walletCalls(db).map((r) => r.args["p_type"])).toEqual(["hold_release"]);
+    expect(walletCalls(db)[0]!.args["p_amount"]).toBe(1.04);
     expect(update(db)!.payload).toEqual({
       held_amount: 0,
       charged_amount: 1.04,
@@ -225,7 +229,7 @@ describe("(B) campaign money: charged once, from the ledger", () => {
   it("nothing priced yet: the whole hold comes back and nothing is recorded as charged", async () => {
     const db = world({ debits: [] });
     await settleCampaignSpend(db.supabase, "org", "camp");
-    expect(db.rpcs.map((r) => [r.args["p_type"], r.args["p_amount"]])).toEqual([
+    expect(walletCalls(db).map((r) => [r.args["p_type"], r.args["p_amount"]])).toEqual([
       ["hold_release", 2.08],
     ]);
     expect((update(db)!.payload as Record<string, number>)["charged_amount"]).toBe(0);
@@ -241,14 +245,14 @@ describe("(B) campaign money: charged once, from the ledger", () => {
   it("a failed ledger read never writes charged_amount", async () => {
     const db = world({ ledgerError: "timeout" });
     expect((await settleCampaignSpend(db.supabase, "org", "camp")).ok).toBe(false);
-    expect(db.rpcs).toEqual([]);
+    expect(walletCalls(db)).toEqual([]);
     expect(update(db)).toBeUndefined();
   });
 
   it("a release that already landed is never repeated", async () => {
     const db = world({ debits: [1.04], released: true });
     expect((await settleCampaignSpend(db.supabase, "org", "camp")).ok).toBe(true);
-    expect(db.rpcs).toEqual([]);
+    expect(walletCalls(db)).toEqual([]);
     expect(update(db)).toBeDefined();
   });
 
@@ -259,7 +263,7 @@ describe("(B) campaign money: charged once, from the ledger", () => {
     expect(off.ops).toEqual([]);
     const settled = world({ held: 0 });
     await settleCampaignSpend(settled.supabase, "org", "camp");
-    expect(settled.rpcs).toEqual([]);
+    expect(walletCalls(settled)).toEqual([]);
     expect(update(settled)).toBeUndefined();
   });
 });

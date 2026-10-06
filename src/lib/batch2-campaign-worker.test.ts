@@ -1,28 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeDb, type FakeOp } from "./test-support/fake-db";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { world } from "./test-support/campaign-world";
+import { resetDispatchCaches } from "./campaign-dispatch.server";
+import type { MemoryDb } from "./test-support/memory-db";
 
-const h = vi.hoisted(() => ({
-  db: null as null | { supabase: unknown },
-  sendCampaignTemplate: vi.fn(async () => ({ error: null, messageId: "msg-1" })),
+/**
+ * (C) The campaign worker re-checks opt-out right before each send.
+ * Batch 12: the worker claims a handful of recipients at a time and reads
+ * their opt-out in one go just before they are sent; the rule is unchanged.
+ */
+const h = vi.hoisted(() => ({ db: null as null | MemoryDb }));
+vi.mock("@/lib/whatsapp-webhook.server", () => ({
+  getServiceClient: () => h.db!.client,
+  waitUntilOf: () => null,
 }));
-vi.mock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => h.db!.supabase }));
-vi.mock("@/lib/campaigns.server", () => ({
-  sendCampaignTemplate: h.sendCampaignTemplate,
-  loadSenderContext: async () => ({
-    accountId: "acc",
-    wabaId: "waba",
-    phoneNumberId: "pn",
-    accessToken: "t",
-  }),
-}));
-vi.mock("@/lib/campaign-billing.server", () => ({
-  holdCampaign: async () => ({ ok: true }),
-  settleCampaignSpend: async () => ({ ok: true }),
-}));
-vi.mock("@/lib/events.server", () => {
-  const noop = async () => {};
-  return { emitEvent: noop };
-});
 
 import { Route } from "../routes/api/internal/campaign-worker";
 
@@ -30,89 +20,69 @@ type Post = (a: { request: Request }) => Promise<Response>;
 const post = (Route.options as unknown as { server: { handlers: { POST: Post } } }).server.handlers
   .POST;
 
-const recipients = [
-  { id: "r-out", contact_id: "c-out", phone: "+919800000001", resolved_variables: {} },
-  { id: "r-in", contact_id: "c-in", phone: "+919800000002", resolved_variables: {} },
-];
-const idOf = (op: FakeOp) => op.filters.find(([n, a]) => n === "eq" && a[0] === "id")?.[1][1];
+let graph: Array<Record<string, unknown>> = [];
+beforeEach(() => {
+  resetDispatchCaches();
+  graph = [];
+  vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
+    if (!String(url).startsWith("https://graph.facebook.com/"))
+      throw new Error(`unexpected fetch ${String(url)}`);
+    graph.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+    return new Response(JSON.stringify({ messages: [{ id: `wamid.${graph.length}` }] }));
+  });
+});
+afterEach(() => vi.unstubAllGlobals());
 
-async function run(contacts: (op: FakeOp) => { data: unknown; error: { message: string } | null }) {
-  const db = fakeDb(
-    (op) => {
-      if (op.table === "campaigns" && op.kind === "select")
-        return {
-          data: [
-            {
-              id: "camp",
-              organization_id: "org",
-              whatsapp_account_id: "acc",
-              status: "sending",
-              template_name: "promo",
-              template_language: "en",
-              send_settings: {},
-            },
-          ],
-          error: null,
-        };
-      if (op.table === "contacts") return contacts(op);
-      // Recipients still queued, so the campaign isn't completed in these tests.
-      if (op.table === "campaign_recipients" && op.kind === "select")
-        return { data: null, error: null, count: 1 } as never;
-      return undefined;
-    },
-    (call) =>
-      call.name === "claim_campaign_recipients" ? { data: recipients, error: null } : undefined,
-  );
-  h.db = db;
+async function run(setup: (w: ReturnType<typeof world>) => void) {
+  const w = world({ campaigns: [{ recipients: 2 }] });
+  setup(w);
+  h.db = w.db;
   process.env["CRON_SECRET"] = "s";
   const res = await post({
     request: new Request("http://x", { method: "POST", headers: { "x-cron-secret": "s" } }),
   });
   expect(res.status).toBe(200);
-  return db;
+  const c = w.campaigns[0]!;
+  return {
+    ...w,
+    recipients: w.db.rows("campaign_recipients").filter((r) => r["campaign_id"] === c.id),
+    campaign: w.db.rows("campaigns").find((r) => r["id"] === c.id)!,
+  };
 }
-const recipientWrites = (db: ReturnType<typeof fakeDb>) =>
-  db.ops
-    .filter((o) => o.table === "campaign_recipients" && o.kind === "update")
-    .map((o) => [idOf(o), o.payload]);
-
-beforeEach(() => h.sendCampaignTemplate.mockClear());
 
 describe("(C) campaign worker re-checks opt-out right before each send", () => {
   it("an opted-out recipient is skipped and never sent; the rest still go", async () => {
-    const db = await run((op) => ({
-      data: { opt_in_status: idOf(op) === "c-out" ? "opted_out" : "opted_in" },
-      error: null,
-    }));
-    expect(h.sendCampaignTemplate).toHaveBeenCalledTimes(1);
-    expect((h.sendCampaignTemplate.mock.calls[0] as unknown[])[3]).toMatchObject({
-      contactId: "c-in",
+    const w = await run(({ db, campaigns }) => {
+      const out = campaigns[0]!.recipients[0]!["contact_id"];
+      db.rows("contacts").find((c) => c["id"] === out)!["opt_in_status"] = "opted_out";
     });
-    expect(recipientWrites(db)).toEqual([
-      ["r-out", { status: "skipped", error: "opted_out" }],
-      ["r-in", { status: "sent", message_id: "msg-1", error: null }],
+    expect(graph).toHaveLength(1);
+    expect(graph[0]!["to"]).toBe(String(w.recipients[1]!["phone"]).replace("+", ""));
+    expect(w.recipients.map((r) => [r["status"], r["error"]])).toEqual([
+      ["skipped", "opted_out"],
+      ["sent", null],
     ]);
-    expect(db.rpcs.find((r) => r.name === "bump_campaign_counters")!.args).toMatchObject({
-      p_sent: 1,
-      p_failed: 0,
-    });
+    expect(w.campaign).toMatchObject({ sent_count: 1, failed_count: 0 });
   });
 
   it("a failed opt-out check sends nothing to that recipient", async () => {
-    const db = await run(() => ({ data: null, error: { message: "down" } }));
-    expect(h.sendCampaignTemplate).not.toHaveBeenCalled();
-    expect(recipientWrites(db).map(([, p]) => p)).toEqual([
-      { status: "failed", error: "opt_out_check_failed" },
-      { status: "failed", error: "opt_out_check_failed" },
+    const w = await run(({ db }) => {
+      db.hook = (call) =>
+        call.table === "contacts" ? { data: null, error: { message: "down" } } : undefined;
+    });
+    expect(graph).toHaveLength(0);
+    expect(w.recipients.map((r) => [r["status"], r["error"]])).toEqual([
+      ["failed", "opt_out_check_failed"],
+      ["failed", "opt_out_check_failed"],
     ]);
+    expect(w.campaign).toMatchObject({ sent_count: 0, failed_count: 2 });
   });
 
   it("unchanged: recipients who haven't opted out are all sent", async () => {
-    const db = await run(() => ({ data: { opt_in_status: "unknown" }, error: null }));
-    expect(h.sendCampaignTemplate).toHaveBeenCalledTimes(2);
-    expect(recipientWrites(db).map(([, p]) => (p as { status: string }).status)).toEqual([
-      "sent",
-      "sent",
-    ]);
+    const w = await run(({ db }) => {
+      for (const c of db.rows("contacts")) c["opt_in_status"] = "unknown";
+    });
+    expect(graph).toHaveLength(2);
+    expect(w.recipients.map((r) => r["status"])).toEqual(["sent", "sent"]);
   });
 });
