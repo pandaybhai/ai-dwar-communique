@@ -25,7 +25,7 @@ export const Route = createFileRoute("/api/ai/knowledge")({
         const canUse = await requirePermission(auth, "ai.use", "see what the AI knows");
         if (canUse) return canUse;
 
-        const configuring = action !== "list" && action !== "open" && action !== "gaps";
+        const configuring = action !== "list" && action !== "open" && action !== "gaps" && action !== "links";
         if (configuring) {
           const denied = await requirePermission(auth, "ai.configure", "change what the AI knows");
           if (denied) return denied;
@@ -81,6 +81,29 @@ export const Route = createFileRoute("/api/ai/knowledge")({
                 );
                 const config = (r["config"] ?? {}) as Record<string, unknown>;
                 const deleted = knowledge.isSoftDeleted({ status: String(r["status"] ?? ""), config });
+                // Products by shelf, and how many still have no photo.
+                let byCategory: Record<string, number> = {};
+                let withoutPhoto = 0;
+                try {
+                  const origin = new URL(String(config["url"] ?? "")).origin;
+                  const { data: prods } = await auth.supabase
+                    .from("products")
+                    .select("category, image_url")
+                    .eq("organization_id", auth.organizationId)
+                    .eq("source", "crawl")
+                    .eq("is_visible", true)
+                    .like("product_url", `${origin}%`)
+                    .limit(20000);
+                  for (const p of (prods ?? []) as Array<{ category: string | null; image_url: string | null }>) {
+                    const shelf = p.category || "other";
+                    byCategory[shelf] = (byCategory[shelf] ?? 0) + 1;
+                    if (!p.image_url) withoutPhoto += 1;
+                  }
+                } catch {
+                  byCategory = {};
+                }
+                // A plan's page limit counts pages a paid reader read; our own fetch is free.
+                const paidCap = plan.paid ? plan.cap : Math.max(Number(reading.day0_page_limit) || 15, 1);
                 const cooldownMs = reading.manual_refresh_cooldown_hours * 36e5;
                 const last = r["last_manual_refresh_at"] ? new Date(String(r["last_manual_refresh_at"])).getTime() : 0;
                 return {
@@ -91,9 +114,18 @@ export const Route = createFileRoute("/api/ai/knowledge")({
                     paid: plan.paid,
                     tonight: plan.paid && reading.backfill_pages_per_day > 0 ? Math.min(unread, room, reading.backfill_pages_per_day) : 0,
                     refresh_days: Number(r["refresh_days"] ?? 0) || reading.refresh_days,
-                    can_read_more: plan.paid && unread > 0 && room > 0,
+                    can_read_more: unread > 0,
                     changes_available_at: last && Date.now() - last < cooldownMs ? new Date(last + cooldownMs).toISOString() : null,
                     coverage,
+                    products_by_category: byCategory,
+                    products_without_photo: withoutPhoto,
+                    paid_pages: Number(config["paid_pages"] ?? 0) || 0,
+                    paid_cap: paidCap,
+                    paid_capped: config["paid_capped"] === true,
+                    swap_blocked: (config["swap_blocked"] ?? null) as Record<string, unknown> | null,
+                    unchanged_skipped: typeof config["unchanged_skipped"] === "number" ? config["unchanged_skipped"] : null,
+                    discovery: typeof config["discovery"] === "string" ? config["discovery"] : "crawl",
+                    keep_query: config["keep_query"] === true,
                   },
                   ...(deleted
                     ? {
@@ -135,19 +167,21 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               // The button also fills crawled products' missing photos,
               // descriptions and shelves (scheduled refreshes don't).
               config = { ...(src.config ?? {}), refresh: true, fill_products: true };
-              // A fresh refresh: every page read before now is read again.
+              // A fresh refresh. "Re-read whole site" reads only pages whose
+              // sitemap date moved (unchanged text is never re-embedded either);
+              // the scheduled weekly refresh is unchanged and reads them all.
               config["refresh_started_at"] = null;
+              config["changed_only"] = true;
               extra["last_manual_refresh_at"] = new Date().toISOString();
             } else {
-              const plan = await knowledge.planLimits(service, auth.organizationId);
-              const room = plan.cap - Number(src.pages_seen ?? 0);
+              // Pages our own fetch can read are free on every plan; the plan's
+              // page limit applies to paid-reader pages inside the read.
               const { count } = await auth.supabase
                 .from("knowledge_urls")
                 .select("id", { count: "exact", head: true })
                 .eq("source_id", src.id)
                 .eq("status", "unread");
-              if (!plan.paid || room <= 0 || !count)
-                return Response.json({ upgrade: true, error: "Your plan's page limit is reached — upgrade to read the rest." }, { status: 402 });
+              if (!count) return jsonError("Every page I found is already read.", 409);
               config = { ...(src.config ?? {}), mode: "full", resume: true, refresh: false, pages_done: Number(src.pages_seen ?? 0), run_limit: null };
             }
             await auth.supabase
@@ -186,14 +220,27 @@ export const Route = createFileRoute("/api/ai/knowledge")({
           }
 
           if (action === "add_website") {
-            const url = String(payload["url"] ?? "").trim();
-            if (!/^https?:\/\//i.test(url)) return jsonError("Enter a full web address.");
+            const discovery = payload["discovery"] === "sitemap" || payload["discovery"] === "links" ? payload["discovery"] : "crawl";
+            const links =
+              discovery === "links"
+                ? String(payload["links"] ?? "")
+                    .split(/[\s,]+/)
+                    .map((l) => l.trim())
+                    .filter((l) => /^https?:\/\//i.test(l))
+                : [];
+            const url = discovery === "links" ? (links[0] ?? "") : String(payload["url"] ?? "").trim();
+            if (!/^https?:\/\//i.test(url)) return jsonError(discovery === "links" ? "Paste at least one full page address." : "Enter a full web address.");
+            if (discovery === "links") {
+              const { sameSite } = await import("@/lib/site-urls");
+              const other = links.find((l) => !sameSite(l, url));
+              if (other) return jsonError(`Every link must be on the same website as ${new URL(url).hostname} — add ${new URL(other).hostname} separately.`);
+            }
             const added = await knowledge.addWebsiteSource(
               auth.supabase,
               auth.organizationId,
               url,
               auth.userId,
-              { mode: "full" },
+              { mode: "full", discovery, links, keepQuery: payload["keep_query"] === true },
             );
             if (added.limited) return jsonError(added.error ?? "Link limit reached.", 429);
             if (added.limited) return jsonError(added.error ?? "Link limit reached.", 429);
@@ -323,6 +370,53 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               .eq("organization_id", auth.organizationId);
             await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "ai_knowledge_removed", {});
             return Response.json({ ok: true });
+          }
+
+          if (action === "links") {
+            const tab = ["read", "not_found", "excluded", "waiting"].includes(String(payload["tab"])) ? (String(payload["tab"]) as "read") : "read";
+            const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+            const result = await knowledge.listWebsiteLinks(getServiceClient(), auth.organizationId, String(payload["source_id"] ?? ""), {
+              tab,
+              q: String(payload["q"] ?? ""),
+              page: Number(payload["page"] ?? 0) || 0,
+            });
+            if (!result.ok) return jsonError(result.error ?? "That website isn't in this workspace.", 403);
+            return Response.json(result);
+          }
+
+          if (action === "exclude_link" || action === "exclude_rule" || action === "include_link" || action === "remove_rule") {
+            const sourceId = String(payload["source_id"] ?? "");
+            const rule = { op: String(payload["op"] ?? ""), value: String(payload["value"] ?? "") } as import("@/lib/site-urls").ExcludeRule;
+            const change =
+              action === "exclude_link"
+                ? { exclude_url: String(payload["url"] ?? ""), folder: payload["folder"] === true }
+                : action === "include_link"
+                  ? { include_url: String(payload["url"] ?? "") }
+                  : action === "exclude_rule"
+                    ? { exclude: rule }
+                    : { remove_rule: rule };
+            const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+            const result = await knowledge.changeWebsiteLinks(getServiceClient(), auth.organizationId, sourceId, change);
+            if (!result.ok) return jsonError(result.error ?? "That didn't work.", 422);
+            await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "knowledge_links_changed", {
+              source_id: sourceId,
+              action,
+              ...("exclude_url" in change ? { url: change.exclude_url, folder: change.folder } : {}),
+              ...("include_url" in change ? { url: change.include_url } : {}),
+              ...(action === "exclude_rule" || action === "remove_rule" ? { rule } : {}),
+            });
+            return Response.json(result);
+          }
+
+          if (action === "change_address") {
+            const sourceId = String(payload["source_id"] ?? "");
+            const url = String(payload["url"] ?? "").trim();
+            if (!/^https?:\/\//i.test(url)) return jsonError("Enter a full web address.");
+            const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+            const result = await knowledge.changeWebsiteAddress(getServiceClient(), auth.organizationId, sourceId, url);
+            if (!result.ok) return jsonError(result.error ?? "We couldn't change that address.", 422);
+            await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "knowledge_address_changed", { source_id: sourceId, url: result.url });
+            return Response.json(result);
           }
 
           if (action === "restore_source") {

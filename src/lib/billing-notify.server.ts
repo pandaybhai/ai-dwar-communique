@@ -117,6 +117,9 @@ const TEMPLATE_FOR: Record<string, string> = {
   // Card renders past the monthly alarm (card-usage-alert.server.ts): same
   // approved template, same admin number.
   "admin:card_usage_alert": "admin_ai_provider_alert",
+  // A merchant's website moved, lost many pages or grew a shelf
+  // (knowledge.server.ts raiseSiteAlert): same approved template.
+  "admin:site_change_alert": "admin_ai_provider_alert",
 };
 
 /**
@@ -371,6 +374,7 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
       return [orgName, money(Number(payload["estimate"] ?? 0)), link];
     case "ai_provider_alert":
     case "card_usage_alert":
+    case "site_change_alert":
       return [
         String(payload["headline"] ?? "the AI provider is failing"),
         String(payload["detail"] ?? "Aiden replies may be failing"),

@@ -177,3 +177,139 @@ export function infoCoverage(pages: Array<{ url: string; title?: string | null }
   }
   return out;
 }
+
+// ------------------------------------------------------------- page types
+
+export type PageType = "home" | "info" | "category" | "product" | "blog" | "junk" | "other";
+
+const JUNK_PATH_RE = /\/(?:cart|checkout|basket|bag|login|log-in|signin|sign-in|signup|sign-up|register|account|my-account|profile|wishlist|search|logout|password|orders?|wp-admin|wp-login)(?:\/|$)/i;
+const INFO_PATH_RE =
+  /\/(?:about|about-us|our-story|who-we-are|contact|contact-us|stores?|store-locator|locations?|find-us|visit-us|faqs?|help|size-guide|size-chart|sizing|shipping|delivery|returns?|refunds?|exchanges?|cancellation|terms|privacy|polic(?:y|ies)|careers|jobs|warranty)(?:[-_/]|$)/i;
+const PRODUCT_PATH_RE = /\/(?:products?|product[-_]details?|item|p)\/[^/]+/i;
+const CATEGORY_PATH_RE = /\/(?:collections?|categor(?:y|ies)|product-category|shop|catalog(?:ue)?|listing)(?:\/|$|\?)/i;
+const BLOG_PATH_RE = /\/(?:blogs?|news|articles?|journal|stories)(?:\/|$)/i;
+
+/** What kind of page an address is, from the address alone (the same families the reading order uses). */
+export function pageType(url: string): PageType {
+  let path = url;
+  try {
+    const u = new URL(url);
+    path = `${decodeURIComponent(u.pathname)}${u.search}`;
+  } catch {
+    // judge the text as given
+  }
+  if (path === "/" || path === "") return "home";
+  if (JUNK_PATH_RE.test(path)) return "junk";
+  if (PRODUCT_PATH_RE.test(path)) return "product";
+  if (INFO_PATH_RE.test(path)) return "info";
+  if (BLOG_PATH_RE.test(path)) return "blog";
+  if (CATEGORY_PATH_RE.test(path)) return "category";
+  return "other";
+}
+
+// --------------------------------------------------------- exclude rules
+
+export type ExcludeOp = "starts_with" | "contains" | "ends_with" | "exact";
+export type ExcludeRule = { op: ExcludeOp; value: string };
+const EXCLUDE_OPS: ExcludeOp[] = ["starts_with", "contains", "ends_with", "exact"];
+
+/** The merchant's exclude rules as saved on the source (config.exclude_rules), cleaned. */
+export function readExcludeRules(raw: unknown): ExcludeRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ExcludeRule[] = [];
+  for (const item of raw) {
+    const op = (item as { op?: unknown })?.op;
+    const value = String((item as { value?: unknown })?.value ?? "").trim();
+    if (!EXCLUDE_OPS.includes(op as ExcludeOp) || !value) continue;
+    if (!out.some((r) => r.op === op && r.value === value)) out.push({ op: op as ExcludeOp, value: value.slice(0, 300) });
+  }
+  return out.slice(0, 200);
+}
+
+/** A rule's value may be pasted as a full address: compare the path part. */
+function rulePath(value: string): string {
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const u = new URL(value);
+      return `${u.pathname}${u.search}`;
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+/**
+ * Is this address left out by the merchant? starts with / ends with / exact
+ * compare the page's path (and query); contains looks anywhere in the
+ * address. An address the merchant included by hand is never excluded.
+ */
+export function isExcluded(url: string, rules: ExcludeRule[], includeUrls: string[] = []): boolean {
+  if (!rules.length) return false;
+  if (includeUrls.includes(url)) return false;
+  let path = url;
+  try {
+    const u = new URL(url);
+    path = `${u.pathname}${u.search}`;
+  } catch {
+    // not an address: compare as written
+  }
+  const lowerUrl = url.toLowerCase();
+  const lowerPath = path.toLowerCase();
+  for (const rule of rules) {
+    const v = rulePath(rule.value).toLowerCase();
+    if (rule.op === "contains" && lowerUrl.includes(rule.value.toLowerCase())) return true;
+    if (rule.op === "starts_with" && lowerPath.startsWith(v)) return true;
+    if (rule.op === "ends_with" && (lowerPath.endsWith(v) || lowerPath.replace(/\/$/, "").endsWith(v.replace(/\/$/, "")))) return true;
+    if (rule.op === "exact" && (lowerPath === v || lowerPath.replace(/\/$/, "") === v.replace(/\/$/, "") || lowerUrl === rule.value.toLowerCase())) return true;
+  }
+  return false;
+}
+
+/** "Exclude this folder": the folder a page sits in, as a starts-with rule. */
+export function folderRule(url: string): ExcludeRule | null {
+  try {
+    const parts = new URL(url).pathname.split("/").filter(Boolean);
+    if (parts.length < 2) return null;
+    return { op: "starts_with", value: `/${parts.slice(0, -1).join("/")}/` };
+  } catch {
+    return null;
+  }
+}
+
+// ------------------------------------------------------------- swap rule
+
+export type SwapInput = {
+  /** Customer answers the live version covered (infoCoverage keys that were true). */
+  previousTopics: CoverageKey[];
+  /** …and what the new full read covers. */
+  newTopics: CoverageKey[];
+  previousProducts: number;
+  newProducts: number;
+};
+export type SwapDecision = { swap: boolean; reasons: string[]; missingTopics: CoverageKey[] };
+
+/**
+ * A full re-read replaces the live version (pages it no longer finds are
+ * forgotten, products hidden) only when it covers at least the same info
+ * pages and at least 80% of the products the live version had. Otherwise the
+ * live version is kept as it is and the reasons are shown.
+ */
+export function decideSwap(input: SwapInput): SwapDecision {
+  const reasons: string[] = [];
+  const missingTopics = input.previousTopics.filter((t) => !input.newTopics.includes(t));
+  if (missingTopics.length) {
+    const labels = missingTopics.map((k) => COVERAGE_TOPICS.find((t) => t.key === k)?.label ?? k);
+    reasons.push(`the new read didn't find ${labels.join(", ")}`);
+  }
+  if (input.previousProducts > 0 && input.newProducts < Math.ceil(input.previousProducts * 0.8)) {
+    reasons.push(`it found ${input.newProducts} of ${input.previousProducts} products (needs at least 80%)`);
+  }
+  return { swap: reasons.length === 0, reasons, missingTopics };
+}
+
+/** The topics a set of pages covers, as a list. */
+export function coveredTopics(pages: Array<{ url: string; title?: string | null }>): CoverageKey[] {
+  const c = infoCoverage(pages);
+  return COVERAGE_TOPICS.map((t) => t.key).filter((k) => c[k]);
+}
