@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "@/components/marketing/reveal";
 
-const TITLE = "Pricing — AiDwar WhatsApp marketing plans";
+const TITLE = "AiDwar Pricing | WhatsApp AI Employee & Marketing Plans";
 const DESCRIPTION =
   "Simple monthly plans for WhatsApp marketing in India. Pay for the platform, top up message credits as you go. GST invoices on every payment.";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
+    links: [{ rel: "canonical", href: "https://aidwar.in/pricing" }],
     meta: [
       { title: TITLE },
       { name: "description", content: DESCRIPTION },
@@ -72,7 +73,6 @@ function PricingPage() {
   const plans: Plan[] | null = loaded.plans;
   const failed = !loaded.ok || loaded.plans.length === 0;
   const [annual, setAnnual] = useState(false);
-
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -221,8 +221,8 @@ function PricingPage() {
               <p>
                 Meta charges per conversation, and the rate depends on what you're sending —
                 promotions, order updates or one-time passcodes. We pass that through with a clear
-                margin, show you the exact rate in your billing page before you send, and never
-                bill you for replies inside the 24-hour service window.
+                margin, show you the exact rate in your billing page before you send, and never bill
+                you for replies inside the 24-hour service window.
               </p>
               <p>
                 Credits are prepaid: top up whenever you like, and every campaign tells you what it
