@@ -26,6 +26,7 @@ export function SendSequence({ steps, compact = false }: { steps: SendStep[]; co
       {pictures > 0 ? (
         <li className="pl-7 text-[11px] text-muted-foreground">
           {pictures} {pictures === 1 ? "picture" : "pictures"} · with the WhatsApp shop on, products go as catalogue cards in the same order.
+          {pictures > 1 ? " The first product of a group arrives first; the rest are sent together, so WhatsApp may show them in another order." : ""}
         </li>
       ) : null}
     </ol>

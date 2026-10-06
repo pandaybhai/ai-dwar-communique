@@ -17,7 +17,9 @@ const LEGACY_PICTURES = 3;
  *   - without parts: the answer, then up to three product pictures with name
  *     and price (productCaption, no link).
  * With the WhatsApp shop on, products go as catalogue cards instead; the
- * order is the same.
+ * order is the same. Since 15A a part's first product is sent first and the
+ * rest of that part together (the words after them wait for all), so
+ * WhatsApp may show the 2nd, 3rd… of one part in a different order.
  */
 export function replySendOrder(run: Pick<RunResult, "output" | "media" | "parts">): SendStep[] {
   const steps: SendStep[] = [];
