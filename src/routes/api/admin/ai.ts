@@ -370,7 +370,32 @@ export const Route = createFileRoute("/api/admin/ai")({
             models: models.data ?? [],
             rates: rates.data ?? [],
             totals: { cost, billed, margin: billed - cost, runs: runRows.length },
+            // Configured yes/no and the model name only — never a key.
+            backup: (await import("@/lib/ai-fallback.server")).backupStatus(),
           });
+        }
+
+        // One tiny prompt to each configured backup provider: how long it took,
+        // or the provider's exact error (bad key, no credit, wrong model).
+        // Logged; never billed to a workspace.
+        if (action === "backup_test") {
+          const { backupStatus, testBackupProviders } = await import("@/lib/ai-fallback.server");
+          const results = await testBackupProviders();
+          await supabase
+            .from("activity_log")
+            .insert({
+              organization_id: null,
+              user_id: user.id,
+              action: "ai_backup_tested",
+              details: {
+                results: results.map((r) => ({ provider: r.provider, model: r.model, ok: r.ok, seconds: r.seconds, reason: r.reason, error: r.error })),
+              },
+            })
+            .then(
+              () => undefined,
+              () => undefined,
+            );
+          return Response.json({ backup: backupStatus(), results });
         }
 
         // The platform-wide rules every employee is briefed with. Merchants

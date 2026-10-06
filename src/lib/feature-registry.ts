@@ -725,6 +725,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       // Platform-level (organization_id null): the AI provider ran out of
       // credit/quota or a backup answered (ai-fallback.server.ts).
       "ai_provider_alert",
+      // Platform-level: a super admin pressed "Test backup" in /admin/ai.
+      "ai_backup_tested",
     ],
     settings_path: "/app/employee",
     usage_meters: [
@@ -1033,6 +1035,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "credit_note_issued",
       "billing_templates_created",
       "trial_expired",
+      // A super admin moved trial_ends_at only (billing.server.ts extendTrial).
+      "trial_extended",
       "plan_purchase_started",
       "plan_purchased",
     ],
@@ -1181,7 +1185,13 @@ export const FEATURES: readonly FeatureManifest[] = [
       metrics: [],
       dashboard_section: false,
     },
-    activity_actions: ["card_branding_updated", "card_usage_updated", "card_sent_inbox"],
+    activity_actions: [
+      "card_branding_updated",
+      "card_usage_updated",
+      "card_sent_inbox",
+      // More than 5,000 card renders in a month (card-usage-alert.server.ts).
+      "card_usage_alert",
+    ],
     data_tables: ["onboarding_card_templates"],
   },
   {

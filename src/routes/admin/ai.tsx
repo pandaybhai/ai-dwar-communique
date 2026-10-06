@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Bot, Gauge, KeyRound, Loader2, Save, WalletCards } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, Gauge, KeyRound, LifeBuoy, Loader2, Save, WalletCards, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,7 +39,21 @@ type Model = {
   is_available: boolean;
   is_deprecated: boolean;
 };
+type BackupStatus = {
+  order: string[];
+  anthropic: { configured: boolean; model: string };
+  openai: { configured: boolean; model: string; careful_model: string };
+};
+type BackupResult = {
+  provider: string;
+  model: string;
+  ok: boolean;
+  seconds: number;
+  reason: string | null;
+  error: string | null;
+};
 type Overview = {
+  backup?: BackupStatus;
   markup: number;
   platform_cap: { amount: number; currency: string; spent: number };
   providers: Provider[];
@@ -142,6 +156,8 @@ function AdminAi() {
         busy={busy === "platform_cap"}
         onSave={() => act("set_platform_cap", { amount: Number(platformCap) }, "platform_cap")}
       />
+
+      {data.backup ? <BackupCard backup={data.backup} /> : null}
 
       <section className="space-y-4">
         <div>
@@ -293,6 +309,110 @@ function PlatformCapCard({
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save
             </Button>
           </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const REASON_WORDS: Record<string, string> = {
+  bad_key: "Bad key",
+  no_credit: "No credit",
+  wrong_model: "Wrong model",
+  rate_limited: "Rate limited",
+  unreachable: "Couldn't reach it",
+  other: "Error",
+};
+
+/**
+ * The AI backup (used only when the Lovable gateway is out of credit or
+ * failing): which backup keys are set — never the keys themselves — the
+ * models, and a live test that sends one tiny prompt to each.
+ */
+function BackupCard({ backup }: { backup: BackupStatus }) {
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState<BackupResult[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const none = !backup.anthropic.configured && !backup.openai.configured;
+
+  async function test() {
+    setBusy(true);
+    setError(null);
+    const result = await callApi<{ results: BackupResult[] }>("/api/admin/ai", { body: { action: "backup_test" } });
+    setBusy(false);
+    if (result.error || !result.data) {
+      setError(result.error ?? "The test could not be run.");
+      return;
+    }
+    setResults(result.data.results);
+  }
+
+  const rows: Array<{ provider: string; label: string; configured: boolean; models: string }> = [
+    { provider: "anthropic", label: "Anthropic", configured: backup.anthropic.configured, models: backup.anthropic.model },
+    {
+      provider: "openai",
+      label: "OpenAI",
+      configured: backup.openai.configured,
+      models:
+        backup.openai.model === backup.openai.careful_model
+          ? backup.openai.model
+          : `${backup.openai.model} (careful: ${backup.openai.careful_model})`,
+    },
+  ];
+
+  return (
+    <section className="rounded-xl border border-border/70 bg-card p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <LifeBuoy className="mt-0.5 h-5 w-5 text-primary" />
+        <div className="flex-1 space-y-4">
+          <div>
+            <h2 className="font-semibold">AI backup</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Answers only when the Lovable AI gateway is out of credit, rate-limited past its quota, failing or unreachable — never for a workspace on its own key. Keys are server settings (ANTHROPIC_API_KEY / OPENAI_API_KEY) and are never shown here.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {rows.map((row) => (
+              <div key={row.provider} className="rounded-lg border border-border/70 p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{row.label}</span>
+                  <span className={row.configured ? "text-primary" : "text-muted-foreground"}>
+                    {row.configured ? "Configured: yes" : "Configured: no"}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Model: {row.models}</p>
+              </div>
+            ))}
+          </div>
+          {backup.order.length > 1 ? (
+            <p className="text-xs text-muted-foreground">Tried in this order: {backup.order.join(" → ")}</p>
+          ) : null}
+          <div className="flex items-center gap-3">
+            <Button variant="outline" disabled={busy || none} onClick={() => void test()}>
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Test backup
+            </Button>
+            {none ? <span className="text-sm text-muted-foreground">No backup key is set, so there is nothing to test.</span> : null}
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {results ? (
+            <ul className="space-y-2 text-sm">
+              {results.map((r) => (
+                <li key={`${r.provider}:${r.model}`} className="flex items-start gap-2">
+                  {r.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />}
+                  <span className="min-w-0">
+                    <span className="font-medium capitalize">{r.provider}</span> · {r.model} —{" "}
+                    {r.ok ? (
+                      `answered in ${r.seconds.toFixed(1)} s`
+                    ) : (
+                      <span className="text-destructive">
+                        {REASON_WORDS[r.reason ?? "other"] ?? "Error"}: <span className="break-words">{r.error}</span>
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       </div>
     </section>

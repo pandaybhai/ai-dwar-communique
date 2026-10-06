@@ -975,13 +975,21 @@ describe("(4) speed: the number is looked up while the event is stored", () => {
 
   it("the number read starts with the event insert, and is the only number read", async () => {
     const { w } = await arrive("b10-order", true, TAP);
-    const insert = w.starts.find((s) => s.table === "webhook_events" && s.kind === "insert")!;
-    const account = w.starts.find((s) => s.table === "whatsapp_accounts")!;
-    expect(Math.abs(account.at - insert.at)).toBeLessThan(RTT / 2);
+    // Order, not milliseconds (a loaded machine stretches every gap): the
+    // number read starts while the event insert is still in flight, and the
+    // insert started while the read hadn't finished — they overlap.
+    const at = (phase: "start" | "end", match: (s: { table: string; kind: string }) => boolean) =>
+      w.sequence.findIndex((s) => s.phase === phase && match(s));
+    const isInsert = (s: { table: string; kind: string }) => s.table === "webhook_events" && s.kind === "insert";
+    const isAccount = (s: { table: string }) => s.table === "whatsapp_accounts";
+    expect(at("start", isInsert)).toBeGreaterThanOrEqual(0);
+    expect(at("start", isAccount)).toBeGreaterThanOrEqual(0);
+    expect(at("start", isAccount)).toBeLessThan(at("end", isInsert));
+    expect(at("start", isInsert)).toBeLessThan(at("end", isAccount));
     expect(w.ops.filter((o) => o.table === "whatsapp_accounts")).toHaveLength(1);
     // Nothing is written before the event is stored.
-    const firstWrite = w.starts.find((s) => s.kind !== "select" && s.table !== "webhook_events");
-    expect(firstWrite!.at).toBeGreaterThanOrEqual(insert.at + RTT);
+    const firstWrite = at("start", (s) => s.kind !== "select" && s.table !== "webhook_events");
+    expect(firstWrite).toBeGreaterThan(at("end", isInsert));
   });
 
   it("unchanged: an unsigned payload reads nothing early (and isn't processed)", async () => {

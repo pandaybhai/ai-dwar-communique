@@ -29,6 +29,8 @@ export function budgetWords(q: Pick<ProductQuery, "minPrice" | "maxPrice">): str
 export function searchArgs(q: ProductQuery, shelf: string): Record<string, unknown> {
   return {
     limit: q.limit,
+    // Cheapest first (the filters and the limit are unchanged).
+    order: "price_asc",
     // A shelf the search knows filters by category; any other word is
     // searched for by name.
     ...(shelf ? { category: q.category } : q.category ? { query: q.category } : {}),

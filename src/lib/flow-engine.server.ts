@@ -229,6 +229,7 @@ export async function startRun(
   if (error || !inserted) return { runId: null, reason: error?.code === "23505" ? "already_running" : "insert_failed" };
   const run = inserted as Run;
   extras.timer?.mark("flow_routed");
+  extras.timer?.mark("run_created");
   // Every trigger fire is recorded (trigger, flow, contact, run) for the
   // Triggers panel and stats — written alongside the first step, not before it.
   const triggerId = String(args.trigger?.["trigger_id"] ?? "");
@@ -789,6 +790,7 @@ async function advanceInner(
       return;
     }
     const d = node.data;
+    if (node.type !== "start") env.timer?.mark("first_node");
     const waitingHere = run.status === "waiting" && run.current_node_id === node.id && seen === 1;
     const awaitingReply = waitingHere && run.waiting_for === "reply";
     const payWaiting = waitingHere && run.waiting_for === "payment";

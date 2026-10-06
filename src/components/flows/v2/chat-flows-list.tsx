@@ -8,6 +8,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { STARTERS } from "@/lib/flow-starters";
 import { relativeTime } from "@/lib/catalog";
 import { responsesLine, type FlowResponseCount } from "@/lib/flow-responses";
+import { flowStatus } from "@/lib/flow-status";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/empty-state";
@@ -40,6 +41,8 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
   // The Responses view needs contacts.view, same as inside the editor.
   const canViewResponses = can("contacts.view");
   const [counts, setCounts] = useState<Record<string, FlowResponseCount>>({});
+  // Flows with a published version; null until read (or if the read fails).
+  const [published, setPublished] = useState<Set<string> | null>(null);
   const navigate = useNavigate();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState(false);
@@ -51,6 +54,14 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
     if (e) { setError(true); return; }
     const list = (data ?? []) as Row[];
     setRows(list);
+    const ids = list.map((r) => r.id);
+    if (ids.length) {
+      void Promise.resolve(
+        aidwar.from("flow_versions").select("flow_id").eq("organization_id", organizationId).eq("status", "published").in("flow_id", ids),
+      ).then(({ data: pubs, error: pe }) => {
+        if (!pe) setPublished(new Set(((pubs ?? []) as Array<{ flow_id: string }>).map((p) => p.flow_id)));
+      }, () => {});
+    }
     // Counts arrive after the list; a failed count just leaves the line out.
     void loadResponseCounts(organizationId, list.map((r) => r.id)).then(setCounts).catch(() => {});
   }, [organizationId]);
@@ -84,7 +95,7 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
                     <span className="block text-xs text-muted-foreground">{responsesLine(counts[r.id]!, relativeTime)}</span>
                   ) : null}
                 </span>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${r.is_enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{r.is_enabled ? "Published" : "Draft"}</span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${r.is_enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{flowStatus(r.is_enabled, published ? published.has(r.id) : null)}</span>
               </Link>
               {canViewResponses ? (
                 <Link to="/app/flows/v2/$id" params={{ id: r.id }} search={{ view: "responses" }} className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary transition hover:bg-primary/10">

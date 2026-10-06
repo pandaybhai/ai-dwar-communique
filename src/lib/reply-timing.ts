@@ -17,8 +17,11 @@ export const STAGE_ORDER = [
   "conversation", // open conversation found or created
   "message_stored", // message upsert = dedupe
   "guards_done", // catalogue order, opt-out, cash-on-delivery
+  "trigger_matched", // no run took it; a trigger matched and is starting its flow
   "flow_routed", // the run claimed, or a trigger's run inserted
+  "run_created", // a trigger's run row written (starts only)
   "flow_env", // the run's contact, window and number ready
+  "first_node", // the first step after Start begins (or the step the run waited on)
   "send_start", // the first WhatsApp send API call starts
   "flows", // flow engine returned (bookkeeping included)
   "automations",

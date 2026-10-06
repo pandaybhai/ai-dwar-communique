@@ -22,7 +22,7 @@ export function fakeDb(
     from(table: string) {
       const op: FakeOp = { table, kind: "select", filters: [] };
       const b: Record<string, unknown> = {};
-      for (const m of ["eq", "neq", "in", "or", "not", "lt", "lte", "gt", "gte", "is", "ilike", "order", "limit", "range", "maybeSingle", "single"])
+      for (const m of ["eq", "neq", "in", "or", "not", "lt", "lte", "gt", "gte", "is", "ilike", "like", "order", "limit", "range", "maybeSingle", "single"])
         b[m] = (...a: unknown[]) => {
           op.filters.push([m, a]);
           return b;

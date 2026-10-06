@@ -74,6 +74,8 @@ type Props = {
   name: string;
   initial: FlowGraph;
   published: boolean;
+  /** flows.is_enabled is false: a published flow then reads "Off". */
+  switchedOff?: boolean;
   canEdit: boolean;
   pickers: Pickers;
   versions: VersionRow[];
@@ -96,7 +98,7 @@ export function FlowEditor(props: Props) {
   );
 }
 
-function EditorInner({ organizationId, flowId, name: initialName, initial, published, canEdit, pickers, versions, stats, tags, onChanged, aiOn, canViewResponses, canExportResponses, initialView }: Props) {
+function EditorInner({ organizationId, flowId, name: initialName, initial, published, switchedOff, canEdit, pickers, versions, stats, tags, onChanged, aiOn, canViewResponses, canExportResponses, initialView }: Props) {
   const rf = useReactFlow();
   const navigate = useNavigate();
   const [meta, setMeta] = useState<NonNullable<FlowGraph["meta"]>>(() => initial.meta ?? {});
@@ -402,7 +404,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     <div className="flex h-[calc(100vh-9rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <Input className="h-9 w-56 font-semibold" value={name} disabled={!canEdit} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${published ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{published ? "Published" : "Draft only"}</span>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${published && !switchedOff ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{published ? (switchedOff ? "Off" : "Published") : "Draft only"}</span>
         {dirty && (saveError ? <span className="text-xs font-medium text-destructive" role="alert" title={saveError}>Not saved — {saveError}</span> : <span className="text-xs text-muted-foreground">Unsaved changes</span>)}
         {canViewResponses && (
           <div role="tablist" aria-label="Flow view" className="inline-flex rounded-lg border border-border p-0.5">

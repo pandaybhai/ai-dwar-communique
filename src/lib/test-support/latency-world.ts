@@ -129,6 +129,9 @@ export function latencyWorld(opts: {
   };
   // Start time (ms after t0) of every query, in issue order, for the trace.
   const starts: Array<{ at: number; table: string; kind: string }> = [];
+  // Every query's start and end, in the order they happened (no clock): lets
+  // a test say "this began before that finished" without timing tolerances.
+  const sequence: Array<{ phase: "start" | "end"; table: string; kind: string }> = [];
   let inFlight = 0;
   const queue: Array<() => void> = [];
   const slot = () =>
@@ -146,8 +149,12 @@ export function latencyWorld(opts: {
     slot().then(
       () =>
         new Promise<T>((r) => {
-          if (label) starts.push({ at: Date.now() - t0.at, ...label });
+          if (label) {
+            starts.push({ at: Date.now() - t0.at, ...label });
+            sequence.push({ phase: "start", ...label });
+          }
           setTimeout(() => {
+            if (label) sequence.push({ phase: "end", ...label });
             release();
             r(value);
           }, opts.rttMs);
@@ -166,7 +173,7 @@ export function latencyWorld(opts: {
     await new Promise((r) => setTimeout(r, opts.graphMs));
     return new Response(JSON.stringify({ messages: [{ id: `wamid.out.${graphSends.length}` }] }), { status: 200 });
   };
-  return { ...db, t0, graphSends, fetchStub, starts };
+  return { ...db, t0, graphSends, fetchStub, starts, sequence };
 }
 
 export function inboundPayload(msg: Record<string, unknown>) {

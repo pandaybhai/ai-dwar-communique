@@ -37,6 +37,7 @@ type PlanChangePreview = {
   plan_key: string;
   plan_name: string;
   features_off: { key: string; name: string; live: { label: string; count: number }[] }[];
+  in_use?: { key: string; name: string; uses: { label: string; count: number }[] }[];
   locked_members: { user_id: string; name: string | null }[];
   locked_numbers: { id: string; label: string }[];
   subscription: {
@@ -143,6 +144,7 @@ export function OrgBillingSheet({
   const [settings, setSettings] = useState<Record<string, string | boolean>>({});
   const [funding, setFunding] = useState("meta_direct");
   const [trialDays, setTrialDays] = useState("14");
+  const [extendDays, setExtendDays] = useState("7");
   const [rateDraft, setRateDraft] = useState<Record<string, { mode: string; value: string }>>({});
   const [showRateHistory, setShowRateHistory] = useState(false);
   const [walletAmount, setWalletAmount] = useState("");
@@ -251,6 +253,27 @@ export function OrgBillingSheet({
     }
     const note = result.data?.mandate?.changed ? ` ${result.data.mandate.note}` : "";
     toast.success(`Plan assigned.${note}`);
+    await load();
+  }
+
+  // Moves the trial's end date only: the plan, its features and auto-pay are
+  // left exactly as they are (this never goes through Assign plan).
+  async function extendTrial() {
+    const days = Number(extendDays);
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      toast.error("Extend by 1 to 90 days.");
+      return;
+    }
+    setBusy("extend");
+    const result = await callApi<{ ok?: boolean; error?: string; trial_ends_at?: string }>("/api/admin/billing", {
+      body: { action: "extend_trial", organization_id: organizationId, days },
+    });
+    setBusy(null);
+    if (result.error || result.data?.error || !result.data?.trial_ends_at) {
+      toast.error(result.error ?? result.data?.error ?? "That didn't work.");
+      return;
+    }
+    toast.success(`Trial now ends on ${new Date(result.data.trial_ends_at).toLocaleDateString("en-IN")}.`);
     await load();
   }
 
@@ -413,6 +436,28 @@ export function OrgBillingSheet({
                   Assign plan
                 </Button>
               </Section>
+
+              {data.organization?.["plan_status"] === "trial" ? (
+                <Section
+                  title="Extend trial"
+                  description="Moves only the trial's end date. The plan, its features and auto-pay stay exactly as they are."
+                >
+                  <p className="text-sm text-muted-foreground">
+                    {data.organization?.["trial_ends_at"]
+                      ? `Trial ends on ${new Date(String(data.organization["trial_ends_at"])).toLocaleDateString("en-IN")}.`
+                      : "This trial has no end date."}
+                  </p>
+                  <div className="flex max-w-sm items-end gap-3">
+                    <Field label="Extend trial by (days)">
+                      <Input inputMode="numeric" value={extendDays} onChange={(e) => setExtendDays(e.target.value)} />
+                    </Field>
+                    <Button variant="outline" disabled={busy === "extend"} onClick={() => void extendTrial()}>
+                      {busy === "extend" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Extend trial
+                    </Button>
+                  </div>
+                </Section>
+              ) : null}
             </TabsContent>
 
             {/* b) Features */}
@@ -1034,6 +1079,19 @@ export function OrgBillingSheet({
           </AlertDialogHeader>
 
           <div className="max-h-80 space-y-4 overflow-y-auto text-sm">
+            {planPreview?.in_use?.length ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3" role="alert">
+                <p className="font-medium text-destructive">They are using these right now — they stop on this plan</p>
+                <ul className="mt-1 space-y-1 text-muted-foreground">
+                  {planPreview.in_use.map((f) => (
+                    <li key={f.key}>
+                      <span className="font-medium text-foreground">{f.name}</span> —{" "}
+                      {f.uses.map((u) => `${u.count} ${u.label}`).join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {planPreview?.features_off.length ? (
               <div>
                 <p className="font-medium">These switch off</p>

@@ -290,19 +290,55 @@ describe("(2) flow replies: under 3 s means few round trips before the send", ()
     expect(echo.graphSends).toHaveLength(0);
   });
 
-  it("a teammate-owned conversation still never starts a keyword flow (version read alongside, unused)", { timeout: 15_000 }, async () => {
+  it("a teammate-owned conversation still never starts a keyword flow (ownership read with the conversation)", { timeout: 15_000 }, async () => {
+    // Batch 11 (6): assigned_to now arrives with the conversation the webhook
+    // already reads, so no separate ownership read sits before the start.
     const w = await deliver("o6-owned", false, KEYWORD, (op) =>
-      op.table === "conversations" && op.kind === "select" && op.filters.some(([f]) => f === "not")
-        ? { data: [{ id: "cv1" }], error: null }
+      op.table === "conversations" && op.kind === "select" && String(op.select?.[0] ?? "").includes("assigned_to") && !op.filters.some(([f]) => f === "not")
+        ? {
+            data: {
+              id: "cv1",
+              contact_id: "c1",
+              unread_count: 0,
+              assigned_to: "teammate-1",
+              last_customer_message_at: new Date().toISOString(),
+              whatsapp_account_id: "acc-o6-owned",
+              contacts: { phone: "+919800000001" },
+            },
+            error: null,
+          }
         : undefined,
     );
     expect(w.ops.some((o) => o.table === "flow_runs" && o.kind === "insert")).toBe(false);
     expect(w.graphSends).toHaveLength(0);
-    // The ownership check and the published-version read went out together.
-    const version = w.starts.find((s) => s.table === "flow_versions")!;
-    const ownerChecks = w.starts.filter((s) => s.table === "conversations" && s.kind === "select" && s.at >= version.at - RTT / 2);
-    expect(ownerChecks.some((s) => Math.abs(s.at - version.at) < RTT / 2)).toBe(true);
+    expect(w.ops.some((o) => o.table === "conversations" && o.filters.some(([f]) => f === "not"))).toBe(false);
+  });
+
+  it("unchanged: without the conversation's owner in hand, the trigger reads it itself and still holds back", async () => {
+    const { dispatchInboundTriggers } = await import("./flow-triggers.server");
+    const w = latencyWorld({
+      org: "o6-owned2",
+      rttMs: 1,
+      graphMs: 1,
+      waitingRun: false,
+      override: (op) =>
+        op.table === "conversations" && op.kind === "select" && op.filters.some(([f]) => f === "not")
+          ? { data: [{ id: "cv1" }], error: null }
+          : undefined,
+    });
+    vi.stubGlobal("fetch", w.fetchStub);
+    const r = await dispatchInboundTriggers(w.supabase, {
+      organizationId: "o6-owned2",
+      contactId: "c1",
+      conversationId: "cv1",
+      body: "menu",
+      isFirstMessageEver: false,
+      isCtwa: false,
+      campaignButton: null,
+    });
+    expect(r.started).toBe(false);
     expect(w.ops.some((o) => o.table === "conversations" && o.filters.some(([f]) => f === "not"))).toBe(true);
+    expect(w.ops.some((o) => o.table === "flow_runs" && o.kind === "insert")).toBe(false);
   });
 
   it("status-only payloads don't read markers, opt-out words or the Flows flag", async () => {
