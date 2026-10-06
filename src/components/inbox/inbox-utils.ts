@@ -49,6 +49,8 @@ export type MessageRow = {
   detected_language?: string | null;
   /** Structured extras, e.g. a filled-in form's answers. */
   metadata?: Record<string, unknown> | null;
+  /** Display only: a template message's text, filled in (its body is empty). */
+  template_text?: string | null;
   created_at: string;
 };
 
@@ -97,14 +99,56 @@ export function dayLabel(iso: string): string {
  * Template sends store them as metadata.template_params; a placeholder with
  * no stored value is left as it is.
  */
-export function fillTemplateText(text: string, metadata: Record<string, unknown> | null | undefined): string {
+export function fillTemplateText(
+  text: string,
+  metadata: Record<string, unknown> | null | undefined,
+  /** The template's own sample values, for a message sent before params were stored. */
+  samples?: Record<string, string> | null,
+): string {
   const params = metadata?.["template_params"];
-  if (!params || typeof params !== "object") return text;
+  if (!params || typeof params !== "object") {
+    // Sent before Batch 5 stored the values: never show a raw {{1}}. The
+    // template's sample value stands in, or a neutral "...".
+    return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_whole, key: string) => {
+      const sample = samples?.[key]?.trim();
+      return sample ? sample : "...";
+    });
+  }
   const values = params as Record<string, unknown>;
   return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (whole, key: string) => {
     const value = values[key];
     return typeof value === "string" || typeof value === "number" ? String(value) : whole;
   });
+}
+
+/**
+ * A template's BODY text and its sample values ({{1}} → "Priya"), read from
+ * the stored Meta components: positional examples (body_text) or named ones
+ * (body_text_named_params).
+ */
+export function templateBodyOf(
+  components: Array<Record<string, unknown>> | null | undefined,
+): { text: string; samples: Record<string, string> } | null {
+  const body = (components ?? []).find((c) => String(c["type"] ?? "").toUpperCase() === "BODY");
+  const text = typeof body?.["text"] === "string" ? (body["text"] as string).trim() : "";
+  if (!text) return null;
+  const samples: Record<string, string> = {};
+  const example = (body?.["example"] ?? {}) as Record<string, unknown>;
+  const positional = Array.isArray(example["body_text"]) ? (example["body_text"] as unknown[])[0] : null;
+  if (Array.isArray(positional)) {
+    positional.forEach((v, i) => {
+      if (typeof v === "string" || typeof v === "number") samples[String(i + 1)] = String(v);
+    });
+  }
+  const named = example["body_text_named_params"];
+  if (Array.isArray(named)) {
+    for (const p of named as Array<Record<string, unknown>>) {
+      const name = p["param_name"];
+      const value = p["example"];
+      if (typeof name === "string" && (typeof value === "string" || typeof value === "number")) samples[name] = String(value);
+    }
+  }
+  return { text, samples };
 }
 
 export function previewText(row: ConversationRow): string {

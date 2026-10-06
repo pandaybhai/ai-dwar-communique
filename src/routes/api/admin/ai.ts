@@ -370,7 +370,67 @@ export const Route = createFileRoute("/api/admin/ai")({
             models: models.data ?? [],
             rates: rates.data ?? [],
             totals: { cost, billed, margin: billed - cost, runs: runRows.length },
+            // Configured yes/no and the model name only — never a key.
+            backup: await (async () => {
+              const { backupStatus, loadPlatformBackup } = await import("@/lib/ai-fallback.server");
+              return backupStatus(process.env, await loadPlatformBackup(supabase, { fresh: true }));
+            })(),
           });
+        }
+
+        // One tiny prompt to each configured backup provider: how long it took,
+        // or the provider's exact error (bad key, no credit, wrong model).
+        // Logged; never billed to a workspace.
+        if (action === "backup_test") {
+          const { backupStatus, loadPlatformBackup, testBackupProviders } = await import("@/lib/ai-fallback.server");
+          // The same keys a real fallback uses: Platform providers (vault), else the env.
+          const platform = await loadPlatformBackup(supabase, { fresh: true });
+          const results = await testBackupProviders(process.env, platform);
+          await supabase
+            .from("activity_log")
+            .insert({
+              organization_id: null,
+              user_id: user.id,
+              action: "ai_backup_tested",
+              details: {
+                results: results.map((r) => ({ provider: r.provider, model: r.model, ok: r.ok, seconds: r.seconds, reason: r.reason, error: r.error })),
+              },
+            })
+            .then(
+              () => undefined,
+              () => undefined,
+            );
+          return Response.json({ backup: backupStatus(process.env, platform), results });
+        }
+
+        // The Anthropic model the backup answers on, saved in platform
+        // settings. ANTHROPIC_BACKUP_MODEL (a server setting) still overrides it.
+        if (action === "set_backup_model") {
+          const { backupStatus, isAnthropicBackupModel, loadPlatformBackup, resetPlatformBackupCache } =
+            await import("@/lib/ai-fallback.server");
+          const model = payload["anthropic_model"];
+          if (!isAnthropicBackupModel(model)) return jsonError("Choose one of the listed models.");
+          const { error } = await supabase
+            .from("platform_settings")
+            .update({ ai_backup_anthropic_model: model, updated_at: new Date().toISOString() })
+            .eq("id", true);
+          if (error) {
+            return /ai_backup_anthropic_model/.test(error.message ?? "")
+              ? jsonError(
+                  "The model choice can't be saved until the database update 20261017_ai_backup_model.sql is applied.",
+                  409,
+                )
+              : jsonError("The backup model could not be saved.", 500);
+          }
+          resetPlatformBackupCache();
+          await supabase
+            .from("activity_log")
+            .insert({ organization_id: null, user_id: user.id, action: "ai_backup_model_set", details: { anthropic_model: model } })
+            .then(
+              () => undefined,
+              () => undefined,
+            );
+          return Response.json({ ok: true, backup: backupStatus(process.env, await loadPlatformBackup(supabase, { fresh: true })) });
         }
 
         // The platform-wide rules every employee is briefed with. Merchants

@@ -12,7 +12,9 @@ import {
   MessageCircleQuestion,
   RefreshCw,
   BookOpenCheck,
+  FileSearch,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
@@ -87,8 +89,31 @@ export function ReadingLine({ source }: { source: KnowledgeSource }) {
     <>
       Read {nf(pages)}
       {source.type === "website" && total > pages ? ` of ${nf(total)}` : ""} {(total > pages ? total : pages) === 1 ? "page" : "pages"}
-      {products > 0 ? ` · ${plural(products, noun)}` : ""} · updated {whenText(source.last_synced_at)}
+      {products > 0 ? ` · ${plural(products, noun)}` : ""} · {source.type === "website" ? "last read" : "updated"} {whenText(source.last_synced_at)}
     </>
+  );
+}
+
+const COVERAGE_LABELS: Array<["faq" | "shipping" | "returns" | "size_guide" | "contact", string]> = [
+  ["faq", "FAQ"],
+  ["shipping", "Shipping"],
+  ["returns", "Returns"],
+  ["size_guide", "Size guide"],
+  ["contact", "Contact/Store"],
+];
+
+/** "FAQ ✓ Shipping ✓ Returns ✗ …" — the answers customers ask for most, found on the site or not. */
+export function CoverageLine({ source }: { source: KnowledgeSource }) {
+  const coverage = source.reading?.coverage;
+  if (!coverage || isReading(source.status) || source.deleted) return null;
+  return (
+    <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-muted-foreground" aria-label="What the site covers">
+      {COVERAGE_LABELS.map(([key, label]) => (
+        <span key={key} className={coverage[key] ? "text-foreground" : "text-muted-foreground/80"}>
+          {label} {coverage[key] ? "✓" : "✗"}
+        </span>
+      ))}
+    </p>
   );
 }
 
@@ -133,6 +158,8 @@ export function KnowledgeManager({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState<null | "website" | "file" | "answer">(null);
   const [openSource, setOpenSource] = useState<KnowledgeSource | null>(null);
+  const [forgetting, setForgetting] = useState<KnowledgeSource | null>(null);
+  const [pageFor, setPageFor] = useState<KnowledgeSource | null>(null);
   // While something is being read, refresh this list itself every 5s so the
   // owner watches it happen instead of pressing reload.
   const [live, setLive] = useState<KnowledgeSource[] | null>(null);
@@ -231,6 +258,38 @@ export function KnowledgeManager({
             const Icon = ICONS[source.type as keyof typeof ICONS] ?? BookOpen;
             const kind = KIND_TEXT[source.type] ?? { label: source.type, live: false };
             const busy = busyId === source.id;
+            if (source.deleted) {
+              return (
+                <li key={source.id} className="rounded-2xl border border-dashed border-border/70 bg-muted/30 p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                      <Icon className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-muted-foreground line-through">{source.name}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Deleted — Aiden no longer uses it. Kept until{" "}
+                        {new Date(source.deleted.purge_after).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}, then forgotten for good.
+                      </p>
+                    </div>
+                    <Badge variant="outline">Deleted</Badge>
+                  </div>
+                  {canConfigure ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => act({ action: "restore_source", source_id: source.id }, source.id, "Restored — Aiden uses it again.")}
+                      >
+                        <Undo2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Undo / Restore
+                      </Button>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            }
             return (
               <li
                 key={source.id}
@@ -256,6 +315,7 @@ export function KnowledgeManager({
                         {kind.label} · {plural(source.item_count, "item")} · read once
                       </p>
                     )}
+                    {source.type === "website" ? <CoverageLine source={source} /> : null}
                     {source.type === "website" ? <NextLine source={source} /> : null}
                     {source.type === "website" && isReading(source.status) ? <ReadingBar /> : null}
                   </div>
@@ -325,8 +385,12 @@ export function KnowledgeManager({
                       >
                         <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
                         {source.reading.changes_available_at
-                          ? `Read changes · ${new Date(source.reading.changes_available_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`
-                          : "Read changes now"}
+                          ? `Re-read whole site · ${new Date(source.reading.changes_available_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`
+                          : "Re-read whole site"}
+                      </Button>
+                      <Button size="sm" variant="ghost" disabled={busy} onClick={() => setPageFor(source)}>
+                        <FileSearch className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Re-read this page
                       </Button>
                       {source.reading.can_read_more ? (
                         <Button
@@ -369,7 +433,9 @@ export function KnowledgeManager({
                       className="text-destructive hover:text-destructive"
                       disabled={busy}
                       onClick={() =>
-                        act({ action: "delete_source", source_id: source.id }, source.id, "Forgotten.")
+                        source.type === "website"
+                          ? setForgetting(source)
+                          : act({ action: "delete_source", source_id: source.id }, source.id, "Forgotten.")
                       }
                     >
                       <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -389,6 +455,21 @@ export function KnowledgeManager({
         onClose={() => setAddOpen(null)}
         onAdded={onChanged}
       />
+      <ForgetWebsiteDialog
+        source={forgetting}
+        busy={Boolean(forgetting && busyId === forgetting.id)}
+        onCancel={() => setForgetting(null)}
+        onConfirm={async (source) => {
+          await act({ action: "delete_source", source_id: source.id }, source.id, "Deleted. You can undo this for 7 days.");
+          setForgetting(null);
+        }}
+      />
+      <RereadPageDialog
+        organizationId={organizationId}
+        source={pageFor}
+        onClose={() => setPageFor(null)}
+        onDone={onChanged}
+      />
       <SourceItemsDialog
         organizationId={organizationId}
         source={openSource}
@@ -397,6 +478,118 @@ export function KnowledgeManager({
         onChanged={onChanged}
       />
     </section>
+  );
+}
+
+/** Deleting a website says what Aiden will forget, and that it can be undone. */
+function ForgetWebsiteDialog({
+  source,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  source: KnowledgeSource | null;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (source: KnowledgeSource) => Promise<void>;
+}) {
+  const pages = source?.item_count ?? 0;
+  const products = source?.products_found ?? 0;
+  return (
+    <Dialog open={Boolean(source)} onOpenChange={(open) => (!open ? onCancel() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete {source?.name}?</DialogTitle>
+          <DialogDescription>
+            Aiden will forget {plural(pages, "page")} and {plural(products, "product")} from this website. You can undo this
+            for 7 days from this list; after that it is gone for good.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
+            Keep it
+          </Button>
+          <Button variant="destructive" disabled={busy || !source} onClick={() => source && void onConfirm(source)}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />}
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** "Re-read this page": one address from this site, read now. */
+function RereadPageDialog({
+  organizationId,
+  source,
+  onClose,
+  onDone,
+}: {
+  organizationId: string;
+  source: KnowledgeSource | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (source) setUrl("");
+  }, [source]);
+  const submit = async () => {
+    if (!source) return;
+    setBusy(true);
+    const { data, error } = await knowledgeApi<{ title?: string; saved?: boolean; product?: string | null }>({
+      organization_id: organizationId,
+      action: "reread_page",
+      source_id: source.id,
+      url: url.trim(),
+    });
+    setBusy(false);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    toast.success(
+      data?.saved === false
+        ? "Read it, but the page had too little text — kept what I had."
+        : `Read ${data?.title ?? "that page"}${data?.product ? ` · product: ${data.product}` : ""}.`,
+    );
+    onDone();
+    onClose();
+  };
+  return (
+    <Dialog open={Boolean(source)} onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Re-read one page</DialogTitle>
+          <DialogDescription>
+            Paste the address of a page on {source?.name}. I'll read it now and replace what I knew from it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="reread-url">Page address</Label>
+          <Input
+            id="reread-url"
+            placeholder={`https://${source?.name ?? "example.com"}/shipping`}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && url.trim()) void submit();
+            }}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={() => void submit()} disabled={busy || !/^https?:\/\//i.test(url.trim())}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            Read it now
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

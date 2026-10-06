@@ -156,7 +156,15 @@ async function recordCardRender(organizationId: string, task: "card_render" | "c
   try {
     const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
     const { meterAiUsage } = await import("@/lib/ai-run.server");
-    await meterAiUsage(getServiceClient(), organizationId, task, { costAmount: CARD_RENDER_COST, runs: 1 });
+    const service = getServiceClient();
+    await meterAiUsage(service, organizationId, task, { costAmount: CARD_RENDER_COST, runs: 1 });
+    // Past 5,000 renders this month the platform owner is told, once. Off the
+    // card's path: the check never delays or blocks a message.
+    if (task === "card_render") {
+      void import("@/lib/card-usage-alert.server")
+        .then(({ checkCardUsageAlarm }) => checkCardUsageAlarm(service, organizationId))
+        .catch(() => false);
+    }
   } catch (error) {
     console.error("[customer-cards] usage not recorded", error instanceof Error ? error.message : String(error));
   }

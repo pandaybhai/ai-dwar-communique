@@ -69,6 +69,18 @@ export const Route = createFileRoute("/api/ai/knowledge")({
                   .eq("status", "unread");
                 const unread = count ?? 0;
                 const room = Math.max(plan.cap - Number(r["pages_seen"] ?? 0), 0);
+                // Coverage line: which customer answers the pages we read cover.
+                const { data: pages } = await auth.supabase
+                  .from("knowledge_documents")
+                  .select("source_ref, title")
+                  .eq("source_id", String(r["id"]))
+                  .limit(5000);
+                const { infoCoverage } = await import("@/lib/site-urls");
+                const coverage = infoCoverage(
+                  ((pages ?? []) as Array<{ source_ref: string; title: string | null }>).map((p) => ({ url: p.source_ref, title: p.title })),
+                );
+                const config = (r["config"] ?? {}) as Record<string, unknown>;
+                const deleted = knowledge.isSoftDeleted({ status: String(r["status"] ?? ""), config });
                 const cooldownMs = reading.manual_refresh_cooldown_hours * 36e5;
                 const last = r["last_manual_refresh_at"] ? new Date(String(r["last_manual_refresh_at"])).getTime() : 0;
                 return {
@@ -81,7 +93,17 @@ export const Route = createFileRoute("/api/ai/knowledge")({
                     refresh_days: Number(r["refresh_days"] ?? 0) || reading.refresh_days,
                     can_read_more: plan.paid && unread > 0 && room > 0,
                     changes_available_at: last && Date.now() - last < cooldownMs ? new Date(last + cooldownMs).toISOString() : null,
+                    coverage,
                   },
+                  ...(deleted
+                    ? {
+                        deleted: {
+                          at: String(config["deleted_at"]),
+                          purge_after: String(config["purge_after"] ?? ""),
+                          products: Array.isArray(config["deleted_products"]) ? config["deleted_products"].length : 0,
+                        },
+                      }
+                    : {}),
                 };
               }),
             );
@@ -110,7 +132,11 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               const last = src.last_manual_refresh_at ? new Date(src.last_manual_refresh_at).getTime() : 0;
               if (last && Date.now() - last < cooldownMs)
                 return jsonError(`I checked recently. You can ask again after ${new Date(last + cooldownMs).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}.`, 429);
-              config = { ...(src.config ?? {}), refresh: true };
+              // The button also fills crawled products' missing photos,
+              // descriptions and shelves (scheduled refreshes don't).
+              config = { ...(src.config ?? {}), refresh: true, fill_products: true };
+              // A fresh refresh: every page read before now is read again.
+              config["refresh_started_at"] = null;
               extra["last_manual_refresh_at"] = new Date().toISOString();
             } else {
               const plan = await knowledge.planLimits(service, auth.organizationId);
@@ -247,11 +273,13 @@ export const Route = createFileRoute("/api/ai/knowledge")({
             if (!sourceId) return jsonError("Which source?");
             const { data: owned } = await auth.supabase
               .from("knowledge_sources")
-              .select("id, type")
+              .select("id, type, status, config")
               .eq("id", sourceId)
               .eq("organization_id", auth.organizationId)
               .maybeSingle();
             if (!owned) return jsonError("That source isn't in this workspace.", 403);
+            if (knowledge.isSoftDeleted(owned as { status?: string; config?: Record<string, unknown> | null }))
+              return jsonError("That website was deleted — restore it first.", 409);
             const result = await knowledge.syncSource(auth.supabase, sourceId);
             // A shop read before we kept a catalogue catches up here: only its
             // product pages are fetched again, never the whole site.
@@ -266,6 +294,28 @@ export const Route = createFileRoute("/api/ai/knowledge")({
           if (action === "delete_source") {
             const sourceId = String(payload["source_id"] ?? "");
             if (!sourceId) return jsonError("Which source?");
+            const { data: target } = await auth.supabase
+              .from("knowledge_sources")
+              .select("id, type")
+              .eq("id", sourceId)
+              .eq("organization_id", auth.organizationId)
+              .maybeSingle();
+            if (!target) return jsonError("That source isn't in this workspace.", 403);
+            // A website is never removed at once: Aiden stops using it now and
+            // everything is kept for 7 days so it can be restored exactly.
+            if ((target as { type?: string }).type === "website") {
+              const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+              const removed = await knowledge.softDeleteWebsiteSource(getServiceClient(), auth.organizationId, sourceId, auth.userId);
+              if (!removed.ok) return jsonError(removed.error ?? "We couldn't delete that website.", 409);
+              await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "ai_knowledge_removed", {
+                type: "website",
+                source_id: sourceId,
+                pages: removed.pages,
+                products: removed.products,
+                restorable_until: removed.purgeAfter,
+              });
+              return Response.json({ ok: true, soft: true, pages: removed.pages, products: removed.products, purge_after: removed.purgeAfter });
+            }
             await auth.supabase
               .from("knowledge_sources")
               .delete()
@@ -273,6 +323,38 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               .eq("organization_id", auth.organizationId);
             await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "ai_knowledge_removed", {});
             return Response.json({ ok: true });
+          }
+
+          if (action === "restore_source") {
+            const sourceId = String(payload["source_id"] ?? "");
+            if (!sourceId) return jsonError("Which source?");
+            const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+            const restored = await knowledge.restoreWebsiteSource(getServiceClient(), auth.organizationId, sourceId);
+            if (!restored.ok) return jsonError(restored.error ?? "We couldn't restore that website.", 409);
+            await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "knowledge_source_restored", {
+              source_id: sourceId,
+              products: restored.products,
+            });
+            return Response.json({ ok: true, products: restored.products });
+          }
+
+          if (action === "reread_page") {
+            const sourceId = String(payload["source_id"] ?? "");
+            const url = String(payload["url"] ?? "").trim();
+            if (!sourceId) return jsonError("Which website?");
+            if (!/^https?:\/\//i.test(url)) return jsonError("Paste the full address of the page.");
+            const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+            const service = getServiceClient();
+            if ((await knowledge.pageRereadsToday(service, auth.organizationId)) >= knowledge.PAGE_REREADS_PER_DAY)
+              return jsonError(`You've re-read ${knowledge.PAGE_REREADS_PER_DAY} pages today — try again tomorrow, or use "Re-read whole site".`, 429);
+            const result = await knowledge.rereadOnePage(service, auth.organizationId, sourceId, url);
+            if (!result.ok) return jsonError(result.error ?? "I couldn't read that page.", 422);
+            await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "knowledge_page_reread", {
+              source_id: sourceId,
+              url,
+              product: result.product ?? null,
+            });
+            return Response.json(result);
           }
 
           if (action === "delete_document") {

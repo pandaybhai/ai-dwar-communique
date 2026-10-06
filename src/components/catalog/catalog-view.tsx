@@ -286,7 +286,8 @@ export function CatalogView({ organizationId }: { organizationId: string }) {
         />
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Wraps on a phone so "Add a product" is never cut off; one row from lg up, as before. */}
+      <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
         <div className="flex rounded-lg border border-border/70 p-0.5">
           <Button
             variant={view === "grid" ? "secondary" : "ghost"}

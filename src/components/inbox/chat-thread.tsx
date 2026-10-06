@@ -288,7 +288,10 @@ export function Bubble({
 }) {
   const outbound = message.direction === "outbound";
   const body = message.body?.trim() ?? "";
-  const text = body || (message.template_name ? `Template: ${message.template_name}` : `[${message.type}]`);
+  const text =
+    body ||
+    message.template_text?.trim() ||
+    (message.template_name ? `Template: ${message.template_name}` : `[${message.type}]`);
   // A picture (a card, a photo) with no words is just the picture: the
   // "[image]" stand-in is ours, the customer never saw it.
   const mediaOnly = Boolean(message.media_url) && !body && !message.template_name;

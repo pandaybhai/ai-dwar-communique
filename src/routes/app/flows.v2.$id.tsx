@@ -28,7 +28,7 @@ export const Route = createFileRoute("/app/flows/v2/$id")({
   component: FlowEditorPage,
 });
 
-type Loaded = { name: string; graph: FlowGraph; published: boolean; versions: VersionRow[] };
+type Loaded = { name: string; graph: FlowGraph; published: boolean; enabled: boolean | null; versions: VersionRow[] };
 
 function FlowEditorPage() {
   const { id } = Route.useParams();
@@ -48,7 +48,7 @@ function FlowEditorPage() {
   const load = useCallback(async () => {
     if (!orgId) return;
     const [{ data: flow, error: e1 }, { data: vers }, { data: tpl }] = await Promise.all([
-      aidwar.from("flows").select("name, key").eq("id", id).eq("organization_id", orgId).maybeSingle(),
+      aidwar.from("flows").select("name, key, is_enabled").eq("id", id).eq("organization_id", orgId).maybeSingle(),
       aidwar.from("flow_versions").select("id, version, status, published_at, created_at, graph").eq("flow_id", id).order("version", { ascending: false }),
       aidwar.from("message_templates").select("id, name, status").eq("organization_id", orgId).order("name"),
     ]);
@@ -78,7 +78,7 @@ function FlowEditorPage() {
     const pub = rows.find((r) => r.status === "published");
     const graph = (draft ?? pub ?? rows[0])?.graph ?? { nodes: [], edges: [] };
     setTemplates((tpl ?? []) as Array<{ id: string; name: string; status: string }>);
-    setData({ name: (flow as { name: string }).name, graph, published: Boolean(pub), versions: rows.map(({ graph: _g, ...r }) => r) });
+    setData({ name: (flow as { name: string }).name, graph, published: Boolean(pub), enabled: typeof (flow as { is_enabled?: unknown }).is_enabled === "boolean" ? (flow as { is_enabled: boolean }).is_enabled : null, versions: rows.map(({ graph: _g, ...r }) => r) });
     setError(null);
   }, [id, orgId]);
 
@@ -99,6 +99,7 @@ function FlowEditorPage() {
         name={data.name}
         initial={data.graph}
         published={data.published}
+        {...(data.enabled === false ? { switchedOff: true } : {})}
         canEdit={can("flows_v2.edit")}
         canViewResponses={can("contacts.view")}
         canExportResponses={can("contacts.export")}

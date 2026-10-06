@@ -1260,6 +1260,12 @@ export type PlanChangePreview = {
   plan_key: string;
   plan_name: string;
   features_off: { key: string; name: string; live: { label: string; count: number }[] }[];
+  /**
+   * Of the features switching off, the ones this workspace is using right now
+   * (chat flows, cards, store flows) and what uses them — shown as a warning
+   * before the plan is saved.
+   */
+  in_use: { key: string; name: string; uses: { label: string; count: number }[] }[];
   locked_members: { user_id: string; name: string | null }[];
   locked_numbers: { id: string; label: string }[];
   subscription: {
@@ -1326,6 +1332,13 @@ export async function planChangePreview(
     }
   }
 
+  const inUse: PlanChangePreview["in_use"] = [];
+  for (const f of featuresOff) {
+    if (!IN_USE_FEATURES.includes(f.key)) continue;
+    const uses = await featureUsage(supabase, input.organizationId, f.key);
+    if (uses.length > 0) inUse.push({ key: f.key, name: f.name, uses });
+  }
+
   const limits = (row["limits"] ?? {}) as Record<string, number>;
   const locked = await previewPlanLimits(supabase, input.organizationId, limits);
 
@@ -1364,6 +1377,7 @@ export async function planChangePreview(
     plan_key: input.planKey,
     plan_name: planName,
     features_off: featuresOff,
+    in_use: inUse,
     locked_members: locked.members,
     locked_numbers: locked.numbers,
     subscription,
@@ -1373,6 +1387,92 @@ export async function planChangePreview(
       locked.numbers.length > 0 ||
       subscription?.mismatch === true,
   };
+}
+
+/** Features a plan change must warn about when the workspace is using them. */
+const IN_USE_FEATURES = ["flows_v2", "cards", "flows"];
+
+/**
+ * What this workspace is using a feature for right now (read-only). Only the
+ * plan-change warning reads this; switching a feature off by hand keeps its
+ * own impact check (featureImpact) exactly as it was.
+ */
+export async function featureUsage(
+  supabase: SupabaseClient,
+  organizationId: string,
+  featureKey: string,
+): Promise<{ label: string; count: number }[]> {
+  const uses: { label: string; count: number }[] = [];
+  const add = async (label: string, promise: PromiseLike<{ count: number | null }>) => {
+    const { count } = await promise;
+    if ((count ?? 0) > 0) uses.push({ label, count: count ?? 0 });
+  };
+  const head = (table: string) =>
+    supabase.from(table).select("id", { count: "exact", head: true }).eq("organization_id", organizationId);
+  if (featureKey === "flows_v2") {
+    await add("chat flows switched on", head("flows").like("key", "v2:%").eq("is_enabled", true));
+    await add("conversations in a chat flow", head("flow_runs").in("status", ["running", "waiting"]));
+  }
+  if (featureKey === "flows") {
+    await add("store flows switched on", head("flows").not("key", "like", "v2:%").eq("is_enabled", true));
+    await add("messages waiting to go out", head("scheduled_sends").eq("status", "pending"));
+  }
+  if (featureKey === "cards") {
+    const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from("ai_usage")
+      .select("runs")
+      .eq("organization_id", organizationId)
+      .eq("task", "card_render")
+      .gte("usage_date", since);
+    const drawn = ((data ?? []) as Array<{ runs: number | null }>).reduce((n, r) => n + Number(r.runs ?? 0), 0);
+    if (drawn > 0) uses.push({ label: "cards sent in the last 30 days", count: drawn });
+  }
+  return uses;
+}
+
+/**
+ * Extends a workspace's trial by `days`. It moves organizations.trial_ends_at
+ * and nothing else: the plan, its features and the mandate are untouched
+ * (never assignPlan, never a feature re-sync). The new end counts from the
+ * current end, or from now when the trial has already ended.
+ */
+export async function extendTrial(
+  supabase: SupabaseClient,
+  input: { organizationId: string; days: number; actorId: string },
+): Promise<{ ok: true; trial_ends_at: string; previous: string | null } | { error: string }> {
+  await requireSuperAdmin(supabase, { userId: input.actorId });
+  const days = Math.floor(Number(input.days));
+  if (!Number.isFinite(days) || days < 1 || days > 90) return { error: "Extend by 1 to 90 days." };
+
+  const { data: org, error: readError } = await supabase
+    .from("organizations")
+    .select("id, plan_status, trial_ends_at")
+    .eq("id", input.organizationId)
+    .maybeSingle();
+  if (readError || !org) return { error: "We couldn't find this workspace." };
+  const row = org as { plan_status: string | null; trial_ends_at: string | null };
+  if (row.plan_status !== "trial") return { error: "This workspace isn't on a trial, so there's nothing to extend." };
+
+  const previous = row.trial_ends_at;
+  const currentEnd = previous ? Date.parse(previous) : NaN;
+  const from = Number.isFinite(currentEnd) && currentEnd > Date.now() ? currentEnd : Date.now();
+  const next = new Date(from + days * 864e5).toISOString();
+
+  // Only if nobody changed it meanwhile (a second click, the sweep).
+  let update = supabase.from("organizations").update({ trial_ends_at: next }).eq("id", input.organizationId).eq("plan_status", "trial");
+  update = previous ? update.eq("trial_ends_at", previous) : update.is("trial_ends_at", null);
+  const { data: written, error } = await update.select("id");
+  if (error) return { error: "We couldn't extend the trial. Please try again." };
+  if (!written || (written as unknown[]).length === 0) return { error: "The trial changed while you were looking — reload and try again." };
+
+  await supabase.from("activity_log").insert({
+    organization_id: input.organizationId,
+    user_id: input.actorId,
+    action: "trial_extended",
+    details: { days, previous_trial_ends_at: previous, trial_ends_at: next },
+  });
+  return { ok: true, trial_ends_at: next, previous };
 }
 
 /** Who would be locked out by these limits — read-only, changes nothing. */

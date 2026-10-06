@@ -196,7 +196,7 @@ const anthropicMessage = (
     id: "msg_1",
     type: "message",
     role: "assistant",
-    model: "claude-opus-5-5",
+    model: "claude-sonnet-5-5",
     content,
     stop_reason: stop,
     stop_sequence: null,
@@ -332,12 +332,12 @@ describe("(1) Anthropic backup", () => {
     expect(out.status).toBe("ok");
     expect(out.output).toBe("Yes, the Petal Band is a gold ring.");
     expect(out.provider).toBe("anthropic");
-    expect(out.model).toBe("claude-opus-5-5");
+    expect(out.model).toBe("claude-sonnet-5-5");
 
     const call = seen.find((s) => s.url.includes("api.anthropic.com"))!;
     expect(call.url).toMatch(/\/v1\/messages/);
     expect(call.headers["x-api-key"]).toBe("sk-ant-test");
-    expect(call.body["model"]).toBe("claude-opus-5-5");
+    expect(call.body["model"]).toBe("claude-sonnet-5-5");
     // The same system prompt the gateway got: material + answer policy.
     const gatewaySystem = String(
       (seen[1]!.body["messages"] as Array<{ content: unknown }>)[0]!.content,
@@ -356,7 +356,7 @@ describe("(1) Anthropic backup", () => {
 
     const row = runRow(db);
     expect(row["provider"]).toBe("anthropic");
-    expect(row["model"]).toBe("claude-opus-5-5");
+    expect(row["model"]).toBe("claude-sonnet-5-5");
     expect(row.metadata["provider"]).toBe("anthropic");
     expect(row.metadata["fallback"]).toMatchObject({
       from_provider: "lovable",
@@ -364,7 +364,7 @@ describe("(1) Anthropic backup", () => {
       reason: "credit",
       status: 402,
     });
-    const rate = BACKUP_RATES_INR["anthropic:claude-opus-5-5"]!;
+    const rate = BACKUP_RATES_INR["anthropic:claude-sonnet-5-5"]!;
     const cost = (1000 * rate.input + 100 * rate.output) / 1e6;
     expect(row["cost_amount"]).toBeCloseTo(cost, 6);
     expect(row["cost_source"]).toBe("rate_card");
@@ -557,7 +557,7 @@ describe("(1) OpenAI backup, and the order between backups", () => {
     const out = await run(db);
     expect(out.provider).toBe("openai");
     expect((runRow(db).metadata["fallback"] as { attempts: unknown[] }).attempts).toEqual([
-      { provider: "anthropic", model: "claude-opus-5-5", ok: false, kind: "server" },
+      { provider: "anthropic", model: "claude-sonnet-5-5", ok: false, kind: "server" },
       { provider: "openai", model: "gpt-5.4-mini", ok: true },
     ]);
   });
@@ -575,12 +575,13 @@ describe("(1) OpenAI backup, and the order between backups", () => {
   });
 
   it("backupRoutes: order, keys and model overrides", () => {
+    // Batch 11B: the default Anthropic backup model is Sonnet (was Opus).
     expect(backupRoutes("everyday", {})).toEqual([]);
     expect(
       backupRoutes("careful", { OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a" }).map(
         (r) => `${r.provider}:${r.model}`,
       ),
-    ).toEqual(["anthropic:claude-opus-5-5", "openai:gpt-5.4"]);
+    ).toEqual(["anthropic:claude-sonnet-5-5", "openai:gpt-5.4"]);
     expect(
       backupRoutes("everyday", {
         OPENAI_API_KEY: "o",
@@ -975,13 +976,21 @@ describe("(4) speed: the number is looked up while the event is stored", () => {
 
   it("the number read starts with the event insert, and is the only number read", async () => {
     const { w } = await arrive("b10-order", true, TAP);
-    const insert = w.starts.find((s) => s.table === "webhook_events" && s.kind === "insert")!;
-    const account = w.starts.find((s) => s.table === "whatsapp_accounts")!;
-    expect(Math.abs(account.at - insert.at)).toBeLessThan(RTT / 2);
+    // Order, not milliseconds (a loaded machine stretches every gap): the
+    // number read starts while the event insert is still in flight, and the
+    // insert started while the read hadn't finished — they overlap.
+    const at = (phase: "start" | "end", match: (s: { table: string; kind: string }) => boolean) =>
+      w.sequence.findIndex((s) => s.phase === phase && match(s));
+    const isInsert = (s: { table: string; kind: string }) => s.table === "webhook_events" && s.kind === "insert";
+    const isAccount = (s: { table: string }) => s.table === "whatsapp_accounts";
+    expect(at("start", isInsert)).toBeGreaterThanOrEqual(0);
+    expect(at("start", isAccount)).toBeGreaterThanOrEqual(0);
+    expect(at("start", isAccount)).toBeLessThan(at("end", isInsert));
+    expect(at("start", isInsert)).toBeLessThan(at("end", isAccount));
     expect(w.ops.filter((o) => o.table === "whatsapp_accounts")).toHaveLength(1);
     // Nothing is written before the event is stored.
-    const firstWrite = w.starts.find((s) => s.kind !== "select" && s.table !== "webhook_events");
-    expect(firstWrite!.at).toBeGreaterThanOrEqual(insert.at + RTT);
+    const firstWrite = at("start", (s) => s.kind !== "select" && s.table !== "webhook_events");
+    expect(firstWrite).toBeGreaterThan(at("end", isInsert));
   });
 
   it("unchanged: an unsigned payload reads nothing early (and isn't processed)", async () => {

@@ -452,8 +452,14 @@ describe("(4) template sends keep their values; the inbox preview shows them", (
     );
   });
 
-  it("unchanged: an older send with no stored values keeps the template's own text", () => {
-    expect(fillTemplateText(BODY, null)).toBe(BODY);
+  it("an older send with no stored values shows no raw {{1}}: sample values, else '...' (Batch 11, item 8)", () => {
+    // Batch 11 (8): sent before Batch 5 stored the values — placeholders are
+    // never shown raw any more.
+    expect(fillTemplateText(BODY, null)).toBe("Hi ..., Aiden here from AiDwar. We stopped at .... Reply here to continue, or say 'help'.");
+    expect(fillTemplateText(BODY, null, { "1": "Priya", "2": "your number" })).toBe(
+      "Hi Priya, Aiden here from AiDwar. We stopped at your number. Reply here to continue, or say 'help'.",
+    );
+    // Unchanged: a send with stored values keeps a missing one as written.
     expect(fillTemplateText(BODY, { template_params: { "1": "Vinay" } })).toBe(
       "Hi Vinay, Aiden here from AiDwar. We stopped at {{2}}. Reply here to continue, or say 'help'.",
     );

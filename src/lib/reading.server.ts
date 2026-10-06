@@ -70,10 +70,12 @@ export function urlPriority(url: string, origin: string, title = ""): number | n
   if (/(contact|about|our-story|who-we-are)/.test(words)) return 90;
   if (/(shipping|delivery|return|refund|terms|privacy|policy|policies|warranty)/.test(words)) return 80;
   if (/(faq|help|questions)/.test(words)) return 70;
+  // Other pages that answer customers: where to find the shop, sizes, jobs.
+  if (/^\/(?:stores?|store-locator|locations?|find-us|visit-us|size-guide|size-chart|sizing|careers|jobs)(?:\/|$)/.test(path)) return 65;
   if (/(pricing|price|plans)/.test(words)) return 60;
   if (/(\/blog|\/tag|\/tags|\/archive|\/search|\/author|\/feed|\/page\/\d+|\/\d{4}\/\d{2}\/)/.test(path)) return 5;
-  if (/(collection|categor|shop|catalog|menu|services)/.test(path)) return 50;
-  if (/\/products?\//.test(path)) return 40;
+  if (/(collection|categor|shop|catalog|menu|services|listing)/.test(path)) return 50;
+  if (/\/(?:products?|product[-_]details?|item|p)\//.test(path)) return 40;
   return 20;
 }
 

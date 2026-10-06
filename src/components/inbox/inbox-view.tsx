@@ -24,6 +24,7 @@ import { ChatThread } from "./chat-thread";
 import {
   contactLabel,
   fillTemplateText,
+  templateBodyOf,
   initials,
   previewText,
   relativeTime,
@@ -41,6 +42,41 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "closed", label: "Closed" },
   { key: "mine", label: "Assigned to me" },
 ];
+
+type TemplateRow = { name: string; components: Array<Record<string, unknown>> | null };
+
+/** name → the template's body text and sample values (first row per name wins). */
+function templateBodies(rows: TemplateRow[]): Map<string, { text: string; samples: Record<string, string> }> {
+  const bodies = new Map<string, { text: string; samples: Record<string, string> }>();
+  for (const t of rows) {
+    const body = templateBodyOf(t.components);
+    if (body && !bodies.has(t.name)) bodies.set(t.name, body);
+  }
+  return bodies;
+}
+
+/**
+ * Template messages are stored without a body: give each one the template's
+ * own text, filled with the values it was sent with — or, for one sent before
+ * those were stored, the template's sample values or "...". Display only; a
+ * failed read leaves the thread as it was.
+ */
+async function withTemplateText(orgId: string | null | undefined, messages: MessageRow[]): Promise<MessageRow[]> {
+  const names = Array.from(
+    new Set(messages.filter((m) => m.type === "template" && !m.body?.trim() && m.template_name).map((m) => m.template_name!)),
+  );
+  if (!orgId || names.length === 0) return messages;
+  try {
+    const { data } = await aidwar.from("message_templates").select("name, components").eq("organization_id", orgId).in("name", names);
+    const bodies = templateBodies((data ?? []) as TemplateRow[]);
+    return messages.map((m) => {
+      const tpl = m.type === "template" && !m.body?.trim() && m.template_name ? bodies.get(m.template_name) : undefined;
+      return tpl ? { ...m, template_text: fillTemplateText(tpl.text, m.metadata, tpl.samples) } : m;
+    });
+  } catch {
+    return messages;
+  }
+}
 
 export function InboxView() {
   const { active } = useOrg();
@@ -117,16 +153,12 @@ export function InboxView() {
         .select("name, components")
         .eq("organization_id", orgId)
         .in("name", names);
-      const bodies = new Map<string, string>();
-      for (const t of (tpls ?? []) as Array<{ name: string; components: Array<Record<string, unknown>> | null }>) {
-        const body = (t.components ?? []).find((c) => String(c["type"] ?? "").toUpperCase() === "BODY");
-        const text = typeof body?.["text"] === "string" ? (body["text"] as string).trim() : "";
-        if (text && !bodies.has(t.name)) bodies.set(t.name, text);
-      }
+      const bodies = templateBodies((tpls ?? []) as TemplateRow[]);
       for (const c of rows) {
         const name = c.preview?.template_name;
-        if (c.preview && name && !c.preview.body?.trim() && bodies.has(name))
-          c.preview = { ...c.preview, body: fillTemplateText(bodies.get(name)!, c.preview.metadata) };
+        const tpl = name ? bodies.get(name) : undefined;
+        if (c.preview && tpl && !c.preview.body?.trim())
+          c.preview = { ...c.preview, body: fillTemplateText(tpl.text, c.preview.metadata, tpl.samples) };
       }
     }
     setError(null);
@@ -214,14 +246,14 @@ export function InboxView() {
       .eq("conversation_id", id)
       .order("created_at", { ascending: true })
       .limit(500);
-    setMessages((data ?? []) as unknown as MessageRow[]);
+    setMessages(await withTemplateText(orgId, (data ?? []) as unknown as MessageRow[]));
     setThreadLoading(false);
 
     setConversations((prev) =>
       prev.map((c) => (c.id === id ? { ...c, unread_count: 0 } : c)),
     );
     await aidwar.from("conversations").update({ unread_count: 0 }).eq("id", id);
-  }, []);
+  }, [orgId]);
 
   const numberById = useMemo(
     () => new Map(numbers.map((n) => [n.id, n])),
@@ -306,7 +338,7 @@ export function InboxView() {
       .eq("conversation_id", id)
       .order("created_at", { ascending: true })
       .limit(500);
-    setMessages((data ?? []) as unknown as MessageRow[]);
+    setMessages(await withTemplateText(orgId, (data ?? []) as unknown as MessageRow[]));
   };
 
   const handleAssign = async (assignee: string | null) => {

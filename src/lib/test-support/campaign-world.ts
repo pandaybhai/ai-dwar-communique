@@ -1,6 +1,6 @@
 import type { SenderContext } from "@/lib/campaigns.server";
 import type { GraphAnswer } from "@/lib/campaign-dispatch.server";
-import { MemoryDb } from "./memory-db";
+import { MemoryDb } from "./campaign-memory-db";
 
 /**
  * Test-only: a workspace (or several) with a number, its token, a template,

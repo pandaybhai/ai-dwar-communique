@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { world } from "./test-support/campaign-world";
 import { resetDispatchCaches } from "./campaign-dispatch.server";
-import type { MemoryDb } from "./test-support/memory-db";
+import type { MemoryDb } from "./test-support/campaign-memory-db";
 
 /**
  * (C) The campaign worker re-checks opt-out right before each send.

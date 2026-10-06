@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryDb } from "./test-support/memory-db";
+import { MemoryDb } from "./test-support/campaign-memory-db";
 import {
   DISPATCH_DEFAULTS,
   FairRotation,

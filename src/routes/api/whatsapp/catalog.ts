@@ -45,7 +45,24 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
           checkCatalogAccess,
           setCatalogMode,
           confirmCatalogAttached,
+          checkShopVisibility,
         } = await import("@/lib/whatsapp-catalog.server");
+
+        // After a sync (or on demand): ask Meta whether customers can see the
+        // shop, store what it says, and hand back the fresh catalogue row so
+        // the card shows the new count and time without another read.
+        const afterSync = async () => {
+          const checked = await checkShopVisibility({
+            supabase,
+            organizationId,
+            userId,
+            whatsappAccountId: accountId,
+          }).catch(() => null);
+          return {
+            visibility: checked?.ok ? (checked.visibility ?? null) : null,
+            catalog: checked?.catalog ?? null,
+          };
+        };
 
         if (action === "status") {
           const { ctx, error } = await resolveCatalogContext(supabase, organizationId, accountId);
@@ -116,6 +133,12 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
           return Response.json(result);
         }
 
+        if (action === "check_visibility") {
+          const result = await checkShopVisibility({ supabase, organizationId, userId, whatsappAccountId: accountId });
+          if (!result.ok) return jsonError(result.error ?? "We couldn't reach Meta.", 400);
+          return Response.json(result);
+        }
+
         if (action === "confirm_attached") {
           const result = await confirmCatalogAttached({ supabase, organizationId, whatsappAccountId: accountId });
           if (!result.ok) return jsonError(result.error ?? "We couldn't save that.", 400);
@@ -178,7 +201,7 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
             imported: result.imported,
             mode: "linked",
           });
-          return Response.json(result);
+          return Response.json({ ...result, ...(await afterSync()) });
         }
 
         if (action === "sync") {
@@ -194,9 +217,10 @@ export const Route = createFileRoute("/api/whatsapp/catalog")({
             eligible: result.eligible,
             pushed: result.pushed,
             rejected: result.rejected,
+            removed: result.removed,
             mode: "managed",
           });
-          return Response.json(result);
+          return Response.json({ ...result, ...(await afterSync()) });
         }
 
         return jsonError("Unknown action.", 400);

@@ -17,7 +17,28 @@ export type AutoPayStatus = {
   current_period_end: string | null;
   cancel_at_period_end: boolean;
   short_url: string | null;
+  /** The first charge, when it is still ahead (a trial's remaining days kept). */
+  starts_at: string | null;
 };
+
+// Razorpay wants start_at in the future; a trial ending sooner than this is
+// treated as over (charged on authorisation, exactly as before).
+const START_AT_MARGIN_MS = 10 * 60_000;
+
+/**
+ * When the first plan charge should happen: the trial's end, if this is a
+ * trial workspace whose trial still has time left (so those days are kept);
+ * otherwise null = charge on authorisation, exactly as before.
+ */
+export function firstChargeAt(
+  org: { plan_status?: string | null; trial_ends_at?: string | null },
+  now: number = Date.now(),
+): number | null {
+  if (org.plan_status !== "trial" || !org.trial_ends_at) return null;
+  const end = Date.parse(org.trial_ends_at);
+  if (!Number.isFinite(end) || end <= now + START_AT_MARGIN_MS) return null;
+  return Math.floor(end / 1000);
+}
 
 const ACTIVE_STATES = ["created", "authenticated", "active", "pending", "halted"];
 
@@ -44,9 +65,11 @@ export async function getAutoPay(
       current_period_end: null,
       cancel_at_period_end: false,
       short_url: null,
+      starts_at: null,
     };
   }
   const raw = (row["raw"] ?? {}) as Record<string, unknown>;
+  const startAt = Number(raw["start_at"] ?? 0);
   return {
     enabled: row["status"] === "active" || row["status"] === "authenticated",
     status: String(row["status"]),
@@ -55,6 +78,7 @@ export async function getAutoPay(
     current_period_end: (row["current_period_end"] as string | null) ?? null,
     cancel_at_period_end: row["cancel_at_period_end"] === true,
     short_url: (raw["short_url"] as string | null) ?? null,
+    starts_at: startAt > 0 && startAt * 1000 > Date.now() ? new Date(startAt * 1000).toISOString() : null,
   };
 }
 
@@ -83,7 +107,7 @@ export async function setupAutoPay(
 
   const { data: org } = await supabase
     .from("organizations")
-    .select("id, name, billing_account_id, plan_version_id")
+    .select("id, name, billing_account_id, plan_version_id, plan_status, trial_ends_at")
     .eq("id", input.organizationId)
     .maybeSingle();
   const planVersionId = (org?.["plan_version_id"] as string | null) ?? null;
@@ -114,10 +138,14 @@ export async function setupAutoPay(
   });
   if (!plan.ok) return { error: plan.error ?? "We couldn't set up auto-pay." };
 
+  // A trial workspace keeps its remaining trial days: the first charge is on
+  // the day the trial ends.
+  const startAt = firstChargeAt((org ?? {}) as { plan_status?: string | null; trial_ends_at?: string | null });
   const subscription = await createSubscription(keys, {
     planId: String(plan.body["id"]),
     cycle: input.cycle,
     organizationId: input.organizationId,
+    ...(startAt ? { startAt } : {}),
   });
   if (!subscription.ok) return { error: subscription.error ?? "We couldn't set up auto-pay." };
 
@@ -132,14 +160,18 @@ export async function setupAutoPay(
     provider_plan_id: String(plan.body["id"]),
     status: "created",
     mandate_max_amount: round2(gross),
-    raw: { ...subscription.body, short_url: shortUrl },
+    raw: { ...subscription.body, short_url: shortUrl, ...(startAt ? { start_at: startAt } : {}) },
   });
 
   await supabase.from("activity_log").insert({
     organization_id: input.organizationId,
     user_id: input.userId,
     action: "autopay_setup",
-    details: { cycle: input.cycle, plan: planName },
+    details: {
+      cycle: input.cycle,
+      plan: planName,
+      ...(startAt ? { first_charge_at: new Date(startAt * 1000).toISOString() } : {}),
+    },
   });
 
   if (!shortUrl) return { error: "The payment provider didn't return an authorisation link." };

@@ -659,6 +659,10 @@ async function flowsV2Inbound(
     /** When the customer sent the message (it opens the 24-hour window). */
     inboundAt?: string;
     timer?: ReplyTimer;
+    /** Whether a teammate owns the conversation, read with it (speed). */
+    teammateOwns?: boolean;
+    /** The published versions a trigger would start, read early (speed). */
+    versions?: ReturnType<typeof import("@/lib/flow-triggers.server").prefetchStartVersions>;
   },
 ): Promise<boolean> {
   const extras = {
@@ -714,6 +718,8 @@ async function flowsV2Inbound(
       onlyAccountId: args.onlyAccountId,
       skipKeywords: Boolean(taken.runActive),
       ...(args.triggers ? { triggers: args.triggers } : {}),
+      ...(args.versions ? { versions: args.versions } : {}),
+      ...(args.teammateOwns !== undefined ? { teammateOwns: args.teammateOwns } : {}),
       extras,
     });
     return started.started;
@@ -1488,14 +1494,15 @@ export async function processWebhookPayload(
             const openConversationRead = Promise.resolve(
               supabase
                 .from("conversations")
-                .select("id, unread_count, contact_id, contacts!inner(phone)")
+                .select("id, unread_count, contact_id, assigned_to, contacts!inner(phone)")
                 .eq("organization_id", orgId)
                 .eq("contacts.phone", phone)
                 .eq("whatsapp_account_id", accountId)
                 .eq("status", "open")
                 .maybeSingle(),
             ).then(
-              ({ data }) => data as { id: string; unread_count: number | null; contact_id?: string } | null,
+              ({ data }) =>
+                data as { id: string; unread_count: number | null; contact_id?: string; assigned_to?: string | null } | null,
               () => null,
             );
 
@@ -1544,12 +1551,17 @@ export async function processWebhookPayload(
             }
 
             const joined = await openConversationRead;
-            let conversation: { id: string; unread_count: number | null } | null =
-              joined && joined.contact_id === contact.id ? { id: joined.id, unread_count: joined.unread_count } : null;
+            // assigned_to rides along (speed): whether a teammate owns the
+            // thread decides if a trigger may start a flow in it, and is then
+            // not read again.
+            let conversation: { id: string; unread_count: number | null; assigned_to?: string | null } | null =
+              joined && joined.contact_id === contact.id
+                ? { id: joined.id, unread_count: joined.unread_count, assigned_to: joined.assigned_to ?? null }
+                : null;
             if (!conversation) {
               const { data: found } = await supabase
                 .from("conversations")
-                .select("id, unread_count")
+                .select("id, unread_count, assigned_to")
                 .eq("organization_id", orgId)
                 .eq("contact_id", contact.id)
                 .eq("whatsapp_account_id", accountId)
@@ -1567,7 +1579,7 @@ export async function processWebhookPayload(
                   whatsapp_account_id: accountId,
                   status: "open",
                 })
-                .select("id, unread_count")
+                .select("id, unread_count, assigned_to")
                 .single();
               if (createError) throw new Error(`conversation insert failed: ${createError.message}`);
               conversation = created;
@@ -1622,8 +1634,11 @@ export async function processWebhookPayload(
             // the guards and the flow's turn don't wait on them. Read-only;
             // only used for a message that turns out to be new.
             const isCustomerNumber = !(onboardingAccountId && accountId === onboardingAccountId);
+            // Read on the onboarding number too: a keyword pinned to it starts
+            // a flow there, and these are the same reads the flow step would
+            // otherwise make one after another.
             const flowLook =
-              isCustomerNumber && !isSystemEcho && type !== "order"
+              !isSystemEcho && type !== "order"
                 ? import("@/lib/flow-engine.server").then(({ peekInboundRun }) =>
                     peekInboundRun(supabase, {
                       organizationId: orgId,
@@ -1638,6 +1653,23 @@ export async function processWebhookPayload(
               ? import("@/lib/flow-triggers.server").then(({ readInboundTriggers }) => readInboundTriggers(supabase, orgId))
               : null;
             triggersLook?.catch(() => {});
+            // The flow a trigger would start: its published version is read
+            // as soon as the triggers are (speed). Nothing when none matches.
+            const startVersions = triggersLook
+              ? import("@/lib/flow-triggers.server").then(({ prefetchStartVersions }) =>
+                  prefetchStartVersions(supabase, {
+                    organizationId: orgId,
+                    triggers: triggersLook,
+                    body: body ?? "",
+                    isFirstMessageEver: contactAge >= 0 && contactAge < 10_000,
+                    isCtwa: Boolean(msg["referral"]),
+                    accountId,
+                    onlyAccountId: isCustomerNumber ? null : onboardingAccountId,
+                  }),
+                )
+              : null;
+            startVersions?.catch(() => {});
+            const teammateOwns = Boolean(conversation.assigned_to);
             const tapPayload =
               ((msg["button"] as AnyRecord | undefined)?.["payload"] as string | undefined) ??
               (((msg["interactive"] as AnyRecord | undefined)?.["button_reply"] as AnyRecord | undefined)?.["id"] as
@@ -1743,7 +1775,9 @@ export async function processWebhookPayload(
               inserted.length > 0 &&
               !matchKeyword(body, (await keywordsRead).optOut)
             ) {
-              await windowReady;
+              // Same as on a customer number: the reads made while the
+              // message was stored, the number already resolved, and the
+              // window write awaited only before the first send (speed).
               const taken = await flowsV2Inbound(supabase, {
                 orgId,
                 contactId: contact.id as string,
@@ -1753,7 +1787,19 @@ export async function processWebhookPayload(
                 msg,
                 body,
                 contactAge,
+                ...(flowLook ? { firstLook: flowLook } : {}),
+                ...(triggersLook ? { triggers: triggersLook } : {}),
+                ...(startVersions ? { versions: startVersions } : {}),
+                teammateOwns,
+                connection,
+                ready: windowReady,
+                inboundAt: occurredAt,
+                timer: clock.timer,
               });
+              clock.mark("flows");
+              // Landed before anything was sent; a failed write still fails
+              // this message (retryable), as before.
+              await windowReady;
               if (taken) {
                 route = "flow";
                 continue;
@@ -1907,6 +1953,8 @@ export async function processWebhookPayload(
                 contactAge,
                 ...(flowLook ? { firstLook: flowLook } : {}),
                 ...(triggersLook ? { triggers: triggersLook } : {}),
+                ...(startVersions ? { versions: startVersions } : {}),
+                teammateOwns,
                 connection,
                 // The flow may claim/start its run while the window write
                 // lands; it sends nothing before it has.

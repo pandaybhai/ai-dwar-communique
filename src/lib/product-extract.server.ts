@@ -608,6 +608,42 @@ function priceAnchor(html: string, price: number | null): number {
   return new RegExp(PRICE_RE.source, "i").exec(html)?.index ?? 0;
 }
 
+// ------------------------------------------------------- legal pages
+
+/** Path segments that name a legal or policy page (terms, privacy, refunds…). */
+const LEGAL_SEGMENT_RE =
+  /^(?:terms|tos|tnc|t-?and-?c|terms[-_].*|privacy|privacy[-_].*|legal|disclaimer|imprint|cookies?|refunds?|returns?|returns?[-_](?:and[-_])?(?:refunds?|exchanges?)|shipping(?:[-_](?:info|information|and[-_]delivery))?|.*[-_]?polic(?:y|ies)(?:[-_].*)?)$/i;
+
+/** A page title or heading that says it is a legal or policy page. */
+const LEGAL_TITLE_RE =
+  /\b(?:terms\s*(?:of\s*(?:service|use|sale)|(?:and|&)\s*conditions)|privacy\s*(?:policy|notice)|(?:refund|return|returns|shipping|delivery|cancellation|cookie)s?\s*(?:and\s*\w+\s*)?policy|limitation\s+of\s+liability|governing\s+law|indemnit(?:y|ies|ification))\b/i;
+
+/** "7. Limitation of liability", "2.1) Refunds", "Section 4 Payment", "Clause 9 …". */
+const NUMBERED_CLAUSE_RE = /^\s*(?:\(?\d{1,2}(?:\.\d{1,2})*[.)]|(?:section|clause|article)\s+\d{1,2}(?:\.\d{1,2})*\b[.:)]?)\s+\S/i;
+
+/** True for a numbered clause heading — never a product name. */
+export function looksLikeLegalClause(title: string | null | undefined): boolean {
+  return NUMBERED_CLAUSE_RE.test(title ?? "");
+}
+
+/**
+ * True for a terms / privacy / refund / shipping-policy page: products are
+ * never read off one (its numbered clause headings and amounts look like a
+ * product with a price).
+ */
+export function isLegalPage(pageUrl: string, html: string): boolean {
+  try {
+    const segments = new URL(pageUrl).pathname.split("/").filter(Boolean);
+    if (segments.some((s) => LEGAL_SEGMENT_RE.test(decodeURIComponent(s)))) return true;
+  } catch {
+    // not a URL we can read: judge by the page alone
+  }
+  const docTitle = pageTitle(html) ?? "";
+  if (LEGAL_TITLE_RE.test(docTitle)) return true;
+  const h1 = decode((/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1] ?? "").replace(/<[^>]+>/g, " "));
+  return LEGAL_TITLE_RE.test(h1);
+}
+
 export type ExtractContext = {
   /** The page that linked to this product — usually a category listing. */
   referrer?: string | null;
@@ -620,9 +656,12 @@ export function extractProduct(
   context: ExtractContext = {},
 ): ProductDraft | null {
   if (!html || html.length < 200) return null;
+  // Terms, privacy, refund and shipping policies sell nothing.
+  if (isLegalPage(pageUrl, html)) return null;
   const draft =
     fromJsonLd(html, pageUrl) ?? fromOpenGraph(html, pageUrl) ?? fromPageShape(html, pageUrl);
   if (!draft || !draft.title) return null;
+  if (looksLikeLegalClause(draft.title)) return null;
 
   // Structured data without a price: the price printed beside this same
   // product's heading is the one the shop charges.
@@ -667,6 +706,28 @@ export function dropSharedImages(drafts: ProductDraft[], limit = 3): void {
   for (const draft of drafts) {
     if (draft.imageUrl && (counts.get(draft.imageUrl) ?? 0) > limit) draft.imageUrl = null;
   }
+}
+
+/**
+ * The same rule one page at a time: a picture more than `limit` crawled
+ * products already use is the shop's fallback graphic, so this product goes
+ * without a picture rather than with the wrong one.
+ */
+export async function dropImageIfShared(
+  supabase: SupabaseClient,
+  organizationId: string,
+  draft: ProductDraft,
+  limit = 3,
+): Promise<void> {
+  if (!draft.imageUrl) return;
+  const { count } = await supabase
+    .from("products")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("source", CRAWL_SOURCE)
+    .eq("image_url", draft.imageUrl)
+    .neq("external_id", draft.externalId);
+  if ((count ?? 0) >= limit) draft.imageUrl = null;
 }
 
 // ------------------------------------------------------------------ storing
@@ -799,6 +860,113 @@ export async function fillMissingPhotos(
   return filled;
 }
 
+/** The fields a refresh may fill on a crawled product — only ever when empty. */
+const FILLABLE = ["image_url", "description", "category"] as const;
+type Fillable = (typeof FILLABLE)[number];
+
+export type FillReport = {
+  /** Crawled products from this site that were missing something. */
+  missing: number;
+  /** Product pages opened for them. */
+  checked: number;
+  /** Products that got at least one field. */
+  filled: number;
+  fields: Record<Fillable, number>;
+};
+
+/**
+ * "Refresh from website": crawled products from this site still missing a
+ * photo, a description (the metal / stone / weight line) or a shelf get their
+ * product page read again with today's extractor — even when the page text is
+ * unchanged since the last read, because the page was last read by an older
+ * extractor (or, before the page list existed, never re-read at all).
+ *
+ * Only empty fields are filled; a value a product already has is never
+ * replaced (each write is guarded on the field still being empty). Only rows
+ * the website reader saved — a shop platform's products are never touched,
+ * nor a hidden row. The page is fetched directly for its HTML and nothing
+ * goes into knowledge documents, so no text is re-embedded. Bounded per
+ * refresh; the next refresh carries on.
+ */
+export async function fillMissingProductDetails(
+  supabase: SupabaseClient,
+  organizationId: string,
+  origin: string,
+  opts: { fetchHtml?: FetchHtml; maxPages?: number; budgetMs?: number } = {},
+): Promise<FillReport> {
+  const report: FillReport = { missing: 0, checked: 0, filled: 0, fields: { image_url: 0, description: 0, category: 0 } };
+  const { data } = await supabase
+    .from("products")
+    .select("id, external_id, product_url, sku, image_url, description, category")
+    .eq("organization_id", organizationId)
+    .eq("source", CRAWL_SOURCE)
+    .eq("is_visible", true)
+    .like("product_url", `${origin}%`)
+    .or("image_url.is.null,description.is.null,category.is.null")
+    .order("updated_at", { ascending: true })
+    .limit(1000);
+  const rows = ((data ?? []) as Array<{
+    id: string;
+    external_id: string | null;
+    product_url: string | null;
+    sku: string | null;
+    image_url: string | null;
+    description: string | null;
+    category: string | null;
+  }>).filter((r) => r.product_url && FILLABLE.some((f) => !r[f]));
+  report.missing = rows.length;
+  if (rows.length === 0) return report;
+
+  const queue = rows.slice(0, opts.maxPages ?? 200);
+  const fetchHtml = opts.fetchHtml ?? fetchProductPage;
+  const deadline = Date.now() + (opts.budgetMs ?? 45_000);
+  const found: Array<{ row: (typeof rows)[number]; draft: ProductDraft }> = [];
+  const workers = Array.from({ length: 6 }, async () => {
+    for (;;) {
+      if (Date.now() > deadline) return;
+      const row = queue.shift();
+      if (!row) return;
+      const url = row.product_url as string;
+      try {
+        const html = await fetchHtml(url);
+        report.checked += 1;
+        const draft = html ? extractProduct(html, url) : null;
+        if (draft) found.push({ row, draft });
+      } catch {
+        // One page we cannot open never stops the rest.
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  // The shop's fallback graphic on many pages is not a product photo.
+  dropSharedImages(found.map((f) => f.draft));
+
+  for (const { row, draft } of found) {
+    const values: Record<Fillable, string | null> = {
+      image_url: draft.imageUrl,
+      description: draft.description ?? null,
+      category: draft.category,
+    };
+    const patch: Record<string, unknown> = {};
+    for (const field of FILLABLE) if (!row[field] && values[field]) patch[field] = values[field];
+    const keys = Object.keys(patch) as Fillable[];
+    if (keys.length === 0) continue;
+    let write = supabase
+      .from("products")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .eq("source", CRAWL_SOURCE);
+    // Never overwrite: each field is written only while it is still empty.
+    for (const field of keys) write = write.is(field, null);
+    const { error } = await write;
+    if (error) continue;
+    report.filled += 1;
+    for (const field of keys) report.fields[field] += 1;
+  }
+  return report;
+}
+
 /** Products from this site that the latest read no longer finds. */
 export async function hideMissingCrawledProducts(
   supabase: SupabaseClient,
@@ -838,6 +1006,65 @@ export async function hideMissingCrawledProducts(
   for (let i = 0; i < ids.length; i += 200)
     await supabase.from("products").update({ is_visible: false }).in("id", ids.slice(i, i + 200));
   return { hidden: ids.length, skipped: null, candidates: plan.candidates };
+}
+
+/**
+ * A site that moved address (myzoori.com → www.myzoori.com) left its
+ * products saved under the old one. After a completed full read on the new
+ * address they are hidden — never deleted: at once when the same page is
+ * saved under the new address, otherwise by the usual forget rule (gone or
+ * off the site map, and never more than its share in one go).
+ */
+export async function hideAliasHostProducts(
+  supabase: SupabaseClient,
+  organizationId: string,
+  origin: string,
+  aliases: string[],
+  read: { fullReadComplete: boolean; siteMap: Iterable<string>; gone: Iterable<string> },
+): Promise<{ hidden: number; twins: number; skipped: string | null }> {
+  if (!read.fullReadComplete || aliases.length === 0) return { hidden: 0, twins: 0, skipped: "partial_read" };
+  const { planForget, normalizeRef } = await import("@/lib/forget-rules");
+  const { canonicalPageUrl } = await import("@/lib/site-urls");
+  const old: Array<{ id: string; canonical: string }> = [];
+  for (const alias of aliases) {
+    if (alias === origin) continue;
+    const { data } = await supabase
+      .from("products")
+      .select("id, product_url")
+      .eq("organization_id", organizationId)
+      .eq("source", CRAWL_SOURCE)
+      .eq("is_visible", true)
+      .like("product_url", `${alias}/%`)
+      .limit(10000);
+    for (const row of (data ?? []) as Array<{ id: string; product_url: string | null }>) {
+      if (!row.product_url) continue;
+      try {
+        if (new URL(row.product_url).origin !== alias) continue;
+      } catch {
+        continue;
+      }
+      const canonical = canonicalPageUrl(row.product_url, row.product_url, origin);
+      if (canonical) old.push({ id: row.id, canonical });
+    }
+  }
+  if (old.length === 0) return { hidden: 0, twins: 0, skipped: null };
+  const { data: live } = await supabase
+    .from("products")
+    .select("external_id")
+    .eq("organization_id", organizationId)
+    .eq("source", CRAWL_SOURCE)
+    .eq("is_visible", true)
+    .like("product_url", `${origin}/%`)
+    .limit(20000);
+  const current = new Set(((live ?? []) as Array<{ external_id: string | null }>).map((r) => normalizeRef(r.external_id ?? "")));
+  const twins = old.filter((o) => current.has(normalizeRef(o.canonical)));
+  const rest = old.filter((o) => !current.has(normalizeRef(o.canonical)));
+  const plan = planForget({ existing: rest.map((r) => r.canonical), fullReadComplete: true, siteMap: read.siteMap, gone: read.gone });
+  const remove = new Set(plan.skipped ? [] : plan.remove);
+  const ids = [...twins.map((t) => t.id), ...rest.filter((r) => remove.has(r.canonical)).map((r) => r.id)];
+  for (let i = 0; i < ids.length; i += 200)
+    await supabase.from("products").update({ is_visible: false }).in("id", ids.slice(i, i + 200));
+  return { hidden: ids.length, twins: twins.length, skipped: plan.skipped };
 }
 
 /** Which listing page links to which product, read off the listing pages. */

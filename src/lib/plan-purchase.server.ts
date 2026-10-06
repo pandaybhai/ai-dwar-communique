@@ -402,7 +402,9 @@ async function startFullSiteRead(
       .from("knowledge_sources")
       .select("id, name, config")
       .eq("organization_id", organizationId)
-      .eq("type", "website");
+      .eq("type", "website")
+      // A deleted website (kept for Undo) stays deleted.
+      .neq("status", "disabled");
     const sources = (data ?? []) as Array<{
       id: string;
       name: string;

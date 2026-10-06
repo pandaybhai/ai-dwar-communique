@@ -30,8 +30,9 @@ import {
   ProviderHttpError,
   ProviderStreamCut,
   anthropicConversation,
-  backupRoutes,
+  loadPlatformBackup,
   outageOf,
+  platformBackupRoutes,
   reportProviderTrouble,
   type BackupConversation,
   type BackupRoute,
@@ -1146,7 +1147,7 @@ function responsesInput(
 // ------------------------------------------------------------ backup I/O
 
 /**
- * The same conversation on OpenAI directly (OPENAI_API_KEY), streamed through
+ * The same conversation on OpenAI directly (the backup OpenAI key), streamed through
  * the Responses path the platform already uses for OpenAI. Turns taken on the
  * primary are replayed as function_call / function_call_output items.
  */
@@ -1281,11 +1282,32 @@ export async function meterAiUsage(
 }
 
 /**
- * One embedding request: the gateway first, exactly as before. Only when it
- * is out of credit, over quota, failing or unreachable — and OPENAI_API_KEY is
- * set — is the same model asked directly. Throws the gateway's error otherwise.
+ * The OpenAI key for the embeddings backup: the platform's OpenAI key from the
+ * vault (Platform providers), else OPENAI_API_KEY. Read only when the gateway
+ * can't serve, never on a healthy call; null when neither exists.
  */
-async function embedBatch(key: string | null, openAiKey: string | null, batch: string[]): Promise<Response> {
+async function embeddingBackupKey(supabase?: SupabaseClient): Promise<string | null> {
+  try {
+    const client = supabase ?? (await import("@/lib/whatsapp-webhook.server")).getServiceClient();
+    const platform = await loadPlatformBackup(client);
+    if (platform.openaiKey) return platform.openaiKey;
+  } catch {
+    // No service client here (tests, scripts): the env key still applies.
+  }
+  return process.env["OPENAI_API_KEY"] || null;
+}
+
+/**
+ * One embedding request: the gateway first, exactly as before. Only when it
+ * is out of credit, over quota, failing or unreachable — and a backup OpenAI
+ * key exists — is the same model asked directly. Throws the gateway's error otherwise.
+ */
+async function embedBatch(
+  key: string | null,
+  backupKey: () => Promise<string | null>,
+  batch: string[],
+): Promise<Response> {
+  let openAiKey: string | null = null;
   let failure: unknown = null;
   if (key) {
     try {
@@ -1300,8 +1322,12 @@ async function embedBatch(key: string | null, openAiKey: string | null, batch: s
     } catch (error) {
       failure = error;
     }
-    if (!openAiKey || !outageOf(failure)) throw failure;
+    if (!outageOf(failure)) throw failure;
+    openAiKey = await backupKey();
+    if (!openAiKey) throw failure;
     console.error("[ai] embeddings: gateway unavailable, using OpenAI directly", failure instanceof Error ? failure.message : "");
+  } else {
+    openAiKey = await backupKey();
   }
   const res = await fetch(`${DIRECT_ENDPOINTS["openai"]}/embeddings`, {
     method: "POST",
@@ -1323,15 +1349,17 @@ export async function embedTexts(
   const key = process.env["LOVABLE_API_KEY"];
   // The only embedding backup is OpenAI's own text-embedding-3-small: the
   // model the gateway serves, so vectors stay comparable with the stored ones.
-  // Anthropic has no embeddings, so with only ANTHROPIC_API_KEY set,
-  // embeddings stay on the gateway.
-  const openAiKey = process.env["OPENAI_API_KEY"];
-  if (!key && !openAiKey) throw new Error("AI isn't connected on this deployment.");
+  // Anthropic has no embeddings, so with only an Anthropic backup key,
+  // embeddings stay on the gateway. The backup key is looked up once, and
+  // only if the gateway can't serve.
+  let backup: Promise<string | null> | null = null;
+  const backupKey = () => (backup ??= embeddingBackupKey(meter?.supabase));
+  if (!key && !(await backupKey())) throw new Error("AI isn't connected on this deployment.");
   const out: number[][] = [];
   // The gateway caps batch size; 64 keeps every request comfortably inside it.
   for (let i = 0; i < texts.length; i += 64) {
     const batch = texts.slice(i, i + 64);
-    const res = await embedBatch(key ?? null, openAiKey ?? null, batch);
+    const res = await embedBatch(key ?? null, backupKey, batch);
     const json = (await res.json()) as { data?: Array<{ embedding: number[] }> };
     for (const row of json.data ?? []) out.push(row.embedding);
 
@@ -1633,7 +1661,7 @@ export async function executeRun(
   const wire = direct ? wireModel(brain.provider, brain.model_id) : brain.model_id;
 
   // No key and no backup: stop before anything is read or spent, as before.
-  if (!key && (prelude.api.owner === "workspace" || backupRoutes(brain.tier).length === 0)) {
+  if (!key && (prelude.api.owner === "workspace" || (await platformBackupRoutes(supabase, brain.tier)).length === 0)) {
     return finish({
       ...base,
       status: "error",
@@ -1835,12 +1863,11 @@ export async function executeRun(
       outputs: call.toolCalls.map((tc, i) => ({ id: tc.id, output: views[i] ?? "" })),
     });
 
-  // The platform's backups. None configured (no ANTHROPIC_API_KEY /
-  // OPENAI_API_KEY), or a workspace on its own account: none are tried.
-  const backups =
-    prelude.api.owner === "workspace"
-      ? []
-      : backupRoutes(brain.tier).filter((r) => !(direct && r.provider === brain.provider));
+  // The platform's backups (keys from Platform providers in the vault, else
+  // ANTHROPIC_API_KEY / OPENAI_API_KEY). Read only once the primary has
+  // actually failed, so a healthy run makes no extra reads. None configured,
+  // or a workspace on its own account: none are tried.
+  let backups: BackupRoute[] = [];
 
   let modelError: unknown = null;
   if (key) {
@@ -1908,6 +1935,11 @@ export async function executeRun(
   // no key): the same conversation continues on a backup, from the turn it
   // stopped at. Any other failure (a bad request) is returned as before.
   const outage: Outage | null = !key ? { kind: "no_key", status: null } : modelError ? outageOf(modelError) : null;
+  if (outage && prelude.api.owner !== "workspace") {
+    backups = (await platformBackupRoutes(supabase, brain.tier)).filter(
+      (r) => !(direct && r.provider === brain.provider),
+    );
+  }
   let served: { route: BackupRoute; model: string; inputTokens: number; outputTokens: number } | null = null;
   if (outage && backups.length > 0) {
     const attempts: Array<Record<string, unknown>> = [];
