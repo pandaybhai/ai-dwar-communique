@@ -2,12 +2,20 @@
  * The backup brain. When the platform's primary AI route (the Lovable
  * gateway) runs out of credit, is rate-limited past its quota, errors or can't
  * be reached, a chat/completion run carries on with a second provider —
- * Anthropic (ANTHROPIC_API_KEY) and/or OpenAI (OPENAI_API_KEY) — with the same
- * system prompt, history, tools and guards. ai-run.server.ts decides when;
- * this file says who, how, at what price, and tells the platform owner.
+ * Anthropic and/or OpenAI — with the same system prompt, history, tools and
+ * guards. ai-run.server.ts decides when; this file says who, how, at what
+ * price, and tells the platform owner.
  *
- * Nothing here runs unless a backup key is set: with neither key every run
- * behaves exactly as it did before (the error is returned as before).
+ * The backup keys are the platform provider keys the Super Admin stored under
+ * /admin/ai → Platform providers (Supabase Vault, read the same way the
+ * platform providers are: platform_ai_providers.vault_secret_name through
+ * read_vault_secret, an inactive provider skipped), and the server settings
+ * ANTHROPIC_API_KEY / OPENAI_API_KEY when no vault key is stored. Keys are
+ * only ever read server side and never returned to a screen.
+ *
+ * Nothing here runs unless a backup key exists: with none every run behaves
+ * exactly as it did before (the error is returned as before). The vault is
+ * read only once a backup is actually needed, never on a healthy run.
  *
  * Embeddings are NOT routed here: stored vectors only match vectors from the
  * same model, so embeddings fall back only to OpenAI's own
@@ -82,31 +90,143 @@ export type BackupRoute = { provider: BackupProvider; model: string; key: string
 
 type Env = Record<string, string | undefined>;
 
+/** The Anthropic backup model when nothing else is chosen: Sonnet keeps the cost down. */
+export const DEFAULT_ANTHROPIC_BACKUP_MODEL = "claude-sonnet-5-5";
+
+/** The Anthropic models the /admin/ai card offers for the backup. */
+export const ANTHROPIC_BACKUP_MODELS = [
+  { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 (recommended)" },
+  { id: "claude-opus-5-5", label: "Claude Opus 5.5 (costs more)" },
+  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5 (cheapest)" },
+] as const;
+
+export function isAnthropicBackupModel(id: unknown): id is string {
+  return typeof id === "string" && ANTHROPIC_BACKUP_MODELS.some((m) => m.id === id);
+}
+
+/**
+ * What the platform itself holds for the backup: the keys stored under
+ * Platform providers (Vault) and the model chosen on the AI backup card.
+ */
+export type PlatformBackup = {
+  anthropicKey: string | null;
+  openaiKey: string | null;
+  /** platform_settings.ai_backup_anthropic_model; null = the default. */
+  anthropicModel: string | null;
+};
+
+export const NO_PLATFORM_BACKUP: PlatformBackup = { anthropicKey: null, openaiKey: null, anthropicModel: null };
+
 /**
  * The backups configured on this deployment, in the order they are tried.
  * AI_BACKUP_ORDER ("anthropic,openai" by default) picks the order; a provider
- * without its key is skipped. Model choice per provider can be overridden.
+ * without a key (vault or env) is skipped. The vault key wins over the env
+ * key. The Anthropic model: ANTHROPIC_BACKUP_MODEL, else the card's choice,
+ * else Sonnet.
  */
-export function backupRoutes(tier: string, env: Env = process.env): BackupRoute[] {
+export function backupRoutes(
+  tier: string,
+  env: Env = process.env,
+  platform: PlatformBackup = NO_PLATFORM_BACKUP,
+): BackupRoute[] {
   const order = (env["AI_BACKUP_ORDER"] ?? "anthropic,openai")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter((s): s is BackupProvider => s === "anthropic" || s === "openai");
   const routes: BackupRoute[] = [];
   for (const provider of Array.from(new Set(order))) {
-    if (provider === "anthropic" && env["ANTHROPIC_API_KEY"]) {
+    const anthropicKey = platform.anthropicKey || env["ANTHROPIC_API_KEY"];
+    if (provider === "anthropic" && anthropicKey) {
       routes.push({
         provider,
-        key: env["ANTHROPIC_API_KEY"],
-        model: env["ANTHROPIC_BACKUP_MODEL"] || "claude-opus-5-5",
+        key: anthropicKey,
+        model: env["ANTHROPIC_BACKUP_MODEL"] || platform.anthropicModel || DEFAULT_ANTHROPIC_BACKUP_MODEL,
       });
     }
-    if (provider === "openai" && env["OPENAI_API_KEY"]) {
+    const openaiKey = platform.openaiKey || env["OPENAI_API_KEY"];
+    if (provider === "openai" && openaiKey) {
       const model = env["OPENAI_BACKUP_MODEL"] || (tier === "careful" ? "gpt-5.4" : "gpt-5.4-mini");
-      routes.push({ provider, key: env["OPENAI_API_KEY"], model });
+      routes.push({ provider, key: openaiKey, model });
     }
   }
   return routes;
+}
+
+// ---------------------------------------------- platform keys (Vault)
+
+const PLATFORM_BACKUP_TTL_MS = 60_000;
+let platformCache: { at: number; value: PlatformBackup } | null = null;
+
+/** Only for tests, and after the card saves a new choice. */
+export function resetPlatformBackupCache(): void {
+  platformCache = null;
+}
+
+async function vaultSecret(supabase: SupabaseClient, name: string | null | undefined): Promise<string | null> {
+  if (!name) return null;
+  try {
+    const { data, error } = await supabase.rpc("read_vault_secret", { p_name: name });
+    if (error) {
+      console.error("[ai-fallback] vault read failed", name, error.message);
+      return null;
+    }
+    return typeof data === "string" && data.length > 0 ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The platform's stored backup keys and model choice, read with the service
+ * client the way the platform providers are read (an inactive provider has no
+ * key here). Cached for a minute. Never throws: a read that fails means "no
+ * platform key", and the env keys still apply.
+ */
+export async function loadPlatformBackup(supabase: SupabaseClient, opts: { fresh?: boolean } = {}): Promise<PlatformBackup> {
+  if (!opts.fresh && platformCache && Date.now() - platformCache.at < PLATFORM_BACKUP_TTL_MS) return platformCache.value;
+  let value: PlatformBackup = NO_PLATFORM_BACKUP;
+  try {
+    const [providers, settings] = await Promise.all([
+      Promise.resolve(
+        supabase
+          .from("platform_ai_providers")
+          .select("provider, vault_secret_name, is_active")
+          .in("provider", ["anthropic", "openai"]),
+      ).catch(() => ({ data: null })),
+      // Until migration 20261017_ai_backup_model.sql is applied this column
+      // does not exist: the read errors and the default model applies.
+      Promise.resolve(
+        supabase.from("platform_settings").select("ai_backup_anthropic_model").eq("id", true).maybeSingle(),
+      ).catch(() => ({ data: null })),
+    ]);
+    const rows = ((providers as { data: unknown }).data ?? []) as Array<{
+      provider: string;
+      vault_secret_name: string | null;
+      is_active: boolean | null;
+    }>;
+    const keyOf = async (provider: BackupProvider) => {
+      const row = rows.find((r) => r.provider === provider);
+      if (!row || row.is_active === false) return null;
+      return vaultSecret(supabase, row.vault_secret_name);
+    };
+    const [anthropicKey, openaiKey] = await Promise.all([keyOf("anthropic"), keyOf("openai")]);
+    const chosen = ((settings as { data: unknown }).data as { ai_backup_anthropic_model?: string | null } | null)
+      ?.ai_backup_anthropic_model;
+    value = { anthropicKey, openaiKey, anthropicModel: isAnthropicBackupModel(chosen) ? chosen : null };
+  } catch (error) {
+    console.error("[ai-fallback] platform backup read failed", error instanceof Error ? error.message : String(error));
+  }
+  platformCache = { at: Date.now(), value };
+  return value;
+}
+
+/** backupRoutes with the platform's stored keys and model choice. */
+export async function platformBackupRoutes(
+  supabase: SupabaseClient,
+  tier: string,
+  env: Env = process.env,
+): Promise<BackupRoute[]> {
+  return backupRoutes(tier, env, await loadPlatformBackup(supabase));
 }
 
 /**
@@ -254,7 +374,7 @@ export function anthropicConversation(route: BackupRoute, req: BackupRequest): B
         messages,
         ...(tools.length ? { tools } : {}),
         // Customer chat: quick and short beats deep deliberation. (Haiku 4.5,
-        // if chosen via ANTHROPIC_BACKUP_MODEL, takes no effort setting.)
+        // if chosen as the backup model, takes no effort setting.)
         ...(route.model.startsWith("claude-haiku")
           ? {}
           : {
@@ -417,27 +537,51 @@ export async function reportProviderTrouble(
 /** What /admin shows about the backups: configured or not, and which model — never a key. */
 export type BackupStatus = {
   order: BackupProvider[];
-  anthropic: { configured: boolean; model: string };
-  openai: { configured: boolean; model: string; careful_model: string };
+  anthropic: {
+    configured: boolean;
+    model: string;
+    /** Where the key comes from: the vault (Platform providers), the server env, or nowhere. */
+    key_source: "vault" | "env" | null;
+    /** The model saved on the card (null = the default). */
+    chosen_model: string | null;
+    /** ANTHROPIC_BACKUP_MODEL is set and overrides the card's choice. */
+    env_override: boolean;
+    models: Array<{ id: string; label: string }>;
+  };
+  openai: { configured: boolean; model: string; careful_model: string; key_source: "vault" | "env" | null };
 };
 
-export function backupStatus(env: Env = process.env): BackupStatus {
+export function backupStatus(env: Env = process.env, platform: PlatformBackup = NO_PLATFORM_BACKUP): BackupStatus {
   const order = (env["AI_BACKUP_ORDER"] ?? "anthropic,openai")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter((s): s is BackupProvider => s === "anthropic" || s === "openai");
   // The same model choice backupRoutes makes (the key itself never leaves).
   const withKeys = { ...env, ANTHROPIC_API_KEY: "x", OPENAI_API_KEY: "x" };
-  const everyday = backupRoutes("everyday", withKeys);
-  const careful = backupRoutes("careful", withKeys);
+  const modelsOnly: PlatformBackup = { anthropicKey: null, openaiKey: null, anthropicModel: platform.anthropicModel };
+  const everyday = backupRoutes("everyday", withKeys, modelsOnly);
+  const careful = backupRoutes("careful", withKeys, modelsOnly);
   const modelOf = (routes: BackupRoute[], p: BackupProvider) => routes.find((r) => r.provider === p)?.model ?? "";
+  const source = (vault: string | null, envKey: string | undefined) => (vault ? "vault" : envKey ? "env" : null) as "vault" | "env" | null;
   return {
     order: Array.from(new Set(order)),
-    anthropic: { configured: Boolean(env["ANTHROPIC_API_KEY"]), model: modelOf(everyday, "anthropic") || env["ANTHROPIC_BACKUP_MODEL"] || "claude-opus-5-5" },
+    anthropic: {
+      configured: Boolean(platform.anthropicKey || env["ANTHROPIC_API_KEY"]),
+      model:
+        modelOf(everyday, "anthropic") ||
+        env["ANTHROPIC_BACKUP_MODEL"] ||
+        platform.anthropicModel ||
+        DEFAULT_ANTHROPIC_BACKUP_MODEL,
+      key_source: source(platform.anthropicKey, env["ANTHROPIC_API_KEY"]),
+      chosen_model: platform.anthropicModel,
+      env_override: Boolean(env["ANTHROPIC_BACKUP_MODEL"]),
+      models: ANTHROPIC_BACKUP_MODELS.map((m) => ({ id: m.id, label: m.label })),
+    },
     openai: {
-      configured: Boolean(env["OPENAI_API_KEY"]),
+      configured: Boolean(platform.openaiKey || env["OPENAI_API_KEY"]),
       model: modelOf(everyday, "openai") || "gpt-5.4-mini",
       careful_model: modelOf(careful, "openai") || "gpt-5.4",
+      key_source: source(platform.openaiKey, env["OPENAI_API_KEY"]),
     },
   };
 }
@@ -534,10 +678,13 @@ async function testOpenAi(model: string, key: string): Promise<Omit<BackupTestRe
  * Nothing is recorded on ai_runs or billed to a workspace. A provider with no
  * key is not called.
  */
-export async function testBackupProviders(env: Env = process.env): Promise<BackupTestResult[]> {
+export async function testBackupProviders(
+  env: Env = process.env,
+  platform: PlatformBackup = NO_PLATFORM_BACKUP,
+): Promise<BackupTestResult[]> {
   const targets: Array<{ provider: BackupProvider; model: string; key: string }> = [];
   for (const tier of ["everyday", "careful"]) {
-    for (const route of backupRoutes(tier, env)) {
+    for (const route of backupRoutes(tier, env, platform)) {
       if (!targets.some((t) => t.provider === route.provider && t.model === route.model)) targets.push(route);
     }
   }

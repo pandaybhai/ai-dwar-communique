@@ -310,7 +310,11 @@ describe("unchanged: WhatsApp catalogue sync ('Sync now' calls the same action)"
     });
     const out = await syncCatalog({ supabase: db.supabase, organizationId: "org", userId: "u1", whatsappAccountId: "acc" });
     expect(out).toMatchObject({ ok: true, catalog_id: "cat-1", eligible: 1, pushed: 1, rejected: 0, removed: 0 });
-    expect(calls).toHaveLength(1);
+    // Batch 11B: the sync also lists the catalogue (to remove hidden items); the push itself is unchanged.
+    const pushes = calls.filter((c) => c.url.includes("/items_batch"));
+    expect(pushes).toHaveLength(1);
+    expect(calls.filter((c) => !c.url.includes("/items_batch")).every((c) => c.url.includes("/cat-1/products"))).toBe(true);
+    calls.splice(0, calls.length, ...pushes);
     expect(calls[0]!.url).toContain("/cat-1/items_batch");
     expect(calls[0]!.auth).toBe("Bearer platform-tok");
     expect(calls[0]!.body).toEqual({

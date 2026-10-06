@@ -110,7 +110,9 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               const last = src.last_manual_refresh_at ? new Date(src.last_manual_refresh_at).getTime() : 0;
               if (last && Date.now() - last < cooldownMs)
                 return jsonError(`I checked recently. You can ask again after ${new Date(last + cooldownMs).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}.`, 429);
-              config = { ...(src.config ?? {}), refresh: true };
+              // The button also fills crawled products' missing photos,
+              // descriptions and shelves (scheduled refreshes don't).
+              config = { ...(src.config ?? {}), refresh: true, fill_products: true };
               extra["last_manual_refresh_at"] = new Date().toISOString();
             } else {
               const plan = await knowledge.planLimits(service, auth.organizationId);

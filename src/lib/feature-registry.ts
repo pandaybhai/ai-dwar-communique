@@ -727,6 +727,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "ai_provider_alert",
       // Platform-level: a super admin pressed "Test backup" in /admin/ai.
       "ai_backup_tested",
+      // Platform-level: a super admin chose the Anthropic backup model.
+      "ai_backup_model_set",
     ],
     settings_path: "/app/employee",
     usage_meters: [

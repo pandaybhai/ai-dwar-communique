@@ -63,7 +63,7 @@ export function AiProviderBanner({ className }: { className?: string }) {
           {alert.details.detail ?? ""}
           {servedBy
             ? "."
-            : ". Top up the Lovable AI credits or set a backup key (ANTHROPIC_API_KEY / OPENAI_API_KEY)."}{" "}
+            : ". Top up the Lovable AI credits or store an Anthropic or OpenAI key under Platform providers."}{" "}
           <Link to="/admin/ai" className="font-semibold underline underline-offset-2">
             AI operations
           </Link>
