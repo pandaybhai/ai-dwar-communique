@@ -165,6 +165,8 @@ export function classifyGraphAnswer(answer: GraphAnswer): SendVerdict {
 
 // -------------------------------------------------------- rate limiter
 
+const BURST_SECONDS = 0.25;
+
 type Bucket = { tokens: number; rate: number; at: number; blockedUntil: number; strikes: number };
 
 /**
@@ -192,7 +194,9 @@ export class NumberRateLimiter {
       this.buckets.set(key, b);
       return b;
     }
-    const capacity = Math.max(1, b.rate);
+    // At most a quarter-second of burst: lanes sharing a number can't stack
+    // full seconds of tokens on top of each other.
+    const capacity = Math.max(1, b.rate * BURST_SECONDS);
     b.tokens = Math.min(capacity, b.tokens + ((now - b.at) / 1000) * b.rate);
     b.at = now;
     return b;
@@ -437,7 +441,9 @@ async function withRetry(
     if (!last.error) return last;
     await new Promise((r) => setTimeout(r, 50 + Math.random() * 150 * (i + 1)));
   }
-  console.error(JSON.stringify({ at: "campaign_recipient_write_failed", error: last.error?.message }));
+  console.error(
+    JSON.stringify({ at: "campaign_recipient_write_failed", error: last.error?.message }),
+  );
   return last;
 }
 const COUNTER_EVERY_MS = 2_000;
@@ -1569,7 +1575,9 @@ class SendRecorder {
     // in different orders could deadlock each other).
     await Promise.all(writes);
     if (links.length) {
-      await withRetry(() => supabase.from("campaign_recipients").upsert(links, { onConflict: "id" }));
+      await withRetry(() =>
+        supabase.from("campaign_recipients").upsert(links, { onConflict: "id" }),
+      );
     }
 
     // 3. events, meters, conversation times, counters
@@ -1632,8 +1640,20 @@ class SendRecorder {
       this.bump(it.c.id, it.kind === "sent" ? { sent: 1 } : { failed: 1 });
     }
     const tail: Array<PromiseLike<unknown>> = [this.writeCounters(false)];
-    if (events.length) tail.push(emitEvents(supabase, events));
-    if (usage.length) tail.push(recordUsages(supabase, usage));
+    if (events.length) {
+      tail.push(
+        (async () => {
+          await emitEvents(supabase, events);
+        })(),
+      );
+    }
+    if (usage.length) {
+      tail.push(
+        (async () => {
+          await recordUsages(supabase, usage);
+        })(),
+      );
+    }
     if (touched.length) {
       const last = items.reduce((m, it) => (it.at > m ? it.at : m), "");
       tail.push(supabase.from("conversations").update({ last_message_at: last }).in("id", touched));

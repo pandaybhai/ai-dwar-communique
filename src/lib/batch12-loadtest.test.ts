@@ -688,8 +688,11 @@ update campaign_recipients set status = 'skipped' where campaign_id = ${cid(":c"
         const normal = bench(["worker.sql@4", "status.sql@6", "bump.sql@2"]);
         seed();
         // Cancels can deadlock with a worker's write on the same rows; both
-      // sides try again (as the app does), so nothing may end up failed.
-      const withCancels = bench(["worker.sql@4", "status.sql@6", "bump.sql@2", "cancel.sql@1"], 5);
+        // sides try again (as the app does), so nothing may end up failed.
+        const withCancels = bench(
+          ["worker.sql@4", "status.sql@6", "bump.sql@2", "cancel.sql@1"],
+          5,
+        );
         const report = { normal, withCancels };
         mkdirSync(OUT, { recursive: true });
         writeFileSync(join(OUT, "sql-concurrency.json"), JSON.stringify(report, null, 2));

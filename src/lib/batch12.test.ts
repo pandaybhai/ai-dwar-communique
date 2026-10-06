@@ -94,6 +94,15 @@ describe("pure parts", () => {
     });
   });
 
+  it("per-number token bucket: bursts are at most a quarter of a second's worth", () => {
+    const t = 0;
+    const limiter = new NumberRateLimiter(40, () => t);
+    // Idle for a long time, then everything at once: 1 (start) … never 40.
+    let burst = 0;
+    while (limiter.take("pn")) burst += 1;
+    expect(burst).toBeLessThanOrEqual(10);
+  });
+
   it("per-number token bucket: never faster than its rate; a throttle answer pauses and halves it", () => {
     let t = 0;
     const limiter = new NumberRateLimiter(10, () => t);
@@ -126,7 +135,13 @@ describe("pure parts", () => {
     ]);
     // Fewer lanes than numbers: several numbers per lane, one lane each.
     const two = [0, 1].map((lane) => [...laneShare(numbers, lane, 2).entries()]);
-    expect(two).toEqual([[["pn-a", 1], ["pn-c", 1]], [["pn-b", 1]]]);
+    expect(two).toEqual([
+      [
+        ["pn-a", 1],
+        ["pn-c", 1],
+      ],
+      [["pn-b", 1]],
+    ]);
     // One lane (today's cron): everything.
     expect([...laneShare(numbers, 0, 1).keys()]).toEqual(["pn-a", "pn-b", "pn-c"]);
     expect(laneShare([], 0, 4).size).toBe(0);
@@ -134,7 +149,8 @@ describe("pure parts", () => {
     for (const lanes of [1, 2, 3, 7, 16, 32]) {
       const total = new Map<string, number>();
       for (let lane = 0; lane < lanes; lane++) {
-        for (const [pn, n] of laneShare(numbers, lane, lanes)) total.set(pn, (total.get(pn) ?? 0) + 60 / n);
+        for (const [pn, n] of laneShare(numbers, lane, lanes))
+          total.set(pn, (total.get(pn) ?? 0) + 60 / n);
       }
       for (const v of total.values()) expect(Math.round(v)).toBe(60);
       expect(total.size).toBe(3);
@@ -841,7 +857,77 @@ describe("status webhook: cheap, monotonic, counted once", () => {
         },
       ]);
     }
-    expect(db.calls.slice(before).filter((x) => x.rpc === "campaign_ledger_charge")).toHaveLength(1);
+    expect(db.calls.slice(before).filter((x) => x.rpc === "campaign_ledger_charge")).toHaveLength(
+      1,
+    );
+  });
+});
+
+describe("catching up stored webhook events", () => {
+  beforeEach(() => vi.resetModules());
+
+  it("status-only events go several at a time, customer messages one by one in order; all are processed", async () => {
+    const { reprocessUnprocessedEvents } = await import("./whatsapp-webhook.server");
+    const db = new MemoryDb();
+    const old = new Date(Date.now() - 120_000).toISOString();
+    const status = {
+      entry: [
+        {
+          changes: [
+            {
+              field: "messages",
+              value: {
+                metadata: { phone_number_id: "pn-x" },
+                statuses: [{ id: "w", status: "read" }],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const message = {
+      entry: [
+        {
+          changes: [
+            {
+              field: "messages",
+              value: {
+                metadata: { phone_number_id: "pn-x" },
+                messages: [{ id: "in", from: "91999", type: "text", text: { body: "hi" } }],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    for (let i = 0; i < 25; i++) {
+      db.insert("webhook_events", {
+        provider: "meta",
+        signature_valid: true,
+        processed_at: null,
+        received_at: old,
+        payload: i === 12 ? message : status,
+      });
+    }
+    const handled = await reprocessUnprocessedEvents(db.client, {
+      olderThanSeconds: 0,
+      limit: 100,
+      statusConcurrency: 10,
+    });
+    expect(handled).toBe(25);
+    expect(db.rows("webhook_events").every((e) => e["processed_at"])).toBe(true);
+    // Nothing starts after the budget.
+    const late = new MemoryDb();
+    late.insert("webhook_events", {
+      provider: "meta",
+      signature_valid: true,
+      processed_at: null,
+      received_at: old,
+      payload: status,
+    });
+    expect(
+      await reprocessUnprocessedEvents(late.client, { olderThanSeconds: 0, budgetMs: 0 }),
+    ).toBe(0);
   });
 });
 

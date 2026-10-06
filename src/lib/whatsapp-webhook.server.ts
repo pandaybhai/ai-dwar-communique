@@ -2333,10 +2333,23 @@ async function updateEvent(
  */
 export async function reprocessUnprocessedEvents(
   supabase: SupabaseClient,
-  options: { olderThanSeconds?: number; limit?: number } = {},
+  options: {
+    olderThanSeconds?: number;
+    limit?: number;
+    /**
+     * Status-only events (sent / delivered / read) at most this many at a
+     * time; events with customer messages always one by one, in order, so
+     * replies never overtake each other. Default 1: exactly as before.
+     */
+    statusConcurrency?: number;
+    /** Stop starting new events after this long (ms). */
+    budgetMs?: number;
+  } = {},
 ): Promise<number> {
   const olderThanSeconds = options.olderThanSeconds ?? 60;
   const limit = options.limit ?? 50;
+  const concurrency = Math.max(1, options.statusConcurrency ?? 1);
+  const deadline = options.budgetMs !== undefined ? Date.now() + options.budgetMs : Infinity;
   const cutoff = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
 
   const { data: events } = await supabase
@@ -2350,7 +2363,7 @@ export async function reprocessUnprocessedEvents(
 
   if (!events?.length) return 0;
   let handled = 0;
-  for (const event of events) {
+  const one = async (event: { id: unknown; payload: unknown }) => {
     // Claim the event first: two overlapping catch-up passes used to pick the
     // same rows and could each run a reply.
     const { data: claimed } = await supabase
@@ -2359,14 +2372,39 @@ export async function reprocessUnprocessedEvents(
       .eq("id", event.id as string)
       .is("processed_at", null)
       .select("id");
-    if (!claimed?.length) continue;
+    if (!claimed?.length) return;
     handled += 1;
     await processWebhookPayload(
       supabase,
       event.id as string,
       (event.payload ?? {}) as AnyRecord,
     );
+  };
+  const statusOnly = (payload: unknown) =>
+    ((payload as AnyRecord | null)?.["entry"] as AnyRecord[] | undefined)?.every((e) =>
+      ((e["changes"] as AnyRecord[] | undefined) ?? []).every(
+        (c) => (((c["value"] as AnyRecord | undefined)?.["messages"] as unknown[] | undefined) ?? []).length === 0,
+      ),
+    ) ?? false;
+
+  const batch: Array<{ id: unknown; payload: unknown }> = [];
+  const flush = async () => {
+    for (let i = 0; i < batch.length; i += concurrency) {
+      await Promise.all(batch.slice(i, i + concurrency).map(one));
+    }
+    batch.length = 0;
+  };
+  for (const event of events) {
+    if (Date.now() >= deadline) break;
+    if (concurrency > 1 && statusOnly(event.payload)) {
+      batch.push(event);
+      if (batch.length >= concurrency) await flush();
+      continue;
+    }
+    await flush();
+    await one(event);
   }
+  await flush();
   return handled;
 }
 
