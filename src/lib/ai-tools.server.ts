@@ -464,8 +464,11 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
   },
 
   async catalogSearch(ctx, args) {
-    const limit = Math.min(Math.max(num(args["limit"], 10), 1), 25);
-    const { isAvailability } = await import("@/lib/catalog");
+    // `pool` is the flows "Show products" step only (not in the agent's
+    // manifest): it reads a wider pool to pick photos first / spread across
+    // the budget from. Absent, the cap is 25 as always.
+    const limit = Math.min(Math.max(num(args["limit"], 10), 1), args["pool"] === true ? 100 : 25);
+    const { isAvailability, keywordTsQuery } = await import("@/lib/catalog");
 
     const rawQuery = str(args["query"]);
     const rawCategory = str(args["category"]);
@@ -491,6 +494,14 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     // cheapest first (same filters, same limit). Absent, the order is exactly
     // as before.
     const byPrice = args["order"] === "price_asc";
+    // Flows only as well: "Newest" lists the most recently added first, and a
+    // keyword ("Ruby", or a {{variable}} filled in) must appear in the
+    // product's own words — strictly, on every search including the closest
+    // ones. Absent, both are exactly as before.
+    const newest = args["order"] === "newest";
+    const keyword = keywordTsQuery(str(args["keyword"]));
+    // A keyword with no searchable word in it matches no product's words.
+    if (str(args["keyword"]) && !keyword) return { ok: true, found: false, data: [] };
     // A whole sentence in `query` matches nothing; once we know the shelf and
     // the budget, the words the customer typed are noise.
     const query = category && looksLikeSentence(rawQuery) ? "" : rawQuery;
@@ -520,8 +531,11 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
           ? request.textSearch("search_vector", tsquery)
           : request.ilike("title", `%${withQuery.replace(/[%,()]/g, " ").trim()}%`);
         if (byPrice) request = request.order("price", { ascending: true, nullsFirst: false });
+        else if (newest) request = request.order("created_at", { ascending: false });
       } else if (cheapestFirst || byPrice) {
         request = request.order("price", { ascending: true, nullsFirst: false });
+      } else if (newest) {
+        request = request.order("created_at", { ascending: false });
       } else {
         // Browse case: what's in stock, with a picture, most recently touched
         // first. A product without a picture arrives as a bare line of text, so
@@ -532,6 +546,9 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
           .order("updated_at", { ascending: false });
       }
 
+      // The search vector is built with 'simple' (no stemming), so the
+      // keyword is too: "ruby" must not become "rubi".
+      if (keyword) request = request.textSearch("search_vector", keyword, { config: "simple" });
       if (withMaxPrice !== null) request = request.lte("price", withMaxPrice);
       if (withMinPrice !== null) request = request.gte("price", withMinPrice);
       if (availability) request = request.eq("availability", availability);
@@ -556,6 +573,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       const hasPicture = (r: Record<string, unknown>) =>
         typeof r["image_url"] === "string" && /^https?:\/\//i.test(r["image_url"] as string);
       if (byPrice) return sortByPrice(rows);
+      if (newest) return rows;
       return searched
         ? [...rows].sort((a, b) => Number(hasPicture(b)) - Number(hasPicture(a)))
         : [...rows].sort(

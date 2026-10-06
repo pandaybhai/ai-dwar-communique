@@ -560,23 +560,51 @@ export function parseBudget(text: unknown): { min: number | null; max: number | 
   return { min: null, max: v };
 }
 
+/** How a "Show products" step orders its matches. Absent = cheapest first (as always). */
+export type ProductSort = "cheapest" | "spread" | "newest";
+export const PRODUCT_SORTS: Array<{ value: ProductSort; label: string }> = [
+  { value: "cheapest", label: "Cheapest first" },
+  { value: "spread", label: "Spread across budget" },
+  { value: "newest", label: "Newest" },
+];
+
 /**
  * What a "Show products" step searches for, with this run's answers filled
  * in: the shelf, and a price range from the budget (fixed or a {{variable}}),
- * where an explicit lowest/highest price wins.
+ * where an explicit lowest/highest price wins. The newer settings (keyword,
+ * sort, photos first, readable names) appear only when the step sets them,
+ * so a step saved before them searches exactly as it did.
  */
-export function productQueryOf(data: Record<string, unknown>, ctx: RunContext): { category: string; minPrice: number | null; maxPrice: number | null; limit: number } {
+export function productQueryOf(
+  data: Record<string, unknown>,
+  ctx: RunContext,
+): {
+  category: string;
+  minPrice: number | null;
+  maxPrice: number | null;
+  limit: number;
+  keyword?: string;
+  sort?: ProductSort;
+  photosFirst?: true;
+  readableNames?: true;
+} {
   const range = parseBudget(interpolate(String(data["budget"] ?? ""), ctx));
   const price = (key: string): number | null => {
     const raw = interpolate(String(data[key] ?? ""), ctx).replace(/[,₹\s]/g, "");
     return raw && Number.isFinite(Number(raw)) ? Number(raw) : null;
   };
   const limit = Math.min(Math.max(Math.round(Number(data["max_items"] ?? 5)) || 5, 1), MAX_PRODUCT_ITEMS);
+  const keyword = interpolate(String(data["keyword"] ?? ""), ctx).trim().slice(0, 100);
+  const sort = data["sort"] === "spread" || data["sort"] === "newest" ? data["sort"] : null;
   return {
     category: interpolate(String(data["category"] ?? ""), ctx).trim(),
     minPrice: price("min_price") ?? range?.min ?? null,
     maxPrice: price("max_price") ?? range?.max ?? null,
     limit,
+    ...(keyword ? { keyword } : {}),
+    ...(sort ? { sort } : {}),
+    ...(data["photos_first"] === true ? { photosFirst: true as const } : {}),
+    ...(data["readable_names"] === true ? { readableNames: true as const } : {}),
   };
 }
 

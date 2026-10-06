@@ -274,6 +274,28 @@ export function toTsQuery(input: string): string {
   return terms.map((t) => `${t}:*`).join(" & ");
 }
 
+/**
+ * A flows "Show products" keyword as a full-text query: each comma (or "or")
+ * separated choice must have all its words, any choice may match —
+ * "Ruby, Pearl" → "(ruby:*) | (pearl:*)". "" when there is nothing to search.
+ */
+export function keywordTsQuery(input: string): string {
+  const choices = input
+    .toLowerCase()
+    .split(/,|\/|\bor\b|\|/)
+    .map((c) =>
+      c
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean)
+        .slice(0, 6)
+        .map((t) => `${t}:*`)
+        .join(" & "),
+    )
+    .filter(Boolean)
+    .slice(0, 10);
+  return choices.map((c) => `(${c})`).join(" | ");
+}
+
 // ------------------------------------------------------------------ import
 
 export type ImportField =
