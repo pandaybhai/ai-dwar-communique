@@ -39,6 +39,7 @@ export const Route = createFileRoute("/api/admin/ai")({
             : null;
           const { playgroundAnswer } = await import("@/lib/ai-tasks.server");
           const { runToolsMeta } = await import("@/lib/ai-run.server");
+          const { replySendOrder } = await import("@/lib/reply-order.server");
           const run = await playgroundAnswer(
             supabase,
             { organizationId: orgId, actorUserId: user.id, actingRole: "owner" },
@@ -65,9 +66,21 @@ export const Route = createFileRoute("/api/admin/ai")({
             escalation: run.escalationSignal,
             tools: runToolsMeta(run.toolCalls),
             media: run.media.map((m) => ({ title: m.title, image_url: m.imageUrl, price: m.price, currency: m.currency })),
+            // What the customer would get, message by message: words and each
+            // picture with its caption, in the order they would be sent.
+            sequence: replySendOrder(run),
             tier: run.tier,
             latency_ms: run.latencyMs,
           });
+        }
+
+        // ---- Aiden control centre: Test → Compare. The workspace's own last
+        // customer questions, to run against the current and a draft brief.
+        if (action === "aiden_questions") {
+          const orgId = String(payload["organization_id"] ?? "");
+          if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
+          const { recentCustomerQuestions } = await import("@/lib/ai-comparison.server");
+          return Response.json({ questions: await recentCustomerQuestions(supabase, orgId, 20) });
         }
 
         // ---- Aiden control centre: Workspaces → recent customer answers, with
