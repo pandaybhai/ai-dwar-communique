@@ -1,0 +1,420 @@
+{
+  "what-is-zoori": {
+    "ask": "what is zoori",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Zoori is a Hyderabad jewellery brand with two showrooms and an online store. It offers rings, pendants, earrings, bracelets, necklaces, chains and mangalsutra in BIS-hallmarked gold with certified diamonds and gemstones."
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "show-me-products": {
+    "ask": "show me products",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Here are a few pieces from Zoori:"
+      },
+      {
+        "type": "image",
+        "text": "The Gilded Chevron — ₹19,604\nhttps://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a",
+        "link": "https://myzoori.com/storage/images/products/a17c9b39-247c-451a-8063-09d9da502d9a/ZLRG%20-%200001.4-1783942115.jpg"
+      },
+      {
+        "type": "image",
+        "text": "Industrial Sparkle/ The Urban Edge — ₹18,326\nhttps://myzoori.com/product-detail/a23fb400-da45-43fa-85da-b03f120a90a6",
+        "link": "https://myzoori.com/storage/images/products/a23fb400-da45-43fa-85da-b03f120a90a6/ZLRG-0003.524-1783944994.jpg"
+      },
+      {
+        "type": "image",
+        "text": "The Allure Orbit/The Willow Vine — ₹18,016\nhttps://myzoori.com/product-detail/a23fcfaf-5a27-43d5-84cf-21c877280f36",
+        "link": "https://myzoori.com/storage/images/products/a23fcfaf-5a27-43d5-84cf-21c877280f36/ZLRG-0004.29-1783950907.jpg"
+      },
+      {
+        "type": "text",
+        "text": "Do you have a budget, style or occasion in mind?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "i-like-this": {
+    "ask": "I like this",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Which one did you like — The Gilded Chevron, Industrial Sparkle, The Urban Edge, or The Allure Orbit/The Willow Vine?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "i-like-this-reply-to": {
+    "ask": "I like this",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Great choice — The Gilded Chevron is ₹19,604.\nYou can order online at https://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a (ring size chosen at checkout), or our team can confirm size and payment right here on WhatsApp.\nWhat's your ring size?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "the-gilded-chevron": {
+    "ask": "The Gilded Chevron — ₹19,604",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Great choice — The Gilded Chevron is ₹19,604.\nYou can order online at https://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a (ring size chosen at checkout), or our team can confirm size and payment right here on WhatsApp.\nWhat's your ring size?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "gents-ring-under-50k": {
+    "ask": "gents ring under 50k dikhao",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Ye rahe 50k ke andar gents rings:"
+      },
+      {
+        "type": "image",
+        "text": "Industrial Sparkle/ The Urban Edge — ₹41,920\nhttps://myzoori.com/product-detail/a241b980-d356-496c-98ec-d5d19812b7b4",
+        "link": "https://myzoori.com/storage/images/products/a241b980-d356-496c-98ec-d5d19812b7b4/ZGRG-0002.468-1786446085.jpg"
+      },
+      {
+        "type": "text",
+        "text": "Kis occasion ke liye dekh rahe hain?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "return-policy-hinglish": {
+    "ask": "return policy kya hai",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Zoori par 20-day no-questions returns hain, aur lifelong free maintenance bhi milta hai.\nKya main aapko kuch pieces dikhaun?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "delivery-kitne-din": {
+    "ask": "delivery kitne din mein hoti hai",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Shipping sabhi orders par free hai.\nKya aap koi piece dekh rahe hain?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": true,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "showroom-timing": {
+    "ask": "showroom timing?",
+    "sent": [
+      {
+        "type": "text",
+        "text": "We have two showrooms — Somajiguda (GF 1, Olbee Centre, Rajbhavan Road) and Bolarum, Secunderabad (GF06 Fairmount Square).\nWhich one is closer to you?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": true,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "emi-hai": {
+    "ask": "EMI hai?",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Aap kaunsa piece dekh rahe hain?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": true,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "emi-milega": {
+    "ask": "EMI milega kya?",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Let me get someone from the team to confirm that — they'll reply here shortly."
+      }
+    ],
+    "status": "escalated",
+    "escalation": "no_source",
+    "gapFiled": true,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "who-are-you": {
+    "ask": "who are you",
+    "sent": [
+      {
+        "type": "text",
+        "text": "I'm Priya from Zoori 😊 I help you find the right jewellery and answer questions about our pieces.\nWhat are you shopping for today?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "hindi-rings": {
+    "ask": "मुझे सोने की अंगूठी दिखाइए",
+    "sent": [
+      {
+        "type": "text",
+        "text": "ये रहीं हमारी कुछ अंगूठियाँ:"
+      },
+      {
+        "type": "image",
+        "text": "The Gilded Chevron — ₹19,604\nhttps://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a",
+        "link": "https://myzoori.com/storage/images/products/a17c9b39-247c-451a-8063-09d9da502d9a/ZLRG%20-%200001.4-1783942115.jpg"
+      },
+      {
+        "type": "image",
+        "text": "Industrial Sparkle/ The Urban Edge — ₹18,326\nhttps://myzoori.com/product-detail/a23fb400-da45-43fa-85da-b03f120a90a6",
+        "link": "https://myzoori.com/storage/images/products/a23fb400-da45-43fa-85da-b03f120a90a6/ZLRG-0003.524-1783944994.jpg"
+      },
+      {
+        "type": "text",
+        "text": "आपका बजट क्या है?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "price-not-in-data": {
+    "ask": "Petal Band ka price kya hai?",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Let me get someone from the team to confirm that — they'll reply here shortly."
+      }
+    ],
+    "status": "escalated",
+    "escalation": "unsupported_number",
+    "gapFiled": true,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "buy-tiered-vertex": {
+    "ask": "Tiered Vertex lena hai",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Badhiya choice! Tiered Vertex ₹49,197 ka hai.\nAap ise online order kar sakte hain: https://www.myzoori.com/product-detail/a27819af-0635-460a-b118-c8d7dba202cd (ring size checkout par), ya hamari team yahin WhatsApp par size aur payment confirm kar degi.\nAapka ring size kya hai?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "buy-allure-orbit-options": {
+    "ask": "I want to buy The Allure Orbit",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Lovely pick — The Allure Orbit/The Willow Vine is ₹18,016.\n(1) Order online at https://myzoori.com/product-detail/a23fcfaf-5a27-43d5-84cf-21c877280f36 — ring size is chosen at checkout.\n(2) Our team confirms size and payment right here on WhatsApp.\nWhat's your ring size?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "earrings-no-photos": {
+    "ask": "earrings dikhao",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Ye rahe kuch earrings:"
+      },
+      {
+        "type": "text",
+        "text": "Diamond & Pink Sapphire Gold Earrings — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
+      },
+      {
+        "type": "text",
+        "text": "Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
+      },
+      {
+        "type": "text",
+        "text": "Kis budget mein dekh rahe hain?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "tanmaniya-under-20k": {
+    "ask": "tanmaniya under 20k",
+    "sent": [
+      {
+        "type": "text",
+        "text": "We don't have tanmaniya under ₹20,000 right now — ours start at ₹33,419. Here are the closest:"
+      },
+      {
+        "type": "image",
+        "text": "Blue Sap & Diamond Gold Tanmaniya — ₹33,419\nhttps://www.myzoori.com/product-detail/a2d714f5-9e82-4407-a07a-3d75b8c3d766",
+        "link": "https://www.myzoori.com/storage/images/products/a2d714f5-9e82-4407-a07a-3d75b8c3d766/ztnm-303747-1790446674.jpg"
+      },
+      {
+        "type": "image",
+        "text": "Diamond, Emerald & Ruby Gold Tanmaniya — ₹58,626\nhttps://www.myzoori.com/product-detail/a2e679cb-ac13-402a-8f61-1ec4838de41c",
+        "link": "https://www.myzoori.com/storage/images/products/a2e679cb-ac13-402a-8f61-1ec4838de41c/ztnm-313761-1791277429.jpg"
+      },
+      {
+        "type": "text",
+        "text": "Would you like to see these, or a different budget?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "caption-price-and-link-checked": {
+    "ask": "ladies ring 30k ke andar",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Ye rahe 30k ke andar ladies rings:"
+      },
+      {
+        "type": "image",
+        "text": "The Gilded Chevron — ₹19,604\nhttps://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a",
+        "link": "https://myzoori.com/storage/images/products/a17c9b39-247c-451a-8063-09d9da502d9a/ZLRG%20-%200001.4-1783942115.jpg"
+      },
+      {
+        "type": "image",
+        "text": "The Architect — ₹26,446\nhttps://myzoori.com/product-detail/a23fd887-bb4a-4bad-8fe5-d2eb18e1dd42",
+        "link": "https://myzoori.com/storage/images/products/a23fd887-bb4a-4bad-8fe5-d2eb18e1dd42/ZLRG%20-%200005%20(4)-1783951165.jpg"
+      },
+      {
+        "type": "text",
+        "text": "Kaunsa design pasand aaya?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "citations-leak": {
+    "ask": "what makes zoori special?",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Every piece is BIS-hallmarked with certified diamonds, and there's no showroom markup.\nWant to see some rings?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  },
+  "flow-picture-reply-to": {
+    "ask": "is this available in white gold?",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Tiered Vertex is in Gold with diamond, 3.05 g.\nWould you like to see similar rings meanwhile?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": true,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ]
+  }
+}

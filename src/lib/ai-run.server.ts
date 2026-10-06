@@ -40,6 +40,7 @@ import {
   type NeutralTurn,
   type Outage,
 } from "@/lib/ai-fallback.server";
+import { productFacts, rupees } from "@/lib/product-facts";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
@@ -172,6 +173,19 @@ export type RunMedia = {
 /** How many pictures a single answer is allowed to carry. */
 export const MAX_PRODUCT_IMAGES = 5;
 
+/** A product the model chose to send (send_products), with the caption it wrote. */
+export type ChosenProduct = RunMedia & { productId: string; caption: string; hasPhoto: boolean };
+
+/**
+ * A reply in the model's own order: its words and the products it sent,
+ * exactly as it placed them (text written with a send_products call goes
+ * before those pictures; the closing text after them).
+ */
+export type ReplyPart = { kind: "text"; text: string } | { kind: "products"; items: ChosenProduct[] };
+
+/** Where a products part sits in the reply while the guards read it (never sent). */
+const PRODUCTS_MARK = "\u2063\u2063\u2063";
+
 /**
  * The one answering rule, on every conversation reply — with material or
  * without it. Helpfulness is never the thing we withhold; only hard facts
@@ -209,9 +223,7 @@ const CONFIRM_LINE = "Let me confirm that for you.";
  * everything else the model said, and promise to come back on the rest.
  */
 export function stripUnsupported(answer: string, tokens: string[]): string {
-  const parts = answer.split(/(?<=[.!?\n])\s+/);
-  const kept = parts.filter((part) => !tokens.some((t) => part.includes(t)));
-  let text = kept.join(" ").replace(/\s+\n/g, "\n").trim();
+  let text = dropSentences(answer, (s) => tokens.some((t) => s.includes(t)));
   for (const token of tokens) text = text.split(token).join("").trim();
   text = text.replace(/[ \t]{2,}/g, " ").trim();
   if (!text) return CONFIRM_LINE;
@@ -332,37 +344,56 @@ export function stripCitationMarkers(text: string): string {
   return stripped === text ? text : stripped.replace(/[ \t]+$/gm, "").trim();
 }
 
+const UUID = /[ \t]*[([]?\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b[)\]]?/gi;
+
+/**
+ * The other ways a source reference leaks into a reply: "Item 6." after the
+ * answer, "(Item 2)", "Source: FAQ", "(1)" ending a sentence when the
+ * material was numbered that far, a bare document id. Only ever removes; a
+ * reply without any comes back exactly as it was. Links are never touched.
+ */
+export function stripReferenceLeaks(text: string, numberedItems = 0): string {
+  const links: string[] = [];
+  let t = text.replace(/\bhttps?:\/\/\S+/gi, (u) => {
+    links.push(u);
+    return `\uE001${links.length - 1}\uE001`;
+  });
+  const before = t;
+  const refWord = "(?:items?|sources?|docs?|documents?|chunks?|refs?|references?)";
+  const nums = "#?\\d{1,3}(?:\\s*(?:,|and|&|–|-)\\s*\\d{1,3})*";
+  t = t
+    // "(Source: About us)", then a bare "Source: …" to the end of its line.
+    .replace(/[ \t]*[([]\s*(?:sources?|references?|refs?|citations?)\s*:[^)\]\n]*[)\]]/gi, "")
+    .replace(/[ \t]*\b(?:sources?|references?|refs?|citations?)\s*:[^\n]*/gi, "")
+    // "(Item 6)", "[Items 2, 3]".
+    .replace(new RegExp(`[ \\t]*[([]\\s*${refWord}\\s*${nums}\\s*[)\\]]`, "gi"), "")
+    // "Item 6." standing alone as the last words of a sentence or line.
+    .replace(new RegExp(`(^|[.!?]["”’)]?[ \\t]+|\\n)[ \\t]*${refWord}\\s*${nums}[ \\t]*[.!]?[ \\t]*(?=\\n|$)`, "gim"), "$1")
+    // A bare document id.
+    .replace(UUID, "");
+  if (numberedItems > 0) {
+    // "(2)" or "(1, 3)" ending a sentence — only numbers the material used.
+    t = t.replace(/[ \t]*\((\d{1,2}(?:\s*,\s*\d{1,2})*)\)(?=[ \t]*(?:[.,;:!?]|\n|$))/g, (whole, list: string) =>
+      list.split(",").every((n) => Number(n) >= 1 && Number(n) <= numberedItems) ? "" : whole,
+    );
+  }
+  if (t === before) return text;
+  return t
+    .replace(/\uE001(\d+)\uE001/g, (_, i: string) => links[Number(i)] ?? "")
+    .replace(/[ \t]+([.,;:!?])/g, "$1")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Every reference a customer must never see: citation markers, then the other leaks. */
+export function stripReferences(text: string, numberedItems = 0): string {
+  return stripReferenceLeaks(stripCitationMarkers(text), numberedItems);
+}
+
 /** Product types a jewellery / retail shelf is browsed by (word-bounded: "earrings" is not "rings"). */
 const SHELF_WORDS =
   /\b(rings?|pendants?|earrings?|bracelets?|necklaces?|chains?|bangles?|anklets?|mangalsutras?|tanmaniyas?|nose ?pins?|studs?|jhumkas?)\b/gi;
-
-/**
- * When the search found nothing at the customer's budget, the reply must say
- * what does exist and from what price. Returns that line when the answer
- * doesn't already carry the starting price, else null.
- */
-export function closestShelfLine(toolResults: string[], answer: string): string | null {
-  for (const raw of [...toolResults].reverse()) {
-    let view: { data?: { found?: boolean; category?: string | null; closest_above?: Array<{ price?: unknown; currency?: unknown }> } };
-    try {
-      view = JSON.parse(raw) as typeof view;
-    } catch {
-      continue;
-    }
-    const closest = view.data?.found === false ? view.data.closest_above ?? [] : [];
-    const priced = closest
-      .map((r) => ({ price: Number(r.price), currency: typeof r.currency === "string" && r.currency ? r.currency : "INR" }))
-      .filter((r) => Number.isFinite(r.price) && r.price > 0)
-      .sort((a, b) => a.price - b.price);
-    if (!priced.length) continue;
-    const from = Math.floor(priced[0]!.price);
-    if (stripNumericNoise(answer).includes(String(from))) return null;
-    const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: priced[0]!.currency, maximumFractionDigits: 0 }).format(from);
-    const shelf = (view.data?.category ?? "").trim();
-    return shelf ? `Our ${shelf} start at ${money}.` : `The closest we have starts at ${money}.`;
-  }
-  return null;
-}
 
 /**
  * Sentences that offer a kind of product the catalogue search never returned
@@ -386,6 +417,25 @@ export function unsearchedShelfOffers(answer: string, question: string, toolResu
 /** Split a reply into sentences, keeping the original text of each. */
 function sentencesOf(text: string): string[] {
   return text.split(/(?<=[.!?\n])\s+/).map((p) => p.trim()).filter(Boolean);
+}
+
+/**
+ * The text without the sentences `drop` picks, every other sentence and line
+ * break exactly where the model put it (a line left empty goes with it).
+ */
+export function dropSentences(text: string, drop: (sentence: string) => boolean): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (const line of lines) {
+    const sentences = sentencesOf(line);
+    const kept = sentences.filter((s) => !drop(s));
+    if (kept.length === sentences.length) {
+      out.push(line.replace(/[ \t]+$/, ""));
+      continue;
+    }
+    if (kept.length) out.push(kept.join(" "));
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Sentences that talk about pricing, fees, refunds, delivery, warranty or payment. */
@@ -420,8 +470,7 @@ export function withoutConfirmLine(answer: string): string {
 /** Remove exact sentences, keep the rest, promise to come back once. */
 export function stripSentences(answer: string, drop: string[]): string {
   const set = new Set(drop.map((d) => d.trim()));
-  const kept = sentencesOf(answer).filter((s) => !set.has(s));
-  const text = kept.join(" ").replace(/[ \t]{2,}/g, " ").trim();
+  const text = dropSentences(answer, (s) => set.has(s)).replace(/[ \t]{2,}/g, " ").trim();
   if (!text) return CONFIRM_LINE;
   if (text.includes(CONFIRM_LINE)) return text;
   return `${text}\n\n${CONFIRM_LINE}`;
@@ -512,6 +561,11 @@ export type RunResult = {
   }[];
   /** Pictures of the products this answer talks about, in the order shown. */
   media: RunMedia[];
+  /**
+   * Set when the model sent products (send_products): its words and its
+   * products, in the order it chose. Absent: the reply is `output` alone.
+   */
+  parts?: ReplyPart[];
 
   escalationSignal: string | null;
   /**
@@ -1757,12 +1811,12 @@ export async function executeRun(
   // -------------------------------------------------------------- messages
   const systemParts = [options.system ?? ""];
   if (knowledgeBlock) {
-    // The owner's own chat reads better with a plain-words source line than
-    // with bracketed numbers; customers keep the numbered citation.
+    // The owner's own chat reads better with a plain-words source line. A
+    // customer never sees where an answer came from: no numbers, no sources.
     const citation =
       options.channel === "onboarding"
         ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
-        : "Cite the number of the item you used.";
+        : "The items are numbered for you only: never mention an item number, a source, a page title as a source, or brackets in your reply.";
     // A shopper wants the product page; a policy or blog page linked in every
     // reply is just noise.
     const linkRule =
@@ -1781,7 +1835,14 @@ export async function executeRun(
     // A shop with a real shelf must be browsed, not guessed at.
     if (prelude.productCount > 0) {
       systemParts.push(
-        "This business has a product catalogue; for any browse/choose request call catalog_search before answering.",
+        "This business has a product catalogue; for any browse/choose request call catalog_search before answering. " +
+          "When the customer names or asks about a particular product, look it up with catalog_search (query = its name) and use its fields (category, metal, stones, weight, price, link).",
+      );
+    }
+    if (options.channel !== "onboarding" && prelude.tools.some((t) => t.name === "send_products")) {
+      systemParts.push(
+        "Product pictures: nothing is attached for you. A product reaches the customer only when you call send_products with its product_id and the caption you want under its picture — write captions the way this business's instructions ask. " +
+          "Text you write in the same turn as send_products goes before the pictures; your final reply goes after them. Quote prices exactly as the search gives them (whole rupees).",
       );
     }
     systemParts.push(ANSWER_POLICY);
@@ -1792,7 +1853,12 @@ export async function executeRun(
     options.principal ?? (actorUserId ? userPrincipal(actorUserId) : agentPrincipal);
   const subject = toolSubject({ channel: options.channel, conversationId, contactId });
 
-  const tools = prelude.tools;
+  // Pictures only reach a customer from a live answer; the owner's own chat
+  // and a teammate's draft carry words alone, so they never offer them.
+  const tools =
+    task === "agent_reply" && options.channel !== "onboarding"
+      ? prelude.tools
+      : prelude.tools.filter((t) => t.name !== "send_products");
   const modelStarted = Date.now();
   // A customer answer may need the policy-claim check afterwards; its own
   // reads (brain, key, caps) run while this answer is being written instead
@@ -1819,10 +1885,23 @@ export async function executeRun(
   let inputTokens = 0;
   let outputTokens = 0;
   let answer = "";
+  /** The model's words and products in its own order, once it sends products. */
+  const segments: Array<{ kind: "text"; text: string } | { kind: "products"; items: ChosenProduct[] }> = [];
+  /** The text of the model's last turn that called no tool (what follows the pictures). */
+  let closingText = "";
+  /** Each chosen product's facts, the support its caption's numbers are checked against. */
+  const chosenFacts: string[] = [];
 
-  /** Runs one turn's tool calls in order; returns what the model sees of each. */
-  const runToolCalls = async (calls: { id: string; name: string; args: Record<string, unknown> }[]): Promise<string[]> => {
+  /**
+   * Runs one turn's tool calls in order; returns what the model sees of each.
+   * A turn that sends products keeps its own words, just before them.
+   */
+  const runToolCalls = async (
+    calls: { id: string; name: string; args: Record<string, unknown> }[],
+    turnText = "",
+  ): Promise<string[]> => {
     const views: string[] = [];
+    const chosen: Array<ChosenProduct & { facts: unknown }> = [];
     for (const tc of calls) {
       const result = await runTool(
         supabase,
@@ -1833,7 +1912,9 @@ export async function executeRun(
         tc.args,
         subject,
       );
-      if (!result.ok) anyToolFailed = true;
+      // A product id the model got wrong is answered to the model (it can
+      // try again); it is not a broken tool.
+      if (!result.ok && tc.name !== "send_products") anyToolFailed = true;
       toolCalls.push({
         tool: tc.name,
         ok: result.ok,
@@ -1845,9 +1926,17 @@ export async function executeRun(
       });
       sources.push({ kind: "tool", label: tc.name });
       collectProductMedia(tc.name, result, foundMedia);
-      const view = JSON.stringify(modelView(result)).slice(0, 6000);
-      toolResultTexts.push(view);
+      const picked = tc.name === "send_products" ? chosenProducts(result) : [];
+      chosen.push(...picked);
+      chosenFacts.push(...picked.map((p) => JSON.stringify(p.facts)));
+      const view = JSON.stringify(modelView(productToolView(tc.name, result))).slice(0, 6000);
+      // A caption the model wrote is not support for anything it says.
+      if (tc.name !== "send_products") toolResultTexts.push(view);
       views.push(view);
+    }
+    if (chosen.length > 0) {
+      if (turnText.trim()) segments.push({ kind: "text", text: turnText });
+      segments.push({ kind: "products", items: chosen.map(({ facts: _facts, ...item }) => item) });
     }
     return views;
   };
@@ -1880,10 +1969,13 @@ export async function executeRun(
           inputTokens += call.inputTokens ?? 0;
           outputTokens += call.outputTokens ?? 0;
           answer = call.text || answer;
-          if (call.toolCalls.length === 0) break;
+          if (call.toolCalls.length === 0) {
+            closingText = call.text;
+            break;
+          }
           // The function_call items must travel with their outputs.
           items.push(...call.items);
-          const views = await runToolCalls(call.toolCalls);
+          const views = await runToolCalls(call.toolCalls, call.text);
           call.toolCalls.forEach((tc, i) =>
             items.push({
               type: "function_call_output",
@@ -1912,9 +2004,12 @@ export async function executeRun(
           inputTokens += call.inputTokens ?? 0;
           outputTokens += call.outputTokens ?? 0;
           answer = call.text || answer;
-          if (call.toolCalls.length === 0) break;
+          if (call.toolCalls.length === 0) {
+            closingText = call.text;
+            break;
+          }
           messages.push(call.raw as ChatMessage);
-          const views = await runToolCalls(call.toolCalls);
+          const views = await runToolCalls(call.toolCalls, call.text);
           call.toolCalls.forEach((tc, i) =>
             messages.push({
               role: "tool",
@@ -1964,8 +2059,11 @@ export async function executeRun(
           used.outputTokens += call.outputTokens ?? 0;
           used.model = call.model;
           answer = call.text || answer;
-          if (call.toolCalls.length === 0) break;
-          const views = await runToolCalls(call.toolCalls);
+          if (call.toolCalls.length === 0) {
+            closingText = call.text;
+            break;
+          }
+          const views = await runToolCalls(call.toolCalls, call.text);
           convo.addToolResults(call.toolCalls.map((tc, i) => ({ id: tc.id, output: views[i] ?? "" })));
           noteTurn(call, views);
         }
@@ -2051,10 +2149,36 @@ export async function executeRun(
 
 
   // The model's own "was I missing business information?" line comes off
-  // before anything else reads the answer.
-  const reported = task === "agent_reply" ? splitNeedsOwner(answer) : { output: answer.trim(), needsOwner: false };
-  // Replies (sent to a customer, or drafted for a teammate to send) never carry [n] markers.
-  if (task === "agent_reply" || task === "suggest_reply") reported.output = stripCitationMarkers(reported.output);
+  // before anything else reads the answer. Once it sent products, its reply
+  // is its words in its order, with a mark where each set of pictures goes.
+  let reported: { output: string; needsOwner: boolean };
+  if (segments.length > 0) {
+    const pieces = [...segments, ...(closingText.trim() ? [{ kind: "text" as const, text: closingText }] : [])];
+    let needsOwner = false;
+    const words = pieces.map((piece) => {
+      if (piece.kind === "products") return PRODUCTS_MARK;
+      const split = task === "agent_reply" ? splitNeedsOwner(piece.text) : { output: piece.text.trim(), needsOwner: false };
+      needsOwner ||= split.needsOwner;
+      return split.output;
+    });
+    reported = { output: words.filter(Boolean).join("\n\n"), needsOwner };
+  } else {
+    reported = task === "agent_reply" ? splitNeedsOwner(answer) : { output: answer.trim(), needsOwner: false };
+  }
+  // Replies (sent to a customer, or drafted for a teammate to send) never
+  // carry a source reference. The owner's own chat keeps its plain-words
+  // source line; only [n] markers come off there.
+  const numberedItems = sources.filter((s) => s.kind === "knowledge").length;
+  const customerFacing = options.channel !== "onboarding";
+  const cleanRefs = (text: string) => (customerFacing ? stripReferences(text, numberedItems) : stripCitationMarkers(text));
+  if (task === "agent_reply" || task === "suggest_reply") {
+    reported.output = cleanRefs(reported.output);
+    for (const segment of segments) {
+      if (segment.kind === "products") for (const item of segment.items) item.caption = cleanRefs(item.caption);
+    }
+  }
+  const sendsProducts = tools.some((t) => t.name === "send_products");
+  const chosenMedia = segments.flatMap((s) => (s.kind === "products" ? s.items : []));
 
   const result: RunResult = {
     ...base,
@@ -2063,7 +2187,9 @@ export async function executeRun(
     needsOwner: reported.needsOwner && sources.length === 0,
     sources,
     toolCalls,
-    media: pickMediaForAnswer(foundMedia, reported.output),
+    // With send_products offered, the pictures are only the ones the model
+    // sent; otherwise (no catalogue tool) the answer's products, as before.
+    media: sendsProducts ? chosenMedia : pickMediaForAnswer(foundMedia, reported.output),
     inputTokens: inputTokens || null,
     outputTokens: outputTokens || null,
     costAmount: priced.amount,
@@ -2099,6 +2225,19 @@ export async function executeRun(
       result.output = stripUnsupported(result.output, unsupported);
       result.needsOwner = true;
     }
+    // The same rule for every caption the model wrote, against the same
+    // material plus the product's own record. A caption never gets a promise
+    // line: the number's sentence just goes.
+    for (const item of chosenMedia) {
+      const guessed = unsupportedNumbers(item.caption, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts, ...chosenFacts]);
+      if (guessed.length === 0) continue;
+      numbersStripped = true;
+      result.needsOwner = true;
+      runMeta["caption_numbers_removed"] = [...((runMeta["caption_numbers_removed"] as string[] | undefined) ?? []), ...guessed];
+      let caption = dropSentences(item.caption, (sentence) => guessed.some((t) => sentence.includes(t)));
+      for (const token of guessed) caption = caption.split(token).join("").trim();
+      item.caption = caption;
+    }
   }
 
   // ------------------------------------------------- policy-claim grounding
@@ -2108,23 +2247,23 @@ export async function executeRun(
   // Replies only (owner chat + customer) — never reading, chunking or page summaries.
   let policyStripped = false;
   if (task === "agent_reply" && result.output && !isVisionRead && !purpose.startsWith("knowledge_")) {
-    const candidates = policyClaimSentences(result.output);
+    // The reply's policy sentences and the captions' are judged together, in one check.
+    const replyClaims = policyClaimSentences(result.output);
+    const captionClaims = chosenMedia.flatMap((item) => policyClaimSentences(item.caption));
+    const candidates = Array.from(new Set([...replyClaims, ...captionClaims]));
     if (candidates.length > 0) {
-      const sourceText = [knowledgeBlock, options.system ?? "", ...toolResultTexts].join("\n\n");
+      const sourceText = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts].join("\n\n");
       // Wording first, deterministically: stated as written → supported; a
-      // promise word the sources never attach to that policy → replaced by
-      // the source's own line. Only the rest needs the model check.
+      // promise word the sources never attach to that policy → not
+      // supported, and it goes (the source's own line is kept on the run
+      // for review; code never writes it into the reply). Only the rest
+      // needs the model check.
       const wording = sourceText.trim()
         ? checkPolicyWording(candidates, sourceText)
         : { verbatim: [], unsupported: [], undecided: candidates };
-      if (wording.unsupported.length > 0) {
-        runMeta["policy_wording_replaced"] = wording.unsupported;
-        for (const u of wording.unsupported) {
-          if (u.replacement) result.output = result.output.replace(u.sentence, u.replacement);
-        }
-      }
+      if (wording.unsupported.length > 0) runMeta["policy_wording_unsupported"] = wording.unsupported;
       const unsupported = [
-        ...wording.unsupported.filter((u) => !u.replacement).map((u) => u.sentence),
+        ...wording.unsupported.map((u) => u.sentence),
         ...(await unsupportedPolicyClaims(supabase, {
           ...policyCheckWho,
           sentences: wording.undecided,
@@ -2136,7 +2275,8 @@ export async function executeRun(
       if (unsupported.length > 0) {
         console.log("[policy-grounding] stripped", organizationId, unsupported.length);
         runMeta["policy_claims_stripped"] = unsupported;
-        result.output = stripSentences(result.output, unsupported);
+        if (unsupported.some((u) => replyClaims.includes(u))) result.output = stripSentences(result.output, unsupported);
+        for (const item of chosenMedia) item.caption = dropSentences(item.caption, (sentence) => unsupported.includes(sentence));
         result.needsOwner = true;
         policyStripped = true;
       }
@@ -2150,17 +2290,10 @@ export async function executeRun(
   const searchedCatalog = toolCalls.some((c) => c.tool === "catalog_search" && c.ok);
   if (task === "agent_reply" && searchedCatalog && result.output) {
     const offers = unsearchedShelfOffers(result.output, input, toolResultTexts);
-    const kept = sentencesOf(result.output).filter((s) => !offers.includes(s));
-    if (offers.length > 0 && kept.length > 0) {
+    const kept = dropSentences(result.output, (s) => offers.includes(s));
+    if (offers.length > 0 && kept.replace(PRODUCTS_MARK, "").trim()) {
       runMeta["unsearched_offers_removed"] = offers;
-      result.output = kept.join(" ").replace(/[ \t]{2,}/g, " ").trim();
-    }
-    // Nothing at that budget: say what exists, with its price.
-    const closest = closestShelfLine(toolResultTexts, result.output);
-    if (closest) {
-      const body = result.output.replace(/\s*let me confirm that for you\.?\s*$/i, "");
-      const tail = body === result.output ? "" : "\n\nLet me confirm that for you.";
-      result.output = `${body}\n\n${closest}${tail}`.trim();
+      result.output = kept;
     }
     // Grounded in the search (nothing stripped as unsupported, not a policy
     // question): a stand-alone "let me confirm" line promises a check nobody
@@ -2224,13 +2357,116 @@ export async function executeRun(
     }
   }
 
-  if (!result.output && result.status === "ok") {
+  // The reply as it goes out: the model's words and its products, in its
+  // order. The output everyone else reads is the words alone.
+  if (segments.length > 0) {
+    const texts = result.output.split(PRODUCTS_MARK).map((t) => t.trim());
+    const productSets = segments.filter((s): s is { kind: "products"; items: ChosenProduct[] } => s.kind === "products");
+    const parts: ReplyPart[] = [];
+    texts.forEach((text, i) => {
+      if (text) parts.push({ kind: "text", text });
+      const set = productSets[i];
+      if (set && set.items.length > 0) parts.push({ kind: "products", items: set.items });
+    });
+    result.parts = parts;
+    result.output = texts.filter(Boolean).join("\n\n");
+    if (parts.some((p) => p.kind === "products")) runMeta["reply_parts"] = parts.map((p) => (p.kind === "text" ? "text" : `products:${p.items.length}`));
+  }
+
+  if (!result.output && !result.parts?.some((p) => p.kind === "products") && result.status === "ok") {
     result.status = "refused";
     result.error = "The AI had nothing to say.";
   }
 
   timing["checks"] = Date.now() - checksStarted;
   return finish(result);
+}
+
+/** The products a send_products call queued, as the reply path sends them. */
+export function chosenProducts(result: { ok?: boolean; data?: unknown }): Array<ChosenProduct & { facts: unknown }> {
+  if (result.ok === false) return [];
+  const list = (result.data as { products?: unknown[] } | undefined)?.products;
+  if (!Array.isArray(list)) return [];
+  const out: Array<ChosenProduct & { facts: unknown }> = [];
+  for (const raw of list) {
+    const p = (raw ?? {}) as Record<string, unknown>;
+    const send = (p["send"] ?? {}) as Record<string, unknown>;
+    const id = typeof p["product_id"] === "string" ? p["product_id"] : "";
+    const title = typeof p["title"] === "string" ? p["title"] : "";
+    if (!id || !title) continue;
+    const imageUrl = typeof send["imageUrl"] === "string" ? send["imageUrl"] : "";
+    out.push({
+      productId: id,
+      title,
+      caption: typeof p["caption"] === "string" ? p["caption"] : "",
+      hasPhoto: Boolean(imageUrl),
+      imageUrl,
+      price: typeof send["price"] === "number" && Number.isFinite(send["price"]) ? send["price"] : null,
+      currency: typeof send["currency"] === "string" ? send["currency"] : null,
+      productUrl: typeof send["productUrl"] === "string" ? send["productUrl"] : null,
+      retailerId: typeof send["retailerId"] === "string" ? send["retailerId"] : null,
+      category: typeof send["category"] === "string" ? send["category"] : null,
+      inCatalog: send["inCatalog"] === true,
+      facts: p["facts"] ?? null,
+    });
+  }
+  return out;
+}
+
+const CLOSEST_NOTE =
+  "Nothing matched that exactly. closest_above lists the nearest real products, cheapest first; lowest_price is where they start. " +
+  "Say so plainly and offer only products a search returned — search another type before suggesting it.";
+
+/**
+ * What the model reads of a product tool: every product as productFacts
+ * (whole-rupee prices, readable names, no picture addresses), and for
+ * send_products only what was queued and the caption that will go out.
+ * Other tools are untouched.
+ */
+export function productToolView<T extends { ok: boolean; found?: boolean; data?: unknown; error?: string }>(name: string, result: T): T {
+  if (!result.ok || result.data === undefined || result.data === null) return result;
+  if (name === "catalog_search" || name === "search_products") {
+    if (Array.isArray(result.data)) {
+      return { ...result, data: (result.data as Array<Record<string, unknown>>).map(productFacts) };
+    }
+    const data = result.data as Record<string, unknown>;
+    if (Array.isArray(data["closest_above"])) {
+      const closest = (data["closest_above"] as Array<Record<string, unknown>>).map(productFacts);
+      const prices = (data["closest_above"] as Array<Record<string, unknown>>)
+        .map((r) => Number(r["price"]))
+        .filter((p) => Number.isFinite(p) && p > 0);
+      const { reply_hint: _hint, lowest_price: _lowest, ...rest } = data;
+      return {
+        ...result,
+        data: {
+          ...rest,
+          ...(prices.length ? { lowest_price: rupees(Math.min(...prices)) } : {}),
+          closest_above: closest,
+          note: CLOSEST_NOTE,
+        },
+      };
+    }
+    return result;
+  }
+  if (name === "send_products") {
+    const data = result.data as { products?: Array<Record<string, unknown>>; skipped?: unknown };
+    return {
+      ...result,
+      data: {
+        queued: true,
+        products: (data.products ?? []).map((p) => ({
+          product_id: p["product_id"],
+          title: p["title"],
+          caption: p["caption"],
+          has_photo: p["has_photo"],
+          ...(p["caption_changes"] ? { caption_changes: p["caption_changes"] } : {}),
+        })),
+        ...(data.skipped ? { skipped: data.skipped, skipped_note: "These ids are not this business's products and will not be sent." } : {}),
+        note: "These go out exactly as shown, in this order. Do not repeat the captions in your reply.",
+      },
+    };
+  }
+  return result;
 }
 
 /**

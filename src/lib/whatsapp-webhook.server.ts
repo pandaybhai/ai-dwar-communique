@@ -2078,6 +2078,7 @@ export async function processWebhookPayload(
                   optedOut,
                   ...(prepared ? { prepared } : {}),
                   ...(gate ? { gate } : {}),
+                  ...(contextMetaId ? { replyToMetaId: contextMetaId } : {}),
                   later,
                 });
                 clock.mark("ai_done");

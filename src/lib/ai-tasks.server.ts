@@ -378,6 +378,8 @@ export async function agentAnswer(
     /** Earlier failures and the brief, read during the burst wait (answerReadsAhead). */
     ahead?: AnswerReadsAhead;
   },
+  /** The customer's message is a WhatsApp reply to this message of ours. */
+  context?: { replyToMetaId?: string | null },
 ): Promise<RunResult> {
   // The chat, its earlier failures, the agent and the brief are independent
   // reads (the brief only needs the chat's language to finish its wording).
@@ -385,11 +387,16 @@ export async function agentAnswer(
   const chat = conversationTurns(supabase, common.organizationId, conversationId);
   const ahead = prepared?.ahead ?? answerReadsAhead(supabase, common.organizationId, conversationId, agentRead);
   ahead.setLanguage(chat.then((c) => c.customerLanguage));
-  const [agentId, { turns, contactId, customerLanguage }, { data: pastRuns }, brief] = await Promise.all([
+  // Only a reply-to message costs a read here; every other message reads nothing more.
+  const replyNote = context?.replyToMetaId
+    ? replyContextNote(supabase, common.organizationId, conversationId, context.replyToMetaId).catch(() => null)
+    : Promise.resolve(null);
+  const [agentId, { turns, contactId, customerLanguage }, { data: pastRuns }, brief, replyTo] = await Promise.all([
     agentRead,
     chat,
     ahead.pastRuns,
     ahead.brief,
+    replyNote,
   ]);
 
   const priorFailedQuestions = ((pastRuns ?? []) as Array<{ input_summary: string | null }>)
@@ -407,7 +414,7 @@ export async function agentAnswer(
     history: turns.slice(0, -1),
     input: question,
     // Escalation rules are part of the assembled brief — exactly once.
-    system: brief.text,
+    system: replyTo ? `${brief.text}\n\n${replyTo}` : brief.text,
     handoverRules: brief.instructions.escalationRules,
     promptRulesVersion: brief.rulesVersion,
     customerLanguage,
@@ -417,6 +424,56 @@ export async function agentAnswer(
     ...(prepared ? { prelude: prepared.prelude } : {}),
     ...(prepared?.deferUsage ? { deferUsage: prepared.deferUsage } : {}),
   });
+}
+
+const REPLY_PRODUCT_COLUMNS =
+  "id, title, sku, description, category, gender, price, compare_at_price, currency, availability, product_url, image_url";
+
+/**
+ * When the customer used WhatsApp reply-to on one of our product pictures,
+ * the product it shows, as one line for the model. Found by the product id
+ * stored on Aiden's pictures, else by the picture itself (flows' pictures and
+ * older ones), else by the name its caption starts with. Null for anything
+ * else — a reply to a plain text changes nothing.
+ */
+export async function replyContextNote(
+  supabase: SupabaseClient,
+  organizationId: string,
+  conversationId: string,
+  metaMessageId: string,
+): Promise<string | null> {
+  const { data: message } = await supabase
+    .from("messages")
+    .select("direction, type, body, media_url, metadata")
+    .eq("organization_id", organizationId)
+    .eq("conversation_id", conversationId)
+    .eq("meta_message_id", metaMessageId)
+    .maybeSingle();
+  const m = message as {
+    direction?: string;
+    type?: string;
+    body?: string | null;
+    media_url?: string | null;
+    metadata?: Record<string, unknown> | null;
+  } | null;
+  if (!m || m.direction !== "outbound") return null;
+  const products = () =>
+    supabase.from("products").select(REPLY_PRODUCT_COLUMNS).eq("organization_id", organizationId).eq("is_visible", true);
+  const productId = typeof m.metadata?.["product_id"] === "string" ? (m.metadata["product_id"] as string) : null;
+  let row: Record<string, unknown> | null = null;
+  if (productId) row = ((await products().eq("id", productId).maybeSingle()).data as Record<string, unknown> | null) ?? null;
+  if (!row && m.type === "image" && m.media_url) {
+    row = ((await products().eq("image_url", m.media_url).limit(1).maybeSingle()).data as Record<string, unknown> | null) ?? null;
+  }
+  const named = m.type === "image" ? (m.body ?? "").split(/\s+[—–-]\s+|\n/)[0]?.trim() ?? "" : "";
+  if (!row && named) row = ((await products().eq("title", named).limit(1).maybeSingle()).data as Record<string, unknown> | null) ?? null;
+  if (!row) return null;
+  const { productFacts } = await import("@/lib/product-facts");
+  const facts = productFacts(row);
+  return (
+    `The customer's message is a WhatsApp reply to your picture of ${String(facts["title"])}. ` +
+    `"This", "it" or "that one" means this product: ${JSON.stringify(facts)}`
+  );
 }
 
 /**

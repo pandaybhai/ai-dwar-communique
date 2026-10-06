@@ -195,6 +195,9 @@ export function canonGender(text: string): string | null {
   return null;
 }
 
+/** How many products one send_products call may carry. */
+export const SEND_PRODUCTS_MAX = 5;
+
 /** A whole sentence dropped into `query` instead of a product name. */
 function looksLikeSentence(text: string): boolean {
   return text.trim().split(/\s+/).filter(Boolean).length > 2;
@@ -493,7 +496,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       let request = ctx.supabase
         .from("products")
         .select(
-          "id, external_id, title, sku, brand, category, gender, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url, source, meta_synced_at",
+          "id, external_id, title, sku, brand, description, category, gender, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url, source, meta_synced_at",
         )
         .eq("organization_id", ctx.organizationId)
         // Hidden products never reach a customer, whether searching or browsing.
@@ -595,6 +598,69 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
   },
 
 
+  /**
+   * The model's chosen products with its own captions. Nothing is sent here:
+   * the reply path sends them, in this order, where the model put them among
+   * its words. Only the caption's price and link are checked against the
+   * product (checkCaption); every other word is the model's.
+   */
+  async sendProducts(ctx, args) {
+    const { checkCaption, productFacts } = await import("@/lib/product-facts");
+    const list = Array.isArray(args["products"]) ? (args["products"] as unknown[]) : [];
+    const wanted = list
+      .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>) : {}))
+      .map((p) => ({ id: str(p["product_id"]), caption: typeof p["caption"] === "string" ? (p["caption"] as string) : "" }))
+      .filter((p) => p.id);
+    if (wanted.length === 0) return { ok: false, error: "Give products: [{product_id, caption}] using product_id values from catalog_search." };
+    const picked = wanted.filter((p, i) => wanted.findIndex((q) => q.id === p.id) === i).slice(0, SEND_PRODUCTS_MAX);
+    const { data, error } = await ctx.supabase
+      .from("products")
+      .select(
+        "id, external_id, title, sku, description, category, gender, price, compare_at_price, currency, availability, product_url, image_url, source, meta_synced_at",
+      )
+      .eq("organization_id", ctx.organizationId)
+      // Hidden products never reach a customer.
+      .eq("is_visible", true)
+      .in("id", picked.map((p) => p.id));
+    if (error) return { ok: false, error: error.message };
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    const products = [];
+    const skipped: string[] = [];
+    for (const p of picked) {
+      const row = rows.find((r) => String(r["id"]) === p.id);
+      if (!row) {
+        skipped.push(p.id);
+        continue;
+      }
+      const checked = checkCaption(p.caption, row);
+      const image = str(row["image_url"]);
+      products.push({
+        product_id: p.id,
+        title: str(row["title"]),
+        caption: checked.caption,
+        has_photo: /^https?:\/\//i.test(image),
+        ...(checked.changes.length ? { caption_changes: checked.changes } : {}),
+        facts: productFacts(row),
+        // The reply path's own copy; never shown to the model.
+        send: {
+          imageUrl: /^https?:\/\//i.test(image) ? image : "",
+          price: row["price"] === null || row["price"] === undefined ? null : Number(row["price"]),
+          currency: str(row["currency"]) || null,
+          productUrl: str(row["product_url"]) || null,
+          retailerId: str(row["external_id"]) || str(row["sku"]) || str(row["id"]) || null,
+          category: str(row["category"]) || null,
+          inCatalog:
+            Boolean(str(row["external_id"]) || str(row["sku"]) || str(row["id"])) &&
+            (Boolean(str(row["meta_synced_at"])) || str(row["source"]) === "meta_catalog"),
+        },
+      });
+    }
+    if (products.length === 0) {
+      return { ok: false, error: "None of those product_id values is a product of this business. Use product_id values from catalog_search." };
+    }
+    return { ok: true, data: { queued: true, products, ...(skipped.length ? { skipped } : {}) } };
+  },
+
   async searchProducts(ctx, args) {
     const query = str(args["query"]);
     if (!query) return { ok: false, error: "query is required." };
@@ -602,7 +668,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     const safe = query.replace(/[%,()]/g, " ").trim();
     const { data } = await ctx.supabase
       .from("products")
-      .select("id, title, price, currency, status, product_url, image_url")
+      .select("id, title, price, currency, status, product_url, image_url, description")
       .eq("organization_id", ctx.organizationId)
       .ilike("title", `%${safe}%`)
       .limit(limit);
