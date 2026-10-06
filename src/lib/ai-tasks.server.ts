@@ -379,7 +379,7 @@ export async function agentAnswer(
     ahead?: AnswerReadsAhead;
   },
   /** The customer's message is a WhatsApp reply to this message of ours. */
-  context?: { replyToMetaId?: string | null },
+  context?: { replyToMetaId?: string | null; onProductsQueued?: RunOptions["onProductsQueued"] },
 ): Promise<RunResult> {
   // The chat, its earlier failures, the agent and the brief are independent
   // reads (the brief only needs the chat's language to finish its wording).
@@ -423,6 +423,7 @@ export async function agentAnswer(
     useTools: true,
     ...(prepared ? { prelude: prepared.prelude } : {}),
     ...(prepared?.deferUsage ? { deferUsage: prepared.deferUsage } : {}),
+    ...(context?.onProductsQueued ? { onProductsQueued: context.onProductsQueued } : {}),
   });
 }
 

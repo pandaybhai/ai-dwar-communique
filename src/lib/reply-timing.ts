@@ -26,6 +26,13 @@ export const STAGE_ORDER = [
   "flows", // flow engine returned (bookkeeping included)
   "automations",
   "burst",
+  // Aiden's reply (Batch 15A): the gate passed, the answer run returned
+  // (its own split is ai_runs.metadata.timing_ms), the first message and the
+  // first picture accepted by WhatsApp, then everything after the sends.
+  "ai_gates",
+  "ai_run",
+  "ai_first_send",
+  "ai_first_photo",
   "ai_done",
 ] as const;
 
@@ -63,7 +70,8 @@ export function replyTimer(receivedLagMs: number | null, now: () => number = Dat
       prev = at;
     }
     for (const [k, v] of Object.entries(spans)) ms[k] = v;
-    const send = marks["send_start"];
+    // A flow's first send, else Aiden's first message.
+    const send = marks["send_start"] ?? marks["ai_first_send"];
     return {
       message_id: messageId,
       route,

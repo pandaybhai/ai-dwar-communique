@@ -224,7 +224,8 @@ describe("(2) flow replies: fewer round trips before the send", () => {
 describe("(2) burst window: counted from when the message was stored", () => {
   const burstDb = (rows: Array<{ id: string; direction: string; body: string }>) =>
     fakeDb((op) => (op.table === "messages" ? { data: rows, error: null } : undefined));
-  const args = { conversationId: "cv", messageId: "m2", occurredAt: new Date().toISOString(), body: "under 2000?" };
+  // The mechanism at a 5 s window (Batch 15A: the default is now 1 s, a platform setting).
+  const args = { conversationId: "cv", messageId: "m2", occurredAt: new Date().toISOString(), body: "under 2000?", windowMs: 5000 };
 
   it("3 s already spent since storing → waits the remaining 2 s, not 5", async () => {
     vi.useFakeTimers();
@@ -246,7 +247,7 @@ describe("(2) burst window: counted from when the message was stored", () => {
     expect(db.ops).toHaveLength(1);
   });
 
-  it("unchanged: without a stored time the full 5 s is waited", async () => {
+  it("unchanged: without a stored time the full window (5 s here) is waited", async () => {
     vi.useFakeTimers();
     const db = burstDb([]);
     const out = coalesceBurst(db.supabase, args);

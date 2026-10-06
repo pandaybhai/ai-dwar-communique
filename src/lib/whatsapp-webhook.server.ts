@@ -35,8 +35,41 @@ export function getServiceClient(): SupabaseClient {
   });
 }
 
-/** How long a second text can arrive and still count as the same question. */
-const BURST_WINDOW_MS = 5000;
+/**
+ * How long a second text can arrive and still count as the same question,
+ * unless the platform sets platform_settings.ai_burst_wait_ms (Super Admin →
+ * AI). Was 5 s; two quick texts may now get two replies — a reply ~4 s
+ * sooner matters more (Vinay, 7 Oct).
+ */
+export const DEFAULT_BURST_WINDOW_MS = 1000;
+/** The setting's allowed range (the database check matches). */
+export const MAX_BURST_WINDOW_MS = 10_000;
+
+let burstSetting: { value: number; at: number } | null = null;
+
+/**
+ * The platform's burst window, read at most once a minute per worker. A
+ * missing column (migration 20261020 not applied), a missing row or a failed
+ * read all mean the default — the setting can never stop a reply.
+ */
+export async function burstWindowMs(supabase: SupabaseClient, now = Date.now()): Promise<number> {
+  if (burstSetting && now - burstSetting.at < 60_000) return burstSetting.value;
+  let value = DEFAULT_BURST_WINDOW_MS;
+  try {
+    const { data, error } = await supabase.from("platform_settings").select("ai_burst_wait_ms").eq("id", true).maybeSingle();
+    const raw = error ? null : (data as { ai_burst_wait_ms?: unknown } | null)?.ai_burst_wait_ms;
+    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= MAX_BURST_WINDOW_MS) value = Math.round(raw);
+  } catch {
+    // the default
+  }
+  burstSetting = { value, at: now };
+  return value;
+}
+
+/** Drop the cached window after an admin save so the change is live at once in this worker. */
+export function resetBurstWindowCache(): void {
+  burstSetting = null;
+}
 
 /**
  * People type in bursts — a half-sentence, then the whole one. Wait out the
@@ -58,8 +91,11 @@ export async function coalesceBurst(
     storedAt?: number;
     /** Called the moment the wait is over, before the burst is read (the caller's own reads start then). */
     afterWait?: () => void;
+    /** The window (burstWindowMs); left out, the default. */
+    windowMs?: number;
   },
 ): Promise<{ proceed: boolean; body: string | null }> {
+  const windowMs = args.windowMs ?? DEFAULT_BURST_WINDOW_MS;
   const text = (args.body ?? "").trim();
   if (!text || !args.messageId) {
     args.afterWait?.();
@@ -67,12 +103,12 @@ export async function coalesceBurst(
   }
 
   const elapsed = args.storedAt ? Math.max(0, Date.now() - args.storedAt) : 0;
-  const wait = BURST_WINDOW_MS - elapsed;
+  const wait = windowMs - elapsed;
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
   args.afterWait?.();
 
   const windowStart = new Date(
-    new Date(args.occurredAt).getTime() - BURST_WINDOW_MS,
+    new Date(args.occurredAt).getTime() - windowMs,
   ).toISOString();
   const { data } = await supabase
     .from("messages")
@@ -95,6 +131,34 @@ export async function coalesceBurst(
     .map((r) => (r.body ?? "").trim())
     .filter((t) => t && !text.toLowerCase().includes(t.toLowerCase()));
   return { proceed: true, body: [...earlier, text].join("\n") };
+}
+
+/**
+ * Marks a customer's message read and shows the typing dots (WhatsApp Cloud
+ * API; they last until our reply arrives or ~25 s). Fire-and-forget: it never
+ * delays or blocks a reply, and a failure is silent.
+ */
+export function showTyping(
+  connection: Promise<{ accessToken?: string | null } | null>,
+  phoneNumberId: string,
+  messageId: string,
+): void {
+  if (!messageId) return;
+  void connection
+    .then((c) => {
+      if (!c?.accessToken) return;
+      return fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${c.accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          status: "read",
+          message_id: messageId,
+          typing_indicator: { type: "text" },
+        }),
+      });
+    })
+    .catch(() => {});
 }
 
 /** Timing-safe hex compare. */
@@ -1449,22 +1513,7 @@ export async function processWebhookPayload(
             // the message read and start the typing dots before anything else.
             // Fire-and-forget: it must never delay or block the reply.
             if (onboardingAccountId && accountId === onboardingAccountId) {
-              void connectionP.then((c) => {
-                if (!c?.accessToken) return;
-                return fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${c.accessToken}`,
-                    "content-type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    messaging_product: "whatsapp",
-                    status: "read",
-                    message_id: String(msg["id"] ?? ""),
-                    typing_indicator: { type: "text" },
-                  }),
-                });
-              }).catch(() => {});
+              showTyping(connectionP, phoneNumberId, String(msg["id"] ?? ""));
             }
 
             // Our own number appearing as the sender means this is an echo of a
@@ -1480,6 +1529,9 @@ export async function processWebhookPayload(
             // Opt-out keywords are read now and used after the message is stored.
             const keywordsRead = loadOptKeywords(supabase, orgId, keywordCache);
             keywordsRead.catch(() => {});
+            // The AI's burst window (a platform setting, cached a minute):
+            // read now so it never adds to the wait.
+            const burstWindow = burstWindowMs(supabase);
             const attribution = inboundSource(
               msg,
               parsed.body,
@@ -2053,6 +2105,7 @@ export async function processWebhookPayload(
                         occurredAt,
                         body: agentBody,
                         storedAt,
+                        windowMs: await burstWindow,
                         afterWait: () => {
                           gate = readAgentGate(supabase, conversation.id as string);
                         },
@@ -2079,6 +2132,9 @@ export async function processWebhookPayload(
                   ...(prepared ? { prepared } : {}),
                   ...(gate ? { gate } : {}),
                   ...(contextMetaId ? { replyToMetaId: contextMetaId } : {}),
+                  timer: clock.timer,
+                  // A live reply is coming: read receipt + typing dots now.
+                  onWillReply: () => showTyping(connectionP, phoneNumberId, String(msg["id"] ?? "")),
                   later,
                 });
                 clock.mark("ai_done");

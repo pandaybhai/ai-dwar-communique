@@ -800,6 +800,9 @@ export function zooriWorld(c: Case) {
   const reply = (op: FakeOp) => {
     const t = op.table;
     if (t === "ai_agents") return { data: { id: "agent-zoori", mode: "replying" }, error: null };
+    // The AI role's permissions, for runs that use the real tool broker (the speed bench).
+    if (t === "role_permissions")
+      return { data: [{ permission_key: "ai.use" }, { permission_key: "catalog.view" }], error: null };
     if (t === "organization_ai_settings")
       return {
         data: {

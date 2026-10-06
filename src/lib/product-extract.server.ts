@@ -245,13 +245,22 @@ function cleanDescription(raw: unknown, title: string, sku: string | null): stri
   return text.slice(0, 300);
 }
 
-/** Who a shelf is meant for, when the shop says it out loud. */
-function genderHint(...parts: Array<string | null | undefined>): string | null {
-  const text = parts.filter(Boolean).join(" ");
+const MALE_WORDS = /for\s*him|\bgents?\b|\bmen(?:['’]s)?\b|\bmens\b|\bmale\b/i;
+const FEMALE_WORDS = /for\s*her|\bladies\b|\bwomen(?:['’]s)?\b|\bwomens\b|\bfemale\b/i;
+
+/**
+ * Who a product is meant for, only when the shop says it in plain words —
+ * its shelf, title, description or code ("Gents Ring", "for her",
+ * "MENS-RING-01"). Both said, or neither: no guess (null). Stored as
+ * "male" / "female", the words Aiden's search and the catalogue use.
+ */
+export function genderHint(...parts: Array<string | null | undefined>): "male" | "female" | null {
+  const text = parts.filter(Boolean).join(" ").replace(/[_-]+/g, " ");
   if (!text) return null;
-  if (/for\s*him|\bgents?\b|\bmen(?:'s)?\b|\bmens\b/i.test(text)) return "men";
-  if (/for\s*her|\bladies\b|\bwomen(?:'s)?\b|\bwomens\b/i.test(text)) return "women";
-  return null;
+  const male = MALE_WORDS.test(text);
+  const female = FEMALE_WORDS.test(text);
+  if (male === female) return null;
+  return male ? "male" : "female";
 }
 
 function soldOut(html: string): boolean {
@@ -691,10 +700,9 @@ export function extractProduct(
     categoryFromCode(draft.sku, draft.title, draft.imageUrl, docTitle) ??
     categoryWord(draft.title, docTitle, new URL(pageUrl).pathname) ??
     null;
-  draft.gender = genderHint(crumbs, context.referrer ?? null, draft.title);
-
   const about = [...specLines(html), ...(draft.description ? [draft.description] : [])];
   draft.description = about.length > 0 ? about.join(". ").replace(/\.\./g, ".").slice(0, 500) : null;
+  draft.gender = genderHint(crumbs, context.referrer ?? null, draft.title, draft.description, draft.sku);
 
   if (draft.price === null && !draft.imageUrl) return null;
   return draft;
@@ -741,6 +749,45 @@ export async function dropImageIfShared(
 
 const CRAWL_SOURCE = "crawl";
 
+type PriorRow = { id: string; source: string; image_url?: string | null; gender?: string | null };
+
+/**
+ * The row a read should update for this product: the one at its page
+ * address; else — only when the page gives a SKU — the product with that SKU.
+ * One SKU is one product in a workspace (products_org_sku_unique_idx), so an
+ * insert would be refused: that is how 11 Zoori rings read at www.… stayed on
+ * their old no-www rows, never refreshed, for two weeks. That row is updated
+ * and moved to the page's address. Without a SKU nothing changes (a moved
+ * page gets a new row and the old one is hidden, Batch 13A).
+ */
+async function existingCrawlRow(
+  supabase: SupabaseClient,
+  organizationId: string,
+  draft: ProductDraft,
+): Promise<PriorRow | null> {
+  const columns = "id, source, image_url, gender";
+  const one = async (query: PromiseLike<{ data: unknown }>) => {
+    const data = (await query).data;
+    return data && !Array.isArray(data) ? (data as PriorRow) : null;
+  };
+  const exact = await one(
+    supabase.from("products").select(columns).eq("organization_id", organizationId).eq("external_id", draft.externalId).maybeSingle(),
+  );
+  if (exact) return exact;
+  const sku = (draft.sku ?? "").trim();
+  if (!sku) return null;
+  // Only a product new to this address costs this lookup.
+  return one(
+    supabase
+      .from("products")
+      .select(columns)
+      .eq("organization_id", organizationId)
+      .ilike("sku", sku.replace(/[\\%_]/g, (c) => `\\${c}`))
+      .limit(1)
+      .maybeSingle(),
+  );
+}
+
 /**
  * Remember what a crawl found. Prices and stock move, so an existing row is
  * updated in place; a product the shop has taken down is hidden, never
@@ -776,13 +823,7 @@ export async function saveCrawledProducts(
       synced_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const { data: existing } = await supabase
-      .from("products")
-      .select("id, source, image_url")
-      .eq("organization_id", organizationId)
-      .eq("external_id", draft.externalId)
-      .maybeSingle();
-    const prior = existing as { id: string; source: string; image_url?: string | null } | null;
+    const prior = await existingCrawlRow(supabase, organizationId, draft);
     if (prior) {
       // A product a shop platform owns is never overwritten by a page read.
       if (prior.source !== CRAWL_SOURCE) continue;
@@ -791,13 +832,19 @@ export async function saveCrawledProducts(
       // set stays — Zoori's hand-set ZGRG/ZLRG genders survive a re-read.
       const update: Record<string, unknown> = { ...row };
       for (const key of ["price", "category", "description", "gender"] as const) if (update[key] == null) delete update[key];
+      // A gender already set (by an owner or an earlier read) is never changed by a read.
+      if (prior.gender) delete update["gender"];
       // A photo the product already has is never replaced or wiped by a read.
       if (prior.image_url) delete update["image_url"];
       const { error } = await supabase.from("products").update(update).eq("id", prior.id);
       if (!error) saved += 1;
+      else console.error("[crawl] product update failed", draft.externalId, error.message);
     } else {
       const { error } = await supabase.from("products").insert(row);
       if (!error) saved += 1;
+      // Never silent again: a refused insert (e.g. the per-workspace SKU
+      // rule) left 11 Zoori rings stale for two weeks.
+      else console.error("[crawl] product insert failed", draft.externalId, error.message);
     }
   }
   return saved;

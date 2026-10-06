@@ -738,6 +738,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "ai_backup_tested",
       // Platform-level: a super admin chose the Anthropic backup model.
       "ai_backup_model_set",
+      // Super Admin → AI: how long Aiden waits for a second text (Batch 15A).
+      "ai_burst_wait_set",
     ],
     settings_path: "/app/employee",
     usage_meters: [
