@@ -49,7 +49,7 @@ const NUMBERS: Array<{ key: keyof Settings; label: string; help: string }> = [
   { key: "day0_page_limit", label: "Quick read (pages)", help: "When an owner sends a link on WhatsApp." },
   { key: "backfill_pages_per_day", label: "Nightly pages per workspace", help: "0 turns the nightly read off." },
   { key: "refresh_days", label: "Refresh every (days)", help: "Changed pages only. 0 turns it off." },
-  { key: "manual_refresh_cooldown_hours", label: "\"Read changes now\" cooldown (hours)", help: "How often a merchant can ask." },
+  { key: "manual_refresh_cooldown_hours", label: "\"Re-read whole site\" cooldown (hours)", help: "How often a merchant can ask." },
   { key: "link_reread_days", label: "Same link re-read after (days)", help: "Before this, the saved copy is used. 0 turns it off." },
   { key: "trial_links_per_day", label: "Trial: new links per day", help: "Paid plans have no link limit. 0 = no limit." },
   { key: "trial_links_total", label: "Trial: new links in total", help: "After this: \"connect your number to unlock full reading\". 0 = no limit." },

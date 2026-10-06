@@ -64,6 +64,14 @@ export async function assertPublicUrl(raw: string, signal?: AbortSignal): Promis
   return url;
 }
 
+/** Where each guarded response finally came from (after its redirects). */
+const landedAt = new WeakMap<Response, string>();
+
+/** The address a guardedFetch response was finally served from. */
+export function responseUrl(res: Response, asked: string): string {
+  return landedAt.get(res) || res.url || asked;
+}
+
 /**
  * fetch() for a merchant-supplied address. Every hop (the first request and
  * each redirect target) passes assertPublicUrl first; at most MAX_REDIRECTS
@@ -76,7 +84,10 @@ export async function guardedFetch(raw: string, init: RequestInit = {}): Promise
   for (let hop = 0; ; hop += 1) {
     const res = await fetch(url.toString(), { ...init, method, body, redirect: "manual" });
     const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
-    if (!location || hop >= MAX_REDIRECTS) return res;
+    if (!location || hop >= MAX_REDIRECTS) {
+      landedAt.set(res, url.toString());
+      return res;
+    }
     await res.body?.cancel().catch(() => undefined);
     let next: string;
     try {

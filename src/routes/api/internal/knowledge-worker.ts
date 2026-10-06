@@ -4,8 +4,17 @@ import { buildInfo } from "@/lib/build-info";
 /**
  * Reading a website takes minutes, so it never happens on the request that
  * asked for it. Anything queued waits here for the next minute's run, and a
- * read that dies mid-way goes back in the queue after ten minutes.
+ * read that dies mid-way goes back in the queue after ten minutes, resuming
+ * where it got to.
+ *
+ * The caller (pg_net) gives up after 120 s, so one tick never runs longer
+ * than TICK_BUDGET_MS: sources are claimed one at a time, each read is told
+ * when it must be over, and another is claimed only while there is time for it.
  */
+const TICK_BUDGET_MS = 95_000;
+/** Time a claimed read needs to be worth starting. */
+const MIN_READ_MS = 45_000;
+
 export const Route = createFileRoute("/api/internal/knowledge-worker")({
   server: {
     handlers: {
@@ -18,52 +27,52 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
         }
 
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
-        const { syncSource } = await import("@/lib/knowledge.server");
+        const { syncSource, resetStaleReads } = await import("@/lib/knowledge.server");
         const supabase = getServiceClient();
+        const tickStarted = Date.now();
+        const tickEnds = tickStarted + TICK_BUDGET_MS;
 
         try {
-          // A read that never finished is worth another try.
-          const stale = new Date(Date.now() - 10 * 60_000).toISOString();
-          await supabase
-            .from("knowledge_sources")
-            .update({
-              status: "pending",
-              queued_at: new Date().toISOString(),
-              sync_started_at: null,
-            })
-            .eq("status", "syncing")
-            .lt("sync_started_at", stale);
+          // A read that never finished is worth another try, from where it got to.
+          await resetStaleReads(supabase);
 
-          const { data } = await supabase
-            .from("knowledge_sources")
-            .select("id, organization_id")
-            .eq("status", "pending")
-            .not("queued_at", "is", null)
-            .is("sync_started_at", null)
-            .order("queued_at", { ascending: true })
-            .limit(3);
-
-          const claimed: string[] = [];
-          for (const row of (data ?? []) as Array<{ id: string; organization_id: string }>) {
-            const { data: won } = await supabase
+          /** The oldest queued source, claimed so no other tick reads it too. */
+          const claimNext = async (): Promise<string | null> => {
+            const { data } = await supabase
               .from("knowledge_sources")
-              .update({ status: "syncing", sync_started_at: new Date().toISOString() })
-              .eq("id", row.id)
+              .select("id, organization_id")
+              .eq("status", "pending")
+              .not("queued_at", "is", null)
+              .is("sync_started_at", null)
+              .order("queued_at", { ascending: true })
+              .limit(3);
+            for (const row of (data ?? []) as Array<{ id: string; organization_id: string }>) {
+              const { data: won } = await supabase
+                .from("knowledge_sources")
+                .update({ status: "syncing", sync_started_at: new Date().toISOString() })
+                .eq("id", row.id)
                 .eq("status", "pending")
                 .not("queued_at", "is", null)
                 .is("sync_started_at", null)
-              .select("id")
-              .maybeSingle();
-            if (won) claimed.push(row.id);
-          }
+                .select("id")
+                .maybeSingle();
+              if (won) return row.id;
+            }
+            return null;
+          };
 
+          const claimed: string[] = [];
           let done = 0;
           let failed = 0;
-          for (const sourceId of claimed) {
+          while (claimed.length < 3 && tickEnds - Date.now() >= MIN_READ_MS) {
+            const sourceId = await claimNext();
+            if (!sourceId) break;
+            claimed.push(sourceId);
             let stage: import("@/lib/knowledge.server").CrawlStage = "discover";
             try {
               const result = await syncSource(supabase, sourceId, {
                 preserveError: true,
+                deadlineAt: tickEnds - 5_000,
                 onStage: (next) => { stage = next; },
               });
               if (!result.ok) throw new Error(result.error ?? "The source could not be read.");
@@ -82,7 +91,8 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
               await supabase
                 .from("knowledge_sources")
                 .update({ status: "error", last_error: detail })
-                .eq("id", sourceId);
+                .eq("id", sourceId)
+                .neq("status", "disabled");
               // Tell the owner's chat too, or the session waits for ever.
               // A failure here must never hide the crawl error above.
               try {
@@ -106,7 +116,8 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
           let embeddings = { tried: 0, built: 0 };
           try {
             const { retryPendingEmbeddings } = await import("@/lib/knowledge.server");
-            embeddings = await retryPendingEmbeddings(supabase);
+            // Only with time to spare: a read's own pages come first.
+            if (tickEnds - Date.now() > 20_000) embeddings = await retryPendingEmbeddings(supabase, 50, tickEnds - 10_000);
           } catch (error) {
             console.error("[knowledge-worker] embed retry failed", error instanceof Error ? error.message : String(error));
           }

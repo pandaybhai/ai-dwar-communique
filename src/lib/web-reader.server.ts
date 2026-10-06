@@ -255,6 +255,12 @@ export type ReadOptions = {
   /** Tavily credits are charged here. */
   tavilyBudget?: TavilyBudget;
   onStage?: (stage: "fetch" | "reader" | "extract") => void;
+  /**
+   * Read a page again rendered when its markup looks client-rendered, even
+   * though it already gave enough text (default). Off for website runs: a
+   * paid reader is asked only for a page that came back nearly empty.
+   */
+  rerender?: boolean;
 };
 
 /** Primary first, then fallbacks, each engine once. */
@@ -393,7 +399,7 @@ export async function readPages(urls: string[], options: ReadOptions = {}): Prom
     remaining = remaining.filter((u) => !out.has(u));
   }
   for (const url of urls) if (!out.has(url)) out.set(url, thin.get(url) ?? null);
-  await rereadClientRendered(out, order, options, advancedRead);
+  if (options.rerender !== false) await rereadClientRendered(out, order, options, advancedRead);
   return out;
 }
 
