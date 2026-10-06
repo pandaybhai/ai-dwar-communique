@@ -411,3 +411,141 @@ export async function reportProviderTrouble(
     return false;
   }
 }
+
+// ------------------------------------------------------- admin: status/test
+
+/** What /admin shows about the backups: configured or not, and which model — never a key. */
+export type BackupStatus = {
+  order: BackupProvider[];
+  anthropic: { configured: boolean; model: string };
+  openai: { configured: boolean; model: string; careful_model: string };
+};
+
+export function backupStatus(env: Env = process.env): BackupStatus {
+  const order = (env["AI_BACKUP_ORDER"] ?? "anthropic,openai")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s): s is BackupProvider => s === "anthropic" || s === "openai");
+  // The same model choice backupRoutes makes (the key itself never leaves).
+  const withKeys = { ...env, ANTHROPIC_API_KEY: "x", OPENAI_API_KEY: "x" };
+  const everyday = backupRoutes("everyday", withKeys);
+  const careful = backupRoutes("careful", withKeys);
+  const modelOf = (routes: BackupRoute[], p: BackupProvider) => routes.find((r) => r.provider === p)?.model ?? "";
+  return {
+    order: Array.from(new Set(order)),
+    anthropic: { configured: Boolean(env["ANTHROPIC_API_KEY"]), model: modelOf(everyday, "anthropic") || env["ANTHROPIC_BACKUP_MODEL"] || "claude-opus-5-5" },
+    openai: {
+      configured: Boolean(env["OPENAI_API_KEY"]),
+      model: modelOf(everyday, "openai") || "gpt-5.4-mini",
+      careful_model: modelOf(careful, "openai") || "gpt-5.4",
+    },
+  };
+}
+
+export type BackupTestReason = "bad_key" | "no_credit" | "wrong_model" | "rate_limited" | "unreachable" | "other";
+export type BackupTestResult = {
+  provider: BackupProvider;
+  model: string;
+  ok: boolean;
+  /** Seconds from request to answer (also set on a failure: how long until it failed). */
+  seconds: number;
+  reason: BackupTestReason | null;
+  /** The provider's own error text, exactly (trimmed to 300 characters). */
+  error: string | null;
+};
+
+const TEST_PROMPT = "Reply with the single word OK.";
+
+/** Plain words for a failure, from the status and the provider's own text. */
+export function backupFailureReason(status: number | null, text: string): BackupTestReason {
+  if (status === null) return "unreachable";
+  if (status === 401 || status === 403) {
+    return QUOTA_WORDS.test(text) ? "no_credit" : "bad_key";
+  }
+  if (status === 402) return "no_credit";
+  if (status === 404 || /model_not_found|not_found_error|does not exist|unknown model|invalid model/i.test(text)) return "wrong_model";
+  if (/credit balance|insufficient_quota|quota|billing/i.test(text)) return "no_credit";
+  if (status === 429) return "rate_limited";
+  return "other";
+}
+
+async function testAnthropic(model: string, key: string): Promise<Omit<BackupTestResult, "provider" | "model">> {
+  const client = new Anthropic({
+    apiKey: key,
+    fetch: (input, init) => globalThis.fetch(input, init),
+    maxRetries: 0,
+    timeout: 30_000,
+  });
+  const at = Date.now();
+  const seconds = () => Math.round((Date.now() - at) / 100) / 10;
+  try {
+    await client.messages.create({
+      model,
+      max_tokens: 256,
+      messages: [{ role: "user", content: TEST_PROMPT }],
+      // Haiku 4.5 takes no effort setting.
+      ...(model.startsWith("claude-haiku") ? {} : { output_config: { effort: "low" as const } }),
+    });
+    return { ok: true, seconds: seconds(), reason: null, error: null };
+  } catch (error) {
+    if (error instanceof Anthropic.APIConnectionError) {
+      return { ok: false, seconds: seconds(), reason: "unreachable", error: error.message.slice(0, 300) };
+    }
+    if (error instanceof Anthropic.APIError) {
+      const status = typeof error.status === "number" ? error.status : null;
+      return { ok: false, seconds: seconds(), reason: backupFailureReason(status, error.message), error: error.message.slice(0, 300) };
+    }
+    return { ok: false, seconds: seconds(), reason: "other", error: (error instanceof Error ? error.message : String(error)).slice(0, 300) };
+  }
+}
+
+async function testOpenAi(model: string, key: string): Promise<Omit<BackupTestResult, "provider" | "model">> {
+  const at = Date.now();
+  const seconds = () => Math.round((Date.now() - at) / 100) / 10;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ model, input: TEST_PROMPT, max_output_tokens: 64, store: false }),
+      signal: controller.signal,
+    });
+    if (res.ok) return { ok: true, seconds: seconds(), reason: null, error: null };
+    const text = await res.text().catch(() => "");
+    let message = text;
+    try {
+      const parsed = JSON.parse(text) as { error?: { message?: string; code?: string; type?: string } };
+      if (parsed.error?.message) message = `${parsed.error.code ?? parsed.error.type ?? res.status}: ${parsed.error.message}`;
+    } catch {
+      // not JSON: the raw text is the error
+    }
+    return { ok: false, seconds: seconds(), reason: backupFailureReason(res.status, text), error: (message || `HTTP ${res.status}`).slice(0, 300) };
+  } catch (error) {
+    return { ok: false, seconds: seconds(), reason: "unreachable", error: (error instanceof Error ? error.message : String(error)).slice(0, 300) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Sends one tiny prompt to every configured backup model (each provider's
+ * everyday model, plus OpenAI's careful model when it differs), in parallel.
+ * Nothing is recorded on ai_runs or billed to a workspace. A provider with no
+ * key is not called.
+ */
+export async function testBackupProviders(env: Env = process.env): Promise<BackupTestResult[]> {
+  const targets: Array<{ provider: BackupProvider; model: string; key: string }> = [];
+  for (const tier of ["everyday", "careful"]) {
+    for (const route of backupRoutes(tier, env)) {
+      if (!targets.some((t) => t.provider === route.provider && t.model === route.model)) targets.push(route);
+    }
+  }
+  return Promise.all(
+    targets.map(async (t) => ({
+      provider: t.provider,
+      model: t.model,
+      ...(t.provider === "anthropic" ? await testAnthropic(t.model, t.key) : await testOpenAi(t.model, t.key)),
+    })),
+  );
+}

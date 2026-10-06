@@ -35,6 +35,8 @@ type AutoPay = {
   next_charge_at: string | null;
   cancel_at_period_end: boolean;
   short_url: string | null;
+  /** The first charge, still ahead (the trial's remaining days are kept). */
+  starts_at?: string | null;
 };
 
 const STATUS_COPY: Record<string, { label: string; tone: string }> = {
@@ -153,6 +155,9 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
         <CardContent className="space-y-4">
           {autopay?.enabled ? (
             <>
+              {autopay.starts_at ? (
+                <p className="text-sm font-medium text-foreground">Paid plan starts on {day(autopay.starts_at)}</p>
+              ) : null}
               <p className="text-sm text-muted-foreground">
                 Your plan fee is paid automatically
                 {autopay.next_charge_at ? `, next on ${day(autopay.next_charge_at)}` : ""}. You'll

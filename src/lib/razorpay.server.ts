@@ -173,6 +173,8 @@ export async function createSubscription(
     organizationId: string;
     notes?: Record<string, string>;
     customerNotify?: boolean;
+    /** Unix seconds of the first charge (a trial's end); absent = charge on authorisation, as before. */
+    startAt?: number | null;
   },
 ) {
   return rzp(keys, "/subscriptions", {
@@ -181,6 +183,7 @@ export async function createSubscription(
       plan_id: input.planId,
       total_count: input.cycle === "annual" ? 10 : 120,
       customer_notify: input.customerNotify === true ? 1 : 0,
+      ...(input.startAt ? { start_at: input.startAt } : {}),
       notes: { org_id: input.organizationId, ...(input.notes ?? {}) },
     },
   });

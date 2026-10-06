@@ -364,9 +364,9 @@ describe("(2) engine: Show products", () => {
 
 describe("(2) search arguments", () => {
   it("a known shelf filters by category; another word searches by name; budgets pass through", () => {
-    expect(searchArgs({ category: "Pendants", minPrice: null, maxPrice: 25000, limit: 5 }, "pendants")).toEqual({ limit: 5, category: "Pendants", max_price: 25000 });
-    expect(searchArgs({ category: "Nose pins", minPrice: 1000, maxPrice: null, limit: 3 }, "")).toEqual({ limit: 3, query: "Nose pins", min_price: 1000 });
-    expect(searchArgs({ category: "", minPrice: null, maxPrice: null, limit: 5 }, "")).toEqual({ limit: 5 });
+    expect(searchArgs({ category: "Pendants", minPrice: null, maxPrice: 25000, limit: 5 }, "pendants")).toEqual({ limit: 5, order: "price_asc", category: "Pendants", max_price: 25000 });
+    expect(searchArgs({ category: "Nose pins", minPrice: 1000, maxPrice: null, limit: 3 }, "")).toEqual({ limit: 3, order: "price_asc", query: "Nose pins", min_price: 1000 });
+    expect(searchArgs({ category: "", minPrice: null, maxPrice: null, limit: 5 }, "")).toEqual({ limit: 5, order: "price_asc" });
     expect(budgetWords({ minPrice: 50000, maxPrice: 100000 })).toBe("between ₹50,000 and ₹1,00,000");
     expect(budgetWords({ minPrice: 100000, maxPrice: null })).toBe("from ₹1,00,000");
   });

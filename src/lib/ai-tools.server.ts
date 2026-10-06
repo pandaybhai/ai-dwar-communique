@@ -474,6 +474,10 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     const minPrice =
       typeof minPriceRaw === "number" && Number.isFinite(minPriceRaw) ? minPriceRaw : null;
     const availability = isAvailability(args["availability"]) ? args["availability"] : null;
+    // Not in the agent's manifest either: "Show products" lists matches
+    // cheapest first (same filters, same limit). Absent, the order is exactly
+    // as before.
+    const byPrice = args["order"] === "price_asc";
     // A whole sentence in `query` matches nothing; once we know the shelf and
     // the budget, the words the customer typed are noise.
     const query = category && looksLikeSentence(rawQuery) ? "" : rawQuery;
@@ -501,7 +505,8 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
         request = tsquery
           ? request.textSearch("search_vector", tsquery)
           : request.ilike("title", `%${withQuery.replace(/[%,()]/g, " ").trim()}%`);
-      } else if (cheapestFirst) {
+        if (byPrice) request = request.order("price", { ascending: true, nullsFirst: false });
+      } else if (cheapestFirst || byPrice) {
         request = request.order("price", { ascending: true, nullsFirst: false });
       } else {
         // Browse case: what's in stock, with a picture, most recently touched
@@ -530,6 +535,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     const sortRows = (rows: Array<Record<string, unknown>>, searched: boolean) => {
       const hasPicture = (r: Record<string, unknown>) =>
         typeof r["image_url"] === "string" && /^https?:\/\//i.test(r["image_url"] as string);
+      if (byPrice) return sortByPrice(rows);
       return searched
         ? [...rows].sort((a, b) => Number(hasPicture(b)) - Number(hasPicture(a)))
         : [...rows].sort(
@@ -603,6 +609,21 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     return { ok: true, data: data ?? [] };
   },
 };
+
+/**
+ * Cheapest first; a product without a real price (missing or 0) goes last.
+ * Stable: equal prices keep the order the search returned them in.
+ */
+export function sortByPrice<T extends Record<string, unknown>>(rows: T[]): T[] {
+  const price = (r: T) => {
+    const n = Number(r["price"]);
+    return r["price"] !== null && r["price"] !== undefined && Number.isFinite(n) && n > 0 ? n : Infinity;
+  };
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => price(a.row) - price(b.row) || a.i - b.i)
+    .map((x) => x.row);
+}
 
 // Flag state lives in a small module of its own so the reply path can read a
 // flag without loading this one (see feature-flags.server.ts).

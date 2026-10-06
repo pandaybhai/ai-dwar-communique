@@ -28,6 +28,8 @@ async function enabledTriggersAll(
   return (data ?? []) as Trigger[];
 }
 
+type PublishedVersion = Awaited<ReturnType<typeof import("@/lib/flow-engine.server").readPublishedVersion>>;
+
 /** Starts the run; the engine records the fire (trigger, flow, contact, run). */
 async function fire(
   supabase: SupabaseClient,
@@ -39,17 +41,26 @@ async function fire(
     detail?: Record<string, unknown>;
     fromCustomerMessage?: boolean;
     extras?: InboundExtras;
+    /**
+     * Whether a teammate owns `conversationId`, as the webhook read it with
+     * the conversation (speed). Absent: read here, as always.
+     */
+    teammateOwns?: boolean;
+    /** The flow's published version, read earlier by prefetchStartVersions (speed). */
+    version?: Promise<PublishedVersion>;
   },
 ): Promise<{ runId: string | null; active: boolean }> {
   // The flow's published version is read alongside the ownership check (one
   // round trip, not two); it is only used when no teammate owns the thread.
   const { startRun, readPublishedVersion } = await import("@/lib/flow-engine.server");
-  const version = readPublishedVersion(supabase, args.organizationId, args.trigger.flow_id);
+  const version = args.version ?? readPublishedVersion(supabase, args.organizationId, args.trigger.flow_id);
   // A conversation a teammate has taken over is theirs: no trigger starts a
   // flow in it (the same rule the AI follows — see ai-agent.server.ts).
-  if (await humanOwnsConversation(supabase, args.organizationId, args.contactId, args.conversationId ?? null)) {
-    return { runId: null, active: false };
-  }
+  const owned =
+    args.teammateOwns !== undefined && args.conversationId
+      ? args.teammateOwns
+      : await humanOwnsConversation(supabase, args.organizationId, args.contactId, args.conversationId ?? null);
+  if (owned) return { runId: null, active: false };
   const { runId, reason } = await startRun(supabase, {
     version,
     ...(args.extras ? { extras: args.extras } : {}),
@@ -119,6 +130,68 @@ export function readInboundTriggers(supabase: SupabaseClient, organizationId: st
   );
 }
 
+type InboundTrigger = Trigger & { flows: { whatsapp_account_id: string | null } | null };
+
+/** The triggers that may start on this number (see dispatchInboundTriggers). */
+function onThisNumber(rows: unknown[] | null, accountId: string | null | undefined, onlyAccountId: string | null | undefined): InboundTrigger[] {
+  return ((rows ?? []) as unknown as InboundTrigger[]).filter((t) => {
+    const pinned = t.flows?.whatsapp_account_id ?? null;
+    if (onlyAccountId) return pinned === onlyAccountId;
+    return !pinned || !accountId || pinned === accountId;
+  });
+}
+
+/** Keyword triggers this text matches, highest priority first. */
+function keywordCandidates(all: InboundTrigger[], body: string): InboundTrigger[] {
+  return all
+    .filter((t) => t.kind === "keyword" && keywordMatches(t.config, body))
+    .sort((x, y) => Number(y.config["priority"] ?? 0) - Number(x.config["priority"] ?? 0));
+}
+
+/**
+ * Speed: as soon as the inbound triggers are read (while the message is still
+ * being stored), the published version of the flow each kind would try first
+ * is read too, so a start doesn't wait for it. Read-only; a message that
+ * starts nothing just leaves the reads unused (none at all when no trigger
+ * could match it).
+ */
+export function prefetchStartVersions(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    triggers: ReturnType<typeof readInboundTriggers>;
+    body: string;
+    isFirstMessageEver: boolean;
+    isCtwa: boolean;
+    accountId?: string | null;
+    onlyAccountId?: string | null;
+  },
+): Promise<Map<string, Promise<PublishedVersion>>> {
+  const read = args.triggers.then(async ({ data }) => {
+    const all = onThisNumber(data, args.accountId, args.onlyAccountId);
+    const flows = new Set<string>();
+    if (args.isFirstMessageEver) {
+      const t = all.find((x) => x.kind === "first_message");
+      if (t) flows.add(t.flow_id);
+    }
+    if (args.isCtwa) {
+      const t = all.find((x) => x.kind === "ctwa_ad");
+      if (t) flows.add(t.flow_id);
+    }
+    if (args.body.trim()) {
+      const t = keywordCandidates(all, args.body)[0];
+      if (t) flows.add(t.flow_id);
+    }
+    const versions = new Map<string, Promise<PublishedVersion>>();
+    if (flows.size === 0) return versions;
+    const { readPublishedVersion } = await import("@/lib/flow-engine.server");
+    for (const flowId of flows) versions.set(flowId, readPublishedVersion(supabase, args.organizationId, flowId));
+    return versions;
+  });
+  read.catch(() => {});
+  return read;
+}
+
 /**
  * Inbound customer message: first_message → ctwa_ad → campaign_button →
  * keyword, first match wins. Called only when no run is active for this
@@ -153,20 +226,21 @@ export async function dispatchInboundTriggers(
     triggers?: ReturnType<typeof readInboundTriggers>;
     /** Timings, the window write and the message time (see InboundExtras). */
     extras?: InboundExtras;
+    /** Whether a teammate owns conversationId, read with the conversation (speed). */
+    teammateOwns?: boolean;
+    /** prefetchStartVersions() started earlier by the webhook (speed). */
+    versions?: ReturnType<typeof prefetchStartVersions>;
   },
 ): Promise<{ started: boolean; flowId?: string }> {
   const { flowsV2Enabled } = await import("@/lib/flow-engine.server");
   // One read for every inbound trigger kind, plus the flows' numbers.
-  const [on, { data: trigRows }] = await Promise.all([
+  const [on, { data: trigRows }, versions] = await Promise.all([
     flowsV2Enabled(supabase, args.organizationId),
     args.triggers ?? readInboundTriggers(supabase, args.organizationId),
+    args.versions ? args.versions.catch(() => null) : Promise.resolve(null),
   ]);
   if (!on) return { started: false };
-  const all = ((trigRows ?? []) as unknown as Array<Trigger & { flows: { whatsapp_account_id: string | null } | null }>).filter((t) => {
-    const pinned = t.flows?.whatsapp_account_id ?? null;
-    if (args.onlyAccountId) return pinned === args.onlyAccountId;
-    return !pinned || !args.accountId || pinned === args.accountId;
-  });
+  const all = onThisNumber(trigRows, args.accountId, args.onlyAccountId);
   const ofKind = (kind: string) => all.filter((t) => t.kind === kind);
   const base = {
     fromCustomerMessage: true,
@@ -174,16 +248,27 @@ export async function dispatchInboundTriggers(
     contactId: args.contactId,
     conversationId: args.conversationId,
     ...(args.extras ? { extras: args.extras } : {}),
+    ...(args.teammateOwns !== undefined ? { teammateOwns: args.teammateOwns } : {}),
   };
+  // A prefetched version is used once, by the first fire of its flow.
+  const take = (flowId: string): { version?: Promise<PublishedVersion> } => {
+    const v = versions?.get(flowId);
+    if (!v) return {};
+    versions!.delete(flowId);
+    return { version: v };
+  };
+  const matched = () => args.extras?.timer?.mark("trigger_matched");
 
   if (args.isFirstMessageEver) {
     for (const t of ofKind("first_message")) {
-      if ((await fire(supabase, { ...base, trigger: t })).active) return { started: true, flowId: t.flow_id };
+      matched();
+      if ((await fire(supabase, { ...base, ...take(t.flow_id), trigger: t })).active) return { started: true, flowId: t.flow_id };
     }
   }
   if (args.isCtwa) {
     for (const t of ofKind("ctwa_ad")) {
-      if ((await fire(supabase, { ...base, trigger: t })).active) return { started: true, flowId: t.flow_id };
+      matched();
+      if ((await fire(supabase, { ...base, ...take(t.flow_id), trigger: t })).active) return { started: true, flowId: t.flow_id };
     }
   }
   if (args.campaignButton) {
@@ -192,16 +277,16 @@ export async function dispatchInboundTriggers(
       const btn = norm(String(t.config["button"] ?? ""));
       if (cid && cid !== args.campaignButton.campaignId) continue;
       if (btn && btn !== norm(args.campaignButton.button ?? "")) continue;
-      const r = await fire(supabase, { ...base, trigger: t, detail: { campaign_id: args.campaignButton.campaignId, button: args.campaignButton.button } });
+      matched();
+      const r = await fire(supabase, { ...base, ...take(t.flow_id), trigger: t, detail: { campaign_id: args.campaignButton.campaignId, button: args.campaignButton.button } });
       if (r.active) return { started: true, flowId: t.flow_id };
     }
   }
   if (args.body.trim() && !args.skipKeywords) {
-    const keyword = ofKind("keyword")
-      .filter((t) => keywordMatches(t.config, args.body))
-      .sort((x, y) => Number(y.config["priority"] ?? 0) - Number(x.config["priority"] ?? 0));
+    const keyword = keywordCandidates(all, args.body);
     for (const t of keyword) {
-      const r = await fire(supabase, { ...base, trigger: t, detail: { keyword_of: args.body.slice(0, 120) } });
+      matched();
+      const r = await fire(supabase, { ...base, ...take(t.flow_id), trigger: t, detail: { keyword_of: args.body.slice(0, 120) } });
       if (r.active) return { started: true, flowId: t.flow_id };
     }
   }

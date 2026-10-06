@@ -110,7 +110,7 @@ export const Route = createFileRoute("/api/admin/billing")({
               ]);
               const { data: org } = await supabase
                 .from("organizations")
-                .select("id, name, funding_model, billing_day, billing_account_id, plan_status")
+                .select("id, name, funding_model, billing_day, billing_account_id, plan_status, trial_ends_at")
                 .eq("id", orgId)
                 .maybeSingle();
               const { data: account } = org?.billing_account_id
@@ -168,6 +168,16 @@ export const Route = createFileRoute("/api/admin/billing")({
                           | "bsp",
                       }
                     : {}),
+                }),
+              );
+
+            // Moves trial_ends_at only — never assignPlan, never a feature re-sync.
+            case "extend_trial":
+              return Response.json(
+                await core.extendTrial(supabase, {
+                  organizationId: orgId,
+                  days: Number(payload["days"] ?? 0),
+                  actorId,
                 }),
               );
 

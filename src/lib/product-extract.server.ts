@@ -608,6 +608,42 @@ function priceAnchor(html: string, price: number | null): number {
   return new RegExp(PRICE_RE.source, "i").exec(html)?.index ?? 0;
 }
 
+// ------------------------------------------------------- legal pages
+
+/** Path segments that name a legal or policy page (terms, privacy, refunds…). */
+const LEGAL_SEGMENT_RE =
+  /^(?:terms|tos|tnc|t-?and-?c|terms[-_].*|privacy|privacy[-_].*|legal|disclaimer|imprint|cookies?|refunds?|returns?|returns?[-_](?:and[-_])?(?:refunds?|exchanges?)|shipping(?:[-_](?:info|information|and[-_]delivery))?|.*[-_]?polic(?:y|ies)(?:[-_].*)?)$/i;
+
+/** A page title or heading that says it is a legal or policy page. */
+const LEGAL_TITLE_RE =
+  /\b(?:terms\s*(?:of\s*(?:service|use|sale)|(?:and|&)\s*conditions)|privacy\s*(?:policy|notice)|(?:refund|return|returns|shipping|delivery|cancellation|cookie)s?\s*(?:and\s*\w+\s*)?policy|limitation\s+of\s+liability|governing\s+law|indemnit(?:y|ies|ification))\b/i;
+
+/** "7. Limitation of liability", "2.1) Refunds", "Section 4 Payment", "Clause 9 …". */
+const NUMBERED_CLAUSE_RE = /^\s*(?:\(?\d{1,2}(?:\.\d{1,2})*[.)]|(?:section|clause|article)\s+\d{1,2}(?:\.\d{1,2})*\b[.:)]?)\s+\S/i;
+
+/** True for a numbered clause heading — never a product name. */
+export function looksLikeLegalClause(title: string | null | undefined): boolean {
+  return NUMBERED_CLAUSE_RE.test(title ?? "");
+}
+
+/**
+ * True for a terms / privacy / refund / shipping-policy page: products are
+ * never read off one (its numbered clause headings and amounts look like a
+ * product with a price).
+ */
+export function isLegalPage(pageUrl: string, html: string): boolean {
+  try {
+    const segments = new URL(pageUrl).pathname.split("/").filter(Boolean);
+    if (segments.some((s) => LEGAL_SEGMENT_RE.test(decodeURIComponent(s)))) return true;
+  } catch {
+    // not a URL we can read: judge by the page alone
+  }
+  const docTitle = pageTitle(html) ?? "";
+  if (LEGAL_TITLE_RE.test(docTitle)) return true;
+  const h1 = decode((/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1] ?? "").replace(/<[^>]+>/g, " "));
+  return LEGAL_TITLE_RE.test(h1);
+}
+
 export type ExtractContext = {
   /** The page that linked to this product — usually a category listing. */
   referrer?: string | null;
@@ -620,9 +656,12 @@ export function extractProduct(
   context: ExtractContext = {},
 ): ProductDraft | null {
   if (!html || html.length < 200) return null;
+  // Terms, privacy, refund and shipping policies sell nothing.
+  if (isLegalPage(pageUrl, html)) return null;
   const draft =
     fromJsonLd(html, pageUrl) ?? fromOpenGraph(html, pageUrl) ?? fromPageShape(html, pageUrl);
   if (!draft || !draft.title) return null;
+  if (looksLikeLegalClause(draft.title)) return null;
 
   // Structured data without a price: the price printed beside this same
   // product's heading is the one the shop charges.

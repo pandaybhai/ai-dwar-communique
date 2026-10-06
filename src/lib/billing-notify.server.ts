@@ -114,6 +114,9 @@ const TEMPLATE_FOR: Record<string, string> = {
   "client:payment_failed": "client_payment_failed",
   "client:trial_ending": "client_trial_ending",
   "admin:ai_provider_alert": "admin_ai_provider_alert",
+  // Card renders past the monthly alarm (card-usage-alert.server.ts): same
+  // approved template, same admin number.
+  "admin:card_usage_alert": "admin_ai_provider_alert",
 };
 
 /**
@@ -367,6 +370,7 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
     case "campaign_approval":
       return [orgName, money(Number(payload["estimate"] ?? 0)), link];
     case "ai_provider_alert":
+    case "card_usage_alert":
       return [
         String(payload["headline"] ?? "the AI provider is failing"),
         String(payload["detail"] ?? "Aiden replies may be failing"),
