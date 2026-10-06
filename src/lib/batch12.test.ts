@@ -4,6 +4,7 @@ import {
   DISPATCH_DEFAULTS,
   FairRotation,
   NumberRateLimiter,
+  laneShare,
   STALE_SEND_ERROR,
   UNKNOWN_SEND_ERROR,
   classifyGraphAnswer,
@@ -110,6 +111,34 @@ describe("pure parts", () => {
     expect(limiter.rate("pn")).toBeCloseTo(3);
     // Other numbers are untouched.
     expect(limiter.waitMs("other")).toBe(0);
+  });
+
+  it("lanes: every number is sent for by at least one lane, and its speed is split only across those", () => {
+    const numbers = ["pn-c", "pn-a", "pn-b", "pn-a"];
+    // More lanes than numbers: whole lanes per number.
+    const five = [0, 1, 2, 3, 4].map((lane) => laneShare(numbers, lane, 5));
+    expect(five.map((m) => [...m.entries()])).toEqual([
+      [["pn-a", 2]],
+      [["pn-b", 2]],
+      [["pn-c", 1]],
+      [["pn-a", 2]],
+      [["pn-b", 2]],
+    ]);
+    // Fewer lanes than numbers: several numbers per lane, one lane each.
+    const two = [0, 1].map((lane) => [...laneShare(numbers, lane, 2).entries()]);
+    expect(two).toEqual([[["pn-a", 1], ["pn-c", 1]], [["pn-b", 1]]]);
+    // One lane (today's cron): everything.
+    expect([...laneShare(numbers, 0, 1).keys()]).toEqual(["pn-a", "pn-b", "pn-c"]);
+    expect(laneShare([], 0, 4).size).toBe(0);
+    // A per-number limit of 60 msg/s over the lanes that share it never exceeds 60.
+    for (const lanes of [1, 2, 3, 7, 16, 32]) {
+      const total = new Map<string, number>();
+      for (let lane = 0; lane < lanes; lane++) {
+        for (const [pn, n] of laneShare(numbers, lane, lanes)) total.set(pn, (total.get(pn) ?? 0) + 60 / n);
+      }
+      for (const v of total.values()) expect(Math.round(v)).toBe(60);
+      expect(total.size).toBe(3);
+    }
   });
 
   it("fair rotation: workspace by workspace, then campaign by campaign", () => {
@@ -801,6 +830,7 @@ describe("status webhook: cheap, monotonic, counted once", () => {
   it("the campaign's charged total is re-read at most every few seconds per campaign, not on every price", async () => {
     const { db, campaigns, metaIdOf } = await sentCampaign({ recipientRpc: true, ledgerRpc: true });
     const c = campaigns[0]!;
+    const before = db.calls.length;
     for (const r of c.recipients) {
       await deliver(db, c.pn, [
         {
@@ -811,7 +841,7 @@ describe("status webhook: cheap, monotonic, counted once", () => {
         },
       ]);
     }
-    expect(db.calls.filter((x) => x.rpc === "campaign_ledger_charge")).toHaveLength(1);
+    expect(db.calls.slice(before).filter((x) => x.rpc === "campaign_ledger_charge")).toHaveLength(1);
   });
 });
 

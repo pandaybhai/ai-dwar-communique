@@ -41,6 +41,7 @@ vi.mock("@/lib/campaigns.server", async (orig) => ({
 vi.mock("@/lib/campaign-billing.server", () => ({
   holdCampaign: async () => ({ ok: true }),
   settleCampaignSpend: async () => ({ ok: true }),
+  syncCampaignCharged: async () => ({ ok: true, amount: 0 }),
 }));
 vi.mock("@/lib/events.server", () => {
   const noop = async () => {};

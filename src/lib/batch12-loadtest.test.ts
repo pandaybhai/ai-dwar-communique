@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ import {
  *   LOADTEST=1 bunx vitest run src/lib/batch12-loadtest.test.ts --silent=false
  *
  * Knobs (defaults = the 10 × 10,000 day, production-like latency):
- *   LOADTEST_WORKSPACES=10 LOADTEST_PER_CAMPAIGN=10000 LOADTEST_LANES=16
+ *   LOADTEST_WORKSPACES=10 LOADTEST_PER_CAMPAIGN=10000 LOADTEST_LANES=auto
  *   LOADTEST_DB_RTT_MS=230 LOADTEST_GRAPH_MS=250 LOADTEST_META_MPS=80
  *   LOADTEST_CRON_MS=30000 LOADTEST_PGRST_POOL=40 LOADTEST_MIGRATION=1
  *   LOADTEST_EVENTS=1 (pause/resume one campaign, cancel another)
@@ -33,7 +34,9 @@ import {
 const env = process.env;
 const N_WS = Number(env["LOADTEST_WORKSPACES"] ?? 10);
 const PER = Number(env["LOADTEST_PER_CAMPAIGN"] ?? 10_000);
-const LANES = Number(env["LOADTEST_LANES"] ?? 16);
+// "auto" = what the lanes cron does: two lanes per number with a running campaign (1–32).
+const LANES_SETTING = env["LOADTEST_LANES"] ?? "auto";
+const LANES = LANES_SETTING === "auto" ? 0 : Number(LANES_SETTING);
 const DB_RTT = Number(env["LOADTEST_DB_RTT_MS"] ?? 230);
 const GRAPH_MS = Number(env["LOADTEST_GRAPH_MS"] ?? 250);
 const META_MPS = Number(env["LOADTEST_META_MPS"] ?? 80);
@@ -42,6 +45,11 @@ const POOL = Number(env["LOADTEST_PGRST_POOL"] ?? 40);
 const MIGRATION = env["LOADTEST_MIGRATION"] !== "0";
 const EVENTS = env["LOADTEST_EVENTS"] !== "0";
 const MAX_MINUTES = Number(env["LOADTEST_MAX_MINUTES"] ?? 45);
+// "live": statuses arrive while sending (realistic, but the one-process
+// harness becomes the bottleneck at scale); "after": the sends run first,
+// then every status is replayed through the webhook at WEBHOOK_CONCURRENCY.
+const STATUS_MODE = env["LOADTEST_STATUS_MODE"] ?? "after";
+const WEBHOOK_CONCURRENCY = Number(env["LOADTEST_WEBHOOK_CONCURRENCY"] ?? 200);
 const OUT = env["LOADTEST_OUT"] ?? join(tmpdir(), "aidwar-loadtest");
 
 const SUPABASE_ORIGIN = "http://supabase.loadtest";
@@ -114,7 +122,27 @@ describe.runIf(env["LOADTEST"])("Batch 12 load test", () => {
         process.env["AIDWAR_SUPABASE_SERVICE_ROLE_KEY"] = infra.serviceKey;
         process.env["CRON_SECRET"] = "loadtest";
 
-        const statusQueue: StatusEvent[] = [];
+        // A queue with a moving head (shift() on 300k items is quadratic).
+        const statusQueue = {
+          items: [] as StatusEvent[],
+          head: 0,
+          get length() {
+            return this.items.length - this.head;
+          },
+          push(s: StatusEvent) {
+            this.items.push(s);
+          },
+          shift(): StatusEvent | undefined {
+            const s = this.items[this.head];
+            this.head += 1;
+            if (this.head > 50_000) {
+              this.items = this.items.slice(this.head);
+              this.head = 0;
+            }
+            return s;
+          },
+        };
+        const held: StatusEvent[] = [];
         let statusesScheduled = 0;
         let statusesDelivered = 0;
         let webhooksActive = 0;
@@ -124,7 +152,7 @@ describe.runIf(env["LOADTEST"])("Batch 12 load test", () => {
         const { acceptWebhook, getServiceClient, reprocessUnprocessedEvents } =
           await import("./whatsapp-webhook.server");
         const pump = () => {
-          while (webhooksActive < 2_000 && statusQueue.length) {
+          while (webhooksActive < WEBHOOK_CONCURRENCY && statusQueue.length) {
             const s = statusQueue.shift()!;
             webhooksActive += 1;
             const ctx = { kind: "webhook" as const, sem: new Semaphore(6), db: 0 };
@@ -158,6 +186,10 @@ describe.runIf(env["LOADTEST"])("Batch 12 load test", () => {
           statusDelays: { sent: [300, 1500], delivered: [1000, 5000], read: [3000, 30000] },
           onStatus: (s) => {
             statusesScheduled += 1;
+            if (STATUS_MODE === "after") {
+              held.push(s);
+              return;
+            }
             setTimeout(
               () => {
                 statusQueue.push(s);
@@ -181,8 +213,16 @@ describe.runIf(env["LOADTEST"])("Batch 12 load test", () => {
           .handlers.POST;
         const runs: Array<{ lane: number; ms: number; sent: number; failed: number }> = [];
         const workerDb = { calls: 0 };
+        const lanesSeen: number[] = [];
         const fireCycle = () => {
-          for (let lane = 0; lane < LANES; lane++) {
+          const lanes =
+            LANES ||
+            Number(
+              infra.psql(`select greatest(1, least(32, 2 * count(distinct whatsapp_account_id)))::int
+                          from campaigns where status = 'sending' or (status = 'scheduled' and scheduled_at <= now())`),
+            );
+          lanesSeen.push(lanes);
+          for (let lane = 0; lane < lanes; lane++) {
             const ctx = { kind: "worker" as const, sem: new Semaphore(6), db: 0 };
             void invocation
               .run(ctx, async () => {
@@ -190,7 +230,7 @@ describe.runIf(env["LOADTEST"])("Batch 12 load test", () => {
                   request: new Request("http://aidwar.test/api/internal/campaign-worker", {
                     method: "POST",
                     headers: { "x-cron-secret": "loadtest", "content-type": "application/json" },
-                    body: JSON.stringify({ lane, lanes: LANES }),
+                    body: JSON.stringify({ lane, lanes }),
                   }),
                 });
                 const report = (await res.json()) as { ms: number; sent: number; failed: number };
@@ -256,9 +296,18 @@ describe.runIf(env["LOADTEST"])("Batch 12 load test", () => {
         }
         clearInterval(cron);
         const sendingDoneAt = Date.now();
+        const webhookRequestsBefore = stats.dbRequests.webhook;
+        const webhookPhaseStart = Date.now();
+        if (held.length) {
+          held.sort((a, b) => a.at - b.at);
+          for (const s of held) statusQueue.push(s);
+          held.length = 0;
+          pump();
+        }
         // Statuses still to come, then the retry pass (pg_cron's reprocess-events).
         while (statusQueue.length || webhooksActive || statusesDelivered < statusesScheduled)
           await sleep(500);
+        const webhookPhaseMs = Date.now() - webhookPhaseStart;
         let reprocessed = 0;
         for (let i = 0; i < 10; i++) {
           const n = await invocation.run({ kind: "webhook", sem: new Semaphore(6), db: 0 }, () =>
@@ -407,7 +456,8 @@ describe.runIf(env["LOADTEST"])("Batch 12 load test", () => {
           config: {
             workspaces: N_WS,
             perCampaign: PER,
-            lanes: LANES,
+            lanes: LANES_SETTING,
+            lanesPerCycle: lanesSeen,
             dbRttMs: DB_RTT,
             graphMs: GRAPH_MS,
             metaMps: META_MPS,
@@ -464,6 +514,22 @@ describe.runIf(env["LOADTEST"])("Batch 12 load test", () => {
             topStatements,
             busiestPaths: [...stats.byPath.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15),
           },
+          webhookPhase: {
+            mode: STATUS_MODE,
+            concurrency: WEBHOOK_CONCURRENCY,
+            seconds: +(webhookPhaseMs / 1000).toFixed(1),
+            eventsPerSec:
+              STATUS_MODE === "after"
+                ? +(statusesDelivered / (webhookPhaseMs / 1000)).toFixed(1)
+                : null,
+            dbRequestsPerSec:
+              STATUS_MODE === "after"
+                ? +(
+                    (stats.dbRequests.webhook - webhookRequestsBefore) /
+                    (webhookPhaseMs / 1000)
+                  ).toFixed(0)
+                : null,
+          },
           webhooks: {
             statusesScheduled,
             statusesDelivered,
@@ -515,6 +581,123 @@ describe.runIf(env["LOADTEST"])("Batch 12 load test", () => {
         if (pauseLeak !== null) expect(pauseLeak).toBe(0);
         if (cancelLeak !== null) expect(cancelLeak).toBe(0);
         expect(unprocessed).toBe(0);
+      } finally {
+        infra.stop();
+      }
+    },
+  );
+});
+
+describe.runIf(env["LOADTEST"] || env["LOADTEST_SQL"])("Batch 12 SQL concurrency", () => {
+  /**
+   * pgbench, 64 clients for 20 s per mix, each script being what one real
+   * writer does statement by statement (each statement its own transaction,
+   * as through PostgREST): worker runs (claim → outcome of exactly the rows
+   * it claimed → message ids → counters → release a few), status webhooks
+   * (recipient row, then its campaign row), counter bumps, and — in the
+   * second mix — a merchant cancelling (control.ts).
+   */
+  const CAMPAIGNS = 20;
+  const PER = 15_000;
+  const cid = (n: string) => `('00000000-0000-4000-8000-' || lpad((${n})::text, 12, '0'))::uuid`;
+  const scripts: Record<string, string> = {
+    "worker.sql": `\\set c random(1, ${CAMPAIGNS})
+create temp table if not exists mine (id uuid);
+delete from mine;
+insert into mine select id from claim_campaign_recipients(${cid(":c")}, 25);
+update campaign_recipients set status = 'sent', error = null where id in (select id from mine) and status in ('sending','skipped');
+update campaign_recipients set message_id = null where id in (select id from mine);
+select bump_campaign_counters(${cid(":c")}, 25, 0, 0, 0, 0);
+update campaign_recipients set status = 'queued' where id in (select id from mine where random() < 0.2) and status = 'sending';`,
+    "status.sql": `\\set n random(1, ${CAMPAIGNS * PER})
+\\set s random(1, 4)
+select campaign_recipient_status(null, (select id from recipient_ids where n = :n), (array['sent','delivered','read','failed'])[:s], null);`,
+    "bump.sql": `\\set c random(1, ${CAMPAIGNS})
+select bump_campaign_counters(${cid(":c")}, 0, 1, 0, 0, 0);`,
+    "cancel.sql": `\\set c random(1, ${CAMPAIGNS})
+update campaign_recipients set status = 'skipped' where campaign_id = ${cid(":c")} and status in ('queued','sending');`,
+  };
+
+  it(
+    "worker runs, status webhooks and counter bumps on the same rows never deadlock (and with cancels)",
+    { timeout: 600_000 },
+    async () => {
+      const infra = await startInfra({
+        pgPort: 54339,
+        pgrstPort: 54340,
+        pool: 4,
+        schemaFile: join(import.meta.dirname, "test-support/loadtest/schema.sql"),
+        migrations: [
+          join(import.meta.dirname, "../../supabase/aidwar-migrations/20261016_send_at_scale.sql"),
+        ],
+      });
+      try {
+        const dir = join(env["LOADTEST_DIR"] ?? join(tmpdir(), "aidwar-loadtest"), "pgbench");
+        mkdirSync(dir, { recursive: true });
+        for (const [name, body] of Object.entries(scripts))
+          writeFileSync(join(dir, name), `${body}\n`);
+        const seed = () =>
+          infra.psql(`
+          truncate campaign_recipients, campaigns, organizations cascade;
+          drop table if exists recipient_ids;
+          insert into organizations (id, name) values ('00000000-0000-4000-8000-000000000001', 'o');
+          insert into campaigns (id, organization_id, name, status)
+            select ${cid("g")}, '00000000-0000-4000-8000-000000000001', 'c' || g, 'sending' from generate_series(1, ${CAMPAIGNS}) g;
+          insert into campaign_recipients (campaign_id, organization_id, phone, status)
+            select ${cid("(g % " + CAMPAIGNS + ") + 1")}, '00000000-0000-4000-8000-000000000001', '+91' || g, 'queued'
+            from generate_series(1, ${CAMPAIGNS * PER}) g;
+          create table recipient_ids as select row_number() over () n, id from campaign_recipients;
+          create index on recipient_ids (n);
+          analyze;
+          select pg_stat_reset();
+        `);
+        const bench = (mix: string[], maxTries = 1) => {
+          const out = execFileSync(
+            "/usr/lib/postgresql/16/bin/pgbench",
+            [
+              "-h",
+              "127.0.0.1",
+              "-p",
+              "54339",
+              "-U",
+              "postgres",
+              "-n",
+              "-c",
+              "64",
+              "-j",
+              "4",
+              "-T",
+              "20",
+              `--max-tries=${maxTries}`,
+              ...mix.flatMap((m) => ["-f", join(dir, m)]),
+              "loadtest",
+            ],
+            { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+          );
+          return {
+            tps: Number(/tps = ([\d.]+)/.exec(out)?.[1] ?? 0),
+            failedTransactions: Number(
+              /number of failed transactions: (\d+)/.exec(out)?.[1] ?? "0",
+            ),
+            deadlocks: Number(
+              infra.psql("select deadlocks from pg_stat_database where datname = 'loadtest'"),
+            ),
+          };
+        };
+        seed();
+        const normal = bench(["worker.sql@4", "status.sql@6", "bump.sql@2"]);
+        seed();
+        // Cancels can deadlock with a worker's write on the same rows; both
+      // sides try again (as the app does), so nothing may end up failed.
+      const withCancels = bench(["worker.sql@4", "status.sql@6", "bump.sql@2", "cancel.sql@1"], 5);
+        const report = { normal, withCancels };
+        mkdirSync(OUT, { recursive: true });
+        writeFileSync(join(OUT, "sql-concurrency.json"), JSON.stringify(report, null, 2));
+        console.log("SQL concurrency", JSON.stringify(report));
+        expect(normal.deadlocks).toBe(0);
+        expect(normal.failedTransactions).toBe(0);
+        expect(normal.tps).toBeGreaterThan(0);
+        expect(withCancels.failedTransactions).toBe(0);
       } finally {
         infra.stop();
       }

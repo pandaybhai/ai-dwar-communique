@@ -169,23 +169,26 @@ type Bucket = { tokens: number; rate: number; at: number; blockedUntil: number; 
 
 /**
  * Token bucket per phone number. `maxRate` is this run's share of the
- * number's throughput (numberMps / lanes). On a throttle answer the number
+ * number's throughput (numberMps / the lanes sending for that number). On a throttle answer the number
  * pauses (1 s, 2 s, 4 s … 30 s) and halves its speed; each success brings
  * 5 % of the speed back.
  */
 export class NumberRateLimiter {
   private readonly buckets = new Map<string, Bucket>();
+  private readonly max: (key: string) => number;
   constructor(
-    private readonly maxRate: number,
+    maxRate: number | ((key: string) => number),
     private readonly clock: () => number = Date.now,
-  ) {}
+  ) {
+    this.max = typeof maxRate === "number" ? () => maxRate : maxRate;
+  }
 
   private bucket(key: string): Bucket {
     const now = this.clock();
     let b = this.buckets.get(key);
     if (!b) {
       // Start with one token, not a full second, so lanes don't burst together.
-      b = { tokens: 1, rate: this.maxRate, at: now, blockedUntil: 0, strikes: 0 };
+      b = { tokens: 1, rate: this.max(key), at: now, blockedUntil: 0, strikes: 0 };
       this.buckets.set(key, b);
       return b;
     }
@@ -216,7 +219,7 @@ export class NumberRateLimiter {
     b.strikes += 1;
     const backoff = Math.min(30_000, 1_000 * 2 ** (b.strikes - 1));
     b.blockedUntil = this.clock() + backoff;
-    b.rate = Math.max(this.maxRate / 8, b.rate / 2);
+    b.rate = Math.max(this.max(key) / 8, b.rate / 2);
     b.tokens = 0;
     return backoff;
   }
@@ -224,12 +227,38 @@ export class NumberRateLimiter {
   reward(key: string): void {
     const b = this.bucket(key);
     b.strikes = 0;
-    b.rate = Math.min(this.maxRate, b.rate + this.maxRate * 0.05);
+    b.rate = Math.min(this.max(key), b.rate + this.max(key) * 0.05);
   }
 
   rate(key: string): number {
     return this.bucket(key).rate;
   }
+}
+
+// ---------------------------------------------------------------- lanes
+
+/**
+ * Which phone numbers this lane sends for, and how many lanes share each.
+ * Numbers are spread over the lanes (sorted, so every lane works out the
+ * same split): with more lanes than numbers each number gets one or more
+ * whole lanes; with fewer, each lane takes several numbers. A lane then
+ * claims big batches for few campaigns, and a number's speed is divided
+ * only by the lanes that actually send for it.
+ */
+export function laneShare(numbers: string[], lane: number, lanes: number): Map<string, number> {
+  const sorted = [...new Set(numbers)].sort();
+  const out = new Map<string, number>();
+  const n = sorted.length;
+  if (!n) return out;
+  if (lanes >= n) {
+    const idx = lane % n;
+    out.set(sorted[idx]!, Math.floor((lanes - 1 - idx) / n) + 1);
+  } else {
+    sorted.forEach((num, i) => {
+      if (i % lanes === lane) out.set(num, 1);
+    });
+  }
+  return out;
 }
 
 // ------------------------------------------------------------ fairness
@@ -293,6 +322,8 @@ type Recipient = {
 type CardTools = typeof import("@/lib/customer-cards.server");
 
 type Live = {
+  /** The number this campaign sends from, as lanes split the work (account id). */
+  laneKey: string;
   id: string;
   orgId: string;
   accountId: string | null;
@@ -390,6 +421,27 @@ export async function postGraphMessage(
 
 const uuid = () => crypto.randomUUID();
 
+/**
+ * A recipient write, tried up to three times. A merchant's cancel updates
+ * all of a campaign's queued/sending rows in one statement; meeting a
+ * worker's write on the same rows, Postgres may pick one of them as a
+ * deadlock victim — trying again then succeeds.
+ */
+async function withRetry(
+  run: () => PromiseLike<{ error: { message: string } | null }>,
+  tries = 3,
+): Promise<{ error: { message: string } | null }> {
+  let last: { error: { message: string } | null } = { error: null };
+  for (let i = 0; i < tries; i++) {
+    last = await run();
+    if (!last.error) return last;
+    await new Promise((r) => setTimeout(r, 50 + Math.random() * 150 * (i + 1)));
+  }
+  console.error(JSON.stringify({ at: "campaign_recipient_write_failed", error: last.error?.message }));
+  return last;
+}
+const COUNTER_EVERY_MS = 2_000;
+
 export async function runCampaignDispatch(
   supabase: SupabaseClient,
   cfg: DispatchConfig,
@@ -410,18 +462,23 @@ export async function runCampaignDispatch(
     campaigns: [],
   };
 
-  const campaigns = await loadActiveCampaigns(supabase, cfg, report);
+  const { live: campaigns, ids, share, readAt } = await loadActiveCampaigns(supabase, cfg, report);
+  if (cfg.lane === 0) {
+    await Promise.all(ids.map((id) => reclaimStale(supabase, id, cfg, now)));
+  }
   report.processed = campaigns.length + report.campaigns.length;
   if (campaigns.length === 0) {
     report.ms = now() - started;
     return report;
   }
 
-  if (cfg.lane === 0) {
-    for (const c of campaigns) await reclaimStale(supabase, c, cfg, now);
-  }
-
-  const limiter = new NumberRateLimiter(cfg.numberMps / cfg.lanes, now);
+  // A number's speed is split across the lanes that send for it.
+  const lanesFor = (c: Live) => share.get(c.laneKey) ?? cfg.lanes;
+  const numberLanes = new Map(campaigns.map((c) => [c.sender.phoneNumberId, lanesFor(c)]));
+  const limiter = new NumberRateLimiter(
+    (number) => cfg.numberMps / (numberLanes.get(number) ?? cfg.lanes),
+    now,
+  );
   const recorder = new SendRecorder(supabase, cfg, now);
   const rotation = new FairRotation(campaigns, (c) => c.orgId);
   const tasks = new Set<Promise<unknown>>();
@@ -454,7 +511,7 @@ export async function runCampaignDispatch(
     campaigns.filter((c) => !c.stopped && !(c.exhausted && !c.buffer.length)).length;
 
   const claimSize = (c: Live) => {
-    const laneRate = cfg.numberMps / cfg.lanes;
+    const laneRate = cfg.numberMps / lanesFor(c);
     const share = (cfg.concurrency * 3) / Math.max(1, activeCount());
     // About five seconds of sending: few enough that a run dying leaves
     // little undecided, enough that claiming isn't a round trip per message.
@@ -464,14 +521,16 @@ export async function runCampaignDispatch(
   const release = async (c: Live, rows: Recipient[]) => {
     if (!rows.length) return;
     c.released += rows.length;
-    await supabase
-      .from("campaign_recipients")
-      .update({ status: "queued" })
-      .in(
-        "id",
-        rows.map((r) => r.id),
-      )
-      .eq("status", "sending");
+    await withRetry(() =>
+      supabase
+        .from("campaign_recipients")
+        .update({ status: "queued" })
+        .in(
+          "id",
+          rows.map((r) => r.id),
+        )
+        .eq("status", "sending"),
+    );
   };
 
   const stop = (c: Live, reason: string) => {
@@ -505,7 +564,9 @@ export async function runCampaignDispatch(
     );
   };
 
-  let lastPoll = now();
+  // The statuses in hand are as old as the campaign read: if preparing took
+  // longer than a poll interval, the first poll happens straight away.
+  let lastPoll = now() - (Date.now() - readAt);
   let polling = false;
   const pollStatuses = () => {
     if (polling || now() - lastPoll < cfg.statusPollMs) return;
@@ -613,7 +674,12 @@ export async function runCampaignDispatch(
     report.failed += c.failed;
   }
 
-  if (cfg.lane === 0) await sweepCharged(supabase, now);
+  if (cfg.lane === 0) {
+    // Bookkeeping only: never fails the run.
+    await sweepCharged(supabase, now).catch((error) =>
+      console.warn(JSON.stringify({ at: "campaign_charged_sweep_failed", error: String(error) })),
+    );
+  }
   report.ms = now() - started;
   return report;
 }
@@ -639,17 +705,50 @@ function cachedSender(
   return value;
 }
 
-/** Test hook: forget cached senders between scenarios. */
+type TemplateRow = { components?: unknown; category?: string } | null;
+const templateCache = new Map<string, { at: number; value: Promise<TemplateRow> }>();
+
+/** The template's components and category, read at most every 30 s per isolate. */
+function cachedTemplate(
+  supabase: SupabaseClient,
+  orgId: string,
+  wabaId: string,
+  name: string,
+): Promise<TemplateRow> {
+  const key = `${orgId}:${wabaId}:${name}`;
+  const hit = templateCache.get(key);
+  if (hit && Date.now() - hit.at < TEMPLATE_CACHE_MS) return hit.value;
+  const value = Promise.resolve(
+    supabase
+      .from("message_templates")
+      .select("components, category")
+      .eq("organization_id", orgId)
+      // Template libraries are per business account.
+      .eq("waba_id", wabaId)
+      .eq("name", name)
+      .limit(1)
+      .maybeSingle(),
+  ).then(({ data, error }) => {
+    if (error) templateCache.delete(key);
+    return (data as TemplateRow) ?? null;
+  });
+  templateCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+/** Test hook: forget cached senders and templates between scenarios. */
 export function resetDispatchCaches(): void {
   senderCache.clear();
+  templateCache.clear();
 }
 
 async function loadActiveCampaigns(
   supabase: SupabaseClient,
   cfg: DispatchConfig,
   report: DispatchReport,
-): Promise<Live[]> {
+): Promise<{ live: Live[]; ids: string[]; share: Map<string, number>; readAt: number }> {
   const nowIso = new Date().toISOString();
+  const readAt = Date.now();
   const { data } = await supabase
     .from("campaigns")
     .select(
@@ -671,140 +770,159 @@ async function loadActiveCampaigns(
     return p;
   };
 
-  const out: Live[] = [];
-  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
-    const campaignId = row["id"] as string;
-    const orgId = row["organization_id"] as string;
-    let status = String(row["status"] ?? "");
+  // 1. Which campaigns may send now (every campaign; lane 0 starts them).
+  const eligible = (
+    await Promise.all(
+      ((data ?? []) as Array<Record<string, unknown>>).map(async (row) => {
+        const campaignId = row["id"] as string;
+        const orgId = row["organization_id"] as string;
+        let status = String(row["status"] ?? "");
 
-    if (cfg.lane === 0) {
-      // Reserve the credits before the first message leaves, then start.
-      const { holdCampaign } = await import("@/lib/campaign-billing.server");
-      const hold = await holdCampaign(supabase, orgId, campaignId);
-      if (!hold.ok) {
-        await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
-        report.campaigns.push({ campaign_id: campaignId, paused: "insufficient_credits" });
-        continue;
-      }
-      if (status === "scheduled") {
-        await supabase
-          .from("campaigns")
-          .update({ status: "sending", started_at: row["started_at"] ?? nowIso })
-          .eq("id", campaignId)
-          .eq("status", "scheduled");
-        status = "sending";
-      }
-    } else {
-      // Only lane 0 starts campaigns and reserves credits; the other lanes
-      // join once the reservation is in place.
-      if (status !== "sending") continue;
-      const held = Number(row["held_amount"] ?? 0) > 0;
-      const needsHold = Number(row["estimated_cost"] ?? 0) > 0;
-      if (needsHold && !held && (await billingOn(orgId))) continue;
-    }
+        if (cfg.lane === 0) {
+          // Reserve the credits before the first message leaves, then start.
+          const { holdCampaign } = await import("@/lib/campaign-billing.server");
+          const hold = await holdCampaign(supabase, orgId, campaignId);
+          if (!hold.ok) {
+            await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
+            report.campaigns.push({ campaign_id: campaignId, paused: "insufficient_credits" });
+            return null;
+          }
+          if (status === "scheduled") {
+            await supabase
+              .from("campaigns")
+              .update({ status: "sending", started_at: row["started_at"] ?? nowIso })
+              .eq("id", campaignId)
+              .eq("status", "scheduled");
+            status = "sending";
+          }
+        } else {
+          // Only lane 0 starts campaigns and reserves credits; the other lanes
+          // join once the reservation is in place.
+          if (status !== "sending") return null;
+          const held = Number(row["held_amount"] ?? 0) > 0;
+          const needsHold = Number(row["estimated_cost"] ?? 0) > 0;
+          if (needsHold && !held && (await billingOn(orgId))) return null;
+        }
+        return { row, status };
+      }),
+    )
+  ).filter((x): x is { row: Record<string, unknown>; status: string } => x !== null);
 
-    const templateName = (row["template_name"] as string | null) ?? "";
-    if (!templateName) {
-      await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaignId);
-      continue;
-    }
+  // 2. This lane's numbers: decided from the campaign rows alone, so only
+  //    the campaigns this lane sends for are prepared.
+  const keyOf = (row: Record<string, unknown>) =>
+    (row["whatsapp_account_id"] as string | null) ?? `org:${String(row["organization_id"])}`;
+  const share = laneShare(
+    eligible.map((e) => keyOf(e.row)),
+    cfg.lane,
+    cfg.lanes,
+  );
+  const mine = eligible.filter((e) => share.has(keyOf(e.row)));
 
-    // The campaign carries the number it was created for.
-    const accountId = (row["whatsapp_account_id"] as string | null) ?? null;
-    const sender = await cachedSender(supabase, orgId, accountId);
-    if (!sender) {
-      await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
-      report.campaigns.push({ campaign_id: campaignId, paused: "no_active_whatsapp_account" });
-      continue;
-    }
+  // 3. Prepare them, side by side.
+  const out = (
+    await Promise.all(
+      mine.map(async ({ row, status }): Promise<Live | null> => {
+        const campaignId = row["id"] as string;
+        const orgId = row["organization_id"] as string;
 
-    const { data: template } = await supabase
-      .from("message_templates")
-      .select("components, category")
-      .eq("organization_id", orgId)
-      // Template libraries are per business account.
-      .eq("waba_id", sender.wabaId)
-      .eq("name", templateName)
-      .limit(1)
-      .maybeSingle();
-    const { extractVariables, templateBodyText } = await import("@/lib/templates");
-    const category = String(
-      (template as { category?: string } | null)?.category ?? "marketing",
-    ).toLowerCase();
-    const components = ((template as { components?: unknown } | null)?.components ?? null) as
-      import("@/lib/templates").TemplateComponent[] | null;
+        const templateName = (row["template_name"] as string | null) ?? "";
+        if (!templateName) {
+          await supabase.from("campaigns").update({ status: "failed" }).eq("id", campaignId);
+          return null;
+        }
 
-    // Media and offer details chosen when the campaign was created.
-    const settings = (row["send_settings"] ?? {}) as Record<string, unknown>;
-    const headerMediaUrl = (settings["header_media_url"] as string | null) ?? null;
-    const settingCards = Array.isArray(settings["cards"])
-      ? (
-          settings["cards"] as Array<{ media_url?: string | null; coupon_code?: string | null }>
-        ).map((c) => ({
-          mediaUrl: c?.media_url ?? null,
-          couponCode: c?.coupon_code ?? null,
-        }))
-      : [];
-    const couponCode = (settings["coupon_code"] as string | null) ?? null;
-    const offerExpiresAt = (settings["offer_expires_at"] as string | null) ?? null;
+        // The campaign carries the number it was created for.
+        const accountId = (row["whatsapp_account_id"] as string | null) ?? null;
+        const sender = await cachedSender(supabase, orgId, accountId);
+        if (!sender) {
+          await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
+          report.campaigns.push({ campaign_id: campaignId, paused: "no_active_whatsapp_account" });
+          return null;
+        }
 
-    // A branded picture card attached at creation time, sent after each
-    // template — only when the workspace has cards on.
-    const cardCfg = (settings["card"] ?? null) as {
-      kind?: string;
-      vars?: Record<string, string>;
-    } | null;
-    const cardTools = cardCfg?.kind
-      ? await import("@/lib/customer-cards.server").catch(() => null)
-      : null;
-    const cardsOn = cardTools
-      ? await cardTools.cardsEnabled(supabase, orgId).catch(() => false)
-      : false;
+        const template = await cachedTemplate(supabase, orgId, sender.wabaId, templateName);
+        const { extractVariables, templateBodyText } = await import("@/lib/templates");
+        const category = String(
+          (template as { category?: string } | null)?.category ?? "marketing",
+        ).toLowerCase();
+        const components = ((template as { components?: unknown } | null)?.components ?? null) as
+          import("@/lib/templates").TemplateComponent[] | null;
 
-    out.push({
-      id: campaignId,
-      orgId,
-      accountId,
-      status,
-      startedAt: (row["started_at"] as string | null) ?? nowIso,
-      totalRecipients: Number(row["total_recipients"] ?? 0),
-      templateName,
-      language: (row["template_language"] as string) ?? "en_US",
-      sender,
-      template: {
-        name: templateName,
-        language: (row["template_language"] as string) ?? "en_US",
-        variableOrder: extractVariables(templateBodyText((components ?? []) as never)),
-        components,
-      },
-      context: {
-        campaignId,
-        category,
-        ...(headerMediaUrl ? { headerMediaUrl } : {}),
-        ...(settingCards.length ? { cards: settingCards } : {}),
-        ...(couponCode ? { couponCode } : {}),
-        ...(offerExpiresAt ? { offerExpiresAt } : {}),
-      },
-      card:
-        cardsOn && cardTools && cardCfg?.kind
-          ? { kind: cardCfg.kind, vars: cardCfg.vars ?? {} }
-          : null,
-      cardTools: cardsOn ? cardTools : null,
-      formIds: new Map(),
-      buffer: [],
-      inflight: 0,
-      refilling: false,
-      exhausted: false,
-      stopped: null,
-      sent: 0,
-      failed: 0,
-      skipped: 0,
-      retried: 0,
-      unknown: 0,
-      released: 0,
-    });
-  }
-  return out;
+        // Media and offer details chosen when the campaign was created.
+        const settings = (row["send_settings"] ?? {}) as Record<string, unknown>;
+        const headerMediaUrl = (settings["header_media_url"] as string | null) ?? null;
+        const settingCards = Array.isArray(settings["cards"])
+          ? (
+              settings["cards"] as Array<{ media_url?: string | null; coupon_code?: string | null }>
+            ).map((c) => ({
+              mediaUrl: c?.media_url ?? null,
+              couponCode: c?.coupon_code ?? null,
+            }))
+          : [];
+        const couponCode = (settings["coupon_code"] as string | null) ?? null;
+        const offerExpiresAt = (settings["offer_expires_at"] as string | null) ?? null;
+
+        // A branded picture card attached at creation time, sent after each
+        // template — only when the workspace has cards on.
+        const cardCfg = (settings["card"] ?? null) as {
+          kind?: string;
+          vars?: Record<string, string>;
+        } | null;
+        const cardTools = cardCfg?.kind
+          ? await import("@/lib/customer-cards.server").catch(() => null)
+          : null;
+        const cardsOn = cardTools
+          ? await cardTools.cardsEnabled(supabase, orgId).catch(() => false)
+          : false;
+
+        return {
+          laneKey: keyOf(row),
+          id: campaignId,
+          orgId,
+          accountId,
+          status,
+          startedAt: (row["started_at"] as string | null) ?? nowIso,
+          totalRecipients: Number(row["total_recipients"] ?? 0),
+          templateName,
+          language: (row["template_language"] as string) ?? "en_US",
+          sender,
+          template: {
+            name: templateName,
+            language: (row["template_language"] as string) ?? "en_US",
+            variableOrder: extractVariables(templateBodyText((components ?? []) as never)),
+            components,
+          },
+          context: {
+            campaignId,
+            category,
+            ...(headerMediaUrl ? { headerMediaUrl } : {}),
+            ...(settingCards.length ? { cards: settingCards } : {}),
+            ...(couponCode ? { couponCode } : {}),
+            ...(offerExpiresAt ? { offerExpiresAt } : {}),
+          },
+          card:
+            cardsOn && cardTools && cardCfg?.kind
+              ? { kind: cardCfg.kind, vars: cardCfg.vars ?? {} }
+              : null,
+          cardTools: cardsOn ? cardTools : null,
+          formIds: new Map(),
+          buffer: [],
+          inflight: 0,
+          refilling: false,
+          exhausted: false,
+          stopped: null,
+          sent: 0,
+          failed: 0,
+          skipped: 0,
+          retried: 0,
+          unknown: 0,
+          released: 0,
+        };
+      }),
+    )
+  ).filter((x): x is Live => x !== null);
+  return { live: out, ids: eligible.map((e) => e.row["id"] as string), share, readAt };
 }
 
 // ----------------------------------------------------------- claiming
@@ -839,12 +957,38 @@ async function claimAndCheck(
   const optedOut = new Set<string>();
   const checkFailed = new Set<string>();
   const contactIds = rows.map((r) => r.contact_id).filter((x): x is string => Boolean(x));
+  // The contacts' threads come embedded in the same read (one round trip);
+  // if the embed can't be read, the plain read and a separate lookup follow.
+  let threads: Map<string, string> | undefined;
   if (contactIds.length) {
-    const { data, error: readError } = await supabase
+    let { data, error: readError }: { data: unknown[] | null; error: unknown } = await supabase
       .from("contacts")
-      .select("id, opt_in_status")
+      .select("id, opt_in_status, conversations(id, whatsapp_account_id, status)")
       .eq("organization_id", c.orgId)
       .in("id", contactIds);
+    if (readError) {
+      ({ data, error: readError } = await supabase
+        .from("contacts")
+        .select("id, opt_in_status")
+        .eq("organization_id", c.orgId)
+        .in("id", contactIds));
+    } else {
+      threads = new Map();
+      for (const contact of (data ?? []) as Array<{
+        id: string;
+        conversations?: Array<{
+          id: string;
+          whatsapp_account_id: string | null;
+          status: string | null;
+        }> | null;
+      }>) {
+        // One open thread per contact per number (a unique index says so).
+        const open = (contact.conversations ?? []).find(
+          (cv) => cv.whatsapp_account_id === c.sender.accountId && cv.status !== "closed",
+        );
+        if (open) threads.set(contact.id, open.id);
+      }
+    }
     const { isOptedOut } = await import("@/lib/opt-out.server");
     for (const r of rows) {
       if (!r.contact_id) continue;
@@ -868,17 +1012,21 @@ async function claimAndCheck(
   }
   if (optedOut.size) {
     c.skipped += optedOut.size;
-    await supabase
-      .from("campaign_recipients")
-      .update({ status: "skipped", error: "opted_out" })
-      .in("id", [...optedOut]);
+    await withRetry(() =>
+      supabase
+        .from("campaign_recipients")
+        .update({ status: "skipped", error: "opted_out" })
+        .in("id", [...optedOut]),
+    );
   }
   if (checkFailed.size) {
     c.failed += checkFailed.size;
-    await supabase
-      .from("campaign_recipients")
-      .update({ status: "failed", error: "opt_out_check_failed" })
-      .in("id", [...checkFailed]);
+    await withRetry(() =>
+      supabase
+        .from("campaign_recipients")
+        .update({ status: "failed", error: "opt_out_check_failed" })
+        .in("id", [...checkFailed]),
+    );
     recorder.bump(c.id, { failed: checkFailed.size });
   }
 
@@ -887,6 +1035,7 @@ async function claimAndCheck(
     supabase,
     c,
     go.map((r) => r.contact_id).filter((x): x is string => Boolean(x)),
+    threads,
   );
   return go.map((r) => ({
     id: r.id,
@@ -904,18 +1053,27 @@ async function conversationsFor(
   supabase: SupabaseClient,
   c: Live,
   contactIds: string[],
+  /** Threads already read with the contacts. */
+  known?: Map<string, string>,
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (!contactIds.length) return out;
   const accountId = c.sender.accountId;
-  const { data, error } = await supabase
-    .from("conversations")
-    .select("id, contact_id")
-    .eq("organization_id", c.orgId)
-    .eq("whatsapp_account_id", accountId)
-    .in("contact_id", contactIds)
-    .neq("status", "closed")
-    .order("last_message_at", { ascending: false });
+  const { data, error } = known
+    ? {
+        data: contactIds.flatMap((id) =>
+          known.has(id) ? [{ id: known.get(id)!, contact_id: id }] : [],
+        ),
+        error: null,
+      }
+    : await supabase
+        .from("conversations")
+        .select("id, contact_id")
+        .eq("organization_id", c.orgId)
+        .eq("whatsapp_account_id", accountId)
+        .in("contact_id", contactIds)
+        .neq("status", "closed")
+        .order("last_message_at", { ascending: false });
   if (!error) {
     for (const row of (data ?? []) as Array<{ id: string; contact_id: string }>) {
       if (!out.has(row.contact_id)) out.set(row.contact_id, row.id);
@@ -1026,6 +1184,11 @@ async function sendOne(
       return;
     }
 
+    // Paused or cancelled while this one waited its turn: it goes back.
+    if (c.stopped) {
+      c.buffer.unshift(r);
+      return;
+    }
     const answer = await postMessage(
       c.sender,
       {
@@ -1200,7 +1363,9 @@ class SendRecorder {
   private pending: Item[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly flushes = new Set<Promise<void>>();
+  /** Counter changes not yet written, per campaign. */
   private readonly counters = new Map<string, { sent: number; failed: number }>();
+  private readonly lastBump = new Map<string, number>();
 
   constructor(
     private readonly supabase: SupabaseClient,
@@ -1220,7 +1385,7 @@ class SendRecorder {
     this.push({ kind: "failed", c, r, ...v, at: new Date(this.now()).toISOString() });
   }
 
-  /** Counter changes written with the next flush. */
+  /** Counter changes, written with a later flush (at most every COUNTER_EVERY_MS per campaign). */
   bump(campaignId: string, delta: { sent?: number; failed?: number }) {
     const cur = this.counters.get(campaignId) ?? { sent: 0, failed: 0 };
     cur.sent += delta.sent ?? 0;
@@ -1240,28 +1405,59 @@ class SendRecorder {
     this.timer = setTimeout(() => this.flushNow(), this.cfg.flushMs);
   }
 
+  private track(p: Promise<void>) {
+    const tracked = p.catch((error) =>
+      console.error(JSON.stringify({ at: "campaign_record_failed", error: String(error) })),
+    );
+    this.flushes.add(tracked);
+    void tracked.finally(() => this.flushes.delete(tracked));
+  }
+
   private flushNow() {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
     const items = this.pending.splice(0);
-    const counters = new Map(this.counters);
-    this.counters.clear();
-    if (!items.length && !counters.size) return;
-    const p = this.write(items, counters).catch((error) =>
-      console.error(JSON.stringify({ at: "campaign_record_failed", error: String(error) })),
+    if (items.length) this.track(this.write(items));
+    else if (this.counters.size) this.track(this.writeCounters(false));
+  }
+
+  /**
+   * One counter bump per campaign at most every COUNTER_EVERY_MS (the last
+   * one when the run ends), not one per flush: with many campaigns a flush
+   * would otherwise cost a round trip per campaign.
+   */
+  private async writeCounters(force: boolean) {
+    const due: Array<[string, { sent: number; failed: number }]> = [];
+    for (const [campaignId, delta] of this.counters) {
+      if (!delta.sent && !delta.failed) continue;
+      if (!force && this.now() - (this.lastBump.get(campaignId) ?? 0) < COUNTER_EVERY_MS) continue;
+      due.push([campaignId, { ...delta }]);
+      this.counters.delete(campaignId);
+      this.lastBump.set(campaignId, this.now());
+    }
+    if (!force && this.counters.size) this.schedule();
+    await Promise.all(
+      due.map(async ([campaignId, delta]) => {
+        const { error } = await this.supabase.rpc("bump_campaign_counters", {
+          p_campaign_id: campaignId,
+          p_sent: delta.sent,
+          p_failed: delta.failed,
+        });
+        // Not written: owed again, so the next bump carries it.
+        if (error) this.bump(campaignId, delta);
+      }),
     );
-    this.flushes.add(p);
-    void p.finally(() => this.flushes.delete(p));
   }
 
   async drain() {
     this.flushNow();
     while (this.flushes.size) await Promise.allSettled([...this.flushes]);
+    await this.writeCounters(true);
   }
 
-  private async write(items: Item[], counters: Map<string, { sent: number; failed: number }>) {
+  private async write(items: Item[]) {
     const supabase = this.supabase;
     const { outboundMessageDimensions } = await import("@/lib/message-events");
 
@@ -1330,13 +1526,15 @@ class SendRecorder {
     const sentIds = items.filter((it) => it.kind === "sent").map((it) => it.r.id);
     if (sentIds.length) {
       writes.push(
-        supabase
-          .from("campaign_recipients")
-          .update({ status: "sent", error: null })
-          .in("id", sentIds)
-          // Never pulls a recipient a status webhook already moved on back to
-          // 'sent'; a cancel that raced the send is overwritten with the truth.
-          .in("status", ["sending", "skipped"]),
+        withRetry(() =>
+          supabase
+            .from("campaign_recipients")
+            .update({ status: "sent", error: null })
+            .in("id", sentIds)
+            // Never pulls a recipient a status webhook already moved on back to
+            // 'sent'; a cancel that raced the send is overwritten with the truth.
+            .in("status", ["sending", "skipped"]),
+        ),
       );
     }
     const failedByError = new Map<string, string[]>();
@@ -1347,11 +1545,13 @@ class SendRecorder {
     }
     for (const [error, ids] of failedByError) {
       writes.push(
-        supabase
-          .from("campaign_recipients")
-          .update({ status: "failed", error })
-          .in("id", ids)
-          .in("status", ["sending", "skipped"]),
+        withRetry(() =>
+          supabase
+            .from("campaign_recipients")
+            .update({ status: "failed", error })
+            .in("id", ids)
+            .in("status", ["sending", "skipped"]),
+        ),
       );
     }
     const links = items
@@ -1369,7 +1569,7 @@ class SendRecorder {
     // in different orders could deadlock each other).
     await Promise.all(writes);
     if (links.length) {
-      await supabase.from("campaign_recipients").upsert(links, { onConflict: "id" });
+      await withRetry(() => supabase.from("campaign_recipients").upsert(links, { onConflict: "id" }));
     }
 
     // 3. events, meters, conversation times, counters
@@ -1429,27 +1629,14 @@ class SendRecorder {
       ),
     ];
     for (const it of items) {
-      const cur = counters.get(it.c.id) ?? { sent: 0, failed: 0 };
-      if (it.kind === "sent") cur.sent += 1;
-      else cur.failed += 1;
-      counters.set(it.c.id, cur);
+      this.bump(it.c.id, it.kind === "sent" ? { sent: 1 } : { failed: 1 });
     }
-    const tail: Array<PromiseLike<unknown>> = [];
+    const tail: Array<PromiseLike<unknown>> = [this.writeCounters(false)];
     if (events.length) tail.push(emitEvents(supabase, events));
     if (usage.length) tail.push(recordUsages(supabase, usage));
     if (touched.length) {
       const last = items.reduce((m, it) => (it.at > m ? it.at : m), "");
       tail.push(supabase.from("conversations").update({ last_message_at: last }).in("id", touched));
-    }
-    for (const [campaignId, delta] of counters) {
-      if (!delta.sent && !delta.failed) continue;
-      tail.push(
-        supabase.rpc("bump_campaign_counters", {
-          p_campaign_id: campaignId,
-          p_sent: delta.sent,
-          p_failed: delta.failed,
-        }),
-      );
     }
     await Promise.all(tail);
   }
@@ -1465,10 +1652,11 @@ class SendRecorder {
  */
 async function reclaimStale(
   supabase: SupabaseClient,
-  c: Live,
+  campaignId: string,
   cfg: DispatchConfig,
   now: () => number,
 ): Promise<void> {
+  const c = { id: campaignId };
   const cutoff = new Date(now() - cfg.staleMs).toISOString();
   const { data: stale, error } = await supabase
     .from("campaign_recipients")

@@ -16,7 +16,8 @@ type Reply = {
   count?: number | null;
 };
 
-export type Embed = { table: string; local: string; remote: string };
+/** many: the embed is a list (rows of `table` whose `remote` equals our `local`). */
+export type Embed = { table: string; local: string; remote: string; many?: boolean };
 
 export class MemoryDb {
   readonly tables = new Map<string, Row[]>();
@@ -236,6 +237,15 @@ class Query {
     const out: Row = {};
     for (const part of splitTop(this.columns)) {
       const embed = /^([a-z_]+)(!inner)?\((.*)\)$/.exec(part);
+      const spec = embed ? this.db.embeds.get(`${this.table}.${embed[1]}`) : undefined;
+      if (embed && spec?.many) {
+        const cols = splitTop(embed[3]!);
+        out[embed[1]!] = this.db
+          .rows(spec.table)
+          .filter((r) => r[spec.remote] === row[spec.local])
+          .map((r) => Object.fromEntries(cols.map((c) => [c, r[c] ?? null])));
+        continue;
+      }
       if (embed) {
         const target = this.resolveEmbed(row, embed[1]!);
         if (!target) {

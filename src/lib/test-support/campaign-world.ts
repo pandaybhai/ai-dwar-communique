@@ -33,6 +33,7 @@ export function world(spec: {
     local: "conversation_id",
     remote: "id",
   });
+  db.embeds.set("contacts.conversations", { table: "conversations", local: "id", remote: "contact_id", many: true });
   db.embeds.set("campaigns.organizations", {
     table: "organizations",
     local: "organization_id",
