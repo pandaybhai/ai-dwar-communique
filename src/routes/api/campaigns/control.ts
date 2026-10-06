@@ -86,11 +86,18 @@ export const Route = createFileRoute("/api/campaigns/control")({
             .update({ status: future ? "scheduled" : "sending" })
             .eq("id", campaignId);
         } else {
-          await supabase
-            .from("campaign_recipients")
-            .update({ status: "skipped" })
-            .eq("campaign_id", campaignId)
-            .in("status", ["queued", "sending"]);
+          // One statement over every queued/sending row; a sender writing the
+          // same rows at that moment can make Postgres pick this one as a
+          // deadlock victim, so it is tried again (Batch 12).
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            const { error: skipError } = await supabase
+              .from("campaign_recipients")
+              .update({ status: "skipped" })
+              .eq("campaign_id", campaignId)
+              .in("status", ["queued", "sending"]);
+            if (!skipError) break;
+            await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
+          }
           await supabase
             .from("campaigns")
             .update({ status: "cancelled", completed_at: new Date().toISOString() })

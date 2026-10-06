@@ -158,7 +158,7 @@ export async function loadSenderContext(
   };
 }
 
-async function conversationFor(
+export async function conversationFor(
   supabase: SupabaseClient,
   organizationId: string,
   accountId: string,
@@ -230,6 +230,182 @@ export type SendCampaignContext = {
   }>;
 };
 
+
+export type TemplateRequest =
+  | {
+      ok: true;
+      /** The components sent to Meta (body/header/buttons plus "open a form" tokens). */
+      components: Array<Record<string, unknown>>;
+      /** The template's own components as filled, for the inbox header picture. */
+      payloadComponents: Array<Record<string, unknown>> | undefined;
+    }
+  | { ok: false; friendly: string; detail: string; code: string };
+
+/**
+ * Fills a template's components for one recipient: body/header values, link
+ * buttons (one short link each), coupon codes, carousel cards and "open a
+ * form" tokens. Shared by sendCampaignTemplate (flows, one message at a time)
+ * and the campaign dispatcher (many at a time), so both build byte-identical
+ * requests. Never writes anything itself: short links and form lookups go
+ * through the callbacks.
+ */
+export async function buildTemplateRequest(args: {
+  template: {
+    name: string;
+    variableOrder: number[];
+    components?: import("@/lib/templates").TemplateComponent[] | null;
+  };
+  variables: Record<string, string>;
+  context: SendCampaignContext;
+  mintLink: (target: string) => Promise<{ token: string | null; error: string | null }>;
+  /** The newest wa_forms row for a Meta flow id, or null. */
+  formIdFor: (metaFlowId: string) => Promise<string | null>;
+}): Promise<TemplateRequest> {
+  const { template, variables, context, mintLink, formIdFor } = args;
+  const buildFailure = (friendly: string, detail: string, code: string): TemplateRequest => ({
+    ok: false,
+    friendly,
+    detail,
+    code,
+  });
+
+  // What the template itself declares — body, header and dynamic link buttons.
+  const { templateVariableSpec, buildTemplatePayloadComponents } = await import("@/lib/templates");
+  const { emptyVariableSpec } = await import("@/lib/templates");
+  const spec = template.components
+    ? templateVariableSpec(template.components)
+    : emptyVariableSpec(template.variableOrder);
+
+  // Every dynamic link — on the message or on a carousel card — gets its own
+  // short link (mintLink), so a click can be attributed to this send and card.
+  const buttonTokens: Record<number, string> = {};
+  if (spec.urlButtons.length > 0) {
+    if (!context.linkTarget) {
+      return buildFailure(
+        "This message can't be sent: its button links somewhere we don't have a destination for.",
+        JSON.stringify({ message: "missing_link_target", template: template.name }),
+        "missing_link_target",
+      );
+    }
+    for (const button of spec.urlButtons) {
+      const { token, error } = await mintLink(context.linkTarget);
+      if (!token) {
+        return buildFailure(
+          "This message can't be sent: we couldn't prepare its link.",
+          JSON.stringify({ message: "short_link_failed", error }),
+          "short_link_failed",
+        );
+      }
+      buttonTokens[button.index] = token;
+    }
+  }
+
+  // Copy-code buttons carry a coupon; one code covers every copy-code button
+  // on the message, which is how Meta models it too.
+  const couponCodes: Record<number, string> = {};
+  for (const index of spec.copyCodeButtons) {
+    if (context.couponCode?.trim()) couponCodes[index] = context.couponCode.trim();
+  }
+
+  // Carousel cards: per-card picture, per-card text, per-card link.
+  const cardValues: import("@/lib/templates").CardValues[] = [];
+  for (const card of spec.cards) {
+    const supplied = context.cards?.[card.index] ?? {};
+    const entry: import("@/lib/templates").CardValues = {};
+    const mediaUrl = supplied.mediaUrl ?? card.mediaUrl;
+    if (mediaUrl) entry.media = { link: mediaUrl };
+    entry.values = supplied.values ?? variables;
+
+    if (card.urlButtons.length > 0) {
+      const target = supplied.linkTarget ?? context.linkTarget ?? null;
+      if (!target) {
+        return buildFailure(
+          `This message can't be sent: card ${card.index + 1}'s button links somewhere we don't have a destination for.`,
+          JSON.stringify({ message: "missing_link_target", card: card.index, template: template.name }),
+          "missing_link_target",
+        );
+      }
+      const tokens: Record<number, string> = {};
+      for (const button of card.urlButtons) {
+        const { token, error } = await mintLink(target);
+        if (!token) {
+          return buildFailure(
+            `This message can't be sent: we couldn't prepare the link on card ${card.index + 1}.`,
+            JSON.stringify({ message: "short_link_failed", card: card.index, error }),
+            "short_link_failed",
+          );
+        }
+        tokens[button.index] = token;
+      }
+      entry.buttonTokens = tokens;
+    }
+
+    const code = supplied.couponCode ?? context.couponCode ?? null;
+    if (card.copyCodeButtons.length > 0 && code?.trim()) {
+      entry.couponCodes = Object.fromEntries(
+        card.copyCodeButtons.map((i) => [i, code.trim()]),
+      );
+    }
+    cardValues.push(entry);
+  }
+
+  const offerExpirationMs = context.offerExpiresAt
+    ? new Date(context.offerExpiresAt).getTime()
+    : undefined;
+
+  const payload = buildTemplatePayloadComponents({
+    spec,
+    values: variables,
+    headerValues: variables,
+    buttonTokens,
+    couponCodes,
+    ...(context.headerMediaUrl ? { headerMedia: { link: context.headerMediaUrl } } : {}),
+    ...(context.headerLocation ? { headerLocation: context.headerLocation } : {}),
+    ...(cardValues.length ? { cards: cardValues } : {}),
+    ...(offerExpirationMs ? { offerExpirationMs } : {}),
+  });
+
+  if (payload.error) {
+    return buildFailure(
+      payload.error,
+      JSON.stringify({ message: "template_parameters_missing", detail: payload.error }),
+      "template_parameters_missing",
+    );
+  }
+
+  // "Open a form" buttons carry a flow_token so the answers match back to our form.
+  const flowButtonComponents: Array<Record<string, unknown>> = [];
+  let flowFormId: string | null = null;
+  {
+    const buttonsComp = (template.components ?? []).find(
+      (c) => String((c as { type?: string }).type ?? "").toUpperCase() === "BUTTONS",
+    ) as { buttons?: Array<{ type?: string; flow_id?: string | number }> } | undefined;
+    const buttons = buttonsComp?.buttons ?? [];
+    for (let i = 0; i < buttons.length; i++) {
+      const b = buttons[i]!;
+      if (String(b.type ?? "").toUpperCase() !== "FLOW") continue;
+      const metaFlowId = b.flow_id != null ? String(b.flow_id) : "";
+      if (metaFlowId && !flowFormId) {
+        flowFormId = await formIdFor(metaFlowId);
+      }
+      const token = flowFormId
+        ? `f:${flowFormId}:${crypto.randomUUID().slice(0, 8)}`
+        : `t:${crypto.randomUUID().slice(0, 12)}`;
+      flowButtonComponents.push({
+        type: "button",
+        sub_type: "flow",
+        index: String(i),
+        parameters: [{ type: "action", action: { flow_token: token } }],
+      });
+    }
+  }
+  const sendComponents = [...(payload.components ?? []), ...flowButtonComponents];
+  return {
+    ok: true,
+    components: sendComponents,
+    payloadComponents: payload.components as Array<Record<string, unknown>> | undefined,
+  };
+}
 
 /**
  * Sends one campaign template message and records it in the inbox.
@@ -347,156 +523,36 @@ export async function sendCampaignTemplate(
     );
   }
 
-  // What the template itself declares — body, header and dynamic link buttons.
-  const { templateVariableSpec, buildTemplatePayloadComponents, headerMediaFromComponents } =
-    await import("@/lib/templates");
-  const { emptyVariableSpec } = await import("@/lib/templates");
-  const spec = template.components
-    ? templateVariableSpec(template.components)
-    : emptyVariableSpec(template.variableOrder);
-
   // Every dynamic link — on the message or on a carousel card — gets its own
   // short link, so a click can be attributed to this send and this card.
   const { createShortLink } = await import("@/lib/short-links.server");
-  const mintLink = async (target: string): Promise<{ token: string | null; error: string | null }> =>
-    await createShortLink(supabase, {
-      organizationId,
-      targetUrl: target,
-      scheduledSendId: context.scheduledSendId ?? null,
-      campaignId: context.campaignId ?? null,
-      contactId,
-    });
-
-  const buttonTokens: Record<number, string> = {};
-  if (spec.urlButtons.length > 0) {
-    if (!context.linkTarget) {
-      return recordFailure(
-        "This message can't be sent: its button links somewhere we don't have a destination for.",
-        JSON.stringify({ message: "missing_link_target", template: template.name }),
-        "missing_link_target",
-      );
-    }
-    for (const button of spec.urlButtons) {
-      const { token, error } = await mintLink(context.linkTarget);
-      if (!token) {
-        return recordFailure(
-          "This message can't be sent: we couldn't prepare its link.",
-          JSON.stringify({ message: "short_link_failed", error }),
-          "short_link_failed",
-        );
-      }
-      buttonTokens[button.index] = token;
-    }
-  }
-
-  // Copy-code buttons carry a coupon; one code covers every copy-code button
-  // on the message, which is how Meta models it too.
-  const couponCodes: Record<number, string> = {};
-  for (const index of spec.copyCodeButtons) {
-    if (context.couponCode?.trim()) couponCodes[index] = context.couponCode.trim();
-  }
-
-  // Carousel cards: per-card picture, per-card text, per-card link.
-  const cardValues: import("@/lib/templates").CardValues[] = [];
-  for (const card of spec.cards) {
-    const supplied = context.cards?.[card.index] ?? {};
-    const entry: import("@/lib/templates").CardValues = {};
-    const mediaUrl = supplied.mediaUrl ?? card.mediaUrl;
-    if (mediaUrl) entry.media = { link: mediaUrl };
-    entry.values = supplied.values ?? recipient.variables;
-
-    if (card.urlButtons.length > 0) {
-      const target = supplied.linkTarget ?? context.linkTarget ?? null;
-      if (!target) {
-        return recordFailure(
-          `This message can't be sent: card ${card.index + 1}'s button links somewhere we don't have a destination for.`,
-          JSON.stringify({ message: "missing_link_target", card: card.index, template: template.name }),
-          "missing_link_target",
-        );
-      }
-      const tokens: Record<number, string> = {};
-      for (const button of card.urlButtons) {
-        const { token, error } = await mintLink(target);
-        if (!token) {
-          return recordFailure(
-            `This message can't be sent: we couldn't prepare the link on card ${card.index + 1}.`,
-            JSON.stringify({ message: "short_link_failed", card: card.index, error }),
-            "short_link_failed",
-          );
-        }
-        tokens[button.index] = token;
-      }
-      entry.buttonTokens = tokens;
-    }
-
-    const code = supplied.couponCode ?? context.couponCode ?? null;
-    if (card.copyCodeButtons.length > 0 && code?.trim()) {
-      entry.couponCodes = Object.fromEntries(
-        card.copyCodeButtons.map((i) => [i, code.trim()]),
-      );
-    }
-    cardValues.push(entry);
-  }
-
-  const offerExpirationMs = context.offerExpiresAt
-    ? new Date(context.offerExpiresAt).getTime()
-    : undefined;
-
-  const payload = buildTemplatePayloadComponents({
-    spec,
-    values: recipient.variables,
-    headerValues: recipient.variables,
-    buttonTokens,
-    couponCodes,
-    ...(context.headerMediaUrl ? { headerMedia: { link: context.headerMediaUrl } } : {}),
-    ...(context.headerLocation ? { headerLocation: context.headerLocation } : {}),
-    ...(cardValues.length ? { cards: cardValues } : {}),
-    ...(offerExpirationMs ? { offerExpirationMs } : {}),
+  const built = await buildTemplateRequest({
+    template,
+    variables: recipient.variables,
+    context,
+    mintLink: async (target) =>
+      await createShortLink(supabase, {
+        organizationId,
+        targetUrl: target,
+        scheduledSendId: context.scheduledSendId ?? null,
+        campaignId: context.campaignId ?? null,
+        contactId,
+      }),
+    formIdFor: async (metaFlowId) => {
+      const { data: form } = await supabase
+        .from("wa_forms")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("meta_flow_id", metaFlowId)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return (form as { id: string } | null)?.id ?? null;
+    },
   });
-
-  if (payload.error) {
-    return recordFailure(
-      payload.error,
-      JSON.stringify({ message: "template_parameters_missing", detail: payload.error }),
-      "template_parameters_missing",
-    );
-  }
-
-  // "Open a form" buttons carry a flow_token so the answers match back to our form.
-  const flowButtonComponents: Array<Record<string, unknown>> = [];
-  let flowFormId: string | null = null;
-  {
-    const buttonsComp = (template.components ?? []).find(
-      (c) => String((c as { type?: string }).type ?? "").toUpperCase() === "BUTTONS",
-    ) as { buttons?: Array<{ type?: string; flow_id?: string | number }> } | undefined;
-    const buttons = buttonsComp?.buttons ?? [];
-    for (let i = 0; i < buttons.length; i++) {
-      const b = buttons[i]!;
-      if (String(b.type ?? "").toUpperCase() !== "FLOW") continue;
-      const metaFlowId = b.flow_id != null ? String(b.flow_id) : "";
-      if (metaFlowId && !flowFormId) {
-        const { data: form } = await supabase
-          .from("wa_forms")
-          .select("id")
-          .eq("organization_id", organizationId)
-          .eq("meta_flow_id", metaFlowId)
-          .order("version", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        flowFormId = (form as { id: string } | null)?.id ?? null;
-      }
-      const token = flowFormId
-        ? `f:${flowFormId}:${crypto.randomUUID().slice(0, 8)}`
-        : `t:${crypto.randomUUID().slice(0, 12)}`;
-      flowButtonComponents.push({
-        type: "button",
-        sub_type: "flow",
-        index: String(i),
-        parameters: [{ type: "action", action: { flow_token: token } }],
-      });
-    }
-  }
-  const sendComponents = [...(payload.components ?? []), ...flowButtonComponents];
+  if (!built.ok) return recordFailure(built.friendly, built.detail, built.code);
+  const sendComponents = built.components;
+  const { headerMediaFromComponents } = await import("@/lib/templates");
 
   const result = await graphFetch(`${sender.phoneNumberId}/messages`, sender.accessToken, {
     method: "POST",
@@ -527,7 +583,7 @@ export async function sendCampaignTemplate(
       | undefined) ?? null;
 
   const nowIso = new Date().toISOString();
-  const headerMedia = headerMediaFromComponents(payload.components);
+  const headerMedia = headerMediaFromComponents(built.payloadComponents as never);
 
   const { data: message } = await supabase
     .from("messages")

@@ -8,6 +8,7 @@ import {
   Flag,
   MessageSquarePlus,
   LogOut,
+  Send,
   Menu,
   ShieldCheck,
   Users, Sparkles } from "lucide-react";
@@ -22,6 +23,7 @@ const NAV = [
   { to: "/admin/customers", label: "Customers", icon: Users },
   { to: "/admin/leads", label: "Leads & Demos", icon: MessageSquarePlus },
   { to: "/admin/billing", label: "Billing", icon: CreditCard },
+  { to: "/admin/sending", label: "Sending now", icon: Send },
   { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/flags", label: "Feature Flags", icon: Flag },
   { to: "/admin/ai", label: "AI operations", icon: Bot },
