@@ -94,12 +94,17 @@
     "sent": [
       {
         "type": "text",
-        "text": "Ye rahe 50k ke andar gents rings:\n• Industrial Sparkle/ The Urban Edge — ₹41,920.23\nKis occasion ke liye dekh rahe hain?\n\nWant a different budget or style?"
+        "text": "Ye rahe 50k ke andar gents rings:\n• Industrial Sparkle/ The Urban Edge — ₹41,920.23\n• Tiered Vertex — ₹49,196.55\nKis occasion ke liye dekh rahe hain?\n\nWant a different budget or style?"
       },
       {
         "type": "image",
         "text": "Industrial Sparkle/ The Urban Edge — ₹41,920",
         "link": "https://myzoori.com/storage/images/products/a241b980-d356-496c-98ec-d5d19812b7b4/ZGRG-0002.468-1786446085.jpg"
+      },
+      {
+        "type": "image",
+        "text": "Tiered Vertex — ₹49,197",
+        "link": "https://www.myzoori.com/storage/images/products/a27819af-0635-460a-b118-c8d7dba202cd/zgrg-0005.jpg"
       }
     ],
     "status": "ok",
@@ -285,6 +290,51 @@
       {
         "type": "text",
         "text": "Ye rahe kuch earrings:\n• ZERN-0188 — ₹48,640.1\n• ZERN-0207 — ₹39,295.75\nKis budget mein dekh rahe hain?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search"
+    ]
+  },
+  "earrings-live-args": {
+    "ask": "earrings dikhao",
+    "sent": [
+      {
+        "type": "text",
+        "text": "I’m not seeing earrings in the catalogue right now. A colleague will follow up with options for you."
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search"
+    ]
+  },
+  "rings-dikhao": {
+    "ask": "rings dikhao",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Hamare rings: .\nKaunsa pasand aaya?\n\nWant a different budget or style?"
+      },
+      {
+        "type": "image",
+        "text": "The Gilded Chevron — ₹19,604",
+        "link": "https://myzoori.com/storage/images/products/a17c9b39-247c-451a-8063-09d9da502d9a/ZLRG%20-%200001.4-1783942115.jpg"
+      },
+      {
+        "type": "image",
+        "text": "Industrial Sparkle/ The Urban Edge — ₹18,326",
+        "link": "https://myzoori.com/storage/images/products/a23fb400-da45-43fa-85da-b03f120a90a6/ZLRG-0003.524-1783944994.jpg"
+      },
+      {
+        "type": "image",
+        "text": "The Allure Orbit/The Willow Vine — ₹18,016",
+        "link": "https://myzoori.com/storage/images/products/a23fcfaf-5a27-43d5-84cf-21c877280f36/ZLRG-0004.29-1783950907.jpg"
       }
     ],
     "status": "ok",

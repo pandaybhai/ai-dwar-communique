@@ -21,7 +21,7 @@ import {
 /**
  * Batch 14 — Aiden follows the merchant's instructions; code may block an
  * unsafe fact but never writes, appends or reorders reply text.
- * The 21-conversation regression set lives in batch14-replay.test.ts; these
+ * The 23-conversation regression set lives in batch14-replay.test.ts; these
  * are the parts on their own.
  */
 
@@ -44,8 +44,15 @@ vi.mock("@/lib/ai-tools.server", async (importOriginal) => {
       args: Record<string, unknown>,
     ) => {
       const tool = offered().find((t) => t.name === name)!;
-      const out = await real.AI_TOOL_HANDLERS[tool.handler]!(ctx, args);
-      return { ...out, latencyMs: 1, activityLogId: null, arguments: args, resultSummary: {} };
+      // As invokeTool does: a brokered call (Batch 14.1 gender rule).
+      const out = await real.AI_TOOL_HANDLERS[tool.handler]!({ ...ctx, brokered: true }, args);
+      return {
+        ...out,
+        latencyMs: 1,
+        activityLogId: null,
+        arguments: args, // The broker's own trace summary (older builds, recorded as baselines, have none).
+        resultSummary: typeof real.summarise === "function" ? real.summarise(out) : {},
+      };
     },
   };
 });

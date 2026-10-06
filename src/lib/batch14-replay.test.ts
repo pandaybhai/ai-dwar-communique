@@ -20,7 +20,7 @@ import {
 /**
  * Batch 14 — Aiden follows the merchant's instructions. Regression set.
  *
- * 21 customer messages from Zoori's live traffic and typical asks (the live
+ * 23 customer messages from Zoori's live traffic and typical asks (the live
  * conversation 7230c5b2…, 6 Oct 10:12–10:17 UTC, plus the asks a jewellery
  * shop gets every day) go through runAgentOnInbound against Zoori's real
  * instructions, catalogue slice and website text. Only the model is scripted.
@@ -68,8 +68,15 @@ vi.mock("@/lib/ai-tools.server", async (importOriginal) => {
           arguments: args,
           resultSummary: {},
         };
-      const out = await real.AI_TOOL_HANDLERS[tool.handler]!(ctx, args);
-      return { ...out, latencyMs: 1, activityLogId: null, arguments: args, resultSummary: {} };
+      // As invokeTool does: a brokered call (Batch 14.1 gender rule).
+      const out = await real.AI_TOOL_HANDLERS[tool.handler]!({ ...ctx, brokered: true }, args);
+      return {
+        ...out,
+        latencyMs: 1,
+        activityLogId: null,
+        arguments: args, // The broker's own trace summary (older builds, recorded as baselines, have none).
+        resultSummary: typeof real.summarise === "function" ? real.summarise(out) : {},
+      };
     },
   };
 });
@@ -169,6 +176,9 @@ describe("the baseline (main) shows the live faults the checks look for", () => 
       /Which one did you like/,
     );
   });
+  it("'earrings dikhao' with the live arguments found no earrings (6 Oct 11:18)", () => {
+    expect(textsOf(baseline!["earrings-live-args"]!).join("\n")).toMatch(/not seeing earrings/);
+  });
 });
 
 describe("this branch: every reply is the model's, cleanly", () => {
@@ -263,6 +273,38 @@ describe("this branch: every reply is the model's, cleanly", () => {
       }
     });
   }
+
+  it("Batch 14.1: the live earrings call (gender 'female', in stock) finds the untagged earrings and sends them as captions", () => {
+    const r = results.get("earrings-live-args")!;
+    expect(r.sent.map((s) => s.type)).toEqual(["text", "text", "text", "text"]);
+    expect(r.sent[1]!.text).toMatch(/Earrings — ₹[\d,]+\n https?:|Earrings — ₹[\d,]+\nhttps?:/);
+    const [call] = r.toolsMeta as Array<Record<string, unknown>>;
+    expect(call).toMatchObject({
+      tool: "catalog_search",
+      ok: true,
+      args: { gender: "female", category: "earrings" },
+    });
+    expect(call!["rows"]).toBeGreaterThan(0);
+    expect((call!["found"] as string[]).length).toBeGreaterThan(0);
+  });
+
+  it("Batch 14.1: 'gents ring under 50k' shows only gents rings at or under ₹50,000", () => {
+    const r = results.get("gents-ring-under-50k")!;
+    const shown = r.sent.filter((s) => s.type === "image").map((s) => s.text.split(" — ")[0]);
+    expect(shown.length).toBeGreaterThan(0);
+    for (const title of shown) {
+      const row = PRODUCTS.find(
+        (p) => p["title"] === title && p["gender"] === "male" && Number(p["price"]) <= 50000,
+      );
+      expect(row, title).toBeDefined();
+    }
+  });
+
+  it("Batch 14.1: a rings browse never pulls in earrings", () => {
+    const text = textsOf(results.get("rings-dikhao")!).join("\n");
+    expect(text).toMatch(/Gilded Chevron/);
+    expect(text).not.toMatch(/ZERN|Earrings/);
+  });
 
   it("the model is offered send_products and told nothing is attached for it", () => {
     const r = results.get("show-me-products")!;

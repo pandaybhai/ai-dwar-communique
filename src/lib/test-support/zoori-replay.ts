@@ -56,7 +56,10 @@ const product = (
   ...r,
 });
 
-/** As stored on 6 Oct (a slice of 472 visible products). */
+/**
+ * As stored on 6 Oct (a slice of 472 visible products), with the ring genders
+ * set on 7 Oct (every ZGRG ring male, every ZLRG ring female — 44 rows).
+ */
 export const PRODUCTS: Row[] = [
   {
     id: "8431b39b-3ba1-4171-aaa9-37b758e20651",
@@ -133,6 +136,7 @@ export const PRODUCTS: Row[] = [
     title: "Tiered Vertex",
     sku: "ZGRG-0005",
     category: "rings",
+    gender: "male",
     price: 49196.55,
     description: "Metal: Gold, Diamond. Gross weight: 3.05 gm",
     product_url: "https://www.myzoori.com/product-detail/a27819af-0635-460a-b118-c8d7dba202cd",
@@ -144,6 +148,7 @@ export const PRODUCTS: Row[] = [
     title: "Milgrain Marquise/ The Heritage Band",
     sku: "ZLRG-0002",
     category: "rings",
+    gender: "female",
     price: 16805.32,
     description:
       "Metal: Gold, Diamond. Gross weight: 0.85 gm. Milgrain Marquise/ The Heritage Band Yellow Gold 18K",
@@ -561,6 +566,43 @@ export const CASES: Case[] = [
     checks: ["products_with_links"],
   },
   {
+    id: "earrings-live-args",
+    ask: "earrings dikhao",
+    // Live, 6 Oct 11:18 (run 4f97dcee…): gpt-5.4 sent these exact arguments —
+    // a gender and a stock filter nobody asked for. Every Zoori earring is
+    // untagged for gender and has no photo.
+    model: (ctx) => {
+      if (ctx.step === 0)
+        return search({
+          limit: 3,
+          query: "",
+          gender: "female",
+          category: "earrings",
+          max_price: null,
+          availability: "in_stock",
+        });
+      if (productsIn(ctx.seen).length === 0)
+        return {
+          text: "I’m not seeing earrings in the catalogue right now. A colleague will follow up with options for you.",
+        };
+      return showTurn(ctx, "Ye rahe kuch earrings:", "Kis budget mein dekh rahe hain?", 2);
+    },
+    checks: ["products_with_links"],
+  },
+  {
+    id: "rings-dikhao",
+    ask: "rings dikhao",
+    // A wide ring browse: the shelf match "%rings%" also matched "earrings".
+    // The model names everything it was given, so a stray earring shows.
+    model: (ctx) => {
+      if (ctx.step === 0) return search({ category: "rings", limit: 10 });
+      const found = productsIn(ctx.seen);
+      return {
+        text: `Hamare rings: ${found.map((f) => nameOf(f)).join(", ")}.\nKaunsa pasand aaya?\n{"needs_owner": false}`,
+      };
+    },
+  },
+  {
     id: "tanmaniya-under-20k",
     ask: "tanmaniya under 20k",
     model: (ctx) => {
@@ -684,6 +726,8 @@ export type Replay = {
   /** What the model was told (system prompt), per call, for the checks. */
   systems: string[];
   toolsOffered: string[];
+  /** The answer run's metadata.tools (Batch 14.1), when the build writes it. */
+  toolsMeta?: unknown;
 };
 
 const POLICY_CHECK = "You check whether sentences";
@@ -920,6 +964,9 @@ export function zooriWorld(c: Case) {
       gapFiled,
       systems,
       toolsOffered,
+      ...((run?.["metadata"] as Record<string, unknown> | null)?.["tools"]
+        ? { toolsMeta: (run!["metadata"] as Record<string, unknown>)["tools"] }
+        : {}),
     };
   };
   return {

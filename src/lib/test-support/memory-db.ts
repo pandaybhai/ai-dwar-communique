@@ -98,6 +98,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
       b["not"] = (c: string, op: string, v: unknown) =>
         add((r) => {
           if (op === "is") return v === null ? field(r, c) != null : field(r, c) !== v;
+          if (op === "ilike") return field(r, c) != null && !likeToRe(String(v).toLowerCase()).test(String(field(r, c)).toLowerCase());
           if (op === "in") {
             const list = String(v).replace(/^\(|\)$/g, "").split(",");
             return !list.includes(String(field(r, c)));

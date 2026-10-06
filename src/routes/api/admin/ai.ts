@@ -38,6 +38,7 @@ export const Route = createFileRoute("/api/admin/ai")({
             ? String(payload["instructions_override"]).slice(0, 8000)
             : null;
           const { playgroundAnswer } = await import("@/lib/ai-tasks.server");
+          const { runToolsMeta } = await import("@/lib/ai-run.server");
           const run = await playgroundAnswer(
             supabase,
             { organizationId: orgId, actorUserId: user.id, actingRole: "owner" },
@@ -62,10 +63,44 @@ export const Route = createFileRoute("/api/admin/ai")({
             error: run.error ?? null,
             needs_owner: run.needsOwner,
             escalation: run.escalationSignal,
-            tools: run.toolCalls.map((t) => ({ tool: t.tool, ok: t.ok })),
+            tools: runToolsMeta(run.toolCalls),
             media: run.media.map((m) => ({ title: m.title, image_url: m.imageUrl, price: m.price, currency: m.currency })),
             tier: run.tier,
             latency_ms: run.latencyMs,
+          });
+        }
+
+        // ---- Aiden control centre: Workspaces → recent customer answers, with
+        // what each tool was asked and found (metadata.tools, else the
+        // ai_tool_calls trace for older runs). Read-only.
+        if (action === "aiden_runs") {
+          const orgId = String(payload["organization_id"] ?? "");
+          if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
+          const { data: runRows, error: runError } = await supabase
+            .from("ai_runs")
+            .select("id, created_at, input_summary, output, status, escalation_signal, model, conversation_id, metadata")
+            .eq("organization_id", orgId)
+            .eq("task", "agent_reply")
+            // The policy check's own runs are not answers.
+            .is("metadata->>purpose", null)
+            .order("created_at", { ascending: false })
+            .limit(25);
+          if (runError) return jsonError(runError.message);
+          const runs = (runRows ?? []) as Array<Record<string, unknown>>;
+          const older = runs
+            .filter((r) => !Array.isArray((r["metadata"] as Record<string, unknown> | null)?.["tools"]))
+            .map((r) => String(r["id"]));
+          const { data: traceRows } = older.length
+            ? await supabase
+                .from("ai_tool_calls")
+                .select("run_id, tool_name, ok, error, arguments, result_summary, created_at")
+                .in("run_id", older)
+                .order("created_at", { ascending: true })
+            : { data: [] };
+          const { runView } = await import("@/lib/ai-run-view");
+          const trace = (traceRows ?? []) as Array<Record<string, unknown>>;
+          return Response.json({
+            runs: runs.map((r) => runView(r, trace.filter((t) => t["run_id"] === r["id"]))),
           });
         }
 
