@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
+import { ToolTrace } from "@/components/admin/aiden-runs";
+import type { ToolTraceEntry } from "@/lib/ai-run-view";
 
 type Org = { id: string; name: string };
 type Turn = { role: "user" | "assistant"; content: string };
@@ -17,7 +19,7 @@ type Reply = {
   error: string | null;
   needs_owner: boolean;
   escalation: string | null;
-  tools: Array<{ tool: string; ok: boolean }>;
+  tools: ToolTraceEntry[];
   media: Array<{ title: string; image_url: string; price: number | null; currency: string | null }>;
   latency_ms: number;
 };
@@ -143,6 +145,14 @@ export function AidenTestPanel() {
                       {b.meta.tools.map((t, j) => <span key={j} className="rounded-full bg-muted px-2 py-0.5">{t.tool}{t.ok ? "" : " ✕"}</span>)}
                       <span className="px-1">{(b.meta.latency_ms / 1000).toFixed(1)}s</span>
                     </div>
+                  ) : null}
+                  {b.meta?.tools.length ? (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-[11px] text-muted-foreground">What the tools were asked and found</summary>
+                      <div className="mt-1.5">
+                        <ToolTrace tools={b.meta.tools} />
+                      </div>
+                    </details>
                   ) : null}
                 </div>
               </div>

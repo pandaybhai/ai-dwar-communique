@@ -12,6 +12,7 @@ import { callApi } from "@/lib/whatsapp-client";
 import { PromptBlocksEditor } from "@/components/admin/prompt-blocks-editor";
 import { SCRIPT_KEYS } from "@/lib/scripts";
 import { AidenTestPanel } from "@/components/admin/aiden-test";
+import { RecentAnswersPanel } from "@/components/admin/aiden-runs";
 import { ReadingSettingsPanel } from "@/components/admin/reading-settings";
 import { ShopifyCustomAppPanel } from "@/components/admin/shopify-custom-app";
 import { WorkspaceReadingPanel } from "@/components/admin/workspace-reading";
@@ -266,6 +267,7 @@ function WorkspaceBehaviour({ org, onChanged }: { org: Org; onChanged: () => voi
           return { error: err };
         }}
       />
+      <RecentAnswersPanel organizationId={org.id} />
       <ShopifyCustomAppPanel organizationId={org.id} />
       <WorkspaceReadingPanel organizationId={org.id} />
     </div>

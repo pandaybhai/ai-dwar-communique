@@ -46,6 +46,12 @@ export type ToolContext = {
    * workspace scope.
    */
   subject?: { contactId: string | null; conversationId: string | null };
+  /**
+   * Set by invokeTool: the call came through the broker (a model's or a
+   * member's tool call). Absent on a direct handler call — the flows "Show
+   * products" step — which keeps that step's behaviour exactly as it was.
+   */
+  brokered?: boolean;
 };
 
 /** The principal a context runs as, falling back to its user (or the agent). */
@@ -468,6 +474,10 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     const spoken = `${rawCategory} ${rawQuery}`;
     const category = canonCategory(rawCategory) || canonCategory(rawQuery);
     const gender = canonGender(str(args["gender"])) || canonGender(spoken);
+    // Most catalogues tag gender on a few products only (Zoori: 10 of 472).
+    // For Aiden a gender narrows to that gender plus the untagged products —
+    // it never hides a whole shelf. The flows step keeps the strict match.
+    const keepUntaggedGender = ctx.brokered === true;
     const maxPriceRaw = args["max_price"];
     const maxPrice =
       typeof maxPriceRaw === "number" && Number.isFinite(maxPriceRaw) ? maxPriceRaw : null;
@@ -491,6 +501,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       rowLimit: number,
       cheapestFirst = false,
       withMinPrice: number | null = minPrice,
+      withGender: string | null = gender,
     ) => {
       const { toTsQuery } = await import("@/lib/catalog");
       let request = ctx.supabase
@@ -525,9 +536,15 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       if (withMinPrice !== null) request = request.gte("price", withMinPrice);
       if (availability) request = request.eq("availability", availability);
       if (category) request = request.ilike("category", `%${category}%`);
-      if (gender) {
-        const words = gender === "male" ? ["male", "men", "gents"] : ["female", "women", "ladies"];
-        request = request.or(words.map((w) => `gender.ilike.${w}`).join(","));
+      // "%rings%" also matches "earrings" (Zoori: 135 earrings beside 44
+      // rings). Aiden's ring search leaves them out; the flows step is as it was.
+      if (keepUntaggedGender && category === "rings") request = request.not("category", "ilike", "%earring%");
+      if (withGender) {
+        const words = withGender === "male" ? ["male", "men", "gents"] : ["female", "women", "ladies"];
+        // Untagged is NULL: every writer (genderHint in product-extract) stores
+        // a word or NULL, never an empty string (live: 582 NULL, 0 empty).
+        const untagged = keepUntaggedGender ? ["gender.is.null"] : [];
+        request = request.or([...untagged, ...words.map((w) => `gender.ilike.${w}`)].join(","));
       }
 
       const { data, error } = await request;
@@ -566,7 +583,14 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     // Nothing at that budget: offer the nearest three above it rather than a
     // dead end.
     if (category || maxPrice !== null || minPrice !== null) {
-      const closest = await run("", null, 3, true, null);
+      let closest = await run("", null, 3, true, null);
+      // Still nothing for that gender: the closest of any gender (Aiden only),
+      // said as such so they are never passed off as "for him/her".
+      let genderDropped = false;
+      if (keepUntaggedGender && gender && closest.rows && closest.rows.length === 0) {
+        closest = await run("", null, 3, true, null, null);
+        genderDropped = true;
+      }
       const suggestions = closest.rows ? sortRows(closest.rows, false) : [];
       if (suggestions.length > 0) {
         const prices = suggestions.map((r) => Number(r["price"])).filter((p) => Number.isFinite(p) && p > 0);
@@ -581,6 +605,9 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
             max_price: maxPrice,
             lowest_price: from,
             closest_above: suggestions,
+            ...(genderDropped
+              ? { gender_note: `No ${gender === "male" ? "gents" : "ladies"} product matched; these are the closest of any gender — say so.` }
+              : {}),
             // Say what exists and what it costs; offer only these products —
             // never another type or budget that wasn't searched.
             reply_hint:
@@ -792,7 +819,7 @@ export type InvokeOptions = {
  * A debugging fingerprint of a tool result: how many rows and up to five
  * identifiers. Never a copy of the data, never personal details.
  */
-function summarise(result: ToolResult): Record<string, unknown> {
+export function summarise(result: ToolResult): Record<string, unknown> {
   const label = (row: unknown): string | null => {
     if (row === null || typeof row !== "object") return null;
     const r = row as Record<string, unknown>;
@@ -802,7 +829,14 @@ function summarise(result: ToolResult): Record<string, unknown> {
     }
     return null;
   };
-  const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
+  // A result that wraps its rows (closest matches, queued products) is
+  // counted by those rows, not as one object.
+  const data = result.data as Record<string, unknown> | unknown[] | null | undefined;
+  const inner =
+    data && !Array.isArray(data)
+      ? ["closest_above", "products"].map((k) => (data as Record<string, unknown>)[k]).find(Array.isArray)
+      : undefined;
+  const rows = Array.isArray(data) ? data : Array.isArray(inner) ? inner : data ? [data] : [];
   return {
     ok: result.ok,
     ...(result.found === false ? { found: false } : {}),
@@ -889,7 +923,7 @@ export async function invokeTool(
   }
 
   try {
-    const result = await AI_TOOL_HANDLERS[tool.handler]!(ctx, args);
+    const result = await AI_TOOL_HANDLERS[tool.handler]!({ ...ctx, brokered: true }, args);
     const status = result.ok ? (result.found === false ? "not_found" : "ok") : "error";
     const logId = await log(status, result.ok ? undefined : result.error);
     return done(result, logId);

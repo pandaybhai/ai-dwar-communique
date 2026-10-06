@@ -1155,12 +1155,18 @@ function safeJson(raw: string): Record<string, unknown> {
   }
 }
 
-/** The Responses API prefers strict-shaped schemas. */
-function strictSchema(schema: BrokeredTool["parameters"]): Record<string, unknown> {
+/**
+ * The Responses API shape. Only the tool's own required arguments are marked
+ * required (tools are sent with strict: false, so nothing forces more): every
+ * property marked required made the model fill optional filters it was never
+ * asked for — catalog_search went out with gender "female" for "earrings
+ * dikhao" and found nothing (Zoori, 6 Oct).
+ */
+export function strictSchema(schema: BrokeredTool["parameters"]): Record<string, unknown> {
   return {
     type: "object",
     properties: schema.properties ?? {},
-    required: Object.keys(schema.properties ?? {}),
+    required: schema.required ?? [],
     additionalProperties: false,
   };
 }
@@ -1631,7 +1637,11 @@ export async function executeRun(
         status: result.status,
         error: result.error ?? null,
         comparison_id: comparisonId,
-        metadata: { ...(options.metadata ?? {}), ...runMeta },
+        metadata: {
+          ...(options.metadata ?? {}),
+          ...runMeta,
+          ...(result.toolCalls.length ? { tools: runToolsMeta(result.toolCalls) } : {}),
+        },
 
         prompt_rules_version: options.promptRulesVersion ?? null,
 
@@ -2380,6 +2390,26 @@ export async function executeRun(
 
   timing["checks"] = Date.now() - checksStarted;
   return finish(result);
+}
+
+/**
+ * What each tool call did, kept on the run (metadata.tools) so a run explains
+ * itself: the same arguments and result summary the ai_tool_calls trace rows
+ * carry (invokeTool's summarise), never the data itself.
+ */
+export function runToolsMeta(calls: RunResult["toolCalls"]): Array<Record<string, unknown>> {
+  return calls.map((c) => {
+    const summary = c.resultSummary ?? {};
+    return {
+      tool: c.tool,
+      args: c.args ?? {},
+      ok: c.ok,
+      rows: typeof summary["row_count"] === "number" ? summary["row_count"] : null,
+      found: Array.isArray(summary["identifiers"]) ? summary["identifiers"] : [],
+      ...(summary["found"] === false ? { nothing_found: true } : {}),
+      ...(c.error ? { error: c.error.slice(0, 200) } : {}),
+    };
+  });
 }
 
 /** The products a send_products call queued, as the reply path sends them. */

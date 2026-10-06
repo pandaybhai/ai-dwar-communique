@@ -48,6 +48,50 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "limit": 5,
+          "category": ""
+        },
+        "ok": true,
+        "rows": 5,
+        "found": [
+          "The Gilded Chevron",
+          "Industrial Sparkle/ The Urban Edge",
+          "The Allure Orbit/The Willow Vine",
+          "The Architect",
+          "The Serpentine Wave"
+        ]
+      },
+      {
+        "tool": "send_products",
+        "args": {
+          "products": [
+            {
+              "product_id": "8431b39b-3ba1-4171-aaa9-37b758e20651",
+              "caption": "The Gilded Chevron — ₹19,604\nhttps://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a"
+            },
+            {
+              "product_id": "277b1cc8-b43d-437c-bd67-ceae339d1483",
+              "caption": "Industrial Sparkle/ The Urban Edge — ₹18,326\nhttps://myzoori.com/product-detail/a23fb400-da45-43fa-85da-b03f120a90a6"
+            },
+            {
+              "product_id": "7d6cd2bf-25fd-4995-87d7-ad11a630ffb8",
+              "caption": "The Allure Orbit/The Willow Vine — ₹18,016\nhttps://myzoori.com/product-detail/a23fcfaf-5a27-43d5-84cf-21c877280f36"
+            }
+          ]
+        },
+        "ok": true,
+        "rows": 3,
+        "found": [
+          "The Gilded Chevron",
+          "Industrial Sparkle/ The Urban Edge",
+          "The Allure Orbit/The Willow Vine"
+        ]
+      }
     ]
   },
   "i-like-this": {
@@ -96,6 +140,19 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "query": "The Gilded Chevron"
+        },
+        "ok": true,
+        "rows": 1,
+        "found": [
+          "The Gilded Chevron"
+        ]
+      }
     ]
   },
   "gents-ring-under-50k": {
@@ -111,6 +168,11 @@
         "link": "https://myzoori.com/storage/images/products/a241b980-d356-496c-98ec-d5d19812b7b4/ZGRG-0002.468-1786446085.jpg"
       },
       {
+        "type": "image",
+        "text": "Tiered Vertex — ₹49,197\nhttps://www.myzoori.com/product-detail/a27819af-0635-460a-b118-c8d7dba202cd",
+        "link": "https://www.myzoori.com/storage/images/products/a27819af-0635-460a-b118-c8d7dba202cd/zgrg-0005.jpg"
+      },
+      {
         "type": "text",
         "text": "Kis occasion ke liye dekh rahe hain?"
       }
@@ -121,6 +183,44 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "category": "rings",
+          "gender": "male",
+          "max_price": 50000,
+          "limit": 5
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "Industrial Sparkle/ The Urban Edge",
+          "Tiered Vertex"
+        ]
+      },
+      {
+        "tool": "send_products",
+        "args": {
+          "products": [
+            {
+              "product_id": "a414727c-9084-4e1c-b4a8-0f47b0724fd4",
+              "caption": "Industrial Sparkle/ The Urban Edge — ₹41,920\nhttps://myzoori.com/product-detail/a241b980-d356-496c-98ec-d5d19812b7b4"
+            },
+            {
+              "product_id": "4ce446f1-7450-4c35-b7ef-b6c14a145393",
+              "caption": "Tiered Vertex — ₹49,197\nhttps://www.myzoori.com/product-detail/a27819af-0635-460a-b118-c8d7dba202cd"
+            }
+          ]
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "Industrial Sparkle/ The Urban Edge",
+          "Tiered Vertex"
+        ]
+      }
     ]
   },
   "return-policy-hinglish": {
@@ -247,6 +347,43 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "category": "rings",
+          "limit": 3
+        },
+        "ok": true,
+        "rows": 3,
+        "found": [
+          "The Gilded Chevron",
+          "Industrial Sparkle/ The Urban Edge",
+          "The Allure Orbit/The Willow Vine"
+        ]
+      },
+      {
+        "tool": "send_products",
+        "args": {
+          "products": [
+            {
+              "product_id": "8431b39b-3ba1-4171-aaa9-37b758e20651",
+              "caption": "The Gilded Chevron — ₹19,604\nhttps://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a"
+            },
+            {
+              "product_id": "277b1cc8-b43d-437c-bd67-ceae339d1483",
+              "caption": "Industrial Sparkle/ The Urban Edge — ₹18,326\nhttps://myzoori.com/product-detail/a23fb400-da45-43fa-85da-b03f120a90a6"
+            }
+          ]
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "The Gilded Chevron",
+          "Industrial Sparkle/ The Urban Edge"
+        ]
+      }
     ]
   },
   "price-not-in-data": {
@@ -263,6 +400,23 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "query": "Petal Band"
+        },
+        "ok": true,
+        "rows": 9,
+        "found": [
+          "The Gilded Chevron",
+          "Industrial Sparkle/ The Urban Edge",
+          "The Allure Orbit/The Willow Vine",
+          "The Architect",
+          "The Serpentine Wave"
+        ]
+      }
     ]
   },
   "buy-tiered-vertex": {
@@ -279,6 +433,19 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "query": "Tiered Vertex"
+        },
+        "ok": true,
+        "rows": 1,
+        "found": [
+          "Tiered Vertex"
+        ]
+      }
     ]
   },
   "buy-allure-orbit-options": {
@@ -295,6 +462,19 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "query": "Allure Orbit"
+        },
+        "ok": true,
+        "rows": 1,
+        "found": [
+          "The Allure Orbit/The Willow Vine"
+        ]
+      }
     ]
   },
   "earrings-no-photos": {
@@ -323,6 +503,144 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "category": "earrings",
+          "limit": 3
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "ZERN-0188",
+          "ZERN-0207"
+        ]
+      },
+      {
+        "tool": "send_products",
+        "args": {
+          "products": [
+            {
+              "product_id": "c0c17cce-f8df-41c4-9a1e-1653c8f83e97",
+              "caption": "Diamond & Pink Sapphire Gold Earrings — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
+            },
+            {
+              "product_id": "26263129-0ae5-41ab-ba9c-aed5fa873571",
+              "caption": "Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
+            }
+          ]
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "ZERN-0188",
+          "ZERN-0207"
+        ]
+      }
+    ]
+  },
+  "earrings-live-args": {
+    "ask": "earrings dikhao",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Ye rahe kuch earrings:"
+      },
+      {
+        "type": "text",
+        "text": "Diamond & Pink Sapphire Gold Earrings — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
+      },
+      {
+        "type": "text",
+        "text": "Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
+      },
+      {
+        "type": "text",
+        "text": "Kis budget mein dekh rahe hain?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "limit": 3,
+          "query": "",
+          "gender": "female",
+          "category": "earrings",
+          "max_price": null,
+          "availability": "in_stock"
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "ZERN-0188",
+          "ZERN-0207"
+        ]
+      },
+      {
+        "tool": "send_products",
+        "args": {
+          "products": [
+            {
+              "product_id": "c0c17cce-f8df-41c4-9a1e-1653c8f83e97",
+              "caption": "Diamond & Pink Sapphire Gold Earrings — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
+            },
+            {
+              "product_id": "26263129-0ae5-41ab-ba9c-aed5fa873571",
+              "caption": "Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
+            }
+          ]
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "ZERN-0188",
+          "ZERN-0207"
+        ]
+      }
+    ]
+  },
+  "rings-dikhao": {
+    "ask": "rings dikhao",
+    "sent": [
+      {
+        "type": "text",
+        "text": "Hamare rings: The Gilded Chevron, Industrial Sparkle/ The Urban Edge, The Allure Orbit/The Willow Vine, The Architect, The Serpentine Wave, Industrial Sparkle/ The Urban Edge, Onyx Skyline, Tiered Vertex, Milgrain Marquise/ The Heritage Band.\nKaunsa pasand aaya?"
+      }
+    ],
+    "status": "ok",
+    "escalation": null,
+    "gapFiled": false,
+    "toolsOffered": [
+      "catalog_search",
+      "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "category": "rings",
+          "limit": 10
+        },
+        "ok": true,
+        "rows": 9,
+        "found": [
+          "The Gilded Chevron",
+          "Industrial Sparkle/ The Urban Edge",
+          "The Allure Orbit/The Willow Vine",
+          "The Architect",
+          "The Serpentine Wave"
+        ]
+      }
     ]
   },
   "tanmaniya-under-20k": {
@@ -353,6 +671,44 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "category": "tanmaniya",
+          "max_price": 20000,
+          "limit": 3
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "ZTNM-0030",
+          "ZTNM-0031"
+        ],
+        "nothing_found": true
+      },
+      {
+        "tool": "send_products",
+        "args": {
+          "products": [
+            {
+              "product_id": "7235f948-fe4f-4212-812c-11452332a018",
+              "caption": "Blue Sap & Diamond Gold Tanmaniya — ₹33,419\nhttps://www.myzoori.com/product-detail/a2d714f5-9e82-4407-a07a-3d75b8c3d766"
+            },
+            {
+              "product_id": "73f76b31-5d35-4e5c-bdd5-d6a414d78659",
+              "caption": "Diamond, Emerald & Ruby Gold Tanmaniya — ₹58,626\nhttps://www.myzoori.com/product-detail/a2e679cb-ac13-402a-8f61-1ec4838de41c"
+            }
+          ]
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "ZTNM-0030",
+          "ZTNM-0031"
+        ]
+      }
     ]
   },
   "caption-price-and-link-checked": {
@@ -383,6 +739,47 @@
     "toolsOffered": [
       "catalog_search",
       "send_products"
+    ],
+    "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "category": "rings",
+          "gender": "female",
+          "max_price": 30000,
+          "limit": 5
+        },
+        "ok": true,
+        "rows": 5,
+        "found": [
+          "The Gilded Chevron",
+          "Industrial Sparkle/ The Urban Edge",
+          "The Allure Orbit/The Willow Vine",
+          "The Architect",
+          "The Serpentine Wave"
+        ]
+      },
+      {
+        "tool": "send_products",
+        "args": {
+          "products": [
+            {
+              "product_id": "8431b39b-3ba1-4171-aaa9-37b758e20651",
+              "caption": "The Gilded Chevron — ₹19,603.91\nhttps://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a"
+            },
+            {
+              "product_id": "8ad60eec-0999-4b14-a740-c085cff464c2",
+              "caption": "The Architect — ₹26,000\nhttps://myzoori.com/products/the-architect"
+            }
+          ]
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "The Gilded Chevron",
+          "The Architect"
+        ]
+      }
     ]
   },
   "citations-leak": {

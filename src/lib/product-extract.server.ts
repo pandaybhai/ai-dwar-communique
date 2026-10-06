@@ -157,10 +157,17 @@ function categoryFromReferrer(referrer: string | null | undefined, title?: strin
   }
 }
 
+/**
+ * The shelf an item code names. Parts are read in the order given — the
+ * product's own SKU first — so a reused photo's filename never outranks it
+ * (myzoori.com: 24 ZERN earrings whose photos are named "zpnds-…" were saved
+ * as pendants).
+ */
 function categoryFromCode(...parts: Array<string | null | undefined>): string | null {
-  const text = parts.filter(Boolean).join(" ");
-  if (!text) return null;
-  for (const [pattern, word] of SKU_WORDS) if (pattern.test(text)) return word;
+  for (const part of parts) {
+    if (!part) continue;
+    for (const [pattern, word] of SKU_WORDS) if (pattern.test(part)) return word;
+  }
   return null;
 }
 
@@ -779,10 +786,11 @@ export async function saveCrawledProducts(
     if (prior) {
       // A product a shop platform owns is never overwritten by a page read.
       if (prior.source !== CRAWL_SOURCE) continue;
-      // A read that can't see a price, shelf or description fills nothing in
-      // and wipes nothing out: what the last read found stays.
+      // A read that can't see a price, shelf, description or gender fills
+      // nothing in and wipes nothing out: what the last read (or the owner)
+      // set stays — Zoori's hand-set ZGRG/ZLRG genders survive a re-read.
       const update: Record<string, unknown> = { ...row };
-      for (const key of ["price", "category", "description"] as const) if (update[key] == null) delete update[key];
+      for (const key of ["price", "category", "description", "gender"] as const) if (update[key] == null) delete update[key];
       // A photo the product already has is never replaced or wiped by a read.
       if (prior.image_url) delete update["image_url"];
       const { error } = await supabase.from("products").update(update).eq("id", prior.id);
