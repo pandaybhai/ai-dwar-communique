@@ -6,6 +6,9 @@ import { memoryDb, type MemoryDb, type Row } from "./test-support/memory-db";
  * Batch 19 — website reads stay inside their own run.
  *  1. Two reads at once (different workspaces) never use each other's
  *     forget data, so neither deletes the other's pages.
+ *  4. Every read records when it started, so one that dies mid-way (the
+ *     scheduled re-read reads uploads and Q&A inline) is recovered by the
+ *     existing stall reset instead of staying "syncing" for ever.
  */
 
 const h = vi.hoisted(() => ({ db: null as null | { supabase: unknown } }));
@@ -20,7 +23,7 @@ vi.mock("@/lib/ai-run.server", async (orig) => ({
   meterAiUsage: async () => undefined,
 }));
 
-import { syncSource } from "./knowledge.server";
+import { resetStaleReads, STALE_SYNC_MS, syncSource } from "./knowledge.server";
 import { clearSafeFetchDnsCache } from "./safe-fetch.server";
 
 const html = (body: string, status = 200) => new Response(body, { status, headers: { "content-type": "text/html; charset=UTF-8" } });
@@ -170,5 +173,40 @@ describe("1. two website reads at once", () => {
     expect(result.error ?? null).toBeNull();
     expect(refs(db, "a")).not.toContain("https://shop.example/old");
     expect(refs(db, "a")).toContain("https://shop.example/e");
+  });
+});
+
+describe("4. a read that dies is recovered by the stall reset", () => {
+  it("syncSource records the start time; ten minutes later resetStaleReads puts the source back in the queue", async () => {
+    const db = world([{ id: "qa", organization_id: "org-a", type: "manual_qa", name: "Answers", status: "ready", sync_started_at: null, config: {} }]);
+    // The process dies mid-read: the documents query never answers.
+    const base = db.supabase as unknown as Record<string, unknown>;
+    const dying = {
+      ...base,
+      from(name: string) {
+        const query = (base["from"] as (n: string) => Record<string, unknown>)(name);
+        if (name !== "knowledge_documents") return query;
+        return new Proxy(query, {
+          get(t, prop) {
+            if (prop === "then") return () => new Promise(() => {});
+            const value = t[prop as string];
+            return typeof value === "function" ? (...args: unknown[]) => ((value as (...a: unknown[]) => unknown).apply(t, args), new Proxy(t, this)) : value;
+          },
+        });
+      },
+    } as unknown as SupabaseClient;
+    void syncSource(dying, "qa");
+    const row = db.rows("knowledge_sources")[0]!;
+    for (let i = 0; i < 50 && row["status"] !== "syncing"; i += 1) await new Promise((r) => setTimeout(r, 0));
+    expect(row["status"]).toBe("syncing");
+    expect(typeof row["sync_started_at"]).toBe("string");
+
+    // Not stale yet: left alone.
+    expect(await resetStaleReads(db.supabase, Date.now() + 60_000)).toBe(0);
+    expect(row["status"]).toBe("syncing");
+    // Past the stall window: back in the queue for the worker.
+    expect(await resetStaleReads(db.supabase, Date.now() + STALE_SYNC_MS + 60_000)).toBe(1);
+    expect(row).toMatchObject({ status: "pending", sync_started_at: null });
+    expect(typeof row["queued_at"]).toBe("string");
   });
 });

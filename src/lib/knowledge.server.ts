@@ -1654,9 +1654,11 @@ export async function syncSource(
   if (!connector)
     return { ok: false, itemCount: 0, error: "We can't read that kind of source yet." };
 
+  // The start time lets resetStaleReads recover a read that dies here
+  // (website reads keep it fresh as they go; the worker's claim sets it too).
   await supabase
     .from("knowledge_sources")
-    .update({ status: "syncing", last_error: null })
+    .update({ status: "syncing", last_error: null, sync_started_at: new Date().toISOString() })
     .eq("id", sourceId);
 
   try {

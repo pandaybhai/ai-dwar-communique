@@ -8,7 +8,12 @@ import { buildInfo } from "@/lib/build-info";
  * off (the default, and while the column is missing) it does nothing, and a
  * site is re-read only when the merchant asks. Uploaded files are static and
  * never queued.
+ *
+ * pg_net drops the call at 120 s, so no inline re-read starts after
+ * REFRESH_BUDGET_MS; a source left over is still due and goes first next run.
  */
+const REFRESH_BUDGET_MS = 60_000;
+
 export const Route = createFileRoute("/api/internal/knowledge-refresh")({
   server: {
     handlers: {
@@ -24,6 +29,7 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
         const { syncSource } = await import("@/lib/knowledge.server");
         const supabase = getServiceClient();
+        const deadlineAt = Date.now() + REFRESH_BUDGET_MS;
 
         try {
           const { loadKnowledgeAutoRefresh, loadReadingSettings } = await import("@/lib/reading.server");
@@ -57,6 +63,7 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
           let failed = 0;
           let queued = 0;
           let trialSkipped = 0;
+          let deferred = 0;
           // Batch 16: the weekly re-read is for paid plans only; a trial
           // workspace's site is re-read only when the merchant asks.
           const { planLimits } = await import("@/lib/knowledge.server");
@@ -88,6 +95,10 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
               queued += 1;
               continue;
             }
+            if (Date.now() >= deadlineAt) {
+              deferred += 1;
+              continue;
+            }
             const result = await syncSource(supabase, source.id);
             if (result.ok) refreshed += 1;
             else failed += 1;
@@ -100,6 +111,7 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
             queued,
             failed,
             trial_skipped: trialSkipped,
+            ...(deferred > 0 ? { deferred } : {}),
             commit: buildInfo().commit,
           });
         } catch (error) {
