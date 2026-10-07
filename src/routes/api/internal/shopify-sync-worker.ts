@@ -10,10 +10,11 @@ export const Route = createFileRoute("/api/internal/shopify-sync-worker")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const { secretEquals } = await import("@/lib/cron-auth.server");
         const expected = process.env["CRON_SECRET"];
         const provided =
           request.headers.get("x-cron-secret") ?? request.headers.get("X-Cron-Secret");
-        if (!expected || provided !== expected) {
+        if (!expected || !secretEquals(provided, expected)) {
           return Response.json({ error: "Unauthorized" }, { status: 401 });
         }
 

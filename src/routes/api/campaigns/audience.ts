@@ -4,7 +4,7 @@ export const Route = createFileRoute("/api/campaigns/audience")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { requireOrgMember, isResponse, jsonError } = await import(
+        const { requireOrgMember, isResponse, jsonError, requirePermission } = await import(
           "@/lib/whatsapp-api.server"
         );
         const { audienceSummary } = await import("@/lib/campaigns.server");
@@ -18,6 +18,9 @@ export const Route = createFileRoute("/api/campaigns/audience")({
 
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
+        // Who matches a segment is contact data.
+        const denied = await requirePermission(auth, "contacts.view", "see who this goes to");
+        if (denied) return denied;
 
         // The number is part of the request: opt-out state is workspace-wide,
         // but sendability belongs to a number, so the count is re-run whenever

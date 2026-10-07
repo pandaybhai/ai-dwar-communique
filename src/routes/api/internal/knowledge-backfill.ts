@@ -10,9 +10,10 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const { secretEquals } = await import("@/lib/cron-auth.server");
         const expected = process.env["CRON_SECRET"];
         const provided = request.headers.get("x-cron-secret") ?? request.headers.get("X-Cron-Secret");
-        if (!expected || provided !== expected) return Response.json({ error: "Unauthorized" }, { status: 401 });
+        if (!expected || !secretEquals(provided, expected)) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
         const { planLimits } = await import("@/lib/knowledge.server");

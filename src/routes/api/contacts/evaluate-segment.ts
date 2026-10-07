@@ -4,7 +4,7 @@ export const Route = createFileRoute("/api/contacts/evaluate-segment")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { requireOrgMember, isResponse, jsonError } = await import(
+        const { requireOrgMember, isResponse, jsonError, requirePermission } = await import(
           "@/lib/whatsapp-api.server"
         );
         const { evaluateSegment, resolveSegmentContactIds } = await import(
@@ -20,6 +20,9 @@ export const Route = createFileRoute("/api/contacts/evaluate-segment")({
 
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
+        // Who matches a segment is contact data.
+        const denied = await requirePermission(auth, "contacts.view", "preview this segment");
+        if (denied) return denied;
 
         try {
           if (payload["mode"] === "ids") {

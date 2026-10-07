@@ -47,6 +47,16 @@ export const Route = createFileRoute("/api/public/shopify-callback")({
         if (!verified || verified.shopDomain !== shopDomain) {
           return settingsUrl({ shopify_error: "state" });
         }
+        // Only the signed-in user who started it, in the same browser, and
+        // still allowed to manage integrations in that workspace.
+        const { bindingFrom, sameBinding } = await import("@/lib/oauth-binding.server");
+        if (!verified.userId || !sameBinding(verified.bind, bindingFrom(request, "shopify"))) {
+          return settingsUrl({ shopify_error: "state" });
+        }
+        const { hasPermission } = await import("@/lib/permissions.server");
+        if (!(await hasPermission(getServiceClient(), verified.organizationId, verified.userId, "integrations.manage"))) {
+          return settingsUrl({ shopify_error: "state" });
+        }
 
         const exchange = await exchangeAccessToken({
           shopDomain,
