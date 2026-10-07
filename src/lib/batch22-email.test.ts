@@ -18,6 +18,7 @@ import {
   DEFAULT_EMAIL_FROM,
   EMAIL_ATTACHMENT_MAX_BYTES,
   RESEND_API_URL,
+  RESEND_GATEWAY_URL,
   emailHtml,
   sendEmail,
 } from "./email.server";
