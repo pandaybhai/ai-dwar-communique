@@ -744,20 +744,20 @@ export async function raiseSiteAlert(
   }
 }
 
-/** Every address this source knows, with its sitemap date when the database keeps one. */
+/** Every address this source knows, with its sitemap date. */
 async function loadKnownUrls(
   supabase: SupabaseClient,
   sourceId: string,
 ): Promise<Array<{ url: string; priority: number | null; status: string; read_at: string | null; lastmod?: string | null }>> {
-  const read = (columns: string) =>
-    supabase.from("knowledge_urls").select(columns).eq("source_id", sourceId).limit(20000);
-  let { data, error } = await read("url, priority, status, read_at, lastmod");
-  // Until 20261018_knowledge_urls_lastmod.sql is applied there is no lastmod.
-  if (error) ({ data, error } = await read("url, priority, status, read_at"));
+  const { data } = await supabase
+    .from("knowledge_urls")
+    .select("url, priority, status, read_at, lastmod")
+    .eq("source_id", sourceId)
+    .limit(20000);
   return (data ?? []) as unknown as Array<{ url: string; priority: number | null; status: string; read_at: string | null; lastmod?: string | null }>;
 }
 
-/** Keep each address's sitemap date. A quiet no-op until the lastmod column exists. */
+/** Keep each address's sitemap date (a failed write is quietly skipped). */
 async function saveLastmods(
   supabase: SupabaseClient,
   organizationId: string,
