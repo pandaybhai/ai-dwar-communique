@@ -49,7 +49,7 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
   });
 
   async function sentCampaign() {
-    const w = world({ campaigns: [{ recipients: 2 }], recipientRpc: true });
+    const w = world({ campaigns: [{ recipients: 2 }] });
     const g = meta();
     await runCampaignDispatch(w.db.client, cfg(), { postMessage: g.postMessage });
     const messageOf = (recipientId: string) =>

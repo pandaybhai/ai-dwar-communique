@@ -294,30 +294,12 @@ const STATUS_RANK: Record<string, number> = {
 
 const REPLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Recipient statuses a status webhook may move on from, per incoming status. */
-const RECIPIENT_BELOW: Record<string, string[]> = {
-  sent: ["queued", "sending", "skipped"],
-  delivered: ["queued", "sending", "sent", "skipped"],
-  read: ["queued", "sending", "sent", "skipped"],
-};
-
-// Set once the database says campaign_recipient_status() isn't there yet
-// (migration 20261016_send_at_scale.sql not applied); looked for again
-// every 10 minutes so applying it needs no deploy.
-let recipientRpcMissingUntil = 0;
-
-function missingFunction(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  const code = String(error.code ?? "");
-  return code === "PGRST202" || code === "42883";
-}
-
 /**
  * Mirrors a message status onto its campaign recipient (monotonic) and bumps
- * the campaign's delivered/read/failed counters exactly once per transition.
- * Every move is a conditional update ("only if it isn't there yet"), so two
- * copies of the same webhook processed together can't both count it. The
- * recipient is found by id when Meta echoed our callback data (it may not
+ * the campaign's delivered/read/failed counters exactly once per transition,
+ * in one database call (campaign_recipient_status, 20261016_send_at_scale.sql),
+ * so two copies of the same webhook processed together can't both count it.
+ * The recipient is found by id when Meta echoed our callback data (it may not
  * have its message id yet — the sender writes in batches), else by message.
  */
 async function applyCampaignStatus(
@@ -327,58 +309,13 @@ async function applyCampaignStatus(
   errorDetail: string | null,
   recipientId: string | null = null,
 ): Promise<void> {
-  if (Date.now() >= recipientRpcMissingUntil) {
-    const { error } = await supabase.rpc("campaign_recipient_status", {
-      p_message_id: messageId,
-      p_recipient_id: recipientId,
-      p_status: nextStatus,
-      p_error: errorDetail,
-    });
-    if (!error) return;
-    if (!missingFunction(error)) throw new Error(error.message);
-    recipientRpcMissingUntil = Date.now() + 10 * 60_000;
-  }
-
-  const target = () => {
-    const q = supabase.from("campaign_recipients");
-    return {
-      update: (patch: Record<string, unknown>) => {
-        const u = q.update(recipientId ? { ...patch, message_id: messageId } : patch);
-        return recipientId ? u.eq("id", recipientId) : u.eq("message_id", messageId);
-      },
-    };
-  };
-  const bump = (campaignId: string, counts: Record<string, number>) =>
-    supabase.rpc("bump_campaign_counters", { p_campaign_id: campaignId, ...counts });
-
-  if (nextStatus === "failed") {
-    const { data } = await target()
-      .update({ status: "failed", error: (errorDetail ?? "Delivery failed").slice(0, 300) })
-      .neq("status", "failed")
-      .select("campaign_id");
-    const row = (data as Array<{ campaign_id: string }> | null)?.[0];
-    if (row) await bump(row.campaign_id, { p_failed: 1 });
-    return;
-  }
-
-  const below = RECIPIENT_BELOW[nextStatus];
-  if (!below) return;
-  const { data } = await target().update({ status: nextStatus }).in("status", below).select("campaign_id");
-  const row = (data as Array<{ campaign_id: string }> | null)?.[0];
-  if (row) {
-    if (nextStatus === "delivered") await bump(row.campaign_id, { p_delivered: 1 });
-    // Read without a delivered first: it was delivered too.
-    if (nextStatus === "read") await bump(row.campaign_id, { p_read: 1, p_delivered: 1 });
-    return;
-  }
-  if (nextStatus === "read") {
-    const { data: fromDelivered } = await target()
-      .update({ status: "read" })
-      .eq("status", "delivered")
-      .select("campaign_id");
-    const moved = (fromDelivered as Array<{ campaign_id: string }> | null)?.[0];
-    if (moved) await bump(moved.campaign_id, { p_read: 1 });
-  }
+  const { error } = await supabase.rpc("campaign_recipient_status", {
+    p_message_id: messageId,
+    p_recipient_id: recipientId,
+    p_status: nextStatus,
+    p_error: errorDetail,
+  });
+  if (error) throw new Error(error.message);
 }
 
 /** Messages from before attribution lived on the row (first attributed send: 2026-08-14). */
