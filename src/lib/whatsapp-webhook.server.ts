@@ -2385,23 +2385,14 @@ export async function processWebhookPayload(
 
 /**
  * Stored vs answered (messages.answered_at / answer_claimed_at, migration
- * 20261032_batch17_message_answered.sql). Until it is applied the columns are
- * missing and every helper steps aside: a duplicate stays a duplicate, as before.
+ * 20261032_batch17_message_answered.sql). A failed write steps aside: a
+ * duplicate stays a duplicate.
  */
 const REANSWER_AFTER_MS = 3 * 60_000;
-let answerColumnsMissingUntil = 0;
-
-function missingAnswerColumns(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  const code = String(error.code ?? "");
-  return (code === "PGRST204" || code === "42703") && /answer/i.test(String(error.message ?? ""));
-}
 
 async function answerWrite(run: () => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>) {
-  if (Date.now() < answerColumnsMissingUntil) return null;
   try {
     const { data, error } = await run();
-    if (missingAnswerColumns(error)) answerColumnsMissingUntil = Date.now() + 10 * 60_000;
     return error ? null : data;
   } catch {
     return null;
