@@ -11,16 +11,14 @@ export const Route = createFileRoute("/api/public/google-oauth-callback")({
         const state = lib.readState(url.searchParams.get("state") ?? "");
         const code = url.searchParams.get("code");
         if (!state || !code || !lib.googleOAuthConfigured()) return back("failed");
+        // Only in the browser of the signed-in user who started it.
+        const { bindingFrom, sameBinding } = await import("@/lib/oauth-binding.server");
+        if (!state["user"] || !sameBinding(state["bind"], bindingFrom(request, "google"))) return back("failed");
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
         const svc = getServiceClient();
-        // The signed-in user must still belong to the workspace.
-        const { data: member } = await svc
-          .from("organization_members")
-          .select("user_id")
-          .eq("organization_id", state["org"]!)
-          .eq("user_id", state["user"]!)
-          .maybeSingle();
-        if (!member) return back("failed");
+        // That user must still be allowed to manage integrations in the workspace.
+        const { hasPermission } = await import("@/lib/permissions.server");
+        if (!(await hasPermission(svc, state["org"]!, state["user"]!, "integrations.manage"))) return back("failed");
         const result = await lib.exchangeGoogleCode(url.origin, code);
         if ("error" in result) return back("failed");
         const { error } = await lib.saveConnection(svc, {

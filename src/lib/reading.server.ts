@@ -74,6 +74,74 @@ export async function loadKnowledgeAutoRefresh(supabase: SupabaseClient): Promis
   }
 }
 
+/** Reading AI cap when the setting is missing: ₹/workspace/day (facts run ~₹0.7 a page live; Day-0 is 15 pages). */
+export const READING_AI_DAILY_CAP_DEFAULT = 100;
+/** ai_usage tasks a website read spends on (facts, picture descriptions, embeddings). */
+export const READING_AI_TASKS = ["knowledge_facts", "knowledge_image", "embedding"];
+
+/**
+ * Per-workspace daily cap on reading AI spend (platform_settings
+ * .reading_ai_daily_cap, ₹). Missing column/row = the default; 0 = no cap.
+ * Read on its own, like knowledge_auto_refresh.
+ */
+export async function loadReadingAiDailyCap(supabase: SupabaseClient): Promise<number> {
+  try {
+    const { data, error } = await supabase.from("platform_settings").select("reading_ai_daily_cap").eq("id", true).maybeSingle();
+    const value = Number((data as { reading_ai_daily_cap?: unknown } | null)?.reading_ai_daily_cap);
+    return error || !Number.isFinite(value) || value < 0 ? READING_AI_DAILY_CAP_DEFAULT : value;
+  } catch {
+    return READING_AI_DAILY_CAP_DEFAULT;
+  }
+}
+
+/** Workspaces already logged as over the cap today ("org:date"), so the log says it once. */
+const capLogged = new Set<string>();
+
+/**
+ * True once the workspace's reading AI spend today (ai_usage, same UTC day
+ * meterAiUsage writes) has reached the cap; logged the first time.
+ */
+export async function readingAiCapReached(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
+  const cap = await loadReadingAiDailyCap(supabase);
+  if (cap <= 0) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const { data } = await supabase
+      .from("ai_usage")
+      .select("cost_amount")
+      .eq("organization_id", organizationId)
+      .eq("usage_date", today)
+      .in("task", READING_AI_TASKS);
+    const spent = ((data ?? []) as Array<{ cost_amount: number | null }>).reduce((sum, r) => sum + Number(r.cost_amount ?? 0), 0);
+    if (spent < cap) return false;
+    const key = `${organizationId}:${today}`;
+    if (!capLogged.has(key)) {
+      capLogged.add(key);
+      console.warn(JSON.stringify({ scope: "reading_ai_cap_hit", organization_id: organizationId, spent: Math.round(spent * 100) / 100, cap, day: today }));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The nightly backfill reads only for a workspace that can use what it reads:
+ * a connected WhatsApp number, or Aiden on. Day-0 onboarding reads never ask.
+ */
+export async function backfillWanted(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
+  const [{ count: numbers }, { data: agent }] = await Promise.all([
+    supabase
+      .from("whatsapp_accounts")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("status", "active"),
+    supabase.from("ai_agents").select("mode").eq("organization_id", organizationId).eq("is_default", true).maybeSingle(),
+  ]);
+  const aiOn = ((agent as { mode?: string } | null)?.mode ?? "off") !== "off";
+  return (numbers ?? 0) > 0 || aiOn;
+}
+
 /**
  * Reading order for every read: home, contact/about, policies, FAQ, pricing,
  * collections, products, the rest; blog/tag/archive/search last.

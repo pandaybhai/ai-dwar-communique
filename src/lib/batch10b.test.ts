@@ -75,6 +75,7 @@ import { activeProviderAlert, PROVIDER_ALERT_FRESH_MS } from "./ai-provider-aler
 import { BILLING_TEMPLATES, drainBillingNotifications } from "./billing-notify.server";
 import { transcribeAudio } from "./ai-media.server";
 import { acceptWebhook, processWebhookPayload } from "./whatsapp-webhook.server";
+import { inVirtualTime } from "./test-support/virtual-time";
 
 const ENV_KEYS = [
   "LOVABLE_API_KEY",
@@ -941,11 +942,14 @@ async function arrive(
         : undefined),
   });
   vi.stubGlobal("fetch", w.fetchStub);
-  w.t0.at = Date.now();
-  await acceptWebhook(w.supabase, {
-    rawBody: JSON.stringify(opts.payload ?? inboundPayload(msg)),
-    signatureValid: opts.signatureValid ?? true,
-    waitUntil: null,
+  // Batch 17: on a virtual clock, so "within N round trips" never races a loaded machine.
+  await inVirtualTime(async () => {
+    w.t0.at = Date.now();
+    await acceptWebhook(w.supabase, {
+      rawBody: JSON.stringify(opts.payload ?? inboundPayload(msg)),
+      signatureValid: opts.signatureValid ?? true,
+      waitUntil: null,
+    });
   });
   const close = w.ops.find((o) => o.table === "webhook_events" && o.kind === "update")?.payload as
     | { timing?: Record<string, unknown> & { messages?: Array<{ ms: Record<string, number> }> } }

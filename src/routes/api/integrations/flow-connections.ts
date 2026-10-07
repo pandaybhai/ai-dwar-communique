@@ -49,8 +49,11 @@ export const Route = createFileRoute("/api/integrations/flow-connections")({
 
         if (action === "google_start") {
           if (!lib.googleOAuthConfigured()) return jsonError("Google connection isn't switched on yet.", 409);
-          const state = lib.signState({ org: organizationId, user: userId ?? "" });
-          return Response.json({ url: lib.googleAuthUrl(origin, state) });
+          // Bound to this signed-in user's browser: the callback needs the cookie too.
+          const { newBinding, bindingCookie } = await import("@/lib/oauth-binding.server");
+          const bind = newBinding();
+          const state = lib.signState({ org: organizationId, user: userId ?? "", bind });
+          return Response.json({ url: lib.googleAuthUrl(origin, state) }, { headers: { "Set-Cookie": bindingCookie("google", bind) } });
         }
 
         if (action === "razorpay_save") {

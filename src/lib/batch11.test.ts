@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeDb, type FakeOp } from "./test-support/fake-db";
 import { inboundPayload, latencyWorld } from "./test-support/latency-world";
+import { inVirtualTime } from "./test-support/virtual-time";
 
 /**
  * Batch 11 (small fixes):
@@ -521,8 +522,11 @@ describe("(6) flow start speed", () => {
       },
     });
     vi.stubGlobal("fetch", w.fetchStub);
-    w.t0.at = Date.now();
-    await processWebhookPayload(w.supabase, `ev-${org}`, inboundPayload(msg), new Date(Date.now() - 100).toISOString(), { storeMs: RTT });
+    // Batch 17: on a virtual clock, so "within N round trips" never races a loaded machine.
+    await inVirtualTime(async () => {
+      w.t0.at = Date.now();
+      await processWebhookPayload(w.supabase, `ev-${org}`, inboundPayload(msg), new Date(Date.now() - 100).toISOString(), { storeMs: RTT });
+    });
     const close = w.ops.find((o) => o.table === "webhook_events" && o.kind === "update")?.payload as
       | { timing?: { messages?: Array<{ marks: Record<string, number>; route: string }> } }
       | undefined;

@@ -229,6 +229,8 @@ export async function acceptWebhook(
   },
 ): Promise<Response> {
   const started = Date.now();
+  // An unsigned body is never stored or processed (live: every Meta event is signed).
+  if (!args.signatureValid) return new Response("Invalid signature", { status: 401 });
   let payload: AnyRecord;
   try {
     payload = JSON.parse(args.rawBody) as AnyRecord;
@@ -245,6 +247,11 @@ export async function acceptWebhook(
     .select("id, received_at")
     .single();
   const storeMs = Date.now() - started;
+  // Not stored = not ours yet: Meta retries a non-2xx, so nothing is lost.
+  if (!event) {
+    console.error(JSON.stringify({ scope: "webhook_ack", event_id: null, stored: false }));
+    return new Response("Not stored", { status: 500 });
+  }
 
   let background = false;
   if (args.signatureValid && event) {
@@ -1543,6 +1550,7 @@ export async function processWebhookPayload(
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
           const clock = stageClock(eventId, receivedAt, timings);
           let route = "none";
+          let answerRowId: string | null = null;
           try {
             const waId = toWaId(msg["from"] as string | undefined);
             if (!waId) continue;
@@ -1792,10 +1800,16 @@ export async function processWebhookPayload(
                 : null;
             automationReads?.catch(() => {});
 
-            const { data: inserted, error: insertError } = await messageWrite;
+            const { data: stored, error: insertError } = await messageWrite;
             // A failed write is not a duplicate: only an empty, error-free
             // result means Meta sent this message before.
             if (insertError) throw new Error(`message insert failed: ${insertError.message}`);
+            const isNew = Boolean(stored && stored.length > 0);
+            // Stored is not answered: a message whose earlier pass died before
+            // it was answered is answered now, once (claimed); otherwise a
+            // duplicate stays a duplicate.
+            const inserted = isNew ? stored : await reclaimUnanswered(supabase, String(msg["id"] ?? ""));
+            answerRowId = (inserted?.[0]?.id as string | undefined) ?? null;
             const storedAt = Date.now();
 
             clock.mark("message_stored");
@@ -1805,7 +1819,7 @@ export async function processWebhookPayload(
             // alongside the reads below and is awaited (`windowReady`) before
             // anything that could send.
             let windowReady: Promise<unknown> = Promise.resolve();
-            if (inserted && inserted.length > 0) {
+            if (isNew && inserted) {
               windowReady = Promise.resolve(
                 supabase
                   .from("conversations")
@@ -2257,6 +2271,9 @@ export async function processWebhookPayload(
             failures.push(failureNote(`message ${String(msg["id"] ?? "")}`, err));
           } finally {
             clock.log(String(msg["id"] ?? ""), route);
+            // Awaited right after the reply, so a pass that dies later never
+            // makes the retry answer twice.
+            if (route !== "failed") await markAnswered(supabase, answerRowId);
             startAfterReply();
           }
         }
@@ -2428,6 +2445,64 @@ export async function processWebhookPayload(
   }
 }
 
+/**
+ * Stored vs answered (messages.answered_at / answer_claimed_at, migration
+ * 20261032_batch17_message_answered.sql). Until it is applied the columns are
+ * missing and every helper steps aside: a duplicate stays a duplicate, as before.
+ */
+const REANSWER_AFTER_MS = 3 * 60_000;
+let answerColumnsMissingUntil = 0;
+
+function missingAnswerColumns(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  return (code === "PGRST204" || code === "42703") && /answer/i.test(String(error.message ?? ""));
+}
+
+async function answerWrite(run: () => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>) {
+  if (Date.now() < answerColumnsMissingUntil) return null;
+  try {
+    const { data, error } = await run();
+    if (missingAnswerColumns(error)) answerColumnsMissingUntil = Date.now() + 10 * 60_000;
+    return error ? null : data;
+  } catch {
+    return null;
+  }
+}
+
+/** This pass finished routing the message (answered, or deliberately not). */
+export async function markAnswered(supabase: SupabaseClient, rowId: string | null): Promise<void> {
+  if (!rowId) return;
+  await answerWrite(() =>
+    supabase.from("messages").update({ answered_at: new Date().toISOString() }).eq("id", rowId).is("answered_at", null),
+  );
+}
+
+/**
+ * A duplicate delivery of an inbound message that was stored but never
+ * answered (its pass died) and isn't being answered right now. The insert
+ * stamps answer_claimed_at (column default), so a live pass is never
+ * doubled; one conditional update claims it, so only one retry answers.
+ */
+export async function reclaimUnanswered(
+  supabase: SupabaseClient,
+  metaMessageId: string,
+): Promise<Array<{ id: string }> | null> {
+  if (!metaMessageId) return null;
+  const cutoff = new Date(Date.now() - REANSWER_AFTER_MS).toISOString();
+  const claimed = (await answerWrite(() =>
+    supabase
+      .from("messages")
+      .update({ answer_claimed_at: new Date().toISOString() })
+      .eq("meta_message_id", metaMessageId)
+      .eq("direction", "inbound")
+      .is("answered_at", null)
+      .lt("answer_claimed_at", cutoff)
+      .select("id"),
+  )) as Array<{ id: string }> | null;
+  return claimed?.length ? claimed : null;
+}
+
 /** Retries an event gets before it is recorded as given up. */
 export const WEBHOOK_MAX_ATTEMPTS = 5;
 
@@ -2555,6 +2630,7 @@ export async function reprocessUnprocessedEvents(
     .from("webhook_events")
     .select("id, payload")
     .is("processed_at", null)
+    .eq("provider", "meta")
     .eq("signature_valid", true)
     .lte("received_at", cutoff)
     .order("received_at", { ascending: true })

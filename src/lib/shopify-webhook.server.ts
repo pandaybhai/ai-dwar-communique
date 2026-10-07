@@ -40,14 +40,19 @@ export async function processShopifyWebhook(args: {
     return void (await mark());
   }
 
-  const { data: integration } = await supabase
+  const { data: integrations } = await supabase
     .from("integrations")
     .select("id, organization_id, shop_domain, status")
     .eq("provider", "shopify")
     .eq("shop_domain", shopDomain)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(10);
+  // Store data only ever lands in a connected workspace; uninstall and the
+  // GDPR topics still reach a disconnected one (they arrive after uninstall).
+  const rows = (integrations ?? []) as Array<{ id: string; organization_id: string; shop_domain: string; status: string | null }>;
+  const integration =
+    rows.find((i) => i.status !== "disconnected") ??
+    (topic === "app/uninstalled" || topic === "customers/data_request" || topic === "customers/redact" ? rows[0] : undefined);
 
   if (!integration) return void (await mark("No connected store for this shop domain."));
 
