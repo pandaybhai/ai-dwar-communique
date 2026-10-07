@@ -159,10 +159,11 @@ export function CoverageLine({ source, onAddAnswer }: { source: KnowledgeSource;
 }
 
 /**
- * "Next: 40 more pages tonight · refreshes every 7 days" — parts that don't
- * apply are hidden. The refresh part only while automatic re-reading is on
- * (platform_settings.knowledge_auto_refresh); otherwise a site is re-read
- * only when the merchant asks, and the screen never promises otherwise.
+ * "Next: 40 more pages tonight · changed pages re-read every 7 days" — parts
+ * that don't apply are hidden. The refresh part only while automatic
+ * re-reading is on (platform_settings.knowledge_auto_refresh) and the
+ * workspace is on a paid plan (Batch 16); a trial's site is re-read only when
+ * the merchant asks, and the screen never promises otherwise.
  */
 export function NextLine({ source }: { source: KnowledgeSource }) {
   const r = source.reading;
@@ -170,8 +171,10 @@ export function NextLine({ source }: { source: KnowledgeSource }) {
   const parts = [
     r.tonight > 0 ? `${nf(r.tonight)} more page${r.tonight === 1 ? "" : "s"} tonight` : null,
     r.auto_refresh !== false && r.refresh_days > 0
-      ? `refreshes every ${r.refresh_days} day${r.refresh_days === 1 ? "" : "s"}`
-      : null,
+      ? `changed pages re-read every ${r.refresh_days} day${r.refresh_days === 1 ? "" : "s"}`
+      : r.auto_refresh === true && r.paid === false
+        ? "re-read when you ask (automatic re-reading comes with a paid plan)"
+        : null,
   ].filter(Boolean);
   if (!parts.length) return null;
   return <p className="mt-0.5 text-xs text-muted-foreground">Next: {parts.join(" · ")}</p>;

@@ -27,7 +27,18 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
         } catch (error) {
           console.error("[knowledge-backfill] purge failed", error instanceof Error ? error.message : String(error));
         }
-        if (reading.backfill_pages_per_day <= 0) return Response.json({ off: true, purged });
+        // Batch 16: the free daily price check (own fetch, no AI) — price,
+        // stock and photo follow the product page; a >50% price move is
+        // flagged for review, never applied. Off unless
+        // platform_settings.price_check_daily. Isolated from the backfill.
+        let priceCheck: unknown = null;
+        try {
+          const { runPriceCheck } = await import("@/lib/price-check.server");
+          priceCheck = await runPriceCheck(supabase);
+        } catch (error) {
+          priceCheck = { error: error instanceof Error ? error.message : String(error) };
+        }
+        if (reading.backfill_pages_per_day <= 0) return Response.json({ off: true, purged, price_check: priceCheck });
 
         try {
           const { data } = await supabase
@@ -66,7 +77,7 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
               .eq("status", "ready");
             queued += 1;
           }
-          return Response.json({ queued, purged, commit: buildInfo().commit });
+          return Response.json({ queued, purged, price_check: priceCheck, commit: buildInfo().commit });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Backfill failed";
           console.error("[knowledge-backfill] failed", message);

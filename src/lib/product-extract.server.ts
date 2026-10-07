@@ -666,6 +666,19 @@ export type ExtractContext = {
 };
 
 /** One product off one page, or nothing. First method that works wins. */
+/**
+ * Batch 16: only what the page states in its structured data (JSON-LD, then
+ * Open Graph product tags) — no guessing from the page text. The free price
+ * check and the "has a browser-only page changed?" check read this from the
+ * raw HTML our own fetch gets, with no AI and no paid reader.
+ */
+export function structuredProduct(html: string, pageUrl: string): ProductDraft | null {
+  if (!html || html.length < 200 || isLegalPage(pageUrl, html)) return null;
+  const draft = fromJsonLd(html, pageUrl) ?? fromOpenGraph(html, pageUrl);
+  if (!draft || !draft.title || looksLikeLegalClause(draft.title)) return null;
+  return draft;
+}
+
 export function extractProduct(
   html: string,
   pageUrl: string,

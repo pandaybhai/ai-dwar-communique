@@ -3,7 +3,8 @@ import { buildInfo } from "@/lib/build-info";
 
 /**
  * The scheduled re-read: any source whose refresh window has passed is
- * re-read here. Only while platform_settings.knowledge_auto_refresh is on —
+ * re-read here — a website only on a paid plan, and only its changed pages
+ * (sitemap date vs read_at). Only while platform_settings.knowledge_auto_refresh is on —
  * off (the default, and while the column is missing) it does nothing, and a
  * site is re-read only when the merchant asks. Uploaded files are static and
  * never queued.
@@ -31,7 +32,7 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
           const reading = await loadReadingSettings(supabase);
           const { data: raw } = await supabase
             .from("knowledge_sources")
-            .select("id, type, refresh_days, last_synced_at, config, status")
+            .select("id, organization_id, type, refresh_days, last_synced_at, config, status")
             .or("refresh_days.gt.0,and(type.eq.website,refresh_days.is.null)")
             .not("status", "in", "(syncing,pending,disabled)")
             .order("last_synced_at", { ascending: true, nullsFirst: true })
@@ -54,15 +55,29 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
           let refreshed = 0;
           let failed = 0;
           let queued = 0;
+          let trialSkipped = 0;
+          // Batch 16: the weekly re-read is for paid plans only; a trial
+          // workspace's site is re-read only when the merchant asks.
+          const { planLimits } = await import("@/lib/knowledge.server");
+          const paidByOrg = new Map<string, Promise<boolean>>();
+          const isPaid = (org: string) => {
+            if (!paidByOrg.has(org)) paidByOrg.set(org, planLimits(supabase, org).then((p) => p.paid).catch(() => false));
+            return paidByOrg.get(org)!;
+          };
           for (const source of due) {
-            // Websites: re-read only pages already read; unchanged pages aren't
-            // re-embedded. The worker reads them in bounded runs, never here.
-            const src = data.find((d) => d.id === source.id);
+            // Websites: re-read only pages already read, and of those only the
+            // ones whose sitemap date moved (changed_only); unchanged pages
+            // aren't re-embedded. The worker reads them in bounded runs, never here.
+            const src = data.find((d) => d.id === source.id) as (typeof data)[number] & { organization_id?: string };
             if (src?.type === "website") {
+              if (!src.organization_id || !(await isPaid(src.organization_id))) {
+                trialSkipped += 1;
+                continue;
+              }
               await supabase
                 .from("knowledge_sources")
                 .update({
-                  config: { ...(src.config ?? {}), refresh: true, refresh_started_at: null },
+                  config: { ...(src.config ?? {}), refresh: true, refresh_started_at: null, changed_only: true },
                   status: "pending",
                   queued_at: new Date().toISOString(),
                   sync_started_at: null,
@@ -83,6 +98,7 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
             refreshed,
             queued,
             failed,
+            trial_skipped: trialSkipped,
             commit: buildInfo().commit,
           });
         } catch (error) {

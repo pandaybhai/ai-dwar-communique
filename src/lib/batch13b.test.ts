@@ -337,18 +337,21 @@ describe('"Re-read whole site" reads only what changed; the weekly refresh is un
     for (const p of ["/old", "/new", "/nodate"]) expect(fetched).toContain(`https://shop.example${p}`);
   });
 
-  it("only the button asks for changed-only; the scheduled refresh and backfill files don't", () => {
+  it("the button and (Batch 16, Vinay: weekly changed-only re-read on paid plans) the scheduled refresh ask for changed-only; the backfill doesn't", () => {
     const route = readFileSync("src/routes/api/ai/knowledge.ts", "utf8");
     expect(route).toContain('config["changed_only"] = true;');
-    for (const f of ["src/routes/api/internal/knowledge-refresh.ts", "src/routes/api/internal/knowledge-backfill.ts"])
-      expect(readFileSync(f, "utf8")).not.toContain("changed_only");
+    expect(readFileSync("src/routes/api/internal/knowledge-refresh.ts", "utf8")).toContain("changed_only: true");
+    expect(readFileSync("src/routes/api/internal/knowledge-backfill.ts", "utf8")).not.toContain("changed_only");
   });
 
-  it("no daily price/stock re-check exists (no automatic daily reading of any website)", () => {
+  it("Batch 16 (Vinay): the only daily check is the free price check — own fetch, no AI, no paid reader, behind its switch", () => {
     const internal = readFileSync("src/routeTree.gen.ts", "utf8");
     expect(internal).not.toMatch(/price-check|stock-check|daily-recheck/);
-    const code = readFileSync("src/lib/knowledge.server.ts", "utf8");
-    expect(code).not.toMatch(/dailyPrice|priceRecheck|stockRecheck/i);
+    const backfill = readFileSync("src/routes/api/internal/knowledge-backfill.ts", "utf8");
+    expect(backfill).toContain("runPriceCheck(supabase)");
+    const check = readFileSync("src/lib/price-check.server.ts", "utf8");
+    expect(check).toContain("loadPriceCheckDaily");
+    expect(check).not.toMatch(/executeRun|tavily|firecrawl|readPages/i);
   });
 });
 

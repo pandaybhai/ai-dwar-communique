@@ -6,6 +6,7 @@ import { AidenSetupCard } from "@/components/aiden-setup-card";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import { HandoffAlertsCard } from "@/components/employee/handoff-alerts-card";
+import { PriceReviewsCard } from "@/components/employee/price-reviews-card";
 import { BrainPicker } from "@/components/employee/brain-picker";
 import { CorrectionsList } from "@/components/employee/corrections-list";
 import { KnowledgeManager, UnansweredList } from "@/components/employee/knowledge-manager";
@@ -282,6 +283,7 @@ function EmployeePage() {
             </TabsContent>
 
             <TabsContent value="knows" className="space-y-6">
+              <PriceReviewsCard organizationId={active.organization.id} canConfigure={canConfigure} />
               <KnowledgeManager
                 organizationId={active.organization.id}
                 sources={overview?.sources ?? []}
