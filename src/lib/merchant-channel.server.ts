@@ -1255,7 +1255,12 @@ async function switchAgentOn(
     .from("ai_agents")
     .update({ mode: "replying" })
     .eq("organization_id", organizationId);
-  if (!error) return { ok: true, guard: null };
+  if (!error) {
+    // One switch: ai_enabled follows (it used to stay off, so Aiden stayed silent).
+    const { syncAiSwitch } = await import("@/lib/ai-agent.server");
+    await syncAiSwitch(supabase, organizationId, "replying");
+    return { ok: true, guard: null };
+  }
   const guard = error.message.includes("AI_GUARD:")
     ? (error.message.split("AI_GUARD:")[1]?.trim() ?? null)
     : null;
