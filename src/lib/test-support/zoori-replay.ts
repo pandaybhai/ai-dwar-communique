@@ -765,8 +765,12 @@ export const CASES: Case[] = [
         return {
           text: 'Which piece do you mean? Could you share its name?\n{"needs_owner": false}',
         };
+      // Batch 20: the facts carry the shop's own labelled details
+      // ({ Metal: "Gold, Diamond", "Gross weight": "3.05 gm" }), read as written.
+      const details = (p["details"] ?? {}) as Record<string, string>;
+      const [metal, ...stones] = String(details["Metal"] ?? "gold").split(/,\s*/);
       return {
-        text: `${nameOf(p)} is in ${String(p["metal"] ?? "gold")} with ${String((p["stones"] as string[] | undefined)?.join(", ") ?? "diamonds").toLowerCase()}, ${String(p["weight"] ?? "")}. For white gold, let me confirm that for you.\nWould you like to see similar rings meanwhile?\n{"needs_owner": true}`,
+        text: `${nameOf(p)} is in ${metal} with ${(stones.length ? stones.join(", ") : "diamonds").toLowerCase()}, ${details["Gross weight"] ?? ""}. For white gold, let me confirm that for you.\nWould you like to see similar rings meanwhile?\n{"needs_owner": true}`,
       };
     },
     checks: ["reply_to_known"],

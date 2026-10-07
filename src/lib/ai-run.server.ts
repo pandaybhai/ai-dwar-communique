@@ -43,7 +43,14 @@ import {
 } from "@/lib/ai-fallback.server";
 import { EARLY_CALL_ID, type EarlySearch } from "@/lib/early-search.server";
 import { productFacts, rupees } from "@/lib/product-facts";
-import { describeCategories, EMPTY_VOCABULARY, shelfPhrases, tokensOf, type ShopVocabulary } from "@/lib/shop-categories";
+import {
+  containsRun,
+  describeCategories,
+  EMPTY_VOCABULARY,
+  shelfPhrases,
+  tokensOf,
+  type ShopVocabulary,
+} from "@/lib/shop-categories";
 import { loadShopVocabulary } from "@/lib/shop-categories.server";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
@@ -407,26 +414,28 @@ export function stripReferences(text: string, numberedItems = 0): string {
   return stripReferenceLeaks(stripCitationMarkers(text), numberedItems);
 }
 
-/** Product types a jewellery / retail shelf is browsed by (word-bounded: "earrings" is not "rings"). */
-const SHELF_WORDS =
-  /\b(rings?|pendants?|earrings?|bracelets?|necklaces?|chains?|bangles?|anklets?|mangalsutras?|tanmaniyas?|nose ?pins?|studs?|jhumkas?)\b/gi;
-
 /**
  * Sentences that offer a kind of product the catalogue search never returned
  * and the customer never asked about ("want to see pendants instead?" when
- * no pendant was found). Only read when catalog_search ran.
+ * no pendant was found). A kind is one of this shop's own categories or a
+ * word its settings give for one — no fixed list of product kinds. Only read
+ * when catalog_search ran.
  */
-export function unsearchedShelfOffers(answer: string, question: string, toolResults: string[]): string[] {
-  const seen = flat(`${question} ${toolResults.join(" ")}`).split(" ");
-  const known = (w: string) => {
-    const base = w.toLowerCase().replace(/\s+/g, " ").replace(/s$/, "");
-    return seen.includes(base) || seen.includes(`${base}s`);
-  };
+export function unsearchedShelfOffers(
+  answer: string,
+  question: string,
+  toolResults: string[],
+  shelves: ShopVocabulary,
+): string[] {
+  const kinds = shelfPhrases(shelves);
+  if (kinds.length === 0) return [];
+  const seen = tokensOf(`${question} ${toolResults.join(" ")}`);
   // Only a sentence about unsearched kinds alone: one that also names what
   // was found ("our rings … pair well with chains") still carries the answer.
   return sentencesOf(answer).filter((s) => {
-    const kinds = s.match(SHELF_WORDS) ?? [];
-    return kinds.length > 0 && kinds.every((w) => !known(w));
+    const words = tokensOf(s);
+    const named = kinds.filter((k) => containsRun(words, k));
+    return named.length > 0 && named.every((k) => !containsRun(seen, k));
   });
 }
 
@@ -2790,7 +2799,7 @@ export async function executeRun(
   // pendant was found invents stock.
   const searchedCatalog = toolCalls.some((c) => c.tool === "catalog_search" && c.ok);
   if (task === "agent_reply" && searchedCatalog && result.output) {
-    const offers = unsearchedShelfOffers(result.output, input, toolResultTexts);
+    const offers = unsearchedShelfOffers(result.output, input, toolResultTexts, prelude.shelves);
     const kept = dropSentences(result.output, (s) => offers.includes(s));
     if (offers.length > 0 && kept.replace(PRODUCTS_MARK, "").trim()) {
       runMeta["unsearched_offers_removed"] = offers;

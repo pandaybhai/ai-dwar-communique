@@ -111,7 +111,7 @@ export function tokensOf(text: string): string[] {
 }
 
 /** `needle` appears in `hay` as consecutive whole words. */
-function containsRun(hay: string[], needle: string[]): boolean {
+export function containsRun(hay: string[], needle: string[]): boolean {
   if (needle.length === 0 || needle.length > hay.length) return false;
   for (let i = 0; i + needle.length <= hay.length; i++) {
     if (needle.every((t, j) => hay[i + j] === t)) return true;

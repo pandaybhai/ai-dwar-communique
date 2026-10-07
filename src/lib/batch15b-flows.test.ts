@@ -141,8 +141,9 @@ describe("Show products — readable names", () => {
     expect(off.images[0]).toMatch(/^ZTNM-0030 — ₹33,419/);
     const on = await show({ category: "tanmaniya", max_items: 2, readable_names: true });
     expect(on.images).toEqual([
-      expect.stringMatching(/^Blue Sap & Diamond Gold Tanmaniya \(ZTNM-0030\) — ₹33,419/),
-      expect.stringMatching(/^Diamond, Emerald & Ruby Gold Tanmaniya \(ZTNM-0031\) — ₹58,626/),
+      // Batch 20: names built from the shop's own first labelled line.
+      expect.stringMatching(/^Gold, Blue Sap Round & Diamond Tanmaniya \(ZTNM-0030\) — ₹33,419/),
+      expect.stringMatching(/^Gold, Diamond & Emerald Marquise Tanmaniya \(ZTNM-0031\) — ₹58,626/),
     ]);
     // A real name is never touched.
     const rings = await show({ category: "rings", max_items: 1, readable_names: true });

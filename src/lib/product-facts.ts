@@ -7,29 +7,12 @@
  * isn't is replaced by the real one or taken out, never invented.
  */
 
+import { stem, tokensOf } from "@/lib/shop-categories";
+
 type Row = Record<string, unknown>;
 
 /** Longest a WhatsApp image caption may be. */
 export const CAPTION_LIMIT = 1024;
-
-const PRODUCT_NOUNS =
-  /\b(rings?|bands?|pendants?|earrings?|studs?|jhumkas?|bracelets?|bangles?|kadas?|necklaces?|chains?|tanmaniyas?|mangalsutras?|anklets?|nose ?pins?|sets?)\b/i;
-
-const SINGULAR: Record<string, string> = {
-  rings: "Ring",
-  pendants: "Pendant",
-  earrings: "Earrings",
-  bracelets: "Bracelet",
-  necklaces: "Necklace",
-  chains: "Chain",
-  tanmaniya: "Tanmaniya",
-  mangalsutra: "Mangalsutra",
-  bangles: "Bangle",
-};
-
-/** Stone cuts and shapes: "Ruby Pear" is a ruby. */
-const SHAPE_WORDS =
-  /\s+(round|pear|marquise|princess|oval|cushion|baguette|heart|trillion|emerald cut|square|cabochon)\b/gi;
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
@@ -76,89 +59,102 @@ export function isSkuLike(title: string, sku?: string | null): boolean {
   return /^[A-Z]{1,6}\s*[-_/]?\s*\d{2,7}[A-Z]?$/i.test(t);
 }
 
-export type DescriptionFacts = {
-  metal: string | null;
-  stones: string[];
-  purity: string | null;
-  weight: string | null;
-};
+/** One labelled line of a product's description: "Metal: Gold, Diamond", "Material: Cotton". */
+export type ProductDetail = { label: string; value: string };
 
-/** "Metal: Gold, Diamond, Ruby Pear. Gross weight: 2.35 gm. … Yellow Gold 18K" → its parts. */
-export function descriptionFacts(description: unknown): DescriptionFacts {
+const DETAIL_RE = /^([\p{L}][\p{L}\p{N} .&/()'’-]{0,38}?)\s*:\s*(.+)$/u;
+
+/**
+ * The labelled lines of a description, in order — whatever labels the shop
+ * uses ("Metal: Gold, Diamond. Gross weight: 2.35 gm", "Material: Cotton.
+ * Fit: Regular"). Nothing about one kind of product; unlabelled text is not
+ * read as a fact.
+ */
+export function productDetails(description: unknown): ProductDetail[] {
   const text = str(description);
-  const out: DescriptionFacts = { metal: null, stones: [], purity: null, weight: null };
-  if (!text) return out;
-  const materials = text.match(/\bmetals?\s*:\s*([^.\n]+)/i)?.[1] ?? "";
-  for (const raw of materials
-    .split(/,|\band\b|&/)
-    .map((m) => m.trim())
-    .filter(Boolean)) {
-    if (/\b(gold|silver|platinum|brass|copper)\b/i.test(raw)) {
-      if (!out.metal) out.metal = raw;
-    } else {
-      const stone = raw.replace(SHAPE_WORDS, "").trim();
-      if (stone && !out.stones.some((s) => s.toLowerCase() === stone.toLowerCase()))
-        out.stones.push(stone);
-    }
+  if (!text) return [];
+  const out: ProductDetail[] = [];
+  for (const raw of text.split(/(?<=\.)\s+|\n+/)) {
+    const part = raw.trim().replace(/\.$/, "").trim();
+    const m = part.match(DETAIL_RE);
+    if (!m) continue;
+    const label = m[1]!.trim();
+    const value = m[2]!.trim();
+    if (!value || value.length > 120 || label.split(/\s+/).length > 4) continue;
+    if (out.some((d) => d.label.toLowerCase() === label.toLowerCase())) continue;
+    out.push({ label, value });
+    if (out.length >= 6) break;
   }
-  if (!out.metal)
-    out.metal = text.match(/\b((?:yellow|white|rose)\s+gold|gold|silver|platinum)\b/i)?.[1] ?? null;
-  const purity = text.match(/\b(9|10|14|18|20|22|24)\s?(?:k|kt|karat|carat)\b/i)?.[1];
-  out.purity = purity ? `${purity}K` : null;
-  const weight = text.match(
-    /\b(?:gross\s+|net\s+)?weight\s*:?\s*(\d+(?:\.\d+)?)\s*(gms?|grams?|g)\b/i,
-  );
-  out.weight = weight ? `${weight[1]} g` : null;
   return out;
 }
 
+/** "Rings" → "Ring", "T-Shirts" → "T-Shirt", "Accessories" → "Accessory": one product of the shop's category. */
+function nounOf(category: string): string {
+  const name = category.trim().replace(/\p{L}+$/u, (word) => {
+    const lower = word.toLowerCase();
+    const one = stem(lower);
+    if (one === lower) return word;
+    return lower.endsWith("ies") ? `${word.slice(0, -3)}y` : word.slice(0, one.length);
+  });
+  return name.replace(/(^|[\s-])(\p{L})/gu, (_, gap: string, c: string) => gap + c.toUpperCase());
+}
+
+const capitalise = (text: string) => text.replace(/(^|\s)(\p{L})/gu, (_, gap: string, c: string) => gap + c.toUpperCase());
+
 /**
- * A readable name for a product whose title is only a code: the
- * description's own "the … Earrings" phrase when it says at least what the
- * materials line says and more (ZERN-0207: "Metal: Gold, Diamond" but "the
- * Zoori Ruby & Diamond Gold Earrings"), else built from the materials line
- * ("Pink Sapphire & Diamond Gold Earrings"), else the phrase alone, else null.
+ * A readable name for a product whose title is only a code. The
+ * description's own "the …" phrase when it names the product's category and
+ * says at least what the description's first labelled line says and more
+ * (ZERN-0207: "Metal: Gold, Diamond" but "the Zoori Ruby & Diamond Gold
+ * Earrings"); else built from that line's values and the category ("Gold &
+ * Diamond Ring", "Cotton T-Shirt"); else the phrase alone; else null. Only
+ * the shop's own words — no list of materials or product kinds.
  */
 export function readableName(row: Row): string | null {
   const description = str(row["description"]);
-  const category = str(row["category"]).toLowerCase();
-  const noun =
-    SINGULAR[category] ?? (category ? category[0]!.toUpperCase() + category.slice(1) : "");
-  const facts = descriptionFacts(description);
+  const category = str(row["category"]);
+  const noun = category ? nounOf(category) : "";
+  const nounTokens = tokensOf(category);
   const phraseMatch = description.match(/\bthe\s+((?:[A-Z][\w'’-]*|&)(?:\s+(?:[A-Z][\w'’-]*|&)){1,7})/);
-  const phrase = phraseMatch && PRODUCT_NOUNS.test(phraseMatch[1]!) ? phraseMatch[1]!.trim() : null;
-  if (phrase && (facts.metal || facts.stones.length)) {
-    const said = phrase.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-    const lineWords = [facts.metal ?? "", ...facts.stones]
-      .join(" ")
-      .toLowerCase()
-      .split(/[^\p{L}\p{N}]+/u)
-      .filter(Boolean);
+  const phraseTokens = phraseMatch ? tokensOf(phraseMatch[1]!) : [];
+  const phrase =
+    phraseMatch && nounTokens.length > 0 && phraseTokens.includes(nounTokens[nounTokens.length - 1]!)
+      ? phraseMatch[1]!.trim()
+      : null;
+  // The description's first line, when it is a labelled one of plain words.
+  const first = productDetails(description)[0];
+  const values =
+    first && description.startsWith(first.label) && !/\d/.test(first.value)
+      ? first.value
+          .split(/,|\band\b|&/)
+          .map((v) => v.trim())
+          .filter(Boolean)
+          .slice(0, 3)
+      : [];
+  if (phrase && values.length) {
+    const said = phraseTokens;
+    const lineWords = tokensOf(values.join(" "));
     const coversLine = lineWords.every((w) => said.includes(w));
-    const saysMore = said.some((w) => !lineWords.includes(w) && !PRODUCT_NOUNS.test(w) && /^\p{L}/u.test(w));
+    const saysMore = said.some((w) => !lineWords.includes(w) && !nounTokens.includes(w) && /^\p{L}/u.test(w));
     if (coversLine && saysMore && said.length > lineWords.length + 1) return phrase;
   }
-  if (noun && /\bmetals?\s*:/i.test(description) && (facts.metal || facts.stones.length)) {
-    const stones = facts.stones.slice(0, 3);
-    const stoneWords =
-      stones.length > 1
-        ? `${stones.slice(0, -1).join(", ")} & ${stones[stones.length - 1]}`
-        : (stones[0] ?? "");
-    const metal = facts.metal ? facts.metal.replace(/\b\w/g, (c) => c.toUpperCase()) : "";
-    return [stoneWords, metal, noun].filter(Boolean).join(" ");
+  if (noun && values.length) {
+    const words =
+      values.length > 1 ? `${values.slice(0, -1).join(", ")} & ${values[values.length - 1]}` : values[0]!;
+    return `${capitalise(words)} ${noun}`;
   }
   return phrase;
 }
 
 /**
  * The product as the model sees it in a tool result: every fact it may use,
- * prices in whole rupees, no raw picture address (pictures go through
+ * prices in whole units of its own currency, no raw picture address (pictures go through
  * send_products, never as a pasted link).
  */
 export function productFacts(row: Row): Record<string, unknown> {
   const title = str(row["title"]);
   const sku = str(row["sku"]) || null;
-  const facts = descriptionFacts(row["description"]);
+  const details = productDetails(row["description"]);
   const image = str(row["image_url"]);
   const name = isSkuLike(title, sku) ? readableName(row) : null;
   const out: Record<string, unknown> = {
@@ -168,13 +164,11 @@ export function productFacts(row: Row): Record<string, unknown> {
     ...(sku ? { sku } : {}),
     category: str(row["category"]) || null,
     ...(str(row["gender"]) ? { gender: str(row["gender"]) } : {}),
-    ...(facts.metal ? { metal: facts.metal } : {}),
-    ...(facts.purity ? { purity: facts.purity } : {}),
-    ...(facts.stones.length ? { stones: facts.stones } : {}),
-    ...(facts.weight ? { weight: facts.weight } : {}),
-    price: rupees(row["price"], row["currency"]),
-    ...(rupees(row["compare_at_price"], row["currency"])
-      ? { compare_at_price: rupees(row["compare_at_price"], row["currency"]) }
+    // The shop's own labelled details, as written ("Metal": "Gold, Diamond").
+    ...(details.length ? { details: Object.fromEntries(details.map((d) => [d.label, d.value])) } : {}),
+    price: formatPrice(row["price"], row["currency"]),
+    ...(formatPrice(row["compare_at_price"], row["currency"])
+      ? { compare_at_price: formatPrice(row["compare_at_price"], row["currency"]) }
       : {}),
     ...(str(row["availability"]) ? { availability: str(row["availability"]) } : {}),
     link: str(row["product_url"]) || null,
@@ -185,7 +179,9 @@ export function productFacts(row: Row): Record<string, unknown> {
 
 // ---------------------------------------------------------------- captions
 
-const MONEY = /(?:₹|\bRs\.?|\bINR)\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:k|K|lakhs?|L)\b)?/g;
+/** A price as a caption writes it, in any common currency: "₹19,604", "Rs 500", "$1,250", "EUR 89", "2.5k". */
+const MONEY =
+  /(?:[₹$€£¥]|\bRs\.?|\b(?:INR|USD|EUR|GBP|AED|SGD|AUD|CAD|NZD|JPY|CNY|HKD|SAR|QAR|KWD|BHD|OMR|MYR|THB|IDR|PHP|ZAR|NGN|KES|LKR|NPR|BDT|PKR|CHF|SEK|NOK|DKK)\b)\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:k|K|lakhs?|L)\b)?/g;
 const LINK = /\bhttps?:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+/gi;
 
 function moneyValue(token: string): number {
@@ -243,7 +239,7 @@ export type CaptionCheck = { caption: string; changes: string[] };
 /**
  * The model's caption with every price and link made the product's own: a
  * price equal to the product's (or its compare-at price) after rounding is
- * written in whole rupees; a different price becomes the real one (when the
+ * written in whole units of the product's currency; a different price becomes the real one (when the
  * caption doesn't already carry it) or goes; a link that isn't the product's
  * page becomes it (or goes). Nothing else is touched, nothing is added.
  */
@@ -258,7 +254,7 @@ export function checkCaption(
 ): CaptionCheck {
   const changes: string[] = [];
   const currency = product.currency;
-  const real = rupees(product.price, currency);
+  const real = formatPrice(product.price, currency);
   const allowed = [product.price, product.compare_at_price]
     .map((v) => (typeof v === "number" ? v : Number(v)))
     .filter((v) => Number.isFinite(v) && v > 0)
@@ -295,7 +291,7 @@ export function checkCaption(
   text = text.replace(MONEY, (token) => {
     const value = Math.round(moneyValue(token));
     if (allowed.includes(value)) {
-      const formatted = rupees(value, currency)!;
+      const formatted = formatPrice(value, currency)!;
       if (formatted !== token.trim()) changes.push("price_rounded");
       return formatted;
     }

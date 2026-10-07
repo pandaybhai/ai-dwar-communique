@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   checkCaption,
-  descriptionFacts,
   isSkuLike,
+  productDetails,
   productFacts,
   readableName,
   rupees,
@@ -75,7 +75,10 @@ describe("product facts given to the model", () => {
     expect(isSkuLike("ZERN-0188")).toBe(true);
     expect(isSkuLike("ZLRG - 0001")).toBe(true);
     expect(isSkuLike("The Gilded Chevron", "ZLRG-0001")).toBe(false);
-    expect(readableName(earrings)).toBe("Diamond & Pink Sapphire Gold Earrings");
+    // Batch 20: built from the description's own first line and the shop's
+    // category, no list of metals or stones ("Diamond & Pink Sapphire Gold
+    // Earrings" before).
+    expect(readableName(earrings)).toBe("Gold, Diamond & Pink Sapphire Pear Earring");
     // Only the description's own phrase when it has no materials line.
     expect(
       readableName({
@@ -86,14 +89,16 @@ describe("product facts given to the model", () => {
     expect(readableName({ category: "rings", description: "" })).toBeNull();
   });
 
-  it("metal, stones, purity and weight come out of the description", () => {
-    expect(descriptionFacts(milgrain["description"])).toEqual({
-      metal: "Gold",
-      stones: ["Diamond"],
-      purity: "18K",
-      weight: "0.85 g",
-    });
-    expect(descriptionFacts(earrings["description"]).stones).toEqual(["Diamond", "Pink Sapphire"]);
+  it("Batch 20: the description's labelled lines, whatever the labels", () => {
+    expect(productDetails(milgrain["description"])).toEqual([
+      { label: "Metal", value: "Gold, Diamond" },
+      { label: "Gross weight", value: "0.85 gm" },
+    ]);
+    expect(productDetails("Material: Cotton. Fit: Regular. Soft and light.")).toEqual([
+      { label: "Material", value: "Cotton" },
+      { label: "Fit", value: "Regular" },
+    ]);
+    expect(productDetails("")).toEqual([]);
   });
 
   it("the model sees every field it may use, the price in whole rupees, never a picture address", () => {
@@ -111,9 +116,8 @@ describe("product facts given to the model", () => {
     const e = productFacts(earrings);
     expect(e).toMatchObject({
       title: "ZERN-0188",
-      name: "Diamond & Pink Sapphire Gold Earrings",
-      metal: "Gold",
-      weight: "2.80 g",
+      name: "Gold, Diamond & Pink Sapphire Pear Earring",
+      details: { Metal: "Gold, Diamond, Pink Sapphire Pear", "Gross weight": "2.80 gm" },
       price: "₹48,640",
       has_photo: false,
     });

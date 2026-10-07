@@ -186,7 +186,7 @@ describe("(1) one model step for a product reply", () => {
       r.sent
         .slice(1, -1)
         .every((s) =>
-          /Earrings — ₹[\d,]+\nhttps:\/\/www\.myzoori\.com\/product-detail\//.test(s.text),
+          /Earrings? — ₹[\d,]+\nhttps:\/\/www\.myzoori\.com\/product-detail\//.test(s.text),
         ),
     ).toBe(true);
     expect(r.meta["early_search"]).toMatchObject({
@@ -792,17 +792,23 @@ describe("(4a) a code-titled product's readable name", () => {
     expect(productFacts(zern207)["name"]).toBe("Zoori Ruby & Diamond Gold Earrings");
   });
 
-  it("unchanged when the Metal line says more than the description's phrase (ZERN-0188), or there is no phrase", async () => {
+  it("the first line wins when it says more than the description's phrase (ZERN-0188), or there is no phrase", async () => {
     const { readableName } = await import("./product-facts");
+    // Batch 20: the line's own words in its own order, the shop's category
+    // in the singular — no list of metals, stones or product kinds.
     expect(readableName(PRODUCTS.find((p) => p["sku"] === "ZERN-0188")!)).toBe(
-      "Diamond & Pink Sapphire Gold Earrings",
+      "Gold, Diamond & Pink Sapphire Pear Earring",
     );
     expect(readableName(PRODUCTS.find((p) => p["sku"] === "ZTNM-0030")!)).toBe(
-      "Blue Sap & Diamond Gold Tanmaniya",
+      "Gold, Blue Sap Round & Diamond Tanmaniya",
     );
     expect(
       readableName({ category: "rings", description: "Metal: Gold, Diamond. A lovely piece." }),
-    ).toBe("Diamond Gold Ring");
+    ).toBe("Gold & Diamond Ring");
+    // Any business: an apparel shop's coded T-shirt.
+    expect(readableName({ category: "T-Shirts", description: "Material: Organic cotton. Fit: Regular." })).toBe(
+      "Organic Cotton T-Shirt",
+    );
   });
 
   it("generic: no list of stones in the rule — any business's own words", async () => {
@@ -820,7 +826,7 @@ describe("(4a) a code-titled product's readable name", () => {
         category: "pendants",
         description: "Metal: Silver, Opal. Meet the Moonstone Pendant, hand-made.",
       }),
-    ).toBe("Opal Silver Pendant");
+    ).toBe("Silver & Opal Pendant");
   });
 });
 
