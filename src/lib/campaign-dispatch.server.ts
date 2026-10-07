@@ -1534,7 +1534,9 @@ class SendRecorder {
           rows.map(async (row, i) => {
             const { error: oneError } = await withRetry(async () => {
               const res = await supabase.from("messages").insert(row);
-              return (res.error as { code?: string } | null)?.code === "23505" ? { error: null } : res;
+              return (res.error as { code?: string } | null)?.code === "23505"
+                ? { error: null }
+                : res;
             });
             written.set(i, oneError ? null : row.id);
             if (oneError && row["meta_message_id"]) {

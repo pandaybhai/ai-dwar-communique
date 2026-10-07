@@ -41,7 +41,10 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
   const statusPayload = (pn: string, statuses: Array<Record<string, unknown>>) => ({
     object: "whatsapp_business_account",
     entry: [
-      { id: "waba", changes: [{ field: "messages", value: { metadata: { phone_number_id: pn }, statuses } }] },
+      {
+        id: "waba",
+        changes: [{ field: "messages", value: { metadata: { phone_number_id: pn }, statuses } }],
+      },
     ],
   });
 
@@ -50,7 +53,9 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
     const g = meta();
     await runCampaignDispatch(w.db.client, cfg(), { postMessage: g.postMessage });
     const messageOf = (recipientId: string) =>
-      w.db.rows("messages").find((m) => (m["metadata"] as Row)["campaign_recipient_id"] === recipientId)!;
+      w.db
+        .rows("messages")
+        .find((m) => (m["metadata"] as Row)["campaign_recipient_id"] === recipientId)!;
     // price_message as in the database: sets the cost once the row is delivered.
     w.db.rpcs.set("price_message", (a, d) => {
       const m = d.rows("messages").find((x) => x["id"] === a["p_message_id"]);
@@ -61,7 +66,12 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
     return { ...w, messageOf };
   }
 
-  async function deliver(db: MemoryDb, pn: string, statuses: Array<Record<string, unknown>>, eventId?: string) {
+  async function deliver(
+    db: MemoryDb,
+    pn: string,
+    statuses: Array<Record<string, unknown>>,
+    eventId?: string,
+  ) {
     const { processWebhookPayload } = await import("./whatsapp-webhook.server");
     const event =
       (eventId && db.rows("webhook_events").find((e) => e["id"] === eventId)) ||
@@ -101,7 +111,9 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
     expect(event["processed_at"]).toBeTruthy();
     expect(campaignRow(db, c.id)).toMatchObject({ delivered_count: 1 });
     // The event itself is never emitted twice.
-    expect(db.rows("analytics_events").filter((e) => e["event_type"] === "message.delivered")).toHaveLength(1);
+    expect(
+      db.rows("analytics_events").filter((e) => e["event_type"] === "message.delivered"),
+    ).toHaveLength(1);
   });
 
   it("a recipient step that failed after the message moved is redone on retry (and priced), counted once", async () => {
@@ -109,7 +121,12 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
     const c = campaigns[0]!;
     const r = c.recipients[1]!;
     const m = messageOf(r["id"] as string);
-    const st = { id: m["meta_message_id"], status: "delivered", timestamp: "1760000000", pricing: { billable: true, category: "marketing" } };
+    const st = {
+      id: m["meta_message_id"],
+      status: "delivered",
+      timestamp: "1760000000",
+      pricing: { billable: true, category: "marketing" },
+    };
     let failRecipient = true;
     db.hook = (call) =>
       call.rpc === "campaign_recipient_status" && failRecipient
@@ -153,24 +170,34 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
   it("sendCampaignTemplate: a failed row save is retried; a lost answer (duplicate) finds the row", async () => {
     let tries = 0;
     const db = fakeDb((op) => {
-      if (op.table === "conversations" && op.kind === "select") return { data: { id: "cv1" }, error: null };
+      if (op.table === "conversations" && op.kind === "select")
+        return { data: { id: "cv1" }, error: null };
       if (op.table === "messages" && op.kind === "insert") {
         tries += 1;
         return tries === 1
           ? { data: null, error: { message: "timeout" } }
           : { data: null, error: { code: "23505", message: "duplicate key" } };
       }
-      if (op.table === "messages" && op.kind === "select") return { data: { id: "m-found" }, error: null };
+      if (op.table === "messages" && op.kind === "select")
+        return { data: { id: "m-found" }, error: null };
       return undefined;
     });
-    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ messages: [{ id: "wamid.t" }] }), { status: 200 }));
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response(JSON.stringify({ messages: [{ id: "wamid.t" }] }), { status: 200 }),
+    );
     const { sendCampaignTemplate } = await import("./campaigns.server");
     const out = await sendCampaignTemplate(
       db.supabase,
       "org",
       { accountId: "acc", wabaId: "waba", phoneNumberId: "pn", accessToken: "tok" },
       { contactId: "c1", phone: "+919800000001", variables: { "1": "Asha" } },
-      { name: "promo", language: "en", variableOrder: [1], components: [{ type: "BODY", text: "Hi {{1}}" }] as never },
+      {
+        name: "promo",
+        language: "en",
+        variableOrder: [1],
+        components: [{ type: "BODY", text: "Hi {{1}}" }] as never,
+      },
       { campaignId: null, category: "marketing" },
     );
     expect(tries).toBe(2);
@@ -179,11 +206,17 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
 
   it("sendCampaignTemplate: a row that can't be saved is logged with its Meta id, and the send still counts as sent", async () => {
     const db = fakeDb((op) => {
-      if (op.table === "conversations" && op.kind === "select") return { data: { id: "cv1" }, error: null };
-      if (op.table === "messages" && op.kind === "insert") return { data: null, error: { message: "disk full" } };
+      if (op.table === "conversations" && op.kind === "select")
+        return { data: { id: "cv1" }, error: null };
+      if (op.table === "messages" && op.kind === "insert")
+        return { data: null, error: { message: "disk full" } };
       return undefined;
     });
-    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ messages: [{ id: "wamid.lost" }] }), { status: 200 }));
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ messages: [{ id: "wamid.lost" }] }), { status: 200 }),
+    );
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const { sendCampaignTemplate } = await import("./campaigns.server");
     const out = await sendCampaignTemplate(
@@ -191,12 +224,19 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
       "org",
       { accountId: "acc", wabaId: "waba", phoneNumberId: "pn", accessToken: "tok" },
       { contactId: "c1", phone: "+919800000001", variables: {} },
-      { name: "promo", language: "en", variableOrder: [], components: [{ type: "BODY", text: "Hi" }] as never },
+      {
+        name: "promo",
+        language: "en",
+        variableOrder: [],
+        components: [{ type: "BODY", text: "Hi" }] as never,
+      },
       { campaignId: "camp-1", category: "marketing" },
     );
     // Never reported as failed: Meta has it, so a caller must not send again.
     expect(out.error).toBeNull();
-    expect(logged.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/message_row_failed.*wamid\.lost/);
+    expect(logged.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(
+      /message_row_failed.*wamid\.lost/,
+    );
   });
 });
 
@@ -204,17 +244,19 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
 describe("(2) campaign credits: held once, never held forever", () => {
   /** wallet_apply as the database writes it: signed amount, reference kept. */
   function realisticWallet(db: MemoryDb) {
-    db.rpcs.set("wallet_apply", (a, d) =>
-      d.insert("wallet_ledger", {
-        organization_id: a["p_org"],
-        entry_type: a["p_type"],
-        amount: ["hold", "debit_message"].includes(String(a["p_type"]))
-          ? -Math.abs(Number(a["p_amount"]))
-          : Math.abs(Number(a["p_amount"])),
-        reference_type: a["p_ref_type"],
-        reference_id: a["p_ref_id"],
-        metadata: a["p_metadata"],
-      })["id"],
+    db.rpcs.set(
+      "wallet_apply",
+      (a, d) =>
+        d.insert("wallet_ledger", {
+          organization_id: a["p_org"],
+          entry_type: a["p_type"],
+          amount: ["hold", "debit_message"].includes(String(a["p_type"]))
+            ? -Math.abs(Number(a["p_amount"]))
+            : Math.abs(Number(a["p_amount"])),
+          reference_type: a["p_ref_type"],
+          reference_id: a["p_ref_id"],
+          metadata: a["p_metadata"],
+        })["id"],
     );
   }
   const netHeld = (db: MemoryDb, campaignId: string) =>
@@ -230,11 +272,17 @@ describe("(2) campaign credits: held once, never held forever", () => {
       );
 
   it("double hold: two runs holding at the same moment reserve the estimate once", async () => {
-    const { db, campaigns } = world({ billing: true, campaigns: [{ recipients: 2, estimatedCost: 5 }] });
+    const { db, campaigns } = world({
+      billing: true,
+      campaigns: [{ recipients: 2, estimatedCost: 5 }],
+    });
     realisticWallet(db);
     const c = campaigns[0]!;
     const { holdCampaign } = await import("./campaign-billing.server");
-    const [a, b] = await Promise.all([holdCampaign(db.client, c.orgId, c.id), holdCampaign(db.client, c.orgId, c.id)]);
+    const [a, b] = await Promise.all([
+      holdCampaign(db.client, c.orgId, c.id),
+      holdCampaign(db.client, c.orgId, c.id),
+    ]);
     expect(a.ok && b.ok).toBe(true);
     expect(campaignRow(db, c.id)["held_amount"]).toBe(5);
     expect(netHeld(db, c.id)).toBe(5);
@@ -244,7 +292,10 @@ describe("(2) campaign credits: held once, never held forever", () => {
   });
 
   it("a run that held and died before recording it: the next run adopts that hold, never holds again", async () => {
-    const { db, campaigns } = world({ billing: true, campaigns: [{ recipients: 2, estimatedCost: 5 }] });
+    const { db, campaigns } = world({
+      billing: true,
+      campaigns: [{ recipients: 2, estimatedCost: 5 }],
+    });
     realisticWallet(db);
     const c = campaigns[0]!;
     const { holdCampaign } = await import("./campaign-billing.server");
@@ -280,7 +331,9 @@ describe("(2) campaign credits: held once, never held forever", () => {
     // The other completes, but its settle's release fails (and is never retried by completion).
     let failRelease = true;
     db.hook = (call) =>
-      call.rpc === "wallet_apply" && failRelease ? { data: null, error: { message: "timeout" } } : undefined;
+      call.rpc === "wallet_apply" && failRelease
+        ? { data: null, error: { message: "timeout" } }
+        : undefined;
     const g = meta();
     await runCampaignDispatch(db.client, cfg(), { postMessage: g.postMessage });
     expect(campaignRow(db, done!.id)).toMatchObject({ status: "completed", held_amount: 6 });
@@ -294,11 +347,16 @@ describe("(2) campaign credits: held once, never held forever", () => {
     }
     // Safe to repeat: nothing left to settle, nothing released twice.
     expect(await settleEndedHolds(db.client)).toEqual({ settled: 0, failed: 0 });
-    expect(db.rows("wallet_ledger").filter((l) => l["entry_type"] === "hold_release")).toHaveLength(2);
+    expect(db.rows("wallet_ledger").filter((l) => l["entry_type"] === "hold_release")).toHaveLength(
+      2,
+    );
   });
 
   it("a paused or sending campaign keeps its hold", async () => {
-    const { db, campaigns } = world({ billing: true, campaigns: [{ recipients: 1, estimatedCost: 2, status: "paused" }] });
+    const { db, campaigns } = world({
+      billing: true,
+      campaigns: [{ recipients: 1, estimatedCost: 2, status: "paused" }],
+    });
     realisticWallet(db);
     const c = campaigns[0]!;
     const { holdCampaign, settleEndedHolds } = await import("./campaign-billing.server");
@@ -324,23 +382,41 @@ describe("(3) a paid plan fee lifts dunning, or the payment isn't marked paid", 
   const webhook = {
     event: "payment_link.paid",
     payload: {
-      payment: { entity: { id: "pay_rzp_9", amount: 118000, currency: "INR", status: "captured", method: "upi" } },
+      payment: {
+        entity: {
+          id: "pay_rzp_9",
+          amount: 118000,
+          currency: "INR",
+          status: "captured",
+          method: "upi",
+        },
+      },
     },
   };
-  function planWorld(o: { invoicePaid?: boolean; invoiceUpdateError?: boolean; restoreError?: boolean }) {
+  function planWorld(o: {
+    invoicePaid?: boolean;
+    invoiceUpdateError?: boolean;
+    restoreError?: boolean;
+  }) {
     const log: string[] = [];
     const db = fakeDb((op) => {
-      if (op.table === "payments" && op.kind === "select") return { data: PLAN_PAYMENT, error: null };
+      if (op.table === "payments" && op.kind === "select")
+        return { data: PLAN_PAYMENT, error: null };
       if (op.table === "payments" && op.kind === "update") {
         const p = op.payload as Record<string, unknown>;
         if (p["status"] === "paid") log.push("payment_paid");
         else if (op.filters.some(([n]) => n === "or")) {
           log.push("claim");
           return { data: [{ id: "pay-9" }], error: null };
-        } else if ((p["raw"] as Record<string, unknown>)?.["settle_error"]) log.push("claim_released");
+        } else if ((p["raw"] as Record<string, unknown>)?.["settle_error"])
+          log.push("claim_released");
         return { data: null, error: null };
       }
-      if (op.table === "invoices" && op.kind === "select" && op.filters.some(([n, a]) => n === "eq" && a[0] === "id"))
+      if (
+        op.table === "invoices" &&
+        op.kind === "select" &&
+        op.filters.some(([n, a]) => n === "eq" && a[0] === "id")
+      )
         return {
           data: {
             id: "inv-9",
@@ -393,7 +469,13 @@ describe("(3) a paid plan fee lifts dunning, or the payment isn't marked paid", 
     // merchant stayed paused although the payment was marked paid.
     const retry = planWorld({ invoicePaid: true });
     await settlePayment(retry.supabase, "pay-9", "pay_rzp_9", webhook);
-    expect(retry.log).toEqual(["claim", "invoice:paid", "dunning_cleared", "plan_active", "payment_paid"]);
+    expect(retry.log).toEqual([
+      "claim",
+      "invoice:paid",
+      "dunning_cleared",
+      "plan_active",
+      "payment_paid",
+    ]);
     const invoiceUpdate = retry.ops.find((o) => o.table === "invoices" && o.kind === "update")!;
     // Nothing banked twice, and the invoice keeps the payment it was paid by.
     expect(invoiceUpdate.payload).toMatchObject({ amount_paid: 1180, status: "paid" });
@@ -405,26 +487,38 @@ describe("(3) a paid plan fee lifts dunning, or the payment isn't marked paid", 
       op.table === "invoices" ? { data: null, error: { message: "connection reset" } } : undefined,
     );
     const { markPaid } = await import("./invoices.server");
-    expect((await markPaid(db.supabase, "inv-1", "pay-1", 100)).error).toMatch(/invoice read failed/);
+    expect((await markPaid(db.supabase, "inv-1", "pay-1", 100)).error).toMatch(
+      /invoice read failed/,
+    );
   });
 });
 
 // ------------------------------------------------------------------ (4)
 describe("(4) a dunning pause never strands a 'send now' campaign", () => {
   it("dunning restore of send-now: paused while sending with no time → restored due now and sent by the worker", async () => {
-    const { db, campaigns } = world({ campaigns: [{ recipients: 2 }, { recipients: 1, status: "scheduled" }] });
+    const { db, campaigns } = world({
+      campaigns: [{ recipients: 2 }, { recipients: 1, status: "scheduled" }],
+    });
     const [now, later] = campaigns;
     const future = new Date(Date.now() + 86_400_000).toISOString();
     campaignRow(db, later!.id)["scheduled_at"] = future;
-    db.rows("organization_billing_settings").push({ organization_id: now!.orgId, dunning_paused: {} });
-    db.rows("organization_billing_settings").push({ organization_id: later!.orgId, dunning_paused: {} });
+    db.rows("organization_billing_settings").push({
+      organization_id: now!.orgId,
+      dunning_paused: {},
+    });
+    db.rows("organization_billing_settings").push({
+      organization_id: later!.orgId,
+      dunning_paused: {},
+    });
     const { pauseOutbound, restoreAfterPayment } = await import("./dunning.server");
     for (const c of [now!, later!]) await pauseOutbound(db.client, c.orgId);
     expect(campaignRow(db, now!.id)["status"]).toBe("paused");
 
     for (const c of [now!, later!]) await restoreAfterPayment(db.client, c.orgId);
     expect(campaignRow(db, now!.id)["status"]).toBe("scheduled");
-    expect(Date.parse(String(campaignRow(db, now!.id)["scheduled_at"]))).toBeLessThanOrEqual(Date.now());
+    expect(Date.parse(String(campaignRow(db, now!.id)["scheduled_at"]))).toBeLessThanOrEqual(
+      Date.now(),
+    );
     // A campaign scheduled for later keeps its time.
     expect(campaignRow(db, later!.id)).toMatchObject({ status: "scheduled", scheduled_at: future });
 
@@ -461,7 +555,8 @@ describe("(5) a Razorpay event is never answered ok unless it was stored and han
   type Post = (a: { request: Request; params?: Record<string, string> }) => Promise<Response>;
   async function billingPost(body: unknown) {
     const { Route } = await import("../routes/api/public/razorpay-webhook");
-    const post = (Route.options as unknown as { server: { handlers: { POST: Post } } }).server.handlers.POST;
+    const post = (Route.options as unknown as { server: { handlers: { POST: Post } } }).server
+      .handlers.POST;
     return post({
       request: new Request("http://x/api/public/razorpay-webhook", {
         method: "POST",
@@ -475,7 +570,10 @@ describe("(5) a Razorpay event is never answered ok unless it was stored and han
     payload: { payment: { entity: { id: "pay_rzp_1", notes: { payment_id: "pay-1" } } } },
   };
   /** webhook_events as stored: the event row already there (or not), how old, and its state. */
-  function eventsDb(o: { insertError?: { code?: string; message: string }; stored?: { processed: boolean; error: string | null; ageMs: number } }) {
+  function eventsDb(o: {
+    insertError?: { code?: string; message: string };
+    stored?: { processed: boolean; error: string | null; ageMs: number };
+  }) {
     return fakeDb((op) => {
       if (op.table !== "webhook_events") return undefined;
       if (op.kind === "insert")
@@ -513,7 +611,9 @@ describe("(5) a Razorpay event is never answered ok unless it was stored and han
     const res = await billingPost(failedPayment);
     expect(res.status).toBe(200);
     expect(handled(db)).toBe(true);
-    const take = db.ops.find((op) => op.table === "webhook_events" && op.filters.some(([n]) => n === "lt"))!;
+    const take = db.ops.find(
+      (op) => op.table === "webhook_events" && op.filters.some(([n]) => n === "lt"),
+    )!;
     // The retake is one conditional update that also claims it.
     expect(take.filters).toContainEqual(["is", ["processed_at", null]]);
     expect(Object.keys(take.payload as object)).toEqual(["received_at"]);
@@ -534,10 +634,12 @@ describe("(5) a Razorpay event is never answered ok unless it was stored and han
 
   it("a subscription charge whose write fails answers 500 so Razorpay delivers it again", async () => {
     const db = fakeDb((op) => {
-      if (op.table === "webhook_events" && op.kind === "insert") return { data: { id: "we-1" }, error: null };
+      if (op.table === "webhook_events" && op.kind === "insert")
+        return { data: { id: "we-1" }, error: null };
       if (op.table === "subscriptions" && op.kind === "select")
         return { data: { id: "sub-1", organization_id: "org-1", raw: {} }, error: null };
-      if (op.table === "organizations" && op.kind === "update") return { data: null, error: { message: "timeout" } };
+      if (op.table === "organizations" && op.kind === "update")
+        return { data: null, error: { message: "timeout" } };
       return undefined;
     });
     client = db.supabase;
@@ -548,19 +650,24 @@ describe("(5) a Razorpay event is never answered ok unless it was stored and han
     });
     expect(res.status).toBe(500);
     const marked = db.ops.find((op) => op.table === "webhook_events" && op.kind === "update")!;
-    expect(String((marked.payload as Record<string, unknown>)["error"])).toMatch(/plan status failed/);
+    expect(String((marked.payload as Record<string, unknown>)["error"])).toMatch(
+      /plan status failed/,
+    );
   });
 
   it("a paid flow whose resume fails answers 500 (it used to answer ok and drop the payment)", async () => {
     const resume = vi.fn(async () => {
       throw new Error("flow_runs read failed");
     });
-    vi.doMock("@/lib/flow-connections.server", () => ({ razorpayWebhookSecretFor: async () => "secret" }));
+    vi.doMock("@/lib/flow-connections.server", () => ({
+      razorpayWebhookSecretFor: async () => "secret",
+    }));
     vi.doMock("@/lib/flow-engine.server", () => ({ resumePaidRun: resume }));
     client = fakeDb(() => undefined).supabase;
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { Route } = await import("../routes/api/public/razorpay-flow-webhook/$orgId");
-    const post = (Route.options as unknown as { server: { handlers: { POST: Post } } }).server.handlers.POST;
+    const post = (Route.options as unknown as { server: { handlers: { POST: Post } } }).server
+      .handlers.POST;
     const orgId = "11111111-2222-3333-4444-555555555555";
     const res = await post({
       params: { orgId },
@@ -569,7 +676,14 @@ describe("(5) a Razorpay event is never answered ok unless it was stored and han
         headers: { "x-razorpay-signature": "sig" },
         body: JSON.stringify({
           event: "payment_link.paid",
-          payload: { payment_link: { entity: { id: "plink_1", notes: { aidwar_org: orgId, aidwar_run: "run-1", aidwar_node: "n1" } } } },
+          payload: {
+            payment_link: {
+              entity: {
+                id: "plink_1",
+                notes: { aidwar_org: orgId, aidwar_run: "run-1", aidwar_node: "n1" },
+              },
+            },
+          },
         }),
       }),
     });
@@ -579,6 +693,8 @@ describe("(5) a Razorpay event is never answered ok unless it was stored and han
 });
 
 // ------------------------------------------------------------------ (6)
+const noEvent = async () => {};
+
 describe("(6) older event flows: a send is never made (or charged) twice", () => {
   const MOCKED = [
     "@/lib/whatsapp-webhook.server",
@@ -599,7 +715,12 @@ describe("(6) older event flows: a send is never made (or charged) twice", () =>
     vi.stubEnv("CRON_SECRET", "cron");
     vi.doMock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => client }));
     vi.doMock("@/lib/campaigns.server", () => ({
-      loadSenderContext: async () => ({ accountId: "acc", wabaId: "waba", phoneNumberId: "pn", accessToken: "t" }),
+      loadSenderContext: async () => ({
+        accountId: "acc",
+        wabaId: "waba",
+        phoneNumberId: "pn",
+        accessToken: "t",
+      }),
       sendCampaignTemplate: async (...a: unknown[]) => {
         order.push("meta_send");
         sends.push(a);
@@ -618,8 +739,12 @@ describe("(6) older event flows: a send is never made (or charged) twice", () =>
       resolveFlowVariables: async () => ({}),
       flowCarouselCards: async () => [],
     }));
-    vi.doMock("@/lib/events.server", () => ({ emitEvent: async () => {} }));
-    vi.doMock("@/lib/cod.server", () => ({ noteCodAsk: async () => {}, expireCodConfirmations: async () => 0 }));
+    // A named no-op: the build's registry guard reads "emitEvent: <name>" as an alias.
+    vi.doMock("@/lib/events.server", () => ({ emitEvent: noEvent }));
+    vi.doMock("@/lib/cod.server", () => ({
+      noteCodAsk: async () => {},
+      expireCodConfirmations: async () => 0,
+    }));
     vi.doMock("@/lib/flow-engine.server", () => ({ tickRuns: async () => ({}) }));
     vi.doMock("@/lib/flow-triggers.server", () => ({ dispatchNoReply: async () => ({}) }));
   });
@@ -630,7 +755,10 @@ describe("(6) older event flows: a send is never made (or charged) twice", () =>
   });
 
   /** One claimed scheduled send, in the state a previous tick left it. */
-  function sendWorld(o: { error: string | null; priorMessage?: { id: string; status: string } | null }) {
+  function sendWorld(o: {
+    error: string | null;
+    priorMessage?: { id: string; status: string } | null;
+  }) {
     const row: Record<string, unknown> = {
       id: "ss-1",
       organization_id: "org-1",
@@ -647,30 +775,74 @@ describe("(6) older event flows: a send is never made (or charged) twice", () =>
       (op) => {
         if (op.table === "scheduled_sends" && op.kind === "update") {
           const p = op.payload as Record<string, unknown>;
-          order.push(p["error"] === "send_started" ? "mark_started" : `finish:${String(p["status"])}`);
+          order.push(
+            p["error"] === "send_started" ? "mark_started" : `finish:${String(p["status"])}`,
+          );
           if (row["status"] === "scheduled") Object.assign(row, p);
           return { data: null, error: null };
         }
-        if (op.table === "scheduled_sends" && op.kind === "select") return { data: [], error: null };
-        if (op.table === "messages" && op.kind === "select") return { data: o.priorMessage ?? null, error: null };
+        if (op.table === "scheduled_sends" && op.kind === "select")
+          return { data: [], error: null };
+        if (op.table === "messages" && op.kind === "select")
+          return { data: o.priorMessage ?? null, error: null };
         if (op.table === "flows")
-          return { data: { id: "flow-1", key: "order_lifecycle", is_enabled: true, whatsapp_account_id: null, config: {} }, error: null };
+          return {
+            data: {
+              id: "flow-1",
+              key: "order_lifecycle",
+              is_enabled: true,
+              whatsapp_account_id: null,
+              config: {},
+            },
+            error: null,
+          };
         if (op.table === "flow_steps")
-          return { data: { id: "step-1", step_order: 1, template_id: "tpl-1", condition: null, is_enabled: true }, error: null };
+          return {
+            data: {
+              id: "step-1",
+              step_order: 1,
+              template_id: "tpl-1",
+              condition: null,
+              is_enabled: true,
+            },
+            error: null,
+          };
         if (op.table === "contacts")
-          return { data: { id: "c-1", name: "Asha", phone: "+919800000001", opt_in_status: "opted_in" }, error: null };
+          return {
+            data: { id: "c-1", name: "Asha", phone: "+919800000001", opt_in_status: "opted_in" },
+            error: null,
+          };
         if (op.table === "message_templates")
-          return { data: { name: "order_update", language: "en", category: "UTILITY", status: "APPROVED", components: [] }, error: null };
+          return {
+            data: {
+              name: "order_update",
+              language: "en",
+              category: "UTILITY",
+              status: "APPROVED",
+              components: [],
+            },
+            error: null,
+          };
         return undefined;
       },
-      (call) => (call.name === "claim_scheduled_sends" ? { data: [{ ...row }], error: null } : undefined),
+      (call) =>
+        call.name === "claim_scheduled_sends" ? { data: [{ ...row }], error: null } : undefined,
     );
     return { db, row };
   }
   async function tick() {
     const { Route } = await import("../routes/api/internal/flow-worker");
-    const post = (Route.options as unknown as { server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } } }).server.handlers.POST;
-    return post({ request: new Request("http://x/api/internal/flow-worker", { method: "POST", headers: { "x-cron-secret": "cron" } }) });
+    const post = (
+      Route.options as unknown as {
+        server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } };
+      }
+    ).server.handlers.POST;
+    return post({
+      request: new Request("http://x/api/internal/flow-worker", {
+        method: "POST",
+        headers: { "x-cron-secret": "cron" },
+      }),
+    });
   }
 
   it("a send is marked started before Meta is asked, and finished sent after", async () => {
@@ -682,7 +854,10 @@ describe("(6) older event flows: a send is never made (or charged) twice", () =>
   });
 
   it("event-flow no double send: re-taken after a run died post-send, the message found → sent, never sent again", async () => {
-    const w = sendWorld({ error: "send_started", priorMessage: { id: "m-old", status: "pending" } });
+    const w = sendWorld({
+      error: "send_started",
+      priorMessage: { id: "m-old", status: "pending" },
+    });
     client = w.db.supabase;
     await tick();
     expect(sends).toHaveLength(0);
@@ -717,7 +892,12 @@ describe("(8) AI usage counters never lose a count", () => {
       db.rpcs.set("ai_usage_add", (a, d) => {
         const row = d
           .rows("ai_usage")
-          .find((r) => r["organization_id"] === a["p_org"] && r["usage_date"] === a["p_usage_date"] && r["task"] === a["p_task"]);
+          .find(
+            (r) =>
+              r["organization_id"] === a["p_org"] &&
+              r["usage_date"] === a["p_usage_date"] &&
+              r["task"] === a["p_task"],
+          );
         if (!row) {
           d.insert("ai_usage", {
             organization_id: a["p_org"],
@@ -774,7 +954,13 @@ describe("(9) small money fixes", () => {
       op.table === "profiles" ? { data: { is_super_admin: true }, error: null } : undefined,
     );
     const { setFeatureOverride } = await import("./billing.server");
-    await setFeatureOverride(db.supabase, { organizationId: "org-1", featureKey: "flows", enabled: false, force: true, actorId: "u-1" });
+    await setFeatureOverride(db.supabase, {
+      organizationId: "org-1",
+      featureKey: "flows",
+      enabled: false,
+      force: true,
+      actorId: "u-1",
+    });
     const cancel = db.ops.find((o) => o.table === "scheduled_sends" && o.kind === "update")!;
     expect(cancel.payload).toEqual({ status: "cancelled" });
     expect(cancel.filters).toContainEqual(["eq", ["status", "scheduled"]]);
@@ -787,7 +973,11 @@ describe("(9) small money fixes", () => {
     });
     async function control(db: MemoryDb, orgId: string, campaignId: string, action: string) {
       vi.doMock("@/lib/whatsapp-api.server", () => ({
-        requireOrgMember: async () => ({ supabase: db.client, organizationId: orgId, userId: "u-1" }),
+        requireOrgMember: async () => ({
+          supabase: db.client,
+          organizationId: orgId,
+          userId: "u-1",
+        }),
         isResponse: (r: unknown) => r instanceof Response,
         jsonError: (error: string, status = 400) => Response.json({ error }, { status }),
         logServerActivity: async () => {},
@@ -796,7 +986,11 @@ describe("(9) small money fixes", () => {
       const settle = vi.fn(async () => ({ ok: true }));
       vi.doMock("@/lib/campaign-billing.server", () => ({ settleCampaignSpend: settle }));
       const { Route } = await import("../routes/api/campaigns/control");
-      const post = (Route.options as unknown as { server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } } }).server.handlers.POST;
+      const post = (
+        Route.options as unknown as {
+          server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } };
+        }
+      ).server.handlers.POST;
       const res = await post({
         request: new Request("http://x/api/campaigns/control", {
           method: "POST",
@@ -830,7 +1024,8 @@ describe("(9) small money fixes", () => {
       const { db, campaigns } = world({ campaigns: [{ recipients: 1, status: "paused" }] });
       const c = campaigns[0]!;
       db.hook = (call) => {
-        if (call.table === "campaigns" && call.kind === "update") campaignRow(db, c.id)["status"] = "cancelled";
+        if (call.table === "campaigns" && call.kind === "update")
+          campaignRow(db, c.id)["status"] = "cancelled";
         return undefined;
       };
       const { res } = await control(db, c.orgId, c.id, "resume");
@@ -881,7 +1076,8 @@ describe("(9) small money fixes", () => {
       payload: { headline: "h", detail: "d", link: "https://aidwar.in/admin/ai" },
     };
     const db = fakeDb((op) => {
-      if (op.table === "billing_notifications" && op.kind === "select") return { data: [{ ...notice }], error: null };
+      if (op.table === "billing_notifications" && op.kind === "select")
+        return { data: [{ ...notice }], error: null };
       if (op.table === "billing_notifications" && op.kind === "update") {
         const p = op.payload as Record<string, unknown>;
         if (p["status"]) {
@@ -889,20 +1085,36 @@ describe("(9) small money fixes", () => {
           return { data: null, error: null };
         }
         // The claim: a compare-and-set on sent_at.
-        const expected = op.filters.find(([n, a]) => n === "eq" && a[0] === "sent_at")?.[1][1] ?? null;
-        if (notice["status"] !== "queued" || (notice["sent_at"] ?? null) !== expected) return { data: [], error: null };
+        const expected =
+          op.filters.find(([n, a]) => n === "eq" && a[0] === "sent_at")?.[1][1] ?? null;
+        if (notice["status"] !== "queued" || (notice["sent_at"] ?? null) !== expected)
+          return { data: [], error: null };
         notice["sent_at"] = p["sent_at"];
         return { data: [{ id: "n1" }], error: null };
       }
       if (op.table === "whatsapp_accounts")
         return {
-          data: [{ id: "acc", organization_id: "plat", waba_id: "w", phone_number_id: "pn", display_phone_number: "91", status: "active", is_default: true }],
+          data: [
+            {
+              id: "acc",
+              organization_id: "plat",
+              waba_id: "w",
+              phone_number_id: "pn",
+              display_phone_number: "91",
+              status: "active",
+              is_default: true,
+            },
+          ],
           error: null,
         };
-      if (op.table === "whatsapp_credentials") return { data: { access_token: "tok" }, error: null };
+      if (op.table === "whatsapp_credentials")
+        return { data: { access_token: "tok" }, error: null };
       if (op.table === "contacts") return { data: [], error: null };
       if (op.table === "message_templates")
-        return { data: { name: "admin_ai_provider_alert", language: "en", status: "APPROVED" }, error: null };
+        return {
+          data: { name: "admin_ai_provider_alert", language: "en", status: "APPROVED" },
+          error: null,
+        };
       return undefined;
     });
     const sent: unknown[] = [];
@@ -911,7 +1123,10 @@ describe("(9) small money fixes", () => {
       return new Response(JSON.stringify({ messages: [{ id: "wamid.1" }] }), { status: 200 });
     });
     const { drainBillingNotifications } = await import("./billing-notify.server");
-    const [a, b] = await Promise.all([drainBillingNotifications(db.supabase), drainBillingNotifications(db.supabase)]);
+    const [a, b] = await Promise.all([
+      drainBillingNotifications(db.supabase),
+      drainBillingNotifications(db.supabase),
+    ]);
     expect(sent).toHaveLength(1);
     expect(a.sent + b.sent).toBe(1);
     expect(notice["status"]).toBe("sent");
@@ -922,14 +1137,22 @@ describe("(9) small money fixes", () => {
     const notices: Array<Record<string, unknown>> = [];
     const db = fakeDb((op) => {
       if (op.table === "organizations" && op.kind === "select")
-        return { data: [{ id: "org-1", plan_status: "trial", trial_ends_at: endsAt, plan_version_id: "pv-1" }], error: null };
+        return {
+          data: [
+            { id: "org-1", plan_status: "trial", trial_ends_at: endsAt, plan_version_id: "pv-1" },
+          ],
+          error: null,
+        };
       if (op.table === "billing_notifications" && op.kind === "insert") {
         notices.push(op.payload as Record<string, unknown>);
         return { data: null, error: null };
       }
       // sweepTrials' "a heads-up in the last week?" check.
       if (op.table === "billing_notifications" && op.kind === "select")
-        return { data: notices.filter((n) => n["kind"] === "trial_ending").map(() => ({ id: "x" })), error: null };
+        return {
+          data: notices.filter((n) => n["kind"] === "trial_ending").map(() => ({ id: "x" })),
+          error: null,
+        };
       return undefined;
     });
     const { runPlanBilling } = await import("./plan-billing.server");
@@ -960,8 +1183,18 @@ describe("the payment claim in settlePayment is locked as it is (verified live, 
   const webhook = {
     event: "payment_link.paid",
     payload: {
-      payment: { entity: { id: "pay_rzp_1", amount: 236000, currency: "INR", status: "captured", method: "upi" } },
-      payment_link: { entity: { id: "plink_1", amount_paid: 236000, notes: { payment_id: "pay-1" } } },
+      payment: {
+        entity: {
+          id: "pay_rzp_1",
+          amount: 236000,
+          currency: "INR",
+          status: "captured",
+          method: "upi",
+        },
+      },
+      payment_link: {
+        entity: { id: "plink_1", amount_paid: 236000, notes: { payment_id: "pay-1" } },
+      },
     },
   };
   function claimWorld(claimReturns: Array<{ id: string }>) {
@@ -985,22 +1218,31 @@ describe("the payment claim in settlePayment is locked as it is (verified live, 
     const { settlePayment } = await import("./billing.server");
     const out = await settlePayment(db.supabase, "pay-1", "pay_rzp_1", webhook);
     const claim = db.ops.find((o) => o.table === "payments" && o.kind === "update")!;
-    expect((claim.payload as { raw: Record<string, unknown> }).raw["settle_claimed_at"]).toBe("2026-10-07T10:00:00.000Z");
+    expect((claim.payload as { raw: Record<string, unknown> }).raw["settle_claimed_at"]).toBe(
+      "2026-10-07T10:00:00.000Z",
+    );
     expect(claim.filters).toEqual([
       ["eq", ["id", "pay-1"]],
       ["neq", ["status", "paid"]],
-      ["or", ["raw->>settle_claimed_at.is.null,raw->>settle_claimed_at.lt.2026-10-07T09:55:00.000Z"]],
+      [
+        "or",
+        ["raw->>settle_claimed_at.is.null,raw->>settle_claimed_at.lt.2026-10-07T09:55:00.000Z"],
+      ],
     ]);
     expect(claim.select).toEqual(["id"]);
     // The row comes back (as it does live), so the credit is taken.
     expect(out.credited).toBe(true);
-    expect(db.rpcs.filter((r) => r.name === "wallet_apply").map((r) => r.args["p_type"])).toEqual(["credit_purchase"]);
+    expect(db.rpcs.filter((r) => r.name === "wallet_apply").map((r) => r.args["p_type"])).toEqual([
+      "credit_purchase",
+    ]);
   });
 
   it("payment-claim lock: a claim that returns no row (another delivery holds it) credits nothing", async () => {
     const db = claimWorld([]);
     const { settlePayment } = await import("./billing.server");
-    expect(await settlePayment(db.supabase, "pay-1", "pay_rzp_1", webhook)).toEqual({ credited: false });
+    expect(await settlePayment(db.supabase, "pay-1", "pay_rzp_1", webhook)).toEqual({
+      credited: false,
+    });
     expect(db.rpcs.filter((r) => r.name === "wallet_apply")).toHaveLength(0);
   });
 });

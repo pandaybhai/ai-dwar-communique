@@ -136,7 +136,9 @@ export async function settleEndedHolds(
     if (result.ok) settled += 1;
     else {
       failed += 1;
-      console.error(JSON.stringify({ at: "campaign_settle_failed", campaign_id: row.id, error: result.error }));
+      console.error(
+        JSON.stringify({ at: "campaign_settle_failed", campaign_id: row.id, error: result.error }),
+      );
     }
   }
   return { settled, failed };
