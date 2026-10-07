@@ -920,7 +920,10 @@ export function zooriWorld(c: Case, shop: ReplayShop = ZOORI_SHOP) {
           assigned_to: null,
           needs_human: false,
           status: "open",
-          last_customer_message_at: new Date(now).toISOString(),
+          // The customer's message just arrived, by the test's own clock (a
+          // frozen one in the replays): a fixed date here closed the 24-hour
+          // window for every test that runs on the real clock a day later.
+          last_customer_message_at: new Date(Date.now()).toISOString(),
           contacts: { name: "Tester" },
         },
         error: null,
