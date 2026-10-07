@@ -116,11 +116,22 @@ describe("Show products — photos first", () => {
     expect(after.result).toEqual({ ok: true, found: true, shown: 3, error: null });
   });
   it("text-only products fill only when there aren't enough with a photo", async () => {
+    // Batch 16 (c): Zoori's two earrings are code-only ("ZERN-0207") with no
+    // photo — they are never sent now, so the step takes its none path.
     const earrings = await show({ category: "earrings", max_items: 3, photos_first: true });
-    // Zoori's two earrings have no photo: they still go, as text.
     expect(earrings.images).toEqual([]);
-    expect(earrings.texts).toHaveLength(1);
-    expect(earrings.texts[0]).toMatch(/ZERN-0207 — ₹39,295[\s\S]*ZERN-0188 — ₹48,640/);
+    expect(earrings.texts).toEqual([]);
+    expect(earrings.result).toEqual({ ok: true, found: false, shown: 0, error: null });
+    // The fill itself is unchanged: a real-named product without a photo fills a place photos can't.
+    const { pickProducts } = await import("./flow-products.server");
+    const rows = [
+      { title: "Plain Band", image_url: null },
+      { title: "Photo Ring", image_url: "https://x/1.jpg" },
+    ];
+    expect(pickProducts(rows, { category: "", minPrice: null, maxPrice: null, limit: 2, photosFirst: true }).map((r) => r["title"])).toEqual([
+      "Photo Ring",
+      "Plain Band",
+    ]);
   });
 });
 
@@ -138,11 +149,12 @@ describe("Show products — readable names", () => {
     expect(rings.texts[0] ?? rings.images[0]).toMatch(/^Plain Band One/);
   });
   it("text-only lines use the readable name too", async () => {
+    // Batch 16 (c): a code-only title with no photo is skipped even when a
+    // readable name could be made for it (was: "Zoori Ruby & Diamond Gold
+    // Earrings (ZERN-0207) — ₹39,295" as a text line).
     const r = await show({ category: "earrings", max_items: 2, readable_names: true });
-    // Batch 15C: ZERN-0207's description names "the Zoori Ruby & Diamond Gold
-    // Earrings" — more than its "Metal: Gold, Diamond" line — so that is its name.
-    expect(r.texts[0]).toMatch(/^Zoori Ruby & Diamond Gold Earrings \(ZERN-0207\) — ₹39,295/);
-    expect(r.texts[0]).toMatch(/Diamond & Pink Sapphire Gold Earrings \(ZERN-0188\) — ₹48,640/);
+    expect(r.texts).toEqual([]);
+    expect(JSON.stringify(r.sent)).not.toMatch(/ZERN-0207|ZERN-0188/);
   });
 });
 
@@ -151,14 +163,15 @@ describe("Show products — keyword", () => {
     const r = await show({ category: "", keyword: "{{stones}}", max_items: 5 }, { stones: "Ruby" });
     // The tanmaniya's materials line and both earrings' descriptions name rubies; no ring does.
     expect(r.images).toEqual([expect.stringMatching(/^ZTNM-0031 — ₹58,626/)]);
-    expect(r.texts).toHaveLength(1);
-    expect(r.texts[0]).toMatch(/^ZERN-0207 — ₹39,295[\s\S]*ZERN-0188 — ₹48,640/);
+    // Batch 16 (c): the two code-only earrings without a photo are no longer sent as text.
+    expect(r.texts).toEqual([]);
     expect(JSON.stringify(r.sent)).not.toMatch(/Gilded|Onyx|ZTNM-0030/);
   });
   it("several choices: Pink Sapphire, Emerald", async () => {
     const r = await show({ keyword: "Pink Sapphire, Emerald", max_items: 5, readable_names: true });
     expect([...r.images, ...r.texts].join("\n")).toMatch(/ZTNM-0031/);
-    expect([...r.images, ...r.texts].join("\n")).toMatch(/ZERN-0188/);
+    // Batch 16 (c): ZERN-0188 matches but is code-only with no photo — skipped.
+    expect([...r.images, ...r.texts].join("\n")).not.toMatch(/ZERN-0188/);
     expect([...r.images, ...r.texts].join("\n")).not.toMatch(/ZERN-0207|Gilded/);
   });
   it("nothing has the word → the 'None match' path, nothing sent", async () => {

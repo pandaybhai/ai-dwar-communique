@@ -506,6 +506,16 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     // the budget, the words the customer typed are noise.
     const query = category && looksLikeSentence(rawQuery) ? "" : rawQuery;
 
+    // Batch 16 (flows "Show products", any direct call — not Aiden, whose
+    // shelf rule is below): a shelf is that shelf only. "%rings%" also
+    // matches "earrings"; the category must start at a word ("Rings", "Gold
+    // rings"), never inside another word. Fewer matches means fewer products
+    // sent — never another shelf topping them up. Read wider, then cut back.
+    const strictShelf = !keepUntaggedGender && Boolean(category);
+    const shelfWord = strictShelf ? new RegExp(`(^|[^\\p{L}\\p{N}])${category.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu") : null;
+    const onShelf = (rows: Array<Record<string, unknown>>) =>
+      shelfWord ? rows.filter((r) => shelfWord.test(String(r["category"] ?? ""))) : rows;
+
     const run = async (
       withQuery: string,
       withMaxPrice: number | null,
@@ -523,7 +533,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
         .eq("organization_id", ctx.organizationId)
         // Hidden products never reach a customer, whether searching or browsing.
         .eq("is_visible", true)
-        .limit(rowLimit);
+        .limit(strictShelf ? Math.max(rowLimit, 100) : rowLimit);
 
       if (withQuery) {
         const tsquery = toTsQuery(withQuery);
@@ -566,7 +576,8 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
       const { data, error } = await request;
       if (error) return { rows: null as Array<Record<string, unknown>> | null, error: error.message };
-      return { rows: (data ?? []) as Array<Record<string, unknown>>, error: null };
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      return { rows: strictShelf ? onShelf(rows).slice(0, rowLimit) : rows, error: null };
     };
 
     const sortRows = (rows: Array<Record<string, unknown>>, searched: boolean) => {

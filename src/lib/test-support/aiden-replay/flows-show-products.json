@@ -168,7 +168,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -198,14 +198,6 @@
           "link": "https://myzoori.com/storage/images/products/a23feb36-bf30-438e-80f0-7185cb470277/ZGRG-0002.468-1786446015.jpg",
           "caption": "Onyx Skyline — ₹52,275\nhttps://myzoori.com/product-detail/a23feb36-bf30-438e-80f0-7185cb470277"
         }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
       }
     ]
   },
@@ -213,7 +205,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -242,14 +234,6 @@
         "image": {
           "link": "https://www.myzoori.com/storage/images/products/a27819af-0635-460a-b118-c8d7dba202cd/zgrg-0005.jpg",
           "caption": "Tiered Vertex — ₹49,197\nhttps://www.myzoori.com/product-detail/a27819af-0635-460a-b118-c8d7dba202cd"
-        }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
         }
       }
     ]
@@ -962,7 +946,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -992,14 +976,6 @@
           "link": "https://myzoori.com/storage/images/products/a23feb36-bf30-438e-80f0-7185cb470277/ZGRG-0002.468-1786446015.jpg",
           "caption": "Onyx Skyline — ₹52,275\nhttps://myzoori.com/product-detail/a23feb36-bf30-438e-80f0-7185cb470277"
         }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
       }
     ]
   },
@@ -1007,7 +983,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -1036,14 +1012,6 @@
         "image": {
           "link": "https://www.myzoori.com/storage/images/products/a27819af-0635-460a-b118-c8d7dba202cd/zgrg-0005.jpg",
           "caption": "Tiered Vertex — ₹49,197\nhttps://www.myzoori.com/product-detail/a27819af-0635-460a-b118-c8d7dba202cd"
-        }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
         }
       }
     ]
@@ -1096,250 +1064,110 @@
   "earrings | -": {
     "result": {
       "ok": true,
-      "found": true,
-      "shown": 2,
+      "found": false,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "earrings | -20000": {
     "result": {
       "ok": true,
       "found": false,
-      "shown": 2,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "We don't have earrings under ₹20,000 right now — our earrings start at ₹39,295. Here are the closest ones:"
-        }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "earrings | -50000": {
     "result": {
       "ok": true,
-      "found": true,
-      "shown": 2,
+      "found": false,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "earrings | 30000-": {
     "result": {
       "ok": true,
-      "found": true,
-      "shown": 2,
+      "found": false,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "earrings | 20000-50000": {
     "result": {
       "ok": true,
-      "found": true,
-      "shown": 2,
+      "found": false,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "earrings | -5000": {
     "result": {
       "ok": true,
       "found": false,
-      "shown": 2,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "We don't have earrings under ₹5,000 right now — our earrings start at ₹39,295. Here are the closest ones:"
-        }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "jhumka | -": {
     "result": {
       "ok": true,
-      "found": true,
-      "shown": 2,
+      "found": false,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "jhumka | -20000": {
     "result": {
       "ok": true,
       "found": false,
-      "shown": 2,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "We don't have earrings under ₹20,000 right now — our earrings start at ₹39,295. Here are the closest ones:"
-        }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "jhumka | -50000": {
     "result": {
       "ok": true,
-      "found": true,
-      "shown": 2,
+      "found": false,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "jhumka | 30000-": {
     "result": {
       "ok": true,
-      "found": true,
-      "shown": 2,
+      "found": false,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "jhumka | 20000-50000": {
     "result": {
       "ok": true,
-      "found": true,
-      "shown": 2,
+      "found": false,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "jhumka | -5000": {
     "result": {
       "ok": true,
       "found": false,
-      "shown": 2,
+      "shown": 0,
       "error": null
     },
-    "sent": [
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "We don't have earrings under ₹5,000 right now — our earrings start at ₹39,295. Here are the closest ones:"
-        }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
-      }
-    ]
+    "sent": []
   },
   "Pendants | -": {
     "result": {
@@ -1730,7 +1558,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -1760,14 +1588,6 @@
           "link": "https://www.myzoori.com/storage/images/products/a27819af-0635-460a-b118-c8d7dba202cd/zgrg-0005.jpg",
           "caption": "Tiered Vertex — ₹49,197\nhttps://www.myzoori.com/product-detail/a27819af-0635-460a-b118-c8d7dba202cd"
         }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
       }
     ]
   },
@@ -1775,7 +1595,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -1804,14 +1624,6 @@
         "image": {
           "link": "https://myzoori.com/storage/images/products/a241b980-d356-496c-98ec-d5d19812b7b4/ZGRG-0002.468-1786446085.jpg",
           "caption": "Industrial Sparkle/ The Urban Edge — ₹41,920\nhttps://myzoori.com/product-detail/a241b980-d356-496c-98ec-d5d19812b7b4"
-        }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
         }
       }
     ]
@@ -1984,7 +1796,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -2014,14 +1826,6 @@
           "link": "https://www.myzoori.com/storage/images/products/a27819af-0635-460a-b118-c8d7dba202cd/zgrg-0005.jpg",
           "caption": "Tiered Vertex — ₹49,197\nhttps://www.myzoori.com/product-detail/a27819af-0635-460a-b118-c8d7dba202cd"
         }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
       }
     ]
   },
@@ -2029,7 +1833,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -2058,14 +1862,6 @@
         "image": {
           "link": "https://myzoori.com/storage/images/products/a241b980-d356-496c-98ec-d5d19812b7b4/ZGRG-0002.468-1786446085.jpg",
           "caption": "Industrial Sparkle/ The Urban Edge — ₹41,920\nhttps://myzoori.com/product-detail/a241b980-d356-496c-98ec-d5d19812b7b4"
-        }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
         }
       }
     ]
@@ -2476,7 +2272,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -2506,14 +2302,6 @@
           "link": "https://myzoori.com/storage/images/products/a23feb36-bf30-438e-80f0-7185cb470277/ZGRG-0002.468-1786446015.jpg",
           "caption": "Onyx Skyline — ₹52,275\nhttps://myzoori.com/product-detail/a23feb36-bf30-438e-80f0-7185cb470277"
         }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
-        }
       }
     ]
   },
@@ -2521,7 +2309,7 @@
     "result": {
       "ok": true,
       "found": true,
-      "shown": 5,
+      "shown": 3,
       "error": null
     },
     "sent": [
@@ -2550,14 +2338,6 @@
         "image": {
           "link": "https://www.myzoori.com/storage/images/products/a27819af-0635-460a-b118-c8d7dba202cd/zgrg-0005.jpg",
           "caption": "Tiered Vertex — ₹49,197\nhttps://www.myzoori.com/product-detail/a27819af-0635-460a-b118-c8d7dba202cd"
-        }
-      },
-      {
-        "messaging_product": "whatsapp",
-        "to": "917981223192",
-        "type": "text",
-        "text": {
-          "body": "ZERN-0207 — ₹39,295\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084\n\nZERN-0188 — ₹48,640\nhttps://www.myzoori.com/product-detail/a2e9cd3a-14e2-49be-a883-9de0c1410040"
         }
       }
     ]
