@@ -490,7 +490,7 @@
       },
       {
         "type": "text",
-        "text": "Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
+        "text": "Zoori Ruby & Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
       },
       {
         "type": "text",
@@ -505,6 +505,19 @@
       "send_products"
     ],
     "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "query": "earrings dikhao",
+          "limit": 5
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "ZERN-0188",
+          "ZERN-0207"
+        ]
+      },
       {
         "tool": "catalog_search",
         "args": {
@@ -528,7 +541,7 @@
             },
             {
               "product_id": "26263129-0ae5-41ab-ba9c-aed5fa873571",
-              "caption": "Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
+              "caption": "Zoori Ruby & Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
             }
           ]
         },
@@ -554,7 +567,7 @@
       },
       {
         "type": "text",
-        "text": "Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
+        "text": "Zoori Ruby & Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
       },
       {
         "type": "text",
@@ -569,6 +582,19 @@
       "send_products"
     ],
     "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "query": "earrings dikhao",
+          "limit": 5
+        },
+        "ok": true,
+        "rows": 2,
+        "found": [
+          "ZERN-0188",
+          "ZERN-0207"
+        ]
+      },
       {
         "tool": "catalog_search",
         "args": {
@@ -596,7 +622,7 @@
             },
             {
               "product_id": "26263129-0ae5-41ab-ba9c-aed5fa873571",
-              "caption": "Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
+              "caption": "Zoori Ruby & Diamond Gold Earrings — ₹39,296\nhttps://www.myzoori.com/product-detail/a2e9ce2f-b437-4559-b6d9-ac1d5d55a084"
             }
           ]
         },
@@ -625,6 +651,22 @@
       "send_products"
     ],
     "toolsMeta": [
+      {
+        "tool": "catalog_search",
+        "args": {
+          "query": "rings dikhao",
+          "limit": 5
+        },
+        "ok": true,
+        "rows": 5,
+        "found": [
+          "The Gilded Chevron",
+          "Industrial Sparkle/ The Urban Edge",
+          "The Allure Orbit/The Willow Vine",
+          "The Architect",
+          "The Serpentine Wave"
+        ]
+      },
       {
         "tool": "catalog_search",
         "args": {

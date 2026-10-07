@@ -107,11 +107,12 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
         });
       b["or"] = (expr: string) => add(orFilter(expr));
       // "gilded:* & chevron:*" — every term starts a word of the row's text;
-      // "(ruby:*) | (pearl:*)" — any one of the choices does.
+      // "(ruby:*) | (pearl:*)" — any one of the choices does; "emerald"
+      // (no ":*") must be a whole word, as in Postgres.
       b["textSearch"] = (_col: string, query: string) => {
         const choices = query
           .split("|")
-          .map((c) => c.replace(/[()]/g, "").split("&").map((t) => t.replace(/:\*|\s/g, "").toLowerCase()).filter(Boolean))
+          .map((c) => c.replace(/[()]/g, "").split("&").map((t) => (t.includes(":*") ? "" : "=") + t.replace(/:\*|\s/g, "").toLowerCase()).filter((t) => t.replace("=", "")))
           .filter((c) => c.length > 0);
         return add((r) => {
           const words = ["title", "sku", "description", "category", "brand"]
@@ -120,7 +121,9 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
             .toLowerCase()
             .split(/[^a-z0-9]+/)
             .filter(Boolean);
-          return choices.some((terms) => terms.every((t) => words.some((w) => w.startsWith(t))));
+          return choices.some((terms) =>
+            terms.every((t) => (t.startsWith("=") ? words.includes(t.slice(1)) : words.some((w) => w.startsWith(t)))),
+          );
         });
       };
       b["order"] = (col: string, opts?: { ascending?: boolean }) => {

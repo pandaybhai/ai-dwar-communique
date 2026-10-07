@@ -57,6 +57,24 @@ export async function loadReadingSettings(supabase: SupabaseClient): Promise<Rea
 }
 
 /**
+ * Whether websites are re-read automatically on a schedule
+ * (platform_settings.knowledge_auto_refresh). Off unless set: a missing
+ * column (migration 20261022 not applied), a missing row or a failed read
+ * all mean off — a site is then re-read only when the merchant asks.
+ * Read on its own, never in READING_COLUMNS, so a missing column can't
+ * hide the other reading settings.
+ */
+export async function loadKnowledgeAutoRefresh(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.from("platform_settings").select("knowledge_auto_refresh").eq("id", true).maybeSingle();
+    if (error) return false;
+    return (data as { knowledge_auto_refresh?: unknown } | null)?.knowledge_auto_refresh === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Reading order for every read: home, contact/about, policies, FAQ, pricing,
  * collections, products, the rest; blog/tag/archive/search last.
  * Returns null for pages we never read.

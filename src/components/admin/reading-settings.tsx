@@ -19,6 +19,8 @@ type Settings = {
   full_crawl_trigger: "on_number_connected" | "on_plan_active" | "manual";
   backfill_pages_per_day: number;
   on_demand_read: boolean;
+  /** Sites re-read on a schedule (platform_settings.knowledge_auto_refresh); off = only when the merchant asks. */
+  knowledge_auto_refresh: boolean;
   refresh_days: number;
   manual_refresh_cooldown_hours: number;
   firecrawl_monthly_credit_cap: number;
@@ -48,7 +50,7 @@ type Loaded = { settings: Settings; meta: Meta; plans: Plan[] };
 const NUMBERS: Array<{ key: keyof Settings; label: string; help: string }> = [
   { key: "day0_page_limit", label: "Quick read (pages)", help: "When an owner sends a link on WhatsApp." },
   { key: "backfill_pages_per_day", label: "Nightly pages per workspace", help: "0 turns the nightly read off." },
-  { key: "refresh_days", label: "Refresh every (days)", help: "Changed pages only. 0 turns it off." },
+  { key: "refresh_days", label: "Refresh every (days)", help: "Changed pages only, and only while automatic re-reading is on. 0 turns it off." },
   { key: "manual_refresh_cooldown_hours", label: "\"Re-read whole site\" cooldown (hours)", help: "How often a merchant can ask." },
   { key: "link_reread_days", label: "Same link re-read after (days)", help: "Before this, the saved copy is used. 0 turns it off." },
   { key: "trial_links_per_day", label: "Trial: new links per day", help: "Paid plans have no link limit. 0 = no limit." },
@@ -189,6 +191,22 @@ export function ReadingSettingsPanel() {
           <p className="text-xs text-muted-foreground">When a customer's question finds nothing, read one matching unread page (max 3 per chat).</p>
         </div>
         <Switch id="ondemand" checked={draft.on_demand_read} onCheckedChange={(v) => set("on_demand_read", v)} />
+      </div>
+
+      <div className="flex items-center justify-between gap-4 rounded-xl bg-muted/40 p-4">
+        <div>
+          <Label htmlFor="autorefresh">Re-read websites automatically</Label>
+          <p className="text-xs text-muted-foreground">
+            {draft.knowledge_auto_refresh
+              ? `On: every website's changed pages are re-read every ${draft.refresh_days} day${draft.refresh_days === 1 ? "" : "s"}, and merchants see that on their Knowledge screen.`
+              : "Off: a website is re-read only when the merchant asks (Re-read whole site / this page). Merchants are never told it refreshes on its own."}
+          </p>
+        </div>
+        <Switch
+          id="autorefresh"
+          checked={Boolean(draft.knowledge_auto_refresh)}
+          onCheckedChange={(v) => set("knowledge_auto_refresh", v)}
+        />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

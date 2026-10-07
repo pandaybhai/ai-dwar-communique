@@ -16,10 +16,11 @@ import {
   agentAnswer,
   agentAnswerPrelude,
   answerReadsAhead,
+  conversationTurns,
   suggestReply,
   type AnswerReadsAhead,
 } from "@/lib/ai-tasks.server";
-import type { ChosenProduct, RunPrelude } from "@/lib/ai-run.server";
+import { startAnswerLookups, type ChosenProduct, type PreludeRead } from "@/lib/ai-run.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
 import { sendServiceText } from "@/lib/service-text.server";
 import type { ReplyTimer } from "@/lib/reply-timing";
@@ -81,7 +82,7 @@ export type AgentPrep = {
   flags: Set<string>;
   aiEnabled: boolean | null;
   /** Everything the answer run reads before thinking; only when it will reply. */
-  prelude: Promise<RunPrelude> | null;
+  prelude: PreludeRead | null;
   /** The answer's earlier-failures and brief reads; only when it will reply. */
   ahead?: AnswerReadsAhead | null;
 };
@@ -162,6 +163,14 @@ export async function runAgentOnInbound(
     return { acted: false, reason: "ai_disabled" };
   }
 
+  // A live reply's chat read (a plain read: sends nothing, writes nothing,
+  // calls no one) starts now, alongside the gate read; it is only used once
+  // the gate below has passed.
+  const chat = mode === "replying" && prep.prelude
+    ? conversationTurns(supabase, args.organizationId, args.conversationId)
+    : null;
+  chat?.catch(() => {});
+
   // Read fresh, after the burst wait: a teammate may have just taken over.
   const convo = await (args.gate ?? readAgentGate(supabase, args.conversationId));
   mark("gates");
@@ -225,6 +234,22 @@ export async function runAgentOnInbound(
     return { acted: true, mode: "draft", runId: run.runId, status: run.status };
   }
 
+  // The gate passed: the business's material for this question and the
+  // early catalogue search (the customer's own words) start now, together,
+  // alongside the chat, brief and prelude reads — not one after another.
+  const lookups = prep.prelude
+    ? startAnswerLookups(supabase, {
+        organizationId: args.organizationId,
+        agentId: agentRow?.id ?? null,
+        input: question,
+        prelude: prep.prelude,
+        conversationId: args.conversationId,
+        contactId: args.contactId,
+        knowledge: true,
+        early: true,
+      })
+    : null;
+
   const run = await agentAnswer(
     supabase,
     common,
@@ -236,6 +261,8 @@ export async function runAgentOnInbound(
           prelude: prep.prelude,
           ...(args.later ? { deferUsage: args.later } : {}),
           ...(prep.ahead ? { ahead: prep.ahead } : {}),
+          ...(chat ? { chat } : {}),
+          ...(lookups ? { lookups } : {}),
         }
       : undefined,
     {

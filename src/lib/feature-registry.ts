@@ -1189,6 +1189,11 @@ export const FEATURES: readonly FeatureManifest[] = [
                 additionalProperties: false,
               },
             },
+            closing: {
+              type: "string",
+              description:
+                "Optional: your final reply, sent after the pictures. Give it when nothing else is needed after these products — then this call is your whole reply and you are not asked again.",
+            },
           },
           required: ["products"],
           additionalProperties: false,

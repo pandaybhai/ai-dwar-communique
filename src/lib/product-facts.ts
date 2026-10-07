@@ -95,9 +95,11 @@ export function descriptionFacts(description: unknown): DescriptionFacts {
 }
 
 /**
- * A readable name for a product whose title is only a code: built from the
- * description's own materials line ("Pink Sapphire & Diamond Gold Earrings"),
- * else the description's own "the … Earrings" phrase, else null.
+ * A readable name for a product whose title is only a code: the
+ * description's own "the … Earrings" phrase when it says at least what the
+ * materials line says and more (ZERN-0207: "Metal: Gold, Diamond" but "the
+ * Zoori Ruby & Diamond Gold Earrings"), else built from the materials line
+ * ("Pink Sapphire & Diamond Gold Earrings"), else the phrase alone, else null.
  */
 export function readableName(row: Row): string | null {
   const description = str(row["description"]);
@@ -105,6 +107,19 @@ export function readableName(row: Row): string | null {
   const noun =
     SINGULAR[category] ?? (category ? category[0]!.toUpperCase() + category.slice(1) : "");
   const facts = descriptionFacts(description);
+  const phraseMatch = description.match(/\bthe\s+((?:[A-Z][\w'’-]*|&)(?:\s+(?:[A-Z][\w'’-]*|&)){1,7})/);
+  const phrase = phraseMatch && PRODUCT_NOUNS.test(phraseMatch[1]!) ? phraseMatch[1]!.trim() : null;
+  if (phrase && (facts.metal || facts.stones.length)) {
+    const said = phrase.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    const lineWords = [facts.metal ?? "", ...facts.stones]
+      .join(" ")
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter(Boolean);
+    const coversLine = lineWords.every((w) => said.includes(w));
+    const saysMore = said.some((w) => !lineWords.includes(w) && !PRODUCT_NOUNS.test(w) && /^\p{L}/u.test(w));
+    if (coversLine && saysMore && said.length > lineWords.length + 1) return phrase;
+  }
   if (noun && /\bmetals?\s*:/i.test(description) && (facts.metal || facts.stones.length)) {
     const stones = facts.stones.slice(0, 3);
     const stoneWords =
@@ -114,9 +129,7 @@ export function readableName(row: Row): string | null {
     const metal = facts.metal ? facts.metal.replace(/\b\w/g, (c) => c.toUpperCase()) : "";
     return [stoneWords, metal, noun].filter(Boolean).join(" ");
   }
-  const phrase = description.match(/\bthe\s+((?:[A-Z][\w'’-]*|&)(?:\s+(?:[A-Z][\w'’-]*|&)){1,7})/);
-  if (phrase && PRODUCT_NOUNS.test(phrase[1]!)) return phrase[1]!.trim();
-  return null;
+  return phrase;
 }
 
 /**

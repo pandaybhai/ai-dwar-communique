@@ -139,7 +139,9 @@ describe("Show products — readable names", () => {
   });
   it("text-only lines use the readable name too", async () => {
     const r = await show({ category: "earrings", max_items: 2, readable_names: true });
-    expect(r.texts[0]).toMatch(/^Diamond Gold Earrings \(ZERN-0207\) — ₹39,295/);
+    // Batch 15C: ZERN-0207's description names "the Zoori Ruby & Diamond Gold
+    // Earrings" — more than its "Metal: Gold, Diamond" line — so that is its name.
+    expect(r.texts[0]).toMatch(/^Zoori Ruby & Diamond Gold Earrings \(ZERN-0207\) — ₹39,295/);
     expect(r.texts[0]).toMatch(/Diamond & Pink Sapphire Gold Earrings \(ZERN-0188\) — ₹48,640/);
   });
 });

@@ -670,6 +670,12 @@ export const Route = createFileRoute("/api/admin/ai")({
               next["full_crawl_trigger"] = incoming["full_crawl_trigger"];
             }
             if (incoming["on_demand_read"] != null) next["on_demand_read"] = Boolean(incoming["on_demand_read"]);
+            // Its own column (migration 20261022): only written when it changes,
+            // so a database without it still saves everything else.
+            const { loadKnowledgeAutoRefresh } = await import("@/lib/reading.server");
+            const autoRefreshBefore = await loadKnowledgeAutoRefresh(supabase);
+            if (incoming["knowledge_auto_refresh"] != null && Boolean(incoming["knowledge_auto_refresh"]) !== autoRefreshBefore)
+              next["knowledge_auto_refresh"] = Boolean(incoming["knowledge_auto_refresh"]);
             if (incoming["plan_page_overrides"] != null) {
               const o: Record<string, number> = {};
               for (const [k, v] of Object.entries(incoming["plan_page_overrides"] as Record<string, unknown>)) {
@@ -678,13 +684,15 @@ export const Route = createFileRoute("/api/admin/ai")({
               }
               next["plan_page_overrides"] = o;
             }
-            const before = await loadReadingSettings(supabase);
+            const before = { ...(await loadReadingSettings(supabase)), knowledge_auto_refresh: autoRefreshBefore };
             const { data: updated, error: upErr } = await supabase
               .from("platform_settings")
               .update({ ...next, reading_version: current.version + 1, reading_updated_at: new Date().toISOString(), reading_updated_by: user.id })
               .eq("id", true)
               .eq("reading_version", current.version)
               .select("id");
+            if (upErr && "knowledge_auto_refresh" in next && /knowledge_auto_refresh/.test(upErr.message ?? ""))
+              return jsonError("Automatic re-reading needs the database update 20261022_knowledge_auto_refresh applied first.");
             if (upErr) return jsonError("Couldn't save the reading settings.");
             if (!updated?.length) return jsonError("Someone saved at the same moment — reload to see their change.", 409);
             const changes: Record<string, { from: unknown; to: unknown }> = {};
@@ -700,11 +708,14 @@ export const Route = createFileRoute("/api/admin/ai")({
                 changes,
               }).catch(() => undefined);
           }
-          const [settings, m, plans] = await Promise.all([
+          const { loadKnowledgeAutoRefresh } = await import("@/lib/reading.server");
+          const [reading, autoRefresh, m, plans] = await Promise.all([
             loadReadingSettings(supabase),
+            loadKnowledgeAutoRefresh(supabase),
             meta(),
             supabase.from("plans").select("id, name, plan_versions!inner(limits, is_current)").eq("plan_versions.is_current", true),
           ]);
+          const settings = { ...reading, knowledge_auto_refresh: autoRefresh };
           return Response.json({
             settings,
             meta: m,
