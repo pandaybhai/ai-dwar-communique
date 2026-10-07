@@ -91,7 +91,7 @@ export function compareSignals(
   return priceSame && sameTitle(signals.title, stored.title) ? "unchanged" : "changed";
 }
 
-/** platform_settings.price_check_daily (missing column = off). */
+/** platform_settings.price_check_daily (a missing row or failed read = off). */
 export async function loadPriceCheckDaily(supabase: SupabaseClient): Promise<boolean> {
   try {
     const { data, error } = await supabase.from("platform_settings").select("price_check_daily").eq("id", true).maybeSingle();
@@ -140,7 +140,7 @@ export async function runPriceCheck(
     .not("product_url", "is", null)
     .order("price_checked_at", { ascending: true, nullsFirst: true })
     .limit(deps.limit ?? PRICE_CHECK_BATCH);
-  if (error) return { ...result, skipped: "migration_not_applied" };
+  if (error) return { ...result, skipped: "products_read_failed" };
   const rows = (data ?? []) as ProductRow[];
   const read = deps.fetchHtml ?? fetchHtml;
 
