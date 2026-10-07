@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeDb, type FakeOp } from "./test-support/fake-db";
 import { inboundPayload, latencyWorld } from "./test-support/latency-world";
+import { inVirtualTime } from "./test-support/virtual-time";
 import { aidenWorld } from "./test-support/aiden-world";
 import { coalesceBurst, finishEvent, processWebhookPayload } from "./whatsapp-webhook.server";
 import { replyTimer, STAGE_ORDER } from "./reply-timing";
@@ -46,8 +47,11 @@ type World = ReturnType<typeof latencyWorld>;
 async function deliver(org: string, waitingRun: boolean, msg: Record<string, unknown>, override?: Parameters<typeof latencyWorld>[0]["override"]) {
   const w = latencyWorld({ org, rttMs: RTT, graphMs: GRAPH, waitingRun, maxConcurrent: 6, ...(override ? { override } : {}) });
   vi.stubGlobal("fetch", w.fetchStub);
-  w.t0.at = Date.now();
-  await processWebhookPayload(w.supabase, `ev-${org}`, inboundPayload(msg), new Date(Date.now() - 300).toISOString(), { storeMs: 210 });
+  // Batch 17: on a virtual clock, so "within N round trips" never races a loaded machine.
+  await inVirtualTime(async () => {
+    w.t0.at = Date.now();
+    await processWebhookPayload(w.supabase, `ev-${org}`, inboundPayload(msg), new Date(Date.now() - 300).toISOString(), { storeMs: 210 });
+  });
   return w;
 }
 const idx = (ops: FakeOp[], pred: (o: FakeOp) => boolean) => ops.findIndex(pred);
@@ -434,9 +438,13 @@ describe("(3) Aiden: same gates and burst, less waiting around them", () => {
 
   it("the chat's two reads go out together", async () => {
     const w = aidenWorld({ rttMs: RTT });
-    const t = Date.now();
-    await conversationTurns(w.supabase, "org", "cv1");
-    expect(Date.now() - t).toBeLessThan(2 * RTT);
+    // Batch 17: virtual clock — together = exactly one round trip, on any machine.
+    const ms = await inVirtualTime(async () => {
+      const t = Date.now();
+      await conversationTurns(w.supabase, "org", "cv1");
+      return Date.now() - t;
+    });
+    expect(ms).toBeLessThan(2 * RTT);
     expect(w.ops.map((o) => o.table)).toEqual(["conversations", "messages"]);
   });
 

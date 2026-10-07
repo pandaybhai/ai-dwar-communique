@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeDb, type FakeOp } from "./test-support/fake-db";
 import { inboundPayload, latencyWorld } from "./test-support/latency-world";
+import { inVirtualTime } from "./test-support/virtual-time";
 import {
   acceptWebhook,
   coalesceBurst,
@@ -152,8 +153,11 @@ const TAP = { id: "wamid.tap", type: "interactive", interactive: { type: "button
 async function deliver(org: string, waitingRun: boolean, msg: Record<string, unknown>) {
   const w = latencyWorld({ org, rttMs: RTT, graphMs: GRAPH, waitingRun, maxConcurrent: 6 });
   vi.stubGlobal("fetch", w.fetchStub);
-  w.t0.at = Date.now();
-  await processWebhookPayload(w.supabase, `ev-${org}`, inboundPayload(msg), new Date().toISOString());
+  // Batch 17: on a virtual clock, so "within N round trips" never races a loaded machine.
+  await inVirtualTime(async () => {
+    w.t0.at = Date.now();
+    await processWebhookPayload(w.supabase, `ev-${org}`, inboundPayload(msg), new Date().toISOString());
+  });
   return w;
 }
 const idx = (ops: FakeOp[], pred: (o: FakeOp) => boolean) => ops.findIndex(pred);

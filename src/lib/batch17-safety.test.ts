@@ -1,6 +1,8 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
+import { inVirtualTime } from "./test-support/virtual-time";
 
 /**
  * Batch 17 — lock the doors, nothing lost.
@@ -61,5 +63,60 @@ describe("(1) workspace DB functions are server-only", () => {
       ),
     );
     expect(callers).toEqual([]);
+  });
+});
+
+describe("(4) tests on every change", () => {
+  it("package.json runs the suite with `test`", () => {
+    const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
+    expect(pkg.scripts["test"]).toBe("vitest run");
+  });
+
+  it("CI runs typecheck and tests (blocking) and lint (advisory)", () => {
+    const ci = readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8");
+    expect(ci).toMatch(/pull_request:/);
+    expect(ci).toMatch(/run: npx tsc --noEmit -p \./);
+    expect(ci).toMatch(/run: bun run test/);
+    expect(ci).toMatch(/name: Lint \(advisory\)\s+continue-on-error: true\s+run: bun run lint/);
+    // Only lint may fail without failing the job.
+    expect(ci.match(/continue-on-error: true/g)).toHaveLength(1);
+  });
+
+  it("build and test runs never rewrite src/build-info.ts (served in memory, builds only)", () => {
+    const cfg = readFileSync(join(ROOT, "vite.config.ts"), "utf8");
+    const plugin = cfg.slice(cfg.indexOf("function buildInfoGenerator"), cfg.indexOf("function featureRegistryGuard"));
+    expect(plugin).toMatch(/apply: "build"/);
+    expect(plugin).toMatch(/load\(id\)/);
+    expect(plugin).not.toMatch(/writeFileSync/);
+  });
+
+  it(".env is not tracked (and stays ignored)", () => {
+    let tracked = "";
+    try {
+      tracked = execFileSync("git", ["ls-files", ".env"], { cwd: ROOT, encoding: "utf8" });
+    } catch {
+      return; // no git here: nothing to check
+    }
+    expect(tracked.trim()).toBe("");
+    expect(readFileSync(join(ROOT, ".gitignore"), "utf8")).toMatch(/^\.env$/m);
+  });
+
+  it("the virtual clock makes round trips exact: three 40 ms trips in a row are 120 ms, two together 40 ms", async () => {
+    const trip = () => new Promise<void>((r) => setTimeout(r, 40));
+    const serial = await inVirtualTime(async () => {
+      const t = Date.now();
+      await trip();
+      await Promise.resolve();
+      await trip();
+      await trip();
+      return Date.now() - t;
+    });
+    expect(serial).toBe(120);
+    const together = await inVirtualTime(async () => {
+      const t = Date.now();
+      await Promise.all([trip(), trip()]);
+      return Date.now() - t;
+    });
+    expect(together).toBe(40);
   });
 });
