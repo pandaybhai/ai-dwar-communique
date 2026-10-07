@@ -4,8 +4,8 @@
  * be written in one model step instead of search → send → close.
  *
  * Same tool, same handler, same broker: invokeTool with the run's brokered
- * tools (the 14.1 gender/NULL rule, the rings/earrings split, the caps — all
- * as when the model calls it). Nothing here writes reply text and nothing is
+ * tools (the 14.1 gender/NULL rule, the shop's own categories, the caps —
+ * all as when the model calls it). Nothing here writes reply text and nothing is
  * specific to one kind of business: whether the results fit is decided from
  * the customer's words and this business's own catalogue only.
  *
@@ -163,7 +163,7 @@ function rowWords(row: Record<string, unknown>): string[] {
     .filter(Boolean);
 }
 
-/** "earring" is in "earrings"; "rings" is in "ring". */
+/** A word and its plural are the same word ("shirt" / "shirts"). */
 function carries(words: string[], word: string): boolean {
   const stem = word.length > 4 ? word.replace(/(es|s)$/, "") : word;
   return words.some((w) => w.startsWith(word) || w.startsWith(stem));

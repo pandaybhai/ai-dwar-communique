@@ -147,13 +147,21 @@ describe("(4) nothing at the budget: say what exists, offer only what search ret
   it("offers of product types the search never returned are found", () => {
     const answer = "I don’t have rings under ₹2000 right now. Want me to show more budget-friendly pendants or earrings instead?";
     const results = [JSON.stringify({ ok: true, data: { found: false, category: "rings", closest_above: RINGS } })];
-    expect(unsearchedShelfOffers(answer, "Hi, do you have silver rings under 2000?", results)).toEqual([
+    // Batch 20: the kinds are this shop's own categories (and its words for them).
+    const shop = {
+      categories: ["rings", "pendants", "earrings", "chains"].map((name) => ({ name, products: 10 })),
+      words: {},
+      complete: true,
+    };
+    expect(unsearchedShelfOffers(answer, "Hi, do you have silver rings under 2000?", results, shop)).toEqual([
       "Want me to show more budget-friendly pendants or earrings instead?",
     ]);
     // Asked about, or returned by the search: fine to mention.
-    expect(unsearchedShelfOffers("Our earrings start at ₹27,412.", "any earrings?", [])).toEqual([]);
+    expect(unsearchedShelfOffers("Our earrings start at ₹27,412.", "any earrings?", [], shop)).toEqual([]);
     // A sentence that also names what was found keeps the answer.
-    expect(unsearchedShelfOffers("Our rings start at ₹16,805 and pair well with chains.", "rings under 2000", results)).toEqual([]);
+    expect(unsearchedShelfOffers("Our rings start at ₹16,805 and pair well with chains.", "rings under 2000", results, shop)).toEqual([]);
+    // A shop without categories has no kinds to check.
+    expect(unsearchedShelfOffers(answer, "rings?", results, { categories: [], words: {}, complete: true })).toEqual([]);
   });
 
   it("Batch 14: the starting price is the model's to say — the tool view carries it, code never appends a line", () => {
@@ -179,6 +187,9 @@ function runWorld(opts: { chunks: string[] }) {
       if (op.table === "organization_ai_settings")
         return { data: { ai_enabled: true, ai_monthly_cap_amount: 1000, currency: "INR", ai_markup_multiplier: 3 }, error: null };
       if (op.table === "platform_settings") return { data: { ai_monthly_cap_amount: 100000, ai_cap_currency: "INR", ai_markup_multiplier: 3 }, error: null };
+      // Batch 20: the shop's own categories (the guard's kinds of product).
+      if (op.table === "products" && op.select?.[0] === "category")
+        return { data: ["rings", "pendants", "earrings"].map((category) => ({ category })), error: null };
       if (op.table === "products" && op.kind === "select" && !op.filters.some(([f]) => f === "lte" || f === "order"))
         return { data: null, error: null, count: 3 } as never;
       if (op.table === "products") {

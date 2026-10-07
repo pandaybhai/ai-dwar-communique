@@ -167,40 +167,6 @@ async function findSubjectContact(ctx: ToolContext, contactId: string | null, ra
   return { contact, error: null };
 }
 
-/**
- * Shop words a customer actually uses, mapped onto the shelf names the
- * catalogue stores. Longest phrases first so "mangalsutra" never matches on a
- * shorter word.
- */
-const CATEGORY_WORDS: [RegExp, string][] = [
-  [/mangal\s?sutra|tanmaniya|tanmania/i, "tanmaniya"],
-  [/pendant|pendent|locket/i, "pendants"],
-  [/ear\s?ring|jhumka|jhumki|stud|bali/i, "earrings"],
-  [/bracelet|kada|kadha/i, "bracelets"],
-  [/necklace|haar|\bset\b/i, "necklaces"],
-  [/\bchain\b|\bchains\b/i, "chains"],
-  [/\brings?\b|anguthi|\bband\b/i, "rings"],
-];
-
-const GENDER_WORDS: [RegExp, string][] = [
-  [/\bgents?\b|\bmens?\b|\bmale\b|\bboys?\b|for him/i, "male"],
-  [/\bladies\b|\bwomens?\b|\bfemale\b|\bgirls?\b|for her/i, "female"],
-];
-
-/** The catalogue shelf a phrase is asking for, or "" when it names none. */
-export function canonCategory(text: string): string {
-  for (const [re, word] of CATEGORY_WORDS) if (re.test(text)) return word;
-  return "";
-}
-
-/** "male" / "female" when a phrase says so, otherwise null. */
-export function canonGender(text: string): string | null {
-  if (/^male$/i.test(text.trim())) return "male";
-  if (/^female$/i.test(text.trim())) return "female";
-  for (const [re, word] of GENDER_WORDS) if (re.test(text)) return word;
-  return null;
-}
-
 /** How many products one send_products call may carry. */
 export const SEND_PRODUCTS_MAX = 5;
 
@@ -472,11 +438,25 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
     const rawQuery = str(args["query"]);
     const rawCategory = str(args["category"]);
-    // Shoppers don't speak in catalogue words: "anguthi", "gents ring",
-    // "jhumka" all have to land on the same shelf before anything is queried.
+    const { genderOf, resolveShelf, shelfSaysGender, unknownCategory } = await import("@/lib/shop-categories");
+    const { loadShopVocabulary } = await import("@/lib/shop-categories.server");
+    // The shelf words are this shop's own: the categories its products carry
+    // and the extra words its customers use for them (workspace settings).
+    // Nothing else names a shelf — there is no fixed list of product kinds.
+    const vocab =
+      rawCategory || rawQuery ? await loadShopVocabulary(ctx.supabase, ctx.organizationId) : null;
     const spoken = `${rawCategory} ${rawQuery}`;
-    const category = canonCategory(rawCategory) || canonCategory(rawQuery);
-    const gender = canonGender(str(args["gender"])) || canonGender(spoken);
+    const shelf = vocab ? (resolveShelf(rawCategory, vocab) ?? resolveShelf(rawQuery, vocab)) : null;
+    // A category this shop doesn't have is never silently dropped: its words
+    // are searched for instead, and nothing else is offered in their place.
+    const unknown = vocab && rawCategory && !shelf ? unknownCategory(rawCategory, vocab) : null;
+    // A very large catalogue's list can be cut short: a category it doesn't
+    // show is then matched on the products' own category text.
+    const looseShelf = unknown && vocab && !vocab.complete ? unknown : "";
+    const category = shelf?.name ?? looseShelf;
+    const requestedGender = genderOf(str(args["gender"])) || genderOf(spoken);
+    // "Men's Shirts" already is the gender: no second filter on top of it.
+    const gender = requestedGender && shelf && shelfSaysGender(shelf, requestedGender) ? null : requestedGender;
     // Most catalogues tag gender on a few products only (Zoori: 10 of 472).
     // For Aiden a gender narrows to that gender plus the untagged products —
     // it never hides a whole shelf. The flows step keeps the strict match.
@@ -503,18 +483,17 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     // A keyword with no searchable word in it matches no product's words.
     if (str(args["keyword"]) && !keyword) return { ok: true, found: false, data: [] };
     // A whole sentence in `query` matches nothing; once we know the shelf and
-    // the budget, the words the customer typed are noise.
-    const query = category && looksLikeSentence(rawQuery) ? "" : rawQuery;
-
-    // Batch 16 (flows "Show products", any direct call — not Aiden, whose
-    // shelf rule is below): a shelf is that shelf only. "%rings%" also
-    // matches "earrings"; the category must start at a word ("Rings", "Gold
-    // rings"), never inside another word. Fewer matches means fewer products
-    // sent — never another shelf topping them up. Read wider, then cut back.
-    const strictShelf = !keepUntaggedGender && Boolean(category);
-    const shelfWord = strictShelf ? new RegExp(`(^|[^\\p{L}\\p{N}])${category.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu") : null;
-    const onShelf = (rows: Array<Record<string, unknown>>) =>
-      shelfWord ? rows.filter((r) => shelfWord.test(String(r["category"] ?? ""))) : rows;
+    // the budget, the words the customer typed are noise. An unknown
+    // category's own words are searched for instead.
+    const named = shelf && looksLikeSentence(rawQuery) ? "" : rawQuery;
+    const query = unknown && !looseShelf ? [unknown, named].filter(Boolean).join(" ") : named;
+    // A kind of product the shop has no shelf for — an unknown category, or
+    // the flows step's category words searched by name (query_is_category) —
+    // is never swapped for other products: no browse without its words, no
+    // "closest" of another kind. Gender words and "all"/"any" name no kind.
+    const queryIsKind =
+      Boolean(unknown && !looseShelf) ||
+      (args["query_is_category"] === true && !shelf && vocab !== null && unknownCategory(rawQuery, vocab) !== null);
 
     const run = async (
       withQuery: string,
@@ -533,7 +512,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
         .eq("organization_id", ctx.organizationId)
         // Hidden products never reach a customer, whether searching or browsing.
         .eq("is_visible", true)
-        .limit(strictShelf ? Math.max(rowLimit, 100) : rowLimit);
+        .limit(rowLimit);
 
       if (withQuery) {
         const tsquery = toTsQuery(withQuery);
@@ -562,10 +541,10 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       if (withMaxPrice !== null) request = request.lte("price", withMaxPrice);
       if (withMinPrice !== null) request = request.gte("price", withMinPrice);
       if (availability) request = request.eq("availability", availability);
-      if (category) request = request.ilike("category", `%${category}%`);
-      // "%rings%" also matches "earrings" (Zoori: 135 earrings beside 44
-      // rings). Aiden's ring search leaves them out; the flows step is as it was.
-      if (keepUntaggedGender && category === "rings") request = request.not("category", "ilike", "%earring%");
+      // A shelf is exactly the shop's categories its words cover, never a
+      // category that merely contains them ("rings" is not "earrings").
+      if (shelf) request = request.in("category", shelf.categories);
+      else if (looseShelf) request = request.ilike("category", `%${looseShelf.replace(/[%_,()]/g, " ").trim()}%`);
       if (withGender) {
         const words = withGender === "male" ? ["male", "men", "gents"] : ["female", "women", "ladies"];
         // Untagged is NULL: every writer (genderHint in product-extract) stores
@@ -577,7 +556,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       const { data, error } = await request;
       if (error) return { rows: null as Array<Record<string, unknown>> | null, error: error.message };
       const rows = (data ?? []) as Array<Record<string, unknown>>;
-      return { rows: strictShelf ? onShelf(rows).slice(0, rowLimit) : rows, error: null };
+      return { rows, error: null };
     };
 
     const sortRows = (rows: Array<Record<string, unknown>>, searched: boolean) => {
@@ -598,8 +577,9 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     if (first.error) return { ok: false, error: first.error };
     let searched = Boolean(query);
 
-    // Words that matched nothing shouldn't hide a shelf we can browse.
-    if (first.rows!.length === 0 && query && (category || maxPrice !== null || minPrice !== null)) {
+    // Words that matched nothing shouldn't hide a shelf we can browse — but
+    // a kind of product the shop has no shelf for is never swapped for others.
+    if (first.rows!.length === 0 && query && !queryIsKind && (category || maxPrice !== null || minPrice !== null)) {
       const retry = await run("", maxPrice, limit);
       if (retry.error) return { ok: false, error: retry.error };
       first = retry;
@@ -611,7 +591,8 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
     // Nothing at that budget: offer the nearest three above it rather than a
     // dead end.
-    if (category || maxPrice !== null || minPrice !== null) {
+    // A kind the shop has no shelf for has nothing "closest" either.
+    if (!queryIsKind && (category || maxPrice !== null || minPrice !== null)) {
       let closest = await run("", null, 3, true, null);
       // Still nothing for that gender: the closest of any gender (Aiden only),
       // said as such so they are never passed off as "for him/her".
@@ -624,7 +605,11 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       if (suggestions.length > 0) {
         const prices = suggestions.map((r) => Number(r["price"])).filter((p) => Number.isFinite(p) && p > 0);
         const from = prices.length ? Math.floor(Math.min(...prices)) : null;
-        const money = from !== null ? `₹${new Intl.NumberFormat("en-IN").format(from)}` : null;
+        const { formatPrice } = await import("@/lib/product-facts");
+        // Prices in the products' own currency.
+        const currency = suggestions.find((r) => str(r["currency"]))?.["currency"];
+        const money = from !== null ? formatPrice(from, currency) : null;
+        const budget = maxPrice !== null ? formatPrice(maxPrice, currency) : null;
         return {
           ok: true,
           found: false,
@@ -640,13 +625,31 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
             // Say what exists and what it costs; offer only these products —
             // never another type or budget that wasn't searched.
             reply_hint:
-              `Say: "I don't have ${category || "that"}${maxPrice !== null ? ` under ₹${maxPrice}` : ""} right now` +
+              `Say: "I don't have ${category || "that"}${budget ? ` under ${budget}` : ""} right now` +
               `${money ? ` — our ${category || "closest options"} start at ${money}` : ""}." Then list these ` +
               `products with their prices and ask if they'd like to see them. Offer only these products: do not ` +
               `suggest other product types or budgets you have not searched, and do not add "let me confirm".`,
           },
         };
       }
+    }
+
+    // A category the shop doesn't have: say so, with the shelves it does have
+    // (its own list), so nothing else is offered as if it were that.
+    if (unknown && !looseShelf && vocab) {
+      return {
+        ok: true,
+        found: false,
+        data: {
+          found: false,
+          category: rawCategory,
+          not_a_category_here: true,
+          shop_categories: vocab.categories.slice(0, 40).map((c) => c.name),
+          reply_hint:
+            `No product matches "${unknown}" and it is not one of this shop's categories. Say you don't have it; ` +
+            `do not offer other products as if they were it. You may name the shop's categories if it helps.`,
+        },
+      };
     }
 
     // A search that matches nothing still ran: ok, just empty.

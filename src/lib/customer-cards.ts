@@ -156,7 +156,7 @@ export const CARD_USES: Array<{ key: string; title: string; how: string; example
     key: "aiden",
     title: "Aiden product answers",
     how: "When Aiden or a Show products step answers with products, the first one can go as a Product card.",
-    example: "“Do you have gold earrings under ₹5,000?” — the first match arrives as a branded Product card.",
+    example: "“What do you have under 5,000?” — the first match arrives as a branded Product card.",
   },
   {
     key: "orders",

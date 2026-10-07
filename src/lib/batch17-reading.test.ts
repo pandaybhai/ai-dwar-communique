@@ -191,7 +191,7 @@ describe("(5) admin Reading: full read cost per source", () => {
   });
 });
 
-describe("(5) migration (not applied)", () => {
+describe("(5) migration", () => {
   it("adds platform_settings.reading_ai_daily_cap, default 100, idempotent", () => {
     const sql = readFileSync(new URL("../../supabase/aidwar-migrations/20261033_batch17_reading_ai_cap.sql", import.meta.url), "utf8");
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS reading_ai_daily_cap numeric NOT NULL DEFAULT 100/);

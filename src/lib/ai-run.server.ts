@@ -43,6 +43,15 @@ import {
 } from "@/lib/ai-fallback.server";
 import { EARLY_CALL_ID, type EarlySearch } from "@/lib/early-search.server";
 import { productFacts, rupees } from "@/lib/product-facts";
+import {
+  containsRun,
+  describeCategories,
+  EMPTY_VOCABULARY,
+  shelfPhrases,
+  tokensOf,
+  type ShopVocabulary,
+} from "@/lib/shop-categories";
+import { loadShopVocabulary } from "@/lib/shop-categories.server";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
@@ -405,26 +414,28 @@ export function stripReferences(text: string, numberedItems = 0): string {
   return stripReferenceLeaks(stripCitationMarkers(text), numberedItems);
 }
 
-/** Product types a jewellery / retail shelf is browsed by (word-bounded: "earrings" is not "rings"). */
-const SHELF_WORDS =
-  /\b(rings?|pendants?|earrings?|bracelets?|necklaces?|chains?|bangles?|anklets?|mangalsutras?|tanmaniyas?|nose ?pins?|studs?|jhumkas?)\b/gi;
-
 /**
  * Sentences that offer a kind of product the catalogue search never returned
  * and the customer never asked about ("want to see pendants instead?" when
- * no pendant was found). Only read when catalog_search ran.
+ * no pendant was found). A kind is one of this shop's own categories or a
+ * word its settings give for one — no fixed list of product kinds. Only read
+ * when catalog_search ran.
  */
-export function unsearchedShelfOffers(answer: string, question: string, toolResults: string[]): string[] {
-  const seen = flat(`${question} ${toolResults.join(" ")}`).split(" ");
-  const known = (w: string) => {
-    const base = w.toLowerCase().replace(/\s+/g, " ").replace(/s$/, "");
-    return seen.includes(base) || seen.includes(`${base}s`);
-  };
+export function unsearchedShelfOffers(
+  answer: string,
+  question: string,
+  toolResults: string[],
+  shelves: ShopVocabulary,
+): string[] {
+  const kinds = shelfPhrases(shelves);
+  if (kinds.length === 0) return [];
+  const seen = tokensOf(`${question} ${toolResults.join(" ")}`);
   // Only a sentence about unsearched kinds alone: one that also names what
   // was found ("our rings … pair well with chains") still carries the answer.
   return sentencesOf(answer).filter((s) => {
-    const kinds = s.match(SHELF_WORDS) ?? [];
-    return kinds.length > 0 && kinds.every((w) => !known(w));
+    const words = tokensOf(s);
+    const named = kinds.filter((k) => containsRun(words, k));
+    return named.length > 0 && named.every((k) => !containsRun(seen, k));
   });
 }
 
@@ -1379,22 +1390,18 @@ export async function meterAiUsage(
   const usageDate = new Date().toISOString().slice(0, 10);
   // Added in the database in one statement (ai_usage_add, migration
   // 20261027): read-add-write lost one of two concurrent additions, so the
-  // caps under-counted. Until it is applied, the old way below.
-  if (Date.now() >= aiUsageAddMissingUntil) {
-    const { error } = await supabase.rpc("ai_usage_add", {
-      p_org: organizationId,
-      p_usage_date: usageDate,
-      p_task: task,
-      p_runs: amounts.runs ?? 1,
-      p_input_tokens: amounts.inputTokens ?? 0,
-      p_output_tokens: amounts.outputTokens ?? 0,
-      p_cost_amount: amounts.costAmount ?? 0,
-    });
-    if (!error) return;
-    const code = String((error as { code?: string }).code ?? "");
-    if (code === "PGRST202" || code === "42883") aiUsageAddMissingUntil = Date.now() + 10 * 60_000;
-    else console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
-  }
+  // caps under-counted. A call that fails is logged and written the old way below.
+  const { error } = await supabase.rpc("ai_usage_add", {
+    p_org: organizationId,
+    p_usage_date: usageDate,
+    p_task: task,
+    p_runs: amounts.runs ?? 1,
+    p_input_tokens: amounts.inputTokens ?? 0,
+    p_output_tokens: amounts.outputTokens ?? 0,
+    p_cost_amount: amounts.costAmount ?? 0,
+  });
+  if (!error) return;
+  console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
   const { data } = await supabase
     .from("ai_usage")
     .select("id, runs, input_tokens, output_tokens, cost_amount")
@@ -1424,8 +1431,6 @@ export async function meterAiUsage(
   if (prior) await supabase.from("ai_usage").update(row).eq("id", prior.id);
   else await supabase.from("ai_usage").insert(row);
 }
-/** Set while ai_usage_add() isn't in the database yet; looked for again after 10 minutes. */
-let aiUsageAddMissingUntil = 0;
 
 /**
  * The OpenAI key for the embeddings backup: the platform's OpenAI key from the
@@ -1556,7 +1561,36 @@ export type RunPrelude = {
   api: Awaited<ReturnType<typeof resolveApiKey>>;
   productCount: number;
   tools: BrokeredTool[];
+  /** The shop's own categories and its words for them (none without products). */
+  shelves: ShopVocabulary;
 };
+
+/**
+ * The search tool as this run offers it: its generic wording plus the
+ * shop's own categories, read when the run starts — so the model puts one
+ * of them in `category` instead of guessing a kind of product.
+ */
+export function withShopCategories(tools: BrokeredTool[], shelves: ShopVocabulary): BrokeredTool[] {
+  const names = describeCategories(shelves);
+  if (!names) return tools;
+  return tools.map((t): BrokeredTool => {
+    if (t.name !== "catalog_search") return t;
+    const category = t.parameters.properties["category"];
+    return {
+      ...t,
+      description: `${t.description} This shop's categories: ${names}.`,
+      parameters: category
+        ? {
+            ...t.parameters,
+            properties: {
+              ...t.parameters.properties,
+              category: { ...category, description: `${String(category["description"] ?? "")} This shop's categories: ${names}.`.trim() },
+            },
+          }
+        : t.parameters,
+    };
+  });
+}
 
 /**
  * The prelude, plus two of its reads on their own: the tools this run may
@@ -1595,6 +1629,11 @@ export function prepareRun(
     : Promise.resolve([] as BrokeredTool[]);
   productCount.catch(() => {});
   tools.catch(() => {});
+  // The shop's own categories, for the search tool's wording and the "only
+  // offer what search found" guard. Read only when there are products.
+  const shelves: Promise<ShopVocabulary> = productCount
+    .then((n) => (n > 0 ? loadShopVocabulary(supabase, organizationId) : EMPTY_VOCABULARY))
+    .catch(() => EMPTY_VOCABULARY);
   const prelude = Promise.all([
     brain,
     resolveMarkup(supabase, organizationId),
@@ -1608,7 +1647,8 @@ export function prepareRun(
     brain.then((b) => resolveApiKey(supabase, organizationId, b.provider)),
     productCount,
     tools,
-  ]).then(([b, markup, aiEnabled, cap, platformCap, api, productCount, tools]) => ({
+    shelves,
+  ]).then(([b, markup, aiEnabled, cap, platformCap, api, productCount, tools, shelves]) => ({
     brain: b,
     markup,
     aiEnabled,
@@ -1617,6 +1657,7 @@ export function prepareRun(
     api,
     productCount,
     tools,
+    shelves,
   }));
   // Awaited by executeRun; a failure surfaces there, never as an unhandled rejection.
   prelude.catch(() => {});
@@ -2103,13 +2144,13 @@ export async function executeRun(
     if (prelude.productCount > 0) {
       systemParts.push(
         "This business has a product catalogue; for any browse/choose request call catalog_search before answering. " +
-          "When the customer names or asks about a particular product, look it up with catalog_search (query = its name) and use its fields (category, metal, stones, weight, price, link).",
+          "When the customer names or asks about a particular product, look it up with catalog_search (query = its name) and use its fields (category, price, link and any details listed with it).",
       );
     }
     if (options.channel !== "onboarding" && prelude.tools.some((t) => t.name === "send_products")) {
       systemParts.push(
         "Product pictures: nothing is attached for you. A product reaches the customer only when you call send_products with its product_id and the caption you want under its picture — write captions the way this business's instructions ask. " +
-          "Text you write in the same turn as send_products goes before the pictures; your final reply goes after them. Quote prices exactly as the search gives them (whole rupees).",
+          "Text you write in the same turn as send_products goes before the pictures; your final reply goes after them. Quote prices exactly as the search gives them (whole units, in the product's own currency).",
       );
     }
     systemParts.push(ANSWER_POLICY);
@@ -2122,10 +2163,12 @@ export async function executeRun(
 
   // Pictures only reach a customer from a live answer; the owner's own chat
   // and a teammate's draft carry words alone, so they never offer them.
-  const tools =
+  const tools = withShopCategories(
     task === "agent_reply" && options.channel !== "onboarding"
       ? prelude.tools
-      : prelude.tools.filter((t) => t.name !== "send_products");
+      : prelude.tools.filter((t) => t.name !== "send_products"),
+    prelude.shelves,
+  );
   const modelStarted = Date.now();
   // A customer answer may need the policy-claim check afterwards; its own
   // reads (brain, key, caps) run while this answer is being written instead
@@ -2750,7 +2793,7 @@ export async function executeRun(
   // pendant was found invents stock.
   const searchedCatalog = toolCalls.some((c) => c.tool === "catalog_search" && c.ok);
   if (task === "agent_reply" && searchedCatalog && result.output) {
-    const offers = unsearchedShelfOffers(result.output, input, toolResultTexts);
+    const offers = unsearchedShelfOffers(result.output, input, toolResultTexts, prelude.shelves);
     const kept = dropSentences(result.output, (s) => offers.includes(s));
     if (offers.length > 0 && kept.replace(PRODUCTS_MARK, "").trim()) {
       runMeta["unsearched_offers_removed"] = offers;
@@ -2924,7 +2967,15 @@ export function productToolView<T extends { ok: boolean; found?: boolean; data?:
         ...result,
         data: {
           ...rest,
-          ...(prices.length ? { lowest_price: rupees(Math.min(...prices)) } : {}),
+          // In the products' own currency.
+          ...(prices.length
+            ? {
+                lowest_price: rupees(
+                  Math.min(...prices),
+                  (data["closest_above"] as Array<Record<string, unknown>>).find((r) => r["currency"])?.["currency"],
+                ),
+              }
+            : {}),
           closest_above: closest,
           note: CLOSEST_NOTE,
         },
@@ -3055,12 +3106,14 @@ function normaliseQuestion(text: string): string {
 
 // ------------------------------------------------------- numeric grounding
 
+/** Currency marks a figure may carry, in any common currency ("₹", "Rs", "$", "€", "AED"). */
+const CURRENCY_MARK = "(?:[₹$€£¥]|Rs\\.?\\s?|\\b(?:INR|USD|EUR|GBP|AED|SGD|AUD|CAD)\\s?)";
 /** Every number-looking run of characters, with currency and percent signs. */
-const NUMBER_PATTERN = /(?:₹|Rs\.?\s?)?\d[\d,]*(?:\.\d+)?\s?%?/g;
+const NUMBER_PATTERN = new RegExp(`${CURRENCY_MARK}?\\d[\\d,]*(?:\\.\\d+)?\\s?%?`, "g");
 
-/** ₹, Rs, commas and spaces carry no meaning for a comparison. */
+/** Currency marks, commas and spaces carry no meaning for a comparison. */
 function stripNumericNoise(text: string): string {
-  return text.replace(/₹|Rs\.?/gi, "").replace(/[,\s]/g, "");
+  return text.replace(new RegExp(CURRENCY_MARK, "gi"), "").replace(/[,\s]/g, "");
 }
 
 /**
@@ -3096,7 +3149,7 @@ export function unsupportedNumbers(answer: string, support: string[]): string[] 
     if (!value) continue;
     const bare = value.replace(/%$/, "");
     const trivial =
-      !/[₹%]|Rs/i.test(token) && !bare.includes(".") && bare.replace(/\D/g, "").length <= 2;
+      !/%/.test(token) && !new RegExp(CURRENCY_MARK, "i").test(token) && !bare.includes(".") && bare.replace(/\D/g, "").length <= 2;
     if (trivial) continue;
     if (haystack.includes(value)) continue;
     if (!out.includes(token)) out.push(token);
@@ -3391,24 +3444,20 @@ export async function rollUpUsage(
   const today = new Date().toISOString().slice(0, 10);
   // One statement in the database (ai_usage_add, as meterAiUsage): two runs
   // finishing at once each lost the other's addition, so the monthly cap
-  // (billed_amount) under-counted. Until it is applied, the old way below.
-  if (Date.now() >= aiUsageAddMissingUntil) {
-    const { error } = await supabase.rpc("ai_usage_add", {
-      p_org: organizationId,
-      p_usage_date: today,
-      p_task: task,
-      p_runs: 1,
-      p_input_tokens: result.inputTokens ?? 0,
-      p_output_tokens: result.outputTokens ?? 0,
-      p_cost_amount: result.costAmount ?? 0,
-      p_billed_amount: result.billedAmount ?? 0,
-      p_currency: result.costCurrency ?? "INR",
-    });
-    if (!error) return;
-    const code = String((error as { code?: string }).code ?? "");
-    if (code === "PGRST202" || code === "42883") aiUsageAddMissingUntil = Date.now() + 10 * 60_000;
-    else console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
-  }
+  // (billed_amount) under-counted. A call that fails is logged and written the old way below.
+  const { error } = await supabase.rpc("ai_usage_add", {
+    p_org: organizationId,
+    p_usage_date: today,
+    p_task: task,
+    p_runs: 1,
+    p_input_tokens: result.inputTokens ?? 0,
+    p_output_tokens: result.outputTokens ?? 0,
+    p_cost_amount: result.costAmount ?? 0,
+    p_billed_amount: result.billedAmount ?? 0,
+    p_currency: result.costCurrency ?? "INR",
+  });
+  if (!error) return;
+  console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
   const { data: existing } = await supabase
     .from("ai_usage")
     .select("id, runs, input_tokens, output_tokens, cost_amount, billed_amount")

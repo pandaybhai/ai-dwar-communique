@@ -120,7 +120,7 @@ export function summary(node: FlowNode): string {
       return design ? `${design.title} card${first ? ` · ${first}` : ""}` : "Pick a card design";
     }
     case "show_products": {
-      const price = [d["min_price"] ? `from ₹${String(d["min_price"])}` : "", d["max_price"] ? `up to ₹${String(d["max_price"])}` : ""].filter(Boolean).join(" ");
+      const price = [d["min_price"] ? `from ${String(d["min_price"])}` : "", d["max_price"] ? `up to ${String(d["max_price"])}` : ""].filter(Boolean).join(" ");
       const keyword = String(d["keyword"] ?? "").trim();
       const order = d["sort"] === "spread" ? " · spread across budget" : d["sort"] === "newest" ? " · newest" : "";
       return `Up to ${Number(d["max_items"] ?? 5)} ${String(d["category"] ?? "") || "products"}${keyword ? ` · "${keyword}"` : ""}${String(d["budget"] ?? "") ? ` · ${String(d["budget"])}` : ""}${price ? ` · ${price}` : ""}${order}`;

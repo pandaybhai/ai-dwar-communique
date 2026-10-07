@@ -247,18 +247,10 @@ export async function syncCampaignCharged(
   return { ok: true, amount: charged.amount };
 }
 
-// Set once the database says campaign_ledger_charge() isn't there yet
-// (migration 20261016_send_at_scale.sql not applied); looked for again
-// every 10 minutes so applying it needs no deploy.
-let ledgerRpcMissingUntil = 0;
-
 /**
- * What the ledger has actually charged for this campaign's messages.
- *
- * Summed in the database when campaign_ledger_charge() exists (one row back,
- * indexed). Until then the rows are read in pages: the Data API returns at
- * most 1000 rows per read, so a single read silently stopped counting after
- * the campaign's first 1000 priced messages.
+ * What the ledger has actually charged for this campaign's messages, summed
+ * in the database (campaign_ledger_charge, 20261016_send_at_scale.sql: one
+ * row back, indexed).
  */
 async function campaignLedgerCharge(
   supabase: SupabaseClient,
@@ -266,36 +258,13 @@ async function campaignLedgerCharge(
   campaignId: string,
 ): Promise<{ amount: number; error: string | null }> {
   const { round2 } = await import("@/lib/billing");
-  if (Date.now() >= ledgerRpcMissingUntil) {
-    const { data, error } = await supabase.rpc("campaign_ledger_charge", {
-      p_org: organizationId,
-      p_campaign_id: campaignId,
-    });
-    // The function always returns a number; anything else reads the rows.
-    const sum = typeof data === "number" || typeof data === "string" ? Number(data) : NaN;
-    if (!error && Number.isFinite(sum)) return { amount: round2(Math.abs(sum)), error: null };
-    if (error) {
-      const code = String((error as { code?: string }).code ?? "");
-      if (code !== "PGRST202" && code !== "42883") return { amount: 0, error: error.message };
-      ledgerRpcMissingUntil = Date.now() + 10 * 60_000;
-    }
-  }
-
-  const PAGE = 1000;
-  let total = 0;
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from("wallet_ledger")
-      .select("amount")
-      .eq("organization_id", organizationId)
-      .eq("entry_type", "debit_message")
-      .eq("metadata->>campaign_id", campaignId)
-      .order("id", { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) return { amount: 0, error: error.message };
-    const rows = (data ?? []) as Array<{ amount: number | string | null }>;
-    total += rows.reduce((sum, row) => sum + Math.abs(Number(row.amount ?? 0)), 0);
-    if (rows.length < PAGE) break;
-  }
-  return { amount: round2(total), error: null };
+  const { data, error } = await supabase.rpc("campaign_ledger_charge", {
+    p_org: organizationId,
+    p_campaign_id: campaignId,
+  });
+  if (error) return { amount: 0, error: error.message };
+  // The function always returns a number.
+  const sum = typeof data === "number" || typeof data === "string" ? Number(data) : NaN;
+  if (!Number.isFinite(sum)) return { amount: 0, error: "campaign_ledger_charge returned no number" };
+  return { amount: round2(Math.abs(sum)), error: null };
 }

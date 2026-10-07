@@ -150,6 +150,37 @@ const baseline = existsSync(baselinePath)
   ? (JSON.parse(readFileSync(baselinePath, "utf8")) as Record<string, Replay>)
   : null;
 
+/**
+ * Batch 20 — the only wording allowed to differ from after.json, each with
+ * its reason. Products, prices, links and message order are unchanged.
+ */
+const ALLOWED: Array<{ id: string; from: string; to: string; why: string }> = [
+  ...["earrings-no-photos", "earrings-live-args"].map((id) => ({
+    id,
+    from: "Diamond & Pink Sapphire Gold Earrings",
+    to: "Gold, Diamond & Pink Sapphire Pear Earring",
+    why: "a coded product's readable name is built from its own first labelled line (Metal: Gold, Diamond, Pink Sapphire Pear) and its category in the singular — no list of metals, stones or jewellery nouns in shared code",
+  })),
+  {
+    id: "tanmaniya-under-20k",
+    from: "Blue Sap & Diamond Gold Tanmaniya",
+    to: "Gold, Blue Sap Round & Diamond Tanmaniya",
+    why: "same: the line's own words in its own order (no stone-shape list to strip 'Round')",
+  },
+  {
+    id: "tanmaniya-under-20k",
+    from: "Diamond, Emerald & Ruby Gold Tanmaniya",
+    to: "Gold, Diamond & Emerald Marquise Tanmaniya",
+    why: "same: the first three of the line's own values (no shape list to strip 'Marquise')",
+  },
+  {
+    id: "flow-picture-reply-to",
+    from: "3.05 g.",
+    to: "3.05 gm.",
+    why: "the model is given the shop's labelled details as written (Gross weight: 3.05 gm) instead of a jewellery-only weight field re-written as 'g'",
+  },
+];
+
 describe("the baseline (main) shows the live faults the checks look for", () => {
   it("was recorded on main for every case", () => {
     expect(baseline).not.toBeNull();
@@ -278,7 +309,7 @@ describe("this branch: every reply is the model's, cleanly", () => {
   it("Batch 14.1: the live earrings call (gender 'female', in stock) finds the untagged earrings and sends them as captions", () => {
     const r = results.get("earrings-live-args")!;
     expect(r.sent.map((s) => s.type)).toEqual(["text", "text", "text", "text"]);
-    expect(r.sent[1]!.text).toMatch(/Earrings — ₹[\d,]+\n https?:|Earrings — ₹[\d,]+\nhttps?:/);
+    expect(r.sent[1]!.text).toMatch(/Earrings? — ₹[\d,]+\n https?:|Earrings? — ₹[\d,]+\nhttps?:/);
     // The model's own live call (Batch 15C: the early search of the
     // customer's words is listed before it, as the call it was given).
     const tools = r.toolsMeta as Array<Record<string, unknown>>;
@@ -333,10 +364,23 @@ describe("this branch: every reply is the model's, cleanly", () => {
     const path = join(DIR, "after.json");
     if (!existsSync(path) || process.env["REPLAY_WRITE"]) return;
     const after = JSON.parse(readFileSync(path, "utf8")) as Record<string, Replay>;
-    for (const c of CASES)
-      expect({ id: c.id, sent: results.get(c.id)!.sent }).toEqual({
-        id: c.id,
-        sent: after[c.id]!.sent,
+    const used = new Set<number>();
+    for (const c of CASES) {
+      // The recorded messages with only the ALLOWED wording changes applied:
+      // same products, prices, links and order — anything else fails.
+      const expected = after[c.id]!.sent.map((m) => {
+        let text = m.text;
+        ALLOWED.forEach((a, i) => {
+          if (a.id === c.id && text.includes(a.from)) {
+            text = text.split(a.from).join(a.to);
+            used.add(i);
+          }
+        });
+        return { ...m, text };
       });
+      expect({ id: c.id, sent: results.get(c.id)!.sent }).toEqual({ id: c.id, sent: expected });
+    }
+    // Every ALLOWED entry is still needed.
+    expect([...used].sort((a, b) => a - b)).toEqual(ALLOWED.map((_, i) => i));
   });
 });

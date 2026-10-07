@@ -665,8 +665,7 @@ describe("lanes, the wallet hold and completion", () => {
 // ------------------------------------------------------------- status webhook
 
 describe("status webhook: cheap, monotonic, counted once", () => {
-  // Each test gets fresh module state (the webhook remembers per isolate
-  // whether campaign_recipient_status() exists).
+  // Each test gets fresh module state.
   beforeEach(() => vi.resetModules());
 
   const statusPayload = (pn: string, statuses: Array<Record<string, unknown>>) => ({
@@ -680,7 +679,7 @@ describe("status webhook: cheap, monotonic, counted once", () => {
   });
 
   async function sentCampaign(
-    spec: { recipientRpc?: boolean; ledgerRpc?: boolean; billing?: boolean } = {},
+    spec: { billing?: boolean } = {},
   ) {
     const w = world({ campaigns: [{ recipients: 3 }], ...spec });
     const g = meta();
@@ -705,60 +704,54 @@ describe("status webhook: cheap, monotonic, counted once", () => {
     return event;
   }
 
-  for (const recipientRpc of [true, false]) {
-    const label = recipientRpc
-      ? "with campaign_recipient_status()"
-      : "before the migration (two conditional updates)";
-
-    it(`delivered twice at once counts once; read after counts read; ${label}`, async () => {
-      const { db, campaigns, metaIdOf } = await sentCampaign({ recipientRpc });
-      const c = campaigns[0]!;
-      const r = c.recipients[0]!;
-      const id = metaIdOf(r["id"] as string);
-      const st = (status: string) => ({
-        id,
-        status,
-        timestamp: "1760000000",
-        biz_opaque_callback_data: campaignCallbackData(c.id, r["id"] as string),
-      });
-      await Promise.all([
-        deliver(db, c.pn, [st("delivered")]),
-        deliver(db, c.pn, [st("delivered")]),
-      ]);
-      expect(campaignRow(db, c.id)).toMatchObject({ delivered_count: 1, read_count: 0 });
-      await deliver(db, c.pn, [st("read")]);
-      await deliver(db, c.pn, [st("delivered")]); // late, out of order: never downgrades
-      expect(campaignRow(db, c.id)).toMatchObject({ delivered_count: 1, read_count: 1 });
-      expect(r["status"]).toBe("read");
-      expect(db.rows("messages").find((m) => m["meta_message_id"] === id)!["status"]).toBe("read");
-      expect(
-        db.rows("analytics_events").filter((e) => e["event_type"] === "message.read"),
-      ).toHaveLength(1);
+  it("delivered twice at once counts once; read after counts read", async () => {
+    const { db, campaigns, metaIdOf } = await sentCampaign();
+    const c = campaigns[0]!;
+    const r = c.recipients[0]!;
+    const id = metaIdOf(r["id"] as string);
+    const st = (status: string) => ({
+      id,
+      status,
+      timestamp: "1760000000",
+      biz_opaque_callback_data: campaignCallbackData(c.id, r["id"] as string),
     });
+    await Promise.all([
+      deliver(db, c.pn, [st("delivered")]),
+      deliver(db, c.pn, [st("delivered")]),
+    ]);
+    expect(campaignRow(db, c.id)).toMatchObject({ delivered_count: 1, read_count: 0 });
+    await deliver(db, c.pn, [st("read")]);
+    await deliver(db, c.pn, [st("delivered")]); // late, out of order: never downgrades
+    expect(campaignRow(db, c.id)).toMatchObject({ delivered_count: 1, read_count: 1 });
+    expect(r["status"]).toBe("read");
+    expect(db.rows("messages").find((m) => m["meta_message_id"] === id)!["status"]).toBe("read");
+    expect(
+      db.rows("analytics_events").filter((e) => e["event_type"] === "message.read"),
+    ).toHaveLength(1);
+  });
 
-    it(`read with no delivered first counts both; a failure after sent counts failed once; ${label}`, async () => {
-      const { db, campaigns, metaIdOf } = await sentCampaign({ recipientRpc });
-      const c = campaigns[0]!;
-      const [r1, r2] = c.recipients;
-      await deliver(db, c.pn, [
-        { id: metaIdOf(r1!["id"] as string), status: "read", timestamp: "1760000000" },
-      ]);
-      expect(campaignRow(db, c.id)).toMatchObject({ delivered_count: 1, read_count: 1 });
-      const failed = {
-        id: metaIdOf(r2!["id"] as string),
-        status: "failed",
-        timestamp: "1760000000",
-        errors: [{ code: 131026, title: "undeliverable" }],
-      };
-      await deliver(db, c.pn, [failed]);
-      await deliver(db, c.pn, [failed]);
-      expect(campaignRow(db, c.id)).toMatchObject({ failed_count: 1, sent_count: 3 });
-      expect(r2).toMatchObject({ status: "failed" });
-    });
-  }
+  it("read with no delivered first counts both; a failure after sent counts failed once", async () => {
+    const { db, campaigns, metaIdOf } = await sentCampaign();
+    const c = campaigns[0]!;
+    const [r1, r2] = c.recipients;
+    await deliver(db, c.pn, [
+      { id: metaIdOf(r1!["id"] as string), status: "read", timestamp: "1760000000" },
+    ]);
+    expect(campaignRow(db, c.id)).toMatchObject({ delivered_count: 1, read_count: 1 });
+    const failed = {
+      id: metaIdOf(r2!["id"] as string),
+      status: "failed",
+      timestamp: "1760000000",
+      errors: [{ code: 131026, title: "undeliverable" }],
+    };
+    await deliver(db, c.pn, [failed]);
+    await deliver(db, c.pn, [failed]);
+    expect(campaignRow(db, c.id)).toMatchObject({ failed_count: 1, sent_count: 3 });
+    expect(r2).toMatchObject({ status: "failed" });
+  });
 
   it("a status that arrives before the sender wrote the row waits for it, then applies (biz_opaque_callback_data)", async () => {
-    const { db, campaigns } = await sentCampaign({ recipientRpc: true });
+    const { db, campaigns } = await sentCampaign();
     const c = campaigns[0]!;
     const r = c.recipients[1]!;
     const lateId = "wamid.late";
@@ -800,7 +793,7 @@ describe("status webhook: cheap, monotonic, counted once", () => {
   }, 10_000);
 
   it("a message that isn't a campaign's never touches recipients or counters, and an unknown one is ignored", async () => {
-    const { db, campaigns } = await sentCampaign({ recipientRpc: true });
+    const { db, campaigns } = await sentCampaign();
     const c = campaigns[0]!;
     db.insert("messages", {
       organization_id: c.orgId,
@@ -824,7 +817,7 @@ describe("status webhook: cheap, monotonic, counted once", () => {
   });
 
   it("per status: one update of the message, one recipient call, the price, the event — no reads first", async () => {
-    const { db, campaigns, metaIdOf } = await sentCampaign({ recipientRpc: true });
+    const { db, campaigns, metaIdOf } = await sentCampaign();
     const c = campaigns[0]!;
     const before = db.calls.length;
     await deliver(db, c.pn, [
@@ -844,7 +837,7 @@ describe("status webhook: cheap, monotonic, counted once", () => {
   });
 
   it("the campaign's charged total is re-read at most every few seconds per campaign, not on every price", async () => {
-    const { db, campaigns, metaIdOf } = await sentCampaign({ recipientRpc: true, ledgerRpc: true });
+    const { db, campaigns, metaIdOf } = await sentCampaign();
     const c = campaigns[0]!;
     const before = db.calls.length;
     for (const r of c.recipients) {
@@ -934,27 +927,7 @@ describe("catching up stored webhook events", () => {
 describe("charged_amount: the whole ledger, not its first 1000 rows", () => {
   beforeEach(() => vi.resetModules());
 
-  it("without campaign_ledger_charge() the debit rows are read page by page", async () => {
-    const { syncCampaignCharged } = await import("./campaign-billing.server");
-    const db = new MemoryDb();
-    const org = crypto.randomUUID();
-    const campaign = db.insert("campaigns", { organization_id: org, charged_amount: 0 });
-    for (let i = 0; i < 2_500; i++) {
-      db.insert("wallet_ledger", {
-        id: `l-${String(i).padStart(5, "0")}`,
-        organization_id: org,
-        entry_type: "debit_message",
-        amount: -0.86,
-        metadata: { campaign_id: campaign["id"] },
-      });
-    }
-    const result = await syncCampaignCharged(db.client, org, campaign["id"] as string);
-    expect(result).toEqual({ ok: true, amount: 2150 });
-    expect(campaign["charged_amount"]).toBe(2150);
-    expect(db.calls.filter((x) => x.table === "wallet_ledger")).toHaveLength(3);
-  });
-
-  it("with it: one call, and raise-only as before", async () => {
+  it("the charged total is one call (campaign_ledger_charge), raise-only", async () => {
     const { syncCampaignCharged } = await import("./campaign-billing.server");
     const db = new MemoryDb();
     db.rpcs.set("campaign_ledger_charge", () => 12.5);

@@ -7,6 +7,7 @@ import { useOrg } from "@/lib/org-context";
 import { CatalogView } from "@/components/catalog/catalog-view";
 import { ProductsSummary } from "@/components/catalog/products-summary";
 import { WhatsAppShopCard } from "@/components/catalog/whatsapp-shop-card";
+import { CategoryWordsCard } from "@/components/catalog/category-words-card";
 
 // Wording only: the route stays /app/catalog and the flag/permission keys stay "catalog".
 const PRODUCTS_DESCRIPTION =
@@ -71,6 +72,7 @@ function CatalogPage() {
       <PageHeader title="Products" description={PRODUCTS_DESCRIPTION} />
       <ProductsSummary organizationId={organizationId} />
       <WhatsAppShopCard organizationId={organizationId} />
+      <CategoryWordsCard organizationId={organizationId} />
       <CatalogView organizationId={organizationId} />
     </>
   );

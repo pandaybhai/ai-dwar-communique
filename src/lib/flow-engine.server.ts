@@ -1632,8 +1632,8 @@ export async function handToAiden(supabase: SupabaseClient, run: { organization_
 
 /**
  * The Hand-to-Aiden step's Behaviour / Rules for this chat (null clears an
- * older flow's). Before 20261050_batch21_aiden_flow_rules.sql is applied the
- * column is missing: the write fails quietly and Aiden answers as before.
+ * older flow's), on conversations.aiden_flow_rules. A failed write is quiet:
+ * Aiden answers as before.
  */
 export async function setAidenFlowRules(supabase: SupabaseClient, run: Pick<Run, "id" | "flow_id" | "organization_id" | "conversation_id">, d: Record<string, unknown>) {
   if (!run.conversation_id) return;

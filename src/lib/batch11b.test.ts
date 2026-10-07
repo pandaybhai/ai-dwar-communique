@@ -86,7 +86,7 @@ const VAULT: Record<string, string> = {
   platform_anthropic_key: "vault-ant-key-SECRET",
   platform_openai_key: "vault-oa-key-SECRET",
 };
-type PlatformOpts = { anthropicActive?: boolean; chosen?: string | null; columnMissing?: boolean; noRows?: boolean };
+type PlatformOpts = { anthropicActive?: boolean; chosen?: string | null; settingsError?: boolean; noRows?: boolean };
 function platformReply(op: FakeOp, opts: PlatformOpts = {}) {
   if (op.table === "platform_ai_providers" && op.kind === "select") {
     if (opts.noRows) return { data: [], error: null };
@@ -99,7 +99,7 @@ function platformReply(op: FakeOp, opts: PlatformOpts = {}) {
     };
   }
   if (op.table === "platform_settings" && op.kind === "select" && String(op.select?.[0] ?? "").includes("ai_backup_anthropic_model")) {
-    if (opts.columnMissing) return { data: null, error: { code: "42703", message: "column platform_settings.ai_backup_anthropic_model does not exist" } };
+    if (opts.settingsError) return { data: null, error: { message: "timeout" } };
     return { data: { ai_backup_anthropic_model: opts.chosen ?? null }, error: null };
   }
   return undefined;
@@ -141,8 +141,8 @@ describe("(1) AI backup: Platform providers keys and the model choice", () => {
     expect(db.ops.length).toBe(before);
   });
 
-  it("before the migration (no column) the default model applies and keys still load; an unknown saved model is ignored", async () => {
-    const db = fakeDb((op) => platformReply(op, { columnMissing: true }), vaultRpc);
+  it("a failed settings read: the default model applies and keys still load; an unknown saved model is ignored", async () => {
+    const db = fakeDb((op) => platformReply(op, { settingsError: true }), vaultRpc);
     expect(await loadPlatformBackup(db.supabase, { fresh: true })).toEqual({
       anthropicKey: "vault-ant-key-SECRET",
       openaiKey: "vault-oa-key-SECRET",
@@ -350,11 +350,11 @@ describe("(1) AI backup: Platform providers keys and the model choice", () => {
       expect(db.has(save, "eq", "id", true)).toBe(true);
     });
 
-    it("set_backup_model before the migration: says the database update is needed", async () => {
-      world({ saveError: "Could not find the 'ai_backup_anthropic_model' column of 'platform_settings' in the schema cache" });
+    it("set_backup_model: a failed save says so", async () => {
+      world({ saveError: "timeout" });
       const res = await call({ anthropic_model: "claude-sonnet-5-5", action: "set_backup_model" });
-      expect(res.status).toBe(409);
-      expect(((await res.json()) as { error: string }).error).toContain("20261017_ai_backup_model.sql");
+      expect(res.status).toBe(500);
+      expect(((await res.json()) as { error: string }).error).toBe("The backup model could not be saved.");
     });
   });
 
