@@ -8,6 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import type { ErrorComponentProps } from "@tanstack/router-core";
 
 import { Toaster } from "@/components/ui/sonner";
 
