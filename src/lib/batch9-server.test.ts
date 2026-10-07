@@ -98,21 +98,17 @@ function flowsWorld(graph: FlowGraph, catalogs: Array<{ id: string }>) {
     (op) => {
       if (op.table === "flows" && op.kind === "select") return { data: { id: FLOW_ID, name: "Welcome menu", key: "v2:abc", whatsapp_account_id: null }, error: null };
       if (op.table === "flow_versions" && op.kind === "select") return { data: [{ id: "ver-2", graph, version: 2 }], error: null };
-      // Batch 10C: publishing a draft returns the row it published.
-      if (op.table === "flow_versions" && op.kind === "update") return { data: [{ id: "ver-2" }], error: null };
       if (op.table === "whatsapp_catalogs") return { data: catalogs, error: null };
       if (op.table === "whatsapp_accounts") return { data: [], error: null };
       if (op.table === "organization_members") return { data: [], error: null };
       return undefined;
     },
-    // Batch 10C: the live database doesn't have flow_publish_version yet, so publish runs step by step.
-    (call) => (call.name === "flow_publish_version" ? { data: null, error: { code: "PGRST202", message: "Could not find the function public.flow_publish_version" } } : undefined),
   );
   h.db = db;
   return db;
 }
-const published = (db: ReturnType<typeof fakeDb>) =>
-  db.ops.some((o) => o.table === "flow_versions" && o.kind === "update" && (o.payload as { status?: string }).status === "published");
+/** Published = the one-transaction publish (flow_publish_version) ran. */
+const published = (db: ReturnType<typeof fakeDb>) => db.rpcs.some((r) => r.name === "flow_publish_version");
 
 describe("(2) publish: the WhatsApp shop guard", () => {
   it("unchanged: a flow without a WhatsApp shop step publishes, and the shop is never looked up", async () => {

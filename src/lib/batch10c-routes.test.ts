@@ -7,8 +7,7 @@ import { fakeDb, type FakeOp, type FakeRpc } from "./test-support/fake-db";
  *      for today's brand paint — nothing drawn, nothing recorded — so it stays
  *      across visits and days, and is gone once the logo/name/colours change.
  *  (6) Flows v2 editor: a draft that doesn't save says so (no silent "ok");
- *      publish is all-or-nothing (one transaction when the migration is
- *      applied; step by step with every landed write put back until then).
+ *      publish is all-or-nothing (one transaction, flow_publish_version).
  */
 
 type Reply = { data: unknown; error: { code?: string; message: string } | null };
@@ -135,7 +134,6 @@ function flowsDb(opts: { failUpdate?: (op: FakeOp) => boolean; failInsert?: bool
 }
 const flows = (body: Record<string, unknown>) =>
   postOf(FlowsV2Route)({ request: new Request("http://x/api/flows/v2", { method: "POST", body: JSON.stringify({ organization_id: ORG, flow_id: FLOW, ...body }) }) });
-const MISSING: Reply = { data: null, error: { code: "PGRST202", message: "Could not find the function public.flow_publish_version" } };
 const statusWrites = (db: ReturnType<typeof fakeDb>) =>
   db.ops
     .filter((o) => o.kind === "update" && (o.table === "flow_versions" || o.table === "flows"))
@@ -172,7 +170,7 @@ describe("flow draft save: a failure is never silent", () => {
 });
 
 describe("publish is all-or-nothing", () => {
-  it("with the migration: one transaction (the RPC), no loose writes", async () => {
+  it("one transaction (the RPC), no loose writes", async () => {
     const calls: FakeRpc[] = [];
     h.db = flowsDb({ rpc: (c) => (calls.push(c), { data: 2, error: null }) });
     const res = await flows({ action: "publish" });
@@ -188,30 +186,6 @@ describe("publish is all-or-nothing", () => {
     expect(res.status).toBe(500);
     expect(((await res.json()) as { error: string }).error).toContain("nothing was changed");
     expect(statusWrites(h.db)).toEqual([]);
-  });
-  it("without the migration (today): archive old → publish draft → switch on, in that order", async () => {
-    h.db = flowsDb({ rpc: (c) => (c.name === "flow_publish_version" ? MISSING : undefined) });
-    expect(await (await flows({ action: "publish" })).json()).toEqual({ ok: true, version: 2 });
-    expect(statusWrites(h.db)).toEqual([
-      `flow_versions:{"status":"archived"}[["id",["ver-1"]],["status","published"]]`,
-      `flow_versions:{"status":"published","graph":"<graph>","published_at":"<t>","published_by":"u1"}[["id","ver-2"],["flow_id","${FLOW}"],["status","draft"]]`,
-      `flows:{"is_enabled":true}[["id","${FLOW}"],["organization_id","${ORG}"]]`,
-    ]);
-  });
-  it("without the migration, the draft can't be published → the old version is put back", async () => {
-    h.db = flowsDb({ rpc: (c) => (c.name === "flow_publish_version" ? MISSING : undefined), failUpdate: (op) => op.table === "flow_versions" && (op.payload as { status?: string }).status === "published" && op.filters.some(([, a]) => a[1] === "ver-2") });
-    const res = await flows({ action: "publish" });
-    expect(res.status).toBe(500);
-    expect(statusWrites(h.db).at(-1)).toBe(`flow_versions:{"status":"published"}[["id","ver-1"],["status","archived"]]`);
-  });
-  it("without the migration, the flow can't be switched on → draft back to draft, old version back to published", async () => {
-    h.db = flowsDb({ rpc: (c) => (c.name === "flow_publish_version" ? MISSING : undefined), failUpdate: (op) => op.table === "flows" });
-    const res = await flows({ action: "publish" });
-    expect(res.status).toBe(500);
-    expect(statusWrites(h.db).slice(-2)).toEqual([
-      `flow_versions:{"status":"draft","published_at":null,"published_by":null}[["id","ver-2"]]`,
-      `flow_versions:{"status":"published"}[["id","ver-1"],["status","archived"]]`,
-    ]);
   });
   it("problems still block publishing before anything is written", async () => {
     // A draft whose text step is empty.
