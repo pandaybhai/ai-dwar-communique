@@ -64,6 +64,7 @@ export function isEmailAddress(value: unknown): value is string {
 
 export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
   const apiKey = process.env["RESEND_API_KEY"]?.trim();
+  const gatewayKey = process.env["LOVABLE_API_KEY"]?.trim();
   if (!apiKey) {
     console.info("[email:stub] would send", {
       to: message.to,
@@ -103,17 +104,22 @@ export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
   if (replyTo) payload["reply_to"] = replyTo;
   if (attachments) payload["attachments"] = attachments;
 
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${apiKey}`,
-    "content-type": "application/json",
-  };
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  // Gateway mode: the connection key never speaks to Resend directly.
+  const url = gatewayKey ? RESEND_GATEWAY_URL : RESEND_API_URL;
+  if (gatewayKey) {
+    headers["authorization"] = `Bearer ${gatewayKey}`;
+    headers["x-connection-api-key"] = apiKey;
+  } else {
+    headers["authorization"] = `Bearer ${apiKey}`;
+  }
   if (message.idempotencyKey)
     headers["idempotency-key"] = String(message.idempotencyKey).slice(0, 256);
 
   let res: Response;
   let answer: Record<string, unknown> = {};
   try {
-    res = await outsideFetch("email", RESEND_API_URL, {
+    res = await outsideFetch("email", url, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
