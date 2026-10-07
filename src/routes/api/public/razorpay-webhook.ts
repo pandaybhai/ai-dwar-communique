@@ -49,9 +49,14 @@ export const Route = createFileRoute("/api/public/razorpay-webhook")({
           })
           .select("id")
           .maybeSingle();
+        // Not stored = not processed: Razorpay must deliver it again.
+        if (recordError && recordError.code !== "23505") {
+          console.error("[razorpay-webhook] event not stored", eventId, recordError.message);
+          return new Response("retry", { status: 500 });
+        }
         let recorded = inserted as { id: string } | null;
         if (recordError?.code === "23505" && eventId) {
-          const { data: retry } = await supabase
+          const { data: retry, error: retryError } = await supabase
             .from("webhook_events")
             .update({ error: null, processed_at: null })
             .eq("provider", "razorpay")
@@ -59,7 +64,24 @@ export const Route = createFileRoute("/api/public/razorpay-webhook")({
             .not("error", "is", null)
             .select("id")
             .maybeSingle();
+          if (retryError) return new Response("retry", { status: 500 });
           recorded = (retry as { id: string } | null) ?? null;
+          if (!recorded) {
+            // A delivery that died mid-way left the row neither processed nor
+            // failed: taken again once it is RAZORPAY_STUCK_MS old. received_at
+            // moves to now as the claim, so two redeliveries can't both take it.
+            const { data: stuck, error: stuckError } = await supabase
+              .from("webhook_events")
+              .update({ received_at: new Date().toISOString() })
+              .eq("provider", "razorpay")
+              .eq("external_event_id", eventId)
+              .is("processed_at", null)
+              .lt("received_at", new Date(Date.now() - RAZORPAY_STUCK_MS).toISOString())
+              .select("id")
+              .maybeSingle();
+            if (stuckError) return new Response("retry", { status: 500 });
+            recorded = (stuck as { id: string } | null) ?? null;
+          }
         }
         if (!recorded) return new Response("ok");
 
@@ -88,6 +110,9 @@ export const Route = createFileRoute("/api/public/razorpay-webhook")({
 });
 
 type AnyRecord = Record<string, unknown>;
+
+/** A stored event still unprocessed after this long belongs to a delivery that died. */
+const RAZORPAY_STUCK_MS = 5 * 60_000;
 
 function entity(body: AnyRecord, key: string): AnyRecord | null {
   const payload = (body["payload"] ?? {}) as AnyRecord;

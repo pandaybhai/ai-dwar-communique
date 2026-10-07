@@ -435,3 +435,145 @@ describe("(4) a dunning pause never strands a 'send now' campaign", () => {
     expect(campaignRow(db, later!.id)["status"]).toBe("scheduled");
   });
 });
+
+// ------------------------------------------------------------------ (5)
+describe("(5) a Razorpay event is never answered ok unless it was stored and handled", () => {
+  const MOCKED = [
+    "@/lib/whatsapp-webhook.server",
+    "@/lib/razorpay.server",
+    "@/lib/flow-connections.server",
+    "@/lib/flow-engine.server",
+  ];
+  let client: unknown = null;
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doMock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => client }));
+    vi.doMock("@/lib/razorpay.server", () => ({
+      razorpayWebhookSecret: async () => "secret",
+      verifyWebhookSignature: () => true,
+    }));
+  });
+  afterEach(() => {
+    for (const m of MOCKED) vi.doUnmock(m);
+    vi.resetModules();
+  });
+
+  type Post = (a: { request: Request; params?: Record<string, string> }) => Promise<Response>;
+  async function billingPost(body: unknown) {
+    const { Route } = await import("../routes/api/public/razorpay-webhook");
+    const post = (Route.options as unknown as { server: { handlers: { POST: Post } } }).server.handlers.POST;
+    return post({
+      request: new Request("http://x/api/public/razorpay-webhook", {
+        method: "POST",
+        headers: { "x-razorpay-signature": "sig", "x-razorpay-event-id": "evt_1" },
+        body: JSON.stringify(body),
+      }),
+    });
+  }
+  const failedPayment = {
+    event: "payment.failed",
+    payload: { payment: { entity: { id: "pay_rzp_1", notes: { payment_id: "pay-1" } } } },
+  };
+  /** webhook_events as stored: the event row already there (or not), how old, and its state. */
+  function eventsDb(o: { insertError?: { code?: string; message: string }; stored?: { processed: boolean; error: string | null; ageMs: number } }) {
+    return fakeDb((op) => {
+      if (op.table !== "webhook_events") return undefined;
+      if (op.kind === "insert")
+        return o.insertError
+          ? { data: null, error: o.insertError }
+          : o.stored
+            ? { data: null, error: { code: "23505", message: "duplicate key" } }
+            : { data: { id: "we-1" }, error: null };
+      if (op.kind === "update" && op.filters.some(([n]) => n === "not"))
+        return { data: o.stored?.error ? { id: "we-1" } : null, error: null };
+      if (op.kind === "update" && op.filters.some(([n]) => n === "lt")) {
+        const cutoff = Date.parse(String(op.filters.find(([n]) => n === "lt")![1][1]));
+        const receivedAt = Date.now() - (o.stored?.ageMs ?? 0);
+        const take = o.stored && !o.stored.processed && receivedAt < cutoff;
+        return { data: take ? { id: "we-1" } : null, error: null };
+      }
+      return undefined;
+    });
+  }
+  const handled = (db: ReturnType<typeof fakeDb>) =>
+    db.ops.some((op) => op.table === "payments" && op.kind === "update");
+
+  it("Razorpay store-failure 500: an event that couldn't be stored is answered 500 and not processed", async () => {
+    const db = eventsDb({ insertError: { code: "08006", message: "connection failure" } });
+    client = db.supabase;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await billingPost(failedPayment);
+    expect(res.status).toBe(500);
+    expect(handled(db)).toBe(false);
+  });
+
+  it("a delivery that died mid-way (neither processed nor failed) is taken again after a few minutes", async () => {
+    const db = eventsDb({ stored: { processed: false, error: null, ageMs: 6 * 60_000 } });
+    client = db.supabase;
+    const res = await billingPost(failedPayment);
+    expect(res.status).toBe(200);
+    expect(handled(db)).toBe(true);
+    const take = db.ops.find((op) => op.table === "webhook_events" && op.filters.some(([n]) => n === "lt"))!;
+    // The retake is one conditional update that also claims it.
+    expect(take.filters).toContainEqual(["is", ["processed_at", null]]);
+    expect(Object.keys(take.payload as object)).toEqual(["received_at"]);
+  });
+
+  it("…but not while it may still be running, and never once processed", async () => {
+    for (const stored of [
+      { processed: false, error: null, ageMs: 30_000 },
+      { processed: true, error: null, ageMs: 60 * 60_000 },
+    ]) {
+      const db = eventsDb({ stored });
+      client = db.supabase;
+      const res = await billingPost(failedPayment);
+      expect(res.status).toBe(200);
+      expect(handled(db)).toBe(false);
+    }
+  });
+
+  it("a subscription charge whose write fails answers 500 so Razorpay delivers it again", async () => {
+    const db = fakeDb((op) => {
+      if (op.table === "webhook_events" && op.kind === "insert") return { data: { id: "we-1" }, error: null };
+      if (op.table === "subscriptions" && op.kind === "select")
+        return { data: { id: "sub-1", organization_id: "org-1", raw: {} }, error: null };
+      if (op.table === "organizations" && op.kind === "update") return { data: null, error: { message: "timeout" } };
+      return undefined;
+    });
+    client = db.supabase;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await billingPost({
+      event: "subscription.activated",
+      payload: { subscription: { entity: { id: "sub_rzp_1" } } },
+    });
+    expect(res.status).toBe(500);
+    const marked = db.ops.find((op) => op.table === "webhook_events" && op.kind === "update")!;
+    expect(String((marked.payload as Record<string, unknown>)["error"])).toMatch(/plan status failed/);
+  });
+
+  it("a paid flow whose resume fails answers 500 (it used to answer ok and drop the payment)", async () => {
+    const resume = vi.fn(async () => {
+      throw new Error("flow_runs read failed");
+    });
+    vi.doMock("@/lib/flow-connections.server", () => ({ razorpayWebhookSecretFor: async () => "secret" }));
+    vi.doMock("@/lib/flow-engine.server", () => ({ resumePaidRun: resume }));
+    client = fakeDb(() => undefined).supabase;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { Route } = await import("../routes/api/public/razorpay-flow-webhook/$orgId");
+    const post = (Route.options as unknown as { server: { handlers: { POST: Post } } }).server.handlers.POST;
+    const orgId = "11111111-2222-3333-4444-555555555555";
+    const res = await post({
+      params: { orgId },
+      request: new Request(`http://x/api/public/razorpay-flow-webhook/${orgId}`, {
+        method: "POST",
+        headers: { "x-razorpay-signature": "sig" },
+        body: JSON.stringify({
+          event: "payment_link.paid",
+          payload: { payment_link: { entity: { id: "plink_1", notes: { aidwar_org: orgId, aidwar_run: "run-1", aidwar_node: "n1" } } } },
+        }),
+      }),
+    });
+    expect(resume).toHaveBeenCalledOnce();
+    expect(res.status).toBe(500);
+  });
+});
