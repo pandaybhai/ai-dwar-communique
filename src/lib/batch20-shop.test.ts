@@ -282,29 +282,98 @@ describe("no industry presets in shared code", () => {
   });
 });
 
-describe("pg_cron jobs in the repo (20261053, draft)", () => {
+describe("pg_cron jobs in the repo (20261053, as live on 7 Oct)", () => {
   const sql = readFileSync(join(__dirname, "..", "..", "supabase", "aidwar-migrations", "20261053_cron_jobs.sql"), "utf8");
-  it("every live job is there; knowledge-refresh is paused", () => {
-    for (const job of [
-      "campaign-worker",
-      "reprocess-events",
-      "shopify-sync-worker",
-      "flow-worker",
-      "flow-scan",
-      "knowledge-refresh",
-      "billing-notify",
-      "billing-sweep",
-      "billing-monthly",
-      "knowledge-worker",
-      "knowledge-backfill",
-    ])
-      expect(sql).toMatch(new RegExp(`aidwar_reschedule\\(\\s*'${job}'`));
-    expect(sql).toMatch(/aidwar_reschedule\('knowledge-refresh'[\s\S]*?, false\);/);
+  /** Each scheduled job: name, schedule, the command text. */
+  const jobs = [...sql.matchAll(/cron\.schedule\(\s*'([^']+)',\s*'([^']+)',\s*\$cmd\$([\s\S]*?)\$cmd\$/g)].map((m) => ({
+    name: m[1]!,
+    schedule: m[2]!,
+    command: m[3]!,
+  }));
+  const LIVE: Array<[string, string, string, number | null]> = [
+    ["aidwar-billing-monthly", "0 19 * * *", "billing-monthly", 120000],
+    ["aidwar-billing-notify", "*/5 * * * *", "billing-notify", 30000],
+    ["aidwar-billing-sweep", "*/30 * * * *", "billing-sweep", 60000],
+    ["aidwar-campaign-worker", "* * * * *", "campaign-worker", null],
+    ["aidwar-flow-scan", "0 4 * * *", "flow-scan", null],
+    ["aidwar-flow-worker", "* * * * *", "flow-worker", null],
+    ["aidwar-knowledge-backfill", "0 21 * * *", "knowledge-backfill", 60000],
+    ["aidwar-knowledge-refresh", "20 */6 * * *", "knowledge-refresh", 60000],
+    ["aidwar-knowledge-worker", "* * * * *", "knowledge-worker", 120000],
+    ["aidwar-reprocess-events", "*/5 * * * *", "reprocess-events", null],
+    ["aidwar-shopify-sync", "* * * * *", "shopify-sync-worker", null],
+  ];
+
+  it("the 13 live jobs: names, schedules, paths and timeouts as live (unset where live has none)", () => {
+    expect(jobs).toHaveLength(13);
+    for (const [name, schedule, path, timeout] of LIVE) {
+      const job = jobs.find((j) => j.name === name)!;
+      expect(job, name).toBeDefined();
+      expect(job.schedule).toBe(schedule);
+      expect(job.command).toContain(`url := 'https://aidwar.in/api/internal/${path}'`);
+      expect(job.command).toContain("body := '{}'::jsonb");
+      if (timeout === null) expect(job.command).not.toMatch(/timeout_milliseconds/);
+      else expect(job.command).toContain(`timeout_milliseconds := ${timeout}`);
+      // Idempotent: unscheduled by name first.
+      expect(sql).toContain(`SELECT cron.unschedule('${name}') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = '${name}');`);
+    }
+    expect(jobs.find((j) => j.name === "aidwar-reprice-sweep")).toEqual({
+      name: "aidwar-reprice-sweep",
+      schedule: "*/10 * * * *",
+      command: "select public.reprice_unpriced_messages();",
+    });
+    expect(jobs.find((j) => j.name === "aidwar-retention-purge")).toEqual({
+      name: "aidwar-retention-purge",
+      schedule: "0 2 * * *",
+      command: "SELECT public.retention_purge();",
+    });
   });
+
+  it("only knowledge-refresh is paused", () => {
+    const paused = [...sql.matchAll(/jobname = '([^']+)'\), active := false\)/g)].map((m) => m[1]);
+    expect(paused).toEqual(["aidwar-knowledge-refresh"]);
+  });
+
   it("the secret only ever comes from the Vault, never a literal", () => {
     expect(sql).not.toMatch(/"x-cron-secret"\s*:|'x-cron-secret',\s*'[^']/);
-    expect(sql.match(/name = 'aidwar_cron_secret'/g)!.length).toBeGreaterThanOrEqual(2);
-    // Still a draft: it refuses to run until the live schedules are in.
-    expect(sql).toMatch(/RAISE EXCEPTION 'Batch 20 draft/);
+    expect(sql.match(/where name = 'aidwar_cron_secret'/g)).toHaveLength(11);
+    expect(sql).not.toMatch(/RAISE EXCEPTION/);
+  });
+});
+
+describe("the live-only functions in the repo (20261054, 20261055)", () => {
+  const dir = join(__dirname, "..", "..", "supabase", "aidwar-migrations");
+  const live = readFileSync(join(dir, "20261054_live_only_functions.sql"), "utf8");
+  const revoke = readFileSync(join(dir, "20261055_revoke_billing_reads.sql"), "utf8");
+  const grantsOf = (name: string) =>
+    [...live.matchAll(new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${name}\\([^)]*\\) TO ([^;]+);`, "g"))].map((m) => m[1]);
+
+  it("all six are defined, with the live grants", () => {
+    for (const name of ["ai_answers_allowance", "client_rate_for", "firecrawl_try_spend", "meta_balance_estimate", "next_invoice_number", "wallet_apply"])
+      expect(live).toContain(`CREATE OR REPLACE FUNCTION public.${name}(`);
+    expect(grantsOf("ai_answers_allowance")).toEqual(["authenticated, service_role"]);
+    expect(grantsOf("client_rate_for")).toEqual(["authenticated, service_role"]);
+    for (const name of ["firecrawl_try_spend", "meta_balance_estimate", "next_invoice_number", "wallet_apply"])
+      expect(grantsOf(name)).toEqual(["service_role"]);
+    // The code's own expectations of them.
+    expect(live).toMatch(/wallet_apply\(p_org uuid, p_type text, p_amount numeric, p_ref_type text DEFAULT NULL::text, p_ref_id uuid DEFAULT NULL::uuid, p_description text DEFAULT NULL::text, p_metadata jsonb DEFAULT '\{\}'::jsonb, p_actor uuid DEFAULT NULL::uuid\)/);
+    expect(live).toContain("raise exception 'INSUFFICIENT_CREDITS");
+    expect(live).toMatch(/firecrawl_try_spend\(_org uuid, _credits integer\)\n RETURNS boolean/);
+  });
+
+  it("the browser revoke is its own migration, and no browser code calls those two", () => {
+    expect(revoke).toContain("REVOKE ALL ON FUNCTION public.ai_answers_allowance(uuid) FROM PUBLIC, anon, authenticated;");
+    expect(revoke).toContain(
+      "REVOKE ALL ON FUNCTION public.client_rate_for(uuid, text, text, timestamp with time zone) FROM PUBLIC, anon, authenticated;",
+    );
+    function files(dir: string): string[] {
+      return readdirSync(dir).flatMap((name) => {
+        const path = join(dir, name);
+        return statSync(path).isDirectory() ? files(path) : /\.(ts|tsx)$/.test(name) && !name.includes(".test.") ? [path] : [];
+      });
+    }
+    const src = join(__dirname, "..");
+    const browser = [...files(join(src, "components")), ...files(join(src, "routes", "app")), ...files(join(src, "hooks")), ...files(join(src, "integrations"))];
+    for (const file of browser) expect(readFileSync(file, "utf8"), file).not.toMatch(/client_rate_for|ai_answers_allowance/);
   });
 });

@@ -1,63 +1,96 @@
--- Batch 20 item 8 (NOT applied, DRAFT): every pg_cron job the live database
--- runs, saved in the repo as the one source of truth. Idempotent: each job is
--- unscheduled by name (if present) and scheduled again with the same name.
+-- Batch 20 item 8 (NOT applied; to be applied by hand after review): every
+-- pg_cron job the live database runs, as it runs them — names, schedules,
+-- active flags, paths and timeouts from cron.job read-only on 7 Oct 2026
+-- 12:25 UTC (PR #32). 13 jobs: 11 HTTP workers and 2 SQL jobs.
 --
--- The cron secret is NEVER written here: every command reads it from the
+-- The cron secret is NEVER written here: every HTTP job reads it from the
 -- Vault (vault.decrypted_secrets, name 'aidwar_cron_secret') when it runs,
--- exactly like 20260923_plan_billing_cron.sql and
--- 20261016_campaign_worker_lanes.sql. Every route under
--- src/routes/api/internal/ checks that header (x-cron-secret) against its
--- CRON_SECRET env var.
+-- as live does. Every route under src/routes/api/internal/ checks that
+-- x-cron-secret header against its CRON_SECRET env var.
 --
--- DRAFT: the six jobs marked "live: ?" have no definition anywhere in the
--- repo, and the names of the others may differ live (the repo's older
--- migrations used 'aidwar-*' names). The live schedules, commands, timeouts
--- and job names are asked for in the PR (select jobname, schedule, command,
--- active from cron.job — with the secret redacted). Until they are filled in
--- this file stops itself, so it can never be run half-done:
-DO $$ BEGIN
-  RAISE EXCEPTION 'Batch 20 draft: fill in the live cron schedules before applying 20261053_cron_jobs.sql';
-END $$;
+-- Definitions only — no behaviour change: where live sets no
+-- timeout_milliseconds, none is set here (pg_net's default applies), and
+-- aidwar-knowledge-refresh stays scheduled but paused (active = false; sites
+-- are re-read only when the merchant asks, and the route is also gated by
+-- platform_settings.knowledge_auto_refresh).
+--
+-- Idempotent: each job is unscheduled by name (if present) and scheduled
+-- again with the same name. This replaces the older one-job files
+-- (20260814_campaign_cron, 20260816_reprocess_events_cron,
+-- 20260817_shopify_sync_cron, 20260817_retention_purge's schedule,
+-- 20260901_flow_scan_cron, 20260902_knowledge_refresh_cron,
+-- 20260923_plan_billing_cron) as the one definition of the schedule.
+-- 20261016_campaign_worker_lanes.sql (30-second lanes) is NOT live: live
+-- runs the one-call-a-minute campaign worker below.
+--
+-- SQL jobs: public.retention_purge() is in the repo
+-- (20260824_retention_strip_extend.sql, identical to live: 4518 chars, md5
+-- b63de0809cd2d49b290446953f887720). public.reprice_unpriced_messages() is
+-- live only (md5 dc8fbb7ebc27d7e5432b06d7dcad74cf) — its definition is asked
+-- for in PR #32 and is not part of this file.
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
--- One POST to an internal worker route, the secret read from the Vault at
--- run time. Session-only helper: nothing is left behind in the schema.
-CREATE OR REPLACE FUNCTION pg_temp.aidwar_cron_command(p_path text, p_body text, p_timeout_ms int)
-RETURNS text LANGUAGE sql IMMUTABLE AS $f$
-  SELECT format(
-    $cmd$
+-- aidwar-billing-monthly: 0 19 * * *, timeout 120000 ms
+SELECT cron.unschedule('aidwar-billing-monthly') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-billing-monthly');
+SELECT cron.schedule(
+  'aidwar-billing-monthly',
+  '0 19 * * *',
+  $cmd$
   select net.http_post(
-    url := 'https://aidwar.in%s',
+    url := 'https://aidwar.in/api/internal/billing-monthly',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
     ),
-    body := %s,
-    timeout_milliseconds := %s
+    body := '{}'::jsonb,
+    timeout_milliseconds := 120000
   );
-  $cmd$,
-    p_path, p_body, p_timeout_ms
+  $cmd$
+);
+
+-- aidwar-billing-notify: */5 * * * *, timeout 30000 ms
+SELECT cron.unschedule('aidwar-billing-notify') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-billing-notify');
+SELECT cron.schedule(
+  'aidwar-billing-notify',
+  '*/5 * * * *',
+  $cmd$
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/billing-notify',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 30000
   );
-$f$;
+  $cmd$
+);
 
-CREATE OR REPLACE FUNCTION pg_temp.aidwar_reschedule(p_name text, p_schedule text, p_command text, p_active boolean DEFAULT true)
-RETURNS void LANGUAGE plpgsql AS $f$
-BEGIN
-  PERFORM cron.unschedule(p_name) WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = p_name);
-  PERFORM cron.schedule(p_name, p_schedule, p_command);
-  IF NOT p_active THEN
-    PERFORM cron.alter_job((SELECT jobid FROM cron.job WHERE jobname = p_name), active := false);
-  END IF;
-END
-$f$;
+-- aidwar-billing-sweep: */30 * * * *, timeout 60000 ms
+SELECT cron.unschedule('aidwar-billing-sweep') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-billing-sweep');
+SELECT cron.schedule(
+  'aidwar-billing-sweep',
+  '*/30 * * * *',
+  $cmd$
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/billing-sweep',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 60000
+  );
+  $cmd$
+);
 
--- campaign-worker — every 30 s, one call per lane (two lanes per sending
--- number, 1..32), as 20261016_campaign_worker_lanes.sql (applied). Live: ?
-SELECT pg_temp.aidwar_reschedule(
-  'campaign-worker',
-  '30 seconds',
+-- aidwar-campaign-worker: * * * * *, timeout not set
+SELECT cron.unschedule('aidwar-campaign-worker') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-campaign-worker');
+SELECT cron.schedule(
+  'aidwar-campaign-worker',
+  '* * * * *',
   $cmd$
   select net.http_post(
     url := 'https://aidwar.in/api/internal/campaign-worker',
@@ -65,57 +98,138 @@ SELECT pg_temp.aidwar_reschedule(
       'Content-Type', 'application/json',
       'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
     ),
-    body := jsonb_build_object('lane', lane, 'lanes', n.lanes),
-    timeout_milliseconds := 40000
-  )
-  from (
-    select greatest(1, least(32, 2 * count(distinct whatsapp_account_id)))::int as lanes
-    from public.campaigns
-    where status = 'sending' or (status = 'scheduled' and scheduled_at <= now())
-  ) n,
-  generate_series(0, n.lanes - 1) as lane;
+    body := '{}'::jsonb
+  );
   $cmd$
 );
 
--- reprocess-events — every 5 min (20260816_reprocess_events_cron.sql). Live: ?
-SELECT pg_temp.aidwar_reschedule('reprocess-events', '*/5 * * * *',
-  pg_temp.aidwar_cron_command('/api/internal/reprocess-events', '''{}''::jsonb', 30000 /* proposed; live: ? */));
+-- aidwar-flow-scan: 0 4 * * *, timeout not set
+SELECT cron.unschedule('aidwar-flow-scan') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-flow-scan');
+SELECT cron.schedule(
+  'aidwar-flow-scan',
+  '0 4 * * *',
+  $cmd$
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/flow-scan',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
+    body := '{}'::jsonb
+  );
+  $cmd$
+);
 
--- shopify-sync-worker — every minute (20260817_shopify_sync_cron.sql). Live: ?
-SELECT pg_temp.aidwar_reschedule('shopify-sync-worker', '* * * * *',
-  pg_temp.aidwar_cron_command('/api/internal/shopify-sync-worker', '''{}''::jsonb', 30000 /* proposed; live: ? */));
+-- aidwar-flow-worker: * * * * *, timeout not set
+SELECT cron.unschedule('aidwar-flow-worker') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-flow-worker');
+SELECT cron.schedule(
+  'aidwar-flow-worker',
+  '* * * * *',
+  $cmd$
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/flow-worker',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
+    body := '{}'::jsonb
+  );
+  $cmd$
+);
 
--- flow-worker — minute tick (flow-worker.ts). Live: ? (no repo definition)
-SELECT pg_temp.aidwar_reschedule('flow-worker', 'LIVE-SCHEDULE?',
-  pg_temp.aidwar_cron_command('/api/internal/flow-worker', '''{}''::jsonb', 0 /* LIVE-TIMEOUT? */));
+-- aidwar-knowledge-backfill: 0 21 * * *, timeout 60000 ms
+SELECT cron.unschedule('aidwar-knowledge-backfill') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-knowledge-backfill');
+SELECT cron.schedule(
+  'aidwar-knowledge-backfill',
+  '0 21 * * *',
+  $cmd$
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/knowledge-backfill',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 60000
+  );
+  $cmd$
+);
 
--- flow-scan — daily 04:00 UTC (20260901_flow_scan_cron.sql). Live: ?
-SELECT pg_temp.aidwar_reschedule('flow-scan', '0 4 * * *',
-  pg_temp.aidwar_cron_command('/api/internal/flow-scan', '''{}''::jsonb', 30000 /* proposed; live: ? */));
+-- aidwar-knowledge-refresh: 20 */6 * * * (PAUSED), timeout 60000 ms
+SELECT cron.unschedule('aidwar-knowledge-refresh') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-knowledge-refresh');
+SELECT cron.schedule(
+  'aidwar-knowledge-refresh',
+  '20 */6 * * *',
+  $cmd$
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/knowledge-refresh',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 60000
+  );
+  $cmd$
+);
+SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname = 'aidwar-knowledge-refresh'), active := false);
 
--- knowledge-refresh — PAUSED (active = false): sites are re-read only when
--- the merchant asks (Vinay, 7 Oct; the route is also gated by
--- platform_settings.knowledge_auto_refresh). 20260902 had '20 */6 * * *'. Live: ?
-SELECT pg_temp.aidwar_reschedule('knowledge-refresh', '20 */6 * * *',
-  pg_temp.aidwar_cron_command('/api/internal/knowledge-refresh', '''{}''::jsonb', 90000 /* proposed; live: ? */), false);
+-- aidwar-knowledge-worker: * * * * *, timeout 120000 ms
+SELECT cron.unschedule('aidwar-knowledge-worker') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-knowledge-worker');
+SELECT cron.schedule(
+  'aidwar-knowledge-worker',
+  '* * * * *',
+  $cmd$
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/knowledge-worker',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 120000
+  );
+  $cmd$
+);
 
--- billing-notify — drains the billing notice queue. Live: ? (no repo definition)
-SELECT pg_temp.aidwar_reschedule('billing-notify', 'LIVE-SCHEDULE?',
-  pg_temp.aidwar_cron_command('/api/internal/billing-notify', '''{}''::jsonb', 0 /* LIVE-TIMEOUT? */));
+-- aidwar-reprocess-events: */5 * * * *, timeout not set
+SELECT cron.unschedule('aidwar-reprocess-events') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-reprocess-events');
+SELECT cron.schedule(
+  'aidwar-reprocess-events',
+  '*/5 * * * *',
+  $cmd$
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/reprocess-events',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
+    body := '{}'::jsonb
+  );
+  $cmd$
+);
 
--- billing-sweep — nightly. Live: ? (no repo definition)
-SELECT pg_temp.aidwar_reschedule('billing-sweep', 'LIVE-SCHEDULE?',
-  pg_temp.aidwar_cron_command('/api/internal/billing-sweep', '''{}''::jsonb', 0 /* LIVE-TIMEOUT? */));
+-- aidwar-shopify-sync: * * * * *, timeout not set
+SELECT cron.unschedule('aidwar-shopify-sync') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-shopify-sync');
+SELECT cron.schedule(
+  'aidwar-shopify-sync',
+  '* * * * *',
+  $cmd$
+  select net.http_post(
+    url := 'https://aidwar.in/api/internal/shopify-sync-worker',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
+    body := '{}'::jsonb
+  );
+  $cmd$
+);
 
--- billing-monthly — daily (plan fees, dunning; /plan-billing is its alias,
--- 20260923 scheduled 'aidwar-plan-billing' at '30 3 * * *'). Live: ?
-SELECT pg_temp.aidwar_reschedule('billing-monthly', 'LIVE-SCHEDULE?',
-  pg_temp.aidwar_cron_command('/api/internal/billing-monthly', '''{}''::jsonb', 0 /* LIVE-TIMEOUT? */));
+-- aidwar-reprice-sweep: */10 * * * *
+SELECT cron.unschedule('aidwar-reprice-sweep') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-reprice-sweep');
+SELECT cron.schedule('aidwar-reprice-sweep', '*/10 * * * *', $cmd$select public.reprice_unpriced_messages();$cmd$);
 
--- knowledge-worker — minute tick, ~95 s budget (pg_net drops at 120 s). Live: ?
-SELECT pg_temp.aidwar_reschedule('knowledge-worker', 'LIVE-SCHEDULE?',
-  pg_temp.aidwar_cron_command('/api/internal/knowledge-worker', '''{}''::jsonb', 0 /* LIVE-TIMEOUT? */));
-
--- knowledge-backfill — nightly (also price check, purgeDeletedSources). Live: ?
-SELECT pg_temp.aidwar_reschedule('knowledge-backfill', 'LIVE-SCHEDULE?',
-  pg_temp.aidwar_cron_command('/api/internal/knowledge-backfill', '''{}''::jsonb', 0 /* LIVE-TIMEOUT? */));
+-- aidwar-retention-purge: 0 2 * * *
+SELECT cron.unschedule('aidwar-retention-purge') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'aidwar-retention-purge');
+SELECT cron.schedule('aidwar-retention-purge', '0 2 * * *', $cmd$SELECT public.retention_purge();$cmd$);
