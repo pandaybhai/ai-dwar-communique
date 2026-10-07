@@ -60,7 +60,7 @@ const hang = (init?: RequestInit) =>
     );
   });
 
-/** Stubs fetch: Resend answers with `resend`, any other URL with `file`. */
+/** Stubs fetch: Resend (direct or via the gateway) answers with `resend`, any other URL with `file`. */
 function stubFetch(
   resend: (init: RequestInit) => Response | Promise<Response>,
   file?: (url: string, init: RequestInit) => Response | Promise<Response>,
@@ -71,15 +71,16 @@ function stubFetch(
     vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
       const url = urlOf(input);
       calls.push({ url, init });
-      if (url === RESEND_API_URL) return resend(init);
+      if (url === RESEND_API_URL || url === RESEND_GATEWAY_URL) return resend(init);
       if (file) return file(url, init);
       throw new TypeError("fetch failed");
     }),
   );
   const sends = () =>
     calls
-      .filter((c) => c.url === RESEND_API_URL)
+      .filter((c) => c.url === RESEND_API_URL || c.url === RESEND_GATEWAY_URL)
       .map((c) => ({
+        url: c.url,
         headers: c.init.headers as Record<string, string>,
         body: JSON.parse(String(c.init.body)) as Record<string, unknown>,
       }));
