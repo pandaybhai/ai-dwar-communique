@@ -85,7 +85,7 @@ export function validateAlertSettings(
   return { ok: true, settings: { phones, email: emailText || null } };
 }
 
-/** The saved settings (missing columns before the migration read as none). */
+/** The saved settings (a failed read means none). */
 export async function loadAlertSettings(
   supabase: SupabaseClient,
   organizationId: string,
@@ -344,7 +344,7 @@ export async function remindWaitingHandoffs(
     .is("handoff_reminded_at", null)
     .lte("handoff_alert_at", before)
     .limit(50);
-  if (error) return 0; // columns not there yet (migration not applied)
+  if (error) return 0;
   let sent = 0;
   for (const row of (data ?? []) as Array<{ id: string; organization_id: string; needs_human_reason: string | null; needs_human_question: string | null }>) {
     const settings = await loadAlertSettings(supabase, row.organization_id);
