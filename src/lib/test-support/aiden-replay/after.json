@@ -292,11 +292,11 @@
     "sent": [
       {
         "type": "text",
-        "text": "Let me get someone from the team to confirm that — they'll reply here shortly."
+        "text": "Let me confirm that for you."
       }
     ],
-    "status": "escalated",
-    "escalation": "no_source",
+    "status": "ok",
+    "escalation": null,
     "gapFiled": true,
     "toolsOffered": [
       "catalog_search",
@@ -391,11 +391,11 @@
     "sent": [
       {
         "type": "text",
-        "text": "Let me get someone from the team to confirm that — they'll reply here shortly."
+        "text": "Let me confirm that for you."
       }
     ],
-    "status": "escalated",
-    "escalation": "unsupported_number",
+    "status": "ok",
+    "escalation": null,
     "gapFiled": true,
     "toolsOffered": [
       "catalog_search",

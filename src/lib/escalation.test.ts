@@ -32,7 +32,7 @@ describe("decideEscalation hand-over rules", () => {
   it("still hands over when the customer asks for a person", () => {
     expect(
       decideEscalation({ ...base, question: "Can I speak to a human please?" }),
-    ).toBe("customer_frustrated");
+    ).toBe("asked_for_person");
   });
 
   it("still hands over an unknown discount with no source", () => {

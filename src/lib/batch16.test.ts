@@ -1,0 +1,158 @@
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { zooriWorld, type Case, type Replay } from "./test-support/zoori-replay";
+
+/**
+ * Batch 16 — Aiden never goes silent when it doesn't know.
+ *
+ * Item 1: not knowing files the question for the merchant and keeps Aiden
+ * on the chat (no needs_human); a customer asking for a person still hands
+ * the chat over; a flow's Assign step (needs_human) still silences Aiden.
+ * Same Zoori world as the Batch 14 replay — only the model is scripted.
+ */
+
+vi.mock("@/lib/feature-flags.server", () => ({
+  enabledFlags: async () => new Set(["ai_features", "catalog"]),
+}));
+
+// The catalogue tools run for real against the Zoori rows; only the
+// permission broker around them is stubbed (the agent role holds catalog.view).
+vi.mock("@/lib/ai-tools.server", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./ai-tools.server")>();
+  const { allAiTools } = await import("./feature-registry");
+  const offered = () =>
+    allAiTools()
+      .filter((t) => t.name === "catalog_search" || t.name === "send_products")
+      .map(({ flag_key: _flag, ...tool }) => tool);
+  return {
+    ...real,
+    brokerTools: async () => offered(),
+    invokeTool: async (
+      ctx: Parameters<typeof real.invokeTool>[0],
+      name: string,
+      args: Record<string, unknown>,
+    ) => {
+      const tool = offered().find((t) => t.name === name);
+      if (!tool)
+        return {
+          ok: false,
+          error: "That tool isn't available to you in this workspace.",
+          latencyMs: 1,
+          activityLogId: null,
+          arguments: args,
+          resultSummary: {},
+        };
+      // As invokeTool does: a brokered call (Batch 14.1 gender rule).
+      const out = await real.AI_TOOL_HANDLERS[tool.handler]!({ ...ctx, brokered: true }, args);
+      return {
+        ...out,
+        latencyMs: 1,
+        activityLogId: null,
+        arguments: args, // The broker's own trace summary (older builds, recorded as baselines, have none).
+        resultSummary: typeof real.summarise === "function" ? real.summarise(out) : {},
+      };
+    },
+  };
+});
+
+beforeAll(() => {
+  process.env["LOVABLE_API_KEY"] = "test-key";
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+});
+afterEach(() => vi.unstubAllGlobals());
+
+async function replay(c: Case, gate?: Record<string, unknown>): Promise<{ r: Replay; outcome: Record<string, unknown> }> {
+  const world = zooriWorld(c);
+  vi.stubGlobal("fetch", world.fetchStub);
+  const { runAgentOnInbound } = await import("./ai-agent.server");
+  const args = { ...(world.args as Parameters<typeof runAgentOnInbound>[1]), ...(gate ? { gate: Promise.resolve(gate) } : {}) };
+  const outcome = (await runAgentOnInbound(world.supabase, args)) as unknown as Record<string, unknown>;
+  vi.unstubAllGlobals();
+  return { r: world.result(), outcome };
+}
+
+describe("Batch 16 item 1: not knowing never silences Aiden", () => {
+  it("no source: the only words left are the promise — sent, filed for the merchant, no hand-off", async () => {
+    const { r } = await replay({
+      id: "b16-no-source",
+      ask: "do you do custom engraving on rings?",
+      model: () => ({ text: 'Let me confirm that for you.\n{"needs_owner": true}' }),
+    });
+    expect(r.status).toBe("ok");
+    expect(r.gapFiled).toBe(true);
+    expect(r.handedOff ?? false).toBe(false);
+    expect(r.sent.map((s) => s.text)).toEqual(["Let me confirm that for you."]);
+  });
+
+  it("the v4 rule's answer (no detail, closest thing, keep going) goes out as written, no hand-off", async () => {
+    const words = "I don't have engraving details yet — you can reach the showroom team on the number on our website. Want to see our rings meanwhile?";
+    const { r } = await replay({
+      id: "b16-keep-talking",
+      ask: "do you do custom engraving on rings?",
+      model: () => ({ text: `${words}\n{"needs_owner": true}` }),
+    });
+    expect(r.status).toBe("ok");
+    expect(r.handedOff ?? false).toBe(false);
+    expect(r.sent.map((s) => s.text)).toEqual([words]);
+  });
+
+  it("nothing to say at all: filed for the merchant, Aiden stays on (no needs_human, no hand-over line)", async () => {
+    const { r, outcome } = await replay({
+      id: "b16-nothing",
+      ask: "silver rings under 2000",
+      model: () => ({ text: '{"needs_owner": true}' }),
+    });
+    expect(outcome["sent"]).toBe(false);
+    expect(r.handedOff ?? false).toBe(false);
+    expect(r.gapFiled).toBe(true);
+    expect(r.sent).toEqual([]);
+  });
+
+  it("the customer asks for a person: still handed over (needs_human, the workspace's hand-over line)", async () => {
+    const { r } = await replay({
+      id: "b16-person",
+      ask: "can I talk to a person please",
+      model: () => ({ text: 'Sure, happy to help!\n{"needs_owner": false}' }),
+    });
+    expect(r.status).toBe("escalated");
+    expect(r.escalation).toBe("asked_for_person");
+    expect(r.handedOff).toBe(true);
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0]!.text).toMatch(/^Let me get someone from the team/);
+  });
+
+  it("a flow's Assign step (needs_human on the chat) still silences Aiden", async () => {
+    const { r, outcome } = await replay(
+      { id: "b16-flow-assign", ask: "Rings", model: () => ({ text: "should never run" }) },
+      { assigned_to: null, needs_human: true, last_customer_message_at: new Date().toISOString() },
+    );
+    expect(outcome).toEqual({ acted: false, reason: "awaiting_human" });
+    expect(r.sent).toEqual([]);
+  });
+
+  it("asksForPerson: person asks in English and Hinglish, not product questions about people", async () => {
+    const { asksForPerson, isHandOffSignal } = await import("./ai-run.server");
+    for (const q of ["Can I speak to a human please?", "agent please", "talk to someone", "kisi se baat karni hai", "please call me back", "connect me to the owner", "mujhe call karo"])
+      expect(asksForPerson(q), q).toBe(true);
+    for (const q of ["Rings", "30k", "return policy", "show me products", "is this ring good for a person with small fingers?", "designs"])
+      expect(asksForPerson(q), q).toBe(false);
+    expect(isHandOffSignal("no_source")).toBe(false);
+    expect(isHandOffSignal("unsupported_number")).toBe(false);
+    expect(isHandOffSignal("question_repeated")).toBe(false);
+    expect(isHandOffSignal("asked_for_person")).toBe(true);
+    expect(isHandOffSignal("merchant_rule")).toBe(true);
+  });
+
+  it("agent_rules v4: the colleague line is gone, the keep-talking line is in (code and migration agree)", async () => {
+    const { FALLBACK_AGENT_RULES } = await import("./ai-brief.server");
+    expect(FALLBACK_AGENT_RULES).not.toMatch(/colleague will follow up/);
+    expect(FALLBACK_AGENT_RULES.split("\n").at(-1)).toBe(
+      "If you don't have a detail, say so plainly, offer the closest thing you can (similar products, or the shop's contact details from the material) and keep the conversation going.",
+    );
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync(new URL("../../supabase/aidwar-migrations/20261023_agent_rules_v4_keep_talking.sql", import.meta.url), "utf8");
+    const v4 = /SET content = E'([\s\S]*?)',\n/.exec(sql)![1]!.replace(/''/g, "'").replace(/\\n/g, "\n");
+    expect(v4).toBe(FALLBACK_AGENT_RULES);
+    expect(sql).toMatch(/AND content = E'[\s\S]*say a colleague will follow up\.';/);
+  });
+});

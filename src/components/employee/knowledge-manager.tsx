@@ -1451,10 +1451,12 @@ export function UnansweredList({
     <section aria-labelledby="unanswered-heading" className="space-y-4">
       <div>
         <h2 id="unanswered-heading" className="text-lg font-semibold text-foreground">
-          Questions I couldn't answer
+          Aiden's questions for you
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Write the answer once. If the customer's chat is still open I'll send it straight away.
+          Customers asked these and I didn't have the detail — I kept the chat going and noted the
+          question here. Add the answer once: if the customer's chat is still open I'll send it
+          straight away, and I'll remember it for next time.
         </p>
       </div>
 
@@ -1493,7 +1495,7 @@ export function UnansweredList({
                   />
                   <Button size="sm" disabled={busy} onClick={() => void teach(gap)}>
                     {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Teach
+                    Add answer
                   </Button>
                   {gap.status === "pending" ? (
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => void dismiss(gap)}>

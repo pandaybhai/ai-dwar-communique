@@ -482,11 +482,20 @@ export function ChatThread({
   };
 
 
+  // After a teammate answers a customer by hand, offer to teach Aiden that
+  // answer (the same CorrectionDialog → knowledge "correct" → saveCorrection).
+  const [teachOffer, setTeachOffer] = useState<AiRunNote | null>(null);
+  useEffect(() => setTeachOffer(null), [conversation.id]);
+
   const submit = async () => {
     const text = draft.trim();
     if (!text || sending) return;
     const ok = await onSend(text);
-    if (ok) setDraft("");
+    if (ok) {
+      setDraft("");
+      const asked = [...messages].reverse().find((m) => m.direction === "inbound" && (m.body ?? "").trim());
+      if (canTeach && asked) setTeachOffer({ question: (asked.body ?? "").trim(), reply: text, taughtOn: null });
+    }
   };
 
   let lastDay = "";
@@ -734,6 +743,26 @@ export function ChatThread({
                 </p>
               </div>
             ) : null}
+          </div>
+        ) : null}
+        {teachOffer ? (
+          <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3.5 py-2 text-xs text-muted-foreground">
+            <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">Teach Aiden this answer? Next time a customer asks, Aiden can answer it.</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-full"
+              onClick={() => {
+                setTeaching(teachOffer);
+                setTeachOffer(null);
+              }}
+            >
+              Teach Aiden
+            </Button>
+            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setTeachOffer(null)}>
+              Not now
+            </Button>
           </div>
         ) : null}
         {open ? (

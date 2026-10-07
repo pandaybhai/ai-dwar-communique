@@ -2666,32 +2666,35 @@ export async function executeRun(
       priorFailedQuestions: options.priorFailedQuestions ?? [],
       customerLanguage: options.customerLanguage ?? null,
     });
-    // Nothing to answer from is no longer a reason to go quiet: the answer
-    // stands and the question is filed under Unanswered instead. Merchant
-    // handover rules and the other signals still hand the thread to a person.
-    if (signal === "no_source") {
-      result.needsOwner = true;
-    } else if (signal) {
+    // Not knowing is never a reason to go quiet (Batch 16): the answer
+    // stands and the question is filed for the merchant ("Aiden's questions
+    // for you"). Only a customer asking for a person, the merchant's own
+    // hand-over rule or a sensitive topic hands the thread to a person.
+    if (signal && isHandOffSignal(signal)) {
       result.status = "escalated";
       result.escalationSignal = signal;
+    } else if (signal) {
+      result.needsOwner = true;
+      runMeta["kept_talking"] = signal;
     }
   }
 
-  // ------------------------------------------ "let me confirm" = hand-over
+  // ------------------------------------------------- "let me confirm"
   // "Let me confirm that for you" promises that someone will come back. It
   // is added by the guards above (a stripped number or policy line) and by
-  // the model itself, but only a run that hands the thread to a person keeps
-  // that promise. Anywhere else it goes; the question is still filed under
-  // Unanswered (needsOwner, set above). A reply that was nothing but the
-  // promise becomes the hand-over it describes.
+  // the model itself. Next to anything else it goes; the question is still
+  // filed for the merchant (needsOwner, set above). A reply that was nothing
+  // but the promise goes as it is: the question is filed, and the merchant's
+  // answer to it reaches this customer — the thread is never handed over
+  // (and Aiden never silenced) for not knowing.
   if (task === "agent_reply" && result.status === "ok" && /let me confirm/i.test(result.output)) {
     const rest = withoutConfirmLine(result.output);
     if (rest) {
       runMeta["confirm_line_removed"] = true;
       result.output = rest;
     } else {
-      result.status = "escalated";
-      result.escalationSignal = numbersStripped ? "unsupported_number" : "no_source";
+      result.needsOwner = true;
+      runMeta["kept_talking"] = numbersStripped ? "unsupported_number" : "no_source";
     }
   }
 
@@ -3067,6 +3070,42 @@ export function unsupportedTimeFacts(answer: string, support: string[]): string[
   return out;
 }
 
+/**
+ * The only signals that hand a thread to a person (and so silence Aiden on
+ * it): the customer asked for one, the merchant's own hand-over rule, or a
+ * sensitive topic. A flow's Assign step hands over on its own (flow engine).
+ * Every other signal — nothing to answer from, a repeat, a failed lookup —
+ * keeps Aiden talking and files the question for the merchant.
+ */
+const HAND_OFF_SIGNALS = new Set(["asked_for_person", "merchant_rule", "sensitive_topic"]);
+
+export function isHandOffSignal(signal: string | null | undefined): boolean {
+  return Boolean(signal && HAND_OFF_SIGNALS.has(signal));
+}
+
+/**
+ * The customer asks to talk to a person (any business): "speak to a human",
+ * "can someone call me", "agent please", "kisi se baat karni hai". Asking
+ * whether a product suits a person is not asking for one.
+ */
+const PERSON_ASK = [
+  /\b(speak|talk|chat)(ing)?\s+(to|with)\s+(a\s+|an\s+|the\s+|some\s+|your\s+)?(human|person|real person|someone|somebody|agent|representative|executive|staff|team|owner|manager|support|customer care)\b/i,
+  /\b(human|real person|live agent|customer care|customer support|representative)\s*(please|pls|plz)?\s*$/i,
+  /\b(agent|human|person|executive)\s+(please|pls|plz)\b/i,
+  /\b(connect|transfer|put)\s+me\s+(to|with|through)\b/i,
+  /\b(can|could|will)\s+(someone|somebody|anyone|you)\s+(please\s+)?call\s+me\b/i,
+  /\bcall\s+me\s+(back|please|pls|asap|now)\b/i,
+  /\b(kisi|insaan|aadmi|owner|manager|staff)\s+se\s+baat\b/i,
+  /\bbaat\s+(karni|karna|karao|karwao|karwa\s+do|kara\s+do)\b/i,
+  /\b(mujhe\s+)?call\s+(karo|kariye|karna|kar\s+do|karein)\b/i,
+];
+
+export function asksForPerson(question: string): boolean {
+  const q = question.trim();
+  if (!q) return false;
+  return PERSON_ASK.some((re) => re.test(q));
+}
+
 /** Observable signals only — never the model's own opinion of its certainty. */
 export function decideEscalation(input: {
   question: string;
@@ -3085,6 +3124,9 @@ export function decideEscalation(input: {
 }): string | null {
   // Small talk is answerable on its own. Nothing below applies to "heya".
   if (isSmallTalk(input.question, input.customerLanguage ?? null)) return null;
+
+  // A customer who asks for a person gets one, whatever else happened.
+  if (asksForPerson(input.question)) return "asked_for_person";
 
   if (input.anyToolFailed) return "tool_failed";
 

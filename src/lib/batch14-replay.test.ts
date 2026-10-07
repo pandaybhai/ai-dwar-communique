@@ -249,14 +249,15 @@ describe("this branch: every reply is the model's, cleanly", () => {
         });
       }
       if (checks.has("handover")) {
-        it("nothing true was left: the customer gets the hand-over, not a guess", () => {
-          expect(r().status).toBe("escalated");
-          // The workspace's hand-over (its "let me confirm" wording when the owner is asked for the fact).
-          expect(textsOf(r())).toHaveLength(1);
-          expect(textsOf(r())[0]).toMatch(
-            /^Let me get someone from the team to (help|confirm that) — they'll reply here shortly\.$/,
-          );
-          expect(INSTRUCTIONS.handover_message).toMatch(/^Let me get someone from the team/);
+        it("nothing true was left: no guess, and Aiden keeps the chat (Batch 16: no hand-off for not knowing)", () => {
+          // Was: escalated + the workspace's hand-over line, which silenced
+          // Aiden on the thread. Now the run stands, the question is filed
+          // for the merchant (whose answer reaches this customer) and the
+          // thread is never put on needs_human.
+          expect(r().status).toBe("ok");
+          expect(r().gapFiled).toBe(true);
+          expect(r().handedOff ?? false).toBe(false);
+          expect(textsOf(r())).toEqual(["Let me confirm that for you."]);
         });
       }
       if (checks.has("reply_to_known")) {

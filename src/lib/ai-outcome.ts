@@ -31,6 +31,8 @@ export const HANDOVER_REASONS: Record<string, string> = {
   merchant_rule: "You told me to hand this kind of question over.",
   question_repeated: "They asked again after I got it wrong the first time.",
   customer_frustrated: "They sounded unhappy, so I fetched a person.",
+  asked_for_person: "They asked to talk to a person.",
+  flow_assign: "A flow handed this chat to you.",
 };
 
 export function handoverReasonText(signal: string | null | undefined): string | null {

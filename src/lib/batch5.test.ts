@@ -397,11 +397,12 @@ describe("(3) 'Let me confirm that for you.' only on a run that hands over", () 
     expect(out.output).toMatch(/Let me confirm that for you\.$/);
   });
 
-  it("a reply that is nothing but the promise hands over (so the promise is kept)", async () => {
+  it("a reply that is nothing but the promise is filed for the merchant, never a hand-off (Batch 16)", async () => {
     stubModel('Let me confirm that for you.\n{"needs_owner": true}');
     const out = await ask(aiDb(["Petal Band — handcrafted ring."]), "is the petal band in stock?");
-    expect(out.status).toBe("escalated");
-    expect(out.escalationSignal).toBe("no_source");
+    expect(out.status).toBe("ok");
+    expect(out.escalationSignal ?? null).toBeNull();
+    expect(out.needsOwner).toBe(true);
     expect(out.output).toBe("Let me confirm that for you.");
   });
 

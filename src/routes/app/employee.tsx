@@ -257,7 +257,7 @@ function EmployeePage() {
               <TabsTrigger value="job">My job</TabsTrigger>
               <TabsTrigger value="knows">What I know</TabsTrigger>
               <TabsTrigger value="gaps">
-                Unanswered
+                Questions for you
                 {gapCount > 0 ? (
                   <Badge variant="secondary" className="ml-2">
                     {gapCount}
