@@ -30,6 +30,8 @@ type Source = {
   last_synced_at: string | null;
   last_full_read_at: string | null;
   last_error: string | null;
+  /** Logged runs' cost: reader + facts + embeddings (₹). */
+  read_cost?: { total: number; reader: number; facts: number; embeddings: number; runs: number };
 };
 type LogRow = { source_id: string | null; action: string; at: string; details: Record<string, unknown> };
 
@@ -48,6 +50,9 @@ function logLine(row: LogRow): string {
       `${Number(d["products"] ?? 0)} products`,
       engines ? `engines: ${engines}` : null,
       `credits ${Number(d["credits"] ?? 0)} · cost ₹${Number(d["cost"] ?? 0)}`,
+      d["facts_cost"] !== undefined
+        ? `(reader ₹${Number(d["reader_cost"] ?? 0)} · facts ₹${Number(d["facts_cost"] ?? 0)} · embeddings ₹${Number(d["embed_cost"] ?? 0)})`
+        : null,
       Number(d["failed"] ?? 0) ? `${Number(d["failed"])} failed` : null,
       Number(d["gone"] ?? 0) ? `${Number(d["gone"])} not found` : null,
       Number(d["unchanged_skipped"] ?? 0) ? `${Number(d["unchanged_skipped"])} unchanged skipped` : null,
@@ -145,6 +150,12 @@ export function WorkspaceReadingPanel({ organizationId }: { organizationId: stri
                       {s.products_found ?? 0} products · {s.paid_pages} paid pages · last read {when(s.last_synced_at)} · full read{" "}
                       {when(s.last_full_read_at)}
                     </p>
+                    {s.read_cost?.runs ? (
+                      <p className="text-xs text-muted-foreground">
+                        Read cost ₹{s.read_cost.total} over {s.read_cost.runs} logged run{s.read_cost.runs === 1 ? "" : "s"} · reader ₹{s.read_cost.reader} ·
+                        facts ₹{s.read_cost.facts} · embeddings ₹{s.read_cost.embeddings}
+                      </p>
+                    ) : null}
                     {s.last_error ? <p className="text-xs text-destructive">{s.last_error}</p> : null}
                     {s.swap_blocked?.reasons?.length ? (
                       <p className="text-xs text-amber-600">Kept the live version: {s.swap_blocked.reasons.join("; ")}</p>

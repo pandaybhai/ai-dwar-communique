@@ -406,10 +406,13 @@ async function factsPass(
   docs: KnowledgeDocument[],
 ): Promise<number> {
   const { executeRun } = await import("@/lib/ai-run.server");
+  const { readingAiCapReached } = await import("@/lib/reading.server");
   let cost = 0;
   for (const doc of docs) {
     if ((doc.metadata as Record<string, unknown> | undefined)?.["kind"] === "product") continue;
     if (doc.content.length <= 1500) continue;
+    // Over today's reading AI cap: the page is kept as it was read.
+    if (await readingAiCapReached(supabase, organizationId)) break;
     try {
       const run = await executeRun(supabase, {
         organizationId,
@@ -441,6 +444,34 @@ async function factsPass(
     }
   }
   return cost;
+}
+
+/**
+ * This page's text was already turned into facts (same source, same text
+ * hash, any address): take the stored document instead of asking the model.
+ */
+async function reuseFacts(
+  supabase: SupabaseClient,
+  sourceId: string,
+  doc: KnowledgeDocument,
+  pageHash: string,
+): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("knowledge_documents")
+      .select("content, metadata")
+      .eq("source_id", sourceId)
+      .contains("metadata", { page_hash: pageHash, summarised: true })
+      .limit(1)
+      .maybeSingle();
+    const prior = data as { content: string; metadata: Record<string, unknown> | null } | null;
+    if (!prior?.content) return false;
+    doc.content = prior.content;
+    doc.metadata = { ...(doc.metadata ?? {}), raw_excerpt: prior.metadata?.["raw_excerpt"] ?? null, summarised: true };
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Resolves to null once `ms` have passed; the work itself is left to finish or fail on its own. */
@@ -551,7 +582,13 @@ export async function savePage(
       content: page.text.slice(0, 40000),
       metadata: { url, platform: ctx.platform, engine: page.engine ?? "own", credits: page.credits ?? 0, chars: page.text.length },
     };
-    if (ctx.facts && (!draft || ctx.factsOnProductPages)) result.cost += await factsPass(supabase, organizationId, [doc]);
+    if (ctx.facts && (!draft || ctx.factsOnProductPages)) {
+      // Facts at most once per page text: the same text read again reuses
+      // them (no model run, and the stored text — so its chunks — unchanged).
+      const pageHash = await hashText(doc.content);
+      doc.metadata = { ...(doc.metadata ?? {}), page_hash: pageHash };
+      if (!(await reuseFacts(supabase, sourceId, doc, pageHash))) result.cost += await factsPass(supabase, organizationId, [doc]);
+    }
     await upsertDocument(supabase, organizationId, sourceId, doc);
     result.saved = true;
   }
@@ -1137,6 +1174,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   /** Pages whose text was saved this run. */
   let savedPages = 0;
   let factsCost = 0;
+  const embedAtStart = embedSpend;
   let seen = 0;
   const gonePages = new Set<string>();
   /** Taken from the queue but cut off by the run's time limit: next run. */
@@ -1428,7 +1466,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     .update({
       pages_seen: totalSeen,
       products_found: productsFound,
-      cost_amount: readerCost + factsCost,
+      cost_amount: readerCost + factsCost + (embedSpend - embedAtStart),
       ...(totalPages != null ? { total_pages: totalPages } : {}),
       ...(fullReadNow ? { last_full_read_at: new Date().toISOString() } : {}),
       config: nextConfig,
@@ -1469,7 +1507,11 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     products: productDrafts.length,
     engines,
     credits: Math.round(credits * 100) / 100,
-    cost: Math.round((readerCost + factsCost) * 100) / 100,
+    // The full read cost: reader + facts + embeddings.
+    cost: Math.round((readerCost + factsCost + (embedSpend - embedAtStart)) * 100) / 100,
+    reader_cost: Math.round(readerCost * 100) / 100,
+    facts_cost: Math.round(factsCost * 100) / 100,
+    embed_cost: Math.round((embedSpend - embedAtStart) * 10000) / 10000,
     failed: failedPages,
     gone: gonePages.size,
     paid_pages: staged ? paidPages : null,
@@ -1739,6 +1781,8 @@ export async function syncSource(
 
 /** Pages saved whose search index could not be built yet (per process, reset per sync). */
 let embedDeferred = 0;
+/** Embedding spend (₹, estimated as metered) since the module loaded; a read takes the difference. */
+let embedSpend = 0;
 /** What the website read just finished tells the forget step. Null = unknown. */
 let lastReadForget: { fullReadComplete: boolean; siteMap: string[]; gone: string[] } | null = null;
 
@@ -1862,6 +1906,8 @@ async function rebuildChunks(
   let vectors: number[][];
   try {
     vectors = await embedTexts(chunks, { supabase, organizationId });
+    // Same estimate embedTexts meters (ai-run EMBED_RUPEES_PER_M = 2 per 1M tokens).
+    embedSpend += (Math.ceil(chunks.reduce((sum, t) => sum + t.length, 0) / 4) / 1_000_000) * 2;
   } catch (error) {
     console.error("[knowledge] embed deferred", sourceRef, error instanceof Error ? error.message : String(error));
     await markPending();
@@ -3203,6 +3249,27 @@ export async function readingLog(
       .order("created_at", { ascending: false })
       .limit(limit),
   ]);
+  const log = ((rows ?? []) as Array<{ action: string; details: Record<string, unknown> | null; created_at: string }>).map((r) => ({
+    source_id: typeof r.details?.["source_id"] === "string" ? String(r.details["source_id"]) : null,
+    action: r.action,
+    at: r.created_at,
+    details: r.details ?? {},
+  }));
+  // Read cost per source over its logged runs: reader + facts + embeddings
+  // (runs logged before the split carry only their total).
+  const readCost = (sourceId: unknown) => {
+    const sum = { total: 0, reader: 0, facts: 0, embeddings: 0, runs: 0 };
+    for (const r of log) {
+      if (r.action !== "reading_run" || r.source_id !== sourceId) continue;
+      sum.runs += 1;
+      sum.total += Number(r.details["cost"] ?? 0);
+      sum.reader += Number(r.details["reader_cost"] ?? 0);
+      sum.facts += Number(r.details["facts_cost"] ?? 0);
+      sum.embeddings += Number(r.details["embed_cost"] ?? 0);
+    }
+    const round = (n: number) => Math.round(n * 100) / 100;
+    return { total: round(sum.total), reader: round(sum.reader), facts: round(sum.facts), embeddings: round(sum.embeddings), runs: sum.runs };
+  };
   return {
     sources: ((sources ?? []) as Array<Record<string, unknown>>).map((s) => {
       const config = (s["config"] ?? {}) as Record<string, unknown>;
@@ -3223,13 +3290,9 @@ export async function readingLog(
         last_synced_at: s["last_synced_at"],
         last_full_read_at: s["last_full_read_at"],
         last_error: s["last_error"],
+        read_cost: readCost(s["id"]),
       };
     }),
-    log: ((rows ?? []) as Array<{ action: string; details: Record<string, unknown> | null; created_at: string }>).map((r) => ({
-      source_id: typeof r.details?.["source_id"] === "string" ? String(r.details["source_id"]) : null,
-      action: r.action,
-      at: r.created_at,
-      details: r.details ?? {},
-    })),
+    log,
   };
 }
