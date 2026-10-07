@@ -408,3 +408,30 @@ describe("(3) a paid plan fee lifts dunning, or the payment isn't marked paid", 
     expect((await markPaid(db.supabase, "inv-1", "pay-1", 100)).error).toMatch(/invoice read failed/);
   });
 });
+
+// ------------------------------------------------------------------ (4)
+describe("(4) a dunning pause never strands a 'send now' campaign", () => {
+  it("dunning restore of send-now: paused while sending with no time → restored due now and sent by the worker", async () => {
+    const { db, campaigns } = world({ campaigns: [{ recipients: 2 }, { recipients: 1, status: "scheduled" }] });
+    const [now, later] = campaigns;
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    campaignRow(db, later!.id)["scheduled_at"] = future;
+    db.rows("organization_billing_settings").push({ organization_id: now!.orgId, dunning_paused: {} });
+    db.rows("organization_billing_settings").push({ organization_id: later!.orgId, dunning_paused: {} });
+    const { pauseOutbound, restoreAfterPayment } = await import("./dunning.server");
+    for (const c of [now!, later!]) await pauseOutbound(db.client, c.orgId);
+    expect(campaignRow(db, now!.id)["status"]).toBe("paused");
+
+    for (const c of [now!, later!]) await restoreAfterPayment(db.client, c.orgId);
+    expect(campaignRow(db, now!.id)["status"]).toBe("scheduled");
+    expect(Date.parse(String(campaignRow(db, now!.id)["scheduled_at"]))).toBeLessThanOrEqual(Date.now());
+    // A campaign scheduled for later keeps its time.
+    expect(campaignRow(db, later!.id)).toMatchObject({ status: "scheduled", scheduled_at: future });
+
+    const g = meta();
+    await runCampaignDispatch(db.client, cfg(), { postMessage: g.postMessage });
+    expect(g.sends).toHaveLength(2);
+    expect(campaignRow(db, now!.id)["status"]).toBe("completed");
+    expect(campaignRow(db, later!.id)["status"]).toBe("scheduled");
+  });
+});

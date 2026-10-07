@@ -133,8 +133,19 @@ export async function restoreAfterPayment(
       .update({ status: "scheduled" })
       .in("id", paused.campaigns ?? [])
       .eq("organization_id", organizationId)
-      .eq("status", "paused");
+      .eq("status", "paused")
+      .not("scheduled_at", "is", null);
     must("campaign restore failed", error);
+    // A "send now" campaign has no time: scheduled with none it would never
+    // be picked up again, so it goes out now.
+    const { error: nowError } = await supabase
+      .from("campaigns")
+      .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
+      .in("id", paused.campaigns ?? [])
+      .eq("organization_id", organizationId)
+      .eq("status", "paused")
+      .is("scheduled_at", null);
+    must("campaign restore failed", nowError);
   }
   if ((paused.automations ?? []).length > 0) {
     const { error } = await supabase
