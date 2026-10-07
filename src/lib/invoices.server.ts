@@ -285,13 +285,15 @@ export function checkInvoiceIssuable(
 
 
 /**
- * Draws the number, renders the PDF, files it and queues the notices.
- * Calling this twice is safe — a numbered invoice is returned untouched.
+ * Draws the number and renders and files the PDF. Delivery is its own step:
+ * only `deliver: true` sends it, once, right after the number is drawn — a
+ * numbered invoice is returned untouched (no render, no delivery), and
+ * rendering itself never delivers anything (Batch 23).
  */
 export async function issueInvoice(
   supabase: SupabaseClient,
   invoiceId: string,
-  options: { deliver?: boolean } = {},
+  options: { deliver: boolean },
 ): Promise<{ invoice_number: string; pdf_path: string | null } | { error: string }> {
   const { data: invoice } = await supabase
     .from("invoices")
@@ -389,7 +391,8 @@ export async function issueInvoice(
   );
   const pdfPath = stored.path;
 
-  if (invoice["kind"] !== "proforma" && options.deliver !== false) {
+  // The one automatic delivery: this call drew the number, so it is the first.
+  if (invoice["kind"] !== "proforma" && options.deliver) {
     await deliverInvoice(supabase, invoiceId, { fallbackToQueue: true });
   }
 
@@ -399,6 +402,7 @@ export async function issueInvoice(
 /**
  * Renders and files the PDF for a numbered invoice. Every failure is logged
  * with the invoice number so a blank pdf_path is never a mystery again.
+ * It writes the file and pdf_path/pdf_error only — never a notice or a send.
  */
 async function storeInvoicePdf(
   supabase: SupabaseClient,
@@ -439,11 +443,18 @@ async function storeInvoicePdf(
  * same template sender campaigns use (so a messages row is written), and
  * records when it went. Without a PDF, or when the send fails, the notice is
  * queued for the billing-notify worker instead so nobody is left uninformed.
+ *
+ * Called only when an invoice is first issued (issueInvoice with deliver,
+ * the plan-fee run) and by a super admin's confirmed resend
+ * (resendInvoice, `explicit`). An automatic call never sends an invoice
+ * WhatsApp already delivered, and notify() never queues a second
+ * invoice_issued notice per channel (Batch 23: 7 Oct, every backfill run
+ * re-delivered every invoice still carrying whatsapp_error).
  */
 export async function deliverInvoice(
   supabase: SupabaseClient,
   invoiceId: string,
-  options: { fallbackToQueue?: boolean } = {},
+  options: { fallbackToQueue?: boolean; explicit?: boolean } = {},
 ): Promise<{ ok: true; message_id: string | null } | { ok: false; error: string }> {
   const { data: invoice } = await supabase
     .from("invoices")
@@ -458,6 +469,10 @@ export async function deliverInvoice(
   const { money } = await import("@/lib/billing");
   const { notify } = await import("@/lib/billing.server");
   const sentSoFar = (invoice["sent"] ?? {}) as Record<string, unknown>;
+
+  if (!options.explicit && sentSoFar["whatsapp_at"]) {
+    return { ok: true, message_id: (sentSoFar["message_id"] as string | null) ?? null };
+  }
 
   const queueFallback = async (reason: string) => {
     if (options.fallbackToQueue) {
@@ -570,6 +585,46 @@ export async function deliverInvoice(
 }
 
 /**
+ * A super admin's resend: the one way an invoice goes to its buyer again. It
+ * needs the admin's confirmation (`confirmed`, sent only after the screen
+ * asked), sends straight away (nothing is queued, so the automatic
+ * one-per-channel rule is not bypassed by a pile of queued copies), and is
+ * written to activity_log with the actor whatever the outcome.
+ */
+export async function resendInvoice(
+  supabase: SupabaseClient,
+  input: { invoiceId: string; actorId: string; confirmed: boolean },
+): Promise<{ ok: true; message_id: string | null } | { ok: false; error: string }> {
+  if (!input.confirmed) return { ok: false, error: "Confirm the resend first." };
+  const { data: invoice } = await supabase
+    .from("invoices")
+    .select("id, organization_id, invoice_number, status")
+    .eq("id", input.invoiceId)
+    .maybeSingle();
+  if (!invoice?.["invoice_number"]) return { ok: false, error: "This invoice hasn't been issued yet." };
+  if (invoice["status"] === "void") return { ok: false, error: "A void invoice is never sent." };
+
+  const result = await deliverInvoice(supabase, input.invoiceId, {
+    fallbackToQueue: false,
+    explicit: true,
+  });
+  await supabase.from("activity_log").insert({
+    organization_id: invoice["organization_id"],
+    user_id: input.actorId,
+    action: "invoice_resent",
+    details: {
+      invoice_id: input.invoiceId,
+      invoice: invoice["invoice_number"],
+      channel: "whatsapp",
+      ok: result.ok,
+      message_id: result.ok ? result.message_id : null,
+      error: result.ok ? null : result.error,
+    },
+  });
+  return result;
+}
+
+/**
  * Exactly one tax invoice per paid payment. Rebuilds nothing when one already
  * exists (void ones excluded) — safe to call from the webhook, the nightly job
  * and an admin repair alike.
@@ -588,7 +643,7 @@ export async function invoiceForPayment(
     .limit(1)
     .maybeSingle();
   if (existing) {
-    const issued = await issueInvoice(supabase, String(existing["id"]));
+    const issued = await issueInvoice(supabase, String(existing["id"]), { deliver: true });
     return {
       invoice_id: String(existing["id"]),
       invoice_number: "error" in issued ? null : issued.invoice_number,
@@ -662,7 +717,7 @@ export async function invoiceForPayment(
   });
   if ("error" in built) return built;
 
-  const issued = await issueInvoice(supabase, built.invoice_id);
+  const issued = await issueInvoice(supabase, built.invoice_id, { deliver: true });
   if ("error" in issued) {
     // A draft that can't be issued must not linger and be issued later by
     // accident with stale figures.
@@ -767,7 +822,7 @@ export async function createProforma(
     created_by: createdBy ?? null,
   });
   if ("error" in built) return built;
-  const issued = await issueInvoice(supabase, built.invoice_id);
+  const issued = await issueInvoice(supabase, built.invoice_id, { deliver: false });
   if ("error" in issued) return issued;
   return { invoice_id: built.invoice_id, invoice_number: issued.invoice_number };
 }
@@ -819,6 +874,12 @@ export async function ensureInvoicePdf(
  * Backfill, in three sweeps: paid payments with no invoice at all, drafts whose
  * payment has been paid, and numbered invoices still missing their PDF. Safe to
  * run repeatedly — nothing here draws a second number or files a second PDF.
+ *
+ * Only an invoice this run numbers is delivered (its first delivery). A PDF
+ * made for an older invoice is filed, never sent: a fourth sweep that
+ * re-delivered every invoice with whatsapp_error queued 4 WhatsApp notices
+ * and 1 email per click (7 Oct, five clicks in four minutes). An invoice
+ * that never reached its buyer is resent by a super admin (resendInvoice).
  */
 export async function issuePendingInvoices(
   supabase: SupabaseClient,
@@ -827,12 +888,10 @@ export async function issuePendingInvoices(
   issued: string[];
   failed: { invoice_id: string; error: string }[];
   pdfs_regenerated: string[];
-  delivered: string[];
 }> {
   const issued: string[] = [];
   const failed: { invoice_id: string; error: string }[] = [];
   const pdfsRegenerated: string[] = [];
-  const delivered: string[] = [];
   const cap = Math.min(Math.max(limit, 1), 200);
 
   // 1. Paid payments that never got an invoice (e.g. self-serve plan purchases
@@ -888,7 +947,7 @@ export async function issuePendingInvoices(
       .eq("id", invoiceId)
       .maybeSingle();
 
-    const result = await issueInvoice(supabase, invoiceId);
+    const result = await issueInvoice(supabase, invoiceId, { deliver: true });
     if ("error" in result) {
       failed.push({ invoice_id: invoiceId, error: result.error });
       continue;
@@ -905,7 +964,7 @@ export async function issuePendingInvoices(
     issued.push(result.invoice_number);
   }
 
-  // 3. Numbered invoices whose PDF never landed.
+  // 3. Numbered invoices whose PDF never landed: render and file only.
   const { data: missingPdf } = await supabase
     .from("invoices")
     .select("id, invoice_number")
@@ -920,27 +979,7 @@ export async function issuePendingInvoices(
     else failed.push({ invoice_id: String(row["id"]), error: "pdf_not_generated" });
   }
 
-  // 4. Invoices that never reached the buyer — usually because the PDF was
-  //    missing at the time. Now that a file exists, try the delivery again so
-  //    no invoice can sit on whatsapp_error forever.
-  const { data: undelivered } = await supabase
-    .from("invoices")
-    .select("id, invoice_number, sent")
-    .not("invoice_number", "is", null)
-    .not("pdf_path", "is", null)
-    .neq("status", "void")
-    .neq("kind", "proforma")
-    .order("created_at", { ascending: true })
-    .limit(200);
-  for (const row of (undelivered ?? []) as Record<string, unknown>[]) {
-    const sent = (row["sent"] ?? {}) as Record<string, unknown>;
-    if (sent["whatsapp_at"] || !sent["whatsapp_error"]) continue;
-    const result = await deliverInvoice(supabase, String(row["id"]), { fallbackToQueue: true });
-    if (result.ok) delivered.push(String(row["invoice_number"]));
-  }
-
-  return { issued, failed, pdfs_regenerated: pdfsRegenerated, delivered };
-
+  return { issued, failed, pdfs_regenerated: pdfsRegenerated };
 }
 
 /**
@@ -1009,7 +1048,7 @@ export async function voidAndReissueInvoice(
   });
   if ("error" in built) return built;
 
-  const issued = await issueInvoice(supabase, built.invoice_id);
+  const issued = await issueInvoice(supabase, built.invoice_id, { deliver: true });
   if ("error" in issued) {
     await supabase.from("invoices").delete().eq("id", built.invoice_id);
     return issued;

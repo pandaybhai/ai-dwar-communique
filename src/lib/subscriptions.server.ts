@@ -519,6 +519,6 @@ async function recordPlanCharge(
     ],
   });
   if ("error" in built) return;
-  await issueInvoice(supabase, built.invoice_id);
+  await issueInvoice(supabase, built.invoice_id, { deliver: true });
   await markPaid(supabase, built.invoice_id, (paymentRow?.["id"] as string | null) ?? null, gross);
 }
