@@ -106,9 +106,13 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
           return true;
         });
       b["or"] = (expr: string) => add(orFilter(expr));
-      // "gilded:* & chevron:*" — every term starts a word of the row's text.
+      // "gilded:* & chevron:*" — every term starts a word of the row's text;
+      // "(ruby:*) | (pearl:*)" — any one of the choices does.
       b["textSearch"] = (_col: string, query: string) => {
-        const terms = query.split("&").map((t) => t.replace(/:\*|\s/g, "").toLowerCase()).filter(Boolean);
+        const choices = query
+          .split("|")
+          .map((c) => c.replace(/[()]/g, "").split("&").map((t) => t.replace(/:\*|\s/g, "").toLowerCase()).filter(Boolean))
+          .filter((c) => c.length > 0);
         return add((r) => {
           const words = ["title", "sku", "description", "category", "brand"]
             .map((c) => String(r[c] ?? ""))
@@ -116,7 +120,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
             .toLowerCase()
             .split(/[^a-z0-9]+/)
             .filter(Boolean);
-          return terms.every((t) => words.some((w) => w.startsWith(t)));
+          return choices.some((terms) => terms.every((t) => words.some((w) => w.startsWith(t))));
         });
       };
       b["order"] = (col: string, opts?: { ascending?: boolean }) => {

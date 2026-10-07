@@ -176,7 +176,12 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
         const q = productQueryOf(d, ctx);
         const money = (n: number) => `₹${new Intl.NumberFormat("en-IN").format(n)}`;
         const range = q.minPrice !== null && q.maxPrice !== null ? ` ${money(q.minPrice)}–${money(q.maxPrice)}` : q.maxPrice !== null ? ` under ${money(q.maxPrice)}` : q.minPrice !== null ? ` from ${money(q.minPrice)}` : "";
-        note(s, `Shows up to ${q.limit} ${q.category || "products"}${range} from your catalogue, each with its picture, price and link (searched live — test chat assumes some match).`);
+        const extra = [
+          q.keyword ? `with "${q.keyword}" in the name or description` : "",
+          q.sort === "spread" ? "spread across the budget" : q.sort === "newest" ? "newest first" : "",
+          q.photosFirst ? "products with a photo first" : "",
+        ].filter(Boolean).join(", ");
+        note(s, `Shows up to ${q.limit} ${q.category || "products"}${range}${extra ? ` (${extra})` : ""} from your catalogue, each with its picture, price and link (searched live — test chat assumes some match).`);
         if (!go(graph, s, node, "found")) return s;
         continue;
       }

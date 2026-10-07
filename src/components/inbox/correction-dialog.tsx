@@ -10,13 +10,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { knowledgeApi } from "@/lib/employee-client";
 
 /**
  * Teaching, not configuration: the merchant writes the answer that should have
- * been given, and it is remembered like anything else the employee has read.
+ * been given, and it is remembered like anything else the employee has read
+ * (knowledge "correct" → saveCorrection, the same store as "Add answer").
+ * Opened from "Improve this answer" on an AI reply in the Inbox: the
+ * customer's question is filled in (and can be tidied), the reply they got is
+ * shown, and the answer starts from it.
  */
 export function CorrectionDialog({
   organizationId,
@@ -36,15 +41,18 @@ export function CorrectionDialog({
   onSaved?: () => void;
 }) {
   const [answer, setAnswer] = useState("");
+  const [question, setQuestion] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) setAnswer(saidInstead);
-  }, [open, saidInstead]);
+    if (!open) return;
+    setAnswer(saidInstead);
+    setQuestion(customerQuestion);
+  }, [open, saidInstead, customerQuestion]);
 
   const save = async () => {
-    const question = customerQuestion.trim();
-    if (!question) {
+    const asked = question.trim();
+    if (!asked) {
       toast.error("I need the customer's question to file this against.");
       return;
     }
@@ -56,7 +64,7 @@ export function CorrectionDialog({
     const { error } = await knowledgeApi({
       organization_id: organizationId,
       action: "correct",
-      question,
+      question: asked,
       answer: answer.trim(),
     });
     setSaving(false);
@@ -73,17 +81,28 @@ export function CorrectionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>What should {agentName} have said?</DialogTitle>
+          <DialogTitle>Improve this answer</DialogTitle>
           <DialogDescription>
-            I'll remember this and use it the next time someone asks something similar.
+            Write what {agentName} should have said. It's saved with your answers and used the next time someone asks something similar.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
-            <p className="text-xs font-medium text-muted-foreground">The customer asked</p>
-            <p className="mt-1 text-sm text-foreground">{customerQuestion || "—"}</p>
+          <div className="space-y-2">
+            <Label htmlFor="correction-question">The customer asked</Label>
+            <Input
+              id="correction-question"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="The customer's question"
+            />
           </div>
+          {saidInstead.trim() ? (
+            <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
+              <p className="text-xs font-medium text-muted-foreground">What {agentName} said</p>
+              <p className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-sm text-foreground">{saidInstead}</p>
+            </div>
+          ) : null}
           <div className="space-y-2">
             <Label htmlFor="correction">The right answer</Label>
             <Textarea

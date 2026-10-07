@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RunMedia } from "@/lib/ai-run.server";
 import type { productQueryOf } from "@/lib/flow-graph";
 import type { ReplyTimer } from "@/lib/reply-timing";
+import { isSkuLike, readableName } from "@/lib/product-facts";
 
 /**
  * Flows v2 "Show products": no AI. The workspace's own products are searched
@@ -9,6 +10,11 @@ import type { ReplyTimer } from "@/lib/reply-timing";
  * a picture with its name, price and link (the same pictures Aiden sends).
  * Nothing at that budget: the nearest real products are offered with their
  * real starting price. Nothing is ever made up.
+ *
+ * Newer, opt-in settings (a step saved without them searches and sends
+ * exactly as before): a keyword the products' own words must have, the order
+ * (cheapest / spread across the budget / newest), products with a photo
+ * first, and coded titles shown by their readable name (product-facts.ts).
  */
 
 export type ProductQuery = ReturnType<typeof productQueryOf>;
@@ -25,8 +31,29 @@ export function budgetWords(q: Pick<ProductQuery, "minPrice" | "maxPrice">): str
   return "";
 }
 
+/** How many products a step reads to pick photos first / spread across the budget from. */
+export const PRODUCT_POOL = 100;
+
+/** The step uses one of the newer settings (keyword, sort, photos first, readable names). */
+function extended(q: ProductQuery): boolean {
+  return Boolean(q.keyword || q.sort || q.photosFirst || q.readableNames);
+}
+
 /** The catalogue search arguments for a step's query. */
 export function searchArgs(q: ProductQuery, shelf: string): Record<string, unknown> {
+  // A step without the newer settings searches exactly as it always has.
+  if (extended(q)) {
+    const wide = Boolean(q.photosFirst) || q.sort === "spread";
+    return {
+      limit: wide ? PRODUCT_POOL : q.limit,
+      ...(wide ? { pool: true } : {}),
+      order: q.sort === "newest" ? "newest" : "price_asc",
+      ...(shelf ? { category: q.category } : q.category ? { query: q.category } : {}),
+      ...(q.keyword ? { keyword: q.keyword } : {}),
+      ...(q.maxPrice !== null ? { max_price: q.maxPrice } : {}),
+      ...(q.minPrice !== null ? { min_price: q.minPrice } : {}),
+    };
+  }
   return {
     limit: q.limit,
     // Cheapest first (the filters and the limit are unchanged).
@@ -37,6 +64,39 @@ export function searchArgs(q: ProductQuery, shelf: string): Record<string, unkno
     ...(q.maxPrice !== null ? { max_price: q.maxPrice } : {}),
     ...(q.minPrice !== null ? { min_price: q.minPrice } : {}),
   };
+}
+
+const hasPhoto = (row: Row) =>
+  typeof row["image_url"] === "string" && /^https?:\/\//i.test(row["image_url"].trim()) && Boolean(String(row["title"] ?? "").trim());
+
+/** `n` rows evenly spaced over a price-ordered list: the cheapest, the dearest and steps between. */
+export function spreadPick(rows: Row[], n: number): Row[] {
+  if (rows.length <= n) return rows;
+  if (n === 1) return [rows[Math.floor((rows.length - 1) / 2)]!];
+  const picked = new Set<number>();
+  for (let i = 0; i < n; i++) picked.add(Math.round((i * (rows.length - 1)) / (n - 1)));
+  return [...picked].sort((a, b) => a - b).map((i) => rows[i]!);
+}
+
+/**
+ * The step's own pick from what the search found: spread across the budget
+ * or the first ones in order, products with a photo before text-only ones
+ * (which only fill places the photos can't), at most `limit`.
+ */
+export function pickProducts(rows: Row[], q: ProductQuery): Row[] {
+  const choose = (list: Row[], n: number) => (n <= 0 ? [] : q.sort === "spread" ? spreadPick(list, n) : list.slice(0, n));
+  if (!q.photosFirst) return choose(rows, q.limit);
+  const photos = choose(rows.filter(hasPhoto), q.limit);
+  return [...photos, ...choose(rows.filter((r) => !hasPhoto(r)), q.limit - photos.length)];
+}
+
+/** A coded title ("ZERN-0207") as its readable name first, then the code: "Diamond Gold Earrings (ZERN-0207)". */
+export function withReadableName(row: Row): Row {
+  const title = String(row["title"] ?? "").trim();
+  const sku = typeof row["sku"] === "string" ? row["sku"] : null;
+  if (!title || !isSkuLike(title, sku)) return row;
+  const name = readableName(row);
+  return name ? { ...row, title: `${name} (${title})` } : row;
 }
 
 /** Rows → pictures (those with a picture) and plain lines (those without). */
@@ -115,7 +175,9 @@ export async function showProducts(
     return shown;
   };
 
-  const rows = Array.isArray(result.data) ? (result.data as Row[]).slice(0, q.limit) : [];
+  const named = (list: Row[]) => (q.readableNames ? list.map(withReadableName) : list);
+  const found = Array.isArray(result.data) ? (result.data as Row[]) : [];
+  const rows = named(extended(q) ? pickProducts(found, q) : found.slice(0, q.limit));
   if (rows.length > 0) {
     const shown = await send(rows);
     return shown > 0 ? { ok: true, found: true, shown, error: null } : { ok: false, found: true, shown: 0, error: failure ?? "send_failed" };
@@ -123,10 +185,13 @@ export async function showProducts(
 
   // Nothing matches: say what does exist and what it really costs.
   const data = (result.data ?? {}) as { closest_above?: Row[]; lowest_price?: number | null };
-  const closest = (data.closest_above ?? []).slice(0, Math.min(q.limit, 3));
+  const closest = named((data.closest_above ?? []).slice(0, Math.min(q.limit, 3)));
   const lowest = typeof data.lowest_price === "number" ? data.lowest_price : null;
   if (closest.length === 0 || lowest === null) return { ok: true, found: false, shown: 0, error: null };
-  const word = (shelf || q.category || "products").toLowerCase();
+  const shelfWord = (shelf || q.category || "products").toLowerCase();
+  // The keyword was searched for too, so it is part of what we don't have.
+  const keywords = (q.keyword ?? "").split(/,|\/|\bor\b|\|/).map((k) => k.trim().toLowerCase()).filter(Boolean);
+  const word = keywords.length ? `${keywords.join(" or ")} ${shelfWord}` : shelfWord;
   const budget = budgetWords(q);
   const intro = await sendServiceText(supabase, {
     ...sender,
