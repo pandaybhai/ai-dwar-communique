@@ -1125,6 +1125,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "catalog_collection_created",
       "catalog_collection_updated",
       "catalog_collection_deleted",
+      "catalog_category_words_updated",
     ],
     usage_meters: [
       { key: "catalog_imports", name: "Products imported", unit: "products" },
