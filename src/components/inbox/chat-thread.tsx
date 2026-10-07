@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { FlowRunBanner } from "@/components/inbox/flow-run-banner";
+import { AidenRulesBadge } from "@/components/inbox/aiden-rules-badge";
 import { FlowRunHistory } from "@/components/inbox/flow-run-history";
 import { SendFormButton } from "@/components/inbox/send-form-button";
 import { SendCardButton } from "@/components/inbox/send-card-button";
@@ -517,6 +518,8 @@ export function ChatThread({
             {fromNumber ? <span className="opacity-70"> · via {fromNumber}</span> : null}
           </p>
         </div>
+
+        <AidenRulesBadge conversationId={conversation.id} />
 
         {customerLanguage ? (
           <Badge

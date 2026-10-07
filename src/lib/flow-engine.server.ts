@@ -1034,6 +1034,7 @@ async function advanceInner(
         if (d["mode"] === "aiden") {
           await finish("done", "ended", { reason: "hand_to_aiden" });
           await handToAiden(supabase, run);
+          await setAidenFlowRules(supabase, run, d);
           return;
         }
         if (run.conversation_id) {
@@ -1602,6 +1603,22 @@ export async function handToAiden(supabase: SupabaseClient, run: { organization_
     .eq("organization_id", run.organization_id)
     .eq("needs_human", true)
     .in("needs_human_reason", ["flow", "flow_assign"]);
+}
+
+/**
+ * The Hand-to-Aiden step's Behaviour / Rules for this chat (null clears an
+ * older flow's). Before 20261050_batch21_aiden_flow_rules.sql is applied the
+ * column is missing: the write fails quietly and Aiden answers as before.
+ */
+export async function setAidenFlowRules(supabase: SupabaseClient, run: Pick<Run, "id" | "flow_id" | "organization_id" | "conversation_id">, d: Record<string, unknown>) {
+  if (!run.conversation_id) return;
+  const { buildFlowRules } = await import("@/lib/aiden-flow-rules");
+  const hasText = Boolean(String(d["behaviour"] ?? "").trim() || String(d["rules"] ?? "").trim());
+  const { data: flow } = hasText
+    ? await supabase.from("flows").select("name").eq("id", run.flow_id).maybeSingle()
+    : { data: null };
+  const rules = buildFlowRules(d, { flowId: run.flow_id, flowName: (flow as { name?: string } | null)?.name ?? null, runId: run.id, now: new Date() });
+  await supabase.from("conversations").update({ aiden_flow_rules: rules }).eq("id", run.conversation_id).eq("organization_id", run.organization_id);
 }
 
 /** Next teammate in turn: whoever has the fewest open chats assigned right now. */

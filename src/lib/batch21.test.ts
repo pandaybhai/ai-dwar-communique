@@ -62,6 +62,8 @@ describe("item 1 — Assign: Hand to Aiden", () => {
     // No assignment, no Needs you: the step writes only the hand-off clear.
     expect(t.writes.filter((w) => w.startsWith("conversation:") && !w.includes("last_message_at"))).toEqual([
       'conversation:{"needs_human":false,"needs_human_reason":null,"needs_human_question":null,"handover_state":null}',
+      // Item 2: no Behaviour / Rules on the step → an older flow's are cleared.
+      'conversation:{"aiden_flow_rules":null}',
     ]);
   });
 
