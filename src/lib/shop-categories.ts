@@ -208,7 +208,7 @@ export function shelfPhrases(vocab: ShopVocabulary): string[][] {
   });
 }
 
-/** "rings, earrings, tanmaniya" — how a run tells the model what this shop sells. */
+/** "T-Shirts, Jeans, Sneakers" — how a run tells the model what this shop sells. */
 export function describeCategories(vocab: ShopVocabulary, max = 40): string {
   return vocab.categories
     .slice(0, max)

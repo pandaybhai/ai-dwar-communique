@@ -829,14 +829,37 @@ function judge(body: { messages: Array<{ content: unknown }> }): string {
  * One customer message through runAgentOnInbound against the Zoori world.
  * `fetch` must be stubbed by the caller with the returned `fetchStub`.
  */
-export function zooriWorld(c: Case) {
+/**
+ * A shop a replay runs against: Zoori by default. Batch 20 runs a
+ * non-jewellery shop through the same world (apparel-shop.ts) so nothing
+ * jewellery-specific can creep back into shared code unnoticed.
+ */
+export type ReplayShop = {
+  org: string;
+  products: Row[];
+  orgRow: Row;
+  instructions: Record<string, unknown>;
+  chunks: Array<{ when: RegExp; title: string; ref: string; text: string }>;
+  sourceName: string;
+};
+
+export const ZOORI_SHOP: ReplayShop = {
+  org: ORG,
+  products: PRODUCTS,
+  orgRow: ORG_ROW,
+  instructions: INSTRUCTIONS,
+  chunks: CHUNKS,
+  sourceName: "myzoori.com",
+};
+
+export function zooriWorld(c: Case, shop: ReplayShop = ZOORI_SHOP) {
   const now = Date.UTC(2026, 9, 6, 10, 20, 0);
   const messages: Row[] = [];
   const at = (i: number) => new Date(now - (100 - i) * 1000).toISOString();
   (c.history ?? []).forEach((m, i) =>
     messages.push({
       id: `m${i}`,
-      organization_id: ORG,
+      organization_id: shop.org,
       conversation_id: CONV,
       direction: m.direction,
       type: m.type ?? "text",
@@ -849,7 +872,7 @@ export function zooriWorld(c: Case) {
   );
   messages.push({
     id: "m-ask",
-    organization_id: ORG,
+    organization_id: shop.org,
     conversation_id: CONV,
     direction: "inbound",
     type: "text",
@@ -857,7 +880,7 @@ export function zooriWorld(c: Case) {
     meta_message_id: "wamid.ask",
     created_at: at(99),
   });
-  const mem = memoryDb({ products: PRODUCTS, messages, organizations: [ORG_ROW] });
+  const mem = memoryDb({ products: shop.products, messages, organizations: [shop.orgRow] });
 
   let lastEmbedded = "";
   const runs: Row[] = [];
@@ -902,7 +925,7 @@ export function zooriWorld(c: Case) {
         },
         error: null,
       };
-    if (t === "ai_instructions") return { data: INSTRUCTIONS, error: null };
+    if (t === "ai_instructions") return { data: shop.instructions, error: null };
     if (t === "ai_tiers")
       return {
         data: {
@@ -932,10 +955,10 @@ export function zooriWorld(c: Case) {
   };
   const fake = fakeDb(reply, (call) => {
     if (call.name === "match_knowledge_chunks") {
-      const rows = CHUNKS.filter((k) => k.when.test(lastEmbedded)).map((k, i) => ({
+      const rows = shop.chunks.filter((k) => k.when.test(lastEmbedded)).map((k, i) => ({
         document_id: `doc-${i}`,
         source_type: "website",
-        source_name: "myzoori.com",
+        source_name: shop.sourceName,
         source_ref: k.ref,
         title: k.title,
         text: k.text,
@@ -1053,7 +1076,7 @@ export function zooriWorld(c: Case) {
     fetchStub,
     result,
     args: {
-      organizationId: ORG,
+      organizationId: shop.org,
       conversationId: CONV,
       contactId: CONTACT,
       phoneNumberId: "pn-zoori",

@@ -91,7 +91,7 @@ export function pickProducts(rows: Row[], q: ProductQuery): Row[] {
   return [...photos, ...choose(rows.filter((r) => !hasPhoto(r)), q.limit - photos.length)];
 }
 
-/** A coded title ("ZERN-0207") as its readable name first, then the code: "Diamond Gold Earrings (ZERN-0207)". */
+/** A coded title ("AT-0207") as its readable name first, then the code: "Organic Cotton T-Shirt (AT-0207)". */
 export function withReadableName(row: Row): Row {
   const title = String(row["title"] ?? "").trim();
   const sku = typeof row["sku"] === "string" ? row["sku"] : null;

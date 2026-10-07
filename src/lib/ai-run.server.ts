@@ -2967,7 +2967,15 @@ export function productToolView<T extends { ok: boolean; found?: boolean; data?:
         ...result,
         data: {
           ...rest,
-          ...(prices.length ? { lowest_price: rupees(Math.min(...prices)) } : {}),
+          // In the products' own currency.
+          ...(prices.length
+            ? {
+                lowest_price: rupees(
+                  Math.min(...prices),
+                  (data["closest_above"] as Array<Record<string, unknown>>).find((r) => r["currency"])?.["currency"],
+                ),
+              }
+            : {}),
           closest_above: closest,
           note: CLOSEST_NOTE,
         },
