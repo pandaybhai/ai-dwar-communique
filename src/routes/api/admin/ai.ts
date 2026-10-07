@@ -514,14 +514,7 @@ export const Route = createFileRoute("/api/admin/ai")({
             .from("platform_settings")
             .update({ ai_backup_anthropic_model: model, updated_at: new Date().toISOString() })
             .eq("id", true);
-          if (error) {
-            return /ai_backup_anthropic_model/.test(error.message ?? "")
-              ? jsonError(
-                  "The model choice can't be saved until the database update 20261017_ai_backup_model.sql is applied.",
-                  409,
-                )
-              : jsonError("The backup model could not be saved.", 500);
-          }
+          if (error) return jsonError("The backup model could not be saved.", 500);
           resetPlatformBackupCache();
           await supabase
             .from("activity_log")
