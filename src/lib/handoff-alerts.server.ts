@@ -136,6 +136,8 @@ export type AlertOutcome = {
   skipped?: string;
   /** Of `whatsapp`, the numbers reached with the staff_handoff_alert template (outside the 24-hour window). */
   templated?: string[];
+  /** Why the email fallback didn't go (e.g. email_not_configured, or Resend's error text). */
+  email_error?: string;
 };
 
 /**
@@ -244,7 +246,7 @@ export async function sendHandoffAlert(
   },
   deps: {
     sendWhatsApp?: (channel: NonNullable<Awaited<ReturnType<typeof platformChannelFor>>>, body: string) => Promise<boolean>;
-    sendEmail?: (to: string, subject: string, body: string) => Promise<boolean>;
+    sendEmail?: (to: string, subject: string, body: string) => Promise<boolean | { ok: boolean; error?: string }>;
     channelFor?: (phone: string) => Promise<unknown>;
     /** Outside the 24-hour window: STAFF_HANDOFF_TEMPLATE with these four values (Batch 21). */
     sendTemplate?: (phone: string, params: string[]) => Promise<boolean>;
@@ -306,9 +308,11 @@ export async function sendHandoffAlert(
         deps.sendEmail ??
         (async (to: string, subject: string, text: string) => {
           const { sendEmail } = await import("@/lib/email.server");
-          return (await sendEmail({ to, subject, body: text })).ok;
+          return sendEmail({ to, subject, body: text });
         });
-      if (await send(settings.email, `${customer} is waiting for you`, body)) outcome.email = settings.email;
+      const mailed = await send(settings.email, `${customer} is waiting for you`, body);
+      if (mailed === true || (typeof mailed === "object" && mailed.ok)) outcome.email = settings.email;
+      else outcome.email_error = (typeof mailed === "object" && mailed.error) || "email_failed";
     }
     if (outcome.whatsapp.length === 0 && !outcome.email)
       outcome.skipped = safe.length === 0 && !settings.email ? "no_staff_contact" : "not_delivered";

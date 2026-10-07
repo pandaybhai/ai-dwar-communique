@@ -80,9 +80,14 @@ export async function drainHealthNotifications(supabase: SupabaseClient): Promis
       }
     }
 
+    // The real outcome goes on the activity row: how many emails went, and why not.
+    let emailsSent = 0;
+    let emailError: string | null = null;
     for (const r of recipients) {
       if (r.email) {
-        await sendEmail({ to: r.email, subject: `Action needed: ${label} can't send messages`, body: text });
+        const mail = await sendEmail({ to: r.email, subject: `Action needed: ${label} can't send messages`, body: text });
+        if (mail.ok) emailsSent += 1;
+        else emailError = mail.error ?? "email_failed";
       }
       if (r.phone && onboardingAccountId) {
         await notifyOverOnboardingNumber(supabase, onboardingAccountId, r.phone, text);
@@ -93,6 +98,8 @@ export async function drainHealthNotifications(supabase: SupabaseClient): Promis
       whatsapp_account_id: row.id,
       onboarding_number: isOnboarding,
       recipients: recipients.length,
+      emails_sent: emailsSent,
+      email_error: emailError,
     });
     notified += 1;
   }
