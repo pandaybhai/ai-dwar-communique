@@ -44,6 +44,14 @@ export type EmailResult = {
 };
 
 export const RESEND_API_URL = "https://api.resend.com/emails";
+/**
+ * The workspace's Resend connection is gateway-backed: its RESEND_API_KEY is a
+ * connection key for the Lovable gateway, not a provider key, so production
+ * sends go through the gateway (which holds the real provider key). When only
+ * RESEND_API_KEY is set (tests, a direct provider key), the call goes straight
+ * to Resend as before.
+ */
+export const RESEND_GATEWAY_URL = "https://connector-gateway.lovable.dev/resend/emails";
 export const DEFAULT_EMAIL_FROM = "AiDwar <notify@mail.aidwar.in>";
 /** Bigger files go as a link (Resend's own limit is 40 MB after encoding). */
 export const EMAIL_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
@@ -56,6 +64,7 @@ export function isEmailAddress(value: unknown): value is string {
 
 export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
   const apiKey = process.env["RESEND_API_KEY"]?.trim();
+  const gatewayKey = process.env["LOVABLE_API_KEY"]?.trim();
   if (!apiKey) {
     console.info("[email:stub] would send", {
       to: message.to,
@@ -95,17 +104,22 @@ export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
   if (replyTo) payload["reply_to"] = replyTo;
   if (attachments) payload["attachments"] = attachments;
 
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${apiKey}`,
-    "content-type": "application/json",
-  };
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  // Gateway mode: the connection key never speaks to Resend directly.
+  const url = gatewayKey ? RESEND_GATEWAY_URL : RESEND_API_URL;
+  if (gatewayKey) {
+    headers["authorization"] = `Bearer ${gatewayKey}`;
+    headers["x-connection-api-key"] = apiKey;
+  } else {
+    headers["authorization"] = `Bearer ${apiKey}`;
+  }
   if (message.idempotencyKey)
     headers["idempotency-key"] = String(message.idempotencyKey).slice(0, 256);
 
   let res: Response;
   let answer: Record<string, unknown> = {};
   try {
-    res = await outsideFetch("email", RESEND_API_URL, {
+    res = await outsideFetch("email", url, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),

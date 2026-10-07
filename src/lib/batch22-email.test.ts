@@ -18,12 +18,13 @@ import {
   DEFAULT_EMAIL_FROM,
   EMAIL_ATTACHMENT_MAX_BYTES,
   RESEND_API_URL,
+  RESEND_GATEWAY_URL,
   emailHtml,
   sendEmail,
 } from "./email.server";
 import { EMAIL_NOTICE_MAX_AGE_MS, drainEmailNotices } from "./email-notices.server";
 
-const ENV_KEYS = ["RESEND_API_KEY", "EMAIL_FROM", "EMAIL_REPLY_TO"];
+const ENV_KEYS = ["RESEND_API_KEY", "LOVABLE_API_KEY", "EMAIL_FROM", "EMAIL_REPLY_TO"];
 const savedEnv: Record<string, string | undefined> = {};
 const savedTimeout = OUTSIDE_CALL_TIMEOUT_MS.email;
 const TEST_KEY = "test-key-not-real";
@@ -59,7 +60,7 @@ const hang = (init?: RequestInit) =>
     );
   });
 
-/** Stubs fetch: Resend answers with `resend`, any other URL with `file`. */
+/** Stubs fetch: Resend (direct or via the gateway) answers with `resend`, any other URL with `file`. */
 function stubFetch(
   resend: (init: RequestInit) => Response | Promise<Response>,
   file?: (url: string, init: RequestInit) => Response | Promise<Response>,
@@ -70,15 +71,16 @@ function stubFetch(
     vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
       const url = urlOf(input);
       calls.push({ url, init });
-      if (url === RESEND_API_URL) return resend(init);
+      if (url === RESEND_API_URL || url === RESEND_GATEWAY_URL) return resend(init);
       if (file) return file(url, init);
       throw new TypeError("fetch failed");
     }),
   );
   const sends = () =>
     calls
-      .filter((c) => c.url === RESEND_API_URL)
+      .filter((c) => c.url === RESEND_API_URL || c.url === RESEND_GATEWAY_URL)
       .map((c) => ({
+        url: c.url,
         headers: c.init.headers as Record<string, string>,
         body: JSON.parse(String(c.init.body)) as Record<string, unknown>,
       }));
@@ -121,6 +123,21 @@ describe("sendEmail", () => {
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;you&quot;");
     expect(html).toContain('<a href="https://aidwar.in/app/billing"');
     expect(html).not.toMatch(/<img|<script|https?:\/\/(?!aidwar\.in\/app\/billing)/i); // no pixels, no other links
+  });
+
+  it("gateway mode: both keys set — POST goes to the gateway with both headers", async () => {
+    process.env["RESEND_API_KEY"] = TEST_KEY;
+    process.env["LOVABLE_API_KEY"] = "lovable-key-not-real";
+    const f = stubFetch(() => json({ id: "gw_1" }));
+    const r = await sendEmail({ to: "owner@example.com", subject: "Hi", body: "Hello" });
+    expect(r).toEqual({ ok: true, id: "gw_1" });
+    const gw = f.calls.filter((c) => c.url === RESEND_GATEWAY_URL);
+    expect(gw).toHaveLength(1);
+    expect(f.calls.filter((c) => c.url === RESEND_API_URL)).toHaveLength(0); // never direct
+    const headers = gw[0]!.init.headers as Record<string, string>;
+    expect(headers["authorization"]).toBe("Bearer lovable-key-not-real");
+    expect(headers["x-connection-api-key"]).toBe(TEST_KEY);
+    expect(JSON.parse(String(gw[0]!.init.body))["to"]).toEqual(["owner@example.com"]);
   });
 
   it("EMAIL_FROM and EMAIL_REPLY_TO are used when set", async () => {
