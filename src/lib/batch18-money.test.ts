@@ -939,3 +939,68 @@ describe("(9) small money fixes", () => {
     expect(notices.filter((n) => n["kind"] === "trial_ending")).toHaveLength(1);
   });
 });
+
+// ------------------------------------------------- payment claim (locked)
+describe("the payment claim in settlePayment is locked as it is (verified live, 7 Oct)", () => {
+  // All 10 paid credit purchases since 3 Sep have their wallet credit: the
+  // .or() on this conditional update does NOT empty the returned rows. This
+  // test keeps the claim exactly as it is so nobody "fixes" it.
+  beforeEach(() => vi.resetModules());
+  const PAYMENT = {
+    id: "pay-1",
+    organization_id: "org-1",
+    status: "pending",
+    amount: 2000,
+    currency: "INR",
+    credit_pack_id: null,
+    coupon_id: null,
+    purpose: "credit_purchase",
+    raw: { pack_amount: 2000, gst: 360, gross: 2360, bonus: 0, pack_name: "Starter" },
+  };
+  const webhook = {
+    event: "payment_link.paid",
+    payload: {
+      payment: { entity: { id: "pay_rzp_1", amount: 236000, currency: "INR", status: "captured", method: "upi" } },
+      payment_link: { entity: { id: "plink_1", amount_paid: 236000, notes: { payment_id: "pay-1" } } },
+    },
+  };
+  function claimWorld(claimReturns: Array<{ id: string }>) {
+    return fakeDb(
+      (op) => {
+        if (op.table === "payments" && op.kind === "select") return { data: PAYMENT, error: null };
+        if (op.table === "payments" && op.kind === "update" && op.filters.some(([n]) => n === "or"))
+          return { data: claimReturns, error: null };
+        if (op.table === "wallet_ledger") return { data: [], error: null };
+        return undefined;
+      },
+      (call) => (call.name === "wallet_apply" ? { data: "entry", error: null } : undefined),
+    );
+  }
+
+  it("payment-claim lock: one conditional update — not paid, and unclaimed or claimed over 5 minutes ago (via .or()), returning the row", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-07T10:00:00.000Z"));
+    const db = claimWorld([{ id: "pay-1" }]);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { settlePayment } = await import("./billing.server");
+    const out = await settlePayment(db.supabase, "pay-1", "pay_rzp_1", webhook);
+    const claim = db.ops.find((o) => o.table === "payments" && o.kind === "update")!;
+    expect((claim.payload as { raw: Record<string, unknown> }).raw["settle_claimed_at"]).toBe("2026-10-07T10:00:00.000Z");
+    expect(claim.filters).toEqual([
+      ["eq", ["id", "pay-1"]],
+      ["neq", ["status", "paid"]],
+      ["or", ["raw->>settle_claimed_at.is.null,raw->>settle_claimed_at.lt.2026-10-07T09:55:00.000Z"]],
+    ]);
+    expect(claim.select).toEqual(["id"]);
+    // The row comes back (as it does live), so the credit is taken.
+    expect(out.credited).toBe(true);
+    expect(db.rpcs.filter((r) => r.name === "wallet_apply").map((r) => r.args["p_type"])).toEqual(["credit_purchase"]);
+  });
+
+  it("payment-claim lock: a claim that returns no row (another delivery holds it) credits nothing", async () => {
+    const db = claimWorld([]);
+    const { settlePayment } = await import("./billing.server");
+    expect(await settlePayment(db.supabase, "pay-1", "pay_rzp_1", webhook)).toEqual({ credited: false });
+    expect(db.rpcs.filter((r) => r.name === "wallet_apply")).toHaveLength(0);
+  });
+});
