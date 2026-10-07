@@ -8,6 +8,13 @@
 
 import { toCsv } from "@/lib/csv";
 
+/**
+ * PostgREST filter for the merchant's catalogue list and counts: leaves out
+ * archived duplicates (status 'archived' and hidden, Batch 21). A visible
+ * Shopify product whose own status is 'archived' still shows, as before.
+ */
+export const NOT_ARCHIVED_DUPLICATE = "status.is.null,status.neq.archived,is_visible.eq.true";
+
 export type ProductSource = "shopify" | "manual" | "import";
 export type Availability = "in_stock" | "out_of_stock" | "preorder";
 

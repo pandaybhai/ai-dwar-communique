@@ -761,12 +761,37 @@ export async function dropImageIfShared(
 // ------------------------------------------------------------------ storing
 
 const CRAWL_SOURCE = "crawl";
+/** A duplicate set aside (Batch 21): hidden for good, never brought back by a read. */
+const ARCHIVED = "archived";
 
-type PriorRow = { id: string; source: string; image_url?: string | null; gender?: string | null };
+type PriorRow = { id: string; source: string; image_url?: string | null; gender?: string | null; status?: string | null; is_visible?: boolean | null; external_id?: string | null; keepAddress?: boolean };
+
+/**
+ * The other ways the same page address is written: www / no-www, http /
+ * https, with or without a trailing slash (Batch 21: Zoori's 120 pairs were
+ * one page stored under both myzoori.com and www.myzoori.com).
+ */
+export function addressTwins(address: string): string[] {
+  const m = address.match(/^https?:\/\/(?:www\.)?([^/?#]+)([^#]*)/i);
+  if (!m) return [];
+  const host = m[1]!.toLowerCase();
+  const rest = m[2]!;
+  const qi = rest.indexOf("?");
+  const path = qi < 0 ? rest : rest.slice(0, qi);
+  const q = qi < 0 ? "" : rest.slice(qi);
+  const trimmed = path.replace(/\/+$/, "");
+  const paths = trimmed ? [trimmed, `${trimmed}/`] : ["", "/"];
+  const all = ["https://", "http://"].flatMap((scheme) =>
+    [host, `www.${host}`].flatMap((h) => paths.map((p) => `${scheme}${h}${p}${q}`)),
+  );
+  return [...new Set(all)].filter((a) => a !== address);
+}
 
 /**
  * The row a read should update for this product: the one at its page
- * address; else — only when the page gives a SKU — the product with that SKU.
+ * address; else the same page under its other address (www / no-www, http /
+ * https, trailing slash — Batch 21), moved to the page's address; else —
+ * only when the page gives a SKU — the product with that SKU.
  * One SKU is one product in a workspace (products_org_sku_unique_idx), so an
  * insert would be refused: that is how 11 Zoori rings read at www.… stayed on
  * their old no-www rows, never refreshed, for two weeks. That row is updated
@@ -778,7 +803,7 @@ async function existingCrawlRow(
   organizationId: string,
   draft: ProductDraft,
 ): Promise<PriorRow | null> {
-  const columns = "id, source, image_url, gender";
+  const columns = "id, source, image_url, gender, status, is_visible";
   const one = async (query: PromiseLike<{ data: unknown }>) => {
     const data = (await query).data;
     return data && !Array.isArray(data) ? (data as PriorRow) : null;
@@ -786,6 +811,24 @@ async function existingCrawlRow(
   const exact = await one(
     supabase.from("products").select(columns).eq("organization_id", organizationId).eq("external_id", draft.externalId).maybeSingle(),
   );
+  if (exact && exact.status !== ARCHIVED) return exact;
+  // Batch 21: the same page under its other address (www / no-www, http /
+  // https, trailing slash) is this product: update that row, never add a
+  // second one. An archived duplicate is never chosen while a live one exists.
+  const twins = addressTwins(draft.externalId);
+  if (twins.length) {
+    const { data } = await supabase
+      .from("products")
+      .select(`${columns}, external_id`)
+      .eq("organization_id", organizationId)
+      .in("external_id", twins)
+      .limit(10);
+    const rows = Array.isArray(data) ? (data as PriorRow[]) : [];
+    const live = rows.filter((r) => r.status !== ARCHIVED);
+    const twin = live.find((r) => r.is_visible) ?? live[0];
+    // The page's own address is taken by an archived row: keep the twin where it is.
+    if (twin) return exact ? { ...twin, keepAddress: true } : twin;
+  }
   if (exact) return exact;
   const sku = (draft.sku ?? "").trim();
   if (!sku) return null;
@@ -840,6 +883,8 @@ export async function saveCrawledProducts(
     if (prior) {
       // A product a shop platform owns is never overwritten by a page read.
       if (prior.source !== CRAWL_SOURCE) continue;
+      // An archived duplicate is never brought back by a read (Batch 21).
+      if (prior.status === ARCHIVED) continue;
       // A read that can't see a price, shelf, description or gender fills
       // nothing in and wipes nothing out: what the last read (or the owner)
       // set stays — Zoori's hand-set ZGRG/ZLRG genders survive a re-read.
@@ -849,6 +894,11 @@ export async function saveCrawledProducts(
       if (prior.gender) delete update["gender"];
       // A photo the product already has is never replaced or wiped by a read.
       if (prior.image_url) delete update["image_url"];
+      // Its own address is held by an archived duplicate: the row stays at its address.
+      if (prior.keepAddress) {
+        delete update["external_id"];
+        delete update["product_url"];
+      }
       const { error } = await supabase.from("products").update(update).eq("id", prior.id);
       if (!error) saved += 1;
       else console.error("[crawl] product update failed", draft.externalId, error.message);

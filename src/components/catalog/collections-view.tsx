@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
 import { usePermissions } from "@/hooks/use-permissions";
-import { type CollectionRow, type ProductRow } from "@/lib/catalog";
+import { NOT_ARCHIVED_DUPLICATE, type CollectionRow, type ProductRow } from "@/lib/catalog";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
 import { Button } from "@/components/ui/button";
@@ -310,6 +310,7 @@ function AssignProductsDialog({
           .from("products")
           .select("id, title, sku")
           .eq("organization_id", organizationId)
+          .or(NOT_ARCHIVED_DUPLICATE)
           .order("title")
           .limit(500),
         aidwar
