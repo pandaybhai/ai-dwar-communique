@@ -1134,7 +1134,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       {
         name: "catalog_search",
         description:
-          "Use this whenever a customer wants to see, browse, or choose products (any wording, any language, e.g. 'gents ring under 50k dikhao', 'pendant 30k ke andar', 'show me earrings'). Put the product type in `category` (rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya, mangalsutra), the budget in `max_price` as a number in INR (50k -> 50000, 1 lakh -> 100000), and use `query` ONLY for a specific product name or SKU. Never put the whole sentence in `query`. Set `gender` and `availability` ONLY when the customer explicitly asks for them ('gents', 'for him', 'ladies', 'for her', 'in stock') — never guess them from the product type or the customer; leave them out otherwise.",
+          "Use this whenever a customer wants to see, browse, or choose products (any wording, any language, e.g. 'show me what you have', 'something under 2k dikhao', 'do you have this in blue?'). Put the kind of product in `category` — one of this shop's own categories, as listed when the shop has them — the budget in `max_price` as a number in the shop's currency (2k -> 2000, 1 lakh -> 100000), and use `query` ONLY for a specific product name or SKU. Never put the whole sentence in `query`. Set `gender` and `availability` ONLY when the customer explicitly asks for them ('gents', 'for him', 'ladies', 'for her', 'in stock') — never guess them from the kind of product or the customer; leave them out otherwise.",
         parameters: {
           type: "object",
           properties: {
@@ -1143,7 +1143,7 @@ export const FEATURES: readonly FeatureManifest[] = [
               description:
                 "A specific product name or SKU only. Never a whole sentence. Leave this out to browse.",
             },
-            max_price: { type: "number", description: "Only return products at or below this price, in INR." },
+            max_price: { type: "number", description: "Only return products at or below this price, in the shop's currency." },
             availability: {
               type: "string",
               description:
@@ -1152,12 +1152,12 @@ export const FEATURES: readonly FeatureManifest[] = [
             category: {
               type: "string",
               description:
-                "The product type: rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya.",
+                "The kind of product: one of this shop's own categories. Leave out to browse everything.",
             },
             gender: {
               type: "string",
               description:
-                "male or female — only when the customer explicitly says so ('gents', 'for him', 'ladies', 'for her'). Never guess it (earrings are not 'female'). Leave out otherwise.",
+                "male or female — only when the customer explicitly says so ('gents', 'for him', 'ladies', 'for her'). Never guess it from the kind of product. Leave out otherwise.",
             },
             limit: { type: "number", description: "How many products to return, default 10, max 25." },
           },

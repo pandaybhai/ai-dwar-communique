@@ -43,6 +43,8 @@ import {
 } from "@/lib/ai-fallback.server";
 import { EARLY_CALL_ID, type EarlySearch } from "@/lib/early-search.server";
 import { productFacts, rupees } from "@/lib/product-facts";
+import { describeCategories, EMPTY_VOCABULARY, shelfPhrases, tokensOf, type ShopVocabulary } from "@/lib/shop-categories";
+import { loadShopVocabulary } from "@/lib/shop-categories.server";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
@@ -1556,7 +1558,36 @@ export type RunPrelude = {
   api: Awaited<ReturnType<typeof resolveApiKey>>;
   productCount: number;
   tools: BrokeredTool[];
+  /** The shop's own categories and its words for them (none without products). */
+  shelves: ShopVocabulary;
 };
+
+/**
+ * The search tool as this run offers it: its generic wording plus the
+ * shop's own categories, read when the run starts — so the model puts one
+ * of them in `category` instead of guessing a kind of product.
+ */
+export function withShopCategories(tools: BrokeredTool[], shelves: ShopVocabulary): BrokeredTool[] {
+  const names = describeCategories(shelves);
+  if (!names) return tools;
+  return tools.map((t): BrokeredTool => {
+    if (t.name !== "catalog_search") return t;
+    const category = t.parameters.properties["category"];
+    return {
+      ...t,
+      description: `${t.description} This shop's categories: ${names}.`,
+      parameters: category
+        ? {
+            ...t.parameters,
+            properties: {
+              ...t.parameters.properties,
+              category: { ...category, description: `${String(category["description"] ?? "")} This shop's categories: ${names}.`.trim() },
+            },
+          }
+        : t.parameters,
+    };
+  });
+}
 
 /**
  * The prelude, plus two of its reads on their own: the tools this run may
@@ -1595,6 +1626,11 @@ export function prepareRun(
     : Promise.resolve([] as BrokeredTool[]);
   productCount.catch(() => {});
   tools.catch(() => {});
+  // The shop's own categories, for the search tool's wording and the "only
+  // offer what search found" guard. Read only when there are products.
+  const shelves: Promise<ShopVocabulary> = productCount
+    .then((n) => (n > 0 ? loadShopVocabulary(supabase, organizationId) : EMPTY_VOCABULARY))
+    .catch(() => EMPTY_VOCABULARY);
   const prelude = Promise.all([
     brain,
     resolveMarkup(supabase, organizationId),
@@ -1608,7 +1644,8 @@ export function prepareRun(
     brain.then((b) => resolveApiKey(supabase, organizationId, b.provider)),
     productCount,
     tools,
-  ]).then(([b, markup, aiEnabled, cap, platformCap, api, productCount, tools]) => ({
+    shelves,
+  ]).then(([b, markup, aiEnabled, cap, platformCap, api, productCount, tools, shelves]) => ({
     brain: b,
     markup,
     aiEnabled,
@@ -1617,6 +1654,7 @@ export function prepareRun(
     api,
     productCount,
     tools,
+    shelves,
   }));
   // Awaited by executeRun; a failure surfaces there, never as an unhandled rejection.
   prelude.catch(() => {});
@@ -2103,13 +2141,13 @@ export async function executeRun(
     if (prelude.productCount > 0) {
       systemParts.push(
         "This business has a product catalogue; for any browse/choose request call catalog_search before answering. " +
-          "When the customer names or asks about a particular product, look it up with catalog_search (query = its name) and use its fields (category, metal, stones, weight, price, link).",
+          "When the customer names or asks about a particular product, look it up with catalog_search (query = its name) and use its fields (category, price, link and any details listed with it).",
       );
     }
     if (options.channel !== "onboarding" && prelude.tools.some((t) => t.name === "send_products")) {
       systemParts.push(
         "Product pictures: nothing is attached for you. A product reaches the customer only when you call send_products with its product_id and the caption you want under its picture — write captions the way this business's instructions ask. " +
-          "Text you write in the same turn as send_products goes before the pictures; your final reply goes after them. Quote prices exactly as the search gives them (whole rupees).",
+          "Text you write in the same turn as send_products goes before the pictures; your final reply goes after them. Quote prices exactly as the search gives them (whole units, in the product's own currency).",
       );
     }
     systemParts.push(ANSWER_POLICY);
@@ -2122,10 +2160,12 @@ export async function executeRun(
 
   // Pictures only reach a customer from a live answer; the owner's own chat
   // and a teammate's draft carry words alone, so they never offer them.
-  const tools =
+  const tools = withShopCategories(
     task === "agent_reply" && options.channel !== "onboarding"
       ? prelude.tools
-      : prelude.tools.filter((t) => t.name !== "send_products");
+      : prelude.tools.filter((t) => t.name !== "send_products"),
+    prelude.shelves,
+  );
   const modelStarted = Date.now();
   // A customer answer may need the policy-claim check afterwards; its own
   // reads (brain, key, caps) run while this answer is being written instead
