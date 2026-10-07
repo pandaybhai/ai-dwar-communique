@@ -94,13 +94,17 @@ describe("(1) webhook ack: stored, 200, then processed", () => {
     expect(order).toEqual(["processed", "acked"]);
   });
 
-  it("unchanged: a bad signature is stored, acked and never processed; bad JSON is kept verbatim", async () => {
+  // Batch 17 (3): a bad signature is now refused (401) and never stored.
+  it("a bad signature is refused with 401, never stored or processed; bad JSON from Meta is kept verbatim", async () => {
     const db = eventDb();
     const process = vi.fn();
     const res = await acceptWebhook(db.supabase, { rawBody: "not json", signatureValid: false, waitUntil: () => {}, process });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
     expect(process).not.toHaveBeenCalled();
-    expect(db.ops[0]!.payload).toEqual({ provider: "meta", payload: { _unparsable: "not json" }, signature_valid: false });
+    expect(db.ops).toEqual([]);
+    const signed = eventDb();
+    await acceptWebhook(signed.supabase, { rawBody: "not json", signatureValid: true, waitUntil: () => {}, process: async () => {} });
+    expect(signed.ops[0]!.payload).toEqual({ provider: "meta", payload: { _unparsable: "not json" }, signature_valid: true });
   });
 
   it("finds the runtime's waitUntil on the request (nitro) or its cloudflare context", () => {

@@ -53,7 +53,10 @@ export const Route = createFileRoute("/api/public/shopify-webhook")({
 
         if (error) {
           // Duplicate delivery of an event we already have — acknowledge it.
-          return new Response("ok", { status: 200 });
+          if (error.code === "23505") return new Response("ok", { status: 200 });
+          // Anything else: not stored, so Shopify must retry.
+          console.error("[shopify-webhook] event not stored", error.message);
+          return new Response("Not stored", { status: 500 });
         }
 
         const eventRowId = (inserted as { id: string } | null)?.id ?? null;
