@@ -126,15 +126,21 @@ export async function invoicePlanFee(
   organizationId: string,
   period: { start: string; end: string },
 ): Promise<{ invoice_id: string; pay_url: string | null } | { error: string }> {
-  const { data: existing } = await supabase
-    .from("invoices")
-    .select("id")
-    .eq("organization_id", organizationId)
-    .eq("purpose", "plan_fee")
-    .eq("period_start", period.start)
-    .neq("status", "void")
-    .maybeSingle();
-  if (existing) return { error: "already_invoiced" };
+  // This period's plan-fee invoices (not void), oldest first.
+  const periodInvoices = () =>
+    supabase
+      .from("invoices")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("purpose", "plan_fee")
+      .eq("period_start", period.start)
+      .neq("status", "void")
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(2);
+  const { data: existing, error: existingError } = await periodInvoices();
+  if (existingError) return { error: existingError.message };
+  if (existing?.length) return { error: "already_invoiced" };
 
   const { data: org } = await supabase
     .from("organizations")
@@ -199,7 +205,19 @@ export async function invoicePlanFee(
       ...statement,
     ],
   });
-  if ("error" in built) return { error: built.error };
+  if ("error" in built) {
+    // Another run raised this period's invoice at the same moment (the
+    // plan_fee_invoice_period_uidx unique index refused ours).
+    const { data: raced } = await periodInvoices();
+    return { error: raced?.length ? "already_invoiced" : built.error };
+  }
+  // Until that index is applied two runs can both get here: the oldest
+  // invoice stands and a later draft removes itself before it is numbered.
+  const { data: rivals, error: rivalsError } = await periodInvoices();
+  if (rivalsError || (rivals?.[0] && rivals[0].id !== built.invoice_id)) {
+    await supabase.from("invoices").delete().eq("id", built.invoice_id).eq("status", "draft");
+    return { error: rivalsError ? rivalsError.message : "already_invoiced" };
+  }
 
   // Number and file it first, then attach the payment link, then send the
   // PDF once — with the link inside the message.
