@@ -90,15 +90,16 @@ describe("(4) tests on every change", () => {
     expect(plugin).not.toMatch(/writeFileSync/);
   });
 
-  it(".env is not tracked (and stays ignored)", () => {
+  // .env stays tracked: it holds only public keys and Lovable builds from the
+  // repo (VITE_AIDWAR_* has no fallback in src/integrations/aidwar/client.ts).
+  it(".env stays tracked (Lovable builds from the repo)", () => {
     let tracked = "";
     try {
       tracked = execFileSync("git", ["ls-files", ".env"], { cwd: ROOT, encoding: "utf8" });
     } catch {
       return; // no git here: nothing to check
     }
-    expect(tracked.trim()).toBe("");
-    expect(readFileSync(join(ROOT, ".gitignore"), "utf8")).toMatch(/^\.env$/m);
+    expect(tracked.trim()).toBe(".env");
   });
 
   it("the virtual clock makes round trips exact: three 40 ms trips in a row are 120 ms, two together 40 ms", async () => {
