@@ -1,6 +1,6 @@
 /**
  * Every call to an outside service (AI providers, Meta, Razorpay, Google,
- * Shopify, media downloads) gives up after a set time instead of hanging a
+ * Shopify, Resend, media downloads) gives up after a set time instead of hanging a
  * worker until pg_net or the platform cuts it.
  *
  * A timeout throws OutsideCallTimeout, a TypeError like the one fetch()
@@ -26,6 +26,8 @@ export const OUTSIDE_CALL_TIMEOUT_MS = {
   razorpay: 15_000,
   google: 15_000,
   shopify: 20_000,
+  /** One Resend send, or fetching the file it attaches. */
+  email: 15_000,
 } as const;
 
 export type OutsideTarget = keyof typeof OUTSIDE_CALL_TIMEOUT_MS;

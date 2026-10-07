@@ -3,6 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 /**
  * Super-admin only: list, grant and revoke platform super admins.
  * Grants only work for existing accounts; you can't remove yourself or the last one.
+ * test_email sends a test email to the signed-in admin's own address and
+ * answers with Resend's real error text when it fails.
  */
 export const Route = createFileRoute("/api/admin/super-admins")({
   server: {
@@ -33,6 +35,25 @@ export const Route = createFileRoute("/api/admin/super-admins")({
 
         if (body.action === "list") return Response.json({ admins: await list(), me: user.id });
 
+        if (body.action === "test_email") {
+          const { sendEmail, DEFAULT_EMAIL_FROM } = await import("@/lib/email.server");
+          const to = String(user.email ?? "").trim();
+          if (!to) return jsonError("Your account has no email address.", 400);
+          const from = process.env["EMAIL_FROM"]?.trim() || DEFAULT_EMAIL_FROM;
+          const mail = await sendEmail({
+            to,
+            subject: "AiDwar test email",
+            body:
+              `This is a test email from AiDwar, sent from the admin area at ${new Date().toISOString()}.\n\n` +
+              `It was sent from ${from} to ${to}. If you can read this, email sending works.`,
+          });
+          const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+          const platformOrg = await resolvePlatformOrg(supabase).catch(() => null);
+          if (platformOrg)
+            await logServerActivity(supabase, platformOrg, user.id, "test_email_sent", { ok: mail.ok, email_id: mail.id ?? null, error: mail.error ?? null }).catch(() => undefined);
+          return Response.json({ sent: mail.ok, to, id: mail.id ?? null, error: mail.error ?? null });
+        }
+
         const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
         const { sendEmail } = await import("@/lib/email.server");
         const platformOrg = await resolvePlatformOrg(supabase).catch(() => null);
@@ -57,7 +78,7 @@ export const Route = createFileRoute("/api/admin/super-admins")({
             subject: "You're now an AiDwar super admin",
             body: `${actorName} gave you super admin access to AiDwar. You can now open the admin area at https://aidwar.in/admin.`,
           });
-          return Response.json({ admins: await list(), me: user.id, emailed: mail.ok });
+          return Response.json({ admins: await list(), me: user.id, emailed: mail.ok, email_error: mail.error ?? null });
         }
 
         if (body.action === "revoke") {
@@ -73,6 +94,7 @@ export const Route = createFileRoute("/api/admin/super-admins")({
           if (platformOrg)
             await logServerActivity(supabase, platformOrg, user.id, "super_admin_revoked", { target_user_id: targetId }).catch(() => undefined);
           let emailed = false;
+          let emailError: string | null = "no_email_on_account";
           if (target.email) {
             const mail = await sendEmail({
               to: target.email,
@@ -80,8 +102,9 @@ export const Route = createFileRoute("/api/admin/super-admins")({
               body: `${actorName} removed your super admin access to AiDwar. Your own workspaces are not affected.`,
             });
             emailed = mail.ok;
+            emailError = mail.error ?? null;
           }
-          return Response.json({ admins: await list(), me: user.id, emailed });
+          return Response.json({ admins: await list(), me: user.id, emailed, email_error: emailError });
         }
 
         return jsonError("Unknown action.", 400);
