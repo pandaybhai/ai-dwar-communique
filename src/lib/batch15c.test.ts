@@ -832,7 +832,7 @@ describe("(4a) a code-titled product's readable name", () => {
 
 // ------------------------------------------------------------------- (4b)
 describe("(4b) no automatic website re-read unless platform_settings says so", () => {
-  it("missing column, failed read or false: off", async () => {
+  it("failed read, no row or false: off", async () => {
     const { loadKnowledgeAutoRefresh } = await import("./reading.server");
     const db = (reply: { data: unknown; error: unknown }) =>
       ({
@@ -840,7 +840,7 @@ describe("(4b) no automatic website re-read unless platform_settings says so", (
       }) as never;
     expect(
       await loadKnowledgeAutoRefresh(
-        db({ data: null, error: { message: 'column "knowledge_auto_refresh" does not exist' } }),
+        db({ data: null, error: { message: "timeout" } }),
       ),
     ).toBe(false);
     expect(

@@ -659,8 +659,7 @@ export const Route = createFileRoute("/api/admin/ai")({
               next["full_crawl_trigger"] = incoming["full_crawl_trigger"];
             }
             if (incoming["on_demand_read"] != null) next["on_demand_read"] = Boolean(incoming["on_demand_read"]);
-            // Its own column (migration 20261022): only written when it changes,
-            // so a database without it still saves everything else.
+            // knowledge_auto_refresh: only written when it changes.
             const { loadKnowledgeAutoRefresh } = await import("@/lib/reading.server");
             const autoRefreshBefore = await loadKnowledgeAutoRefresh(supabase);
             if (incoming["knowledge_auto_refresh"] != null && Boolean(incoming["knowledge_auto_refresh"]) !== autoRefreshBefore)
@@ -680,8 +679,6 @@ export const Route = createFileRoute("/api/admin/ai")({
               .eq("id", true)
               .eq("reading_version", current.version)
               .select("id");
-            if (upErr && "knowledge_auto_refresh" in next && /knowledge_auto_refresh/.test(upErr.message ?? ""))
-              return jsonError("Automatic re-reading needs the database update 20261022_knowledge_auto_refresh applied first.");
             if (upErr) return jsonError("Couldn't save the reading settings.");
             if (!updated?.length) return jsonError("Someone saved at the same moment — reload to see their change.", 409);
             const changes: Record<string, { from: unknown; to: unknown }> = {};

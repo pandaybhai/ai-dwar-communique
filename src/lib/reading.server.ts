@@ -59,10 +59,8 @@ export async function loadReadingSettings(supabase: SupabaseClient): Promise<Rea
 /**
  * Whether websites are re-read automatically on a schedule
  * (platform_settings.knowledge_auto_refresh). Off unless set: a missing
- * column (migration 20261022 not applied), a missing row or a failed read
- * all mean off — a site is then re-read only when the merchant asks.
- * Read on its own, never in READING_COLUMNS, so a missing column can't
- * hide the other reading settings.
+ * row or a failed read means off — a site is then re-read only when the
+ * merchant asks. Read on its own, never in READING_COLUMNS.
  */
 export async function loadKnowledgeAutoRefresh(supabase: SupabaseClient): Promise<boolean> {
   try {
