@@ -121,7 +121,7 @@ export const Route = createFileRoute("/api/flows/v2")({
           return Number(((data ?? []) as Array<{ version: number }>)[0]?.version ?? 0) + 1;
         };
         const draftOf = async (flowId: string) => {
-          const { data } = await db.from("flow_versions").select("id, graph, version").eq("flow_id", flowId).eq("status", "draft").order("version", { ascending: false }).limit(1);
+          const { data } = await db.from("flow_versions").select("id, graph, version").eq("flow_id", flowId).eq("organization_id", org).eq("status", "draft").order("version", { ascending: false }).limit(1);
           return ((data ?? []) as Array<{ id: string; graph: unknown; version: number }>)[0] ?? null;
         };
 
@@ -214,7 +214,7 @@ export const Route = createFileRoute("/api/flows/v2")({
         }
 
         if (body.action === "unpublish") {
-          const { data: pub } = await db.from("flow_versions").select("id, graph").eq("flow_id", flow.id).eq("status", "published").maybeSingle();
+          const { data: pub } = await db.from("flow_versions").select("id, graph").eq("flow_id", flow.id).eq("organization_id", org).eq("status", "published").maybeSingle();
           if (!pub) return jsonError("This flow isn't published.");
           const draft = await draftOf(flow.id);
           // Switch the flow off first: if that fails nothing has changed.
@@ -232,7 +232,7 @@ export const Route = createFileRoute("/api/flows/v2")({
         }
 
         // restore: copy an old version into the draft
-        const { data: old } = await db.from("flow_versions").select("graph, version").eq("id", body.version_id).eq("flow_id", flow.id).maybeSingle();
+        const { data: old } = await db.from("flow_versions").select("graph, version").eq("id", body.version_id).eq("flow_id", flow.id).eq("organization_id", org).maybeSingle();
         if (!old) return jsonError("That version doesn't exist.", 404);
         const draft = await draftOf(flow.id);
         const restored = await seal(flow.id, (old as { graph: unknown }).graph);

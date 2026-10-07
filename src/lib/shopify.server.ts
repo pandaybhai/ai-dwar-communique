@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -269,7 +270,7 @@ export async function exchangeAccessToken(args: {
   apiSecret: string;
   code: string;
 }): Promise<{ ok: boolean; grant?: TokenGrant; error?: string }> {
-  const res = await fetch(`https://${args.shopDomain}/admin/oauth/access_token`, {
+  const res = await outsideFetch("shopify", `https://${args.shopDomain}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -304,7 +305,7 @@ export async function refreshAccessToken(args: {
 }): Promise<{ ok: true; grant: TokenGrant } | { ok: false; fatal: boolean; error: string }> {
   let res: Response;
   try {
-    res = await fetch(`https://${args.shopDomain}/admin/oauth/access_token`, {
+    res = await outsideFetch("shopify", `https://${args.shopDomain}/admin/oauth/access_token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -391,7 +392,7 @@ export async function shopifyRest(args: {
   );
   for (const [k, v] of Object.entries(args.query ?? {})) if (v) url.searchParams.set(k, v);
 
-  const res = await fetch(url.toString(), {
+  const res = await outsideFetch("shopify", url.toString(), {
     method: args.method ?? "GET",
     headers: {
       "X-Shopify-Access-Token": args.accessToken,
@@ -710,6 +711,8 @@ export async function signInstallState(payload: {
   organizationId: string;
   shopDomain: string;
   userId: string;
+  /** Browser binding nonce (oauth-binding.server.ts). */
+  bind?: string;
 }, secret?: string): Promise<string> {
   const creds = { apiSecret: shopifyCredentials()?.apiSecret ?? secret ?? "" };
   if (!creds.apiSecret) throw new Error("Shopify app credentials are not configured.");
@@ -722,7 +725,7 @@ export async function signInstallState(payload: {
 export async function verifyInstallState(
   state: string,
   secret?: string,
-): Promise<{ organizationId: string; shopDomain: string; userId: string } | null> {
+): Promise<{ organizationId: string; shopDomain: string; userId: string; bind: string } | null> {
   const creds = { apiSecret: shopifyCredentials()?.apiSecret ?? secret ?? "" };
   if (!creds.apiSecret) return null;
   const [encoded, signature] = state.split(".");
@@ -738,8 +741,9 @@ export async function verifyInstallState(
     const organizationId = String(parsed["organizationId"] ?? "");
     const shopDomain = String(parsed["shopDomain"] ?? "");
     const userId = String(parsed["userId"] ?? "");
+    const bind = String(parsed["bind"] ?? "");
     if (!organizationId || !shopDomain) return null;
-    return { organizationId, shopDomain, userId };
+    return { organizationId, shopDomain, userId, bind };
   } catch {
     return null;
   }

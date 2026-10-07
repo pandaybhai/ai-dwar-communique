@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeDb, type FakeOp } from "./test-support/fake-db";
 import { inboundPayload, latencyWorld } from "./test-support/latency-world";
+import { inVirtualTime } from "./test-support/virtual-time";
 import {
   acceptWebhook,
   coalesceBurst,
@@ -94,13 +95,17 @@ describe("(1) webhook ack: stored, 200, then processed", () => {
     expect(order).toEqual(["processed", "acked"]);
   });
 
-  it("unchanged: a bad signature is stored, acked and never processed; bad JSON is kept verbatim", async () => {
+  // Batch 17 (3): a bad signature is now refused (401) and never stored.
+  it("a bad signature is refused with 401, never stored or processed; bad JSON from Meta is kept verbatim", async () => {
     const db = eventDb();
     const process = vi.fn();
     const res = await acceptWebhook(db.supabase, { rawBody: "not json", signatureValid: false, waitUntil: () => {}, process });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
     expect(process).not.toHaveBeenCalled();
-    expect(db.ops[0]!.payload).toEqual({ provider: "meta", payload: { _unparsable: "not json" }, signature_valid: false });
+    expect(db.ops).toEqual([]);
+    const signed = eventDb();
+    await acceptWebhook(signed.supabase, { rawBody: "not json", signatureValid: true, waitUntil: () => {}, process: async () => {} });
+    expect(signed.ops[0]!.payload).toEqual({ provider: "meta", payload: { _unparsable: "not json" }, signature_valid: true });
   });
 
   it("finds the runtime's waitUntil on the request (nitro) or its cloudflare context", () => {
@@ -148,8 +153,11 @@ const TAP = { id: "wamid.tap", type: "interactive", interactive: { type: "button
 async function deliver(org: string, waitingRun: boolean, msg: Record<string, unknown>) {
   const w = latencyWorld({ org, rttMs: RTT, graphMs: GRAPH, waitingRun, maxConcurrent: 6 });
   vi.stubGlobal("fetch", w.fetchStub);
-  w.t0.at = Date.now();
-  await processWebhookPayload(w.supabase, `ev-${org}`, inboundPayload(msg), new Date().toISOString());
+  // Batch 17: on a virtual clock, so "within N round trips" never races a loaded machine.
+  await inVirtualTime(async () => {
+    w.t0.at = Date.now();
+    await processWebhookPayload(w.supabase, `ev-${org}`, inboundPayload(msg), new Date().toISOString());
+  });
   return w;
 }
 const idx = (ops: FakeOp[], pred: (o: FakeOp) => boolean) => ops.findIndex(pred);
@@ -224,7 +232,8 @@ describe("(2) flow replies: fewer round trips before the send", () => {
 describe("(2) burst window: counted from when the message was stored", () => {
   const burstDb = (rows: Array<{ id: string; direction: string; body: string }>) =>
     fakeDb((op) => (op.table === "messages" ? { data: rows, error: null } : undefined));
-  const args = { conversationId: "cv", messageId: "m2", occurredAt: new Date().toISOString(), body: "under 2000?" };
+  // The mechanism at a 5 s window (Batch 15A: the default is now 1 s, a platform setting).
+  const args = { conversationId: "cv", messageId: "m2", occurredAt: new Date().toISOString(), body: "under 2000?", windowMs: 5000 };
 
   it("3 s already spent since storing → waits the remaining 2 s, not 5", async () => {
     vi.useFakeTimers();
@@ -246,7 +255,7 @@ describe("(2) burst window: counted from when the message was stored", () => {
     expect(db.ops).toHaveLength(1);
   });
 
-  it("unchanged: without a stored time the full 5 s is waited", async () => {
+  it("unchanged: without a stored time the full window (5 s here) is waited", async () => {
     vi.useFakeTimers();
     const db = burstDb([]);
     const out = coalesceBurst(db.supabase, args);
@@ -345,8 +354,9 @@ describe("(2) the answer's bookkeeping and the policy check's set-up leave the c
     expect(tiers).toHaveLength(2);
     expect(firstAfterModel).toBeGreaterThan(-1);
     expect(tiers[1]![1]).toBeLessThan(firstAfterModel);
-    // Both runs are still recorded.
-    expect(db.ops.filter((o) => o.table === "ai_runs" && o.kind === "insert")).toHaveLength(2);
+    // Every run is still recorded: the answer, the check and (Batch 16) the
+    // one rewrite attempt for the unsupported sentence.
+    expect(db.ops.filter((o) => o.table === "ai_runs" && o.kind === "insert")).toHaveLength(3);
   });
 
   it("with deferUsage the daily roll-up is handed over (one per run), not awaited before returning", async () => {
@@ -357,14 +367,16 @@ describe("(2) the answer's bookkeeping and the policy check's set-up leave the c
     expect(out.status).toBe("ok");
     expect(handed).toHaveLength(1);
     await Promise.all(handed);
-    expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert")).toBe(true);
+    // Batch 18: one ai_usage_add call once that migration is applied, else the row write as before.
+    expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert") || db.rpcs.some((r) => r.name === "ai_usage_add")).toBe(true);
   });
 
   it("unchanged: without deferUsage the roll-up is written before the run returns", async () => {
     const db = aiDb([RETURNS]);
     stubModel(`${RETURNS}\n{"needs_owner": false}`);
     await ask(db, "What is your return policy?");
-    expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert")).toBe(true);
+    // Batch 18: one ai_usage_add call once that migration is applied, else the row write as before.
+    expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert") || db.rpcs.some((r) => r.name === "ai_usage_add")).toBe(true);
   });
 });
 
@@ -396,11 +408,12 @@ describe("(3) 'Let me confirm that for you.' only on a run that hands over", () 
     expect(out.output).toMatch(/Let me confirm that for you\.$/);
   });
 
-  it("a reply that is nothing but the promise hands over (so the promise is kept)", async () => {
+  it("a reply that is nothing but the promise is filed for the merchant, never a hand-off (Batch 16)", async () => {
     stubModel('Let me confirm that for you.\n{"needs_owner": true}');
     const out = await ask(aiDb(["Petal Band — handcrafted ring."]), "is the petal band in stock?");
-    expect(out.status).toBe("escalated");
-    expect(out.escalationSignal).toBe("no_source");
+    expect(out.status).toBe("ok");
+    expect(out.escalationSignal ?? null).toBeNull();
+    expect(out.needsOwner).toBe(true);
     expect(out.output).toBe("Let me confirm that for you.");
   });
 
@@ -480,5 +493,84 @@ describe("(4) template sends keep their values; the inbox preview shows them", (
     const row = (preview: ConversationRow["preview"]) => ({ preview }) as ConversationRow;
     expect(previewText(row({ body: "hello", type: "text", direction: "inbound" }))).toBe("hello");
     expect(previewText(row({ body: null, type: "template", direction: "outbound", template_name: "order_update" }))).toBe("Template: order update");
+  });
+});
+
+// ------------------------------------------------------------------ Batch 16 item 4
+describe("Batch 16 item 4: an unsupported policy claim is rewritten once, not cut", () => {
+  const SOURCE = "Returns: we accept returns within 7 days of delivery for unused items with tags.";
+  // Live (Zoori): the claim went and the reply began "Lekin…". (The number
+  // guard handles a day count on its own, so the claim here has none.)
+  const ANSWER = "Haan ji, no-questions-asked returns hai. Lekin item unused hona chahiye with tags.";
+
+  function stub(rewrite: (parts: string[]) => string | null) {
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      if (String(url).endsWith("/embeddings")) return new Response(JSON.stringify({ data: [{ embedding: [0.1, 0.2] }] }));
+      const body = JSON.parse(String(init.body)) as Chat;
+      const system = String(body.messages[0]?.content ?? "");
+      const user = String(body.messages.at(-1)?.content ?? "");
+      if (system.startsWith("You check whether sentences")) {
+        seen.push("check");
+        const lines = user.match(/^\d+\. .*$/gm) ?? [];
+        const answers = lines.map((l) => (/no-questions|lifetime/i.test(l) ? "no" : "yes"));
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ answers }) } }] }));
+      }
+      if (system.startsWith("You edit a shop assistant")) {
+        seen.push("rewrite");
+        const parts = JSON.parse(user.slice(user.indexOf("REPLY PARTS:\n") + "REPLY PARTS:\n".length)) as string[];
+        const out = rewrite(parts);
+        return new Response(JSON.stringify({ choices: [{ message: { content: out ?? "sorry" } }] }));
+      }
+      seen.push("answer");
+      return new Response(JSON.stringify({ choices: [{ message: { content: `${ANSWER}\n{"needs_owner": false}` } }] }));
+    });
+    return seen;
+  }
+  const meta = (db: ReturnType<typeof aiDb>) =>
+    db.ops
+      .filter((o) => o.table === "ai_runs" && o.kind === "insert")
+      .map((o) => (o.payload as { metadata?: Record<string, unknown> }).metadata ?? {})
+      .find((m) => !m["purpose"])!;
+
+  beforeEach(() => {
+    process.env["LOVABLE_API_KEY"] = "test-key";
+  });
+
+  it("the model's rewrite (no unsupported claim) goes out instead of a cut reply; recorded on the run", async () => {
+    const db = aiDb([SOURCE]);
+    const seen = stub(() => JSON.stringify({ parts: ["Returns 7 din ke andar ho jaate hain, item unused hona chahiye with tags."] }));
+    const out = await ask(db, "return policy kya hai?");
+    // The wording check alone found the claim; the rewrite is then checked again.
+    expect(seen).toEqual(["answer", "rewrite", "check"]);
+    expect(out.output).toBe("Returns 7 din ke andar ho jaate hain, item unused hona chahiye with tags.");
+    expect(out.output).not.toMatch(/^Lekin/);
+    expect(meta(db)["policy_rewrite"]).toEqual({ outcome: "rewritten", claims: ["Haan ji, no-questions-asked returns hai."] });
+  });
+
+  it("the rewrite still makes an unsupported claim: today's stripping applies", async () => {
+    const db = aiDb([SOURCE]);
+    stub(() => JSON.stringify({ parts: ["Returns no-questions hote hain, lifetime exchange bhi."] }));
+    const out = await ask(db, "return policy kya hai?");
+    // Today's behaviour (the live fault): the claim is cut, the reply begins "Lekin…".
+    expect(out.output).toBe("Lekin item unused hona chahiye with tags.");
+    expect((meta(db)["policy_rewrite"] as { outcome: string }).outcome).toBe("still_unsupported");
+  });
+
+  it("the rewrite adds a number the material never states: today's stripping applies", async () => {
+    const db = aiDb([SOURCE]);
+    stub(() => JSON.stringify({ parts: ["Returns ke liye ₹200 fee lagti hai, item unused ho."] }));
+    const out = await ask(db, "return policy kya hai?");
+    expect(out.output).not.toMatch(/₹200/);
+    expect((meta(db)["policy_rewrite"] as { outcome: string }).outcome).toBe("still_unsupported");
+  });
+
+  it("the rewrite call fails (no JSON): today's stripping applies", async () => {
+    const db = aiDb([SOURCE]);
+    stub(() => null);
+    const out = await ask(db, "return policy kya hai?");
+    // Today's behaviour (the live fault): the claim is cut, the reply begins "Lekin…".
+    expect(out.output).toBe("Lekin item unused hona chahiye with tags.");
+    expect((meta(db)["policy_rewrite"] as { outcome: string }).outcome).toBe("failed");
   });
 });

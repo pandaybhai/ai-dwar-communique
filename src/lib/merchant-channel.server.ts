@@ -14,6 +14,7 @@
  * to render the same words still go out as plain text.
  */
 
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getScript } from "@/lib/scripts.server";
 import { normalizePhone } from "@/lib/phone";
@@ -850,7 +851,7 @@ export async function handleMerchantInbound(
         await patchSession(supabase, session.id, { status: "learning", step: "reading", source_id: added.sourceId });
         await finishOnboardingCrawl(supabase, added.sourceId, { ok: true, itemCount: added.itemCount });
       } else {
-        await reply(`I read ${host} recently, so I'm using what I saved. Press "Read changes now" in your dashboard if it changed.`);
+        await reply(`I read ${host} recently, so I'm using what I saved. Press "Re-read whole site" in your dashboard if it changed.`);
       }
       return;
     }
@@ -1255,7 +1256,12 @@ async function switchAgentOn(
     .from("ai_agents")
     .update({ mode: "replying" })
     .eq("organization_id", organizationId);
-  if (!error) return { ok: true, guard: null };
+  if (!error) {
+    // One switch: ai_enabled follows (it used to stay off, so Aiden stayed silent).
+    const { syncAiSwitch } = await import("@/lib/ai-agent.server");
+    await syncAiSwitch(supabase, organizationId, "replying");
+    return { ok: true, guard: null };
+  }
   const guard = error.message.includes("AI_GUARD:")
     ? (error.message.split("AI_GUARD:")[1]?.trim() ?? null)
     : null;
@@ -1343,13 +1349,13 @@ async function finishNumberConnected(
 /** The bytes behind an inbound picture or document. Null when Meta says no. */
 async function downloadMedia(mediaId: string, accessToken: string): Promise<Uint8Array | null> {
   const { GRAPH_VERSION } = await import("@/lib/whatsapp-api.server");
-  const lookup = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+  const lookup = await outsideFetch("meta", `https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   const body = (await lookup.json().catch(() => ({}))) as Record<string, unknown>;
   const url = body["url"] as string | undefined;
   if (!lookup.ok || !url) return null;
-  const file = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const file = await outsideFetch("meta_media", url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!file.ok) return null;
   const buffer = await file.arrayBuffer();
   if (buffer.byteLength > 8 * 1024 * 1024) return null;

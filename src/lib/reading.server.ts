@@ -57,6 +57,92 @@ export async function loadReadingSettings(supabase: SupabaseClient): Promise<Rea
 }
 
 /**
+ * Whether websites are re-read automatically on a schedule
+ * (platform_settings.knowledge_auto_refresh). Off unless set: a missing
+ * column (migration 20261022 not applied), a missing row or a failed read
+ * all mean off — a site is then re-read only when the merchant asks.
+ * Read on its own, never in READING_COLUMNS, so a missing column can't
+ * hide the other reading settings.
+ */
+export async function loadKnowledgeAutoRefresh(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.from("platform_settings").select("knowledge_auto_refresh").eq("id", true).maybeSingle();
+    if (error) return false;
+    return (data as { knowledge_auto_refresh?: unknown } | null)?.knowledge_auto_refresh === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Reading AI cap when the setting is missing: ₹/workspace/day (facts run ~₹0.7 a page live; Day-0 is 15 pages). */
+export const READING_AI_DAILY_CAP_DEFAULT = 100;
+/** ai_usage tasks a website read spends on (facts, picture descriptions, embeddings). */
+export const READING_AI_TASKS = ["knowledge_facts", "knowledge_image", "embedding"];
+
+/**
+ * Per-workspace daily cap on reading AI spend (platform_settings
+ * .reading_ai_daily_cap, ₹). Missing column/row = the default; 0 = no cap.
+ * Read on its own, like knowledge_auto_refresh.
+ */
+export async function loadReadingAiDailyCap(supabase: SupabaseClient): Promise<number> {
+  try {
+    const { data, error } = await supabase.from("platform_settings").select("reading_ai_daily_cap").eq("id", true).maybeSingle();
+    const value = Number((data as { reading_ai_daily_cap?: unknown } | null)?.reading_ai_daily_cap);
+    return error || !Number.isFinite(value) || value < 0 ? READING_AI_DAILY_CAP_DEFAULT : value;
+  } catch {
+    return READING_AI_DAILY_CAP_DEFAULT;
+  }
+}
+
+/** Workspaces already logged as over the cap today ("org:date"), so the log says it once. */
+const capLogged = new Set<string>();
+
+/**
+ * True once the workspace's reading AI spend today (ai_usage, same UTC day
+ * meterAiUsage writes) has reached the cap; logged the first time.
+ */
+export async function readingAiCapReached(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
+  const cap = await loadReadingAiDailyCap(supabase);
+  if (cap <= 0) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const { data } = await supabase
+      .from("ai_usage")
+      .select("cost_amount")
+      .eq("organization_id", organizationId)
+      .eq("usage_date", today)
+      .in("task", READING_AI_TASKS);
+    const spent = ((data ?? []) as Array<{ cost_amount: number | null }>).reduce((sum, r) => sum + Number(r.cost_amount ?? 0), 0);
+    if (spent < cap) return false;
+    const key = `${organizationId}:${today}`;
+    if (!capLogged.has(key)) {
+      capLogged.add(key);
+      console.warn(JSON.stringify({ scope: "reading_ai_cap_hit", organization_id: organizationId, spent: Math.round(spent * 100) / 100, cap, day: today }));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The nightly backfill reads only for a workspace that can use what it reads:
+ * a connected WhatsApp number, or Aiden on. Day-0 onboarding reads never ask.
+ */
+export async function backfillWanted(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
+  const [{ count: numbers }, { data: agent }] = await Promise.all([
+    supabase
+      .from("whatsapp_accounts")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("status", "active"),
+    supabase.from("ai_agents").select("mode").eq("organization_id", organizationId).eq("is_default", true).maybeSingle(),
+  ]);
+  const aiOn = ((agent as { mode?: string } | null)?.mode ?? "off") !== "off";
+  return (numbers ?? 0) > 0 || aiOn;
+}
+
+/**
  * Reading order for every read: home, contact/about, policies, FAQ, pricing,
  * collections, products, the rest; blog/tag/archive/search last.
  * Returns null for pages we never read.
@@ -70,10 +156,12 @@ export function urlPriority(url: string, origin: string, title = ""): number | n
   if (/(contact|about|our-story|who-we-are)/.test(words)) return 90;
   if (/(shipping|delivery|return|refund|terms|privacy|policy|policies|warranty)/.test(words)) return 80;
   if (/(faq|help|questions)/.test(words)) return 70;
+  // Other pages that answer customers: where to find the shop, sizes, jobs.
+  if (/^\/(?:stores?|store-locator|locations?|find-us|visit-us|size-guide|size-chart|sizing|careers|jobs)(?:\/|$)/.test(path)) return 65;
   if (/(pricing|price|plans)/.test(words)) return 60;
   if (/(\/blog|\/tag|\/tags|\/archive|\/search|\/author|\/feed|\/page\/\d+|\/\d{4}\/\d{2}\/)/.test(path)) return 5;
-  if (/(collection|categor|shop|catalog|menu|services)/.test(path)) return 50;
-  if (/\/products?\//.test(path)) return 40;
+  if (/(collection|categor|shop|catalog|menu|services|listing)/.test(path)) return 50;
+  if (/\/(?:products?|product[-_]details?|item|p)\//.test(path)) return 40;
   return 20;
 }
 

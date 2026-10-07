@@ -4,7 +4,15 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { executeRun, prepareRun, type RunOptions, type RunPrelude, type RunResult } from "@/lib/ai-run.server";
+import {
+  executeRun,
+  prepareRun,
+  type AnswerLookups,
+  type PreludeRead,
+  type RunOptions,
+  type RunResult,
+} from "@/lib/ai-run.server";
+import { activeFlowRules, briefTextWithFlowRules, flowRulesBlock, type AidenFlowRules } from "@/lib/aiden-flow-rules";
 
 export type Turn = { role: "user" | "assistant"; content: string };
 
@@ -20,12 +28,16 @@ export async function conversationTurns(
   contactName: string | null;
   /** The language of the customer's most recent message, when we could tell. */
   customerLanguage: string | null;
+  /** A flow's Hand-to-Aiden Behaviour / Rules for this chat, while in force (Batch 21). */
+  flowRules?: AidenFlowRules | null;
 }> {
   // Independent reads: one round trip, not two.
   const [{ data: convo }, { data: rows }] = await Promise.all([
     supabase
       .from("conversations")
-      .select("id, contact_id, contacts(name)")
+      // "*": aiden_flow_rules comes along once its migration is applied, and
+      // nothing breaks before.
+      .select("*, contacts(name)")
       .eq("id", conversationId)
       .eq("organization_id", organizationId)
       .maybeSingle(),
@@ -40,6 +52,7 @@ export async function conversationTurns(
   const c = convo as {
     contact_id: string | null;
     contacts?: { name?: string | null } | null;
+    aiden_flow_rules?: unknown;
   } | null;
 
   const all = (rows ?? []) as Array<{
@@ -63,6 +76,7 @@ export async function conversationTurns(
     contactId: c?.contact_id ?? null,
     contactName: c?.contacts?.name ?? null,
     customerLanguage,
+    flowRules: activeFlowRules(c?.aiden_flow_rules),
   };
 }
 
@@ -127,7 +141,7 @@ export async function suggestReply(
   conversationId: string,
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { turns, contactId, customerLanguage } = await conversationTurns(
+  const { turns, contactId, customerLanguage, flowRules } = await conversationTurns(
     supabase,
     common.organizationId,
     conversationId,
@@ -149,6 +163,7 @@ export async function suggestReply(
     input: last || "Write the next reply in this conversation.",
     system: [
       brief,
+      flowRulesBlock(flowRules ?? null),
       spoken,
       "Draft the next reply for a human teammate to check and send.",
       "Keep it under 60 words, plain and specific. No greetings padding, no emoji unless the customer used one.",
@@ -373,23 +388,34 @@ export async function agentAnswer(
   /** Read ahead by the inbound webhook while it waited out a burst (speed). */
   prepared?: {
     agentId: string | null;
-    prelude: Promise<RunPrelude>;
+    prelude: PreludeRead;
     deferUsage?: (work: Promise<unknown>) => void;
     /** Earlier failures and the brief, read during the burst wait (answerReadsAhead). */
     ahead?: AnswerReadsAhead;
+    /** The chat itself, read the moment the burst wait ended (conversationTurns). */
+    chat?: ReturnType<typeof conversationTurns>;
+    /** The material and the early catalogue search for this question, already started (startAnswerLookups). */
+    lookups?: AnswerLookups;
   },
+  /** The customer's message is a WhatsApp reply to this message of ours. */
+  context?: { replyToMetaId?: string | null; onProductsQueued?: RunOptions["onProductsQueued"] },
 ): Promise<RunResult> {
   // The chat, its earlier failures, the agent and the brief are independent
   // reads (the brief only needs the chat's language to finish its wording).
   const agentRead = prepared ? Promise.resolve(prepared.agentId) : defaultAgentId(supabase, common.organizationId);
-  const chat = conversationTurns(supabase, common.organizationId, conversationId);
+  const chat = prepared?.chat ?? conversationTurns(supabase, common.organizationId, conversationId);
   const ahead = prepared?.ahead ?? answerReadsAhead(supabase, common.organizationId, conversationId, agentRead);
   ahead.setLanguage(chat.then((c) => c.customerLanguage));
-  const [agentId, { turns, contactId, customerLanguage }, { data: pastRuns }, brief] = await Promise.all([
+  // Only a reply-to message costs a read here; every other message reads nothing more.
+  const replyNote = context?.replyToMetaId
+    ? replyContextNote(supabase, common.organizationId, conversationId, context.replyToMetaId).catch(() => null)
+    : Promise.resolve(null);
+  const [agentId, { turns, contactId, customerLanguage, flowRules }, { data: pastRuns }, brief, replyTo] = await Promise.all([
     agentRead,
     chat,
     ahead.pastRuns,
     ahead.brief,
+    replyNote,
   ]);
 
   const priorFailedQuestions = ((pastRuns ?? []) as Array<{ input_summary: string | null }>)
@@ -407,7 +433,10 @@ export async function agentAnswer(
     history: turns.slice(0, -1),
     input: question,
     // Escalation rules are part of the assembled brief — exactly once.
-    system: brief.text,
+    // A flow's Behaviour / Rules for this chat sit right after the workspace's instructions.
+    system: replyTo
+      ? `${briefTextWithFlowRules(brief, flowRulesBlock(flowRules ?? null))}\n\n${replyTo}`
+      : briefTextWithFlowRules(brief, flowRulesBlock(flowRules ?? null)),
     handoverRules: brief.instructions.escalationRules,
     promptRulesVersion: brief.rulesVersion,
     customerLanguage,
@@ -416,7 +445,59 @@ export async function agentAnswer(
     useTools: true,
     ...(prepared ? { prelude: prepared.prelude } : {}),
     ...(prepared?.deferUsage ? { deferUsage: prepared.deferUsage } : {}),
+    ...(prepared?.lookups ? { lookups: prepared.lookups } : {}),
+    ...(context?.onProductsQueued ? { onProductsQueued: context.onProductsQueued } : {}),
   });
+}
+
+const REPLY_PRODUCT_COLUMNS =
+  "id, title, sku, description, category, gender, price, compare_at_price, currency, availability, product_url, image_url";
+
+/**
+ * When the customer used WhatsApp reply-to on one of our product pictures,
+ * the product it shows, as one line for the model. Found by the product id
+ * stored on Aiden's pictures, else by the picture itself (flows' pictures and
+ * older ones), else by the name its caption starts with. Null for anything
+ * else — a reply to a plain text changes nothing.
+ */
+export async function replyContextNote(
+  supabase: SupabaseClient,
+  organizationId: string,
+  conversationId: string,
+  metaMessageId: string,
+): Promise<string | null> {
+  const { data: message } = await supabase
+    .from("messages")
+    .select("direction, type, body, media_url, metadata")
+    .eq("organization_id", organizationId)
+    .eq("conversation_id", conversationId)
+    .eq("meta_message_id", metaMessageId)
+    .maybeSingle();
+  const m = message as {
+    direction?: string;
+    type?: string;
+    body?: string | null;
+    media_url?: string | null;
+    metadata?: Record<string, unknown> | null;
+  } | null;
+  if (!m || m.direction !== "outbound") return null;
+  const products = () =>
+    supabase.from("products").select(REPLY_PRODUCT_COLUMNS).eq("organization_id", organizationId).eq("is_visible", true);
+  const productId = typeof m.metadata?.["product_id"] === "string" ? (m.metadata["product_id"] as string) : null;
+  let row: Record<string, unknown> | null = null;
+  if (productId) row = ((await products().eq("id", productId).maybeSingle()).data as Record<string, unknown> | null) ?? null;
+  if (!row && m.type === "image" && m.media_url) {
+    row = ((await products().eq("image_url", m.media_url).limit(1).maybeSingle()).data as Record<string, unknown> | null) ?? null;
+  }
+  const named = m.type === "image" ? (m.body ?? "").split(/\s+[—–-]\s+|\n/)[0]?.trim() ?? "" : "";
+  if (!row && named) row = ((await products().eq("title", named).limit(1).maybeSingle()).data as Record<string, unknown> | null) ?? null;
+  if (!row) return null;
+  const { productFacts } = await import("@/lib/product-facts");
+  const facts = productFacts(row);
+  return (
+    `The customer's message is a WhatsApp reply to your picture of ${String(facts["title"])}. ` +
+    `"This", "it" or "that one" means this product: ${JSON.stringify(facts)}`
+  );
 }
 
 /**

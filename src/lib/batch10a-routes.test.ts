@@ -32,18 +32,20 @@ vi.mock("@/lib/whatsapp-numbers.server", () => ({
     error: null,
   }),
 }));
-vi.mock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => h.db!.supabase }));
-vi.mock("@/lib/campaigns.server", () => ({
+vi.mock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => h.db!.supabase, waitUntilOf: () => null }));
+vi.mock("@/lib/campaigns.server", async (orig) => ({
+  ...(await orig<typeof import("@/lib/campaigns.server")>()),
   sendCampaignTemplate: h.sendCampaignTemplate,
   loadSenderContext: async () => ({ accountId: "acc", wabaId: "waba", phoneNumberId: "pn", accessToken: "t" }),
 }));
 vi.mock("@/lib/campaign-billing.server", () => ({
   holdCampaign: async () => ({ ok: true }),
   settleCampaignSpend: async () => ({ ok: true }),
+  syncCampaignCharged: async () => ({ ok: true, amount: 0 }),
 }));
 vi.mock("@/lib/events.server", () => {
   const noop = async () => {};
-  return { emitEvent: noop, recordUsage: noop };
+  return { emitEvent: noop, recordUsage: noop, emitEvents: noop, recordUsages: noop };
 });
 
 import { Route as CardsRoute } from "../routes/api/cards";
@@ -202,68 +204,76 @@ describe("inbox Send card (/api/cards send)", () => {
     expect(await res.json()).toEqual({ url: CARD_URL });
     expect(renders[0]).toMatchObject({ vars: { headline: `Preview ${n}`, offer: "Buy 1 get 1", validity: "", code: "" } });
     // Batch 10C: a real render is recorded (usage only) — a preview under its own task.
-    const usage = h.db.ops.filter((o) => o.table === "ai_usage" && o.kind !== "select");
-    expect(usage.map((o) => (o.payload as { task?: string }).task)).toEqual(["card_preview"]);
+    // (Batch 18: added in one call by ai_usage_add once that is applied, else written as before.)
+    const usage = [
+      ...h.db.ops.filter((o) => o.table === "ai_usage" && o.kind !== "select").map((o) => (o.payload as { task?: string }).task),
+      ...h.db.rpcs.filter((r) => r.name === "ai_usage_add").map((r) => r.args["p_task"]),
+    ];
+    expect(usage).toEqual(["card_preview"]);
     expect(h.db.ops.some((o) => o.table === "wallet_ledger") || h.db.rpcs.some((r) => r.name.startsWith("wallet"))).toBe(false);
   });
 });
 
 // ------------------------------------------------------------------ campaigns
 
-const recipients = [{ id: "r1", contact_id: "c1", phone: "+919800000001", resolved_variables: { "1": "Asha" } }];
-
+/** Batch 12: the campaign goes through the real sender, against an in-memory database. */
 async function runCampaign(sendSettings: Record<string, unknown>, cards: boolean) {
-  const db = fakeDb(
-    (op) => {
-      if (op.table === "campaigns" && op.kind === "select")
-        return {
-          data: [{ id: "camp", organization_id: "org-10a", whatsapp_account_id: "acc", status: "sending", template_name: "promo", template_language: "en", send_settings: sendSettings }],
-          error: null,
-        };
-      if (op.table === "contacts") return { data: { opt_in_status: "opted_in" }, error: null };
-      if (op.table === "campaign_recipients" && op.kind === "select") return { data: null, error: null, count: 1 } as never;
-      if (op.table === "feature_flags") return { data: [{ key: "cards", default_enabled: cards }], error: null };
-      if (op.table === "conversations") return { data: { id: "cv1", last_customer_message_at: new Date().toISOString() }, error: null };
-      return undefined;
-    },
-    (call) => (call.name === "claim_campaign_recipients" ? { data: recipients, error: null } : undefined),
-  );
-  h.db = db;
+  const { world } = await import("./test-support/campaign-world");
+  const { resetDispatchCaches } = await import("./campaign-dispatch.server");
+  resetDispatchCaches();
+  const w = world({ campaigns: [{ recipients: 1 }] });
+  const c = w.campaigns[0]!;
+  w.db.rows("campaigns")[0]!["send_settings"] = sendSettings;
+  w.db.rows("contacts")[0]!["name"] = "Asha";
+  c.recipients[0]!["resolved_variables"] = { "1": "Asha" };
+  c.recipients[0]!["phone"] = "+919800000001";
+  // The customer wrote recently: the 24-hour window is open for the card.
+  w.db.insert("conversations", {
+    organization_id: c.orgId,
+    contact_id: c.recipients[0]!["contact_id"],
+    whatsapp_account_id: "acc",
+    status: "open",
+    last_customer_message_at: new Date().toISOString(),
+  });
+  vi.spyOn(cardsServer, "cardsEnabled").mockResolvedValue(cards);
+  h.db = { supabase: w.db.client } as never;
   process.env["CRON_SECRET"] = "s";
   const res = await postOf(CampaignWorker)({ request: new Request("http://x", { method: "POST", headers: { "x-cron-secret": "s" } }) });
   expect(res.status).toBe(200);
-  return db;
+  return w.db;
 }
+const templateSends = () => sends.filter((b) => b["type"] === "template");
+const otherSends = () => sends.filter((b) => b["type"] !== "template");
 
 describe("campaigns: a card only when one was attached", () => {
-  beforeEach(() => h.sendCampaignTemplate.mockClear());
+  beforeEach(() => vi.restoreAllMocks());
 
   it("unchanged: a campaign without a card sends the template only and never looks at cards", async () => {
     stubFetch("ok");
     const send = vi.spyOn(cardsServer, "sendCardToContact");
-    const enabled = vi.spyOn(cardsServer, "cardsEnabled");
-    const db = await runCampaign({}, true);
-    expect(h.sendCampaignTemplate).toHaveBeenCalledTimes(1);
+    await runCampaign({}, true);
+    const enabled = cardsServer.cardsEnabled as unknown as ReturnType<typeof vi.fn>;
+    expect(templateSends()).toHaveLength(1);
     expect(send).not.toHaveBeenCalled();
     expect(enabled).not.toHaveBeenCalled();
     expect(renders).toEqual([]);
-    expect(sends).toEqual([]);
-    expect(db.ops.some((o) => o.table === "feature_flags")).toBe(false);
+    expect(otherSends()).toEqual([]);
   });
 
   it("card attached but cards off: the template goes, no card", async () => {
     stubFetch("ok");
     await runCampaign({ card: { kind: "customer_offer", vars: { headline: "Hi {{1}}", code: "FEST20" } } }, false);
-    expect(h.sendCampaignTemplate).toHaveBeenCalledTimes(1);
+    expect(templateSends()).toHaveLength(1);
     expect(renders).toEqual([]);
-    expect(sends).toEqual([]);
+    expect(otherSends()).toEqual([]);
   });
 
   it("card attached and cards on: the card follows the template with the contact's own details", async () => {
     stubFetch("ok");
     await runCampaign({ card: { kind: "customer_offer", vars: { headline: `Hi {{1}} ${(n += 1)}`, code: "FEST20" } } }, true);
+    expect(templateSends()).toHaveLength(1);
     expect(renders[0]).toMatchObject({ kind: "customer_offer", vars: { headline: `Hi Asha ${n}` } });
-    expect(sends).toEqual([{ messaging_product: "whatsapp", to: "+919800000001", type: "image", image: { link: CARD_URL, caption: "promo" } }]);
+    expect(otherSends()).toEqual([{ messaging_product: "whatsapp", to: "+919800000001", type: "image", image: { link: CARD_URL, caption: "promo" } }]);
   });
 });
 

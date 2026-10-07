@@ -36,6 +36,7 @@ export const Route = createFileRoute("/api/ai/employee")({
           "save_skill",
           "add_skill",
           "delete_skill",
+          "save_handoff_alerts",
         ].includes(action);
 
         if (needsConfigure) {
@@ -383,13 +384,62 @@ export const Route = createFileRoute("/api/ai/employee")({
               }
               return jsonError("We couldn't change that. Please try again.");
             }
+            // One switch: ai_enabled follows the mode on every save.
+            const { syncAiSwitch } = await import("@/lib/ai-agent.server");
+            await syncAiSwitch(supabase, org, mode);
             await logServerActivity(supabase, org, auth.userId, "ai_mode_changed", { mode });
             return Response.json({ ok: true, mode });
+          }
+
+          // Batch 16: who is told when a chat is handed to a person.
+          if (action === "handoff_alerts" || action === "save_handoff_alerts") {
+            const alerts = await import("@/lib/handoff-alerts.server");
+            const own = await alerts.businessNumbers(supabase, org);
+            if (action === "save_handoff_alerts") {
+              const checked = alerts.validateAlertSettings(
+                { phones: payload["phones"], email: payload["email"] },
+                own,
+              );
+              if (!checked.ok) return jsonError(checked.error, 400);
+              const { error } = await supabase.from("organization_ai_settings").upsert(
+                {
+                  organization_id: org,
+                  handoff_alert_phones: checked.settings.phones,
+                  handoff_alert_email: checked.settings.email,
+                },
+                { onConflict: "organization_id" },
+              );
+              if (error) return jsonError(error.message.replace(/^.*ERROR:\s*/, ""), 400);
+              await logServerActivity(supabase, org, auth.userId, "handoff_alerts_updated", {
+                phones: checked.settings.phones.length,
+                email: Boolean(checked.settings.email),
+              });
+            }
+            const saved = await alerts.loadAlertSettings(supabase, org);
+            const { ownerPhoneFor } = await import("@/lib/owner-replies.server");
+            const owner = await ownerPhoneFor(supabase, org);
+            return Response.json({
+              phones: saved.phones,
+              email: saved.email,
+              business_numbers: own,
+              // The fallback when no staff number is saved — and whether it is the shop's own number.
+              owner_phone: owner,
+              owner_is_business_number: Boolean(owner && own.some((n) => alerts.samePhone(n, owner))),
+            });
           }
 
           if (action === "save_settings") {
             const update: Record<string, unknown> = {};
             if (typeof payload["ai_enabled"] === "boolean") update["ai_enabled"] = payload["ai_enabled"];
+            // Switching AI off switches Aiden off too (one switch). Switching it
+            // on leaves the mode as it is: AI allowed (tests), Aiden not replying yet.
+            if (payload["ai_enabled"] === false) {
+              const agent = await agentRow();
+              if (agent && agent.mode !== "off") {
+                const { error: offError } = await supabase.from("ai_agents").update({ mode: "off" }).eq("id", agent.id);
+                if (offError) return jsonError("We couldn't change that. Please try again.");
+              }
+            }
             if (payload["ai_monthly_cap_amount"] !== undefined) {
               const cap = Number(payload["ai_monthly_cap_amount"]);
               // Zero used to mean "no limit". A missing limit now stops runs,

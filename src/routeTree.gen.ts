@@ -33,6 +33,7 @@ import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminLeadsRouteImport } from './routes/admin/leads'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
+import { Route as AdminSendingRouteImport } from './routes/admin/sending'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as ApiCardsRouteImport } from './routes/api/cards'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
@@ -55,6 +56,7 @@ import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAdminCustomersRouteImport } from './routes/api/admin/customers'
 import { Route as ApiAdminLeadsRouteImport } from './routes/api/admin/leads'
+import { Route as ApiAdminSendingRouteImport } from './routes/api/admin/sending'
 import { Route as ApiAdminSuperAdminsRouteImport } from './routes/api/admin/super-admins'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
 import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
@@ -252,6 +254,11 @@ const AdminOrganizationsRoute = AdminOrganizationsRouteImport.update({
   path: '/organizations',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminSendingRoute = AdminSendingRouteImport.update({
+  id: '/sending',
+  path: '/sending',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -360,6 +367,11 @@ const ApiAdminCustomersRoute = ApiAdminCustomersRouteImport.update({
 const ApiAdminLeadsRoute = ApiAdminLeadsRouteImport.update({
   id: '/api/admin/leads',
   path: '/api/admin/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminSendingRoute = ApiAdminSendingRouteImport.update({
+  id: '/api/admin/sending',
+  path: '/api/admin/sending',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminSuperAdminsRoute = ApiAdminSuperAdminsRouteImport.update({
@@ -786,6 +798,7 @@ export interface FileRoutesByFullPath {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
+  '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
   '/api/events': typeof ApiEventsRoute
@@ -809,6 +822,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
+  '/api/admin/sending': typeof ApiAdminSendingRoute
   '/api/admin/super-admins': typeof ApiAdminSuperAdminsRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
@@ -907,6 +921,7 @@ export interface FileRoutesByTo {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
+  '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
   '/api/events': typeof ApiEventsRoute
@@ -930,6 +945,7 @@ export interface FileRoutesByTo {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
+  '/api/admin/sending': typeof ApiAdminSendingRoute
   '/api/admin/super-admins': typeof ApiAdminSuperAdminsRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
@@ -1031,6 +1047,7 @@ export interface FileRoutesById {
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
+  '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
   '/api/events': typeof ApiEventsRoute
@@ -1054,6 +1071,7 @@ export interface FileRoutesById {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
+  '/api/admin/sending': typeof ApiAdminSendingRoute
   '/api/admin/super-admins': typeof ApiAdminSuperAdminsRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
@@ -1156,6 +1174,7 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/leads'
     | '/admin/organizations'
+    | '/admin/sending'
     | '/admin/users'
     | '/api/cards'
     | '/api/events'
@@ -1179,6 +1198,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/leads'
+    | '/api/admin/sending'
     | '/api/admin/super-admins'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
@@ -1277,6 +1297,7 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/leads'
     | '/admin/organizations'
+    | '/admin/sending'
     | '/admin/users'
     | '/api/cards'
     | '/api/events'
@@ -1300,6 +1321,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/leads'
+    | '/api/admin/sending'
     | '/api/admin/super-admins'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
@@ -1400,6 +1422,7 @@ export interface FileRouteTypes {
     | '/admin/flags'
     | '/admin/leads'
     | '/admin/organizations'
+    | '/admin/sending'
     | '/admin/users'
     | '/api/cards'
     | '/api/events'
@@ -1423,6 +1446,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/leads'
+    | '/api/admin/sending'
     | '/api/admin/super-admins'
     | '/api/ai/employee'
     | '/api/ai/knowledge'
@@ -1526,6 +1550,7 @@ export interface RootRouteChildren {
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
   ApiAdminLeadsRoute: typeof ApiAdminLeadsRoute
+  ApiAdminSendingRoute: typeof ApiAdminSendingRoute
   ApiAdminSuperAdminsRoute: typeof ApiAdminSuperAdminsRoute
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
   ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
@@ -1766,6 +1791,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminOrganizationsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/sending': {
+      id: '/admin/sending'
+      path: '/sending'
+      fullPath: '/admin/sending'
+      preLoaderRoute: typeof AdminSendingRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/users': {
       id: '/admin/users'
       path: '/users'
@@ -1918,6 +1950,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/leads'
       fullPath: '/api/admin/leads'
       preLoaderRoute: typeof ApiAdminLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/sending': {
+      id: '/api/admin/sending'
+      path: '/api/admin/sending'
+      fullPath: '/api/admin/sending'
+      preLoaderRoute: typeof ApiAdminSendingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/super-admins': {
@@ -2457,6 +2496,7 @@ interface AdminRouteRouteChildren {
   AdminFlagsRoute: typeof AdminFlagsRoute
   AdminLeadsRoute: typeof AdminLeadsRoute
   AdminOrganizationsRoute: typeof AdminOrganizationsRoute
+  AdminSendingRoute: typeof AdminSendingRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -2470,6 +2510,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminFlagsRoute: AdminFlagsRoute,
   AdminLeadsRoute: AdminLeadsRoute,
   AdminOrganizationsRoute: AdminOrganizationsRoute,
+  AdminSendingRoute: AdminSendingRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
@@ -2550,6 +2591,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAdminCustomersRoute: ApiAdminCustomersRoute,
   ApiAdminLeadsRoute: ApiAdminLeadsRoute,
+  ApiAdminSendingRoute: ApiAdminSendingRoute,
   ApiAdminSuperAdminsRoute: ApiAdminSuperAdminsRoute,
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
   ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,

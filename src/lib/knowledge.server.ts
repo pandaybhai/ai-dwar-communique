@@ -14,10 +14,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { embedTexts, EMBEDDING_MODEL } from "@/lib/ai-run.server";
 import {
   countCrawledProducts,
-  dropSharedImages,
+  dropImageIfShared,
   extractProduct,
   fillMissingPhotos,
   fillMissingProductDetails,
+  hideAliasHostProducts,
   hideMissingCrawledProducts,
   saveCrawledProducts,
   type ProductDraft,
@@ -29,10 +30,27 @@ import {
   readPages,
   readerKey,
   stripHtml,
+  MIN_MAIN_TEXT,
+  type PageRead,
+  type ReaderEngine,
 } from "@/lib/web-reader.server";
+import {
+  aliasOrigins,
+  canonicalPageUrl,
+  coveredTopics,
+  decideSwap,
+  isExcluded,
+  parseRobots,
+  parseSitemap,
+  readExcludeRules,
+  sameSite,
+  type CoverageKey,
+  type ExcludeRule,
+  type SitemapEntry,
+} from "@/lib/site-urls";
 import { type FirecrawlBudget } from "@/lib/firecrawl.server";
 import type { TavilyBudget } from "@/lib/tavily.server";
-import { urlBlocked } from "@/lib/safe-fetch.server";
+import { responseUrl, urlBlocked } from "@/lib/safe-fetch.server";
 import { logServerActivity } from "@/lib/whatsapp-api.server";
 
 export type SourceType =
@@ -60,7 +78,14 @@ export type ConnectorContext = {
   sourceId: string;
   config: Record<string, unknown>;
   onStage?: (stage: CrawlStage) => void;
+  /** Epoch ms by which the run must be over (the worker's request ends then). */
+  deadlineAt?: number;
+  /** A website read hands its forget data to this run's sync — never shared between runs. */
+  onForget?: (forget: ReadForget) => void;
 };
+
+/** What a website read tells the forget step. */
+export type ReadForget = { fullReadComplete: boolean; siteMap: string[]; gone: string[] };
 
 export type Connector = (ctx: ConnectorContext) => Promise<KnowledgeDocument[]>;
 
@@ -72,9 +97,6 @@ export type CrawlStage =
 const CHUNK_CHARS = 1200;
 const CHUNK_OVERLAP = 150;
 const DEFAULT_PAGE_CAP = 200;
-// Keep each worker tick comfortably inside the request lifetime. Large sites
-// advance through repeated resumable ticks instead of dying mid-run.
-const RUN_PAGE_CAP = 25;
 
 /** Binary, code and feed assets are never useful customer knowledge. */
 const ASSET_PATH_RE = /\.(?:css|m?js|json|map|png|jpe?g|gif|svg|webp|avif|ico|woff2?)(?:$|\/)/i;
@@ -84,28 +106,6 @@ function isAssetUrl(url: string): boolean {
     return ASSET_PATH_RE.test(new URL(url).pathname);
   } catch {
     return true;
-  }
-}
-
-/** Very small robots.txt reader: honours Disallow for User-agent: *. */
-async function disallowedPaths(origin: string): Promise<string[]> {
-  try {
-    const res = await fetchWithTimeout(`${origin}/robots.txt`, 8000);
-    if (!res || !res.ok) return [];
-    const body = await res.text();
-    const rules: string[] = [];
-    let applies = false;
-    for (const raw of body.split("\n")) {
-      const line = raw.split("#")[0]?.trim() ?? "";
-      if (/^user-agent:/i.test(line)) applies = line.split(":")[1]?.trim() === "*";
-      else if (applies && /^disallow:/i.test(line)) {
-        const path = line.slice(line.indexOf(":") + 1).trim();
-        if (path) rules.push(path);
-      }
-    }
-    return rules;
-  } catch {
-    return [];
   }
 }
 
@@ -129,55 +129,96 @@ export function chunkText(text: string): string[] {
 
 // --------------------------------------------------------------- connectors
 
-/** Tidy one candidate address: same site, no hash, no campaign tags. */
-function normalizeUrl(href: string, base: string, origin: string): string | null {
+/** Tidy one candidate address: this site (www or not), written one way, not an asset. */
+function normalizeUrl(href: string, base: string, origin: string, keepQuery = false): string | null {
+  const url = canonicalPageUrl(href, base, origin, { keepQuery });
+  if (!url || isAssetUrl(url)) return null;
+  return url;
+}
+
+/** Sitemap files read per discovery (an index and the files it lists). */
+const SITEMAP_FILES = 12;
+/** Addresses kept from one site's sitemaps. */
+const SITEMAP_ENTRIES = 20000;
+
+/**
+ * Discover before reading: robots.txt (the paths it closes and the sitemaps it
+ * names on this site), then /sitemap.xml, sitemap indexes followed — bounded
+ * in files and time. A Sitemap: line pointing anywhere else (another site, a
+ * developer's localhost) is ignored and /sitemap.xml is used instead.
+ */
+export async function discoverSite(
+  origin: string,
+  options: { budgetMs?: number; /** "Use sitemap" with a sitemap address: read that file first. */ sitemapUrl?: string | null } = {},
+): Promise<{ disallow: string[]; sitemap: SitemapEntry[] }> {
+  const deadline = Date.now() + Math.max(options.budgetMs ?? 25_000, 2_000);
+  const left = () => Math.max(deadline - Date.now(), 0);
+  let disallow: string[] = [];
+  const queue: string[] = [];
+  const given = options.sitemapUrl ? canonicalPageUrl(options.sitemapUrl, origin, origin, { keepQuery: true }) : null;
+  if (given) queue.push(given);
   try {
-    const url = new URL(href, base);
-    if (url.origin !== origin) return null;
-    if (!/^https?:$/.test(url.protocol)) return null;
-    if (isAssetUrl(url.toString())) return null;
-    url.hash = "";
-    for (const key of Array.from(url.searchParams.keys())) {
-      if (/^utm_|^gclid$|^fbclid$/i.test(key)) url.searchParams.delete(key);
-    }
-    // A listing sorted by price and the same listing on page 4 are the same
-    // page to a customer's question. Product addresses keep their query.
-    if (!/\/products?\//i.test(url.pathname)) {
-      for (const key of Array.from(url.searchParams.keys())) {
-        if (/^(?:price|sort|sort_by|sortby|sortBy|order|page|paged|filter|ref)(?:$|[._-])/i.test(key))
-          url.searchParams.delete(key);
+    const res = await fetchWithTimeout(`${origin}/robots.txt`, Math.min(8000, left()));
+    if (res?.ok) {
+      const robots = parseRobots(await res.text().catch(() => ""));
+      disallow = robots.disallow;
+      for (const named of robots.sitemaps) {
+        const file = canonicalPageUrl(named, origin, origin, { keepQuery: true });
+        if (file && !queue.includes(file)) queue.push(file);
       }
     }
-    return url.toString();
+  } catch {
+    // No robots.txt: nothing is closed and nothing is named.
+  }
+  const fallback = `${origin}/sitemap.xml`;
+  if (queue.length === 0) queue.push(fallback);
+
+  const seenFiles = new Set<string>();
+  const entries = new Map<string, SitemapEntry>();
+  while (queue.length > 0 && seenFiles.size < SITEMAP_FILES && left() > 500) {
+    const file = queue.shift()!;
+    if (seenFiles.has(file)) continue;
+    seenFiles.add(file);
+    const res = await fetchWithTimeout(file, Math.min(10_000, left()));
+    if (res?.ok) {
+      const parsed = parseSitemap(await res.text().catch(() => ""));
+      for (const entry of parsed.entries) {
+        if (parsed.isIndex) {
+          const child = canonicalPageUrl(entry.loc, file, origin, { keepQuery: true });
+          if (child && !seenFiles.has(child) && !/\.gz$/i.test(child)) queue.push(child);
+          continue;
+        }
+        if (entries.size >= SITEMAP_ENTRIES) break;
+        const loc = canonicalPageUrl(entry.loc, file, origin);
+        if (loc && !entries.has(loc)) entries.set(loc, { loc, lastmod: entry.lastmod });
+      }
+    }
+    // The named sitemaps gave nothing: the usual address is still worth a look.
+    if (queue.length === 0 && entries.size === 0 && !seenFiles.has(fallback)) queue.push(fallback);
+  }
+  return { disallow, sitemap: Array.from(entries.values()) };
+}
+
+/**
+ * Where the site's address really lands: myzoori.com answers with a redirect
+ * to www.myzoori.com, so the source follows it rather than reading two pages
+ * of a "different" site. Null when the address doesn't answer, lands on an
+ * error, a private address or a marketplace/social page.
+ */
+export async function followSiteRedirect(url: string): Promise<string | null> {
+  const res = await fetchWithTimeout(url, 10_000);
+  if (!res) return null;
+  await res.body?.cancel().catch(() => undefined);
+  if (!res.ok) return null;
+  const landed = responseUrl(res, url);
+  if (urlBlocked(landed) || listingLabel(landed)) return null;
+  try {
+    const final = new URL(landed);
+    final.hash = "";
+    return final.toString();
   } catch {
     return null;
   }
-}
-
-/** Addresses the site itself publishes, sitemap indexes included. */
-async function sitemapUrls(origin: string): Promise<string[]> {
-  const found: string[] = [];
-  const queue = [`${origin}/sitemap.xml`];
-  let files = 0;
-  while (queue.length > 0 && files < 4) {
-    const next = queue.shift()!;
-    files += 1;
-    const res = await fetchWithTimeout(next, 8000);
-    if (!res || !res.ok) continue;
-    const xml = await res.text().catch(() => "");
-    const locs = Array.from(xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)).map(
-      (m: RegExpMatchArray) => m[1] ?? "",
-    );
-    const isIndex = /<sitemapindex/i.test(xml);
-    for (const loc of locs) {
-      if (isIndex) {
-        if (queue.length < 3) queue.push(loc);
-      } else {
-        found.push(loc);
-      }
-    }
-  }
-  return found;
 }
 
 /**
@@ -370,10 +411,13 @@ async function factsPass(
   docs: KnowledgeDocument[],
 ): Promise<number> {
   const { executeRun } = await import("@/lib/ai-run.server");
+  const { readingAiCapReached } = await import("@/lib/reading.server");
   let cost = 0;
   for (const doc of docs) {
     if ((doc.metadata as Record<string, unknown> | undefined)?.["kind"] === "product") continue;
     if (doc.content.length <= 1500) continue;
+    // Over today's reading AI cap: the page is kept as it was read.
+    if (await readingAiCapReached(supabase, organizationId)) break;
     try {
       const run = await executeRun(supabase, {
         organizationId,
@@ -407,20 +451,366 @@ async function factsPass(
   return cost;
 }
 
-const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, config, onStage }) => {
+/**
+ * This page's text was already turned into facts (same source, same text
+ * hash, any address): take the stored document instead of asking the model.
+ */
+async function reuseFacts(
+  supabase: SupabaseClient,
+  sourceId: string,
+  doc: KnowledgeDocument,
+  pageHash: string,
+): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("knowledge_documents")
+      .select("content, metadata")
+      .eq("source_id", sourceId)
+      .contains("metadata", { page_hash: pageHash, summarised: true })
+      .limit(1)
+      .maybeSingle();
+    const prior = data as { content: string; metadata: Record<string, unknown> | null } | null;
+    if (!prior?.content) return false;
+    doc.content = prior.content;
+    doc.metadata = { ...(doc.metadata ?? {}), raw_excerpt: prior.metadata?.["raw_excerpt"] ?? null, summarised: true };
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Resolves to null once `ms` have passed; the work itself is left to finish or fail on its own. */
+async function withinTime<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), Math.max(ms, 0));
+  });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** What one read of one page needs to save it. */
+type PageSaveContext = {
+  supabase: SupabaseClient;
+  organizationId: string;
+  sourceId: string;
+  origin: string;
+  platform: string | null;
+  /** How the page was reached, kept on knowledge_urls.read_via. */
+  readVia: string;
+  /** Turn long pages into plain facts first (the model is asked). */
+  facts: boolean;
+  /** Also for pages that carry a product (the day-one read always did). */
+  factsOnProductPages: boolean;
+  referrer?: string | null;
+};
+
+export type PageSaveResult = {
+  /** The page's text was saved (or found unchanged) as a document. */
+  saved: boolean;
+  /** The product this page sells, saved to the catalogue. */
+  product: ProductDraft | null;
+  /** The page answered 404/410. */
+  gone: boolean;
+  /** Nothing could be read at all. */
+  failed: boolean;
+  title: string;
+  chars: number;
+  links: string[];
+  /** What turning the page into facts cost (platform-paid, metered). */
+  cost: number;
+};
+
+/**
+ * One page, saved the moment it is read: its text as a document (chunks and
+ * embeddings built now, or queued for the retry if that fails), its product
+ * in the catalogue, and the address marked read. A run that stops after this
+ * page has lost nothing it read.
+ *
+ * A page that comes back too thin never replaces the text we already had.
+ */
+export async function savePage(
+  ctx: PageSaveContext,
+  url: string,
+  page: PageRead | null,
+): Promise<PageSaveResult> {
+  const { supabase, organizationId, sourceId } = ctx;
+  const result: PageSaveResult = { saved: false, product: null, gone: false, failed: false, title: "", chars: 0, links: [], cost: 0 };
+  const mark = async (via: string, title: string | null = null) => {
+    await supabase.from("knowledge_urls").upsert(
+      {
+        organization_id: organizationId,
+        source_id: sourceId,
+        url,
+        priority: (await import("@/lib/reading.server")).urlPriority(url, ctx.origin) ?? 0,
+        status: "read",
+        read_at: new Date().toISOString(),
+        read_via: via,
+        ...(title ? { title: title.slice(0, 300) } : {}),
+      },
+      { onConflict: "source_id,url" },
+    );
+  };
+  if (!page) {
+    result.failed = true;
+    await mark("failed");
+    return result;
+  }
+  if (page.status === 404 || page.status === 410) {
+    result.gone = true;
+    await mark("gone");
+    return result;
+  }
+  if (!page.contentType?.toLowerCase().includes("text/html")) {
+    await mark("skipped");
+    return result;
+  }
+  result.links = page.links;
+  result.title = page.title || new URL(url).pathname;
+  result.chars = page.text.length;
+
+  // One product, if this page is a product page. No extra fetch.
+  let draft: ProductDraft | null = null;
+  try {
+    draft = extractProduct(page.html, url, { referrer: ctx.referrer ?? null });
+  } catch {
+    // Never let reading a price stop the read.
+  }
+
+  if (page.text.length > 200) {
+    const doc: KnowledgeDocument = {
+      sourceRef: url,
+      title: result.title,
+      content: page.text.slice(0, 40000),
+      metadata: { url, platform: ctx.platform, engine: page.engine ?? "own", credits: page.credits ?? 0, chars: page.text.length },
+    };
+    if (ctx.facts && (!draft || ctx.factsOnProductPages)) {
+      // Facts at most once per page text: the same text read again reuses
+      // them (no model run, and the stored text — so its chunks — unchanged).
+      const pageHash = await hashText(doc.content);
+      doc.metadata = { ...(doc.metadata ?? {}), page_hash: pageHash };
+      if (!(await reuseFacts(supabase, sourceId, doc, pageHash))) result.cost += await factsPass(supabase, organizationId, [doc]);
+    }
+    await upsertDocument(supabase, organizationId, sourceId, doc);
+    result.saved = true;
+  }
+
+  if (draft) {
+    try {
+      // Found without a photo: take it from the product page itself.
+      await fillMissingPhotos(supabase, organizationId, [draft]).catch(() => 0);
+      await dropImageIfShared(supabase, organizationId, draft);
+      await saveCrawledProducts(supabase, organizationId, [draft]);
+      result.product = draft;
+    } catch (error) {
+      console.error("[crawl] product save failed", url, error instanceof Error ? error.message : String(error));
+    }
+  }
+  await mark(ctx.readVia, page.title || null);
+  return result;
+}
+
+/** Pages a full read takes with our own fetch, whatever the plan (a safety ceiling). */
+const OWN_PAGE_CEILING = 5000;
+
+/** What the live version of a website covers, taken when a full re-read starts. */
+type LiveSnapshot = { topics: CoverageKey[]; products: number; categories: string[] };
+
+/** Crawled products of this site, visible: how many and on which shelves. */
+async function siteProducts(
+  supabase: SupabaseClient,
+  organizationId: string,
+  origin: string,
+  since: string | null = null,
+): Promise<{ count: number; categories: string[] }> {
+  let query = supabase
+    .from("products")
+    .select("category")
+    .eq("organization_id", organizationId)
+    .eq("source", "crawl")
+    .eq("is_visible", true)
+    .like("product_url", `${origin}%`);
+  if (since) query = query.gte("synced_at", since);
+  const { data } = await query.limit(20000);
+  const rows = (data ?? []) as Array<{ category: string | null }>;
+  const categories = Array.from(new Set(rows.map((r) => r.category).filter((c): c is string => Boolean(c)))).sort();
+  return { count: rows.length, categories };
+}
+
+export async function liveSnapshot(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  origin: string,
+): Promise<LiveSnapshot> {
+  const [{ data: docs }, products] = await Promise.all([
+    supabase.from("knowledge_documents").select("source_ref, title").eq("source_id", sourceId).limit(5000),
+    siteProducts(supabase, organizationId, origin),
+  ]);
+  const pages = ((docs ?? []) as Array<{ source_ref: string; title: string | null }>).map((d) => ({ url: d.source_ref, title: d.title }));
+  return { topics: coveredTopics(pages), products: products.count, categories: products.categories };
+}
+
+/** What one full read (since it began) actually found. */
+async function readOutcome(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  origin: string,
+  since: string,
+): Promise<{ topics: CoverageKey[]; products: number; categories: string[]; read: number; gone: number }> {
+  const [{ data: rows }, products] = await Promise.all([
+    supabase
+      .from("knowledge_urls")
+      .select("url, title, read_via")
+      .eq("source_id", sourceId)
+      .eq("status", "read")
+      .gte("read_at", since)
+      .limit(20000),
+    siteProducts(supabase, organizationId, origin, since),
+  ]);
+  const read = (rows ?? []) as Array<{ url: string; title: string | null; read_via: string | null }>;
+  const ok = read.filter((r) => !["gone", "failed", "skipped"].includes(r.read_via ?? ""));
+  return {
+    topics: coveredTopics(ok.map((r) => ({ url: r.url, title: r.title }))),
+    products: products.count,
+    categories: products.categories,
+    read: read.length,
+    gone: read.filter((r) => r.read_via === "gone" || r.read_via === "failed").length,
+  };
+}
+
+export type SiteAlertKind = "host_changed" | "dead_links" | "new_category";
+
+/**
+ * The site changed in a way someone should look at (it moved address, many
+ * pages stopped opening, a new shelf appeared): the owner hears on their
+ * AiDwar chat, the platform admin through the admin notice queue, and the
+ * activity log keeps it. At most once a day per source and kind. Never throws.
+ */
+export async function raiseSiteAlert(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  kind: SiteAlertKind,
+  info: { site: string; detail: string },
+): Promise<boolean> {
+  try {
+    const { data: recent } = await supabase
+      .from("activity_log")
+      .select("id, details")
+      .eq("organization_id", organizationId)
+      .eq("action", "reading_site_changed")
+      .gte("created_at", new Date(Date.now() - 86_400_000).toISOString())
+      .limit(50);
+    const already = ((recent ?? []) as Array<{ details: Record<string, unknown> | null }>).some(
+      (r) => r.details?.["source_id"] === sourceId && r.details?.["kind"] === kind,
+    );
+    if (already) return false;
+    await supabase.from("activity_log").insert({
+      organization_id: organizationId,
+      user_id: null,
+      action: "reading_site_changed",
+      details: { source_id: sourceId, kind, site: info.site, detail: info.detail },
+    });
+    const { notifyOwnerOnOnboardingChannel } = await import("@/lib/merchant-channel.server");
+    await notifyOwnerOnOnboardingChannel(
+      supabase,
+      organizationId,
+      `Heads up about your website: ${info.detail}. Have a look under Knowledge in your dashboard.`,
+    ).catch(() => false);
+    await supabase.from("billing_notifications").insert({
+      organization_id: organizationId,
+      audience: "admin",
+      kind: "site_change_alert",
+      channel: "whatsapp",
+      payload: {
+        headline: `a merchant's website changed (${kind.replace(/_/g, " ")})`,
+        detail: info.detail,
+        link: "https://aidwar.in/admin/aiden",
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error("[crawl] site alert failed", error instanceof Error ? error.message : String(error));
+    return false;
+  }
+}
+
+/** Every address this source knows, with its sitemap date when the database keeps one. */
+async function loadKnownUrls(
+  supabase: SupabaseClient,
+  sourceId: string,
+): Promise<Array<{ url: string; priority: number | null; status: string; read_at: string | null; lastmod?: string | null }>> {
+  const read = (columns: string) =>
+    supabase.from("knowledge_urls").select(columns).eq("source_id", sourceId).limit(20000);
+  let { data, error } = await read("url, priority, status, read_at, lastmod");
+  // Until 20261018_knowledge_urls_lastmod.sql is applied there is no lastmod.
+  if (error) ({ data, error } = await read("url, priority, status, read_at"));
+  return (data ?? []) as unknown as Array<{ url: string; priority: number | null; status: string; read_at: string | null; lastmod?: string | null }>;
+}
+
+/** Keep each address's sitemap date. A quiet no-op until the lastmod column exists. */
+async function saveLastmods(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  origin: string,
+  lastmods: Map<string, string>,
+): Promise<void> {
+  const { urlPriority } = await import("@/lib/reading.server");
+  const rows = Array.from(lastmods).map(([url, lastmod]) => ({
+    organization_id: organizationId,
+    source_id: sourceId,
+    url,
+    priority: urlPriority(url, origin) ?? 0,
+    lastmod: Number.isFinite(Date.parse(lastmod)) ? new Date(Date.parse(lastmod)).toISOString() : null,
+  }));
+  for (let i = 0; i < rows.length; i += 200) {
+    const { error } = await supabase.from("knowledge_urls").upsert(rows.slice(i, i + 200), { onConflict: "source_id,url" });
+    if (error) return;
+  }
+}
+
+/** A worker run reads at most this many pages… */
+const RUN_PAGE_CAP = 25;
+/** …takes no new page after this long… */
+const RUN_SOFT_MS = 60_000;
+/** …and never runs longer than this, whatever a page is doing. */
+const RUN_HARD_MS = 85_000;
+/** One page, one engine: give up rather than hold the run. */
+const PAGE_TIMEOUT_MS = 15_000;
+
+/**
+ * Reading a website.
+ *
+ * The day-one read is one pass of a few pages. A full read, a refresh and the
+ * nightly backfill go in runs: each run reads at most RUN_PAGE_CAP pages or
+ * ~60 s of work, saves every page as it goes, then marks the source to
+ * resume and the worker picks it up again a minute later. Our own fetch reads
+ * first; a paid reader is asked only for a page that came back nearly empty.
+ */
+const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, config: givenConfig, onStage, deadlineAt, onForget }) => {
   onStage?.("discover");
+  let config: Record<string, unknown> = { ...givenConfig };
   const startUrl = String(config["url"] ?? "").trim();
   if (!startUrl) throw new Error("Add the address of the website first.");
-  const start = new URL(startUrl);
+  let start = new URL(startUrl);
   // Same guard as the Flows HTTP step: no private/internal addresses.
   if (urlBlocked(start.toString())) throw new Error("This address points to a private network and can't be read.");
-  const origin = start.origin;
+  const runStarted = Date.now();
+  const hardStop = Math.min(deadlineAt ?? Number.POSITIVE_INFINITY, runStarted + RUN_HARD_MS);
+  const softStop = Math.min(runStarted + RUN_SOFT_MS, hardStop - 15_000);
+  const timeLeft = () => hardStop - Date.now();
 
   const plan = await planLimits(supabase, organizationId);
   const { loadReadingSettings, urlPriority } = await import("@/lib/reading.server");
   const reading = await loadReadingSettings(supabase);
   const { engineOrder, mapSite } = await import("@/lib/web-reader.server");
-  const order = engineOrder(reading.reader_primary, reading.reader_fallback_order);
+  const settingsOrder = engineOrder(reading.reader_primary, reading.reader_fallback_order);
   const tavilyDepth = reading.tavily_extract_depth;
   // When the whole site is read is a platform setting (Reading tab).
   let autoFull = false;
@@ -436,16 +826,75 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const mode = config["mode"] === "full" || autoFull ? "full" : "day0";
   // "Read changes now" / scheduled refresh: re-read only pages already read.
   const refreshing = config["refresh"] === true;
-  const resuming = mode === "full" && config["resume"] === true && !refreshing;
+  // App stores, social profiles, marketplaces, maps: that one page only.
+  const singlePage = config["single_page"] === true;
+  /** Read in runs (full read, refresh, backfill); the day-one read is one pass. */
+  const staged = (mode === "full" || refreshing) && !singlePage;
+  // How the merchant asked for the site to be found (Add website):
+  // crawl from the homepage (sitemap, then links), the sitemap only, or
+  // just the links they listed.
+  const discovery: "crawl" | "sitemap" | "links" =
+    config["discovery"] === "sitemap" || config["discovery"] === "links" ? config["discovery"] : "crawl";
+  const listedLinks = Array.isArray(config["links"]) ? (config["links"] as unknown[]).map(String).slice(0, 500) : [];
+  const keepQuery = config["keep_query"] === true;
+  const excludeRules = readExcludeRules(config["exclude_rules"]);
+  const includeUrls = Array.isArray(config["include_urls"]) ? (config["include_urls"] as unknown[]).map(String) : [];
+  const excluded = (url: string) => isExcluded(url, excludeRules, includeUrls);
+  /** "Re-read whole site" reads only pages whose sitemap date moved (the weekly refresh reads them all). */
+  const changedOnly = refreshing && config["changed_only"] === true;
+  const resuming = staged && !refreshing && config["resume"] === true;
+  /** A refresh already under way (started on an earlier run). */
+  const refreshStartedAt = refreshing && typeof config["refresh_started_at"] === "string"
+    ? String(config["refresh_started_at"])
+    : null;
+  const continuing = resuming || refreshStartedAt !== null;
+
+  // One site, one identity: the address follows the site's own redirect
+  // (myzoori.com → www.myzoori.com) and the source is updated, not copied.
+  if (!singlePage && !continuing) {
+    const landed = await followSiteRedirect(start.toString()).catch(() => null);
+    if (landed && new URL(landed).host !== start.host) {
+      const from = start.origin;
+      const previous = Array.isArray(config["previous_origins"]) ? (config["previous_origins"] as string[]) : [];
+      start = new URL(landed);
+      config = { ...config, url: start.toString(), previous_origins: Array.from(new Set([...previous, from])) };
+      await supabase.from("knowledge_sources").update({ name: start.hostname, config }).eq("id", sourceId);
+      void logServerActivity(supabase, organizationId, null, "reading_host_changed", {
+        source_id: sourceId,
+        from,
+        to: start.origin,
+      }).catch(() => undefined);
+      await raiseSiteAlert(supabase, organizationId, sourceId, "host_changed", {
+        site: start.origin,
+        detail: `${new URL(from).hostname} now opens as ${start.hostname} — Aiden follows the new address`,
+      });
+    }
+  }
+  const origin = start.origin;
+  // "Use sitemap" with the sitemap's own address: that file is read first and
+  // the homepage is the site's root.
+  const sitemapUrl = discovery === "sitemap" && /\.xml(?:$|\?)/i.test(start.pathname + start.search) ? start.toString() : null;
+  if (sitemapUrl) start = new URL(`${origin}/`);
+  const homeUrl = normalizeUrl(start.toString(), start.toString(), origin, keepQuery) ?? start.toString();
+
   const alreadySeen = resuming ? Number(config["pages_done"] ?? 0) : 0;
   const day0Limit = Math.max(Number(reading.day0_page_limit) || 15, 1);
   const planCap = mode === "full" ? plan.cap : day0Limit;
+  // A plan's page limit counts pages a paid reader had to read. Our own
+  // fetch is free: a full read takes every page it can read itself, up to a
+  // safety ceiling. Trial workspaces get the day-one budget of paid pages.
+  const pageCeiling = mode === "full" ? Math.max(OWN_PAGE_CEILING, planCap) : day0Limit;
+  const paidCap = config["force_paid"] === true ? Number.POSITIVE_INFINITY : plan.paid ? plan.cap : day0Limit;
+  let paidPages = resuming || refreshStartedAt !== null ? Number(config["paid_pages"] ?? 0) || 0 : 0;
+  /** A page came back nearly empty after the paid budget was used up. */
+  let paidCapped = (resuming || refreshStartedAt !== null) && config["paid_capped"] === true;
   const runLimit = Number(config["run_limit"] ?? 0);
-  let runCap =
-    mode === "full" ? Math.max(Math.min(planCap - alreadySeen, RUN_PAGE_CAP), 0) : day0Limit;
+  let runCap = !staged
+    ? day0Limit
+    : refreshing
+      ? RUN_PAGE_CAP
+      : Math.max(Math.min(pageCeiling - alreadySeen, RUN_PAGE_CAP), 0);
   if (runLimit > 0) runCap = Math.min(runCap, runLimit);
-  // App stores, social profiles, marketplaces, maps: that one page only.
-  const singlePage = config["single_page"] === true;
   if (singlePage) runCap = 0;
   // Firecrawl credits are reserved per call against the monthly caps; once a
   // cap is hit the rest of this read uses our own reader, logged once.
@@ -469,103 +918,193 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       }).catch(() => undefined);
     },
   };
-  const readOpts = { order, tavilyDepth, budget, tavilyBudget } as const;
-  const concurrency = mode === "full" ? 6 : 4;
-  const deadline = mode === "day0" ? Date.now() + 90_000 : null;
+  // Runs read with our own fetch first; the paid readers (in the Reading
+  // tab's order) only get a page that came back nearly empty. The day-one
+  // read keeps the Reading tab's order as it is.
+  const order: ReaderEngine[] = staged
+    ? (["own", ...settingsOrder.filter((engine) => engine !== "own")] as ReaderEngine[])
+    : settingsOrder;
+  const readOpts = {
+    order,
+    tavilyDepth,
+    budget,
+    tavilyBudget,
+    ...(staged ? { timeoutMs: PAGE_TIMEOUT_MS, rerender: false } : {}),
+  } as const;
+  const concurrency = 4;
+
+  // Every address this source already knows, read or not.
+  const known = continuing || refreshing ? await loadKnownUrls(supabase, sourceId) : [];
+  // Discover before reading: on the first run, or when a resumed read has no
+  // address list yet (it died before saving one). "Individual links" never
+  // discovers anything: the merchant's list is the site.
+  const discover =
+    !singlePage && discovery !== "links" && (!continuing || (resuming && known.length === 0));
 
   onStage?.("sitemap");
-  const [blocked, sitemap, , key, settings]: [string[], string[], string[], string | null, { data: unknown }] =
-    await Promise.all([
-      singlePage ? Promise.resolve([] as string[]) : disallowedPaths(origin),
-      singlePage ? Promise.resolve([] as string[]) : sitemapUrls(origin),
-      Promise.resolve([] as string[]),
-      readerKey(supabase),
-      supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
-    ]);
-  const mapped = singlePage ? [] : (await mapSite(start.toString(), reading.map_engine, { sitemap, budget, tavilyBudget })).urls;
+  const [site, key, settings] = await Promise.all([
+    discover
+      ? discoverSite(origin, { budgetMs: Math.min(25_000, Math.max(timeLeft() - 45_000, 5_000)), sitemapUrl })
+      : Promise.resolve({
+          disallow: Array.isArray(config["robots_disallow"]) ? (config["robots_disallow"] as string[]) : [],
+          sitemap: [] as SitemapEntry[],
+        }),
+    readerKey(supabase),
+    supabase.from("platform_settings").select("day0_crawl_cost_cap").maybeSingle(),
+  ]);
+  const sitemap = site.sitemap.map((entry) => entry.loc);
+  const blocked = site.disallow;
+  // A paid map (no sitemap) is bounded by the run like everything else.
+  const mapped = discover && discovery === "crawl"
+    ? ((await withinTime(mapSite(start.toString(), reading.map_engine, { sitemap, budget, tavilyBudget }), Math.max(timeLeft() - 45_000, 5_000)))?.urls ?? [])
+    : [];
   const costCap = Number(
     (settings.data as { day0_crawl_cost_cap?: number } | null)?.day0_crawl_cost_cap ?? 2,
   );
 
-  // Pages an earlier run already read stay in the source; we only add to them.
-  const carried: KnowledgeDocument[] = [];
+  /** Addresses this read has finished with (read, gone or unreadable). */
   const done = new Set<string>();
-  const reReadByEngine: string[] = [];
-  if (resuming) {
-    const { data: prior } = await supabase
-      .from("knowledge_documents")
-      .select("source_ref, title, content, metadata")
-      .eq("source_id", sourceId)
-      .limit(5000);
-    for (const row of (prior ?? []) as Array<{
-      source_ref: string;
-      title: string;
-      content: string;
-      metadata: Record<string, unknown> | null;
-    }>) {
-      if (isAssetUrl(row.source_ref)) continue;
-      // A page last read by a different engine than today's main reader is
-      // read again, even if its text hash hasn't changed.
-      const readBy = String((row.metadata ?? {})["engine"] ?? "own");
-      if (!row.metadata?.["kind"] && readBy !== order[0]) {
-        reReadByEngine.push(row.source_ref);
+  const candidates = new Map<string, number>();
+  /** Which page pointed us at each address — a product's shelf, usually. */
+  const referrers = new Map<string, string>();
+  /** Addresses first met in this run, saved as unread for later runs. */
+  const found = new Map<string, number>();
+  const fullReadStartedAt = typeof config["full_read_started_at"] === "string" ? String(config["full_read_started_at"]) : null;
+  const refreshSince = refreshStartedAt ?? new Date(runStarted).toISOString();
+  // The sitemap's dates: what discovery just found, else what was saved.
+  const lastmodOf = new Map<string, string>();
+  for (const entry of site.sitemap) if (entry.lastmod) lastmodOf.set(entry.loc, entry.lastmod);
+  let unchangedSkipped = 0;
+  for (const row of known) {
+    // A page the merchant excluded is never read again.
+    if (excluded(row.url)) continue;
+    if (refreshing) {
+      // Re-read what was read before this refresh began; the rest is done.
+      if (row.status === "read" && (!row.read_at || row.read_at < refreshSince)) {
+        const lastmod = lastmodOf.get(row.url) ?? row.lastmod ?? null;
+        if (changedOnly && lastmod && row.read_at && Date.parse(lastmod) <= Date.parse(row.read_at)) {
+          unchangedSkipped += 1;
+          continue;
+        }
+        candidates.set(row.url, Number(row.priority ?? 0));
+      }
+      continue;
+    }
+    if (row.status === "read" && (!fullReadStartedAt || (row.read_at ?? "") >= fullReadStartedAt)) done.add(row.url);
+    else candidates.set(row.url, Number(row.priority ?? 0));
+  }
+
+  const paidOrder = order.filter((engine) => engine !== "own");
+  /**
+   * A run reads with our own fetch; a page that comes back nearly empty goes
+   * to the paid readers only while the plan's paid pages last. Each paid
+   * page is counted before it is asked for, so parallel reads never go past
+   * the limit (a paid attempt that fails still counts).
+   */
+  /**
+   * Batch 16: on a re-read, a page only a browser can render is first
+   * checked for free — the price and title its raw HTML states (JSON-LD /
+   * Open Graph) against the product we saved for it. Unchanged: what we
+   * have stays and the paid reader is not asked. Anything else reads as before.
+   */
+  const keptUnchanged = new Set<string>();
+  const unchangedForFree = async (url: string): Promise<boolean> => {
+    if (!refreshing) return false;
+    try {
+      const { data } = await supabase
+        .from("products")
+        .select("title, price")
+        .eq("organization_id", organizationId)
+        .eq("product_url", url)
+        .limit(1)
+        .maybeSingle();
+      if (!data) return false;
+      const { fetchHtml, pageSignals, compareSignals } = await import("@/lib/price-check.server");
+      const html = await fetchHtml(url);
+      const signals = html ? await pageSignals(html, url) : null;
+      return compareSignals(signals, data as { title: string | null; price: number | null }) === "unchanged";
+    } catch {
+      return false;
+    }
+  };
+  const readInRun = async (urls: string[], allowReader: boolean): Promise<Map<string, PageRead | null>> => {
+    const own = await readPages(urls, { key, allowReader, ...readOpts, order: ["own"], ...(onStage ? { onStage } : {}) });
+    if (!paidOrder.length) return own;
+    for (const url of urls) {
+      const first = own.get(url) ?? null;
+      if (first && first.text.length >= MIN_MAIN_TEXT) continue;
+      if (await unchangedForFree(url)) {
+        keptUnchanged.add(url);
         continue;
       }
-      carried.push({
-        sourceRef: row.source_ref,
-        title: row.title,
-        content: row.content,
-        metadata: row.metadata ?? {},
-      });
-      done.add(row.source_ref);
+      if (paidPages >= paidCap) {
+        paidCapped = true;
+        continue;
+      }
+      paidPages += 1;
+      const paid = (await readPages([url], { key, allowReader: false, ...readOpts, order: paidOrder })).get(url) ?? null;
+      if (paid && (!first || paid.text.length > first.text.length)) own.set(url, paid);
     }
-  }
+    return own;
+  };
 
-  // Anything in the catalogue not touched by this read is hidden afterwards.
-  const runStart = new Date().toISOString();
-  /** Products read straight off the pages, for shops with no data feed. */
-  const productDrafts: ProductDraft[] = [];
-
+  let platform: "shopify" | "woocommerce" | null =
+    config["platform"] === "shopify" || config["platform"] === "woocommerce" ? (config["platform"] as "shopify" | "woocommerce") : null;
   // The homepage first: it tells us whether this is a shop with public data.
-  const home = await readPage(start.toString(), { key, ...readOpts, ...(onStage ? { onStage } : {}) });
+  const readHomeFirst =
+    !done.has(homeUrl) &&
+    !(refreshing && refreshStartedAt) &&
+    !excluded(homeUrl) &&
+    (discovery !== "links" || listedLinks.some((l) => normalizeUrl(l, origin, origin, keepQuery) === homeUrl));
+  const home = readHomeFirst
+    ? await withinTime(
+        staged
+          ? readInRun([start.toString()], order.length === 1).then((pages) => pages.get(start.toString()) ?? null)
+          : readPage(start.toString(), { key, ...readOpts, ...(onStage ? { onStage } : {}) }),
+        timeLeft() - 5_000,
+      )
+    : null;
   let readerCost = home?.usedReader ? READER_COST : 0;
-  let platform = singlePage ? null : detectPlatform(home?.html ?? "", home?.headers ?? {});
-  // If the markup didn't tell us, the catalogue itself will: a shop answers
-  // this address with product data and nothing else does.
-  if (!platform && !singlePage) {
-    const probe = await fetchWithTimeout(`${origin}/products.json?limit=1`, 8000);
-    if (probe?.ok) {
-      const body = (await probe.json().catch(() => null)) as { products?: unknown } | null;
-      if (body && Array.isArray(body.products)) platform = "shopify";
+  if (!continuing && !singlePage && discovery !== "links") {
+    platform = detectPlatform(home?.html ?? "", home?.headers ?? {});
+    // If the markup didn't tell us, the catalogue itself will: a shop answers
+    // this address with product data and nothing else does.
+    if (!platform) {
+      const probe = await fetchWithTimeout(`${origin}/products.json?limit=1`, 8000);
+      if (probe?.ok) {
+        const body = (await probe.json().catch(() => null)) as { products?: unknown } | null;
+        if (body && Array.isArray(body.products)) platform = "shopify";
+      }
     }
   }
+  if (singlePage) platform = null;
   console.info(
     "[crawl]",
     JSON.stringify({
       source: sourceId,
       mode,
+      staged,
+      resuming,
+      refreshing,
       planCap,
       runCap,
       platform,
-      fetch: {
-        status: home?.status ?? 0,
-        bytes: home?.bytes ?? 0,
-        extractedChars: home?.extractedChars ?? 0,
-        usedReader: home?.usedReader ?? false,
-      },
+      order,
+      fetch: home
+        ? { status: home.status ?? 0, bytes: home.bytes ?? 0, extractedChars: home.extractedChars ?? 0, usedReader: home.usedReader }
+        : null,
       sitemap: sitemap.length,
+      known: known.length,
       homeLinks: home?.links.length ?? 0,
     }),
   );
 
-  const candidates = new Map<string, number>();
-  /** Which page pointed us at each address — a product's shelf, usually. */
-  const referrers = new Map<string, string>();
-  const consider = (raw: string, base: string) => {
-    const url = normalizeUrl(raw, base, origin);
+  const consider = (raw: string, base: string, queue: boolean) => {
+    const url = normalizeUrl(raw, base, origin, keepQuery);
     if (!url) return;
     if (!referrers.has(url)) referrers.set(url, base);
-    if (done.has(url) || candidates.has(url)) return;
+    if (done.has(url) || candidates.has(url) || found.has(url)) return;
+    if (excluded(url)) return;
     // A shop's catalogue arrives as data, so its product pages are not crawled.
     if (platform) {
       const path = new URL(url).pathname;
@@ -574,45 +1113,100 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     const score = urlPriority(url, origin);
     if (score == null) return;
     if (blocked.some((p) => new URL(url).pathname.startsWith(p))) return;
-    candidates.set(url, score);
+    found.set(url, score);
+    if (queue) candidates.set(url, score);
   };
 
-  consider(start.toString(), start.toString());
-  for (const loc of sitemap) consider(loc, origin);
-  for (const loc of mapped) consider(loc, origin);
-  for (const loc of reReadByEngine) consider(loc, origin);
-  for (const href of home?.links ?? []) consider(href, start.toString());
-  candidates.delete(start.toString());
+  if (discovery === "links") {
+    // Only the merchant's own list, on this site.
+    if (!refreshing) for (const link of listedLinks) consider(link, origin, true);
+  } else {
+    if (!refreshing) consider(start.toString(), start.toString(), true);
+    for (const loc of sitemap) consider(loc, origin, !refreshing);
+    for (const loc of mapped) consider(loc, origin, !refreshing);
+    // "Use sitemap" reads what the sitemap lists and follows no links.
+    if (discovery === "crawl") for (const href of home?.links ?? []) consider(href, start.toString(), !refreshing);
+  }
+  candidates.delete(homeUrl);
+  found.delete(homeUrl);
 
-  // Refresh re-reads exactly the pages already read; nothing new.
-  const discovered = new Map(candidates);
-  if (refreshing) {
-    const { data: readRows } = await supabase
-      .from("knowledge_urls")
-      .select("url, priority")
-      .eq("source_id", sourceId)
-      .eq("status", "read")
-      .limit(5000);
-    candidates.clear();
-    for (const r of (readRows ?? []) as Array<{ url: string; priority: number }>)
-      if (r.url !== start.toString()) candidates.set(r.url, r.priority);
-    runCap = Math.max(candidates.size + 1, 1);
+  // The address list is saved before reading, so a run that dies still
+  // leaves the next one a queue to work from.
+  const saveFound = async () => {
+    const rows = Array.from(found)
+      .filter(([url]) => !done.has(url))
+      .map(([url, priority]) => ({ organization_id: organizationId, source_id: sourceId, url, priority }));
+    found.clear();
+    try {
+      for (let i = 0; i < rows.length; i += 200)
+        await supabase
+          .from("knowledge_urls")
+          .upsert(rows.slice(i, i + 200), { onConflict: "source_id,url", ignoreDuplicates: true });
+    } catch (error) {
+      console.error("[crawl] url list save failed", error instanceof Error ? error.message : String(error));
+    }
+  };
+  if (staged) await saveFound();
+  // The sitemap's dates, kept per address so "Re-read whole site" can skip
+  // pages that haven't changed.
+  if (discover && lastmodOf.size > 0) await saveLastmods(supabase, organizationId, sourceId, origin, lastmodOf);
+  // A fresh full read (or refresh) notes when it began before reading a page:
+  // if this run dies, the next one knows which pages this read already did.
+  if (staged && !continuing) {
+    config = {
+      ...config,
+      ...(refreshing
+        ? { refresh_started_at: refreshSince }
+        : {
+            full_read_started_at: new Date(runStarted).toISOString(),
+            // What the live version covers now, for the swap rule at the end.
+            prev_snapshot: await liveSnapshot(supabase, organizationId, sourceId, origin),
+          }),
+    };
+    await supabase.from("knowledge_sources").update({ config }).eq("id", sourceId);
   }
 
-  const docs: KnowledgeDocument[] = [...carried];
+  const pageCtx: PageSaveContext = {
+    supabase,
+    organizationId,
+    sourceId,
+    origin,
+    platform,
+    readVia: refreshing ? "refresh" : mode,
+    facts: true,
+    factsOnProductPages: !staged,
+  };
+  /** Pages whose text was saved this run. */
+  let savedPages = 0;
+  let factsCost = 0;
+  const embedAtStart = embedSpend;
   let seen = 0;
-  if (home && home.text.length > 200 && !done.has(start.toString())) {
-    docs.push({
-      sourceRef: start.toString(),
-      title: home.title || start.pathname,
-      content: home.text.slice(0, 40000),
-      metadata: { url: start.toString(), platform, engine: home.engine ?? "own" },
-    });
-  }
-  if (home) seen += 1;
-  done.add(start.toString());
-
   const gonePages = new Set<string>();
+  /** Taken from the queue but cut off by the run's time limit: next run. */
+  const unfinished = new Set<string>();
+  const productDrafts: ProductDraft[] = [];
+  /** Pages per engine this run, for the read log. */
+  const engines: Record<string, number> = {};
+  let credits = 0;
+  let failedPages = 0;
+  /** One page read: tally its engine and, in a run, what it cost of the paid budget. */
+  const tally = (page: PageRead | null) => {
+    if (!page) return;
+    const engine = page.engine ?? "own";
+    engines[engine] = (engines[engine] ?? 0) + 1;
+    credits += page.credits ?? 0;
+  };
+
+  if (home) {
+    seen += 1;
+    tally(home);
+    // The home page's own product, if any, was never read off it.
+    const saved = await withinTime(savePage({ ...pageCtx, factsOnProductPages: true }, homeUrl, { ...home, html: "" }), timeLeft() - 2_000);
+    if (saved?.saved) savedPages += 1;
+    factsCost += saved?.cost ?? 0;
+    done.add(homeUrl);
+  }
+
   /** Highest-scoring address we have not read yet. */
   const takeNext = (): string | null => {
     let best: string | null = null;
@@ -627,11 +1221,20 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     return best;
   };
 
+  let lastBeat = Date.now();
+  const heartbeat = async () => {
+    lastBeat = Date.now();
+    await supabase
+      .from("knowledge_sources")
+      .update({ pages_seen: alreadySeen + seen, sync_started_at: new Date().toISOString() })
+      .eq("id", sourceId);
+  };
+
   // Tavily bills per 5 URLs, so it reads in batches of 5.
   const batchSize = order[0] === "tavily" ? 5 : 1;
+  const stopAt = staged ? softStop : runStarted + 90_000;
   const worker = async () => {
-    while (candidates.size > 0 && seen < runCap) {
-      if (deadline && Date.now() > deadline) return;
+    while (candidates.size > 0 && seen < runCap && Date.now() < stopAt) {
       const batch: string[] = [];
       while (batch.length < batchSize && seen + batch.length < runCap) {
         const next = takeNext();
@@ -642,149 +1245,236 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
         batch.push(next);
       }
       if (!batch.length) return;
-      const allowReader = readerCost + READER_COST <= costCap;
-      let pages = new Map<string, Awaited<ReturnType<typeof readPage>>>();
+      seen += batch.length;
+      const allowReader = readerCost + READER_COST <= costCap && (!staged || order.length === 1);
+      const startedAt = Date.now();
+      let pages: Map<string, PageRead | null> | null = new Map();
       try {
-        pages = await readPages(batch, { key, allowReader, ...readOpts, ...(onStage ? { onStage } : {}) });
+        pages = await withinTime(
+          staged ? readInRun(batch, allowReader) : readPages(batch, { key, allowReader, ...readOpts, ...(onStage ? { onStage } : {}) }),
+          timeLeft() - 3_000,
+        );
       } catch (error) {
-        // One unreadable batch must never end the whole crawl.
+        // One unreadable batch must never end the whole read.
         console.error("[crawl] pages failed", batch.join(","), error instanceof Error ? error.message : String(error));
       }
-      for (const next of batch) {
-        const page = pages.get(next) ?? null;
-        seen += 1;
-        if (page && (page.status === 404 || page.status === 410)) gonePages.add(next);
-        if (page?.usedReader) readerCost += READER_COST;
-        if (!page || !page.contentType?.toLowerCase().includes("text/html")) continue;
-        // Every page we fetched widens the map of the site.
-        if (mode === "full") for (const href of page.links) consider(href, next);
-        // One product, if this page is a product page. No extra fetch.
-        try {
-          const draft = extractProduct(page.html, next, { referrer: referrers.get(next) ?? null });
-          if (draft) productDrafts.push(draft);
-        } catch {
-          // Never let reading a price stop the crawl.
+      if (pages === null) {
+        for (const url of batch) unfinished.add(url);
+        return;
+      }
+      for (const url of batch) {
+        if (keptUnchanged.has(url)) {
+          // Unchanged by the free check: keep the page and product as saved;
+          // only its read time moves, so this refresh counts it as done.
+          await supabase
+            .from("knowledge_urls")
+            .update({ read_at: new Date().toISOString() })
+            .eq("source_id", sourceId)
+            .eq("url", url);
+          unchangedSkipped += 1;
+          continue;
         }
-        if (page.text.length <= 200) continue;
-        docs.push({
-          sourceRef: next,
-          title: page.title || new URL(next).pathname,
-          content: page.text.slice(0, 40000),
-          metadata: { url: next, platform, engine: page.engine ?? "own" },
-        });
+        const page = pages.get(url) ?? null;
+        if (page?.usedReader) readerCost += READER_COST;
+        tally(page);
+        const saved = await withinTime(savePage({ ...pageCtx, referrer: referrers.get(url) ?? null }, url, page), timeLeft() - 1_000);
+        if (!saved) {
+          unfinished.add(url);
+          continue;
+        }
+        if (saved.gone) gonePages.add(url);
+        if (saved.failed) failedPages += 1;
+        if (saved.saved) savedPages += 1;
+        factsCost += saved.cost;
+        if (saved.product) productDrafts.push(saved.product);
+        // Every page we fetched widens the map of the site.
+        if ((mode === "full" || refreshing) && discovery === "crawl")
+          for (const href of saved.links) consider(href, url, mode === "full" && !refreshing);
+        console.info(
+          "[crawl] page",
+          JSON.stringify({
+            source: sourceId,
+            url,
+            engine: page?.engine ?? null,
+            credits: page?.credits ?? 0,
+            reader: page?.usedReader ? READER_COST : 0,
+            chars: saved.chars,
+            product: Boolean(saved.product),
+            ms: Date.now() - startedAt,
+          }),
+        );
       }
-      if (seen % 5 === 0 || batchSize > 1) {
-        await supabase
-          .from("knowledge_sources")
-          .update({ pages_seen: alreadySeen + seen, sync_started_at: new Date().toISOString() })
-          .eq("id", sourceId);
-      }
+      if (seen % 5 === 0 || batchSize > 1 || Date.now() - lastBeat > 15_000) await heartbeat();
     }
   };
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  for (const url of unfinished) {
+    done.delete(url);
+    candidates.set(url, urlPriority(url, origin) ?? 0);
+  }
+  if (staged) await saveFound();
+
+  const runLeft = runLimit > 0 ? Math.max(runLimit - seen, 0) : 0;
+  let more =
+    staged &&
+    candidates.size > 0 &&
+    (refreshing || (alreadySeen + seen < pageCeiling && (runLimit === 0 || runLeft > 0)));
 
   // Shops hand over their catalogue directly; no need to walk every product.
-  if (platform) {
-    const commerce = await commerceDocuments(origin, platform, Math.min(planCap, 1000));
-    const commerceRefs = new Set(commerce.map((doc) => doc.sourceRef));
-    for (let index = docs.length - 1; index >= 0; index -= 1) {
-      if (commerceRefs.has(docs[index]?.sourceRef ?? "")) docs.splice(index, 1);
-    }
-    docs.push(...commerce);
+  // Read once, on the run that finishes, and saved after this returns. Cut
+  // off by the run's time limit, it is fetched again on the next run.
+  const docs: KnowledgeDocument[] = [];
+  if (platform && !more) {
+    const commerce = await withinTime(commerceDocuments(origin, platform, Math.min(planCap, 1000)), Math.max(timeLeft() - 10_000, 5_000));
+    if (commerce) docs.push(...commerce);
+    else if (staged) more = true;
   }
 
-  if (docs.length === 0) throw new Error("We couldn't read any pages from that address.");
-
-  onStage?.("facts");
-  const factsCost = await factsPass(supabase, organizationId, docs);
+  if (savedPages === 0 && docs.length === 0 && !more) {
+    const { count } = await supabase
+      .from("knowledge_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("source_id", sourceId);
+    if (!count) throw new Error("We couldn't read any pages from that address.");
+  }
 
   const totalSeen = refreshing ? Number(config["pages_done"] ?? seen) : alreadySeen + seen;
-  const more = !refreshing && mode === "full" && candidates.size > 0 && totalSeen < planCap && runLimit === 0;
 
   // The full page list per source, read/unread, for backfill and on-demand reads.
   let totalPages: number | null = null;
-  try {
-    const now = new Date().toISOString();
-    const readRows = Array.from(done).map((url) => ({
-      organization_id: organizationId,
-      source_id: sourceId,
-      url,
-      priority: urlPriority(url, origin) ?? 0,
-      status: "read",
-      read_at: now,
-      read_via: refreshing ? "refresh" : mode,
-    }));
-    const unreadRows = Array.from(refreshing ? discovered : candidates)
-      .filter(([url]) => !done.has(url))
-      .map(([url, priority]) => ({ organization_id: organizationId, source_id: sourceId, url, priority }));
-    for (let i = 0; i < readRows.length; i += 200)
-      await supabase.from("knowledge_urls").upsert(readRows.slice(i, i + 200), { onConflict: "source_id,url" });
-    for (let i = 0; i < unreadRows.length; i += 200)
-      await supabase
-        .from("knowledge_urls")
-        .upsert(unreadRows.slice(i, i + 200), { onConflict: "source_id,url", ignoreDuplicates: true });
+  if (!staged) {
+    // The day-one read keeps its candidates as unread for later reads.
+    for (const [url, priority] of candidates) found.set(url, priority);
+    await saveFound();
+  }
+  {
     const { count } = await supabase
       .from("knowledge_urls")
       .select("id", { count: "exact", head: true })
       .eq("source_id", sourceId);
     totalPages = count ?? null;
-  } catch (error) {
-    console.error("[crawl] url list save failed", error instanceof Error ? error.message : String(error));
   }
 
-  // What the pages themselves said about products, remembered in one place.
-  // Products found without a photo: take it from the product page itself.
-  await fillMissingPhotos(supabase, organizationId, productDrafts).catch(() => 0);
-  dropSharedImages(productDrafts);
-  await saveCrawledProducts(supabase, organizationId, productDrafts);
   // "Refresh from website" also fills products that are still missing a
   // photo, description or shelf, from their own pages — even pages whose text
-  // hasn't changed. Empty fields only; nothing is re-embedded.
-  if (refreshing && config["fill_products"] === true) {
-    const filled = await fillMissingProductDetails(supabase, organizationId, origin).catch((error) => {
+  // hasn't changed. Empty fields only; nothing is re-embedded. Done on the
+  // run that finishes the refresh.
+  if (refreshing && !more && config["fill_products"] === true) {
+    const filled = await fillMissingProductDetails(supabase, organizationId, origin, {
+      budgetMs: Math.max(Math.min(45_000, timeLeft() - 10_000), 5_000),
+    }).catch((error) => {
       console.error("[crawl] product fill failed", error instanceof Error ? error.message : String(error));
       return null;
     });
     if (filled) console.info("[crawl] product fill", JSON.stringify({ source: sourceId, ...filled }));
   }
-  // The request to fill is used up by this read.
+  // The request to fill is used up once the refresh is done; so are the
+  // one-read switches (changed-only, an admin's forced paid reads, the
+  // snapshot the swap rule compares against).
   const keptConfig: Record<string, unknown> = { ...config };
-  delete keptConfig["fill_products"];
-  const fullReadNow = mode === "full" && !more && !refreshing;
+  if (!more) for (const k of ["fill_products", "changed_only", "force_paid", "prev_snapshot"]) delete keptConfig[k];
+  const fullReadNow = mode === "full" && !more && !refreshing && !singlePage;
+  const readStartedAt = typeof config["full_read_started_at"] === "string" ? String(config["full_read_started_at"]) : new Date(runStarted).toISOString();
+
+  // Swap rule: a full re-read replaces the live version only when it covers
+  // at least the same info pages and 80% of its products. Otherwise nothing
+  // is forgotten or hidden, and the merchant sees why.
+  let swapBlocked: { at: string; reasons: string[]; previous_products: number; new_products: number } | null = null;
+  let thisRead: Awaited<ReturnType<typeof readOutcome>> | null = null;
+  if (fullReadNow) {
+    thisRead = await readOutcome(supabase, organizationId, sourceId, origin, readStartedAt);
+    // A shop's catalogue and policy pages arrive as data in this same run.
+    if (docs.length > 0)
+      thisRead.topics = Array.from(new Set([...thisRead.topics, ...coveredTopics(docs.map((d) => ({ url: d.sourceRef, title: d.title })))]));
+    const prev = (config["prev_snapshot"] ?? null) as LiveSnapshot | null;
+    if (prev) {
+      const decision = decideSwap({
+        previousTopics: prev.topics,
+        newTopics: thisRead.topics,
+        previousProducts: prev.products,
+        newProducts: thisRead.products,
+      });
+      if (!decision.swap) {
+        swapBlocked = { at: new Date().toISOString(), reasons: decision.reasons, previous_products: prev.products, new_products: thisRead.products };
+        void logServerActivity(supabase, organizationId, null, "reading_swap_blocked", { source_id: sourceId, ...swapBlocked }).catch(() => undefined);
+      }
+    }
+  }
+  const replaceLive = fullReadNow && !swapBlocked;
   // The full site map: every address we know for this source, read or not.
   const siteMap = new Set<string>([...done, ...mapped, ...candidates.keys()]);
   if (fullReadNow) {
-    const { data: known } = await supabase
+    const { data: knownNow } = await supabase
       .from("knowledge_urls")
       .select("url")
       .eq("source_id", sourceId)
       .limit(20000);
-    for (const row of (known ?? []) as Array<{ url: string }>) siteMap.add(row.url);
+    for (const row of (knownNow ?? []) as Array<{ url: string }>) siteMap.add(row.url);
     for (const url of gonePages) siteMap.delete(url);
   }
-  lastReadForget = { fullReadComplete: fullReadNow, siteMap: Array.from(siteMap), gone: Array.from(gonePages) };
-  await hideMissingCrawledProducts(supabase, organizationId, origin, lastReadForget);
+  const forget: ReadForget = { fullReadComplete: replaceLive, siteMap: Array.from(siteMap), gone: Array.from(gonePages) };
+  onForget?.(forget);
+  await hideMissingCrawledProducts(supabase, organizationId, origin, forget);
+  if (replaceLive) {
+    // The same products under the site's old address (myzoori.com before it
+    // moved to www.) are hidden — never deleted — once the full read is in.
+    const aliases = Array.from(
+      new Set([
+        ...aliasOrigins(origin),
+        ...((Array.isArray(config["previous_origins"]) ? config["previous_origins"] : []) as string[]),
+      ]),
+    ).filter((o) => o !== origin);
+    await hideAliasHostProducts(supabase, organizationId, origin, aliases, forget).catch((error: unknown) => {
+      console.error("[crawl] old-address products not hidden", error instanceof Error ? error.message : String(error));
+    });
+  }
   const productsFound = await countCrawledProducts(supabase, organizationId, origin);
 
+  // Something about the site changed in a way the owner should look at.
+  if (fullReadNow && thisRead) {
+    const prev = (config["prev_snapshot"] ?? null) as LiveSnapshot | null;
+    // Our own fetch can't tell a 404 from a dead server, so both count.
+    if (thisRead.read >= 10 && thisRead.gone / thisRead.read > 0.2)
+      await raiseSiteAlert(supabase, organizationId, sourceId, "dead_links", {
+        site: origin,
+        detail: `${thisRead.gone} of ${thisRead.read} pages on ${new URL(origin).hostname} no longer open`,
+      });
+    const newShelves = prev && prev.categories.length > 0 ? thisRead.categories.filter((c) => !prev.categories.includes(c)) : [];
+    if (newShelves.length > 0)
+      await raiseSiteAlert(supabase, organizationId, sourceId, "new_category", {
+        site: origin,
+        detail: `new on ${new URL(origin).hostname}: ${newShelves.slice(0, 5).join(", ")}`,
+      });
+  }
+
+  const nextConfig: Record<string, unknown> = {
+    ...keptConfig,
+    mode,
+    ...(platform ? { platform } : {}),
+    page_limit: planCap,
+    pages_done: totalSeen,
+    resume: more,
+    refresh: refreshing && more,
+    run_limit: runLimit > 0 && more ? runLeft : null,
+    full_read_started_at:
+      mode === "full" && !refreshing && more ? (resuming && fullReadStartedAt ? fullReadStartedAt : new Date(runStarted).toISOString()) : null,
+    refresh_started_at: refreshing && more ? refreshSince : null,
+    ...(discover ? { robots_disallow: blocked.slice(0, 200) } : {}),
+    ...(staged ? { paid_pages: paidPages, paid_capped: paidCapped } : {}),
+    // Pages "Re-read whole site" left alone because their sitemap date hadn't moved.
+    unchanged_skipped: refreshing && changedOnly ? unchangedSkipped : null,
+    ...(fullReadNow ? { swap_blocked: swapBlocked } : {}),
+  };
   await supabase
     .from("knowledge_sources")
     .update({
       pages_seen: totalSeen,
       products_found: productsFound,
-      cost_amount: readerCost + factsCost,
+      cost_amount: readerCost + factsCost + (embedSpend - embedAtStart),
       ...(totalPages != null ? { total_pages: totalPages } : {}),
       ...(fullReadNow ? { last_full_read_at: new Date().toISOString() } : {}),
-      config: {
-        ...keptConfig,
-        mode,
-        ...(platform ? { platform } : {}),
-        page_limit: planCap,
-        pages_done: totalSeen,
-        resume: more,
-        refresh: false,
-        run_limit: null,
-      },
+      config: nextConfig,
     })
     .eq("id", sourceId);
 
@@ -801,13 +1491,40 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       await notifyOwnerOnOnboardingChannel(supabase, organizationId, body);
       await supabase
         .from("knowledge_sources")
-        .update({ config: { ...keptConfig, mode, page_limit: planCap, pages_done: totalSeen, resume: false, refresh: false, run_limit: null, full_read_announced: true, ...(platform ? { platform } : {}) } })
+        .update({ config: { ...nextConfig, full_read_announced: true } })
         .eq("id", sourceId);
     } catch (error) {
       console.error("[crawl] full read notice failed", error instanceof Error ? error.message : String(error));
     }
   }
 
+  console.info(
+    "[crawl] run done",
+    JSON.stringify({ source: sourceId, seen, saved: savedPages, products: productDrafts.length, more, ms: Date.now() - runStarted }),
+  );
+  // The read log (admin → Aiden → Workspaces): one row per run.
+  void logServerActivity(supabase, organizationId, null, "reading_run", {
+    source_id: sourceId,
+    mode: refreshing ? (changedOnly ? "refresh_changed" : "refresh") : mode,
+    discovery,
+    pages: seen,
+    saved: savedPages,
+    products: productDrafts.length,
+    engines,
+    credits: Math.round(credits * 100) / 100,
+    // The full read cost: reader + facts + embeddings.
+    cost: Math.round((readerCost + factsCost + (embedSpend - embedAtStart)) * 100) / 100,
+    reader_cost: Math.round(readerCost * 100) / 100,
+    facts_cost: Math.round(factsCost * 100) / 100,
+    embed_cost: Math.round((embedSpend - embedAtStart) * 10000) / 10000,
+    failed: failedPages,
+    gone: gonePages.size,
+    paid_pages: staged ? paidPages : null,
+    unchanged_skipped: unchangedSkipped,
+    more,
+    swap_blocked: swapBlocked?.reasons ?? null,
+    ms: Date.now() - runStarted,
+  }).catch(() => undefined);
   return docs;
 };
 
@@ -914,11 +1631,11 @@ export const CONNECTORS: Record<SourceType, Connector> = {
 export async function syncSource(
   supabase: SupabaseClient,
   sourceId: string,
-  options?: { onStage?: (stage: CrawlStage) => void; preserveError?: boolean },
+  options?: { onStage?: (stage: CrawlStage) => void; preserveError?: boolean; deadlineAt?: number },
 ): Promise<{ ok: boolean; itemCount: number; error?: string }> {
   const { data } = await supabase
     .from("knowledge_sources")
-    .select("id, organization_id, type, name, config")
+    .select("id, organization_id, type, name, config, status")
     .eq("id", sourceId)
     .maybeSingle();
   const source = data as {
@@ -927,26 +1644,39 @@ export async function syncSource(
     type: SourceType;
     name: string;
     config: Record<string, unknown>;
+    status?: string;
   } | null;
   if (!source) return { ok: false, itemCount: 0, error: "That source no longer exists." };
+  // A deleted source (kept for Undo) is never read again.
+  if (isSoftDeleted(source)) return { ok: false, itemCount: 0, error: "That source was deleted." };
 
   const connector = CONNECTORS[source.type];
   if (!connector)
     return { ok: false, itemCount: 0, error: "We can't read that kind of source yet." };
 
+  // The start time lets resetStaleReads recover a read that dies here
+  // (website reads keep it fresh as they go; the worker's claim sets it too).
   await supabase
     .from("knowledge_sources")
-    .update({ status: "syncing", last_error: null })
+    .update({ status: "syncing", last_error: null, sync_started_at: new Date().toISOString() })
     .eq("id", sourceId);
 
   try {
-    lastReadForget = null;
+    // This run's own forget data: two reads at once must never see each other's.
+    let readForget: ReadForget | null = null;
+    // A website read saves its pages as it goes; anything it couldn't build
+    // an index for yet counts here too.
+    embedDeferred = 0;
     const documents = await connector({
       supabase,
       organizationId: source.organization_id,
       sourceId,
       config: source.config ?? {},
       ...(options?.onStage ? { onStage: options.onStage } : {}),
+      ...(options?.deadlineAt ? { deadlineAt: options.deadlineAt } : {}),
+      onForget: (forget) => {
+        readForget = forget;
+      },
     });
 
     options?.onStage?.("embed");
@@ -964,7 +1694,6 @@ export async function syncSource(
         await supabase.from("knowledge_documents").delete().in("id", assetIds);
       }
     }
-    embedDeferred = 0;
     for (const doc of documents) {
       await upsertDocument(supabase, source.organization_id, sourceId, doc);
     }
@@ -976,7 +1705,7 @@ export async function syncSource(
     // or no longer on the site map. Other source types report their whole list
     // every time, so for them "not in this list" means gone.
     if (source.type !== "manual_qa") {
-      const forget = source.type === "website" ? lastReadForget : {
+      const forget = source.type === "website" ? readForget : {
         fullReadComplete: documents.length > 0,
         siteMap: documents.map((d) => d.sourceRef),
         gone: [] as string[],
@@ -1006,13 +1735,22 @@ export async function syncSource(
         }
       }
     }
-    lastReadForget = null;
+
+    // A website's pages were saved during the read: count what the source holds.
+    let itemCount = documents.length;
+    if (source.type === "website") {
+      const { count } = await supabase
+        .from("knowledge_documents")
+        .select("id", { count: "exact", head: true })
+        .eq("source_id", sourceId);
+      if (typeof count === "number") itemCount = count;
+    }
 
     await supabase
       .from("knowledge_sources")
       .update({
         status: "ready",
-        item_count: documents.length,
+        item_count: itemCount,
         last_synced_at: new Date().toISOString(),
         last_error:
           deferred > 0
@@ -1038,7 +1776,7 @@ export async function syncSource(
         .eq("id", sourceId);
     }
 
-    return { ok: true, itemCount: documents.length };
+    return { ok: true, itemCount };
   } catch (error) {
     const message = error instanceof Error ? error.message : "We couldn't read that source.";
     const name = error instanceof Error ? error.name : "Error";
@@ -1053,8 +1791,8 @@ export async function syncSource(
 
 /** Pages saved whose search index could not be built yet (per process, reset per sync). */
 let embedDeferred = 0;
-/** What the website read just finished tells the forget step. Null = unknown. */
-let lastReadForget: { fullReadComplete: boolean; siteMap: string[]; gone: string[] } | null = null;
+/** Embedding spend (₹, estimated as metered) since the module loaded; a read takes the difference. */
+let embedSpend = 0;
 
 /**
  * Store one document and (re)build its chunks when the text has changed.
@@ -1176,6 +1914,8 @@ async function rebuildChunks(
   let vectors: number[][];
   try {
     vectors = await embedTexts(chunks, { supabase, organizationId });
+    // Same estimate embedTexts meters (ai-run EMBED_RUPEES_PER_M = 2 per 1M tokens).
+    embedSpend += (Math.ceil(chunks.reduce((sum, t) => sum + t.length, 0) / 4) / 1_000_000) * 2;
   } catch (error) {
     console.error("[knowledge] embed deferred", sourceRef, error instanceof Error ? error.message : String(error));
     await markPending();
@@ -1279,7 +2019,12 @@ export async function retryFailedPreparation(
 }
 
 /** Worker tick: retry documents whose chunks couldn't be built. */
-export async function retryPendingEmbeddings(supabase: SupabaseClient, limit = 50): Promise<{ tried: number; built: number }> {
+export async function retryPendingEmbeddings(
+  supabase: SupabaseClient,
+  limit = 50,
+  /** Epoch ms after which no further page is tried this tick. */
+  stopAt: number = Number.POSITIVE_INFINITY,
+): Promise<{ tried: number; built: number }> {
   const { data } = await supabase
     .from("knowledge_documents")
     .select("id, organization_id, source_id, source_ref, content, content_hash, metadata")
@@ -1293,6 +2038,7 @@ export async function retryPendingEmbeddings(supabase: SupabaseClient, limit = 5
     content: string; content_hash: string | null; metadata: Record<string, unknown> | null;
   }>;
   for (const row of rows) {
+    if (Date.now() > stopAt) break;
     const hash = row.content_hash ?? (await hashText(row.content));
     const ok = await rebuildChunks(
       supabase, row.organization_id, row.source_id, row.id, row.source_ref, row.content, hash, row.metadata ?? {},
@@ -1364,7 +2110,14 @@ export async function addWebsiteSource(
   organizationId: string,
   url: string,
   createdBy: string | null,
-  options?: { mode?: "day0" | "full" },
+  options?: {
+    mode?: "day0" | "full";
+    /** Add website: crawl from the homepage (default), the sitemap only, or just these links. */
+    discovery?: "crawl" | "sitemap" | "links";
+    links?: string[];
+    /** Keep query parameters as part of a page's address (off: listing/filter variants collapse). */
+    keepQuery?: boolean;
+  },
 ): Promise<{
   ok: boolean;
   sourceId: string | null;
@@ -1401,7 +2154,8 @@ export async function addWebsiteSource(
     status: string; item_count: number; created_at: string;
   }>;
   const windowMs = Math.max(Number(reading.link_reread_days) || 0, 0) * 86_400_000;
-  const match = priorRows.find((r) => sameLink(String(r.config?.["url"] ?? ""), url));
+  // A deleted website (kept for Undo) is never reused: adding it again starts afresh.
+  const match = priorRows.find((r) => !isSoftDeleted(r) && sameLink(String(r.config?.["url"] ?? ""), url));
   if (match && windowMs > 0) {
     const last = Date.parse(match.last_synced_at ?? match.created_at);
     const inFlight = ["pending", "queued", "syncing"].includes(match.status);
@@ -1444,6 +2198,9 @@ export async function addWebsiteSource(
         url,
         mode: listing ? "day0" : options?.mode ?? "day0",
         ...(listing ? { single_page: true, listing } : {}),
+        ...(!listing && options?.discovery && options.discovery !== "crawl" ? { discovery: options.discovery } : {}),
+        ...(!listing && options?.discovery === "links" ? { links: (options.links ?? []).slice(0, 500) } : {}),
+        ...(!listing && options?.keepQuery ? { keep_query: true } : {}),
       },
       status: "pending",
       queued_at: new Date().toISOString(),
@@ -1823,6 +2580,13 @@ export async function readOnDemand(
 
     const words = questionWords(question).map((w) => w.replace(/(es|s)$/, ""));
     if (!words.length) return false;
+    // A deleted website (kept for Undo) is never read into.
+    const { data: off } = await supabase
+      .from("knowledge_sources")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("status", "disabled");
+    const skip = new Set(((off ?? []) as Array<{ id: string }>).map((r) => r.id));
     const { data } = await supabase
       .from("knowledge_urls")
       .select("id, source_id, url, title")
@@ -1833,6 +2597,7 @@ export async function readOnDemand(
     let best: { id: string; source_id: string; url: string; title: string | null } | null = null;
     let bestScore = 0;
     for (const row of (data ?? []) as Array<{ id: string; source_id: string; url: string; title: string | null }>) {
+      if (skip.has(row.source_id)) continue;
       const hay = `${decodeURIComponent(row.url).toLowerCase().replace(/[-_/]+/g, " ")} ${(row.title ?? "").toLowerCase()}`;
       const score = words.filter((w) => hay.includes(w)).length;
       if (score > bestScore) {
@@ -1904,4 +2669,638 @@ export async function queueFullReadOnConnect(supabase: SupabaseClient, organizat
   } catch (error) {
     console.error("[full-read-on-connect] failed", error instanceof Error ? error.message : String(error));
   }
+}
+
+// ------------------------------------------------------------ safe delete
+
+/** Days a deleted website is kept (Undo) before it is forgotten for good. */
+export const SOFT_DELETE_DAYS = 7;
+
+/** Deleted, still restorable: status disabled with a deleted_at stamp. */
+export function isSoftDeleted(source: { status?: string | null; config?: Record<string, unknown> | null }): boolean {
+  return source.status === "disabled" && typeof source.config?.["deleted_at"] === "string";
+}
+
+type WebsiteRow = {
+  id: string;
+  organization_id: string;
+  type: string;
+  name: string;
+  status: string;
+  config: Record<string, unknown> | null;
+};
+
+/** Visible crawled products of this site (any way its address is written). */
+async function siteProductIds(supabase: SupabaseClient, organizationId: string, origin: string): Promise<string[]> {
+  const ids: string[] = [];
+  for (const prefix of [origin, ...aliasOrigins(origin)]) {
+    const { data } = await supabase
+      .from("products")
+      .select("id, product_url")
+      .eq("organization_id", organizationId)
+      .eq("source", "crawl")
+      .eq("is_visible", true)
+      .like("product_url", `${prefix}/%`)
+      .limit(10000);
+    for (const row of (data ?? []) as Array<{ id: string; product_url: string | null }>) ids.push(row.id);
+  }
+  return Array.from(new Set(ids));
+}
+
+/**
+ * Deleting a website: Aiden stops using it at once (its chunks leave
+ * retrieval, its products leave search) but nothing is removed for
+ * SOFT_DELETE_DAYS, so Undo brings back exactly what was there. Products
+ * another live source of the same site still uses stay visible.
+ */
+export async function softDeleteWebsiteSource(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  userId: string | null,
+): Promise<{ ok: boolean; error?: string; pages: number; products: number; purgeAfter: string | null }> {
+  const { data } = await supabase
+    .from("knowledge_sources")
+    .select("id, organization_id, type, name, status, config, item_count")
+    .eq("id", sourceId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const src = data as (WebsiteRow & { item_count: number | null }) | null;
+  if (!src || src.type !== "website") return { ok: false, error: "That website isn't in this workspace.", pages: 0, products: 0, purgeAfter: null };
+  if (isSoftDeleted(src)) return { ok: true, pages: 0, products: 0, purgeAfter: String(src.config?.["purge_after"] ?? "") || null };
+  if (src.status === "syncing") return { ok: false, error: "I'm reading this site right now — try again in a minute.", pages: 0, products: 0, purgeAfter: null };
+
+  let productIds: string[] = [];
+  let origin: string | null = null;
+  try {
+    origin = new URL(String(src.config?.["url"] ?? "")).origin;
+  } catch {
+    origin = null;
+  }
+  if (origin) {
+    // Another live source reading the same site keeps its products in search.
+    const { data: others } = await supabase
+      .from("knowledge_sources")
+      .select("id, status, config")
+      .eq("organization_id", organizationId)
+      .eq("type", "website")
+      .neq("id", sourceId);
+    const shared = ((others ?? []) as Array<{ id: string; status: string; config: Record<string, unknown> | null }>).some((o) => {
+      if (isSoftDeleted(o)) return false;
+      try {
+        return sameSite(new URL(String(o.config?.["url"] ?? "")), new URL(origin!));
+      } catch {
+        return false;
+      }
+    });
+    if (!shared) productIds = await siteProductIds(supabase, organizationId, origin);
+  }
+  for (let i = 0; i < productIds.length; i += 200)
+    await supabase.from("products").update({ is_visible: false }).in("id", productIds.slice(i, i + 200));
+
+  const now = new Date();
+  const purgeAfter = new Date(now.getTime() + SOFT_DELETE_DAYS * 86_400_000).toISOString();
+  await supabase
+    .from("knowledge_sources")
+    .update({
+      status: "disabled",
+      queued_at: null,
+      sync_started_at: null,
+      config: {
+        ...(src.config ?? {}),
+        deleted_at: now.toISOString(),
+        deleted_by: userId,
+        purge_after: purgeAfter,
+        // A source deleted while queued comes back ready, not mid-read.
+        deleted_prev_status: src.status === "pending" ? "ready" : src.status,
+        deleted_products: productIds,
+      },
+    })
+    .eq("id", sourceId);
+  return { ok: true, pages: Number(src.item_count ?? 0), products: productIds.length, purgeAfter };
+}
+
+/** Undo: the source answers again and its products are back in search, exactly as before. */
+export async function restoreWebsiteSource(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+): Promise<{ ok: boolean; error?: string; products: number }> {
+  const { data } = await supabase
+    .from("knowledge_sources")
+    .select("id, organization_id, type, name, status, config")
+    .eq("id", sourceId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const src = data as WebsiteRow | null;
+  if (!src || !isSoftDeleted(src)) return { ok: false, error: "That website isn't waiting to be restored.", products: 0 };
+  const ids = Array.isArray(src.config?.["deleted_products"]) ? (src.config!["deleted_products"] as string[]) : [];
+  for (let i = 0; i < ids.length; i += 200)
+    await supabase.from("products").update({ is_visible: true }).in("id", ids.slice(i, i + 200));
+  const { deleted_at: _d, deleted_by: _b, purge_after: _p, deleted_prev_status: prev, deleted_products: _x, ...config } = src.config ?? {};
+  const status = typeof prev === "string" && ["ready", "error"].includes(prev) ? prev : "ready";
+  await supabase.from("knowledge_sources").update({ status, config }).eq("id", sourceId);
+  return { ok: true, products: ids.length };
+}
+
+/** Nightly: deleted websites past their Undo window are removed for good. */
+export async function purgeDeletedSources(supabase: SupabaseClient, now = new Date()): Promise<number> {
+  const { data } = await supabase
+    .from("knowledge_sources")
+    .select("id, organization_id, status, config")
+    .eq("type", "website")
+    .eq("status", "disabled")
+    .lt("config->>purge_after", now.toISOString())
+    .limit(200);
+  let purged = 0;
+  for (const row of (data ?? []) as Array<{ id: string; organization_id: string; status: string; config: Record<string, unknown> | null }>) {
+    if (!isSoftDeleted(row)) continue;
+    const after = Date.parse(String(row.config?.["purge_after"] ?? ""));
+    if (!Number.isFinite(after) || after > now.getTime()) continue;
+    // Pages, chunks and the address list go with the source (cascade).
+    // Products stay hidden, never deleted.
+    const { error } = await supabase.from("knowledge_sources").delete().eq("id", row.id).eq("status", "disabled");
+    if (!error) purged += 1;
+  }
+  return purged;
+}
+
+// ------------------------------------------------------- one page, now
+
+/** "Re-read this page": at most this many per workspace per day. */
+export const PAGE_REREADS_PER_DAY = 20;
+
+/** Pages this workspace re-read by hand in the last 24 hours. */
+export async function pageRereadsToday(supabase: SupabaseClient, organizationId: string, now = Date.now()): Promise<number> {
+  const { count } = await supabase
+    .from("activity_log")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("action", "knowledge_page_reread")
+    .gte("created_at", new Date(now - 86_400_000).toISOString());
+  return count ?? 0;
+}
+
+/**
+ * Read one page of a website source now and save it the same way a full read
+ * does (document, chunks, product). Own fetch first; a paid reader only for a
+ * page that comes back nearly empty. A page that comes back too thin keeps
+ * its old text.
+ */
+export async function rereadOnePage(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  url: string,
+): Promise<{ ok: boolean; error?: string; title?: string; chars?: number; saved?: boolean; product?: string | null }> {
+  const { data } = await supabase
+    .from("knowledge_sources")
+    .select("id, organization_id, type, name, status, config")
+    .eq("id", sourceId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const src = data as WebsiteRow | null;
+  if (!src || src.type !== "website" || isSoftDeleted(src)) return { ok: false, error: "That website isn't in this workspace." };
+  let origin: string;
+  try {
+    origin = new URL(String(src.config?.["url"] ?? "")).origin;
+  } catch {
+    return { ok: false, error: "This website has no address yet." };
+  }
+  const page = normalizeUrl(url, url, origin);
+  if (!page) return { ok: false, error: `That page isn't on ${new URL(origin).hostname}.` };
+  if (urlBlocked(page)) return { ok: false, error: "This address points to a private network and can't be read." };
+
+  const { loadReadingSettings } = await import("@/lib/reading.server");
+  const { engineOrder } = await import("@/lib/web-reader.server");
+  const reading = await loadReadingSettings(supabase);
+  const settingsOrder = engineOrder(reading.reader_primary, reading.reader_fallback_order);
+  const order = ["own", ...settingsOrder.filter((engine) => engine !== "own")] as ReaderEngine[];
+  const read = await readPage(page, {
+    order,
+    tavilyDepth: reading.tavily_extract_depth,
+    budget: { supabase, organizationId },
+    tavilyBudget: { supabase, organizationId },
+    allowReader: false,
+    timeoutMs: PAGE_TIMEOUT_MS,
+    rerender: false,
+  });
+  const platform = typeof src.config?.["platform"] === "string" ? String(src.config["platform"]) : null;
+  const saved = await savePage(
+    { supabase, organizationId, sourceId, origin, platform, readVia: "page_reread", facts: true, factsOnProductPages: false },
+    page,
+    read,
+  );
+  if (saved.failed || saved.gone) {
+    return { ok: false, error: saved.gone ? "That page no longer exists on the site." : "I couldn't open that page just now." };
+  }
+  const [{ count }, products] = await Promise.all([
+    supabase.from("knowledge_documents").select("id", { count: "exact", head: true }).eq("source_id", sourceId),
+    countCrawledProducts(supabase, organizationId, origin),
+  ]);
+  await supabase
+    .from("knowledge_sources")
+    .update({ products_found: products, ...(typeof count === "number" ? { item_count: count } : {}) })
+    .eq("id", sourceId);
+  return { ok: true, title: saved.title, chars: saved.chars, saved: saved.saved, product: saved.product?.title ?? null };
+}
+
+// ------------------------------------------------------------- stall reset
+
+/** A read still "syncing" after this long died with its request. */
+export const STALE_SYNC_MS = 10 * 60_000;
+
+/**
+ * A read that died mid-way goes back in the queue. A website read resumes
+ * where it got to — the pages it saved are already marked read — and its
+ * progress never goes back to 0.
+ */
+export function staleResetPatch(row: {
+  type: string;
+  config: Record<string, unknown> | null;
+  pages_seen: number | null;
+}): Record<string, unknown> {
+  const patch: Record<string, unknown> = {
+    status: "pending",
+    queued_at: new Date().toISOString(),
+    sync_started_at: null,
+  };
+  const config = row.config ?? {};
+  if (row.type === "website" && config["mode"] === "full" && config["refresh"] !== true && config["single_page"] !== true) {
+    patch["config"] = {
+      ...config,
+      resume: true,
+      pages_done: Math.max(Number(config["pages_done"] ?? 0) || 0, Number(row.pages_seen ?? 0) || 0),
+    };
+  }
+  return patch;
+}
+
+/** Worker tick: every read stuck in "syncing" goes back in the queue (see staleResetPatch). */
+export async function resetStaleReads(supabase: SupabaseClient, now = Date.now()): Promise<number> {
+  const stale = new Date(now - STALE_SYNC_MS).toISOString();
+  const { data } = await supabase
+    .from("knowledge_sources")
+    .select("id, type, config, pages_seen")
+    .eq("status", "syncing")
+    .lt("sync_started_at", stale)
+    .limit(100);
+  let reset = 0;
+  for (const row of (data ?? []) as Array<{ id: string; type: string; config: Record<string, unknown> | null; pages_seen: number | null }>) {
+    const { error } = await supabase
+      .from("knowledge_sources")
+      .update(staleResetPatch(row))
+      .eq("id", row.id)
+      .eq("status", "syncing");
+    if (!error) reset += 1;
+  }
+  return reset;
+}
+
+// ------------------------------------------------------------ links list
+
+export type LinkTab = "read" | "not_found" | "excluded" | "waiting";
+export type LinkRow = {
+  url: string;
+  title: string | null;
+  type: ReturnType<typeof import("@/lib/site-urls").pageType>;
+  tab: LinkTab;
+  chars: number | null;
+  read_at: string | null;
+};
+
+async function websiteRow(supabase: SupabaseClient, organizationId: string, sourceId: string): Promise<WebsiteRow | null> {
+  const { data } = await supabase
+    .from("knowledge_sources")
+    .select("id, organization_id, type, name, status, config")
+    .eq("id", sourceId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  const src = data as WebsiteRow | null;
+  return src && src.type === "website" ? src : null;
+}
+
+/**
+ * Every address of a website source, as the merchant sees it: Read (with how
+ * much text and when), Not found (gone or unreadable), Excluded (by their
+ * rules) and Waiting (found, not read yet). Paged, searchable.
+ */
+export async function listWebsiteLinks(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  options: { tab?: LinkTab; q?: string; page?: number; pageSize?: number } = {},
+): Promise<{ ok: boolean; error?: string; rows: LinkRow[]; counts: Record<LinkTab, number>; total: number; rules: ExcludeRule[]; page: number; page_size: number }> {
+  const counts: Record<LinkTab, number> = { read: 0, not_found: 0, excluded: 0, waiting: 0 };
+  const src = await websiteRow(supabase, organizationId, sourceId);
+  if (!src) return { ok: false, error: "That website isn't in this workspace.", rows: [], counts, total: 0, rules: [], page: 0, page_size: 0 };
+  const { pageType } = await import("@/lib/site-urls");
+  const rules = readExcludeRules(src.config?.["exclude_rules"]);
+  const includeUrls = Array.isArray(src.config?.["include_urls"]) ? (src.config!["include_urls"] as unknown[]).map(String) : [];
+  const [{ data: urlRows }, { data: docRows }] = await Promise.all([
+    supabase.from("knowledge_urls").select("url, title, status, read_at, read_via").eq("source_id", sourceId).limit(20000),
+    supabase.from("knowledge_documents").select("source_ref, title, chars:metadata->>chars, metadata").eq("source_id", sourceId).limit(20000),
+  ]);
+  const docs = new Map<string, { title: string | null; chars: number | null }>();
+  for (const d of (docRows ?? []) as Array<{ source_ref: string; title: string | null; chars?: string | number | null; metadata?: Record<string, unknown> | null }>) {
+    const raw = d.chars ?? d.metadata?.["chars"] ?? null;
+    docs.set(d.source_ref, { title: d.title, chars: raw == null || raw === "" ? null : Number(raw) });
+  }
+  const all: LinkRow[] = [];
+  const seen = new Set<string>();
+  for (const r of (urlRows ?? []) as Array<{ url: string; title: string | null; status: string | null; read_at: string | null; read_via: string | null }>) {
+    seen.add(r.url);
+    const doc = docs.get(r.url);
+    const tab: LinkTab = isExcluded(r.url, rules, includeUrls)
+      ? "excluded"
+      : r.status === "read"
+        ? ["gone", "failed"].includes(r.read_via ?? "") ? "not_found" : "read"
+        : "waiting";
+    all.push({ url: r.url, title: r.title ?? doc?.title ?? null, type: pageType(r.url), tab, chars: doc?.chars ?? null, read_at: r.read_at });
+  }
+  // Pages saved before the address list existed still count as read.
+  for (const [url, doc] of docs) {
+    if (seen.has(url) || !/^https?:\/\//i.test(url)) continue;
+    all.push({ url, title: doc.title, type: pageType(url), tab: isExcluded(url, rules, includeUrls) ? "excluded" : "read", chars: doc.chars, read_at: null });
+  }
+  for (const row of all) counts[row.tab] += 1;
+  const q = (options.q ?? "").trim().toLowerCase();
+  const tab = options.tab ?? "read";
+  const filtered = all
+    .filter((r) => r.tab === tab && (!q || r.url.toLowerCase().includes(q) || (r.title ?? "").toLowerCase().includes(q)))
+    .sort((a, b) => a.url.localeCompare(b.url));
+  const pageSize = Math.min(Math.max(options.pageSize ?? 50, 1), 200);
+  const page = Math.max(options.page ?? 0, 0);
+  return { ok: true, rows: filtered.slice(page * pageSize, page * pageSize + pageSize), counts, total: filtered.length, rules, page, page_size: pageSize };
+}
+
+/** Pages and products of addresses a rule now excludes: Aiden stops using them. */
+async function forgetExcluded(supabase: SupabaseClient, organizationId: string, sourceId: string, test: (url: string) => boolean): Promise<{ pages: number; products: number }> {
+  const { data: docs } = await supabase.from("knowledge_documents").select("id, source_ref").eq("source_id", sourceId).limit(20000);
+  const ids = ((docs ?? []) as Array<{ id: string; source_ref: string }>).filter((d) => test(d.source_ref)).map((d) => d.id);
+  for (let i = 0; i < ids.length; i += 200) await supabase.from("knowledge_documents").delete().in("id", ids.slice(i, i + 200));
+  const { data: urls } = await supabase.from("knowledge_urls").select("url").eq("source_id", sourceId).limit(20000);
+  const gone = ((urls ?? []) as Array<{ url: string }>).map((u) => u.url).filter(test);
+  let products = 0;
+  for (let i = 0; i < gone.length; i += 200) {
+    const { data: hit } = await supabase
+      .from("products")
+      .update({ is_visible: false })
+      .eq("organization_id", organizationId)
+      .eq("source", "crawl")
+      .in("external_id", gone.slice(i, i + 200))
+      .select("id");
+    products += ((hit ?? []) as unknown[]).length;
+  }
+  return { pages: ids.length, products };
+}
+
+/**
+ * The merchant's exclude/include controls for one website:
+ *  - exclude a rule (starts with / contains / ends with / exact), one link,
+ *    or the folder a link sits in — its pages leave Aiden's knowledge and its
+ *    products leave search, and no read takes them again;
+ *  - include a link back, or remove a rule — those addresses wait to be read
+ *    again (the next read, or "Re-read this page").
+ */
+export async function changeWebsiteLinks(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  change:
+    | { exclude: ExcludeRule }
+    | { exclude_url: string; folder?: boolean }
+    | { include_url: string }
+    | { remove_rule: ExcludeRule },
+): Promise<{ ok: boolean; error?: string; rules: ExcludeRule[]; forgotten?: { pages: number; products: number }; waiting?: number }> {
+  const src = await websiteRow(supabase, organizationId, sourceId);
+  if (!src || isSoftDeleted(src)) return { ok: false, error: "That website isn't in this workspace.", rules: [] };
+  const { folderRule } = await import("@/lib/site-urls");
+  const config = { ...(src.config ?? {}) };
+  let rules = readExcludeRules(config["exclude_rules"]);
+  let includeUrls = Array.isArray(config["include_urls"]) ? (config["include_urls"] as unknown[]).map(String) : [];
+  let origin = "";
+  try {
+    origin = new URL(String(config["url"] ?? "")).origin;
+  } catch {
+    return { ok: false, error: "This website has no address yet.", rules };
+  }
+  const page = (raw: string) => normalizeUrl(raw, origin, origin, config["keep_query"] === true);
+
+  let added: ExcludeRule | null = null;
+  let reopened: (url: string) => boolean = () => false;
+  if ("exclude" in change) {
+    added = readExcludeRules([change.exclude])[0] ?? null;
+    if (!added) return { ok: false, error: "Write what to leave out first.", rules };
+  } else if ("exclude_url" in change) {
+    const url = page(change.exclude_url);
+    if (!url) return { ok: false, error: `That page isn't on ${new URL(origin).hostname}.`, rules };
+    added = change.folder ? folderRule(url) : { op: "exact", value: new URL(url).pathname + new URL(url).search };
+    if (!added) return { ok: false, error: "That page isn't inside a folder.", rules };
+    includeUrls = includeUrls.filter((u) => u !== url);
+  } else if ("include_url" in change) {
+    const url = page(change.include_url);
+    if (!url) return { ok: false, error: `That page isn't on ${new URL(origin).hostname}.`, rules };
+    // Its own exact rule goes; under a broader rule it is let back in by hand.
+    rules = rules.filter((r) => !(r.op === "exact" && isExcluded(url, [r])));
+    if (isExcluded(url, rules)) includeUrls = Array.from(new Set([...includeUrls, url]));
+    reopened = (u) => u === url;
+  } else {
+    const target = readExcludeRules([change.remove_rule])[0];
+    if (!target) return { ok: false, error: "Which rule?", rules };
+    rules = rules.filter((r) => !(r.op === target.op && r.value === target.value));
+    reopened = (u) => isExcluded(u, [target]) && !isExcluded(u, rules, includeUrls);
+  }
+  if (added && !rules.some((r) => r.op === added!.op && r.value === added!.value)) rules = [...rules, added];
+
+  await supabase
+    .from("knowledge_sources")
+    .update({ config: { ...config, exclude_rules: rules, include_urls: includeUrls } })
+    .eq("id", sourceId);
+
+  let forgotten: { pages: number; products: number } | undefined;
+  if (added) {
+    const rule = added;
+    forgotten = await forgetExcluded(supabase, organizationId, sourceId, (u) => isExcluded(u, [rule], includeUrls));
+  }
+  // Let back in: those addresses wait for the next read.
+  let waiting = 0;
+  const { data: rows } = await supabase.from("knowledge_urls").select("url").eq("source_id", sourceId).limit(20000);
+  const back = ((rows ?? []) as Array<{ url: string }>).map((r) => r.url).filter(reopened);
+  for (let i = 0; i < back.length; i += 200) {
+    await supabase.from("knowledge_urls").update({ status: "unread" }).eq("source_id", sourceId).in("url", back.slice(i, i + 200));
+    waiting += Math.min(200, back.length - i);
+  }
+  return { ok: true, rules, ...(forgotten ? { forgotten } : {}), waiting };
+}
+
+/**
+ * "Change website address": the same source reads a new address (its pages,
+ * products and history stay; the swap rule decides what the new read
+ * replaces). Products under the old address are hidden once the new full
+ * read is in, as with a redirect.
+ */
+export async function changeWebsiteAddress(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceId: string,
+  url: string,
+): Promise<{ ok: boolean; error?: string; url?: string }> {
+  const src = await websiteRow(supabase, organizationId, sourceId);
+  if (!src || isSoftDeleted(src)) return { ok: false, error: "That website isn't in this workspace." };
+  if (src.status === "syncing") return { ok: false, error: "I'm reading this site right now — try again in a minute." };
+  let next: URL;
+  try {
+    next = new URL(url.trim());
+  } catch {
+    return { ok: false, error: "That isn't a full web address." };
+  }
+  if (!/^https?:$/.test(next.protocol) || urlBlocked(next.toString())) return { ok: false, error: "This address can't be read." };
+  if (listingLabel(next.toString())) return { ok: false, error: "That's a marketplace or social page — add it as its own link instead." };
+  next.hash = "";
+  const config = { ...(src.config ?? {}) };
+  let previous: string[] = Array.isArray(config["previous_origins"]) ? (config["previous_origins"] as string[]) : [];
+  try {
+    const old = new URL(String(config["url"] ?? "")).origin;
+    if (old !== next.origin) previous = Array.from(new Set([...previous, old]));
+  } catch {
+    // no old address to remember
+  }
+  for (const k of ["platform", "resume", "refresh", "refresh_started_at", "full_read_started_at", "run_limit", "robots_disallow", "prev_snapshot", "swap_blocked"]) delete config[k];
+  await supabase
+    .from("knowledge_sources")
+    .update({
+      name: next.hostname,
+      config: { ...config, url: next.toString(), previous_origins: previous, pages_done: 0, paid_pages: 0 },
+      status: "pending",
+      queued_at: new Date().toISOString(),
+      sync_started_at: null,
+      last_error: null,
+    })
+    .eq("id", sourceId);
+  return { ok: true, url: next.toString() };
+}
+
+// ------------------------------------------------------- admin: reading
+
+/**
+ * Super admin, one workspace: read every website again from scratch, now.
+ * Skips the trial gate (full mode on any plan) and the "Re-read whole site"
+ * cooldown. The plan's paid-page limit still applies unless ignorePaidCaps;
+ * the platform's monthly Tavily/Firecrawl credit caps always do.
+ */
+export async function forceFullRead(
+  supabase: SupabaseClient,
+  organizationId: string,
+  options: { sourceId?: string | null; ignorePaidCaps?: boolean; userId?: string | null } = {},
+): Promise<{ queued: number; skipped: number }> {
+  let query = supabase
+    .from("knowledge_sources")
+    .select("id, organization_id, type, name, status, config")
+    .eq("organization_id", organizationId)
+    .eq("type", "website");
+  if (options.sourceId) query = query.eq("id", options.sourceId);
+  const { data } = await query;
+  let queued = 0;
+  let skipped = 0;
+  for (const src of (data ?? []) as WebsiteRow[]) {
+    if (isSoftDeleted(src) || src.status === "syncing" || src.config?.["single_page"] === true) {
+      skipped += 1;
+      continue;
+    }
+    const config = { ...(src.config ?? {}) };
+    for (const k of ["refresh_started_at", "full_read_started_at", "run_limit", "prev_snapshot", "changed_only", "paid_capped"]) delete config[k];
+    await supabase
+      .from("knowledge_sources")
+      .update({
+        config: { ...config, mode: "full", resume: false, refresh: false, pages_done: 0, paid_pages: 0, force_paid: options.ignorePaidCaps === true },
+        status: "pending",
+        queued_at: new Date().toISOString(),
+        sync_started_at: null,
+        last_error: null,
+      })
+      .eq("id", src.id);
+    queued += 1;
+  }
+  await logServerActivity(supabase, organizationId, options.userId ?? null, "reading_force_full", {
+    source_id: options.sourceId ?? null,
+    ignore_paid_caps: options.ignorePaidCaps === true,
+    queued,
+    skipped,
+  }).catch(() => undefined);
+  return { queued, skipped };
+}
+
+const READ_LOG_ACTIONS = ["reading_run", "reading_host_changed", "reading_swap_blocked", "reading_site_changed", "reading_force_full"];
+
+/** Super admin: one workspace's website sources and their read log (runs, pages, engines, cost, errors). */
+export async function readingLog(
+  supabase: SupabaseClient,
+  organizationId: string,
+  limit = 200,
+): Promise<{
+  sources: Array<Record<string, unknown>>;
+  log: Array<{ source_id: string | null; action: string; at: string; details: Record<string, unknown> }>;
+}> {
+  const [{ data: sources }, { data: rows }] = await Promise.all([
+    supabase
+      .from("knowledge_sources")
+      .select("id, name, status, pages_seen, item_count, products_found, last_synced_at, last_full_read_at, last_error, config")
+      .eq("organization_id", organizationId)
+      .eq("type", "website")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("activity_log")
+      .select("action, details, created_at")
+      .eq("organization_id", organizationId)
+      .in("action", READ_LOG_ACTIONS)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+  ]);
+  const log = ((rows ?? []) as Array<{ action: string; details: Record<string, unknown> | null; created_at: string }>).map((r) => ({
+    source_id: typeof r.details?.["source_id"] === "string" ? String(r.details["source_id"]) : null,
+    action: r.action,
+    at: r.created_at,
+    details: r.details ?? {},
+  }));
+  // Read cost per source over its logged runs: reader + facts + embeddings
+  // (runs logged before the split carry only their total).
+  const readCost = (sourceId: unknown) => {
+    const sum = { total: 0, reader: 0, facts: 0, embeddings: 0, runs: 0 };
+    for (const r of log) {
+      if (r.action !== "reading_run" || r.source_id !== sourceId) continue;
+      sum.runs += 1;
+      sum.total += Number(r.details["cost"] ?? 0);
+      sum.reader += Number(r.details["reader_cost"] ?? 0);
+      sum.facts += Number(r.details["facts_cost"] ?? 0);
+      sum.embeddings += Number(r.details["embed_cost"] ?? 0);
+    }
+    const round = (n: number) => Math.round(n * 100) / 100;
+    return { total: round(sum.total), reader: round(sum.reader), facts: round(sum.facts), embeddings: round(sum.embeddings), runs: sum.runs };
+  };
+  return {
+    sources: ((sources ?? []) as Array<Record<string, unknown>>).map((s) => {
+      const config = (s["config"] ?? {}) as Record<string, unknown>;
+      return {
+        id: s["id"],
+        name: s["name"],
+        status: s["status"],
+        url: config["url"] ?? null,
+        mode: config["mode"] ?? null,
+        discovery: config["discovery"] ?? "crawl",
+        pages_seen: s["pages_seen"],
+        item_count: s["item_count"],
+        products_found: s["products_found"],
+        paid_pages: config["paid_pages"] ?? 0,
+        resume: config["resume"] === true,
+        deleted: isSoftDeleted({ status: String(s["status"] ?? ""), config }),
+        swap_blocked: config["swap_blocked"] ?? null,
+        last_synced_at: s["last_synced_at"],
+        last_full_read_at: s["last_full_read_at"],
+        last_error: s["last_error"],
+        read_cost: readCost(s["id"]),
+      };
+    }),
+    log,
+  };
 }

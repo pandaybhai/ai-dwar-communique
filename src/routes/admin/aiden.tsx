@@ -12,8 +12,10 @@ import { callApi } from "@/lib/whatsapp-client";
 import { PromptBlocksEditor } from "@/components/admin/prompt-blocks-editor";
 import { SCRIPT_KEYS } from "@/lib/scripts";
 import { AidenTestPanel } from "@/components/admin/aiden-test";
+import { RecentAnswersPanel } from "@/components/admin/aiden-runs";
 import { ReadingSettingsPanel } from "@/components/admin/reading-settings";
 import { ShopifyCustomAppPanel } from "@/components/admin/shopify-custom-app";
+import { WorkspaceReadingPanel } from "@/components/admin/workspace-reading";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import type { InstructionVersion } from "@/lib/employee-client";
 
@@ -230,6 +232,7 @@ function WorkspaceBehaviour({ org, onChanged }: { org: Org; onChanged: () => voi
       <div className="space-y-3">
         <EmptyState icon={Building2} title={`${org.name} has no AI employee yet`} description="It's created when the workspace finishes onboarding." />
         <ShopifyCustomAppPanel organizationId={org.id} />
+        <WorkspaceReadingPanel organizationId={org.id} />
       </div>
     );
 
@@ -264,7 +267,9 @@ function WorkspaceBehaviour({ org, onChanged }: { org: Org; onChanged: () => voi
           return { error: err };
         }}
       />
+      <RecentAnswersPanel organizationId={org.id} />
       <ShopifyCustomAppPanel organizationId={org.id} />
+      <WorkspaceReadingPanel organizationId={org.id} />
     </div>
   );
 }

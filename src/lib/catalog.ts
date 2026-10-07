@@ -8,6 +8,13 @@
 
 import { toCsv } from "@/lib/csv";
 
+/**
+ * PostgREST filter for the merchant's catalogue list and counts: leaves out
+ * archived duplicates (status 'archived' and hidden, Batch 21). A visible
+ * Shopify product whose own status is 'archived' still shows, as before.
+ */
+export const NOT_ARCHIVED_DUPLICATE = "status.is.null,status.neq.archived,is_visible.eq.true";
+
 export type ProductSource = "shopify" | "manual" | "import";
 export type Availability = "in_stock" | "out_of_stock" | "preorder";
 
@@ -272,6 +279,28 @@ export function toTsQuery(input: string): string {
     .filter(Boolean)
     .slice(0, 6);
   return terms.map((t) => `${t}:*`).join(" & ");
+}
+
+/**
+ * A flows "Show products" keyword as a full-text query: each comma (or "or")
+ * separated choice must have all its words, any choice may match —
+ * "Ruby, Pearl" → "(ruby:*) | (pearl:*)". "" when there is nothing to search.
+ */
+export function keywordTsQuery(input: string): string {
+  const choices = input
+    .toLowerCase()
+    .split(/,|\/|\bor\b|\|/)
+    .map((c) =>
+      c
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean)
+        .slice(0, 6)
+        .map((t) => `${t}:*`)
+        .join(" & "),
+    )
+    .filter(Boolean)
+    .slice(0, 10);
+  return choices.map((c) => `(${c})`).join(" | ");
 }
 
 // ------------------------------------------------------------------ import

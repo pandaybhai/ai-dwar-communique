@@ -1,14 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RunMedia } from "@/lib/ai-run.server";
+import type { ReplyTimer } from "@/lib/reply-timing";
 
 /**
- * Product pictures in a customer chat: one image per product with its name
- * and price as the caption (and the product's link, when asked for). Shared by
- * Aiden's catalogue answers and the flows "Show products" step, so a product
- * looks the same however the customer reached it.
+ * Product pictures in a customer chat: one image per product. The flows
+ * "Show products" step captions each with its name and price (and link, when
+ * asked for); Aiden sends the caption the model wrote (send_products). One
+ * sender, so a product picture goes out the same way however it was chosen.
  */
 
-export type PictureItem = Pick<RunMedia, "title" | "imageUrl" | "price" | "currency" | "productUrl">;
+export type PictureItem = Pick<RunMedia, "title" | "imageUrl" | "price" | "currency" | "productUrl"> & {
+  /** The caption Aiden wrote for this product (send_products); absent: name and price, as always. */
+  caption?: string;
+  /** Stored on this picture's message row, over the call's own metadata. */
+  metadata?: Record<string, unknown>;
+};
 
 /** "₹19,604", or "" when the product has no price. */
 export function productPrice(item: Pick<RunMedia, "price" | "currency">): string {
@@ -18,6 +24,15 @@ export function productPrice(item: Pick<RunMedia, "price" | "currency">): string
     currency: item.currency || "INR",
     maximumFractionDigits: 0,
   }).format(item.price);
+}
+
+/**
+ * The values a product's branded card is drawn from. One place, so a card
+ * drawn ahead of time (Aiden's prewarm) is the very card the send reuses
+ * (same cacheKey in customer-cards.server.ts).
+ */
+export function productCardVars(item: PictureItem): Record<string, string> {
+  return { name: item.title, price: productPrice(item), image_url: item.imageUrl, one_liner: "" };
 }
 
 /** "Name — ₹19,604", plus the product's link on its own line when withLink. */
@@ -32,6 +47,9 @@ export function productCaption(item: PictureItem, withLink = false): string {
  * out as a card; any card failure falls back to the plain picture. Returns how
  * many went out.
  */
+/** How long a product's branded card may take before its plain photo goes instead (Batch 16). */
+export const CARD_WAIT_MS = 1000;
+
 export async function sendProductPictures(
   supabase: SupabaseClient,
   args: {
@@ -47,14 +65,19 @@ export async function sendProductPictures(
     /** The caller read the 24-hour window in this request. */
     windowOpen?: boolean;
     metadata?: Record<string, unknown>;
+    /** The webhook's reply timer (Aiden's sends); left out, nothing is timed. */
+    timer?: ReplyTimer;
     onFailure?: (error: string | null) => void;
+    /** Keeps a card still drawing after its ~1 s wait alive past the reply (the webhook's later()). */
+    background?: (work: Promise<unknown>) => void;
   },
 ): Promise<number> {
   const { sendServiceImage } = await import("@/lib/service-text.server");
   let sent = 0;
   let cardSent = false;
   for (const item of args.items) {
-    const caption = productCaption(item, args.withLink);
+    const caption = typeof item.caption === "string" ? item.caption : productCaption(item, args.withLink);
+    const metadata = item.metadata ? { ...(args.metadata ?? {}), ...item.metadata } : args.metadata;
     if (args.cards && !cardSent) {
       try {
         const { sendCardToContact } = await import("@/lib/customer-cards.server");
@@ -64,8 +87,15 @@ export async function sendProductPictures(
           phone: args.to,
           sender: { phoneNumberId: args.phoneNumberId, accessToken: args.accessToken },
           kind: "customer_product",
-          vars: { name: item.title, price: productPrice(item), image_url: item.imageUrl, one_liner: "" },
+          vars: productCardVars(item),
           caption,
+          ...(item.metadata ? { metadata } : {}),
+          ...(args.timer ? { timer: args.timer } : {}),
+          // Batch 16: a card not ready within ~1 s never holds the reply —
+          // the plain photo goes with the same caption (below) and the card
+          // is drawn in the background for next time.
+          waitMs: CARD_WAIT_MS,
+          ...(args.background ? { background: args.background } : {}),
         });
         if (card.sent) {
           cardSent = true;
@@ -85,7 +115,8 @@ export async function sendProductPictures(
       imageUrl: item.imageUrl,
       caption,
       ...(args.windowOpen ? { windowOpen: true } : {}),
-      ...(args.metadata ? { metadata: args.metadata } : {}),
+      ...(metadata ? { metadata } : {}),
+      ...(args.timer ? { timer: args.timer } : {}),
     });
     if (picture.ok) sent += 1;
     else args.onFailure?.(picture.error);

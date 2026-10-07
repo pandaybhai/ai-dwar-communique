@@ -48,7 +48,7 @@ export const NODE_META: Record<NodeType, NodeMeta> = {
   wait_until: { label: "Wait until", group: "Logic", icon: CalendarCheck, defaults: () => ({ mode: "date", date: "", field: "" }) },
   order_draft: { label: "Create order draft", group: "Actions", icon: ClipboardList, defaults: () => ({ items: "{{last_answer}}", total: "", notes: "", needs_you: true }) },
   send_card: { label: "Send card", hint: "A branded picture card — offer, product, order update, receipt or appointment.", group: "Messages", icon: IdCard, defaults: () => ({ kind: "customer_offer", vars: {}, caption: "", fallback_text: "" }) },
-  show_products: { label: "Show products", hint: "Sends matching products as photos with price and link. Works for every business.", group: "Messages", icon: ShoppingBag, defaults: () => ({ category: "", budget: "", min_price: "", max_price: "", max_items: 5 }) },
+  show_products: { label: "Show products", hint: "Sends matching products as photos with price and link. Works for every business.", group: "Messages", icon: ShoppingBag, defaults: () => ({ category: "", budget: "", min_price: "", max_price: "", max_items: 5, photos_first: true, readable_names: true }) },
 };
 
 export const AI_ICON = Bot;
@@ -95,7 +95,7 @@ export function summary(node: FlowNode): string {
     case "tag": return `${d["action"] === "remove" ? "Remove" : "Add"} "${String(d["tag"] ?? "")}"`;
     case "set_field": return `${String(d["field"] ?? "")} = ${String(d["value"] ?? "")}`;
     case "needs_you": return String(d["note"] ?? "");
-    case "assign": return d["mode"] === "round_robin" ? "Round-robin across the team" : d["user_id"] ? "To a teammate" : "To the team queue";
+    case "assign": return d["mode"] === "aiden" ? "Hand to Aiden (ends the flow)" : d["mode"] === "round_robin" ? "Round-robin across the team" : d["user_id"] ? "To a teammate" : "To the team queue";
     case "cta_url": return `${String(d["text"] ?? "")}\n[${String(d["button_text"] ?? "")}] ${String(d["url"] ?? "")}`;
     case "location_request": return String(d["text"] ?? "");
     case "location_send": return String(d["name"] || d["address"] || `${d["latitude"]}, ${d["longitude"]}`);
@@ -121,7 +121,9 @@ export function summary(node: FlowNode): string {
     }
     case "show_products": {
       const price = [d["min_price"] ? `from ₹${String(d["min_price"])}` : "", d["max_price"] ? `up to ₹${String(d["max_price"])}` : ""].filter(Boolean).join(" ");
-      return `Up to ${Number(d["max_items"] ?? 5)} ${String(d["category"] ?? "") || "products"}${String(d["budget"] ?? "") ? ` · ${String(d["budget"])}` : ""}${price ? ` · ${price}` : ""}`;
+      const keyword = String(d["keyword"] ?? "").trim();
+      const order = d["sort"] === "spread" ? " · spread across budget" : d["sort"] === "newest" ? " · newest" : "";
+      return `Up to ${Number(d["max_items"] ?? 5)} ${String(d["category"] ?? "") || "products"}${keyword ? ` · "${keyword}"` : ""}${String(d["budget"] ?? "") ? ` · ${String(d["budget"])}` : ""}${price ? ` · ${price}` : ""}${order}`;
     }
     default: return "";
   }

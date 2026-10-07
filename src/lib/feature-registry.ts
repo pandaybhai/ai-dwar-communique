@@ -624,6 +624,15 @@ export const FEATURES: readonly FeatureManifest[] = [
       "reading_forget_skipped",
       "knowledge_read_changes",
       "knowledge_read_more",
+      "knowledge_page_reread",
+      "knowledge_source_restored",
+      "reading_host_changed",
+      "reading_run",
+      "reading_swap_blocked",
+      "reading_site_changed",
+      "reading_force_full",
+      "knowledge_links_changed",
+      "knowledge_address_changed",
       "reading_settings_updated",
       "aiden_admin_test",
       "shopify_custom_app_added",
@@ -632,6 +641,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "ai_prompt_block_updated",
       "super_admin_granted",
       "super_admin_revoked",
+      "test_email_sent",
 
     ],
     settings_path: "/app/settings",
@@ -729,6 +739,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "ai_backup_tested",
       // Platform-level: a super admin chose the Anthropic backup model.
       "ai_backup_model_set",
+      // Super Admin → AI: how long Aiden waits for a second text (Batch 15A).
+      "ai_burst_wait_set",
     ],
     settings_path: "/app/employee",
     usage_meters: [
@@ -1122,7 +1134,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       {
         name: "catalog_search",
         description:
-          "Use this whenever a customer wants to see, browse, or choose products (any wording, any language, e.g. 'gents ring under 50k dikhao', 'pendant 30k ke andar', 'show me earrings'). Put the product type in `category` (rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya, mangalsutra), the budget in `max_price` as a number in INR (50k -> 50000, 1 lakh -> 100000), gender in `gender` (male/female) if said, and use `query` ONLY for a specific product name or SKU. Never put the whole sentence in `query`.",
+          "Use this whenever a customer wants to see, browse, or choose products (any wording, any language, e.g. 'gents ring under 50k dikhao', 'pendant 30k ke andar', 'show me earrings'). Put the product type in `category` (rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya, mangalsutra), the budget in `max_price` as a number in INR (50k -> 50000, 1 lakh -> 100000), and use `query` ONLY for a specific product name or SKU. Never put the whole sentence in `query`. Set `gender` and `availability` ONLY when the customer explicitly asks for them ('gents', 'for him', 'ladies', 'for her', 'in stock') — never guess them from the product type or the customer; leave them out otherwise.",
         parameters: {
           type: "object",
           properties: {
@@ -1134,14 +1146,19 @@ export const FEATURES: readonly FeatureManifest[] = [
             max_price: { type: "number", description: "Only return products at or below this price, in INR." },
             availability: {
               type: "string",
-              description: "Filter by availability: in_stock, out_of_stock or preorder.",
+              description:
+                "Only when the customer explicitly asks (e.g. 'in stock', 'ready to ship'): in_stock, out_of_stock or preorder. Leave out otherwise.",
             },
             category: {
               type: "string",
               description:
                 "The product type: rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya.",
             },
-            gender: { type: "string", description: "male or female, when the customer says so." },
+            gender: {
+              type: "string",
+              description:
+                "male or female — only when the customer explicitly says so ('gents', 'for him', 'ladies', 'for her'). Never guess it (earrings are not 'female'). Leave out otherwise.",
+            },
             limit: { type: "number", description: "How many products to return, default 10, max 25." },
           },
           required: [],
@@ -1152,6 +1169,40 @@ export const FEATURES: readonly FeatureManifest[] = [
         access: "read",
         requires_confirmation: false,
         handler: "catalogSearch",
+      },
+      {
+        name: "send_products",
+        description:
+          "Send product pictures to the customer. Nothing is attached automatically: a product reaches the customer only when you send it here. Give each product's product_id (from catalog_search) and the caption you want under its picture, written the way this business's instructions ask (for example name, price and link). Each product goes out as its own picture (or as a text message when it has no photo), in the order you list them. Text you write in the same turn as this call is sent before the pictures; your final reply is sent after them. Prices and links in a caption must be the product's own, exactly as catalog_search gave them.",
+        parameters: {
+          type: "object",
+          properties: {
+            products: {
+              type: "array",
+              description: "The products to send, in the order the customer should see them (at most 5).",
+              items: {
+                type: "object",
+                properties: {
+                  product_id: { type: "string", description: "The product_id from catalog_search." },
+                  caption: { type: "string", description: "The caption under this product's picture, in your words." },
+                },
+                required: ["product_id", "caption"],
+                additionalProperties: false,
+              },
+            },
+            closing: {
+              type: "string",
+              description:
+                "Optional: your final reply, sent after the pictures. Give it when nothing else is needed after these products — then this call is your whole reply and you are not asked again.",
+            },
+          },
+          required: ["products"],
+          additionalProperties: false,
+        },
+        required_permission: "catalog.view",
+        access: "read",
+        requires_confirmation: false,
+        handler: "sendProducts",
       },
     ],
     data_tables: ["products", "product_collections", "product_collection_items", "catalog_imports"],

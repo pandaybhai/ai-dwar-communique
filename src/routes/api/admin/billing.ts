@@ -453,7 +453,10 @@ export const Route = createFileRoute("/api/admin/billing")({
 
             case "create_billing_templates": {
               const { ensureBillingTemplates } = await import("@/lib/billing-notify.server");
-              return Response.json(await ensureBillingTemplates(supabase, actorId));
+              const names = Array.isArray(payload["names"])
+                ? (payload["names"] as unknown[]).map(String)
+                : null;
+              return Response.json(await ensureBillingTemplates(supabase, actorId, { names }));
             }
 
             default:

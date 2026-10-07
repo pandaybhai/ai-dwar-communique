@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -53,7 +54,7 @@ export async function createPaymentLink(
   const auth = Buffer.from(`${keys.keyId}:${keys.keySecret}`).toString("base64");
   let res: Response;
   try {
-    res = await fetch("https://api.razorpay.com/v1/payment_links", {
+    res = await outsideFetch("razorpay", "https://api.razorpay.com/v1/payment_links", {
       method: "POST",
       headers: { Authorization: `Basic ${auth}`, "content-type": "application/json" },
       body: JSON.stringify({
@@ -122,7 +123,7 @@ async function rzp(
   const auth = Buffer.from(`${keys.keyId}:${keys.keySecret}`).toString("base64");
   let res: Response;
   try {
-    res = await fetch(`https://api.razorpay.com/v1${path}`, {
+    res = await outsideFetch("razorpay", `https://api.razorpay.com/v1${path}`, {
       method: init.method ?? "GET",
       headers: { Authorization: `Basic ${auth}`, "content-type": "application/json" },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),

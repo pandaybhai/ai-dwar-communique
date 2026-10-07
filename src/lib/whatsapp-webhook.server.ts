@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { detectLanguage } from "@/lib/languages";
 import { readCodIntent } from "@/lib/cod";
@@ -25,6 +26,7 @@ import {
 } from "@/lib/automations.server";
 import type { AutomationRow } from "@/lib/automations";
 import { emitEvent } from "@/lib/events.server";
+import { parseCampaignCallbackData } from "@/lib/campaign-callback";
 
 /** Service-role client for the AiDwar (Mumbai) backend. Server-only. */
 export function getServiceClient(): SupabaseClient {
@@ -34,8 +36,41 @@ export function getServiceClient(): SupabaseClient {
   });
 }
 
-/** How long a second text can arrive and still count as the same question. */
-const BURST_WINDOW_MS = 5000;
+/**
+ * How long a second text can arrive and still count as the same question,
+ * unless the platform sets platform_settings.ai_burst_wait_ms (Super Admin →
+ * AI). Was 5 s; two quick texts may now get two replies — a reply ~4 s
+ * sooner matters more (Vinay, 7 Oct).
+ */
+export const DEFAULT_BURST_WINDOW_MS = 1000;
+/** The setting's allowed range (the database check matches). */
+export const MAX_BURST_WINDOW_MS = 10_000;
+
+let burstSetting: { value: number; at: number } | null = null;
+
+/**
+ * The platform's burst window, read at most once a minute per worker. A
+ * missing column (migration 20261020 not applied), a missing row or a failed
+ * read all mean the default — the setting can never stop a reply.
+ */
+export async function burstWindowMs(supabase: SupabaseClient, now = Date.now()): Promise<number> {
+  if (burstSetting && now - burstSetting.at < 60_000) return burstSetting.value;
+  let value = DEFAULT_BURST_WINDOW_MS;
+  try {
+    const { data, error } = await supabase.from("platform_settings").select("ai_burst_wait_ms").eq("id", true).maybeSingle();
+    const raw = error ? null : (data as { ai_burst_wait_ms?: unknown } | null)?.ai_burst_wait_ms;
+    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= MAX_BURST_WINDOW_MS) value = Math.round(raw);
+  } catch {
+    // the default
+  }
+  burstSetting = { value, at: now };
+  return value;
+}
+
+/** Drop the cached window after an admin save so the change is live at once in this worker. */
+export function resetBurstWindowCache(): void {
+  burstSetting = null;
+}
 
 /**
  * People type in bursts — a half-sentence, then the whole one. Wait out the
@@ -57,8 +92,11 @@ export async function coalesceBurst(
     storedAt?: number;
     /** Called the moment the wait is over, before the burst is read (the caller's own reads start then). */
     afterWait?: () => void;
+    /** The window (burstWindowMs); left out, the default. */
+    windowMs?: number;
   },
 ): Promise<{ proceed: boolean; body: string | null }> {
+  const windowMs = args.windowMs ?? DEFAULT_BURST_WINDOW_MS;
   const text = (args.body ?? "").trim();
   if (!text || !args.messageId) {
     args.afterWait?.();
@@ -66,12 +104,12 @@ export async function coalesceBurst(
   }
 
   const elapsed = args.storedAt ? Math.max(0, Date.now() - args.storedAt) : 0;
-  const wait = BURST_WINDOW_MS - elapsed;
+  const wait = windowMs - elapsed;
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
   args.afterWait?.();
 
   const windowStart = new Date(
-    new Date(args.occurredAt).getTime() - BURST_WINDOW_MS,
+    new Date(args.occurredAt).getTime() - windowMs,
   ).toISOString();
   const { data } = await supabase
     .from("messages")
@@ -94,6 +132,34 @@ export async function coalesceBurst(
     .map((r) => (r.body ?? "").trim())
     .filter((t) => t && !text.toLowerCase().includes(t.toLowerCase()));
   return { proceed: true, body: [...earlier, text].join("\n") };
+}
+
+/**
+ * Marks a customer's message read and shows the typing dots (WhatsApp Cloud
+ * API; they last until our reply arrives or ~25 s). Fire-and-forget: it never
+ * delays or blocks a reply, and a failure is silent.
+ */
+export function showTyping(
+  connection: Promise<{ accessToken?: string | null } | null>,
+  phoneNumberId: string,
+  messageId: string,
+): void {
+  if (!messageId) return;
+  void connection
+    .then((c) => {
+      if (!c?.accessToken) return;
+      return outsideFetch("meta", `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${c.accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          status: "read",
+          message_id: messageId,
+          typing_indicator: { type: "text" },
+        }),
+      });
+    })
+    .catch(() => {});
 }
 
 /** Timing-safe hex compare. */
@@ -164,6 +230,8 @@ export async function acceptWebhook(
   },
 ): Promise<Response> {
   const started = Date.now();
+  // An unsigned body is never stored or processed (live: every Meta event is signed).
+  if (!args.signatureValid) return new Response("Invalid signature", { status: 401 });
   let payload: AnyRecord;
   try {
     payload = JSON.parse(args.rawBody) as AnyRecord;
@@ -180,6 +248,11 @@ export async function acceptWebhook(
     .select("id, received_at")
     .single();
   const storeMs = Date.now() - started;
+  // Not stored = not ours yet: Meta retries a non-2xx, so nothing is lost.
+  if (!event) {
+    console.error(JSON.stringify({ scope: "webhook_ack", event_id: null, stored: false }));
+    return new Response("Not stored", { status: 500 });
+  }
 
   let background = false;
   if (args.signatureValid && event) {
@@ -219,64 +292,115 @@ const STATUS_RANK: Record<string, number> = {
   read: 3,
 };
 
-const RECIPIENT_RANK: Record<string, number> = {
-  queued: 0,
-  sending: 1,
-  sent: 2,
-  delivered: 3,
-  read: 4,
+const REPLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Recipient statuses a status webhook may move on from, per incoming status. */
+const RECIPIENT_BELOW: Record<string, string[]> = {
+  sent: ["queued", "sending", "skipped"],
+  delivered: ["queued", "sending", "sent", "skipped"],
+  read: ["queued", "sending", "sent", "skipped"],
 };
 
-const REPLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// Set once the database says campaign_recipient_status() isn't there yet
+// (migration 20261016_send_at_scale.sql not applied); looked for again
+// every 10 minutes so applying it needs no deploy.
+let recipientRpcMissingUntil = 0;
+
+function missingFunction(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  return code === "PGRST202" || code === "42883";
+}
 
 /**
  * Mirrors a message status onto its campaign recipient (monotonic) and bumps
- * the campaign's delivered/read counters exactly once per transition.
+ * the campaign's delivered/read/failed counters exactly once per transition.
+ * Every move is a conditional update ("only if it isn't there yet"), so two
+ * copies of the same webhook processed together can't both count it. The
+ * recipient is found by id when Meta echoed our callback data (it may not
+ * have its message id yet — the sender writes in batches), else by message.
  */
 async function applyCampaignStatus(
   supabase: SupabaseClient,
   messageId: string,
   nextStatus: string,
   errorDetail: string | null,
+  recipientId: string | null = null,
 ): Promise<void> {
-  const { data: recipient } = await supabase
-    .from("campaign_recipients")
-    .select("id, campaign_id, status")
-    .eq("message_id", messageId)
-    .maybeSingle();
-  if (!recipient) return;
+  if (Date.now() >= recipientRpcMissingUntil) {
+    const { error } = await supabase.rpc("campaign_recipient_status", {
+      p_message_id: messageId,
+      p_recipient_id: recipientId,
+      p_status: nextStatus,
+      p_error: errorDetail,
+    });
+    if (!error) return;
+    if (!missingFunction(error)) throw new Error(error.message);
+    recipientRpcMissingUntil = Date.now() + 10 * 60_000;
+  }
+
+  const target = () => {
+    const q = supabase.from("campaign_recipients");
+    return {
+      update: (patch: Record<string, unknown>) => {
+        const u = q.update(recipientId ? { ...patch, message_id: messageId } : patch);
+        return recipientId ? u.eq("id", recipientId) : u.eq("message_id", messageId);
+      },
+    };
+  };
+  const bump = (campaignId: string, counts: Record<string, number>) =>
+    supabase.rpc("bump_campaign_counters", { p_campaign_id: campaignId, ...counts });
 
   if (nextStatus === "failed") {
-    if (recipient.status === "failed") return;
-    await supabase
-      .from("campaign_recipients")
+    const { data } = await target()
       .update({ status: "failed", error: (errorDetail ?? "Delivery failed").slice(0, 300) })
-      .eq("id", recipient.id);
-    await supabase.rpc("bump_campaign_counters", {
-      p_campaign_id: recipient.campaign_id,
-      p_failed: 1,
-    });
+      .neq("status", "failed")
+      .select("campaign_id");
+    const row = (data as Array<{ campaign_id: string }> | null)?.[0];
+    if (row) await bump(row.campaign_id, { p_failed: 1 });
     return;
   }
 
-  const current = RECIPIENT_RANK[String(recipient.status)] ?? -1;
-  const incoming = RECIPIENT_RANK[nextStatus];
-  if (incoming === undefined || incoming <= current) return;
-
-  await supabase
-    .from("campaign_recipients")
-    .update({ status: nextStatus })
-    .eq("id", recipient.id);
-
-  await supabase.rpc("bump_campaign_counters", {
-
-    p_campaign_id: recipient.campaign_id,
-    ...(nextStatus === "delivered" ? { p_delivered: 1 } : {}),
-    ...(nextStatus === "read"
-      ? { p_read: 1, ...(current < RECIPIENT_RANK["delivered"]! ? { p_delivered: 1 } : {}) }
-      : {}),
-  });
+  const below = RECIPIENT_BELOW[nextStatus];
+  if (!below) return;
+  const { data } = await target().update({ status: nextStatus }).in("status", below).select("campaign_id");
+  const row = (data as Array<{ campaign_id: string }> | null)?.[0];
+  if (row) {
+    if (nextStatus === "delivered") await bump(row.campaign_id, { p_delivered: 1 });
+    // Read without a delivered first: it was delivered too.
+    if (nextStatus === "read") await bump(row.campaign_id, { p_read: 1, p_delivered: 1 });
+    return;
+  }
+  if (nextStatus === "read") {
+    const { data: fromDelivered } = await target()
+      .update({ status: "read" })
+      .eq("status", "delivered")
+      .select("campaign_id");
+    const moved = (fromDelivered as Array<{ campaign_id: string }> | null)?.[0];
+    if (moved) await bump(moved.campaign_id, { p_read: 1 });
+  }
 }
+
+/** Messages from before attribution lived on the row (first attributed send: 2026-08-14). */
+const ATTRIBUTION_SINCE = "2026-08-15T00:00:00Z";
+
+const TEMPLATE_CATEGORY_TTL_MS = 5 * 60_000;
+const templateCategoryCache = new Map<string, { at: number; category: string }>();
+
+type StatusRow = {
+  id: string;
+  status?: string | null;
+  type?: string | null;
+  template_name?: string | null;
+  conversation_id?: string | null;
+  campaign_id?: string | null;
+  flow_id?: string | null;
+  flow_step_id?: string | null;
+  scheduled_send_id?: string | null;
+  created_at?: string | null;
+  /** Embedded with the status update, so it isn't read a second time. */
+  conversations?: { contact_id?: string | null; whatsapp_account_id?: string | null } | null;
+};
 
 /**
  * Shared dimensions for message.sent/delivered/read/failed: which campaign or
@@ -284,22 +408,15 @@ async function applyCampaignStatus(
  * category and the marketing/transactional class. Attribution now lives on the
  * messages row itself, so the status callbacks carry exactly the same
  * dimensions the send path emitted. Lookup failures degrade to nulls — capture
- * never blocks the webhook.
+ * never blocks the webhook. The conversation usually comes embedded in the
+ * status update and the template's category from a short cache, so a status
+ * costs no extra reads here.
  */
 async function messageEventDimensions(
   supabase: SupabaseClient,
   organizationId: string,
   wabaId: string | null,
-  message: {
-    id: string;
-    type?: string | null;
-    template_name?: string | null;
-    conversation_id?: string | null;
-    campaign_id?: string | null;
-    flow_id?: string | null;
-    flow_step_id?: string | null;
-    scheduled_send_id?: string | null;
-  },
+  message: StatusRow,
 ): Promise<Record<string, unknown>> {
   const { outboundMessageDimensions } = await import("@/lib/message-events");
   const templateName = message.template_name ?? null;
@@ -313,7 +430,8 @@ async function messageEventDimensions(
 
   try {
     // Older rows predate the attribution columns; fall back to the recipient row.
-    if (!campaignId && !flowId) {
+    const legacy = !message.created_at || message.created_at < ATTRIBUTION_SINCE;
+    if (!campaignId && !flowId && legacy) {
       const { data: recipient } = await supabase
         .from("campaign_recipients")
         .select("campaign_id, contact_id")
@@ -334,7 +452,10 @@ async function messageEventDimensions(
       }
     }
 
-    if (message.conversation_id) {
+    if (message.conversations !== undefined) {
+      contactId = contactId ?? (message.conversations?.contact_id ?? null);
+      accountId = message.conversations?.whatsapp_account_id ?? null;
+    } else if (message.conversation_id) {
       const { data: conv } = await supabase
         .from("conversations")
         .select("contact_id, whatsapp_account_id")
@@ -345,14 +466,21 @@ async function messageEventDimensions(
     }
 
     if (templateName) {
-      let query = supabase
-        .from("message_templates")
-        .select("category")
-        .eq("organization_id", organizationId)
-        .eq("name", templateName);
-      if (wabaId) query = query.eq("waba_id", wabaId);
-      const { data: tpl } = await query.limit(1).maybeSingle();
-      billingCategory = String((tpl as { category?: string } | null)?.category ?? "utility");
+      const key = `${organizationId}:${wabaId ?? ""}:${templateName}`;
+      const hit = templateCategoryCache.get(key);
+      if (hit && Date.now() - hit.at < TEMPLATE_CATEGORY_TTL_MS) {
+        billingCategory = hit.category;
+      } else {
+        let query = supabase
+          .from("message_templates")
+          .select("category")
+          .eq("organization_id", organizationId)
+          .eq("name", templateName);
+        if (wabaId) query = query.eq("waba_id", wabaId);
+        const { data: tpl, error } = await query.limit(1).maybeSingle();
+        billingCategory = String((tpl as { category?: string } | null)?.category ?? "utility");
+        if (!error) templateCategoryCache.set(key, { at: Date.now(), category: billingCategory });
+      }
     }
   } catch {
     // dimensions are best-effort
@@ -374,9 +502,116 @@ async function messageEventDimensions(
   });
 }
 
+const STATUS_ROW_COLUMNS =
+  "id, status, type, template_name, conversation_id, campaign_id, flow_id, flow_step_id, scheduled_send_id, created_at";
+let statusEmbedBrokenUntil = 0;
+
+/**
+ * Moves one message to `nextStatus` in a single conditional update and
+ * returns the row — or null when there is no such message or it is already
+ * there (never downgrades; a failed message stays failed). A failure is
+ * applied whatever the current status, as before.
+ */
+async function applyMessageStatus(
+  supabase: SupabaseClient,
+  organizationId: string,
+  metaId: string,
+  nextStatus: string,
+  patch: Record<string, unknown>,
+): Promise<StatusRow | null> {
+  const run = (columns: string) => {
+    let q = supabase
+      .from("messages")
+      .update(patch)
+      .eq("meta_message_id", metaId)
+      .eq("organization_id", organizationId);
+    if (nextStatus !== "failed") {
+      const rank = STATUS_RANK[nextStatus]!;
+      const notBelow = ["failed", ...Object.keys(STATUS_RANK).filter((k) => STATUS_RANK[k]! >= rank)];
+      // Not .or(): PostgREST re-applies an or=() filter to the rows it
+      // returns, so the updated row (now at the new status) would come back
+      // empty. Outbound messages always carry a status (never NULL).
+      q = q.not("status", "in", `(${notBelow.join(",")})`);
+    }
+    return q.select(columns);
+  };
+  if (Date.now() >= statusEmbedBrokenUntil) {
+    const { data, error } = await run(
+      `${STATUS_ROW_COLUMNS}, conversations(contact_id, whatsapp_account_id)`,
+    );
+    if (!error) return ((data as unknown as StatusRow[] | null) ?? [])[0] ?? null;
+    // A failed statement changed nothing; try once more without the embed.
+    statusEmbedBrokenUntil = Date.now() + 10 * 60_000;
+  }
+  const { data, error } = await run(STATUS_ROW_COLUMNS);
+  if (error) throw new Error(error.message);
+  return ((data as unknown as StatusRow[] | null) ?? [])[0] ?? null;
+}
+
+/**
+ * A status for one of our campaign messages whose row isn't written yet:
+ * the sender writes rows in batches a moment after Meta accepts them. Wait
+ * a little and apply it then. `undefined` = still not there (the event is
+ * left for the retry pass rather than losing the status).
+ */
+async function applyWhenWritten(
+  supabase: SupabaseClient,
+  organizationId: string,
+  metaId: string,
+  nextStatus: string,
+  patch: Record<string, unknown>,
+): Promise<StatusRow | null | undefined> {
+  for (const waitMs of [0, 500, 1500, 3000]) {
+    if (waitMs) await new Promise((r) => setTimeout(r, waitMs));
+    const { data } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("meta_message_id", metaId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (data) return await applyMessageStatus(supabase, organizationId, metaId, nextStatus, patch);
+  }
+  return undefined;
+}
+
+/**
+ * A status the message already has: redo what a failed first try may have
+ * missed. The recipient move is conditional (counted once), and a message
+ * with no price yet is priced (price_message is idempotent and a message is
+ * debited at most once). Costs one read, only on this path.
+ */
+async function retakeStatusSteps(
+  supabase: SupabaseClient,
+  organizationId: string,
+  metaId: string,
+  nextStatus: string,
+  recipientId: string | null,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id, status, cost_amount, campaign_id, flow_id, created_at")
+    .eq("meta_message_id", metaId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const row = data as (StatusRow & { cost_amount?: number | null }) | null;
+  if (!row || (STATUS_RANK[String(row.status)] ?? -1) < STATUS_RANK[nextStatus]!) return;
+  const campaignMessage =
+    Boolean(row.campaign_id || recipientId) ||
+    (!row.flow_id && (!row.created_at || row.created_at < ATTRIBUTION_SINCE));
+  if (campaignMessage) await applyCampaignStatus(supabase, row.id, nextStatus, null, recipientId);
+  if ((nextStatus === "delivered" || nextStatus === "read") && row.cost_amount == null) {
+    const { error: priceError } = await supabase.rpc("price_message", { p_message_id: row.id });
+    if (priceError) throw new Error(`price: ${priceError.message}`);
+  }
+}
+
+/** Bring the campaign's charged total up to the ledger, at most every few seconds per campaign. */
+const CHARGED_SYNC_EVERY_MS = 15_000;
+const chargedSyncedAt = new Map<string, number>();
 
 /** Counts one reply per contact per campaign for campaigns sent in the last 7 days. */
-async function applyCampaignReply(
+export async function applyCampaignReply(
   supabase: SupabaseClient,
   organizationId: string,
   contactId: string,
@@ -394,10 +629,16 @@ async function applyCampaignReply(
 
   for (const r of (recipients ?? []) as Array<Record<string, unknown>>) {
     if (r["replied_at"]) continue;
-    await supabase
+    // Only the update that sets replied_at counts it: two messages from the
+    // same customer at once can't both bump the counter.
+    const { data: marked, error: markError } = await supabase
       .from("campaign_recipients")
       .update({ replied_at: new Date().toISOString() })
-      .eq("id", r["id"] as string);
+      .eq("id", r["id"] as string)
+      .is("replied_at", null)
+      .select("id");
+    if (markError) throw new Error(markError.message);
+    if (!marked?.length) continue;
     await supabase.rpc("bump_campaign_counters", {
       p_campaign_id: r["campaign_id"] as string,
       p_replied: 1,
@@ -933,6 +1174,9 @@ export function prefetchInbound(supabase: SupabaseClient, payload: AnyRecord): I
   return { accounts, onboarding };
 }
 
+const STATUS_ACCOUNT_TTL_MS = 30_000;
+const statusAccountCache = new Map<string, { at: number; account: InboundAccount }>();
+
 /**
  * The number a message came in on, by phone_number_id — with the workspace's
  * lead-source markers and opt-out words embedded, so the three reads the
@@ -949,12 +1193,18 @@ async function readInboundAccount(
   prefetched?: Promise<EmbeddedAccountRead>,
 ): Promise<InboundAccount | null> {
   if (!caches) {
-    const { data } = await supabase
+    // Status callbacks arrive ~3 per message sent; the number they belong to
+    // is read once per isolate every STATUS_ACCOUNT_TTL_MS, not every time.
+    const hit = statusAccountCache.get(phoneNumberId);
+    if (hit && Date.now() - hit.at < STATUS_ACCOUNT_TTL_MS) return hit.account;
+    const { data, error } = await supabase
       .from("whatsapp_accounts")
       .select("id, organization_id, waba_id")
       .eq("phone_number_id", phoneNumberId)
       .maybeSingle();
-    return (data as InboundAccount | null) ?? null;
+    const account = (data as InboundAccount | null) ?? null;
+    if (!error && account) statusAccountCache.set(phoneNumberId, { at: Date.now(), account });
+    return account;
   }
   const { markerCache, keywordCache } = caches;
   const embedded = await (prefetched ?? readEmbeddedAccount(supabase, phoneNumberId));
@@ -1056,9 +1306,17 @@ export async function processWebhookPayload(
     };
     // The number owners write to while Aiden is being set up. Never hardcoded.
     // Read alongside the first account lookup; awaited before it's needed.
+    // Status-only payloads (most of them while a campaign sends) never read it.
+    const carriesMessages = entries.some((e) =>
+      ((e["changes"] as AnyRecord[] | undefined) ?? []).some(
+        (c) => (((c["value"] as AnyRecord | undefined)?.["messages"] as unknown[] | undefined) ?? []).length > 0,
+      ),
+    );
     const onboardingRead = Promise.resolve(
       meta.prefetch?.onboarding ??
-        supabase.from("platform_settings").select("onboarding_whatsapp_account_id").maybeSingle(),
+        (carriesMessages
+          ? supabase.from("platform_settings").select("onboarding_whatsapp_account_id").maybeSingle()
+          : { data: null }),
     ).then(
       ({ data }) =>
         (data as { onboarding_whatsapp_account_id?: string | null } | null)?.onboarding_whatsapp_account_id ?? null,
@@ -1271,7 +1529,8 @@ export async function processWebhookPayload(
         // number the customer wrote to. Read while the contact and message
         // are written; awaited before anything that could send.
         let connectionRead = connectionCache.get(accountId);
-        if (!connectionRead) {
+        // Status-only payloads never send, so they never read the token.
+        if (!connectionRead && hasMessages) {
           // The number's row is already in hand: only its token is read.
           connectionRead = (
             account.phone_number_id !== undefined
@@ -1283,7 +1542,7 @@ export async function processWebhookPayload(
           );
           connectionCache.set(accountId, connectionRead);
         }
-        const connectionP = connectionRead;
+        const connectionP: Promise<WaConnection> = connectionRead ?? Promise.resolve(null);
         let accessToken = "";
         let connection: WaConnection = null;
 
@@ -1292,6 +1551,7 @@ export async function processWebhookPayload(
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
           const clock = stageClock(eventId, receivedAt, timings);
           let route = "none";
+          let answerRowId: string | null = null;
           try {
             const waId = toWaId(msg["from"] as string | undefined);
             if (!waId) continue;
@@ -1300,22 +1560,7 @@ export async function processWebhookPayload(
             // the message read and start the typing dots before anything else.
             // Fire-and-forget: it must never delay or block the reply.
             if (onboardingAccountId && accountId === onboardingAccountId) {
-              void connectionP.then((c) => {
-                if (!c?.accessToken) return;
-                return fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${c.accessToken}`,
-                    "content-type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    messaging_product: "whatsapp",
-                    status: "read",
-                    message_id: String(msg["id"] ?? ""),
-                    typing_indicator: { type: "text" },
-                  }),
-                });
-              }).catch(() => {});
+              showTyping(connectionP, phoneNumberId, String(msg["id"] ?? ""));
             }
 
             // Our own number appearing as the sender means this is an echo of a
@@ -1331,6 +1576,9 @@ export async function processWebhookPayload(
             // Opt-out keywords are read now and used after the message is stored.
             const keywordsRead = loadOptKeywords(supabase, orgId, keywordCache);
             keywordsRead.catch(() => {});
+            // The AI's burst window (a platform setting, cached a minute):
+            // read now so it never adds to the wait.
+            const burstWindow = burstWindowMs(supabase);
             const attribution = inboundSource(
               msg,
               parsed.body,
@@ -1541,10 +1789,28 @@ export async function processWebhookPayload(
                 : null;
             codReads?.catch(() => {});
 
-            const { data: inserted, error: insertError } = await messageWrite;
+            // The automations' own reads (the org's timezone and its active
+            // automations, cached per payload) — read-only, so they run with
+            // the message write instead of after the flows' turn.
+            const automationReads =
+              isCustomerNumber && !isSystemEcho
+                ? Promise.all([
+                    loadOrgTimezone(supabase, orgId, timezoneCache),
+                    loadAutomations(supabase, orgId, automationCache),
+                  ])
+                : null;
+            automationReads?.catch(() => {});
+
+            const { data: stored, error: insertError } = await messageWrite;
             // A failed write is not a duplicate: only an empty, error-free
             // result means Meta sent this message before.
             if (insertError) throw new Error(`message insert failed: ${insertError.message}`);
+            const isNew = Boolean(stored && stored.length > 0);
+            // Stored is not answered: a message whose earlier pass died before
+            // it was answered is answered now, once (claimed); otherwise a
+            // duplicate stays a duplicate.
+            const inserted = isNew ? stored : await reclaimUnanswered(supabase, String(msg["id"] ?? ""));
+            answerRowId = (inserted?.[0]?.id as string | undefined) ?? null;
             const storedAt = Date.now();
 
             clock.mark("message_stored");
@@ -1554,7 +1820,7 @@ export async function processWebhookPayload(
             // alongside the reads below and is awaited (`windowReady`) before
             // anything that could send.
             let windowReady: Promise<unknown> = Promise.resolve();
-            if (inserted && inserted.length > 0) {
+            if (isNew && inserted) {
               windowReady = Promise.resolve(
                 supabase
                   .from("conversations")
@@ -1822,6 +2088,20 @@ export async function processWebhookPayload(
                 continue;
               }
             }
+            // No flow took it. The agent's set-up and its answer run's reads
+            // (read-only) start now, so they run alongside the window write,
+            // the automations and the burst wait instead of after them. Only
+            // used when nothing else answers; every gate is still applied, in
+            // the same order, in runAgentOnInbound.
+            const contactOptedOut = (contact as { opt_in_status?: string }).opt_in_status === "opted_out";
+            const agentPrepared =
+              !isSystemEcho && inserted && inserted.length > 0 && !optKeywordMatched && !codHandled && !contactOptedOut
+                ? import("@/lib/ai-agent.server").then(({ prepareAgentInbound }) =>
+                    prepareAgentInbound(supabase, orgId, conversation.id as string),
+                  )
+                : undefined;
+            agentPrepared?.catch(() => {});
+
             // Everything below may send: the window write lands first.
             await windowReady;
 
@@ -1830,10 +2110,12 @@ export async function processWebhookPayload(
             // outbound sends (including opt-out confirmations and automation
             // replies) never reach here.
             const beforeAutomations = new Date().toISOString();
-            const [orgTimezone, automations] = await Promise.all([
-              loadOrgTimezone(supabase, orgId, timezoneCache),
-              loadAutomations(supabase, orgId, automationCache),
-            ]);
+            const [orgTimezone, automations] = await (automationReads ?? Promise.reject(new Error("not read"))).catch(() =>
+              Promise.all([
+                loadOrgTimezone(supabase, orgId, timezoneCache),
+                loadAutomations(supabase, orgId, automationCache),
+              ]),
+            );
             await evaluateAutomations(supabase, {
               organizationId: orgId,
               phoneNumberId,
@@ -1854,60 +2136,78 @@ export async function processWebhookPayload(
             // answered this message. Never on our own echoes or on a duplicate
             // delivery, and never after an automation already replied.
             if (!isSystemEcho && inserted && inserted.length > 0) {
-              const { count: repliedCount } = await supabase
-                .from("messages")
-                .select("id", { count: "exact", head: true })
-                .eq("conversation_id", conversation.id)
-                .eq("direction", "outbound")
-                .gte("created_at", beforeAutomations);
+              // Did an automation (or anything else) already reply? Read now,
+              // while the burst window runs out, not before it.
+              const repliedRead = Promise.resolve(
+                supabase
+                  .from("messages")
+                  .select("id", { count: "exact", head: true })
+                  .eq("conversation_id", conversation.id)
+                  .eq("direction", "outbound")
+                  .gte("created_at", beforeAutomations),
+              ).then(({ count }) => count ?? 0);
 
               try {
-                const alreadyHandled =
-                  optKeywordMatched || codHandled || (repliedCount ?? 0) > 0;
+                const handledBefore = optKeywordMatched || codHandled;
                 const optedOut =
                   (contact as { opt_in_status?: string }).opt_in_status === "opted_out";
 
-                // Pictures and voice notes become words first, so a media-only
-                // message is never dropped on the floor.
-                let agentBody = body;
-                let mediaFallback: string | null = null;
-                if (media.media_url && !alreadyHandled && !optedOut) {
-                  const converted = await customerMediaToText(supabase, {
-                    organizationId: orgId,
-                    conversationId: conversation.id as string,
-                    messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
-                    accessToken,
-                    caption: body,
-                    media,
-                  });
-                  agentBody = converted.body;
-                  mediaFallback = converted.fallback;
-                }
-
-                // The agent's set-up and its answer run's reads start now, so
-                // they are done by the time the burst wait below is over.
                 const { runAgentOnInbound, prepareAgentInbound, readAgentGate } = await import("@/lib/ai-agent.server");
-                const prepared =
-                  alreadyHandled || optedOut ? undefined : prepareAgentInbound(supabase, orgId, conversation.id as string);
                 // The agent's gate (owner, hand-over, window) is read the
                 // moment the wait ends, alongside the burst read.
                 let gate: ReturnType<typeof readAgentGate> | undefined;
-
                 // Two texts typed a breath apart are one question: wait out the
                 // burst, answer once, and let the overtaken delivery stand down.
-                const burst =
+                const waitBurst = async (text: string | null) =>
+                  coalesceBurst(supabase, {
+                    conversationId: conversation.id as string,
+                    messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
+                    occurredAt,
+                    body: text,
+                    storedAt,
+                    windowMs: await burstWindow,
+                    afterWait: () => {
+                      gate = readAgentGate(supabase, conversation.id as string);
+                    },
+                  });
+
+                let alreadyHandled: boolean;
+                let agentBody = body;
+                let mediaFallback: string | null = null;
+                let burst: { proceed: boolean; body: string | null };
+                if (media.media_url) {
+                  // Pictures and voice notes become words first, so a
+                  // media-only message is never dropped on the floor — and
+                  // only once we know nothing else answered (it costs a read).
+                  alreadyHandled = handledBefore || (await repliedRead) > 0;
+                  if (!alreadyHandled && !optedOut) {
+                    const converted = await customerMediaToText(supabase, {
+                      organizationId: orgId,
+                      conversationId: conversation.id as string,
+                      messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
+                      accessToken,
+                      caption: body,
+                      media,
+                    });
+                    agentBody = converted.body;
+                    mediaFallback = converted.fallback;
+                  }
+                  burst = alreadyHandled || optedOut ? { proceed: true, body: agentBody } : await waitBurst(agentBody);
+                } else {
+                  // Text: the burst wait and the replied read run together.
+                  const waiting = handledBefore || optedOut ? null : waitBurst(agentBody);
+                  waiting?.catch(() => {});
+                  alreadyHandled = handledBefore || (await repliedRead) > 0;
+                  burst = waiting && !alreadyHandled ? await waiting : { proceed: true, body: agentBody };
+                }
+
+                // Started when no flow took the message (see above); an
+                // answered or opted-out message never uses it.
+                const prepared =
                   alreadyHandled || optedOut
-                    ? { proceed: true, body: agentBody }
-                    : await coalesceBurst(supabase, {
-                        conversationId: conversation.id as string,
-                        messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
-                        occurredAt,
-                        body: agentBody,
-                        storedAt,
-                        afterWait: () => {
-                          gate = readAgentGate(supabase, conversation.id as string);
-                        },
-                      });
+                    ? undefined
+                    : (agentPrepared ?? prepareAgentInbound(supabase, orgId, conversation.id as string));
+
                 if (!burst.proceed) {
                   route = "ai_superseded";
                   console.log("[ai-agent] burst_superseded", conversation.id);
@@ -1929,6 +2229,10 @@ export async function processWebhookPayload(
                   optedOut,
                   ...(prepared ? { prepared } : {}),
                   ...(gate ? { gate } : {}),
+                  ...(contextMetaId ? { replyToMetaId: contextMetaId } : {}),
+                  timer: clock.timer,
+                  // A live reply is coming: read receipt + typing dots now.
+                  onWillReply: () => showTyping(connectionP, phoneNumberId, String(msg["id"] ?? "")),
                   later,
                 });
                 clock.mark("ai_done");
@@ -1968,42 +2272,86 @@ export async function processWebhookPayload(
             failures.push(failureNote(`message ${String(msg["id"] ?? "")}`, err));
           } finally {
             clock.log(String(msg["id"] ?? ""), route);
+            // Awaited right after the reply, so a pass that dies later never
+            // makes the retry answer twice.
+            if (route !== "failed") await markAnswered(supabase, answerRowId);
             startAfterReply();
           }
         }
 
 
         // ---- status updates ----
+        // ~3 of these arrive for every message a campaign sends, so each is
+        // one conditional update of the message (returning the row and its
+        // conversation), one for the campaign recipient, the price for
+        // delivered/read, and the event. Never a read-then-write.
         for (const st of (value["statuses"] as AnyRecord[] | undefined) ?? []) {
           try {
             const metaId = st["id"] as string | undefined;
             const nextStatus = String(st["status"] ?? "");
             if (!metaId || !nextStatus) continue;
-
-            const { data: existing } = await supabase
-              .from("messages")
-              .select("id, status, type, template_name, conversation_id, campaign_id, flow_id, flow_step_id, scheduled_send_id")
-              .eq("meta_message_id", metaId)
-              .eq("organization_id", orgId)
-              .maybeSingle();
-            if (!existing) continue;
-
-            // Every per-message event carries the same dimensions as the send.
-            const statusProps = await messageEventDimensions(supabase, orgId, accountWabaId, existing);
+            if (nextStatus !== "failed" && STATUS_RANK[nextStatus] === undefined) continue;
+            const ours = parseCampaignCallbackData(st["biz_opaque_callback_data"]);
 
             const tsSeconds = Number(st["timestamp"] ?? 0);
             const at = tsSeconds
               ? new Date(tsSeconds * 1000).toISOString()
               : new Date().toISOString();
+            const errs = (st["errors"] as AnyRecord[] | undefined) ?? [];
+            const detail = errs.length ? JSON.stringify(errs) : "unknown_error";
+
+            // What Meta actually charged for. This is authoritative: a utility
+            // message inside an open service window is free, and only a billable
+            // delivered message costs anything. Cost is never inferred from the
+            // fact that a send happened.
+            const pricing = st["pricing"] as AnyRecord | undefined;
+            const pricingPatch = pricing
+              ? {
+                  billable: pricing["billable"] === undefined ? null : Boolean(pricing["billable"]),
+                  pricing_model: pricing["pricing_model"] != null ? String(pricing["pricing_model"]) : null,
+                  pricing_category:
+                    pricing["category"] != null ? String(pricing["category"]).toLowerCase() : null,
+                }
+              : {};
+            const patch =
+              nextStatus === "failed"
+                ? { status: "failed", status_updated_at: at, error_detail: detail }
+                : { status: nextStatus, status_updated_at: at, ...pricingPatch };
+
+            let existing: StatusRow | null | undefined = await applyMessageStatus(
+              supabase,
+              orgId,
+              metaId,
+              nextStatus,
+              patch,
+            );
+            if (!existing && ours) {
+              existing = await applyWhenWritten(supabase, orgId, metaId, nextStatus, patch);
+              if (existing === undefined) {
+                failures.push(`status ${metaId}: campaign message not written yet`);
+                continue;
+              }
+            }
+            if (!existing) {
+              // Already at this status: a retry of an event whose first try
+              // moved the message and then failed, or a late duplicate. Redo
+              // only the steps that are safe to repeat (never the event).
+              if (nextStatus !== "failed") {
+                await retakeStatusSteps(supabase, orgId, metaId, nextStatus, ours?.recipientId ?? null);
+              }
+              continue;
+            }
+
+            // Every per-message event carries the same dimensions as the send.
+            const statusProps = await messageEventDimensions(supabase, orgId, accountWabaId, existing);
+            const campaignMessage =
+              Boolean(existing.campaign_id || ours) ||
+              (!existing.flow_id && (!existing.created_at || existing.created_at < ATTRIBUTION_SINCE));
 
             if (nextStatus === "failed") {
-              const errs = (st["errors"] as AnyRecord[] | undefined) ?? [];
-              const detail = errs.length ? JSON.stringify(errs) : "unknown_error";
-              await supabase
-                .from("messages")
-                .update({ status: "failed", status_updated_at: at, error_detail: detail })
-                .eq("id", existing.id);
-              await applyCampaignStatus(supabase, existing.id, "failed", detail);
+              if (campaignMessage) {
+                await applyCampaignStatus(supabase, existing.id, "failed", detail, ours?.recipientId ?? null);
+              }
               await emitEvent(supabase, "message.failed", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
@@ -2019,30 +2367,9 @@ export async function processWebhookPayload(
               continue;
             }
 
-            const current = STATUS_RANK[String(existing.status)] ?? -1;
-            const incoming = STATUS_RANK[nextStatus];
-            if (incoming === undefined || incoming <= current) continue; // never downgrade
-            if (existing.status === "failed") continue;
-
-            // What Meta actually charged for. This is authoritative: a utility
-            // message inside an open service window is free, and only a billable
-            // delivered message costs anything. Cost is never inferred from the
-            // fact that a send happened.
-            const pricing = st["pricing"] as AnyRecord | undefined;
-            const pricingPatch = pricing
-              ? {
-                  billable: pricing["billable"] === undefined ? null : Boolean(pricing["billable"]),
-                  pricing_model: pricing["pricing_model"] != null ? String(pricing["pricing_model"]) : null,
-                  pricing_category:
-                    pricing["category"] != null ? String(pricing["category"]).toLowerCase() : null,
-                }
-              : {};
-
-            await supabase
-              .from("messages")
-              .update({ status: nextStatus, status_updated_at: at, ...pricingPatch })
-              .eq("id", existing.id);
-            await applyCampaignStatus(supabase, existing.id, nextStatus, null);
+            if (campaignMessage) {
+              await applyCampaignStatus(supabase, existing.id, nextStatus, null, ours?.recipientId ?? null);
+            }
 
             // Priced from the rate card, in the database, so a missing rate is a
             // warning and never a guessed number.
@@ -2050,20 +2377,27 @@ export async function processWebhookPayload(
               const { data: priced, error: priceError } = await supabase.rpc("price_message", {
                 p_message_id: existing.id,
               });
-              if (!priceError && priced !== false && existing.campaign_id) {
+              const campaignId = existing.campaign_id ? String(existing.campaign_id) : null;
+              if (!priceError && priced !== false && campaignId) {
                 // The debit for this message was just written (by the database,
-                // with the price); keep the campaign's total in step with it.
-                try {
-                  const { syncCampaignCharged } = await import("@/lib/campaign-billing.server");
-                  await syncCampaignCharged(supabase, orgId, String(existing.campaign_id));
-                } catch (error) {
-                  console.warn(
-                    JSON.stringify({
-                      scope: "campaign_charged",
-                      campaign_id: existing.campaign_id,
-                      error: error instanceof Error ? error.message : String(error),
-                    }),
-                  );
+                // with the price); keep the campaign's total in step with it —
+                // re-read at most every few seconds per campaign (the campaign
+                // worker catches up the tail after it completes).
+                const last = chargedSyncedAt.get(campaignId) ?? 0;
+                if (Date.now() - last >= CHARGED_SYNC_EVERY_MS) {
+                  chargedSyncedAt.set(campaignId, Date.now());
+                  try {
+                    const { syncCampaignCharged } = await import("@/lib/campaign-billing.server");
+                    await syncCampaignCharged(supabase, orgId, campaignId);
+                  } catch (error) {
+                    console.warn(
+                      JSON.stringify({
+                        scope: "campaign_charged",
+                        campaign_id: campaignId,
+                        error: error instanceof Error ? error.message : String(error),
+                      }),
+                    );
+                  }
                 }
               }
               if (priceError || priced === false) {
@@ -2078,6 +2412,9 @@ export async function processWebhookPayload(
                   }),
                 );
               }
+              // Not priced = not billed: the event stays retryable, and the
+              // retry prices it (retakeStatusSteps).
+              if (priceError) failures.push(failureNote(`price ${metaId}`, priceError.message));
             }
 
             if (nextStatus === "delivered" || nextStatus === "read" || nextStatus === "sent") {
@@ -2107,6 +2444,64 @@ export async function processWebhookPayload(
   } catch (err) {
     await finishEvent(supabase, eventId, [failureNote("event", err)], null, timingRecord());
   }
+}
+
+/**
+ * Stored vs answered (messages.answered_at / answer_claimed_at, migration
+ * 20261032_batch17_message_answered.sql). Until it is applied the columns are
+ * missing and every helper steps aside: a duplicate stays a duplicate, as before.
+ */
+const REANSWER_AFTER_MS = 3 * 60_000;
+let answerColumnsMissingUntil = 0;
+
+function missingAnswerColumns(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  return (code === "PGRST204" || code === "42703") && /answer/i.test(String(error.message ?? ""));
+}
+
+async function answerWrite(run: () => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>) {
+  if (Date.now() < answerColumnsMissingUntil) return null;
+  try {
+    const { data, error } = await run();
+    if (missingAnswerColumns(error)) answerColumnsMissingUntil = Date.now() + 10 * 60_000;
+    return error ? null : data;
+  } catch {
+    return null;
+  }
+}
+
+/** This pass finished routing the message (answered, or deliberately not). */
+export async function markAnswered(supabase: SupabaseClient, rowId: string | null): Promise<void> {
+  if (!rowId) return;
+  await answerWrite(() =>
+    supabase.from("messages").update({ answered_at: new Date().toISOString() }).eq("id", rowId).is("answered_at", null),
+  );
+}
+
+/**
+ * A duplicate delivery of an inbound message that was stored but never
+ * answered (its pass died) and isn't being answered right now. The insert
+ * stamps answer_claimed_at (column default), so a live pass is never
+ * doubled; one conditional update claims it, so only one retry answers.
+ */
+export async function reclaimUnanswered(
+  supabase: SupabaseClient,
+  metaMessageId: string,
+): Promise<Array<{ id: string }> | null> {
+  if (!metaMessageId) return null;
+  const cutoff = new Date(Date.now() - REANSWER_AFTER_MS).toISOString();
+  const claimed = (await answerWrite(() =>
+    supabase
+      .from("messages")
+      .update({ answer_claimed_at: new Date().toISOString() })
+      .eq("meta_message_id", metaMessageId)
+      .eq("direction", "inbound")
+      .is("answered_at", null)
+      .lt("answer_claimed_at", cutoff)
+      .select("id"),
+  )) as Array<{ id: string }> | null;
+  return claimed?.length ? claimed : null;
 }
 
 /** Retries an event gets before it is recorded as given up. */
@@ -2213,16 +2608,30 @@ async function updateEvent(
  */
 export async function reprocessUnprocessedEvents(
   supabase: SupabaseClient,
-  options: { olderThanSeconds?: number; limit?: number } = {},
+  options: {
+    olderThanSeconds?: number;
+    limit?: number;
+    /**
+     * Status-only events (sent / delivered / read) at most this many at a
+     * time; events with customer messages always one by one, in order, so
+     * replies never overtake each other. Default 1: exactly as before.
+     */
+    statusConcurrency?: number;
+    /** Stop starting new events after this long (ms). */
+    budgetMs?: number;
+  } = {},
 ): Promise<number> {
   const olderThanSeconds = options.olderThanSeconds ?? 60;
   const limit = options.limit ?? 50;
+  const concurrency = Math.max(1, options.statusConcurrency ?? 1);
+  const deadline = options.budgetMs !== undefined ? Date.now() + options.budgetMs : Infinity;
   const cutoff = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
 
   const { data: events } = await supabase
     .from("webhook_events")
     .select("id, payload")
     .is("processed_at", null)
+    .eq("provider", "meta")
     .eq("signature_valid", true)
     .lte("received_at", cutoff)
     .order("received_at", { ascending: true })
@@ -2230,7 +2639,7 @@ export async function reprocessUnprocessedEvents(
 
   if (!events?.length) return 0;
   let handled = 0;
-  for (const event of events) {
+  const one = async (event: { id: unknown; payload: unknown }) => {
     // Claim the event first: two overlapping catch-up passes used to pick the
     // same rows and could each run a reply.
     const { data: claimed } = await supabase
@@ -2239,14 +2648,39 @@ export async function reprocessUnprocessedEvents(
       .eq("id", event.id as string)
       .is("processed_at", null)
       .select("id");
-    if (!claimed?.length) continue;
+    if (!claimed?.length) return;
     handled += 1;
     await processWebhookPayload(
       supabase,
       event.id as string,
       (event.payload ?? {}) as AnyRecord,
     );
+  };
+  const statusOnly = (payload: unknown) =>
+    ((payload as AnyRecord | null)?.["entry"] as AnyRecord[] | undefined)?.every((e) =>
+      ((e["changes"] as AnyRecord[] | undefined) ?? []).every(
+        (c) => (((c["value"] as AnyRecord | undefined)?.["messages"] as unknown[] | undefined) ?? []).length === 0,
+      ),
+    ) ?? false;
+
+  const batch: Array<{ id: unknown; payload: unknown }> = [];
+  const flush = async () => {
+    for (let i = 0; i < batch.length; i += concurrency) {
+      await Promise.all(batch.slice(i, i + concurrency).map(one));
+    }
+    batch.length = 0;
+  };
+  for (const event of events) {
+    if (Date.now() >= deadline) break;
+    if (concurrency > 1 && statusOnly(event.payload)) {
+      batch.push(event);
+      if (batch.length >= concurrency) await flush();
+      continue;
+    }
+    await flush();
+    await one(event);
   }
+  await flush();
   return handled;
 }
 

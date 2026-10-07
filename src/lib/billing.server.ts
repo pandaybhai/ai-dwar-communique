@@ -812,14 +812,16 @@ export async function settlePayment(
       const outstanding = round2(
         Number(inv?.["total"] ?? 0) - Number(inv?.["amount_paid"] ?? 0),
       );
-      if (outstanding > 0) {
-        await markPaid(
-          supabase,
-          String(priorRaw["invoice_id"]),
-          payment.id as string,
-          Math.min(outstanding, grossAmount > 0 ? grossAmount : outstanding),
-        );
-      }
+      // Always run: a retry whose invoice already took the payment (0 left)
+      // still lifts dunning. A failure stops here, before the payment is
+      // marked paid, so the delivery is retried.
+      const settled = await markPaid(
+        supabase,
+        String(priorRaw["invoice_id"]),
+        payment.id as string,
+        outstanding > 0 ? Math.min(outstanding, grossAmount > 0 ? grossAmount : outstanding) : 0,
+      );
+      if (settled.error) throw new SettleError(settled.error);
       await markPaidNow();
       return { credited: false };
     }
@@ -1133,8 +1135,16 @@ export async function requestTopup(
   return { ok: true };
 }
 
-/** Standing-state warnings: at most one per workspace per 24 hours. */
-const ONCE_A_DAY_KINDS = new Set(["float_low", "low_credits"]);
+/**
+ * Warnings that describe a standing state (not an event). The nightly sweep
+ * looks every half hour, so notify() itself refuses a repeat: none while an
+ * earlier one for the same workspace and audience is still queued (however
+ * old — the drain fails it as stale after NOTICE_STALE_MS), and none within
+ * STANDING_NOTICE_REPEAT_MS of one that was sent or failed. low_credits is
+ * held further by the sweep: once per low spell, until credits recover.
+ */
+export const STANDING_NOTICE_KINDS = new Set(["float_low", "low_credits"]);
+export const STANDING_NOTICE_REPEAT_MS = 864e5;
 
 export async function notify(
   supabase: SupabaseClient,
@@ -1148,19 +1158,18 @@ export async function notify(
   },
 ): Promise<void> {
   try {
-    // Warnings that describe a standing state (not an event) go out at most
-    // once a day per workspace, whatever else triggers them.
-    if (ONCE_A_DAY_KINDS.has(input.kind) && input.organizationId) {
-      const since = new Date(Date.now() - 864e5).toISOString();
-      const { data: recent } = await supabase
+    if (STANDING_NOTICE_KINDS.has(input.kind) && input.organizationId) {
+      const since = new Date(Date.now() - STANDING_NOTICE_REPEAT_MS).toISOString();
+      const { data: recent, error } = await supabase
         .from("billing_notifications")
         .select("id")
         .eq("organization_id", input.organizationId)
+        .eq("audience", input.audience)
         .eq("kind", input.kind)
-        .in("status", ["queued", "sent"])
-        .gte("created_at", since)
+        .or(`status.eq.queued,created_at.gte.${since}`)
         .limit(1);
-      if ((recent as { id: string }[] | null)?.length) return;
+      // Can't tell whether one is pending: a missed warning beats a pile.
+      if (error || (recent as { id: string }[] | null)?.length) return;
     }
 
     await supabase.from("billing_notifications").insert({
@@ -1987,24 +1996,31 @@ async function pauseDependents(
   organizationId: string,
   featureKey: string,
 ): Promise<void> {
+  const must = (what: string, error: { message: string } | null) => {
+    if (error) throw new Error(`${what}: ${error.message}`);
+  };
   if (featureKey === "flows" || featureKey === "shopify" || featureKey === "templates") {
-    await supabase
+    const { error: flowsError } = await supabase
       .from("flows")
       .update({ is_enabled: false })
       .eq("organization_id", organizationId)
       .eq("is_enabled", true);
-    await supabase
+    must("pausing flows failed", flowsError);
+    // A waiting send's status is 'scheduled' ('pending' matched nothing).
+    const { error: sendsError } = await supabase
       .from("scheduled_sends")
       .update({ status: "cancelled" })
       .eq("organization_id", organizationId)
-      .eq("status", "pending");
+      .eq("status", "scheduled");
+    must("cancelling scheduled sends failed", sendsError);
   }
   if (featureKey === "campaigns" || featureKey === "templates" || featureKey === "contacts") {
-    await supabase
+    const { error: campaignsError } = await supabase
       .from("campaigns")
       .update({ status: "paused" })
       .eq("organization_id", organizationId)
       .in("status", ["sending", "scheduled"]);
+    must("pausing campaigns failed", campaignsError);
   }
 }
 
@@ -2103,23 +2119,6 @@ export async function holdCampaignSpend(
     };
   }
   return { ok: true };
-}
-
-/** Gives back whatever the campaign didn't use once it finishes. */
-export async function releaseCampaignHold(
-  supabase: SupabaseClient,
-  input: { organizationId: string; campaignId: string; amount: number },
-): Promise<void> {
-  if (input.amount <= 0) return;
-  await supabase.rpc("wallet_apply", {
-    p_org: input.organizationId,
-    p_type: "hold_release",
-    p_amount: input.amount,
-    p_ref_type: "campaign",
-    p_ref_id: input.campaignId,
-    p_description: "Unused campaign credits returned",
-    p_metadata: { campaign_id: input.campaignId },
-  });
 }
 
 // --------------------------------------------------------------- admin view

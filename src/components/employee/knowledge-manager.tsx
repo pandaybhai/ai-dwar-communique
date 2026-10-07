@@ -12,7 +12,11 @@ import {
   MessageCircleQuestion,
   RefreshCw,
   BookOpenCheck,
+  FileSearch,
+  ListTree,
+  Pencil,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
@@ -35,8 +39,10 @@ import {
   knowledgeApi,
   whenText,
   type Gap,
+  type ExcludeRuleView,
   type KnowledgeItem,
   type KnowledgeSource,
+  type WebsiteLink,
 } from "@/lib/employee-client";
 
 const ICONS = {
@@ -87,18 +93,88 @@ export function ReadingLine({ source }: { source: KnowledgeSource }) {
     <>
       Read {nf(pages)}
       {source.type === "website" && total > pages ? ` of ${nf(total)}` : ""} {(total > pages ? total : pages) === 1 ? "page" : "pages"}
-      {products > 0 ? ` · ${plural(products, noun)}` : ""} · updated {whenText(source.last_synced_at)}
+      {products > 0 ? ` · ${plural(products, noun)}` : ""} · {source.type === "website" ? "last read" : "updated"} {whenText(source.last_synced_at)}
     </>
   );
 }
 
-/** "Next: 40 more pages tonight · refreshes every 7 days" — parts that don't apply are hidden. */
+const COVERAGE_LABELS: Array<["faq" | "shipping" | "returns" | "size_guide" | "contact", string]> = [
+  ["faq", "FAQ"],
+  ["shipping", "Shipping"],
+  ["returns", "Returns"],
+  ["size_guide", "Size guide"],
+  ["contact", "Contact/Store"],
+];
+
+/** What to ask when a policy is missing from the site: the Add answer dialog starts with it. */
+const MISSING_QUESTION: Record<(typeof COVERAGE_LABELS)[number][0], string> = {
+  faq: "What do customers usually ask you?",
+  shipping: "How long does delivery take, and what does it cost?",
+  returns: "What is your returns and refund policy?",
+  size_guide: "How do I find my size?",
+  contact: "Where is your store, and how can I contact you?",
+};
+
+/**
+ * "Products by shelf · without photo · FAQ ✓ Shipping ✓ Returns ✗ …" — the
+ * answers customers ask for most, found on the site or not, with Add answer
+ * for the ones it doesn't cover.
+ */
+export function CoverageLine({ source, onAddAnswer }: { source: KnowledgeSource; onAddAnswer?: (question: string) => void }) {
+  const r = source.reading;
+  const coverage = r?.coverage;
+  if (!coverage || isReading(source.status) || source.deleted) return null;
+  const shelves = Object.entries(r?.products_by_category ?? {}).sort((a, b) => b[1] - a[1]);
+  const noPhoto = r?.products_without_photo ?? 0;
+  return (
+    <>
+      {shelves.length > 0 ? (
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {shelves
+            .slice(0, 6)
+            .map(([shelf, n]) => `${shelf} ${nf(n)}`)
+            .join(" · ")}
+          {shelves.length > 6 ? ` · +${shelves.length - 6} more` : ""}
+          {noPhoto > 0 ? ` · ${plural(noPhoto, "product")} without a photo` : ""}
+        </p>
+      ) : null}
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground" aria-label="What the site covers">
+        {COVERAGE_LABELS.map(([key, label]) => (
+          <span key={key} className={coverage[key] ? "text-foreground" : "text-muted-foreground/80"}>
+            {label} {coverage[key] ? "✓" : "✗"}
+            {!coverage[key] && onAddAnswer ? (
+              <button
+                type="button"
+                className="ml-1 font-medium text-primary underline-offset-2 hover:underline"
+                onClick={() => onAddAnswer(MISSING_QUESTION[key])}
+              >
+                Add answer
+              </button>
+            ) : null}
+          </span>
+        ))}
+      </p>
+    </>
+  );
+}
+
+/**
+ * "Next: 40 more pages tonight · changed pages re-read every 7 days" — parts
+ * that don't apply are hidden. The refresh part only while automatic
+ * re-reading is on (platform_settings.knowledge_auto_refresh) and the
+ * workspace is on a paid plan (Batch 16); a trial's site is re-read only when
+ * the merchant asks, and the screen never promises otherwise.
+ */
 export function NextLine({ source }: { source: KnowledgeSource }) {
   const r = source.reading;
   if (!r || isReading(source.status)) return null;
   const parts = [
     r.tonight > 0 ? `${nf(r.tonight)} more page${r.tonight === 1 ? "" : "s"} tonight` : null,
-    r.refresh_days > 0 ? `refreshes every ${r.refresh_days} day${r.refresh_days === 1 ? "" : "s"}` : null,
+    r.auto_refresh !== false && r.refresh_days > 0
+      ? `changed pages re-read every ${r.refresh_days} day${r.refresh_days === 1 ? "" : "s"}`
+      : r.auto_refresh === true && r.paid === false
+        ? "re-read when you ask (automatic re-reading comes with a paid plan)"
+        : null,
   ].filter(Boolean);
   if (!parts.length) return null;
   return <p className="mt-0.5 text-xs text-muted-foreground">Next: {parts.join(" · ")}</p>;
@@ -114,7 +190,8 @@ export function ReadingBar() {
 }
 
 /**
- * What the AI employee has read. Live sources re-read themselves; uploads are
+ * What the AI employee has read. A website is re-read when the merchant asks
+ * (and on a schedule only while automatic re-reading is on); uploads are
  * read once. Everything it knows is visible here and can be deleted.
  */
 export function KnowledgeManager({
@@ -133,6 +210,11 @@ export function KnowledgeManager({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState<null | "website" | "file" | "answer">(null);
   const [openSource, setOpenSource] = useState<KnowledgeSource | null>(null);
+  const [forgetting, setForgetting] = useState<KnowledgeSource | null>(null);
+  const [pageFor, setPageFor] = useState<KnowledgeSource | null>(null);
+  const [linksFor, setLinksFor] = useState<KnowledgeSource | null>(null);
+  const [addressFor, setAddressFor] = useState<KnowledgeSource | null>(null);
+  const [answerPrefill, setAnswerPrefill] = useState<string | null>(null);
   // While something is being read, refresh this list itself every 5s so the
   // owner watches it happen instead of pressing reload.
   const [live, setLive] = useState<KnowledgeSource[] | null>(null);
@@ -231,6 +313,38 @@ export function KnowledgeManager({
             const Icon = ICONS[source.type as keyof typeof ICONS] ?? BookOpen;
             const kind = KIND_TEXT[source.type] ?? { label: source.type, live: false };
             const busy = busyId === source.id;
+            if (source.deleted) {
+              return (
+                <li key={source.id} className="rounded-2xl border border-dashed border-border/70 bg-muted/30 p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                      <Icon className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-muted-foreground line-through">{source.name}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Deleted — Aiden no longer uses it. Kept until{" "}
+                        {new Date(source.deleted.purge_after).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}, then forgotten for good.
+                      </p>
+                    </div>
+                    <Badge variant="outline">Deleted</Badge>
+                  </div>
+                  {canConfigure ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => act({ action: "restore_source", source_id: source.id }, source.id, "Restored — Aiden uses it again.")}
+                      >
+                        <Undo2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Undo / Restore
+                      </Button>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            }
             return (
               <li
                 key={source.id}
@@ -256,6 +370,19 @@ export function KnowledgeManager({
                         {kind.label} · {plural(source.item_count, "item")} · read once
                       </p>
                     )}
+                    {source.type === "website" ? (
+                      <CoverageLine
+                        source={source}
+                        {...(canConfigure
+                          ? {
+                              onAddAnswer: (q: string) => {
+                                setAnswerPrefill(q);
+                                setAddOpen("answer");
+                              },
+                            }
+                          : {})}
+                      />
+                    ) : null}
                     {source.type === "website" ? <NextLine source={source} /> : null}
                     {source.type === "website" && isReading(source.status) ? <ReadingBar /> : null}
                   </div>
@@ -269,6 +396,27 @@ export function KnowledgeManager({
                         : "Reading"}
                   </Badge>
                 </div>
+
+                {source.reading?.swap_blocked?.reasons?.length ? (
+                  <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 p-2 text-xs text-amber-800 dark:text-amber-300">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    Kept what Aiden already knew from the last full read, because {source.reading.swap_blocked.reasons.join(" and ")}. Nothing was forgotten.
+                  </p>
+                ) : null}
+                {source.reading?.paid_capped && !source.reading.paid ? (
+                  <p className="mt-3 flex items-start gap-2 rounded-lg bg-muted p-2 text-xs text-muted-foreground">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    Some pages only load in a browser and need a paid read — your plan's {nf(source.reading.paid_cap ?? 0)} are used.{" "}
+                    <Link to="/app/billing" className="font-medium underline underline-offset-2">
+                      Upgrade
+                    </Link>
+                  </p>
+                ) : null}
+                {typeof source.reading?.unchanged_skipped === "number" && source.reading.unchanged_skipped > 0 && !isReading(source.status) ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Last re-read skipped {plural(source.reading.unchanged_skipped, "page")} the site says haven't changed.
+                  </p>
+                ) : null}
 
                 {source.last_error ? (
                   <p className="mt-3 flex items-start gap-2 rounded-lg bg-destructive/5 p-2 text-xs text-destructive">
@@ -325,8 +473,20 @@ export function KnowledgeManager({
                       >
                         <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
                         {source.reading.changes_available_at
-                          ? `Read changes · ${new Date(source.reading.changes_available_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`
-                          : "Read changes now"}
+                          ? `Re-read whole site · ${new Date(source.reading.changes_available_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`
+                          : "Re-read whole site"}
+                      </Button>
+                      <Button size="sm" variant="ghost" disabled={busy} onClick={() => setPageFor(source)}>
+                        <FileSearch className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Re-read this page
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setLinksFor(source)}>
+                        <ListTree className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Links
+                      </Button>
+                      <Button size="sm" variant="ghost" disabled={busy} onClick={() => setAddressFor(source)}>
+                        <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Change website address
                       </Button>
                       {source.reading.can_read_more ? (
                         <Button
@@ -369,7 +529,9 @@ export function KnowledgeManager({
                       className="text-destructive hover:text-destructive"
                       disabled={busy}
                       onClick={() =>
-                        act({ action: "delete_source", source_id: source.id }, source.id, "Forgotten.")
+                        source.type === "website"
+                          ? setForgetting(source)
+                          : act({ action: "delete_source", source_id: source.id }, source.id, "Forgotten.")
                       }
                     >
                       <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -386,8 +548,40 @@ export function KnowledgeManager({
       <AddDialog
         kind={addOpen}
         organizationId={organizationId}
-        onClose={() => setAddOpen(null)}
+        onClose={() => {
+          setAddOpen(null);
+          setAnswerPrefill(null);
+        }}
         onAdded={onChanged}
+        prefillQuestion={answerPrefill}
+      />
+      <LinksDialog
+        organizationId={organizationId}
+        source={linksFor}
+        canConfigure={canConfigure}
+        onClose={() => setLinksFor(null)}
+        onChanged={onChanged}
+      />
+      <ChangeAddressDialog
+        organizationId={organizationId}
+        source={addressFor}
+        onClose={() => setAddressFor(null)}
+        onDone={onChanged}
+      />
+      <ForgetWebsiteDialog
+        source={forgetting}
+        busy={Boolean(forgetting && busyId === forgetting.id)}
+        onCancel={() => setForgetting(null)}
+        onConfirm={async (source) => {
+          await act({ action: "delete_source", source_id: source.id }, source.id, "Deleted. You can undo this for 7 days.");
+          setForgetting(null);
+        }}
+      />
+      <RereadPageDialog
+        organizationId={organizationId}
+        source={pageFor}
+        onClose={() => setPageFor(null)}
+        onDone={onChanged}
       />
       <SourceItemsDialog
         organizationId={organizationId}
@@ -400,28 +594,467 @@ export function KnowledgeManager({
   );
 }
 
+/** Deleting a website says what Aiden will forget, and that it can be undone. */
+function ForgetWebsiteDialog({
+  source,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  source: KnowledgeSource | null;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (source: KnowledgeSource) => Promise<void>;
+}) {
+  const pages = source?.item_count ?? 0;
+  const products = source?.products_found ?? 0;
+  return (
+    <Dialog open={Boolean(source)} onOpenChange={(open) => (!open ? onCancel() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete {source?.name}?</DialogTitle>
+          <DialogDescription>
+            Aiden will forget {plural(pages, "page")} and {plural(products, "product")} from this website. You can undo this
+            for 7 days from this list; after that it is gone for good.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
+            Keep it
+          </Button>
+          <Button variant="destructive" disabled={busy || !source} onClick={() => source && void onConfirm(source)}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />}
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** "Re-read this page": one address from this site, read now. */
+function RereadPageDialog({
+  organizationId,
+  source,
+  onClose,
+  onDone,
+}: {
+  organizationId: string;
+  source: KnowledgeSource | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (source) setUrl("");
+  }, [source]);
+  const submit = async () => {
+    if (!source) return;
+    setBusy(true);
+    const { data, error } = await knowledgeApi<{ title?: string; saved?: boolean; product?: string | null }>({
+      organization_id: organizationId,
+      action: "reread_page",
+      source_id: source.id,
+      url: url.trim(),
+    });
+    setBusy(false);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    toast.success(
+      data?.saved === false
+        ? "Read it, but the page had too little text — kept what I had."
+        : `Read ${data?.title ?? "that page"}${data?.product ? ` · product: ${data.product}` : ""}.`,
+    );
+    onDone();
+    onClose();
+  };
+  return (
+    <Dialog open={Boolean(source)} onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Re-read one page</DialogTitle>
+          <DialogDescription>
+            Paste the address of a page on {source?.name}. I'll read it now and replace what I knew from it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="reread-url">Page address</Label>
+          <Input
+            id="reread-url"
+            placeholder={`https://${source?.name ?? "example.com"}/shipping`}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && url.trim()) void submit();
+            }}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={() => void submit()} disabled={busy || !/^https?:\/\//i.test(url.trim())}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            Read it now
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const LINK_TABS: Array<[WebsiteLink["tab"], string]> = [
+  ["read", "Read"],
+  ["not_found", "Not found"],
+  ["excluded", "Excluded"],
+  ["waiting", "Waiting"],
+];
+const RULE_OPS: Array<[ExcludeRuleView["op"], string]> = [
+  ["starts_with", "starts with"],
+  ["contains", "contains"],
+  ["ends_with", "ends with"],
+  ["exact", "is exactly"],
+];
+
+/**
+ * Every link of a website: Read (how much text, when), Not found, Excluded,
+ * Waiting. Exclude a link or its folder, include it back, and keep rules
+ * (starts with / contains / ends with / exact) that no read crosses.
+ */
+function LinksDialog({
+  organizationId,
+  source,
+  canConfigure,
+  onClose,
+  onChanged,
+}: {
+  organizationId: string;
+  source: KnowledgeSource | null;
+  canConfigure: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [tab, setTab] = useState<WebsiteLink["tab"]>("read");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
+  const [rows, setRows] = useState<WebsiteLink[] | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [total, setTotal] = useState(0);
+  const [rules, setRules] = useState<ExcludeRuleView[]>([]);
+  const [ruleOp, setRuleOp] = useState<ExcludeRuleView["op"]>("starts_with");
+  const [ruleValue, setRuleValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pageSize = 50;
+
+  const load = useCallback(async () => {
+    if (!source) return;
+    const { data, error } = await knowledgeApi<{ rows: WebsiteLink[]; counts: Record<string, number>; total: number; rules: ExcludeRuleView[] }>({
+      organization_id: organizationId,
+      action: "links",
+      source_id: source.id,
+      tab,
+      q,
+      page,
+    });
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    setRows(data?.rows ?? []);
+    setCounts(data?.counts ?? {});
+    setTotal(data?.total ?? 0);
+    setRules(data?.rules ?? []);
+  }, [organizationId, source, tab, q, page]);
+
+  useEffect(() => {
+    if (!source) return;
+    const t = setTimeout(() => void load(), 200);
+    return () => clearTimeout(t);
+  }, [source, load]);
+  useEffect(() => {
+    setTab("read");
+    setQ("");
+    setPage(0);
+    setRows(null);
+  }, [source]);
+
+  const change = async (body: Record<string, unknown>, success: string) => {
+    if (!source) return;
+    setBusy(true);
+    const { data, error } = await knowledgeApi<{ forgotten?: { pages: number; products: number }; waiting?: number }>({
+      organization_id: organizationId,
+      source_id: source.id,
+      ...body,
+    });
+    setBusy(false);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    const f = data?.forgotten;
+    toast.success(
+      f && (f.pages || f.products)
+        ? `${success} Aiden forgot ${plural(f.pages, "page")}${f.products ? ` and ${plural(f.products, "product")}` : ""}.`
+        : data?.waiting
+          ? `${success} ${plural(data.waiting, "page")} will be read on the next read — or use "Re-read this page".`
+          : success,
+    );
+    await load();
+    onChanged();
+  };
+
+  return (
+    <Dialog open={Boolean(source)} onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Links on {source?.name}</DialogTitle>
+          <DialogDescription>Everything I found on the site, what I read, and what you've told me to leave out.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          {LINK_TABS.map(([key, label]) => (
+            <Button
+              key={key}
+              size="sm"
+              variant={tab === key ? "secondary" : "ghost"}
+              onClick={() => {
+                setTab(key);
+                setPage(0);
+              }}
+            >
+              {label} <span className="ml-1 text-xs text-muted-foreground">{nf(counts[key] ?? 0)}</span>
+            </Button>
+          ))}
+          <Input
+            className="ml-auto h-8 max-w-xs"
+            placeholder="Search links"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(0);
+            }}
+          />
+        </div>
+        <div className="max-h-[45vh] overflow-auto rounded-xl border border-border/60">
+          {rows === null ? (
+            <div className="space-y-2 p-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-6 w-full" />)}</div>
+          ) : rows.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">No links here.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-card text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Link</th>
+                  <th className="px-2 py-2 font-medium">Type</th>
+                  <th className="px-2 py-2 font-medium">Characters</th>
+                  <th className="px-2 py-2 font-medium">Last read</th>
+                  {canConfigure ? <th className="px-2 py-2" /> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.url} className="border-t border-border/40">
+                    <td className="max-w-[320px] px-3 py-1.5">
+                      <a href={row.url} target="_blank" rel="noreferrer" className="block truncate text-foreground hover:underline" title={row.url}>
+                        {row.url.replace(/^https?:\/\/[^/]+/, "") || "/"}
+                      </a>
+                      {row.title ? <span className="block truncate text-xs text-muted-foreground">{row.title}</span> : null}
+                    </td>
+                    <td className="px-2 py-1.5 text-xs capitalize text-muted-foreground">{row.type}</td>
+                    <td className="px-2 py-1.5 text-xs">{row.chars != null ? nf(row.chars) : "—"}</td>
+                    <td className="px-2 py-1.5 text-xs text-muted-foreground">{row.read_at ? whenText(row.read_at) : "—"}</td>
+                    {canConfigure ? (
+                      <td className="whitespace-nowrap px-2 py-1.5 text-right">
+                        {row.tab === "excluded" ? (
+                          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void change({ action: "include_link", url: row.url }, "Included.")}>
+                            Include
+                          </Button>
+                        ) : (
+                          <>
+                            <Button size="sm" variant="ghost" disabled={busy} onClick={() => void change({ action: "exclude_link", url: row.url }, "Excluded.")}>
+                              Exclude
+                            </Button>
+                            {row.url.replace(/^https?:\/\/[^/]+/, "").split("/").filter(Boolean).length > 1 ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={busy}
+                                onClick={() => void change({ action: "exclude_link", url: row.url, folder: true }, "Folder excluded.")}
+                              >
+                                Exclude folder
+                              </Button>
+                            ) : null}
+                          </>
+                        )}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        {total > pageSize ? (
+          <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+            {page * pageSize + 1}–{Math.min(total, (page + 1) * pageSize)} of {nf(total)}
+            <Button size="sm" variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>
+              Previous
+            </Button>
+            <Button size="sm" variant="ghost" disabled={(page + 1) * pageSize >= total} onClick={() => setPage(page + 1)}>
+              Next
+            </Button>
+          </div>
+        ) : null}
+        {canConfigure ? (
+          <div className="space-y-2 rounded-xl border border-border/60 p-3">
+            <p className="text-sm font-medium">Exclude rules</p>
+            {rules.length === 0 ? (
+              <p className="text-xs text-muted-foreground">None — every page I find is read.</p>
+            ) : (
+              <ul className="flex flex-wrap gap-2">
+                {rules.map((rule) => (
+                  <li key={`${rule.op}:${rule.value}`} className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
+                    {RULE_OPS.find(([op]) => op === rule.op)?.[1]} <span className="font-mono">{rule.value}</span>
+                    <button
+                      type="button"
+                      aria-label="Remove rule"
+                      className="ml-1 text-muted-foreground hover:text-foreground"
+                      disabled={busy}
+                      onClick={() => void change({ action: "remove_rule", op: rule.op, value: rule.value }, "Rule removed.")}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                value={ruleOp}
+                onChange={(e) => setRuleOp(e.target.value as ExcludeRuleView["op"])}
+                aria-label="Rule"
+              >
+                {RULE_OPS.map(([op, label]) => (
+                  <option key={op} value={op}>
+                    Link {label}
+                  </option>
+                ))}
+              </select>
+              <Input className="h-8 max-w-xs" placeholder="/blog/ or ?ref=" value={ruleValue} onChange={(e) => setRuleValue(e.target.value)} />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !ruleValue.trim()}
+                onClick={() => {
+                  void change({ action: "exclude_rule", op: ruleOp, value: ruleValue.trim() }, "Rule added.");
+                  setRuleValue("");
+                }}
+              >
+                Add rule
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** "Change website address": the same source reads a new address; nothing is lost. */
+function ChangeAddressDialog({
+  organizationId,
+  source,
+  onClose,
+  onDone,
+}: {
+  organizationId: string;
+  source: KnowledgeSource | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setUrl(source ? String(source.config?.["url"] ?? "") : "");
+  }, [source]);
+  const submit = async () => {
+    if (!source) return;
+    setBusy(true);
+    const { error } = await knowledgeApi({ organization_id: organizationId, action: "change_address", source_id: source.id, url: url.trim() });
+    setBusy(false);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    toast.success("Address changed — reading the site again now.");
+    onDone();
+    onClose();
+  };
+  return (
+    <Dialog open={Boolean(source)} onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Change website address</DialogTitle>
+          <DialogDescription>
+            I'll read the new address into this same website. What I know now stays until the new read has at least the same
+            policy pages and most of your products.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="new-address">New address</Label>
+          <Input id="new-address" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.yourstore.com" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={() => void submit()} disabled={busy || !/^https?:\/\//i.test(url.trim())}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            Change and read
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AddDialog({
   kind,
   organizationId,
   onClose,
   onAdded,
+  prefillQuestion,
 }: {
   kind: null | "website" | "file" | "answer";
   organizationId: string;
   onClose: () => void;
   onAdded: () => void;
+  /** "Add answer" from the coverage line: the question it is about. */
+  prefillQuestion?: string | null;
 }) {
   const [url, setUrl] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [saving, setSaving] = useState(false);
+  const [discovery, setDiscovery] = useState<"crawl" | "sitemap" | "links">("crawl");
+  const [links, setLinks] = useState("");
+  const [keepQuery, setKeepQuery] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (kind === "answer" && prefillQuestion) setQuestion(prefillQuestion);
+  }, [kind, prefillQuestion]);
 
   const reset = () => {
     setUrl("");
     setQuestion("");
     setAnswer("");
     setSaving(false);
+    setDiscovery("crawl");
+    setLinks("");
+    setKeepQuery(false);
   };
 
   const submit = async () => {
@@ -429,7 +1062,7 @@ function AddDialog({
     let body: Record<string, unknown> | null = null;
 
     if (kind === "website") {
-      body = { action: "add_website", url: url.trim() };
+      body = { action: "add_website", url: url.trim(), discovery, links, keep_query: keepQuery };
     } else if (kind === "answer") {
       body = { action: "add_answer", question: question.trim(), answer: answer.trim() };
     } else if (kind === "file") {
@@ -493,7 +1126,7 @@ function AddDialog({
           </DialogTitle>
           <DialogDescription>
             {kind === "website"
-              ? "It reads up to 40 pages and checks back every week, so price and policy changes look after themselves."
+              ? "Your info pages first, then every product. Re-read the whole site or one page whenever it changes."
               : kind === "file"
                 ? "A PDF or a spreadsheet — a price list, a policy, an FAQ. We keep the text, not the file."
                 : "The exact wording you want a customer to hear. Your words always win over anything it read."}
@@ -502,15 +1135,56 @@ function AddDialog({
 
         <div className="space-y-4">
           {kind === "website" ? (
-            <div className="space-y-2">
-              <Label htmlFor="k-url">Web address</Label>
-              <Input
-                id="k-url"
-                placeholder="https://yourstore.com"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                autoFocus
-              />
+            <div className="space-y-3">
+              <div role="radiogroup" aria-label="How to read it" className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    ["crawl", "Crawl from homepage", "Sitemap first, then links"],
+                    ["sitemap", "Use sitemap", "Only what the sitemap lists"],
+                    ["links", "Individual links", "Just the pages you paste"],
+                  ] as const
+                ).map(([value, label, hint]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={discovery === value}
+                    onClick={() => setDiscovery(value)}
+                    className={`rounded-xl border p-2 text-left text-sm transition-colors ${discovery === value ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`}
+                  >
+                    <span className="block font-medium">{label}</span>
+                    <span className="block text-xs text-muted-foreground">{hint}</span>
+                  </button>
+                ))}
+              </div>
+              {discovery === "links" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="k-links">Page addresses (one per line, same website)</Label>
+                  <Textarea
+                    id="k-links"
+                    rows={5}
+                    placeholder={"https://yourstore.com/shipping\nhttps://yourstore.com/returns"}
+                    value={links}
+                    onChange={(e) => setLinks(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="k-url">{discovery === "sitemap" ? "Website or sitemap address" : "Web address"}</Label>
+                  <Input
+                    id="k-url"
+                    placeholder={discovery === "sitemap" ? "https://yourstore.com/sitemap.xml" : "https://yourstore.com"}
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+              )}
+              <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" className="mt-0.5" checked={keepQuery} onChange={(e) => setKeepQuery(e.target.checked)} />
+                Treat addresses with different ?query parts as different pages (off: sorting, filters and page numbers count as one page)
+              </label>
             </div>
           ) : null}
 
@@ -780,10 +1454,12 @@ export function UnansweredList({
     <section aria-labelledby="unanswered-heading" className="space-y-4">
       <div>
         <h2 id="unanswered-heading" className="text-lg font-semibold text-foreground">
-          Questions I couldn't answer
+          Aiden's questions for you
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Write the answer once. If the customer's chat is still open I'll send it straight away.
+          Customers asked these and I didn't have the detail — I kept the chat going and noted the
+          question here. Add the answer once: if the customer's chat is still open I'll send it
+          straight away, and I'll remember it for next time.
         </p>
       </div>
 
@@ -822,7 +1498,7 @@ export function UnansweredList({
                   />
                   <Button size="sm" disabled={busy} onClick={() => void teach(gap)}>
                     {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Teach
+                    Add answer
                   </Button>
                   {gap.status === "pending" ? (
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => void dismiss(gap)}>

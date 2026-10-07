@@ -10,16 +10,36 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const { secretEquals } = await import("@/lib/cron-auth.server");
         const expected = process.env["CRON_SECRET"];
         const provided = request.headers.get("x-cron-secret") ?? request.headers.get("X-Cron-Secret");
-        if (!expected || provided !== expected) return Response.json({ error: "Unauthorized" }, { status: 401 });
+        if (!expected || !secretEquals(provided, expected)) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
         const { planLimits } = await import("@/lib/knowledge.server");
-        const { loadReadingSettings } = await import("@/lib/reading.server");
+        const { loadReadingSettings, backfillWanted } = await import("@/lib/reading.server");
         const supabase = getServiceClient();
         const reading = await loadReadingSettings(supabase);
-        if (reading.backfill_pages_per_day <= 0) return Response.json({ off: true });
+        // Deleted websites past their 7-day Undo window are removed for good.
+        let purged = 0;
+        try {
+          const { purgeDeletedSources } = await import("@/lib/knowledge.server");
+          purged = await purgeDeletedSources(supabase);
+        } catch (error) {
+          console.error("[knowledge-backfill] purge failed", error instanceof Error ? error.message : String(error));
+        }
+        // Batch 16: the free daily price check (own fetch, no AI) — price,
+        // stock and photo follow the product page; a >50% price move is
+        // flagged for review, never applied. Off unless
+        // platform_settings.price_check_daily. Isolated from the backfill.
+        let priceCheck: unknown = null;
+        try {
+          const { runPriceCheck } = await import("@/lib/price-check.server");
+          priceCheck = await runPriceCheck(supabase);
+        } catch (error) {
+          priceCheck = { error: error instanceof Error ? error.message : String(error) };
+        }
+        if (reading.backfill_pages_per_day <= 0) return Response.json({ off: true, purged, price_check: priceCheck });
 
         try {
           const { data } = await supabase
@@ -29,6 +49,7 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
             .eq("status", "ready")
             .limit(500);
           let queued = 0;
+          let skipped = 0;
           for (const src of (data ?? []) as Array<{ id: string; organization_id: string; pages_seen: number | null; config: Record<string, unknown> | null }>) {
             const { count } = await supabase
               .from("knowledge_urls")
@@ -38,6 +59,11 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
             if (!count) continue;
             const plan = await planLimits(supabase, src.organization_id);
             if (!plan.paid) continue;
+            // No WhatsApp number connected and AI off: nothing would use the pages.
+            if (!(await backfillWanted(supabase, src.organization_id))) {
+              skipped += 1;
+              continue;
+            }
             const room = plan.cap - Number(src.pages_seen ?? 0);
             if (room <= 0) continue;
             await supabase
@@ -58,7 +84,7 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
               .eq("status", "ready");
             queued += 1;
           }
-          return Response.json({ queued, commit: buildInfo().commit });
+          return Response.json({ queued, skipped_unused: skipped, purged, price_check: priceCheck, commit: buildInfo().commit });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Backfill failed";
           console.error("[knowledge-backfill] failed", message);

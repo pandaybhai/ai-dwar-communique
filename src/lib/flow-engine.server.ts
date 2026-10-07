@@ -476,7 +476,10 @@ async function activeRunFor(
 }
 
 /** Minute tick: due waits and reply timeouts, plus the 14-day age limit. */
-export async function tickRuns(supabase: SupabaseClient): Promise<{ processed: number; expired: number }> {
+export async function tickRuns(
+  supabase: SupabaseClient,
+  options: { deadlineAt?: number } = {},
+): Promise<{ processed: number; expired: number; deferred?: number }> {
   const cutoff = new Date(Date.now() - MAX_RUN_AGE_DAYS * 86_400_000).toISOString();
   const { data: old } = await supabase
     .from("flow_runs")
@@ -484,12 +487,28 @@ export async function tickRuns(supabase: SupabaseClient): Promise<{ processed: n
     .in("status", ["running", "waiting", "paused"])
     .lt("started_at", cutoff)
     .select("id");
+  // Past the worker's deadline nothing new is claimed; the next tick takes it.
+  const pastDeadline = () => options.deadlineAt != null && Date.now() >= options.deadlineAt;
+  if (pastDeadline()) return { processed: 0, expired: (old ?? []).length };
   // The claim moves each run to "running" (20261009_batch3_safety.sql), so a
   // reply arriving now can't take the same run; the run is advanced from the
   // wait it was claimed in.
   const { data: claimed } = await supabase.rpc("claim_flow_runs", { p_limit: 50 });
   const runs = (claimed ?? []) as Run[];
+  let processed = 0;
+  let deferred = 0;
   for (const run of runs) {
+    // Out of time: hand this claim straight back (only our own claim, still
+    // untouched) so the next tick advances it instead of the 5-minute reclaim.
+    if (pastDeadline()) {
+      const claimedAt = (run as Run & { claimed_at?: string | null }).claimed_at;
+      let putBack = supabase.from("flow_runs").update({ status: "waiting", claimed_at: null }).eq("id", run.id).eq("status", "running");
+      if (claimedAt) putBack = putBack.eq("claimed_at", claimedAt);
+      await putBack;
+      deferred += 1;
+      continue;
+    }
+    processed += 1;
     run.status = "waiting";
     try {
       const graph = await loadGraph(supabase, run.version_id);
@@ -502,7 +521,8 @@ export async function tickRuns(supabase: SupabaseClient): Promise<{ processed: n
       await failSafe(supabase, run, error);
     }
   }
-  return { processed: runs.length, expired: (old ?? []).length };
+  if (deferred > 0) console.warn("[flows-v2] tick deadline: runs handed back", JSON.stringify({ deferred, processed }));
+  return { processed, expired: (old ?? []).length, ...(deferred > 0 ? { deferred } : {}) };
 }
 
 export async function controlRun(
@@ -1030,12 +1050,27 @@ async function advanceInner(
         break;
       }
       case "assign":
+        // Batch 21: "Hand to Aiden" ends the flow; Aiden answers the next messages.
+        if (d["mode"] === "aiden") {
+          await finish("done", "ended", { reason: "hand_to_aiden" });
+          await handToAiden(supabase, run);
+          await setAidenFlowRules(supabase, run, d);
+          return;
+        }
         if (run.conversation_id) {
           const userId = d["mode"] === "round_robin" ? await pickRoundRobin(supabase, run.organization_id) : String(d["user_id"] ?? "").trim();
           await supabase
             .from("conversations")
             .update(userId ? { assigned_to: userId } : { needs_human: true, needs_human_reason: "flow_assign", needs_human_at: new Date().toISOString() })
             .eq("id", run.conversation_id);
+          // Batch 16: a hand-off to the team (no one picked) alerts the staff.
+          // Fire-and-forget: the alert never holds or changes the run.
+          if (!userId) {
+            const conversationId = run.conversation_id;
+            void import("@/lib/handoff-alerts.server")
+              .then(({ sendHandoffAlert }) => sendHandoffAlert(supabase, { organizationId: run.organization_id, conversationId, reason: "flow_assign" }))
+              .catch(() => {});
+          }
         }
         break;
       case "needs_you":
@@ -1235,8 +1270,13 @@ async function advanceInner(
       }
       case "payment": {
         if (payWaiting) {
-          if (opts.paid) {
+          // A paid resume that was claimed but never finished (the process
+          // died): the sweeper's wake finishes it on the paid path, once.
+          const paidBefore = (vars["_paid_resume"] as { node?: string } | undefined)?.node === node.id;
+          if (opts.paid || (woke && paidBefore)) {
             opts.paid = false;
+            woke = false;
+            delete vars["_paid_resume"];
             vars["payment_status"] = "paid";
             run.status = "running";
             await logEvent(supabase, run, node.id, "paid");
@@ -1573,6 +1613,39 @@ async function markNeedsYou(supabase: SupabaseClient, run: Run, note: string) {
     .eq("id", run.conversation_id);
 }
 
+/**
+ * An Assign step's "Hand to Aiden": clears a flow's own hand-off on the chat
+ * (Needs you from a flow step or Assign-to-queue) so Aiden answers again.
+ * Never touches assigned_to or a hand-off that wasn't a flow's (a person's
+ * own takeover, a customer asking for a person, Aiden's own escalation).
+ */
+export async function handToAiden(supabase: SupabaseClient, run: { organization_id: string; conversation_id: string | null }) {
+  if (!run.conversation_id) return;
+  await supabase
+    .from("conversations")
+    .update({ needs_human: false, needs_human_reason: null, needs_human_question: null, handover_state: null })
+    .eq("id", run.conversation_id)
+    .eq("organization_id", run.organization_id)
+    .eq("needs_human", true)
+    .in("needs_human_reason", ["flow", "flow_assign"]);
+}
+
+/**
+ * The Hand-to-Aiden step's Behaviour / Rules for this chat (null clears an
+ * older flow's). Before 20261050_batch21_aiden_flow_rules.sql is applied the
+ * column is missing: the write fails quietly and Aiden answers as before.
+ */
+export async function setAidenFlowRules(supabase: SupabaseClient, run: Pick<Run, "id" | "flow_id" | "organization_id" | "conversation_id">, d: Record<string, unknown>) {
+  if (!run.conversation_id) return;
+  const { buildFlowRules } = await import("@/lib/aiden-flow-rules");
+  const hasText = Boolean(String(d["behaviour"] ?? "").trim() || String(d["rules"] ?? "").trim());
+  const { data: flow } = hasText
+    ? await supabase.from("flows").select("name").eq("id", run.flow_id).maybeSingle()
+    : { data: null };
+  const rules = buildFlowRules(d, { flowId: run.flow_id, flowName: (flow as { name?: string } | null)?.name ?? null, runId: run.id, now: new Date() });
+  await supabase.from("conversations").update({ aiden_flow_rules: rules }).eq("id", run.conversation_id).eq("organization_id", run.organization_id);
+}
+
 /** Next teammate in turn: whoever has the fewest open chats assigned right now. */
 async function pickRoundRobin(supabase: SupabaseClient, organizationId: string): Promise<string> {
   const { data: members } = await supabase
@@ -1623,13 +1696,34 @@ export async function resumePaidRun(
     .maybeSingle();
   const run = data as Run | null;
   if (!run) return false;
-  if (!(await logEvent(supabase, run, args.nodeId, "payment_webhook", { link: args.paymentLinkId }, `${run.id}:${args.nodeId}:paid`))) return false;
   const graph = await loadGraph(supabase, run.version_id);
   if (!graph) return false;
-  run.variables = { ...run.variables, payment_id: args.paymentLinkId };
+  // The key is logged once per run and step. Logged already but the run is
+  // still waiting here with this same link's mark: an earlier resume of this
+  // payment died part-way, so this retry may finish it.
+  const mark = run.variables["_paid_resume"] as { node?: string; link?: string } | undefined;
+  const retry = mark?.node === args.nodeId && mark.link === args.paymentLinkId;
+  if (!(await logEvent(supabase, run, args.nodeId, "payment_webhook", { link: args.paymentLinkId }, `${run.id}:${args.nodeId}:paid`)) && !retry) return false;
+  // Exactly one resumer: the run moves from this wait to running with the
+  // mark saved. If this process dies, the 5-minute reclaim (claim_flow_runs)
+  // puts it back and the sweeper wakes it at wake_at, on the paid path.
+  run.variables = { ...run.variables, payment_id: args.paymentLinkId, _paid_resume: { node: args.nodeId, link: args.paymentLinkId } };
+  const { data: won } = await supabase
+    .from("flow_runs")
+    .update({ status: "running", claimed_at: new Date().toISOString(), wake_at: new Date(Date.now() + PAID_RESUME_RETRY_MS).toISOString(), variables: { ...run.variables } })
+    .eq("id", run.id)
+    .eq("status", "waiting")
+    .eq("waiting_for", "payment")
+    .eq("current_node_id", args.nodeId)
+    .select("id")
+    .maybeSingle();
+  if (!won) return false;
   await advance(supabase, run, graph, null, { paid: true });
   return true;
 }
+
+/** A claimed paid resume that dies is swept this long after its claim (the reclaim takes 5 minutes). */
+const PAID_RESUME_RETRY_MS = 5 * 60_000;
 
 /** STOP / opt-out anywhere: every active run for the contact ends. */
 export async function cancelRunsForContact(supabase: SupabaseClient, organizationId: string, contactId: string) {

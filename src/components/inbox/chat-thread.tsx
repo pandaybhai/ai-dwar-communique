@@ -17,7 +17,6 @@ import {
   Wand2,
   GraduationCap,
   Languages,
-  ThumbsDown,
   HandHelping,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { FlowRunBanner } from "@/components/inbox/flow-run-banner";
+import { AidenRulesBadge } from "@/components/inbox/aiden-rules-badge";
 import { FlowRunHistory } from "@/components/inbox/flow-run-history";
 import { SendFormButton } from "@/components/inbox/send-form-button";
 import { SendCardButton } from "@/components/inbox/send-card-button";
@@ -35,6 +35,7 @@ import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
 import { languageLabel } from "@/lib/languages";
 import { handoverReasonText } from "@/lib/ai-outcome";
+import { aiRunFor, questionBefore, type AiRunNote, type AiRunRow } from "@/lib/inbox-ai-runs";
 
 import {
   Select,
@@ -197,17 +198,12 @@ function MessageMedia({
   );
 }
 
-/** What we can say about an AI-written reply: what was asked, what taught it. */
-type AiRunNote = { question: string; taughtOn: string | null };
-
 /**
- * Matches AI answers to the messages they produced, so a merchant can correct
- * the exact reply they are looking at.
+ * The AI answers of this conversation, newest first, so a merchant can improve
+ * the exact reply they are looking at (matched by aiRunFor).
  */
 function useAiRuns(organizationId: string | null, conversationId: string) {
-  const [runs, setRuns] = useState<
-    { output: string; input_summary: string | null; sources: unknown; created_at: string }[]
-  >([]);
+  const [runs, setRuns] = useState<AiRunRow[]>([]);
 
   const load = useCallback(async () => {
     if (!organizationId) return;
@@ -219,31 +215,14 @@ function useAiRuns(organizationId: string | null, conversationId: string) {
       .eq("task", "agent_reply")
       .order("created_at", { ascending: false })
       .limit(60);
-    setRuns((data ?? []) as typeof runs);
+    setRuns((data ?? []) as AiRunRow[]);
   }, [organizationId, conversationId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  return useMemo(() => {
-    const byOutput = new Map<string, AiRunNote>();
-    for (const run of runs) {
-      const key = (run.output ?? "").trim();
-      if (!key || byOutput.has(key)) continue;
-      const sources = Array.isArray(run.sources)
-        ? (run.sources as Array<{ sourceType?: string }>)
-        : [];
-      const taught = sources.some((s) => s?.sourceType === "manual_qa");
-      byOutput.set(key, {
-        question: run.input_summary ?? "",
-        taughtOn: taught
-          ? new Date(run.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "long" })
-          : null,
-      });
-    }
-    return byOutput;
-  }, [runs]);
+  return runs;
 }
 
 /** A filled-in WhatsApp form, read as "question: answer" rows. */
@@ -284,7 +263,8 @@ export function Bubble({
   /** The AI run behind this message, when the AI wrote it. */
   aiRun?: AiRunNote | null;
   agentName: string;
-  onTeach?: (question: string, said: string) => void;
+  /** Opens "Improve this answer" for the reply this message is part of. */
+  onTeach?: (note: AiRunNote) => void;
 }) {
   const outbound = message.direction === "outbound";
   const body = message.body?.trim() ?? "";
@@ -335,10 +315,10 @@ export function Bubble({
               <button
                 type="button"
                 className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors duration-200 hover:bg-muted hover:text-foreground"
-                onClick={() => onTeach(aiRun.question, message.body ?? "")}
+                onClick={() => onTeach(aiRun)}
               >
-                <ThumbsDown className="h-3 w-3" />
-                Not right
+                <Sparkles className="h-3 w-3" />
+                Improve this answer
               </button>
             ) : null}
           </div>
@@ -382,7 +362,7 @@ export function ChatThread({
   onBack: () => void;
   onAssign: (userId: string | null) => void;
   onToggleStatus: () => void;
-  /** Clears the "Needs you" flag once a person has picked the thread up. */
+  /** Clears the "Waiting for you" flag once a person has picked the thread up (Aiden is back on it). */
   onResolveNeedsHuman?: () => void;
 
 }) {
@@ -397,6 +377,8 @@ export function ChatThread({
   const label = contactLabel(conversation.contact);
   const { can } = usePermissions();
   const canUseAi = can("ai.use");
+  // Saving an answer (knowledge "correct") needs ai.configure.
+  const canTeach = can("ai.configure");
   const aiRuns = useAiRuns(organizationId, conversation.id);
   // What the customer actually writes in, from their most recent message.
   const customerLanguage = useMemo(() => {
@@ -406,7 +388,7 @@ export function ChatThread({
     }
     return null;
   }, [messages]);
-  const [teaching, setTeaching] = useState<{ question: string; said: string } | null>(null);
+  const [teaching, setTeaching] = useState<AiRunNote | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -501,11 +483,20 @@ export function ChatThread({
   };
 
 
+  // After a teammate answers a customer by hand, offer to teach Aiden that
+  // answer (the same CorrectionDialog → knowledge "correct" → saveCorrection).
+  const [teachOffer, setTeachOffer] = useState<AiRunNote | null>(null);
+  useEffect(() => setTeachOffer(null), [conversation.id]);
+
   const submit = async () => {
     const text = draft.trim();
     if (!text || sending) return;
     const ok = await onSend(text);
-    if (ok) setDraft("");
+    if (ok) {
+      setDraft("");
+      const asked = [...messages].reverse().find((m) => m.direction === "inbound" && (m.body ?? "").trim());
+      if (canTeach && asked) setTeachOffer({ question: (asked.body ?? "").trim(), reply: text, taughtOn: null });
+    }
   };
 
   let lastDay = "";
@@ -527,6 +518,8 @@ export function ChatThread({
             {fromNumber ? <span className="opacity-70"> · via {fromNumber}</span> : null}
           </p>
         </div>
+
+        <AidenRulesBadge conversationId={conversation.id} />
 
         {customerLanguage ? (
           <Badge
@@ -583,7 +576,7 @@ export function ChatThread({
           <HandHelping className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <p className="font-medium">
-              Needs you.{" "}
+              Waiting for you.{" "}
               {handoverReasonText(conversation.needs_human_reason) ?? "I stepped back on this one."}
             </p>
             {conversation.needs_human_question ? (
@@ -653,15 +646,11 @@ export function ChatThread({
                     message={m}
                     organizationId={organizationId}
                     agentName="Your AI employee"
-                    aiRun={
-                      m.direction === "outbound" && !m.sent_by
-                        ? (aiRuns.get((m.body ?? "").trim()) ?? null)
-                        : null
-                    }
-                    {...(canUseAi
+                    aiRun={aiRunFor(m, aiRuns)}
+                    {...(canTeach
                       ? {
-                          onTeach: (question: string, said: string) =>
-                            setTeaching({ question, said }),
+                          onTeach: (note: AiRunNote) =>
+                            setTeaching({ ...note, question: note.question.trim() || questionBefore(messages, messages.indexOf(m)) }),
                         }
                       : {})}
                   />
@@ -759,6 +748,26 @@ export function ChatThread({
             ) : null}
           </div>
         ) : null}
+        {teachOffer ? (
+          <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3.5 py-2 text-xs text-muted-foreground">
+            <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">Teach Aiden this answer? Next time a customer asks, Aiden can answer it.</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-full"
+              onClick={() => {
+                setTeaching(teachOffer);
+                setTeachOffer(null);
+              }}
+            >
+              Teach Aiden
+            </Button>
+            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setTeachOffer(null)}>
+              Not now
+            </Button>
+          </div>
+        ) : null}
         {open ? (
 
           <div className="mx-auto flex max-w-3xl items-end gap-2">
@@ -822,7 +831,7 @@ export function ChatThread({
           agentName="your AI employee"
           open={teaching !== null}
           customerQuestion={teaching?.question ?? ""}
-          saidInstead={teaching?.said ?? ""}
+          saidInstead={teaching?.reply ?? ""}
           onOpenChange={(open) => !open && setTeaching(null)}
         />
       ) : null}

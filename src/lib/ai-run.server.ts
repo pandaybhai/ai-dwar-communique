@@ -15,6 +15,7 @@
  *     degrading to a worse answer.
  */
 
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   brokerTools,
@@ -40,6 +41,8 @@ import {
   type NeutralTurn,
   type Outage,
 } from "@/lib/ai-fallback.server";
+import { EARLY_CALL_ID, type EarlySearch } from "@/lib/early-search.server";
+import { productFacts, rupees } from "@/lib/product-facts";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
@@ -149,6 +152,18 @@ export type RunOptions = {
    * event processed). Omitted: awaited in place, as always.
    */
   deferUsage?: (work: Promise<unknown>) => void;
+  /**
+   * Called (never awaited) the moment send_products queues products, while
+   * the model is still writing its closing words — the reply path uses it to
+   * draw the first branded card ahead of time. Must not throw or block.
+   */
+  onProductsQueued?: (items: ChosenProduct[]) => void;
+  /**
+   * The material and the early catalogue search, already started by the
+   * caller for this same input (startAnswerLookups). Left out, executeRun
+   * starts them itself — in parallel with its prelude.
+   */
+  lookups?: AnswerLookups;
 };
 
 
@@ -171,6 +186,19 @@ export type RunMedia = {
 
 /** How many pictures a single answer is allowed to carry. */
 export const MAX_PRODUCT_IMAGES = 5;
+
+/** A product the model chose to send (send_products), with the caption it wrote. */
+export type ChosenProduct = RunMedia & { productId: string; caption: string; hasPhoto: boolean };
+
+/**
+ * A reply in the model's own order: its words and the products it sent,
+ * exactly as it placed them (text written with a send_products call goes
+ * before those pictures; the closing text after them).
+ */
+export type ReplyPart = { kind: "text"; text: string } | { kind: "products"; items: ChosenProduct[] };
+
+/** Where a products part sits in the reply while the guards read it (never sent). */
+const PRODUCTS_MARK = "\u2063\u2063\u2063";
 
 /**
  * The one answering rule, on every conversation reply — with material or
@@ -209,9 +237,7 @@ const CONFIRM_LINE = "Let me confirm that for you.";
  * everything else the model said, and promise to come back on the rest.
  */
 export function stripUnsupported(answer: string, tokens: string[]): string {
-  const parts = answer.split(/(?<=[.!?\n])\s+/);
-  const kept = parts.filter((part) => !tokens.some((t) => part.includes(t)));
-  let text = kept.join(" ").replace(/\s+\n/g, "\n").trim();
+  let text = dropSentences(answer, (s) => tokens.some((t) => s.includes(t)));
   for (const token of tokens) text = text.split(token).join("").trim();
   text = text.replace(/[ \t]{2,}/g, " ").trim();
   if (!text) return CONFIRM_LINE;
@@ -332,37 +358,56 @@ export function stripCitationMarkers(text: string): string {
   return stripped === text ? text : stripped.replace(/[ \t]+$/gm, "").trim();
 }
 
+const UUID = /[ \t]*[([]?\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b[)\]]?/gi;
+
+/**
+ * The other ways a source reference leaks into a reply: "Item 6." after the
+ * answer, "(Item 2)", "Source: FAQ", "(1)" ending a sentence when the
+ * material was numbered that far, a bare document id. Only ever removes; a
+ * reply without any comes back exactly as it was. Links are never touched.
+ */
+export function stripReferenceLeaks(text: string, numberedItems = 0): string {
+  const links: string[] = [];
+  let t = text.replace(/\bhttps?:\/\/\S+/gi, (u) => {
+    links.push(u);
+    return `\uE001${links.length - 1}\uE001`;
+  });
+  const before = t;
+  const refWord = "(?:items?|sources?|docs?|documents?|chunks?|refs?|references?)";
+  const nums = "#?\\d{1,3}(?:\\s*(?:,|and|&|–|-)\\s*\\d{1,3})*";
+  t = t
+    // "(Source: About us)", then a bare "Source: …" to the end of its line.
+    .replace(/[ \t]*[([]\s*(?:sources?|references?|refs?|citations?)\s*:[^)\]\n]*[)\]]/gi, "")
+    .replace(/[ \t]*\b(?:sources?|references?|refs?|citations?)\s*:[^\n]*/gi, "")
+    // "(Item 6)", "[Items 2, 3]".
+    .replace(new RegExp(`[ \\t]*[([]\\s*${refWord}\\s*${nums}\\s*[)\\]]`, "gi"), "")
+    // "Item 6." standing alone as the last words of a sentence or line.
+    .replace(new RegExp(`(^|[.!?]["”’)]?[ \\t]+|\\n)[ \\t]*${refWord}\\s*${nums}[ \\t]*[.!]?[ \\t]*(?=\\n|$)`, "gim"), "$1")
+    // A bare document id.
+    .replace(UUID, "");
+  if (numberedItems > 0) {
+    // "(2)" or "(1, 3)" ending a sentence — only numbers the material used.
+    t = t.replace(/[ \t]*\((\d{1,2}(?:\s*,\s*\d{1,2})*)\)(?=[ \t]*(?:[.,;:!?]|\n|$))/g, (whole, list: string) =>
+      list.split(",").every((n) => Number(n) >= 1 && Number(n) <= numberedItems) ? "" : whole,
+    );
+  }
+  if (t === before) return text;
+  return t
+    .replace(/\uE001(\d+)\uE001/g, (_, i: string) => links[Number(i)] ?? "")
+    .replace(/[ \t]+([.,;:!?])/g, "$1")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Every reference a customer must never see: citation markers, then the other leaks. */
+export function stripReferences(text: string, numberedItems = 0): string {
+  return stripReferenceLeaks(stripCitationMarkers(text), numberedItems);
+}
+
 /** Product types a jewellery / retail shelf is browsed by (word-bounded: "earrings" is not "rings"). */
 const SHELF_WORDS =
   /\b(rings?|pendants?|earrings?|bracelets?|necklaces?|chains?|bangles?|anklets?|mangalsutras?|tanmaniyas?|nose ?pins?|studs?|jhumkas?)\b/gi;
-
-/**
- * When the search found nothing at the customer's budget, the reply must say
- * what does exist and from what price. Returns that line when the answer
- * doesn't already carry the starting price, else null.
- */
-export function closestShelfLine(toolResults: string[], answer: string): string | null {
-  for (const raw of [...toolResults].reverse()) {
-    let view: { data?: { found?: boolean; category?: string | null; closest_above?: Array<{ price?: unknown; currency?: unknown }> } };
-    try {
-      view = JSON.parse(raw) as typeof view;
-    } catch {
-      continue;
-    }
-    const closest = view.data?.found === false ? view.data.closest_above ?? [] : [];
-    const priced = closest
-      .map((r) => ({ price: Number(r.price), currency: typeof r.currency === "string" && r.currency ? r.currency : "INR" }))
-      .filter((r) => Number.isFinite(r.price) && r.price > 0)
-      .sort((a, b) => a.price - b.price);
-    if (!priced.length) continue;
-    const from = Math.floor(priced[0]!.price);
-    if (stripNumericNoise(answer).includes(String(from))) return null;
-    const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: priced[0]!.currency, maximumFractionDigits: 0 }).format(from);
-    const shelf = (view.data?.category ?? "").trim();
-    return shelf ? `Our ${shelf} start at ${money}.` : `The closest we have starts at ${money}.`;
-  }
-  return null;
-}
 
 /**
  * Sentences that offer a kind of product the catalogue search never returned
@@ -386,6 +431,25 @@ export function unsearchedShelfOffers(answer: string, question: string, toolResu
 /** Split a reply into sentences, keeping the original text of each. */
 function sentencesOf(text: string): string[] {
   return text.split(/(?<=[.!?\n])\s+/).map((p) => p.trim()).filter(Boolean);
+}
+
+/**
+ * The text without the sentences `drop` picks, every other sentence and line
+ * break exactly where the model put it (a line left empty goes with it).
+ */
+export function dropSentences(text: string, drop: (sentence: string) => boolean): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (const line of lines) {
+    const sentences = sentencesOf(line);
+    const kept = sentences.filter((s) => !drop(s));
+    if (kept.length === sentences.length) {
+      out.push(line.replace(/[ \t]+$/, ""));
+      continue;
+    }
+    if (kept.length) out.push(kept.join(" "));
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** Sentences that talk about pricing, fees, refunds, delivery, warranty or payment. */
@@ -420,8 +484,7 @@ export function withoutConfirmLine(answer: string): string {
 /** Remove exact sentences, keep the rest, promise to come back once. */
 export function stripSentences(answer: string, drop: string[]): string {
   const set = new Set(drop.map((d) => d.trim()));
-  const kept = sentencesOf(answer).filter((s) => !set.has(s));
-  const text = kept.join(" ").replace(/[ \t]{2,}/g, " ").trim();
+  const text = dropSentences(answer, (s) => set.has(s)).replace(/[ \t]{2,}/g, " ").trim();
   if (!text) return CONFIRM_LINE;
   if (text.includes(CONFIRM_LINE)) return text;
   return `${text}\n\n${CONFIRM_LINE}`;
@@ -494,6 +557,56 @@ async function unsupportedPolicyClaims(
   }
 }
 
+/**
+ * Batch 16: when the policy check finds a claim the material doesn't support,
+ * the model is asked once to say the reply again without it — instead of
+ * code cutting the sentence out ("20-day no-questions returns hai" went and
+ * the reply began "Lekin…"). The reply's text parts (split at the product
+ * markers) are rewritten together, in one call, and come back in the same
+ * number. Null on any failure: the caller falls back to stripping.
+ */
+async function rewriteWithoutClaims(
+  supabase: SupabaseClient,
+  args: PolicyCheckWho & {
+    parts: string[];
+    claims: string[];
+    sources: string;
+    question: string;
+    prelude?: Promise<RunPrelude>;
+    deferUsage?: RunOptions["deferUsage"];
+  },
+): Promise<string[] | null> {
+  try {
+    const run = await executeRun(supabase, {
+      ...policyCheckRun(args),
+      metadata: { purpose: "policy_rewrite" },
+      ...(args.prelude ? { prelude: args.prelude } : {}),
+      ...(args.deferUsage ? { deferUsage: args.deferUsage } : {}),
+      system: [
+        "You edit a shop assistant's WhatsApp reply to a customer before it is sent.",
+        "Some claims in it are not supported by the shop's material. Rewrite the reply so it no longer makes those claims — not even in other words.",
+        "Where a removed claim answered the customer's question, say plainly that you don't have that detail right now. Keep everything else: the same language and script, tone, products, links and length. Never add a new fact, number, price, date or policy.",
+        'The reply is given as numbered parts. Answer with JSON only: {"parts": ["...", ...]} — the same number of parts, in order.',
+      ].join("\n"),
+      input:
+        `SHOP MATERIAL:\n${args.sources.slice(0, 16000)}\n\nCUSTOMER ASKED:\n${args.question.slice(0, 500)}\n\n` +
+        `UNSUPPORTED CLAIMS:\n${args.claims.map((c) => `- ${c}`).join("\n")}\n\n` +
+        `REPLY PARTS:\n${JSON.stringify(args.parts)}`,
+    });
+    if (run.status !== "ok" || !run.output.trim()) return null;
+    const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { parts?: unknown[] };
+    const parts = Array.isArray(parsed.parts) ? parsed.parts.map((p) => (typeof p === "string" ? p.trim() : null)) : [];
+    if (parts.length !== args.parts.length || parts.some((p) => p === null)) return null;
+    // A part that had words must still have words.
+    if (parts.some((p, i) => !p && args.parts[i]!.trim())) return null;
+    return parts as string[];
+  } catch (error) {
+    console.log("[policy-grounding] rewrite skipped", error instanceof Error ? error.message : "unknown");
+    return null;
+  }
+}
+
 export type RunResult = {
   runId: string | null;
   status: "ok" | "refused" | "escalated" | "capped" | "error";
@@ -512,6 +625,11 @@ export type RunResult = {
   }[];
   /** Pictures of the products this answer talks about, in the order shown. */
   media: RunMedia[];
+  /**
+   * Set when the model sent products (send_products): its words and its
+   * products, in the order it chose. Absent: the reply is `output` alone.
+   */
+  parts?: ReplyPart[];
 
   escalationSignal: string | null;
   /**
@@ -969,7 +1087,7 @@ async function callChatCompletions(
       function: { name: t.name, description: t.description, parameters: t.parameters },
     }));
   }
-  const res = await fetch(`${base}/chat/completions`, {
+  const res = await outsideFetch("ai", `${base}/chat/completions`, {
     method: "POST",
     headers: gatewayHeaders(key, direct),
     body: JSON.stringify(body),
@@ -1025,11 +1143,13 @@ async function callResponses(
       strict: false,
     }));
   }
-  const res = await fetch(`${base}/responses`, {
-    method: "POST",
-    headers: gatewayHeaders(key, direct),
-    body: JSON.stringify(body),
-  });
+  // Silence (not total time) is what gives up here: these models think for minutes.
+  const res = await outsideFetch(
+    "ai_stream",
+    `${base}/responses`,
+    { method: "POST", headers: gatewayHeaders(key, direct), body: JSON.stringify(body) },
+    { idle: true },
+  );
   if (!res.ok || !res.body) {
     const text = res.ok ? "" : await res.text();
     throw new ProviderHttpError(gatewayErrorMessage(res.status, text), res.status, text);
@@ -1101,12 +1221,18 @@ function safeJson(raw: string): Record<string, unknown> {
   }
 }
 
-/** The Responses API prefers strict-shaped schemas. */
-function strictSchema(schema: BrokeredTool["parameters"]): Record<string, unknown> {
+/**
+ * The Responses API shape. Only the tool's own required arguments are marked
+ * required (tools are sent with strict: false, so nothing forces more): every
+ * property marked required made the model fill optional filters it was never
+ * asked for — catalog_search went out with gender "female" for "earrings
+ * dikhao" and found nothing (Zoori, 6 Oct).
+ */
+export function strictSchema(schema: BrokeredTool["parameters"]): Record<string, unknown> {
   return {
     type: "object",
     properties: schema.properties ?? {},
-    required: Object.keys(schema.properties ?? {}),
+    required: schema.required ?? [],
     additionalProperties: false,
   };
 }
@@ -1251,6 +1377,24 @@ export async function meterAiUsage(
   amounts: { costAmount?: number; inputTokens?: number; outputTokens?: number; runs?: number },
 ): Promise<void> {
   const usageDate = new Date().toISOString().slice(0, 10);
+  // Added in the database in one statement (ai_usage_add, migration
+  // 20261027): read-add-write lost one of two concurrent additions, so the
+  // caps under-counted. Until it is applied, the old way below.
+  if (Date.now() >= aiUsageAddMissingUntil) {
+    const { error } = await supabase.rpc("ai_usage_add", {
+      p_org: organizationId,
+      p_usage_date: usageDate,
+      p_task: task,
+      p_runs: amounts.runs ?? 1,
+      p_input_tokens: amounts.inputTokens ?? 0,
+      p_output_tokens: amounts.outputTokens ?? 0,
+      p_cost_amount: amounts.costAmount ?? 0,
+    });
+    if (!error) return;
+    const code = String((error as { code?: string }).code ?? "");
+    if (code === "PGRST202" || code === "42883") aiUsageAddMissingUntil = Date.now() + 10 * 60_000;
+    else console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
+  }
   const { data } = await supabase
     .from("ai_usage")
     .select("id, runs, input_tokens, output_tokens, cost_amount")
@@ -1280,6 +1424,8 @@ export async function meterAiUsage(
   if (prior) await supabase.from("ai_usage").update(row).eq("id", prior.id);
   else await supabase.from("ai_usage").insert(row);
 }
+/** Set while ai_usage_add() isn't in the database yet; looked for again after 10 minutes. */
+let aiUsageAddMissingUntil = 0;
 
 /**
  * The OpenAI key for the embeddings backup: the platform's OpenAI key from the
@@ -1311,7 +1457,7 @@ async function embedBatch(
   let failure: unknown = null;
   if (key) {
     try {
-      const res = await fetch(`${GATEWAY}/embeddings`, {
+      const res = await outsideFetch("embeddings", `${GATEWAY}/embeddings`, {
         method: "POST",
         headers: gatewayHeaders(key),
         body: JSON.stringify({ model: EMBEDDING_MODEL, input: batch }),
@@ -1329,7 +1475,7 @@ async function embedBatch(
   } else {
     openAiKey = await backupKey();
   }
-  const res = await fetch(`${DIRECT_ENDPOINTS["openai"]}/embeddings`, {
+  const res = await outsideFetch("embeddings", `${DIRECT_ENDPOINTS["openai"]}/embeddings`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
     body: JSON.stringify({ model: wireModel("openai", EMBEDDING_MODEL), input: batch }),
@@ -1387,7 +1533,8 @@ function workspaceGatesApply(options: Pick<RunOptions, "channel" | "preview" | "
   // and must work whatever the workspace's AI mode is: off / draft / replying.
   const purpose = String((options.metadata as Record<string, unknown> | undefined)?.["purpose"] ?? "");
   const isKnowledgeReading =
-    options.billingExempt === true && (purpose.startsWith("knowledge_") || purpose === "policy_claim_check");
+    options.billingExempt === true &&
+    (purpose.startsWith("knowledge_") || purpose === "policy_claim_check" || purpose === "policy_rewrite");
   return !isMerchantOnboarding && !isAdminPreview && !isKnowledgeReading;
 }
 
@@ -1411,18 +1558,43 @@ export type RunPrelude = {
   tools: BrokeredTool[];
 };
 
+/**
+ * The prelude, plus two of its reads on their own: the tools this run may
+ * call and the visible product count. The early catalogue search starts on
+ * them while the rest of the prelude (brain, key, caps) is still being read.
+ */
+export type PreludeRead = Promise<RunPrelude> & {
+  toolsReady?: Promise<BrokeredTool[]>;
+  productsReady?: Promise<number>;
+};
+
 export function prepareRun(
   supabase: SupabaseClient,
   options: Pick<
     RunOptions,
     "organizationId" | "task" | "agentId" | "tier" | "useTools" | "principal" | "actorUserId" | "channel" | "preview" | "billingExempt" | "metadata"
   >,
-): Promise<RunPrelude> {
+): PreludeRead {
   const { organizationId, task } = options;
   const gates = workspaceGatesApply(options);
   const principal: ToolPrincipal =
     options.principal ?? (options.actorUserId ? userPrincipal(options.actorUserId) : agentPrincipal);
   const brain = resolveBrain(supabase, organizationId, task, options.agentId ?? null, options.tier ?? null);
+  const productCount: Promise<number> =
+    task === "agent_reply"
+      ? Promise.resolve(
+          supabase
+            .from("products")
+            .select("id", { count: "exact", head: true })
+            .eq("organization_id", organizationId)
+            .eq("is_visible", true),
+        ).then(({ count }) => count ?? 0)
+      : Promise.resolve(0);
+  const tools: Promise<BrokeredTool[]> = options.useTools
+    ? brokerTools(supabase, organizationId, principal)
+    : Promise.resolve([] as BrokeredTool[]);
+  productCount.catch(() => {});
+  tools.catch(() => {});
   const prelude = Promise.all([
     brain,
     resolveMarkup(supabase, organizationId),
@@ -1434,16 +1606,8 @@ export function prepareRun(
     gates ? overCap(supabase, organizationId) : null,
     overPlatformCap(supabase),
     brain.then((b) => resolveApiKey(supabase, organizationId, b.provider)),
-    task === "agent_reply"
-      ? Promise.resolve(
-          supabase
-            .from("products")
-            .select("id", { count: "exact", head: true })
-            .eq("organization_id", organizationId)
-            .eq("is_visible", true),
-        ).then(({ count }) => count ?? 0)
-      : 0,
-    options.useTools ? brokerTools(supabase, organizationId, principal) : ([] as BrokeredTool[]),
+    productCount,
+    tools,
   ]).then(([b, markup, aiEnabled, cap, platformCap, api, productCount, tools]) => ({
     brain: b,
     markup,
@@ -1456,7 +1620,7 @@ export function prepareRun(
   }));
   // Awaited by executeRun; a failure surfaces there, never as an unhandled rejection.
   prelude.catch(() => {});
-  return prelude;
+  return Object.assign(prelude, { toolsReady: tools, productsReady: productCount });
 }
 
 const ESCALATION_TOPICS = [
@@ -1487,9 +1651,114 @@ function topicNeedsHuman(question: string, extraRules: string): string | null {
   return null;
 }
 
+/** One matched piece of the business's material, as match_knowledge_chunks returns it. */
+export type KnowledgeRow = {
+  document_id: string;
+  source_type: string;
+  source_name: string;
+  source_ref: string;
+  title: string;
+  text: string;
+  similarity: number;
+};
+
+/** The question's matches, and a way to look again with the same vector. */
+export type KnowledgeMatch = { rows: KnowledgeRow[]; again: () => Promise<KnowledgeRow[]> };
+
+/**
+ * Embeds the question and matches it against the business's material —
+ * reads only (the embedding is never metered to the workspace). Null when
+ * there is no vector. The on-demand page read when nothing matched stays in
+ * executeRun, after the run's gates.
+ */
+export function matchKnowledge(
+  supabase: SupabaseClient,
+  args: { organizationId: string; agentId: string | null; input: string; merchantChannel: boolean },
+): Promise<KnowledgeMatch | null> {
+  const read = embedTexts([args.input]).then(async ([vector]) => {
+    if (!vector) return null;
+    // The owner's own chat asks broad questions ("what is the price?")
+    // against a small, fresh crawl, so it reaches a little further down.
+    const again = async () => {
+      const { data } = await supabase.rpc("match_knowledge_chunks", {
+        p_org: args.organizationId,
+        p_embedding: JSON.stringify(vector),
+        p_embedding_model: EMBEDDING_MODEL,
+        p_agent: args.agentId,
+        p_limit: 6,
+        p_min_similarity: args.merchantChannel ? 0.25 : 0.35,
+      });
+      return (data ?? []) as KnowledgeRow[];
+    };
+    return { rows: await again(), again };
+  });
+  read.catch(() => {});
+  return read;
+}
+
+/**
+ * What an answer reads besides the prelude — the business's material and the
+ * early catalogue search — started together, never one after the other.
+ * The inbound webhook starts them once the gate passed (ai-agent.server.ts);
+ * any other run starts them at the top of executeRun.
+ */
+export type AnswerLookups = {
+  knowledge?: Promise<KnowledgeMatch | null> | null;
+  early?: Promise<EarlySearch | null> | null;
+};
+
+export function startAnswerLookups(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    agentId: string | null;
+    input: string;
+    prelude: PreludeRead;
+    conversationId?: string | null;
+    contactId?: string | null;
+    /** Whose permissions the search runs under (the run's own); the agent when left out. */
+    principal?: ToolPrincipal;
+    actorUserId?: string | null;
+    knowledge: boolean;
+    early: boolean;
+  },
+): AnswerLookups {
+  const early = args.early
+    ? import("@/lib/early-search.server").then(({ earlyCatalogSearch }) =>
+        earlyCatalogSearch(supabase, {
+          organizationId: args.organizationId,
+          input: args.input,
+          tools: args.prelude.toolsReady ?? args.prelude.then((p) => p.tools),
+          visibleProducts: args.prelude.productsReady ?? args.prelude.then((p) => p.productCount),
+          subject: toolSubject({ conversationId: args.conversationId ?? null, contactId: args.contactId ?? null }),
+          principal: args.principal ?? agentPrincipal,
+          actorUserId: args.actorUserId ?? null,
+          smallTalk: isSmallTalk(args.input),
+        }),
+      )
+    : null;
+  early?.catch(() => {});
+  return {
+    knowledge: args.knowledge
+      ? matchKnowledge(supabase, {
+          organizationId: args.organizationId,
+          agentId: args.agentId,
+          input: args.input,
+          merchantChannel: false,
+        })
+      : null,
+    early,
+  };
+}
+
+/** A request the provider refused as malformed (not an outage). */
+function refusedRequest(error: unknown): boolean {
+  return error instanceof ProviderHttpError && (error.status === 400 || error.status === 422);
+}
+
 export async function executeRun(
   supabase: SupabaseClient,
-  options: RunOptions & { prelude?: Promise<RunPrelude> },
+  options: RunOptions & { prelude?: PreludeRead },
 ): Promise<RunResult> {
   const started = Date.now();
   const {
@@ -1508,7 +1777,49 @@ export async function executeRun(
     maxSteps = 4,
   } = options;
 
-  const prelude = await (options.prelude ?? prepareRun(supabase, options));
+  const preludeRead = options.prelude ?? prepareRun(supabase, options);
+  // The material and the early catalogue search run alongside the prelude
+  // (and alongside each other), never after it. A live customer answer only:
+  // the owner's chat, a picture being read and page reading never search early.
+  const earlyWanted =
+    task === "agent_reply" &&
+    useTools &&
+    options.channel !== "onboarding" &&
+    !options.imageDataUrl &&
+    !String((options.metadata as Record<string, unknown> | undefined)?.["purpose"] ?? "").startsWith("knowledge_");
+  const lookups: AnswerLookups = {
+    knowledge: useKnowledge
+      ? (options.lookups?.knowledge ??
+        matchKnowledge(supabase, {
+          organizationId,
+          agentId,
+          input,
+          merchantChannel: options.channel === "onboarding",
+        }))
+      : null,
+    early: earlyWanted
+      ? (options.lookups?.early ??
+        startAnswerLookups(supabase, {
+          organizationId,
+          agentId,
+          input,
+          prelude: preludeRead,
+          conversationId,
+          contactId,
+          principal: options.principal ?? (actorUserId ? userPrincipal(actorUserId) : agentPrincipal),
+          actorUserId,
+          knowledge: false,
+          early: true,
+        }).early ??
+        null)
+      : null,
+  };
+  let knowledgeSettled = false;
+  lookups.knowledge?.then(
+    () => (knowledgeSettled = true),
+    () => (knowledgeSettled = true),
+  );
+  const prelude = await preludeRead;
   const { brain, markup } = prelude;
   // Where the time went, kept on the ai_runs row (metadata.timing_ms).
   const timing: Record<string, number> = { prelude: Date.now() - started };
@@ -1577,7 +1888,11 @@ export async function executeRun(
         status: result.status,
         error: result.error ?? null,
         comparison_id: comparisonId,
-        metadata: { ...(options.metadata ?? {}), ...runMeta },
+        metadata: {
+          ...(options.metadata ?? {}),
+          ...runMeta,
+          ...(result.toolCalls.length ? { tools: runToolsMeta(result.toolCalls) } : {}),
+        },
 
         prompt_rules_version: options.promptRulesVersion ?? null,
 
@@ -1669,84 +1984,90 @@ export async function executeRun(
     });
   }
 
+  // ---------------------------------------------------- early catalogue
+  // Started with the prelude; usually done by now. Its results reach the
+  // model only when they fit the customer's words (early-search.server.ts)
+  // and this run really offers catalog_search on a catalogue with products.
+  const earlyWaitStarted = Date.now();
+  const early = lookups.early ? await lookups.early.catch(() => null) : null;
+  if (lookups.early) timing["early_search"] = Date.now() - earlyWaitStarted;
+  const earlyFits = Boolean(
+    early?.usable &&
+      early.result &&
+      prelude.productCount > 0 &&
+      prelude.tools.some((t) => t.name === "catalog_search"),
+  );
+  // A pure product browse: products found for the customer's own words, and
+  // no question about a figure (price, time, how much) or a policy. Only then
+  // may the website's material be left out when it isn't ready yet.
+  const pureBrowse =
+    earlyFits && !input.includes("?") && !POLICY_TOPIC.test(input) && !asksForFigure(input);
+
   // ------------------------------------------------------------- knowledge
   const retrievalStarted = Date.now();
   const sources: RunSource[] = [];
   let knowledgeBlock = "";
-  if (useKnowledge) {
+  if (useKnowledge && lookups.knowledge) {
     try {
-      const [vector] = await embedTexts([input]);
-      if (vector) {
-        // The owner's own chat asks broad questions ("what is the price?")
-        // against a small, fresh crawl, so it reaches a little further down.
-        const isMerchantChannel = options.channel === "onboarding";
-        const match = () =>
-          supabase.rpc("match_knowledge_chunks", {
-            p_org: organizationId,
-            p_embedding: JSON.stringify(vector),
-            p_embedding_model: EMBEDDING_MODEL,
-            p_agent: agentId,
-            p_limit: 6,
-            p_min_similarity: isMerchantChannel ? 0.25 : 0.35,
-          });
-        let { data: matches } = await match();
-        // Nothing known: read one matching unread page of the site, then look again.
-        if (!(matches ?? []).length && !isMerchantChannel && conversationId && options.billingExempt !== true) {
-          const { readOnDemand } = await import("@/lib/knowledge.server");
-          if (await readOnDemand(supabase, organizationId, conversationId, input)) ({ data: matches } = await match());
-        }
-        const rows = (matches ?? []) as Array<{
-          document_id: string;
-          source_type: string;
-          source_name: string;
-          source_ref: string;
-          title: string;
-          text: string;
-          similarity: number;
-        }>;
-        if (isMerchantChannel) {
-          console.log(
-            "[merchant-retrieval]",
-            organizationId,
-            JSON.stringify(input).slice(0, 120),
-            rows
-              .slice(0, 6)
-              .map((r) => `${(r.title || r.source_name || "?").slice(0, 40)}=${Number(r.similarity).toFixed(3)}`)
-              .join(" | ") || "no candidates above 0.25",
-          );
-        }
-        for (const row of rows) {
-          sources.push({
-            kind: "knowledge",
-            label: row.title || row.source_name,
-            ref: row.source_ref,
-            similarity: Number(row.similarity),
-            sourceType: row.source_type,
-            documentId: row.document_id,
-          });
-        }
-        knowledgeBlock = rows
-          .map((r, i) => {
-            const url = /^https?:\/\//i.test(r.source_ref ?? "") ? `${r.source_ref}\n` : "";
-            return `[${i + 1}] ${r.title || r.source_name}\n${url}${r.text}`;
-          })
-          .join("\n\n");
-
-        // Something the merchant wrote themselves counts as used, so they can
-        // see their corrections doing work.
-        const taught = rows
-          .filter((r) => r.source_type === "manual_qa")
-          .map((r) => r.document_id);
-        if (taught.length) {
-          // Awaited: on the merchant channel the handler finishes before a
-          // fire-and-forget request leaves the worker, so the count never moved.
-          await supabase.rpc("record_knowledge_use", {
-            p_org: organizationId,
-            p_document_ids: taught,
-          });
+      const isMerchantChannel = options.channel === "onboarding";
+      let rows: KnowledgeRow[] = [];
+      if (pureBrowse && !knowledgeSettled) {
+        // Still being read: a browse answer doesn't wait for it.
+        runMeta["retrieval"] = "skipped_browse";
+      } else {
+        runMeta["retrieval"] = knowledgeSettled ? "ready" : "waited";
+        const matched = await lookups.knowledge;
+        if (matched) {
+          rows = matched.rows;
+          // Nothing known: read one matching unread page of the site, then
+          // look again (never for a browse the catalogue already answered).
+          if (!rows.length && !pureBrowse && !isMerchantChannel && conversationId && options.billingExempt !== true) {
+            const { readOnDemand } = await import("@/lib/knowledge.server");
+            if (await readOnDemand(supabase, organizationId, conversationId, input)) rows = await matched.again();
+          }
         }
       }
+      if (isMerchantChannel) {
+        console.log(
+          "[merchant-retrieval]",
+          organizationId,
+          JSON.stringify(input).slice(0, 120),
+          rows
+            .slice(0, 6)
+            .map((r) => `${(r.title || r.source_name || "?").slice(0, 40)}=${Number(r.similarity).toFixed(3)}`)
+            .join(" | ") || "no candidates above 0.25",
+        );
+      }
+      for (const row of rows) {
+        sources.push({
+          kind: "knowledge",
+          label: row.title || row.source_name,
+          ref: row.source_ref,
+          similarity: Number(row.similarity),
+          sourceType: row.source_type,
+          documentId: row.document_id,
+        });
+      }
+      knowledgeBlock = rows
+        .map((r, i) => {
+          const url = /^https?:\/\//i.test(r.source_ref ?? "") ? `${r.source_ref}\n` : "";
+          return `[${i + 1}] ${r.title || r.source_name}\n${url}${r.text}`;
+        })
+        .join("\n\n");
 
+      // Something the merchant wrote themselves counts as used, so they can
+      // see their corrections doing work.
+      const taught = rows
+        .filter((r) => r.source_type === "manual_qa")
+        .map((r) => r.document_id);
+      if (taught.length) {
+        // Awaited: on the merchant channel the handler finishes before a
+        // fire-and-forget request leaves the worker, so the count never moved.
+        await supabase.rpc("record_knowledge_use", {
+          p_org: organizationId,
+          p_document_ids: taught,
+        });
+      }
     } catch {
       // Retrieval failing is itself a reason to hand over, handled below.
     }
@@ -1757,12 +2078,12 @@ export async function executeRun(
   // -------------------------------------------------------------- messages
   const systemParts = [options.system ?? ""];
   if (knowledgeBlock) {
-    // The owner's own chat reads better with a plain-words source line than
-    // with bracketed numbers; customers keep the numbered citation.
+    // The owner's own chat reads better with a plain-words source line. A
+    // customer never sees where an answer came from: no numbers, no sources.
     const citation =
       options.channel === "onboarding"
         ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
-        : "Cite the number of the item you used.";
+        : "The items are numbered for you only: never mention an item number, a source, a page title as a source, or brackets in your reply.";
     // A shopper wants the product page; a policy or blog page linked in every
     // reply is just noise.
     const linkRule =
@@ -1781,7 +2102,14 @@ export async function executeRun(
     // A shop with a real shelf must be browsed, not guessed at.
     if (prelude.productCount > 0) {
       systemParts.push(
-        "This business has a product catalogue; for any browse/choose request call catalog_search before answering.",
+        "This business has a product catalogue; for any browse/choose request call catalog_search before answering. " +
+          "When the customer names or asks about a particular product, look it up with catalog_search (query = its name) and use its fields (category, metal, stones, weight, price, link).",
+      );
+    }
+    if (options.channel !== "onboarding" && prelude.tools.some((t) => t.name === "send_products")) {
+      systemParts.push(
+        "Product pictures: nothing is attached for you. A product reaches the customer only when you call send_products with its product_id and the caption you want under its picture — write captions the way this business's instructions ask. " +
+          "Text you write in the same turn as send_products goes before the pictures; your final reply goes after them. Quote prices exactly as the search gives them (whole rupees).",
       );
     }
     systemParts.push(ANSWER_POLICY);
@@ -1792,7 +2120,12 @@ export async function executeRun(
     options.principal ?? (actorUserId ? userPrincipal(actorUserId) : agentPrincipal);
   const subject = toolSubject({ channel: options.channel, conversationId, contactId });
 
-  const tools = prelude.tools;
+  // Pictures only reach a customer from a live answer; the owner's own chat
+  // and a teammate's draft carry words alone, so they never offer them.
+  const tools =
+    task === "agent_reply" && options.channel !== "onboarding"
+      ? prelude.tools
+      : prelude.tools.filter((t) => t.name !== "send_products");
   const modelStarted = Date.now();
   // A customer answer may need the policy-claim check afterwards; its own
   // reads (brain, key, caps) run while this answer is being written instead
@@ -1819,10 +2152,60 @@ export async function executeRun(
   let inputTokens = 0;
   let outputTokens = 0;
   let answer = "";
+  /** The model's words and products in its own order, once it sends products. */
+  const segments: Array<{ kind: "text"; text: string } | { kind: "products"; items: ChosenProduct[] }> = [];
+  /** The text of the model's last turn that called no tool (what follows the pictures). */
+  let closingText = "";
+  /** Each chosen product's facts, the support its caption's numbers are checked against. */
+  const chosenFacts: string[] = [];
 
-  /** Runs one turn's tool calls in order; returns what the model sees of each. */
-  const runToolCalls = async (calls: { id: string; name: string; args: Record<string, unknown> }[]): Promise<string[]> => {
+  /**
+   * Runs one turn's tool calls in order; returns what the model sees of each.
+   * A turn that sends products keeps its own words, just before them.
+   */
+  /** Records one tool call and its result; returns what the model sees of it. */
+  const recordToolCall = (
+    tc: { id: string; name: string; args: Record<string, unknown> },
+    result: Awaited<ReturnType<typeof runTool>>,
+    chosen: Array<ChosenProduct & { facts: unknown }>,
+  ): string => {
+    // A product id the model got wrong is answered to the model (it can
+    // try again); it is not a broken tool.
+    if (!result.ok && tc.name !== "send_products") anyToolFailed = true;
+    toolCalls.push({
+      tool: tc.name,
+      ok: result.ok,
+      ...(result.error ? { error: result.error } : {}),
+      ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
+      activityLogId: result.activityLogId ?? null,
+      args: result.arguments ?? {},
+      resultSummary: result.resultSummary ?? {},
+    });
+    sources.push({ kind: "tool", label: tc.name });
+    collectProductMedia(tc.name, result, foundMedia);
+    const picked = tc.name === "send_products" ? chosenProducts(result) : [];
+    chosen.push(...picked);
+    chosenFacts.push(...picked.map((p) => JSON.stringify(p.facts)));
+    const view = toolView(tc.name, result);
+    // A caption the model wrote is not support for anything it says.
+    if (tc.name !== "send_products") toolResultTexts.push(view);
+    return view;
+  };
+
+  /**
+   * Runs one turn's tool calls in order; returns what the model sees of each.
+   * A turn that sends products keeps its own words, just before them. When
+   * the turn only sent products (all of them real) and gave its closing
+   * words with them, `closing` is those words: the reply is complete and the
+   * model is not asked again.
+   */
+  const runToolCalls = async (
+    calls: { id: string; name: string; args: Record<string, unknown> }[],
+    turnText = "",
+  ): Promise<{ views: string[]; closing: string | null }> => {
     const views: string[] = [];
+    const chosen: Array<ChosenProduct & { facts: unknown }> = [];
+    let complete = calls.length > 0;
     for (const tc of calls) {
       const result = await runTool(
         supabase,
@@ -1832,25 +2215,48 @@ export async function executeRun(
         tc.name,
         tc.args,
         subject,
+        tools,
       );
-      if (!result.ok) anyToolFailed = true;
-      toolCalls.push({
-        tool: tc.name,
-        ok: result.ok,
-        ...(result.error ? { error: result.error } : {}),
-        ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
-        activityLogId: result.activityLogId ?? null,
-        args: result.arguments ?? {},
-        resultSummary: result.resultSummary ?? {},
-      });
-      sources.push({ kind: "tool", label: tc.name });
-      collectProductMedia(tc.name, result, foundMedia);
-      const view = JSON.stringify(modelView(result)).slice(0, 6000);
-      toolResultTexts.push(view);
-      views.push(view);
+      views.push(recordToolCall(tc, result, chosen));
+      const skipped = (result.data as { skipped?: unknown[] } | undefined)?.skipped;
+      if (tc.name !== "send_products" || !result.ok || (Array.isArray(skipped) && skipped.length > 0)) complete = false;
     }
-    return views;
+    if (chosen.length > 0) {
+      if (turnText.trim()) segments.push({ kind: "text", text: turnText });
+      const items = chosen.map(({ facts: _facts, ...item }) => item);
+      segments.push({ kind: "products", items });
+      try {
+        options.onProductsQueued?.(items);
+      } catch {
+        // a head start only; never the run's problem
+      }
+    }
+    const closing = complete
+      ? (calls.map((c) => c.args["closing"]).find((c): c is string => typeof c === "string" && c.trim().length > 0) ?? null)
+      : null;
+    return { views, closing };
   };
+
+  // ------------------------------------------------- early search, given
+  // The early search, as if the model had called catalog_search with the
+  // customer's own words: the call and its result open the conversation, so
+  // the first model call can already send products and close. It is only
+  // counted (trace, sources, number guard) once the provider accepted it.
+  const earlyCall =
+    earlyFits && early?.result
+      ? { id: EARLY_CALL_ID, name: "catalog_search", args: early.args, result: early.result }
+      : null;
+  const earlyView = earlyCall ? toolView("catalog_search", earlyCall.result) : "";
+  let earlyGiven = false;
+  let earlyRefused = false;
+  const giveEarly = () => {
+    if (!earlyCall || earlyGiven || earlyRefused) return;
+    earlyGiven = true;
+    recordToolCall(earlyCall, earlyCall.result as Awaited<ReturnType<typeof runTool>>, []);
+    turns.push({ text: "", calls: [{ id: earlyCall.id, name: earlyCall.name, args: earlyCall.args }], outputs: [{ id: earlyCall.id, output: earlyView }] });
+  };
+  let modelCalls = 0;
+  let closedInCall = false;
 
   // The finished turns, in a vendor-neutral shape, so a backup provider can
   // pick the conversation up where the primary dropped it (tools already run
@@ -1874,16 +2280,39 @@ export async function executeRun(
     try {
       if (isOpenAiModel(brain.model_id) || (direct && brain.provider === "openai")) {
         const items = responsesInput(system, history, input, options.imageDataUrl ?? null);
+        const earlyAt = items.length;
+        if (earlyCall) {
+          items.push(
+            { type: "function_call", call_id: earlyCall.id, name: earlyCall.name, arguments: JSON.stringify(earlyCall.args) },
+            { type: "function_call_output", call_id: earlyCall.id, output: earlyView },
+          );
+        }
 
         for (let step = 0; step < maxSteps; step += 1) {
-          const call = await callResponses(apiBase, key, wire, items, tools, direct);
+          let call: Awaited<ReturnType<typeof callResponses>>;
+          try {
+            modelCalls += 1;
+            call = await callResponses(apiBase, key, wire, items, tools, direct);
+          } catch (error) {
+            // The provider refused the conversation with the early search in
+            // it: the same question again without it, exactly as before.
+            if (step !== 0 || !earlyCall || earlyGiven || !refusedRequest(error)) throw error;
+            earlyRefused = true;
+            items.splice(earlyAt, 2);
+            modelCalls += 1;
+            call = await callResponses(apiBase, key, wire, items, tools, direct);
+          }
+          giveEarly();
           inputTokens += call.inputTokens ?? 0;
           outputTokens += call.outputTokens ?? 0;
           answer = call.text || answer;
-          if (call.toolCalls.length === 0) break;
+          if (call.toolCalls.length === 0) {
+            closingText = call.text;
+            break;
+          }
           // The function_call items must travel with their outputs.
           items.push(...call.items);
-          const views = await runToolCalls(call.toolCalls);
+          const { views, closing } = await runToolCalls(call.toolCalls, call.text);
           call.toolCalls.forEach((tc, i) =>
             items.push({
               type: "function_call_output",
@@ -1892,6 +2321,11 @@ export async function executeRun(
             }),
           );
           noteTurn(call, views);
+          if (closing !== null) {
+            closingText = closing;
+            closedInCall = true;
+            break;
+          }
         }
       } else {
         const messages: ChatMessage[] = [];
@@ -1906,15 +2340,51 @@ export async function executeRun(
               ]
             : input,
         });
+        const earlyAt = messages.length;
+        if (earlyCall) {
+          messages.push(
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: earlyCall.id,
+                  type: "function",
+                  function: { name: earlyCall.name, arguments: JSON.stringify(earlyCall.args) },
+                  // Gemini asks every replayed call for its thought signature;
+                  // a call it didn't make carries the documented stand-in.
+                  ...(brain.model_id.startsWith("google/") || (direct && brain.provider === "google")
+                    ? { extra_content: { google: { thought_signature: "skip_thought_signature_validator" } } }
+                    : {}),
+                },
+              ],
+            },
+            { role: "tool", tool_call_id: earlyCall.id, content: earlyView },
+          );
+        }
 
         for (let step = 0; step < maxSteps; step += 1) {
-          const call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
+          let call: GatewayCall;
+          try {
+            modelCalls += 1;
+            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
+          } catch (error) {
+            if (step !== 0 || !earlyCall || earlyGiven || !refusedRequest(error)) throw error;
+            earlyRefused = true;
+            messages.splice(earlyAt, 2);
+            modelCalls += 1;
+            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
+          }
+          giveEarly();
           inputTokens += call.inputTokens ?? 0;
           outputTokens += call.outputTokens ?? 0;
           answer = call.text || answer;
-          if (call.toolCalls.length === 0) break;
+          if (call.toolCalls.length === 0) {
+            closingText = call.text;
+            break;
+          }
           messages.push(call.raw as ChatMessage);
-          const views = await runToolCalls(call.toolCalls);
+          const { views, closing } = await runToolCalls(call.toolCalls, call.text);
           call.toolCalls.forEach((tc, i) =>
             messages.push({
               role: "tool",
@@ -1923,6 +2393,11 @@ export async function executeRun(
             }),
           );
           noteTurn(call, views);
+          if (closing !== null) {
+            closingText = closing;
+            closedInCall = true;
+            break;
+          }
         }
       }
     } catch (error) {
@@ -1942,6 +2417,10 @@ export async function executeRun(
   }
   let served: { route: BackupRoute; model: string; inputTokens: number; outputTokens: number } | null = null;
   if (outage && backups.length > 0) {
+    // The backup picks the conversation up with the early search in it too
+    // (it is a finished turn, not a model step).
+    giveEarly();
+    const earlyTurns = earlyGiven ? 1 : 0;
     const attempts: Array<Record<string, unknown>> = [];
     for (const route of backups) {
       const used = { inputTokens: 0, outputTokens: 0, model: route.model };
@@ -1958,16 +2437,25 @@ export async function executeRun(
                 tier: brain.tier,
               })
             : openAiBackupConversation(route, { system, history, input, imageDataUrl: options.imageDataUrl ?? null, turns: turns.slice(), tools });
-        for (let step = turns.length; step < maxSteps; step += 1) {
+        for (let step = turns.length - earlyTurns; step < maxSteps; step += 1) {
+          modelCalls += 1;
           const call = await convo.step();
           used.inputTokens += call.inputTokens ?? 0;
           used.outputTokens += call.outputTokens ?? 0;
           used.model = call.model;
           answer = call.text || answer;
-          if (call.toolCalls.length === 0) break;
-          const views = await runToolCalls(call.toolCalls);
+          if (call.toolCalls.length === 0) {
+            closingText = call.text;
+            break;
+          }
+          const { views, closing } = await runToolCalls(call.toolCalls, call.text);
           convo.addToolResults(call.toolCalls.map((tc, i) => ({ id: tc.id, output: views[i] ?? "" })));
           noteTurn(call, views);
+          if (closing !== null) {
+            closingText = closing;
+            closedInCall = true;
+            break;
+          }
         }
         served = { route, model: used.model, inputTokens: used.inputTokens, outputTokens: used.outputTokens };
         attempts.push({ provider: route.provider, model: used.model, ok: true });
@@ -2006,6 +2494,24 @@ export async function executeRun(
     if (options.deferUsage) options.deferUsage(report);
     else await report;
   }
+
+  // Whether the early search ran and was given to the model (and why not),
+  // how many model calls the answer took, and whether it closed in the
+  // same call that sent its products.
+  if (early) {
+    const own = toolCalls.filter((c, i) => c.tool === "catalog_search" && !(earlyGiven && i === 0)).length;
+    runMeta["early_search"] = {
+      ran: Boolean(early.result),
+      used: earlyGiven,
+      reason: earlyGiven ? "used" : earlyRefused ? "provider_refused" : early.usable && !earlyFits ? "no_catalogue" : early.reason,
+      rows: Array.isArray(early.result?.data) ? (early.result.data as unknown[]).length : 0,
+      ms: early.ms,
+      ...(early.missing?.length ? { missing: early.missing } : {}),
+      model_searched: own,
+    };
+  }
+  if (modelCalls > 0) runMeta["model_calls"] = modelCalls;
+  if (closedInCall) runMeta["closed_in_call"] = true;
 
   if (!key && !served) {
     return finish({
@@ -2051,10 +2557,36 @@ export async function executeRun(
 
 
   // The model's own "was I missing business information?" line comes off
-  // before anything else reads the answer.
-  const reported = task === "agent_reply" ? splitNeedsOwner(answer) : { output: answer.trim(), needsOwner: false };
-  // Replies (sent to a customer, or drafted for a teammate to send) never carry [n] markers.
-  if (task === "agent_reply" || task === "suggest_reply") reported.output = stripCitationMarkers(reported.output);
+  // before anything else reads the answer. Once it sent products, its reply
+  // is its words in its order, with a mark where each set of pictures goes.
+  let reported: { output: string; needsOwner: boolean };
+  if (segments.length > 0) {
+    const pieces = [...segments, ...(closingText.trim() ? [{ kind: "text" as const, text: closingText }] : [])];
+    let needsOwner = false;
+    const words = pieces.map((piece) => {
+      if (piece.kind === "products") return PRODUCTS_MARK;
+      const split = task === "agent_reply" ? splitNeedsOwner(piece.text) : { output: piece.text.trim(), needsOwner: false };
+      needsOwner ||= split.needsOwner;
+      return split.output;
+    });
+    reported = { output: words.filter(Boolean).join("\n\n"), needsOwner };
+  } else {
+    reported = task === "agent_reply" ? splitNeedsOwner(answer) : { output: answer.trim(), needsOwner: false };
+  }
+  // Replies (sent to a customer, or drafted for a teammate to send) never
+  // carry a source reference. The owner's own chat keeps its plain-words
+  // source line; only [n] markers come off there.
+  const numberedItems = sources.filter((s) => s.kind === "knowledge").length;
+  const customerFacing = options.channel !== "onboarding";
+  const cleanRefs = (text: string) => (customerFacing ? stripReferences(text, numberedItems) : stripCitationMarkers(text));
+  if (task === "agent_reply" || task === "suggest_reply") {
+    reported.output = cleanRefs(reported.output);
+    for (const segment of segments) {
+      if (segment.kind === "products") for (const item of segment.items) item.caption = cleanRefs(item.caption);
+    }
+  }
+  const sendsProducts = tools.some((t) => t.name === "send_products");
+  const chosenMedia = segments.flatMap((s) => (s.kind === "products" ? s.items : []));
 
   const result: RunResult = {
     ...base,
@@ -2063,7 +2595,9 @@ export async function executeRun(
     needsOwner: reported.needsOwner && sources.length === 0,
     sources,
     toolCalls,
-    media: pickMediaForAnswer(foundMedia, reported.output),
+    // With send_products offered, the pictures are only the ones the model
+    // sent; otherwise (no catalogue tool) the answer's products, as before.
+    media: sendsProducts ? chosenMedia : pickMediaForAnswer(foundMedia, reported.output),
     inputTokens: inputTokens || null,
     outputTokens: outputTokens || null,
     costAmount: priced.amount,
@@ -2080,12 +2614,13 @@ export async function executeRun(
   const isVisionRead = Boolean(options.imageDataUrl);
   let numbersStripped = false;
   if (task === "agent_reply" && result.output && !isVisionRead) {
-    const unsupported = unsupportedNumbers(result.output, [
-      knowledgeBlock,
-      options.system ?? "",
-      input,
-      ...toolResultTexts,
-    ]);
+    // Times, days and durations: the same rule, but the customer's own
+    // question is not support for them.
+    const material = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts];
+    const unsupported = [
+      ...unsupportedNumbers(result.output, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts]),
+      ...unsupportedTimeFacts(result.output, material),
+    ];
     if (unsupported.length > 0) {
       numbersStripped = true;
       console.log(
@@ -2099,6 +2634,22 @@ export async function executeRun(
       result.output = stripUnsupported(result.output, unsupported);
       result.needsOwner = true;
     }
+    // The same rule for every caption the model wrote, against the same
+    // material plus the product's own record. A caption never gets a promise
+    // line: the number's sentence just goes.
+    for (const item of chosenMedia) {
+      const guessed = [
+        ...unsupportedNumbers(item.caption, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts, ...chosenFacts]),
+        ...unsupportedTimeFacts(item.caption, material),
+      ];
+      if (guessed.length === 0) continue;
+      numbersStripped = true;
+      result.needsOwner = true;
+      runMeta["caption_numbers_removed"] = [...((runMeta["caption_numbers_removed"] as string[] | undefined) ?? []), ...guessed];
+      let caption = dropSentences(item.caption, (sentence) => guessed.some((t) => sentence.includes(t)));
+      for (const token of guessed) caption = caption.split(token).join("").trim();
+      item.caption = caption;
+    }
   }
 
   // ------------------------------------------------- policy-claim grounding
@@ -2108,23 +2659,23 @@ export async function executeRun(
   // Replies only (owner chat + customer) — never reading, chunking or page summaries.
   let policyStripped = false;
   if (task === "agent_reply" && result.output && !isVisionRead && !purpose.startsWith("knowledge_")) {
-    const candidates = policyClaimSentences(result.output);
+    // The reply's policy sentences and the captions' are judged together, in one check.
+    const replyClaims = policyClaimSentences(result.output);
+    const captionClaims = chosenMedia.flatMap((item) => policyClaimSentences(item.caption));
+    const candidates = Array.from(new Set([...replyClaims, ...captionClaims]));
     if (candidates.length > 0) {
-      const sourceText = [knowledgeBlock, options.system ?? "", ...toolResultTexts].join("\n\n");
+      const sourceText = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts].join("\n\n");
       // Wording first, deterministically: stated as written → supported; a
-      // promise word the sources never attach to that policy → replaced by
-      // the source's own line. Only the rest needs the model check.
+      // promise word the sources never attach to that policy → not
+      // supported, and it goes (the source's own line is kept on the run
+      // for review; code never writes it into the reply). Only the rest
+      // needs the model check.
       const wording = sourceText.trim()
         ? checkPolicyWording(candidates, sourceText)
         : { verbatim: [], unsupported: [], undecided: candidates };
-      if (wording.unsupported.length > 0) {
-        runMeta["policy_wording_replaced"] = wording.unsupported;
-        for (const u of wording.unsupported) {
-          if (u.replacement) result.output = result.output.replace(u.sentence, u.replacement);
-        }
-      }
+      if (wording.unsupported.length > 0) runMeta["policy_wording_unsupported"] = wording.unsupported;
       const unsupported = [
-        ...wording.unsupported.filter((u) => !u.replacement).map((u) => u.sentence),
+        ...wording.unsupported.map((u) => u.sentence),
         ...(await unsupportedPolicyClaims(supabase, {
           ...policyCheckWho,
           sentences: wording.undecided,
@@ -2134,11 +2685,61 @@ export async function executeRun(
         })),
       ];
       if (unsupported.length > 0) {
+        result.needsOwner = true;
+        // Batch 16: the reply's own unsupported claims — ask the model once
+        // to say it again without them; the rewrite passes the same checks
+        // (numbers, times, policy) or today's stripping applies.
+        const replyUnsupported = unsupported.filter((u) => replyClaims.includes(u));
+        let rewritten = false;
+        if (replyUnsupported.length > 0) {
+          const textParts = result.output.split(PRODUCTS_MARK);
+          const attempt = await rewriteWithoutClaims(supabase, {
+            ...policyCheckWho,
+            parts: textParts,
+            claims: replyUnsupported,
+            sources: sourceText,
+            question: input,
+            ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
+            ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
+          });
+          let outcome = "failed";
+          if (attempt) {
+            const candidate = attempt.join(PRODUCTS_MARK);
+            const support = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts];
+            const guessed = [
+              ...unsupportedNumbers(candidate, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts]),
+              ...unsupportedTimeFacts(candidate, support),
+            ];
+            const again = policyClaimSentences(candidate);
+            const wordingAgain = again.length ? checkPolicyWording(again, sourceText) : { verbatim: [], unsupported: [], undecided: [] };
+            const stillUnsupported = [
+              ...wordingAgain.unsupported.map((u) => u.sentence),
+              ...(wordingAgain.undecided.length
+                ? await unsupportedPolicyClaims(supabase, {
+                    ...policyCheckWho,
+                    sentences: wordingAgain.undecided,
+                    sources: sourceText,
+                    ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
+                    ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
+                  })
+                : []),
+            ];
+            if (guessed.length === 0 && stillUnsupported.length === 0 && candidate.replace(PRODUCTS_MARK, "").trim()) {
+              result.output = candidate;
+              rewritten = true;
+              outcome = "rewritten";
+            } else {
+              outcome = "still_unsupported";
+            }
+          }
+          runMeta["policy_rewrite"] = { outcome, claims: replyUnsupported };
+          console.log("[policy-grounding] rewrite", organizationId, outcome);
+        }
         console.log("[policy-grounding] stripped", organizationId, unsupported.length);
         runMeta["policy_claims_stripped"] = unsupported;
-        result.output = stripSentences(result.output, unsupported);
-        result.needsOwner = true;
-        policyStripped = true;
+        if (!rewritten && replyUnsupported.length > 0) result.output = stripSentences(result.output, unsupported);
+        for (const item of chosenMedia) item.caption = dropSentences(item.caption, (sentence) => unsupported.includes(sentence));
+        policyStripped = !rewritten || unsupported.length > replyUnsupported.length;
       }
     }
   }
@@ -2150,17 +2751,10 @@ export async function executeRun(
   const searchedCatalog = toolCalls.some((c) => c.tool === "catalog_search" && c.ok);
   if (task === "agent_reply" && searchedCatalog && result.output) {
     const offers = unsearchedShelfOffers(result.output, input, toolResultTexts);
-    const kept = sentencesOf(result.output).filter((s) => !offers.includes(s));
-    if (offers.length > 0 && kept.length > 0) {
+    const kept = dropSentences(result.output, (s) => offers.includes(s));
+    if (offers.length > 0 && kept.replace(PRODUCTS_MARK, "").trim()) {
       runMeta["unsearched_offers_removed"] = offers;
-      result.output = kept.join(" ").replace(/[ \t]{2,}/g, " ").trim();
-    }
-    // Nothing at that budget: say what exists, with its price.
-    const closest = closestShelfLine(toolResultTexts, result.output);
-    if (closest) {
-      const body = result.output.replace(/\s*let me confirm that for you\.?\s*$/i, "");
-      const tail = body === result.output ? "" : "\n\nLet me confirm that for you.";
-      result.output = `${body}\n\n${closest}${tail}`.trim();
+      result.output = kept;
     }
     // Grounded in the search (nothing stripped as unsupported, not a policy
     // question): a stand-alone "let me confirm" line promises a check nobody
@@ -2195,42 +2789,168 @@ export async function executeRun(
       priorFailedQuestions: options.priorFailedQuestions ?? [],
       customerLanguage: options.customerLanguage ?? null,
     });
-    // Nothing to answer from is no longer a reason to go quiet: the answer
-    // stands and the question is filed under Unanswered instead. Merchant
-    // handover rules and the other signals still hand the thread to a person.
-    if (signal === "no_source") {
-      result.needsOwner = true;
-    } else if (signal) {
+    // Not knowing is never a reason to go quiet (Batch 16): the answer
+    // stands and the question is filed for the merchant ("Aiden's questions
+    // for you"). Only a customer asking for a person, the merchant's own
+    // hand-over rule or a sensitive topic hands the thread to a person.
+    if (signal && isHandOffSignal(signal)) {
       result.status = "escalated";
       result.escalationSignal = signal;
+    } else if (signal) {
+      result.needsOwner = true;
+      runMeta["kept_talking"] = signal;
     }
   }
 
-  // ------------------------------------------ "let me confirm" = hand-over
+  // ------------------------------------------------- "let me confirm"
   // "Let me confirm that for you" promises that someone will come back. It
   // is added by the guards above (a stripped number or policy line) and by
-  // the model itself, but only a run that hands the thread to a person keeps
-  // that promise. Anywhere else it goes; the question is still filed under
-  // Unanswered (needsOwner, set above). A reply that was nothing but the
-  // promise becomes the hand-over it describes.
+  // the model itself. Next to anything else it goes; the question is still
+  // filed for the merchant (needsOwner, set above). A reply that was nothing
+  // but the promise goes as it is: the question is filed, and the merchant's
+  // answer to it reaches this customer — the thread is never handed over
+  // (and Aiden never silenced) for not knowing.
   if (task === "agent_reply" && result.status === "ok" && /let me confirm/i.test(result.output)) {
     const rest = withoutConfirmLine(result.output);
     if (rest) {
       runMeta["confirm_line_removed"] = true;
       result.output = rest;
     } else {
-      result.status = "escalated";
-      result.escalationSignal = numbersStripped ? "unsupported_number" : "no_source";
+      result.needsOwner = true;
+      runMeta["kept_talking"] = numbersStripped ? "unsupported_number" : "no_source";
     }
   }
 
-  if (!result.output && result.status === "ok") {
+  // The reply as it goes out: the model's words and its products, in its
+  // order. The output everyone else reads is the words alone.
+  if (segments.length > 0) {
+    const texts = result.output.split(PRODUCTS_MARK).map((t) => t.trim());
+    const productSets = segments.filter((s): s is { kind: "products"; items: ChosenProduct[] } => s.kind === "products");
+    const parts: ReplyPart[] = [];
+    texts.forEach((text, i) => {
+      if (text) parts.push({ kind: "text", text });
+      const set = productSets[i];
+      if (set && set.items.length > 0) parts.push({ kind: "products", items: set.items });
+    });
+    result.parts = parts;
+    result.output = texts.filter(Boolean).join("\n\n");
+    if (parts.some((p) => p.kind === "products")) runMeta["reply_parts"] = parts.map((p) => (p.kind === "text" ? "text" : `products:${p.items.length}`));
+  }
+
+  if (!result.output && !result.parts?.some((p) => p.kind === "products") && result.status === "ok") {
     result.status = "refused";
     result.error = "The AI had nothing to say.";
   }
 
   timing["checks"] = Date.now() - checksStarted;
   return finish(result);
+}
+
+/**
+ * What each tool call did, kept on the run (metadata.tools) so a run explains
+ * itself: the same arguments and result summary the ai_tool_calls trace rows
+ * carry (invokeTool's summarise), never the data itself.
+ */
+export function runToolsMeta(calls: RunResult["toolCalls"]): Array<Record<string, unknown>> {
+  return calls.map((c) => {
+    const summary = c.resultSummary ?? {};
+    return {
+      tool: c.tool,
+      args: c.args ?? {},
+      ok: c.ok,
+      rows: typeof summary["row_count"] === "number" ? summary["row_count"] : null,
+      found: Array.isArray(summary["identifiers"]) ? summary["identifiers"] : [],
+      ...(summary["found"] === false ? { nothing_found: true } : {}),
+      ...(c.error ? { error: c.error.slice(0, 200) } : {}),
+    };
+  });
+}
+
+/** The products a send_products call queued, as the reply path sends them. */
+export function chosenProducts(result: { ok?: boolean; data?: unknown }): Array<ChosenProduct & { facts: unknown }> {
+  if (result.ok === false) return [];
+  const list = (result.data as { products?: unknown[] } | undefined)?.products;
+  if (!Array.isArray(list)) return [];
+  const out: Array<ChosenProduct & { facts: unknown }> = [];
+  for (const raw of list) {
+    const p = (raw ?? {}) as Record<string, unknown>;
+    const send = (p["send"] ?? {}) as Record<string, unknown>;
+    const id = typeof p["product_id"] === "string" ? p["product_id"] : "";
+    const title = typeof p["title"] === "string" ? p["title"] : "";
+    if (!id || !title) continue;
+    const imageUrl = typeof send["imageUrl"] === "string" ? send["imageUrl"] : "";
+    out.push({
+      productId: id,
+      title,
+      caption: typeof p["caption"] === "string" ? p["caption"] : "",
+      hasPhoto: Boolean(imageUrl),
+      imageUrl,
+      price: typeof send["price"] === "number" && Number.isFinite(send["price"]) ? send["price"] : null,
+      currency: typeof send["currency"] === "string" ? send["currency"] : null,
+      productUrl: typeof send["productUrl"] === "string" ? send["productUrl"] : null,
+      retailerId: typeof send["retailerId"] === "string" ? send["retailerId"] : null,
+      category: typeof send["category"] === "string" ? send["category"] : null,
+      inCatalog: send["inCatalog"] === true,
+      facts: p["facts"] ?? null,
+    });
+  }
+  return out;
+}
+
+const CLOSEST_NOTE =
+  "Nothing matched that exactly. closest_above lists the nearest real products, cheapest first; lowest_price is where they start. " +
+  "Say so plainly and offer only products a search returned — search another type before suggesting it.";
+
+/**
+ * What the model reads of a product tool: every product as productFacts
+ * (whole-rupee prices, readable names, no picture addresses), and for
+ * send_products only what was queued and the caption that will go out.
+ * Other tools are untouched.
+ */
+export function productToolView<T extends { ok: boolean; found?: boolean; data?: unknown; error?: string }>(name: string, result: T): T {
+  if (!result.ok || result.data === undefined || result.data === null) return result;
+  if (name === "catalog_search" || name === "search_products") {
+    if (Array.isArray(result.data)) {
+      return { ...result, data: (result.data as Array<Record<string, unknown>>).map(productFacts) };
+    }
+    const data = result.data as Record<string, unknown>;
+    if (Array.isArray(data["closest_above"])) {
+      const closest = (data["closest_above"] as Array<Record<string, unknown>>).map(productFacts);
+      const prices = (data["closest_above"] as Array<Record<string, unknown>>)
+        .map((r) => Number(r["price"]))
+        .filter((p) => Number.isFinite(p) && p > 0);
+      const { reply_hint: _hint, lowest_price: _lowest, ...rest } = data;
+      return {
+        ...result,
+        data: {
+          ...rest,
+          ...(prices.length ? { lowest_price: rupees(Math.min(...prices)) } : {}),
+          closest_above: closest,
+          note: CLOSEST_NOTE,
+        },
+      };
+    }
+    return result;
+  }
+  if (name === "send_products") {
+    const data = result.data as { products?: Array<Record<string, unknown>>; skipped?: unknown };
+    return {
+      ...result,
+      data: {
+        queued: true,
+        products: (data.products ?? []).map((p) => ({
+          product_id: p["product_id"],
+          title: p["title"],
+          caption: p["caption"],
+          has_photo: p["has_photo"],
+          ...(p["caption_changes"] ? { caption_changes: p["caption_changes"] } : {}),
+        })),
+        ...(data.skipped ? { skipped: data.skipped, skipped_note: "These ids are not this business's products and will not be sent." } : {}),
+        note: "These go out exactly as shown, in this order. Do not repeat the captions in your reply.",
+      },
+    };
+  }
+  return result;
 }
 
 /**
@@ -2384,6 +3104,131 @@ export function unsupportedNumbers(answer: string, support: string[]): string[] 
   return out;
 }
 
+// ------------------------------------------------ time, day, duration guard
+
+const TIME_RE =
+  /\b(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)(?![a-z])|\b([01]?\d|2[0-3]):([0-5]\d)\b/gi;
+/** Day words: full names any case; the short forms only capitalised ("Sun", not "sun"). */
+const DAY_NAMES: Array<[RegExp, RegExp | null, string]> = [
+  [/\bmondays?\b|\bsomvaa?r\b/gi, /\bMon\b/g, "mon"],
+  [/\btuesdays?\b|\bmangalvaa?r\b/gi, /\bTues?\b/g, "tue"],
+  [/\bwednesdays?\b|\bbudhvaa?r\b/gi, /\bWed\b/g, "wed"],
+  [/\bthursdays?\b|\bguruvaa?r\b/gi, /\bThu(?:rs)?\b/g, "thu"],
+  [/\bfridays?\b|\bshukravaa?r\b/gi, /\bFri\b/g, "fri"],
+  [/\bsaturdays?\b|\bshanivaa?r\b/gi, /\bSat\b/g, "sat"],
+  [/\bsundays?\b|\bravivaa?r\b|\bitvaa?r\b/gi, /\bSun\b/g, "sun"],
+  [/\bweekdays?\b/gi, null, "weekdays"],
+  [/\bweekends?\b/gi, null, "weekends"],
+  [/\b(?:all|7|seven) days(?: a| of the)? week\b|\ball days\b/gi, null, "alldays"],
+];
+const DURATION_RE =
+  /\b(\d{1,3})(?:\s*(?:-|–|—|to)\s*(\d{1,3}))?[\s-]*(?:working\s+|business\s+)?(minutes?|mins?|hours?|hrs?|ghante|days?|din|weeks?|hafte|months?)\b/gi;
+const PHRASE_RE = /\bsame[\s-]day\b|\bnext[\s-]day\b|\bovernight\b|\bwithin (?:a|an|one) (?:day|hour|week)\b/gi;
+/** A source line that says something is NOT so supports nothing ("Never promise same-day delivery"). */
+const NEGATION = /\b(never|not|don'?t|do not|cannot|can'?t|won'?t|nahi|nahin|mat)\b/i;
+
+function minutesOf(m: RegExpMatchArray): number | null {
+  if (m[3]) {
+    const h = Number(m[1]);
+    const min = m[2] ? Number(m[2]) : 0;
+    if (h < 1 || h > 12 || min > 59) return null;
+    const pm = /^p/i.test(m[3]);
+    return ((h % 12) + (pm ? 12 : 0)) * 60 + min;
+  }
+  return Number(m[4]) * 60 + Number(m[5]);
+}
+
+function unitOf(raw: string): string {
+  const u = raw.toLowerCase();
+  if (/^(min|minute)/.test(u)) return "minute";
+  if (/^(h|ghante)/.test(u)) return "hour";
+  if (/^(day|din)/.test(u)) return "day";
+  if (/^(week|hafte)/.test(u)) return "week";
+  return "month";
+}
+
+type TimeFact = { token: string; key: string };
+
+/** Every clock time, day and duration a text states, each with a comparable key. */
+function timeFacts(text: string): TimeFact[] {
+  const out: TimeFact[] = [];
+  const plain = text.replace(/https?:\/\/\S+/gi, " ");
+  for (const m of plain.matchAll(TIME_RE)) {
+    const mins = minutesOf(m);
+    if (mins !== null) out.push({ token: m[0].trim(), key: `t${mins}` });
+  }
+  for (const [full, short, day] of DAY_NAMES) {
+    for (const re of short ? [full, short] : [full]) for (const m of plain.matchAll(re)) out.push({ token: m[0].trim(), key: `d${day}` });
+  }
+  for (const m of plain.matchAll(DURATION_RE)) {
+    const lo = Number(m[1]);
+    const hi = m[2] ? Number(m[2]) : lo;
+    out.push({ token: m[0].trim(), key: `p${Math.min(lo, hi)}-${Math.max(lo, hi)}${unitOf(m[3]!)}` });
+  }
+  for (const m of plain.matchAll(PHRASE_RE)) out.push({ token: m[0].trim(), key: `x${m[0].toLowerCase().replace(/[\s-]+/g, " ")}` });
+  return out;
+}
+
+/**
+ * The clock times ("10:30 AM", "10 am–8 pm"), opening days ("Monday to
+ * Saturday", "weekends") and durations ("3–5 days", "24 hours", "same day")
+ * an answer states that nothing behind it states — the number guard's rule
+ * for facts it couldn't see as numbers. "10 am" and "10:00" are the same
+ * time. A line of the material that says something is not so ("Never
+ * promise same-day delivery") supports nothing. The customer's own question
+ * is not support: a day they ask about is not a day the shop is open.
+ */
+export function unsupportedTimeFacts(answer: string, support: string[]): string[] {
+  const facts = timeFacts(answer);
+  if (!facts.length) return [];
+  const known = new Set<string>();
+  for (const text of support) {
+    for (const line of text.split(/(?<=[.!?])\s+|\n+/)) {
+      if (NEGATION.test(line)) continue;
+      for (const f of timeFacts(line)) known.add(f.key);
+    }
+  }
+  const out: string[] = [];
+  for (const f of facts) if (!known.has(f.key) && !out.includes(f.token)) out.push(f.token);
+  return out;
+}
+
+/**
+ * The only signals that hand a thread to a person (and so silence Aiden on
+ * it): the customer asked for one, the merchant's own hand-over rule, or a
+ * sensitive topic. A flow's Assign step hands over on its own (flow engine).
+ * Every other signal — nothing to answer from, a repeat, a failed lookup —
+ * keeps Aiden talking and files the question for the merchant.
+ */
+const HAND_OFF_SIGNALS = new Set(["asked_for_person", "merchant_rule", "sensitive_topic"]);
+
+export function isHandOffSignal(signal: string | null | undefined): boolean {
+  return Boolean(signal && HAND_OFF_SIGNALS.has(signal));
+}
+
+/**
+ * The customer asks to talk to a person (any business): "speak to a human",
+ * "can someone call me", "agent please", "kisi se baat karni hai". Asking
+ * whether a product suits a person is not asking for one.
+ */
+const PERSON_ASK = [
+  /\b(speak|talk|chat)(ing)?\s+(to|with)\s+(a\s+|an\s+|the\s+|some\s+|your\s+)?(human|person|real person|someone|somebody|agent|representative|executive|staff|team|owner|manager|support|customer care)\b/i,
+  /\b(human|real person|live agent|customer care|customer support|representative)\s*(please|pls|plz)?\s*$/i,
+  /\b(agent|human|person|executive)\s+(please|pls|plz)\b/i,
+  /\b(connect|transfer|put)\s+me\s+(to|with|through)\b/i,
+  /\b(can|could|will)\s+(someone|somebody|anyone|you)\s+(please\s+)?call\s+me\b/i,
+  /\bcall\s+me\s+(back|please|pls|asap|now)\b/i,
+  /\b(kisi|insaan|aadmi|owner|manager|staff)\s+se\s+baat\b/i,
+  /\bbaat\s+(karni|karna|karao|karwao|karwa\s+do|kara\s+do)\b/i,
+  /\b(mujhe\s+)?call\s+(karo|kariye|karna|kar\s+do|karein)\b/i,
+];
+
+export function asksForPerson(question: string): boolean {
+  const q = question.trim();
+  if (!q) return false;
+  return PERSON_ASK.some((re) => re.test(q));
+}
+
 /** Observable signals only — never the model's own opinion of its certainty. */
 export function decideEscalation(input: {
   question: string;
@@ -2402,6 +3247,9 @@ export function decideEscalation(input: {
 }): string | null {
   // Small talk is answerable on its own. Nothing below applies to "heya".
   if (isSmallTalk(input.question, input.customerLanguage ?? null)) return null;
+
+  // A customer who asks for a person gets one, whatever else happened.
+  if (asksForPerson(input.question)) return "asked_for_person";
 
   if (input.anyToolFailed) return "tool_failed";
 
@@ -2478,6 +3326,11 @@ export function pickMediaForAnswer(found: RunMedia[], answer: string): RunMedia[
   return (named.length > 0 ? named : found).slice(0, MAX_PRODUCT_IMAGES);
 }
 
+/** A tool result as the model reads it (one string, cut at 6,000 characters). */
+function toolView(name: string, result: { ok: boolean; found?: boolean; data?: unknown; error?: string }): string {
+  return JSON.stringify(modelView(productToolView(name, result))).slice(0, 6000);
+}
+
 function modelView(result: { ok: boolean; found?: boolean; data?: unknown; error?: string }) {
   return {
     ok: result.ok,
@@ -2511,6 +3364,8 @@ async function runTool(
   name: string,
   args: Record<string, unknown>,
   subject: ToolContext["subject"],
+  /** The tools this run offered, brokered for this principal at its start. */
+  brokered: BrokeredTool[],
 ) {
   return invokeTool(
     {
@@ -2523,16 +3378,37 @@ async function runTool(
     },
     name,
     args,
+    { brokered },
   );
 }
 
-async function rollUpUsage(
+export async function rollUpUsage(
   supabase: SupabaseClient,
   organizationId: string,
   task: string,
   result: RunResult,
 ): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
+  // One statement in the database (ai_usage_add, as meterAiUsage): two runs
+  // finishing at once each lost the other's addition, so the monthly cap
+  // (billed_amount) under-counted. Until it is applied, the old way below.
+  if (Date.now() >= aiUsageAddMissingUntil) {
+    const { error } = await supabase.rpc("ai_usage_add", {
+      p_org: organizationId,
+      p_usage_date: today,
+      p_task: task,
+      p_runs: 1,
+      p_input_tokens: result.inputTokens ?? 0,
+      p_output_tokens: result.outputTokens ?? 0,
+      p_cost_amount: result.costAmount ?? 0,
+      p_billed_amount: result.billedAmount ?? 0,
+      p_currency: result.costCurrency ?? "INR",
+    });
+    if (!error) return;
+    const code = String((error as { code?: string }).code ?? "");
+    if (code === "PGRST202" || code === "42883") aiUsageAddMissingUntil = Date.now() + 10 * 60_000;
+    else console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
+  }
   const { data: existing } = await supabase
     .from("ai_usage")
     .select("id, runs, input_tokens, output_tokens, cost_amount, billed_amount")

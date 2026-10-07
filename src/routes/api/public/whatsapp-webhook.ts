@@ -25,14 +25,21 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           "@/lib/whatsapp-webhook.server"
         );
 
+        // Meta's batches are a few KB; anything far bigger is not Meta.
+        const MAX_BODY = 1024 * 1024;
+        if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) {
+          return new Response("Payload too large", { status: 413 });
+        }
         const rawBody = await request.text();
+        if (rawBody.length > MAX_BODY) return new Response("Payload too large", { status: 413 });
         const signatureValid = await verifyMetaSignature(
           rawBody,
           request.headers.get("x-hub-signature-256"),
           process.env["META_APP_SECRET"],
         );
 
-        // Stored, then 200 straight away; processing continues after the
+        // Unsigned: 401, never stored. Stored, then 200 straight away (500 if
+        // the store failed, so Meta retries); processing continues after the
         // response. Catch-up for stale events lives in /api/internal/reprocess-events.
         return acceptWebhook(getServiceClient(), {
           rawBody,

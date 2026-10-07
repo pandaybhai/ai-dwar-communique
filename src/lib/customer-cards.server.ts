@@ -241,6 +241,27 @@ export async function renderCustomerCard(
   const cacheKey = cardCacheKey(args.organizationId, args.kind, vars);
   const cached = urlCache.get(cacheKey);
   if (cached) return cached;
+  // The same card already being drawn (Aiden draws a reply's first card
+  // while it is still writing): wait for that one — never draw it twice.
+  const pending = inFlight.get(cacheKey);
+  if (pending) return pending;
+  const drawing = drawCard(args, vars, cacheKey);
+  inFlight.set(cacheKey, drawing);
+  try {
+    return await drawing;
+  } finally {
+    inFlight.delete(cacheKey);
+  }
+}
+
+/** Cards being drawn right now in this worker, by cacheKey. */
+const inFlight = new Map<string, Promise<string | null>>();
+
+async function drawCard(
+  args: { organizationId: string; kind: string; meter?: boolean },
+  vars: Record<string, string>,
+  cacheKey: string,
+): Promise<string | null> {
 
   const baseUrl = process.env["AIDWAR_SUPABASE_URL"];
   const serviceKey = process.env["AIDWAR_SUPABASE_SERVICE_ROLE_KEY"];
@@ -318,6 +339,17 @@ export async function sendCardToContact(
     metadata?: Record<string, unknown>;
     /** The teammate who sent it from the inbox. */
     sentBy?: string;
+    /** The webhook's reply timer (Aiden's first card); left out, nothing is timed. */
+    timer?: import("@/lib/reply-timing").ReplyTimer;
+    /**
+     * Batch 16: how long the card may take to be ready. Past it the call
+     * returns { sent: false, reason: "card_not_ready" } at once (the caller
+     * sends the plain photo) while the card keeps drawing for next time.
+     * Left out, it waits as before.
+     */
+    waitMs?: number;
+    /** Keeps the background drawing alive past the reply (the webhook's later()). */
+    background?: (work: Promise<unknown>) => void;
   },
 ): Promise<{ sent: boolean; reason?: string; messageId?: string | null }> {
   try {
@@ -336,11 +368,33 @@ export async function sendCardToContact(
     }
     if (!conversationId) return { sent: false, reason: "no_conversation" };
 
-    const url = await renderCustomerCard(supabase, {
+    const drawing = renderCustomerCard(supabase, {
       organizationId: args.organizationId,
       kind: args.kind,
       vars: args.vars,
     });
+    let url: string | null;
+    if (args.waitMs !== undefined) {
+      const late = Symbol("late");
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const raced = await Promise.race([
+        drawing,
+        new Promise<typeof late>((resolve) => {
+          timer = setTimeout(() => resolve(late), Math.max(0, args.waitMs!));
+        }),
+      ]);
+      clearTimeout(timer);
+      if (raced === late) {
+        // Not ready in time: the plain photo goes now; the card finishes
+        // drawing (and is stored) for the next customer who sees it.
+        const finishing = drawing.catch(() => null);
+        args.background?.(finishing);
+        return { sent: false, reason: "card_not_ready" };
+      }
+      url = raced;
+    } else {
+      url = await drawing;
+    }
     if (!url) return { sent: false, reason: "render_failed" };
 
     const { sendServiceImage } = await import("@/lib/service-text.server");
@@ -355,6 +409,7 @@ export async function sendCardToContact(
       ...(args.windowOpen ? { windowOpen: true } : {}),
       ...(args.metadata ? { metadata: args.metadata } : {}),
       ...(args.sentBy ? { sentBy: args.sentBy } : {}),
+      ...(args.timer ? { timer: args.timer } : {}),
     });
     if (!result.ok) {
       // The 24-hour rule deserves plain words, not a code.

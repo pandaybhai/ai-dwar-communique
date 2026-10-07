@@ -8,6 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
+import { ToolTrace } from "@/components/admin/aiden-runs";
+import type { ToolTraceEntry } from "@/lib/ai-run-view";
+import type { SendStep } from "@/lib/reply-order";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SendSequence } from "@/components/admin/send-sequence";
+import { AidenComparePanel } from "@/components/admin/aiden-compare";
 
 type Org = { id: string; name: string };
 type Turn = { role: "user" | "assistant"; content: string };
@@ -17,8 +23,10 @@ type Reply = {
   error: string | null;
   needs_owner: boolean;
   escalation: string | null;
-  tools: Array<{ tool: string; ok: boolean }>;
+  tools: ToolTraceEntry[];
   media: Array<{ title: string; image_url: string; price: number | null; currency: string | null }>;
+  /** Words and pictures (with captions) in the order the customer would get them. */
+  sequence?: SendStep[];
   latency_ms: number;
 };
 type Bubble = { role: "user" | "assistant"; content: string; meta?: Reply };
@@ -95,6 +103,18 @@ export function AidenTestPanel() {
       {!org ? (
         <EmptyState icon={FlaskConical} title="Pick a workspace to test" description="Chat as a customer. Nothing is sent to anyone and nothing is charged." />
       ) : (
+        <Tabs defaultValue="chat" key={org.id}>
+          <TabsList>
+            <TabsTrigger value="chat">Chat</TabsTrigger>
+            <TabsTrigger value="compare">Compare</TabsTrigger>
+          </TabsList>
+          <TabsContent value="compare" className="mt-3">
+            <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+              <h3 className="mb-1 font-semibold text-foreground">Compare instructions for {org.name}</h3>
+              <AidenComparePanel org={org} />
+            </div>
+          </TabsContent>
+          <TabsContent value="chat" className="mt-3">
         <div className="space-y-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -123,8 +143,12 @@ export function AidenTestPanel() {
             {chat.map((b, i) => (
               <div key={i} className={`flex ${b.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${b.role === "user" ? "rounded-br-sm bg-primary/15 text-foreground" : "rounded-bl-sm bg-card text-foreground"}`}>
-                  <p className="whitespace-pre-wrap">{b.content}</p>
-                  {b.meta?.media?.length ? (
+                  {b.meta?.sequence?.length ? (
+                    <SendSequence steps={b.meta.sequence} />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{b.content}</p>
+                  )}
+                  {!b.meta?.sequence && b.meta?.media?.length ? (
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {b.meta.media.slice(0, 3).map((m) => (
                         <div key={m.image_url} className="text-xs">
@@ -144,6 +168,14 @@ export function AidenTestPanel() {
                       <span className="px-1">{(b.meta.latency_ms / 1000).toFixed(1)}s</span>
                     </div>
                   ) : null}
+                  {b.meta?.tools.length ? (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-[11px] text-muted-foreground">What the tools were asked and found</summary>
+                      <div className="mt-1.5">
+                        <ToolTrace tools={b.meta.tools} />
+                      </div>
+                    </details>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -158,6 +190,8 @@ export function AidenTestPanel() {
             </Button>
           </form>
         </div>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

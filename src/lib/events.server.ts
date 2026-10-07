@@ -187,3 +187,34 @@ export async function recordUsage(
     );
   }
 }
+
+/** Batch variant of recordUsage for paths that meter many sends at once. Never throws. */
+export async function recordUsages(
+  supabase: SupabaseClient,
+  rows: UsageRecordInput[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  try {
+    const { error } = await supabase.from("usage_records").insert(
+      rows.map((input) => ({
+        organization_id: input.organizationId,
+        meter_key: input.meterKey,
+        quantity: input.quantity ?? 1,
+        metadata: input.metadata ?? {},
+        ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
+      })),
+    );
+    if (error) {
+      console.log(JSON.stringify({ scope: "usage", stage: "insert_failed", error: error.message }));
+    }
+  } catch (caught) {
+    // metering must never break the operation it describes
+    console.log(
+      JSON.stringify({
+        scope: "usage",
+        stage: "insert_threw",
+        error: caught instanceof Error ? caught.message : String(caught),
+      }),
+    );
+  }
+}

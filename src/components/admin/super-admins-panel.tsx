@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ShieldCheck, UserMinus, UserPlus } from "lucide-react";
+import { Mail, ShieldCheck, UserMinus, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,8 @@ import { ErrorState } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
 
 type Admin = { id: string; full_name: string | null; email: string | null; created_at: string };
-type Res = { admins: Admin[]; me: string; emailed?: boolean };
+type Res = { admins: Admin[]; me: string; emailed?: boolean; email_error?: string | null };
+type TestRes = { sent: boolean; to: string; id: string | null; error: string | null };
 
 export function SuperAdminsPanel({ onChanged }: { onChanged?: () => void }) {
   const [admins, setAdmins] = useState<Admin[] | null>(null);
@@ -16,6 +17,7 @@ export function SuperAdminsPanel({ onChanged }: { onChanged?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<TestRes | null>(null);
 
   const apply = (d: Res | null) => {
     if (!d) return;
@@ -39,9 +41,31 @@ export function SuperAdminsPanel({ onChanged }: { onChanged?: () => void }) {
     setBusy(null);
     if (err) return toast.error(err);
     apply(data);
-    toast.success(data?.emailed ? `${ok} We emailed them.` : `${ok} Email isn't set up yet, so no email was sent.`);
+    const why = data?.email_error;
+    toast.success(
+      data?.emailed
+        ? `${ok} We emailed them.`
+        : why === "email_not_configured" || !why
+          ? `${ok} Email isn't set up yet, so no email was sent.`
+          : `${ok} The email didn't go: ${why}`,
+    );
     onChanged?.();
     return true;
+  };
+
+  const sendTest = async () => {
+    setBusy("test_email");
+    setTestResult(null);
+    const { data, error: err } = await callApi<TestRes>("/api/admin/super-admins", { body: { action: "test_email" } });
+    setBusy(null);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    if (!data) return;
+    setTestResult(data);
+    if (data.sent) toast.success(`Test email sent to ${data.to}.`);
+    else toast.error("The test email didn't go.");
   };
 
   if (error) return <ErrorState message={error} />;
@@ -69,6 +93,22 @@ export function SuperAdminsPanel({ onChanged }: { onChanged?: () => void }) {
           {busy === "grant" ? "Adding…" : "Add"}
         </Button>
       </form>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Button variant="outline" size="sm" disabled={busy !== null} onClick={() => void sendTest()}>
+          <Mail className="mr-1.5 h-4 w-4" />
+          {busy === "test_email" ? "Sending…" : "Send test email to me"}
+        </Button>
+        {testResult ? (
+          <p className={`text-xs ${testResult.sent ? "text-muted-foreground" : "text-destructive"}`}>
+            {testResult.sent
+              ? `Sent to ${testResult.to}${testResult.id ? ` (Resend id ${testResult.id})` : ""}.`
+              : testResult.error === "email_not_configured"
+                ? "Email isn't set up yet: RESEND_API_KEY is missing."
+                : `Not sent: ${testResult.error ?? "unknown error"}`}
+          </p>
+        ) : null}
+      </div>
 
       <div className="mt-4 divide-y divide-border/60">
         {admins === null

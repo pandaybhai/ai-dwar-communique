@@ -38,6 +38,8 @@ export const Route = createFileRoute("/api/admin/ai")({
             ? String(payload["instructions_override"]).slice(0, 8000)
             : null;
           const { playgroundAnswer } = await import("@/lib/ai-tasks.server");
+          const { runToolsMeta } = await import("@/lib/ai-run.server");
+          const { replySendOrder } = await import("@/lib/reply-order.server");
           const run = await playgroundAnswer(
             supabase,
             { organizationId: orgId, actorUserId: user.id, actingRole: "owner" },
@@ -62,14 +64,75 @@ export const Route = createFileRoute("/api/admin/ai")({
             error: run.error ?? null,
             needs_owner: run.needsOwner,
             escalation: run.escalationSignal,
-            tools: run.toolCalls.map((t) => ({ tool: t.tool, ok: t.ok })),
+            tools: runToolsMeta(run.toolCalls),
             media: run.media.map((m) => ({ title: m.title, image_url: m.imageUrl, price: m.price, currency: m.currency })),
+            // What the customer would get, message by message: words and each
+            // picture with its caption, in the order they would be sent.
+            sequence: replySendOrder(run),
             tier: run.tier,
             latency_ms: run.latencyMs,
           });
         }
 
+        // ---- Aiden control centre: Test → Compare. The workspace's own last
+        // customer questions, to run against the current and a draft brief.
+        if (action === "aiden_questions") {
+          const orgId = String(payload["organization_id"] ?? "");
+          if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
+          const { recentCustomerQuestions } = await import("@/lib/ai-comparison.server");
+          return Response.json({ questions: await recentCustomerQuestions(supabase, orgId, 20) });
+        }
+
+        // ---- Aiden control centre: Workspaces → recent customer answers, with
+        // what each tool was asked and found (metadata.tools, else the
+        // ai_tool_calls trace for older runs). Read-only.
+        if (action === "aiden_runs") {
+          const orgId = String(payload["organization_id"] ?? "");
+          if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
+          const { data: runRows, error: runError } = await supabase
+            .from("ai_runs")
+            .select("id, created_at, input_summary, output, status, escalation_signal, model, conversation_id, metadata")
+            .eq("organization_id", orgId)
+            .eq("task", "agent_reply")
+            // The policy check's own runs are not answers.
+            .is("metadata->>purpose", null)
+            .order("created_at", { ascending: false })
+            .limit(25);
+          if (runError) return jsonError(runError.message);
+          const runs = (runRows ?? []) as Array<Record<string, unknown>>;
+          const older = runs
+            .filter((r) => !Array.isArray((r["metadata"] as Record<string, unknown> | null)?.["tools"]))
+            .map((r) => String(r["id"]));
+          const { data: traceRows } = older.length
+            ? await supabase
+                .from("ai_tool_calls")
+                .select("run_id, tool_name, ok, error, arguments, result_summary, created_at")
+                .in("run_id", older)
+                .order("created_at", { ascending: true })
+            : { data: [] };
+          const { runView } = await import("@/lib/ai-run-view");
+          const trace = (traceRows ?? []) as Array<Record<string, unknown>>;
+          return Response.json({
+            runs: runs.map((r) => runView(r, trace.filter((t) => t["run_id"] === r["id"]))),
+          });
+        }
+
         // ---- Aiden control centre: behaviour for any workspace (one shared save path).
+        // ---- Aiden control centre: Workspaces → website reading.
+        if (action === "reading_log" || action === "reading_force_full") {
+          const orgId = String(payload["organization_id"] ?? "");
+          if (!/^[0-9a-f-]{36}$/i.test(orgId)) return jsonError("Pick a workspace.");
+          const knowledge = await import("@/lib/knowledge.server");
+          if (action === "reading_log") return Response.json(await knowledge.readingLog(supabase, orgId));
+          const sourceId = typeof payload["source_id"] === "string" && payload["source_id"] ? String(payload["source_id"]) : null;
+          const result = await knowledge.forceFullRead(supabase, orgId, {
+            sourceId,
+            ignorePaidCaps: payload["ignore_paid_caps"] === true,
+            userId: user.id,
+          });
+          return Response.json(result);
+        }
+
         if (action === "aiden_orgs") {
           const q = String(payload["q"] ?? "").trim();
           let query = supabase.from("organizations").select("id, name").order("name").limit(50);
@@ -375,7 +438,44 @@ export const Route = createFileRoute("/api/admin/ai")({
               const { backupStatus, loadPlatformBackup } = await import("@/lib/ai-fallback.server");
               return backupStatus(process.env, await loadPlatformBackup(supabase, { fresh: true }));
             })(),
+            // How long Aiden waits for a second text (null: the column isn't there yet).
+            burst_wait: await (async () => {
+              const { DEFAULT_BURST_WINDOW_MS } = await import("@/lib/whatsapp-webhook.server");
+              const { data: row, error: readError } = await supabase
+                .from("platform_settings")
+                .select("ai_burst_wait_ms")
+                .eq("id", true)
+                .maybeSingle();
+              const saved = readError ? null : ((row as { ai_burst_wait_ms?: number } | null)?.ai_burst_wait_ms ?? null);
+              return { ms: saved ?? DEFAULT_BURST_WINDOW_MS, saved: saved !== null, default_ms: DEFAULT_BURST_WINDOW_MS };
+            })(),
           });
+        }
+
+        // How long Aiden waits for a second text before answering (the burst window).
+        if (action === "set_burst_wait") {
+          const { MAX_BURST_WINDOW_MS, resetBurstWindowCache } = await import("@/lib/whatsapp-webhook.server");
+          const ms = Number(payload["ms"]);
+          if (!Number.isInteger(ms) || ms < 0 || ms > MAX_BURST_WINDOW_MS)
+            return jsonError(`Choose a wait between 0 and ${MAX_BURST_WINDOW_MS / 1000} seconds.`);
+          const { error } = await supabase
+            .from("platform_settings")
+            .update({ ai_burst_wait_ms: ms, updated_at: new Date().toISOString() })
+            .eq("id", true);
+          if (error) {
+            return /ai_burst_wait_ms/.test(error.message ?? "")
+              ? jsonError("The wait can't be saved until the database update 20261020_ai_burst_wait.sql is applied.", 409)
+              : jsonError("The wait could not be saved.", 500);
+          }
+          resetBurstWindowCache();
+          await supabase
+            .from("activity_log")
+            .insert({ organization_id: null, user_id: user.id, action: "ai_burst_wait_set", details: { ms } })
+            .then(
+              () => undefined,
+              () => undefined,
+            );
+          return Response.json({ ok: true, ms });
         }
 
         // One tiny prompt to each configured backup provider: how long it took,
@@ -570,6 +670,12 @@ export const Route = createFileRoute("/api/admin/ai")({
               next["full_crawl_trigger"] = incoming["full_crawl_trigger"];
             }
             if (incoming["on_demand_read"] != null) next["on_demand_read"] = Boolean(incoming["on_demand_read"]);
+            // Its own column (migration 20261022): only written when it changes,
+            // so a database without it still saves everything else.
+            const { loadKnowledgeAutoRefresh } = await import("@/lib/reading.server");
+            const autoRefreshBefore = await loadKnowledgeAutoRefresh(supabase);
+            if (incoming["knowledge_auto_refresh"] != null && Boolean(incoming["knowledge_auto_refresh"]) !== autoRefreshBefore)
+              next["knowledge_auto_refresh"] = Boolean(incoming["knowledge_auto_refresh"]);
             if (incoming["plan_page_overrides"] != null) {
               const o: Record<string, number> = {};
               for (const [k, v] of Object.entries(incoming["plan_page_overrides"] as Record<string, unknown>)) {
@@ -578,13 +684,15 @@ export const Route = createFileRoute("/api/admin/ai")({
               }
               next["plan_page_overrides"] = o;
             }
-            const before = await loadReadingSettings(supabase);
+            const before = { ...(await loadReadingSettings(supabase)), knowledge_auto_refresh: autoRefreshBefore };
             const { data: updated, error: upErr } = await supabase
               .from("platform_settings")
               .update({ ...next, reading_version: current.version + 1, reading_updated_at: new Date().toISOString(), reading_updated_by: user.id })
               .eq("id", true)
               .eq("reading_version", current.version)
               .select("id");
+            if (upErr && "knowledge_auto_refresh" in next && /knowledge_auto_refresh/.test(upErr.message ?? ""))
+              return jsonError("Automatic re-reading needs the database update 20261022_knowledge_auto_refresh applied first.");
             if (upErr) return jsonError("Couldn't save the reading settings.");
             if (!updated?.length) return jsonError("Someone saved at the same moment — reload to see their change.", 409);
             const changes: Record<string, { from: unknown; to: unknown }> = {};
@@ -600,11 +708,14 @@ export const Route = createFileRoute("/api/admin/ai")({
                 changes,
               }).catch(() => undefined);
           }
-          const [settings, m, plans] = await Promise.all([
+          const { loadKnowledgeAutoRefresh } = await import("@/lib/reading.server");
+          const [reading, autoRefresh, m, plans] = await Promise.all([
             loadReadingSettings(supabase),
+            loadKnowledgeAutoRefresh(supabase),
             meta(),
             supabase.from("plans").select("id, name, plan_versions!inner(limits, is_current)").eq("plan_versions.is_current", true),
           ]);
+          const settings = { ...reading, knowledge_auto_refresh: autoRefresh };
           return Response.json({
             settings,
             meta: m,

@@ -9,14 +9,16 @@ import { DEFAULT_LANGUAGES, languageName } from "@/lib/languages";
 
 /** The rules every answer follows, used when the database has none. */
 export const FALLBACK_AGENT_RULES = [
-  "Keep replies short — under 60 words for a normal answer. When listing products, one short line per product is fine.",
+  "This business's own instructions come first: follow their style, length, language, how many products to show, what a caption carries and how to end a reply. These rules only fill the gaps.",
+  "Keep replies short — under 60 words for a normal answer, unless the business's instructions say otherwise.",
   "Only state something you found in the material provided or by looking it up.",
   "Never invent an order number, a price, a date or a policy.",
-  "When a product lookup returns results, show them: name and price, up to five items. Never answer a product question by asking the customer to narrow down first.",
-  "If more products matched than you listed, say so, for example \"and 9 more — tell me what you're after and I'll narrow it down\".",
-  "Only ask a clarifying question when a lookup genuinely returned nothing.",
-  "Product pictures are attached for you automatically — name each product plainly and never paste an image link.",
-  "If you cannot answer from a source or a lookup, say a colleague will follow up.",
+  "When a product lookup returns results, show them (up to five unless the business says otherwise) rather than asking the customer to narrow down first.",
+  "Product pictures go out only when you send them with send_products, under the caption you write. Never paste an image link.",
+  "End a reply with at most one question.",
+  "Never mention item numbers, sources or brackets — the customer only sees your words.",
+  "If something isn't in the material you were given, never say the business doesn't have it — say you'll check, or ask what they're looking for.",
+  "If you don't have a detail, say so plainly, offer the closest thing you can (similar products, or the shop's contact details from the material) and keep the conversation going.",
 ].join("\n");
 
 /** The rules for talking to the business owner, used when the database has none. */

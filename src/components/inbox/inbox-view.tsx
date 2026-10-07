@@ -37,7 +37,7 @@ type Filter = "all" | "needs_human" | "open" | "closed" | "mine";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "needs_human", label: "Needs you" },
+  { key: "needs_human", label: "Waiting for you" },
   { key: "open", label: "Open" },
   { key: "closed", label: "Closed" },
   { key: "mine", label: "Assigned to me" },
@@ -529,7 +529,7 @@ export function InboxView() {
                               variant="secondary"
                               className="ml-auto h-5 shrink-0 rounded-full px-2 text-[10px]"
                             >
-                              Needs you
+                              Waiting for you
                             </Badge>
                           ) : null}
                           {(c.unread_count ?? 0) > 0 ? (

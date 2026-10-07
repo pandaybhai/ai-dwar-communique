@@ -46,6 +46,12 @@ export type ToolContext = {
    * workspace scope.
    */
   subject?: { contactId: string | null; conversationId: string | null };
+  /**
+   * Set by invokeTool: the call came through the broker (a model's or a
+   * member's tool call). Absent on a direct handler call — the flows "Show
+   * products" step — which keeps that step's behaviour exactly as it was.
+   */
+  brokered?: boolean;
 };
 
 /** The principal a context runs as, falling back to its user (or the agent). */
@@ -194,6 +200,9 @@ export function canonGender(text: string): string | null {
   for (const [re, word] of GENDER_WORDS) if (re.test(text)) return word;
   return null;
 }
+
+/** How many products one send_products call may carry. */
+export const SEND_PRODUCTS_MAX = 5;
 
 /** A whole sentence dropped into `query` instead of a product name. */
 function looksLikeSentence(text: string): boolean {
@@ -455,8 +464,11 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
   },
 
   async catalogSearch(ctx, args) {
-    const limit = Math.min(Math.max(num(args["limit"], 10), 1), 25);
-    const { isAvailability } = await import("@/lib/catalog");
+    // `pool` is the flows "Show products" step only (not in the agent's
+    // manifest): it reads a wider pool to pick photos first / spread across
+    // the budget from. Absent, the cap is 25 as always.
+    const limit = Math.min(Math.max(num(args["limit"], 10), 1), args["pool"] === true ? 100 : 25);
+    const { isAvailability, keywordTsQuery } = await import("@/lib/catalog");
 
     const rawQuery = str(args["query"]);
     const rawCategory = str(args["category"]);
@@ -465,6 +477,10 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     const spoken = `${rawCategory} ${rawQuery}`;
     const category = canonCategory(rawCategory) || canonCategory(rawQuery);
     const gender = canonGender(str(args["gender"])) || canonGender(spoken);
+    // Most catalogues tag gender on a few products only (Zoori: 10 of 472).
+    // For Aiden a gender narrows to that gender plus the untagged products —
+    // it never hides a whole shelf. The flows step keeps the strict match.
+    const keepUntaggedGender = ctx.brokered === true;
     const maxPriceRaw = args["max_price"];
     const maxPrice =
       typeof maxPriceRaw === "number" && Number.isFinite(maxPriceRaw) ? maxPriceRaw : null;
@@ -478,9 +494,27 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     // cheapest first (same filters, same limit). Absent, the order is exactly
     // as before.
     const byPrice = args["order"] === "price_asc";
+    // Flows only as well: "Newest" lists the most recently added first, and a
+    // keyword ("Ruby", or a {{variable}} filled in) must appear in the
+    // product's own words — strictly, on every search including the closest
+    // ones. Absent, both are exactly as before.
+    const newest = args["order"] === "newest";
+    const keyword = keywordTsQuery(str(args["keyword"]));
+    // A keyword with no searchable word in it matches no product's words.
+    if (str(args["keyword"]) && !keyword) return { ok: true, found: false, data: [] };
     // A whole sentence in `query` matches nothing; once we know the shelf and
     // the budget, the words the customer typed are noise.
     const query = category && looksLikeSentence(rawQuery) ? "" : rawQuery;
+
+    // Batch 16 (flows "Show products", any direct call — not Aiden, whose
+    // shelf rule is below): a shelf is that shelf only. "%rings%" also
+    // matches "earrings"; the category must start at a word ("Rings", "Gold
+    // rings"), never inside another word. Fewer matches means fewer products
+    // sent — never another shelf topping them up. Read wider, then cut back.
+    const strictShelf = !keepUntaggedGender && Boolean(category);
+    const shelfWord = strictShelf ? new RegExp(`(^|[^\\p{L}\\p{N}])${category.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu") : null;
+    const onShelf = (rows: Array<Record<string, unknown>>) =>
+      shelfWord ? rows.filter((r) => shelfWord.test(String(r["category"] ?? ""))) : rows;
 
     const run = async (
       withQuery: string,
@@ -488,17 +522,18 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
       rowLimit: number,
       cheapestFirst = false,
       withMinPrice: number | null = minPrice,
+      withGender: string | null = gender,
     ) => {
       const { toTsQuery } = await import("@/lib/catalog");
       let request = ctx.supabase
         .from("products")
         .select(
-          "id, external_id, title, sku, brand, category, gender, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url, source, meta_synced_at",
+          "id, external_id, title, sku, brand, description, category, gender, price, compare_at_price, currency, availability, inventory_quantity, product_url, image_url, source, meta_synced_at",
         )
         .eq("organization_id", ctx.organizationId)
         // Hidden products never reach a customer, whether searching or browsing.
         .eq("is_visible", true)
-        .limit(rowLimit);
+        .limit(strictShelf ? Math.max(rowLimit, 100) : rowLimit);
 
       if (withQuery) {
         const tsquery = toTsQuery(withQuery);
@@ -506,8 +541,11 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
           ? request.textSearch("search_vector", tsquery)
           : request.ilike("title", `%${withQuery.replace(/[%,()]/g, " ").trim()}%`);
         if (byPrice) request = request.order("price", { ascending: true, nullsFirst: false });
+        else if (newest) request = request.order("created_at", { ascending: false });
       } else if (cheapestFirst || byPrice) {
         request = request.order("price", { ascending: true, nullsFirst: false });
+      } else if (newest) {
+        request = request.order("created_at", { ascending: false });
       } else {
         // Browse case: what's in stock, with a picture, most recently touched
         // first. A product without a picture arrives as a bare line of text, so
@@ -518,24 +556,35 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
           .order("updated_at", { ascending: false });
       }
 
+      // The search vector is built with 'simple' (no stemming), so the
+      // keyword is too: "ruby" must not become "rubi".
+      if (keyword) request = request.textSearch("search_vector", keyword, { config: "simple" });
       if (withMaxPrice !== null) request = request.lte("price", withMaxPrice);
       if (withMinPrice !== null) request = request.gte("price", withMinPrice);
       if (availability) request = request.eq("availability", availability);
       if (category) request = request.ilike("category", `%${category}%`);
-      if (gender) {
-        const words = gender === "male" ? ["male", "men", "gents"] : ["female", "women", "ladies"];
-        request = request.or(words.map((w) => `gender.ilike.${w}`).join(","));
+      // "%rings%" also matches "earrings" (Zoori: 135 earrings beside 44
+      // rings). Aiden's ring search leaves them out; the flows step is as it was.
+      if (keepUntaggedGender && category === "rings") request = request.not("category", "ilike", "%earring%");
+      if (withGender) {
+        const words = withGender === "male" ? ["male", "men", "gents"] : ["female", "women", "ladies"];
+        // Untagged is NULL: every writer (genderHint in product-extract) stores
+        // a word or NULL, never an empty string (live: 582 NULL, 0 empty).
+        const untagged = keepUntaggedGender ? ["gender.is.null"] : [];
+        request = request.or([...untagged, ...words.map((w) => `gender.ilike.${w}`)].join(","));
       }
 
       const { data, error } = await request;
       if (error) return { rows: null as Array<Record<string, unknown>> | null, error: error.message };
-      return { rows: (data ?? []) as Array<Record<string, unknown>>, error: null };
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      return { rows: strictShelf ? onShelf(rows).slice(0, rowLimit) : rows, error: null };
     };
 
     const sortRows = (rows: Array<Record<string, unknown>>, searched: boolean) => {
       const hasPicture = (r: Record<string, unknown>) =>
         typeof r["image_url"] === "string" && /^https?:\/\//i.test(r["image_url"] as string);
       if (byPrice) return sortByPrice(rows);
+      if (newest) return rows;
       return searched
         ? [...rows].sort((a, b) => Number(hasPicture(b)) - Number(hasPicture(a)))
         : [...rows].sort(
@@ -563,7 +612,14 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     // Nothing at that budget: offer the nearest three above it rather than a
     // dead end.
     if (category || maxPrice !== null || minPrice !== null) {
-      const closest = await run("", null, 3, true, null);
+      let closest = await run("", null, 3, true, null);
+      // Still nothing for that gender: the closest of any gender (Aiden only),
+      // said as such so they are never passed off as "for him/her".
+      let genderDropped = false;
+      if (keepUntaggedGender && gender && closest.rows && closest.rows.length === 0) {
+        closest = await run("", null, 3, true, null, null);
+        genderDropped = true;
+      }
       const suggestions = closest.rows ? sortRows(closest.rows, false) : [];
       if (suggestions.length > 0) {
         const prices = suggestions.map((r) => Number(r["price"])).filter((p) => Number.isFinite(p) && p > 0);
@@ -578,6 +634,9 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
             max_price: maxPrice,
             lowest_price: from,
             closest_above: suggestions,
+            ...(genderDropped
+              ? { gender_note: `No ${gender === "male" ? "gents" : "ladies"} product matched; these are the closest of any gender — say so.` }
+              : {}),
             // Say what exists and what it costs; offer only these products —
             // never another type or budget that wasn't searched.
             reply_hint:
@@ -595,18 +654,79 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
   },
 
 
+  /**
+   * The model's chosen products with its own captions. Nothing is sent here:
+   * the reply path sends them, in this order, where the model put them among
+   * its words. Only the caption's price and link are checked against the
+   * product (checkCaption); every other word is the model's.
+   */
+  async sendProducts(ctx, args) {
+    const { checkCaption, productFacts } = await import("@/lib/product-facts");
+    const list = Array.isArray(args["products"]) ? (args["products"] as unknown[]) : [];
+    const wanted = list
+      .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>) : {}))
+      .map((p) => ({ id: str(p["product_id"]), caption: typeof p["caption"] === "string" ? (p["caption"] as string) : "" }))
+      .filter((p) => p.id);
+    if (wanted.length === 0) return { ok: false, error: "Give products: [{product_id, caption}] using product_id values from catalog_search." };
+    const picked = wanted.filter((p, i) => wanted.findIndex((q) => q.id === p.id) === i).slice(0, SEND_PRODUCTS_MAX);
+    const { data, error } = await ctx.supabase
+      .from("products")
+      .select(
+        "id, external_id, title, sku, description, category, gender, price, compare_at_price, currency, availability, product_url, image_url, source, meta_synced_at",
+      )
+      .eq("organization_id", ctx.organizationId)
+      // Hidden products never reach a customer.
+      .eq("is_visible", true)
+      .in("id", picked.map((p) => p.id));
+    if (error) return { ok: false, error: error.message };
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    const products = [];
+    const skipped: string[] = [];
+    for (const p of picked) {
+      const row = rows.find((r) => String(r["id"]) === p.id);
+      if (!row) {
+        skipped.push(p.id);
+        continue;
+      }
+      const checked = checkCaption(p.caption, row);
+      const image = str(row["image_url"]);
+      products.push({
+        product_id: p.id,
+        title: str(row["title"]),
+        caption: checked.caption,
+        has_photo: /^https?:\/\//i.test(image),
+        ...(checked.changes.length ? { caption_changes: checked.changes } : {}),
+        facts: productFacts(row),
+        // The reply path's own copy; never shown to the model.
+        send: {
+          imageUrl: /^https?:\/\//i.test(image) ? image : "",
+          price: row["price"] === null || row["price"] === undefined ? null : Number(row["price"]),
+          currency: str(row["currency"]) || null,
+          productUrl: str(row["product_url"]) || null,
+          retailerId: str(row["external_id"]) || str(row["sku"]) || str(row["id"]) || null,
+          category: str(row["category"]) || null,
+          inCatalog:
+            Boolean(str(row["external_id"]) || str(row["sku"]) || str(row["id"])) &&
+            (Boolean(str(row["meta_synced_at"])) || str(row["source"]) === "meta_catalog"),
+        },
+      });
+    }
+    if (products.length === 0) {
+      return { ok: false, error: "None of those product_id values is a product of this business. Use product_id values from catalog_search." };
+    }
+    return { ok: true, data: { queued: true, products, ...(skipped.length ? { skipped } : {}) } };
+  },
+
+  /**
+   * The store integration's "search_products" tool is catalog_search (Batch
+   * 16): the older title-only search here ignored is_visible and could show a
+   * hidden product. One search, one set of rules — the tool name stays so
+   * workspaces offered it keep a product search.
+   */
   async searchProducts(ctx, args) {
     const query = str(args["query"]);
     if (!query) return { ok: false, error: "query is required." };
-    const limit = Math.min(Math.max(num(args["limit"], 5), 1), 20);
-    const safe = query.replace(/[%,()]/g, " ").trim();
-    const { data } = await ctx.supabase
-      .from("products")
-      .select("id, title, price, currency, status, product_url, image_url")
-      .eq("organization_id", ctx.organizationId)
-      .ilike("title", `%${safe}%`)
-      .limit(limit);
-    return { ok: true, data: data ?? [] };
+    return AI_TOOL_HANDLERS["catalogSearch"]!(ctx, { query, limit: Math.min(Math.max(num(args["limit"], 5), 1), 20) });
   },
 };
 
@@ -720,13 +840,20 @@ async function writeRateLimited(
 export type InvokeOptions = {
   /** Set by the caller once a human has approved a confirmation-gated tool. */
   confirmed?: boolean;
+  /**
+   * The tools brokerTools already gave this same principal for this run
+   * (executeRun's prelude). Each call then skips re-reading flags, settings
+   * and role permissions — 3 round trips per tool call. Left out, they are
+   * read here as always.
+   */
+  brokered?: BrokeredTool[];
 };
 
 /**
  * A debugging fingerprint of a tool result: how many rows and up to five
  * identifiers. Never a copy of the data, never personal details.
  */
-function summarise(result: ToolResult): Record<string, unknown> {
+export function summarise(result: ToolResult): Record<string, unknown> {
   const label = (row: unknown): string | null => {
     if (row === null || typeof row !== "object") return null;
     const r = row as Record<string, unknown>;
@@ -736,7 +863,14 @@ function summarise(result: ToolResult): Record<string, unknown> {
     }
     return null;
   };
-  const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
+  // A result that wraps its rows (closest matches, queued products) is
+  // counted by those rows, not as one object.
+  const data = result.data as Record<string, unknown> | unknown[] | null | undefined;
+  const inner =
+    data && !Array.isArray(data)
+      ? ["closest_above", "products"].map((k) => (data as Record<string, unknown>)[k]).find(Array.isArray)
+      : undefined;
+  const rows = Array.isArray(data) ? data : Array.isArray(inner) ? inner : data ? [data] : [];
   return {
     ok: result.ok,
     ...(result.found === false ? { found: false } : {}),
@@ -760,7 +894,7 @@ export async function invokeTool(
   options: InvokeOptions = {},
 ): Promise<ToolResult> {
   const startedAt = Date.now();
-  const available = await brokerTools(ctx.supabase, ctx.organizationId, contextPrincipal(ctx));
+  const available = options.brokered ?? (await brokerTools(ctx.supabase, ctx.organizationId, contextPrincipal(ctx)));
   const tool = available.find((t) => t.name === toolName);
 
   /** Returns the activity_log row id so the caller can join a run to its trace. */
@@ -823,7 +957,7 @@ export async function invokeTool(
   }
 
   try {
-    const result = await AI_TOOL_HANDLERS[tool.handler]!(ctx, args);
+    const result = await AI_TOOL_HANDLERS[tool.handler]!({ ...ctx, brokered: true }, args);
     const status = result.ok ? (result.found === false ? "not_found" : "ok") : "error";
     const logId = await log(status, result.ok ? undefined : result.error);
     return done(result, logId);

@@ -6,8 +6,10 @@ import { round2 } from "@/lib/billing";
  * before Meta float runs out, buy credits automatically when the merchant
  * asked us to, chase overdue top-ups, and expire credits nobody used.
  *
- * Every warning is rate-limited to once a day per workspace — a merchant who
- * is low on credits must not wake up to twelve identical messages.
+ * A merchant who is low on credits must not wake up to twelve identical
+ * messages: low credits is said once per low spell (until credits recover),
+ * the float warning at most once a day, and notify() never queues either
+ * while an earlier one is still waiting to go out.
  */
 
 const DAY_MS = 864e5;
@@ -70,26 +72,32 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
           Number((wallet as Record<string, unknown> | null)?.["held"] ?? 0),
       );
 
-      // ---- low credits (once a day)
+      // ---- low credits: once per low spell. last_low_credit_notice_at marks
+      // that this spell was warned about; it is cleared when credits recover
+      // (back at or above the threshold), so the next drop warns again.
       const threshold = Number(s["low_credit_threshold"] ?? 0);
-      if (
-        threshold > 0 &&
-        available < threshold &&
-        olderThan(s["last_low_credit_notice_at"] as string | null, DAY_MS)
-      ) {
-        await notify(supabase, {
-          organizationId: orgId,
-          audience: "client",
-          kind: "low_credits",
-          payload: { available, threshold, link: "https://aidwar.in/app/billing" },
-        });
+      const lowSince = (s["last_low_credit_notice_at"] as string | null) ?? null;
+      if (threshold > 0 && available < threshold) {
+        if (!lowSince) {
+          await notify(supabase, {
+            organizationId: orgId,
+            audience: "client",
+            kind: "low_credits",
+            payload: { available, threshold, link: "https://aidwar.in/app/billing" },
+          });
+          await supabase
+            .from("organization_billing_settings")
+            .upsert(
+              { organization_id: orgId, last_low_credit_notice_at: nowIso },
+              { onConflict: "organization_id" },
+            );
+          counts.low_credits += 1;
+        }
+      } else if (lowSince) {
         await supabase
           .from("organization_billing_settings")
-          .upsert(
-            { organization_id: orgId, last_low_credit_notice_at: nowIso },
-            { onConflict: "organization_id" },
-          );
-        counts.low_credits += 1;
+          .update({ last_low_credit_notice_at: null })
+          .eq("organization_id", orgId);
       }
 
       // ---- Meta float running low (platform-funded workspaces only)

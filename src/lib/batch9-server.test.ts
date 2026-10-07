@@ -207,7 +207,8 @@ describe("(4) campaign charged total = sum of its debit_message rows", () => {
     const db = campaignWorld(state);
     await settleCampaignSpend(db.supabase, "org", "camp");
     expect(state.charged).toBe(3.12);
-    expect(db.rpcs.map((r) => [r.args["p_type"], r.args["p_amount"]])).toEqual([["hold_release", 1.04]]);
+    // (campaign_ledger_charge is asked first; this fake has none, so the rows are read.)
+    expect(db.rpcs.filter((r) => r.name !== "campaign_ledger_charge").map((r) => [r.args["p_type"], r.args["p_amount"]])).toEqual([["hold_release", 1.04]]);
   });
 
   it("no debit rows (billing off / free messages): nothing written; a failed read writes nothing", async () => {
@@ -245,6 +246,9 @@ describe("(4) campaign charged total = sum of its debit_message rows", () => {
           if (op.table === "whatsapp_accounts") return { data: { id: "acc", organization_id: "org", waba_id: "waba" }, error: null };
           if (op.table === "messages" && op.kind === "select")
             return { data: { id: "m-out", status: "sent", type: "template", conversation_id: "cv1", campaign_id: opts.campaignId }, error: null };
+          // Batch 12: the status is one conditional update that returns the row.
+          if (op.table === "messages" && op.kind === "update")
+            return { data: [{ id: "m-out", status: "delivered", type: "template", conversation_id: "cv1", campaign_id: opts.campaignId, created_at: "2026-10-01T00:00:00Z" }], error: null };
           if (op.table === "wallet_ledger") return { data: [{ amount: -1.04 }, { amount: -1.04 }], error: null };
           return undefined;
         },

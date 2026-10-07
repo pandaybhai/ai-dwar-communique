@@ -21,7 +21,7 @@ export const Route = createFileRoute("/api/onboarding/start")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { requireOrgMember, isResponse, jsonError } = await import(
+        const { requireOrgMember, isResponse, jsonError, requirePermission } = await import(
           "@/lib/whatsapp-api.server"
         );
         const { normalizePhone, toWaId } = await import("@/lib/phone");
@@ -35,6 +35,12 @@ export const Route = createFileRoute("/api/onboarding/start")({
 
         const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
         if (isResponse(auth)) return auth;
+        // (Re-)linking the workspace's "talk to Aiden" number is the owner's,
+        // or someone allowed to configure Aiden — never any member.
+        if (auth.role !== "owner") {
+          const denied = await requirePermission(auth, "ai.configure", "link your WhatsApp to Aiden");
+          if (denied) return payload["mode"] === "card" ? Response.json({ show_setup: false }) : denied;
+        }
 
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
         const supabaseAdmin = getServiceClient();

@@ -157,10 +157,17 @@ function categoryFromReferrer(referrer: string | null | undefined, title?: strin
   }
 }
 
+/**
+ * The shelf an item code names. Parts are read in the order given — the
+ * product's own SKU first — so a reused photo's filename never outranks it
+ * (myzoori.com: 24 ZERN earrings whose photos are named "zpnds-…" were saved
+ * as pendants).
+ */
 function categoryFromCode(...parts: Array<string | null | undefined>): string | null {
-  const text = parts.filter(Boolean).join(" ");
-  if (!text) return null;
-  for (const [pattern, word] of SKU_WORDS) if (pattern.test(text)) return word;
+  for (const part of parts) {
+    if (!part) continue;
+    for (const [pattern, word] of SKU_WORDS) if (pattern.test(part)) return word;
+  }
   return null;
 }
 
@@ -238,13 +245,22 @@ function cleanDescription(raw: unknown, title: string, sku: string | null): stri
   return text.slice(0, 300);
 }
 
-/** Who a shelf is meant for, when the shop says it out loud. */
-function genderHint(...parts: Array<string | null | undefined>): string | null {
-  const text = parts.filter(Boolean).join(" ");
+const MALE_WORDS = /for\s*him|\bgents?\b|\bmen(?:['’]s)?\b|\bmens\b|\bmale\b/i;
+const FEMALE_WORDS = /for\s*her|\bladies\b|\bwomen(?:['’]s)?\b|\bwomens\b|\bfemale\b/i;
+
+/**
+ * Who a product is meant for, only when the shop says it in plain words —
+ * its shelf, title, description or code ("Gents Ring", "for her",
+ * "MENS-RING-01"). Both said, or neither: no guess (null). Stored as
+ * "male" / "female", the words Aiden's search and the catalogue use.
+ */
+export function genderHint(...parts: Array<string | null | undefined>): "male" | "female" | null {
+  const text = parts.filter(Boolean).join(" ").replace(/[_-]+/g, " ");
   if (!text) return null;
-  if (/for\s*him|\bgents?\b|\bmen(?:'s)?\b|\bmens\b/i.test(text)) return "men";
-  if (/for\s*her|\bladies\b|\bwomen(?:'s)?\b|\bwomens\b/i.test(text)) return "women";
-  return null;
+  const male = MALE_WORDS.test(text);
+  const female = FEMALE_WORDS.test(text);
+  if (male === female) return null;
+  return male ? "male" : "female";
 }
 
 function soldOut(html: string): boolean {
@@ -650,6 +666,19 @@ export type ExtractContext = {
 };
 
 /** One product off one page, or nothing. First method that works wins. */
+/**
+ * Batch 16: only what the page states in its structured data (JSON-LD, then
+ * Open Graph product tags) — no guessing from the page text. The free price
+ * check and the "has a browser-only page changed?" check read this from the
+ * raw HTML our own fetch gets, with no AI and no paid reader.
+ */
+export function structuredProduct(html: string, pageUrl: string): ProductDraft | null {
+  if (!html || html.length < 200 || isLegalPage(pageUrl, html)) return null;
+  const draft = fromJsonLd(html, pageUrl) ?? fromOpenGraph(html, pageUrl);
+  if (!draft || !draft.title || looksLikeLegalClause(draft.title)) return null;
+  return draft;
+}
+
 export function extractProduct(
   html: string,
   pageUrl: string,
@@ -684,10 +713,9 @@ export function extractProduct(
     categoryFromCode(draft.sku, draft.title, draft.imageUrl, docTitle) ??
     categoryWord(draft.title, docTitle, new URL(pageUrl).pathname) ??
     null;
-  draft.gender = genderHint(crumbs, context.referrer ?? null, draft.title);
-
   const about = [...specLines(html), ...(draft.description ? [draft.description] : [])];
   draft.description = about.length > 0 ? about.join(". ").replace(/\.\./g, ".").slice(0, 500) : null;
+  draft.gender = genderHint(crumbs, context.referrer ?? null, draft.title, draft.description, draft.sku);
 
   if (draft.price === null && !draft.imageUrl) return null;
   return draft;
@@ -708,9 +736,113 @@ export function dropSharedImages(drafts: ProductDraft[], limit = 3): void {
   }
 }
 
+/**
+ * The same rule one page at a time: a picture more than `limit` crawled
+ * products already use is the shop's fallback graphic, so this product goes
+ * without a picture rather than with the wrong one.
+ */
+export async function dropImageIfShared(
+  supabase: SupabaseClient,
+  organizationId: string,
+  draft: ProductDraft,
+  limit = 3,
+): Promise<void> {
+  if (!draft.imageUrl) return;
+  const { count } = await supabase
+    .from("products")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("source", CRAWL_SOURCE)
+    .eq("image_url", draft.imageUrl)
+    .neq("external_id", draft.externalId);
+  if ((count ?? 0) >= limit) draft.imageUrl = null;
+}
+
 // ------------------------------------------------------------------ storing
 
 const CRAWL_SOURCE = "crawl";
+/** A duplicate set aside (Batch 21): hidden for good, never brought back by a read. */
+const ARCHIVED = "archived";
+
+type PriorRow = { id: string; source: string; image_url?: string | null; gender?: string | null; status?: string | null; is_visible?: boolean | null; external_id?: string | null; keepAddress?: boolean };
+
+/**
+ * The other ways the same page address is written: www / no-www, http /
+ * https, with or without a trailing slash (Batch 21: Zoori's 120 pairs were
+ * one page stored under both myzoori.com and www.myzoori.com).
+ */
+export function addressTwins(address: string): string[] {
+  const m = address.match(/^https?:\/\/(?:www\.)?([^/?#]+)([^#]*)/i);
+  if (!m) return [];
+  const host = m[1]!.toLowerCase();
+  const rest = m[2]!;
+  const qi = rest.indexOf("?");
+  const path = qi < 0 ? rest : rest.slice(0, qi);
+  const q = qi < 0 ? "" : rest.slice(qi);
+  const trimmed = path.replace(/\/+$/, "");
+  const paths = trimmed ? [trimmed, `${trimmed}/`] : ["", "/"];
+  const all = ["https://", "http://"].flatMap((scheme) =>
+    [host, `www.${host}`].flatMap((h) => paths.map((p) => `${scheme}${h}${p}${q}`)),
+  );
+  return [...new Set(all)].filter((a) => a !== address);
+}
+
+/**
+ * The row a read should update for this product: the one at its page
+ * address; else the same page under its other address (www / no-www, http /
+ * https, trailing slash — Batch 21), moved to the page's address; else —
+ * only when the page gives a SKU — the product with that SKU.
+ * One SKU is one product in a workspace (products_org_sku_unique_idx), so an
+ * insert would be refused: that is how 11 Zoori rings read at www.… stayed on
+ * their old no-www rows, never refreshed, for two weeks. That row is updated
+ * and moved to the page's address. Without a SKU nothing changes (a moved
+ * page gets a new row and the old one is hidden, Batch 13A).
+ */
+async function existingCrawlRow(
+  supabase: SupabaseClient,
+  organizationId: string,
+  draft: ProductDraft,
+): Promise<PriorRow | null> {
+  const columns = "id, source, image_url, gender, status, is_visible";
+  const one = async (query: PromiseLike<{ data: unknown }>) => {
+    const data = (await query).data;
+    return data && !Array.isArray(data) ? (data as PriorRow) : null;
+  };
+  const exact = await one(
+    supabase.from("products").select(columns).eq("organization_id", organizationId).eq("external_id", draft.externalId).maybeSingle(),
+  );
+  if (exact && exact.status !== ARCHIVED) return exact;
+  // Batch 21: the same page under its other address (www / no-www, http /
+  // https, trailing slash) is this product: update that row, never add a
+  // second one. An archived duplicate is never chosen while a live one exists.
+  const twins = addressTwins(draft.externalId);
+  if (twins.length) {
+    const { data } = await supabase
+      .from("products")
+      .select(`${columns}, external_id`)
+      .eq("organization_id", organizationId)
+      .in("external_id", twins)
+      .limit(10);
+    const rows = Array.isArray(data) ? (data as PriorRow[]) : [];
+    const live = rows.filter((r) => r.status !== ARCHIVED);
+    const twin = live.find((r) => r.is_visible) ?? live[0];
+    // The page's own address is taken by an archived row: keep the twin where it is.
+    if (twin) return exact ? { ...twin, keepAddress: true } : twin;
+  }
+  if (exact) return exact;
+  const sku = (draft.sku ?? "").trim();
+  if (!sku) return null;
+  // Only a product new to this address costs this lookup.
+  return one(
+    supabase
+      .from("products")
+      .select(columns)
+      .eq("organization_id", organizationId)
+      .ilike("sku", sku.replace(/[\\%_]/g, (c) => `\\${c}`))
+      .limit(1)
+      .maybeSingle(),
+  );
+}
 
 /**
  * Remember what a crawl found. Prices and stock move, so an existing row is
@@ -747,27 +879,35 @@ export async function saveCrawledProducts(
       synced_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const { data: existing } = await supabase
-      .from("products")
-      .select("id, source, image_url")
-      .eq("organization_id", organizationId)
-      .eq("external_id", draft.externalId)
-      .maybeSingle();
-    const prior = existing as { id: string; source: string; image_url?: string | null } | null;
+    const prior = await existingCrawlRow(supabase, organizationId, draft);
     if (prior) {
       // A product a shop platform owns is never overwritten by a page read.
       if (prior.source !== CRAWL_SOURCE) continue;
-      // A read that can't see a price, shelf or description fills nothing in
-      // and wipes nothing out: what the last read found stays.
+      // An archived duplicate is never brought back by a read (Batch 21).
+      if (prior.status === ARCHIVED) continue;
+      // A read that can't see a price, shelf, description or gender fills
+      // nothing in and wipes nothing out: what the last read (or the owner)
+      // set stays — Zoori's hand-set ZGRG/ZLRG genders survive a re-read.
       const update: Record<string, unknown> = { ...row };
-      for (const key of ["price", "category", "description"] as const) if (update[key] == null) delete update[key];
+      for (const key of ["price", "category", "description", "gender"] as const) if (update[key] == null) delete update[key];
+      // A gender already set (by an owner or an earlier read) is never changed by a read.
+      if (prior.gender) delete update["gender"];
       // A photo the product already has is never replaced or wiped by a read.
       if (prior.image_url) delete update["image_url"];
+      // Its own address is held by an archived duplicate: the row stays at its address.
+      if (prior.keepAddress) {
+        delete update["external_id"];
+        delete update["product_url"];
+      }
       const { error } = await supabase.from("products").update(update).eq("id", prior.id);
       if (!error) saved += 1;
+      else console.error("[crawl] product update failed", draft.externalId, error.message);
     } else {
       const { error } = await supabase.from("products").insert(row);
       if (!error) saved += 1;
+      // Never silent again: a refused insert (e.g. the per-workspace SKU
+      // rule) left 11 Zoori rings stale for two weeks.
+      else console.error("[crawl] product insert failed", draft.externalId, error.message);
     }
   }
   return saved;
@@ -984,6 +1124,65 @@ export async function hideMissingCrawledProducts(
   for (let i = 0; i < ids.length; i += 200)
     await supabase.from("products").update({ is_visible: false }).in("id", ids.slice(i, i + 200));
   return { hidden: ids.length, skipped: null, candidates: plan.candidates };
+}
+
+/**
+ * A site that moved address (myzoori.com → www.myzoori.com) left its
+ * products saved under the old one. After a completed full read on the new
+ * address they are hidden — never deleted: at once when the same page is
+ * saved under the new address, otherwise by the usual forget rule (gone or
+ * off the site map, and never more than its share in one go).
+ */
+export async function hideAliasHostProducts(
+  supabase: SupabaseClient,
+  organizationId: string,
+  origin: string,
+  aliases: string[],
+  read: { fullReadComplete: boolean; siteMap: Iterable<string>; gone: Iterable<string> },
+): Promise<{ hidden: number; twins: number; skipped: string | null }> {
+  if (!read.fullReadComplete || aliases.length === 0) return { hidden: 0, twins: 0, skipped: "partial_read" };
+  const { planForget, normalizeRef } = await import("@/lib/forget-rules");
+  const { canonicalPageUrl } = await import("@/lib/site-urls");
+  const old: Array<{ id: string; canonical: string }> = [];
+  for (const alias of aliases) {
+    if (alias === origin) continue;
+    const { data } = await supabase
+      .from("products")
+      .select("id, product_url")
+      .eq("organization_id", organizationId)
+      .eq("source", CRAWL_SOURCE)
+      .eq("is_visible", true)
+      .like("product_url", `${alias}/%`)
+      .limit(10000);
+    for (const row of (data ?? []) as Array<{ id: string; product_url: string | null }>) {
+      if (!row.product_url) continue;
+      try {
+        if (new URL(row.product_url).origin !== alias) continue;
+      } catch {
+        continue;
+      }
+      const canonical = canonicalPageUrl(row.product_url, row.product_url, origin);
+      if (canonical) old.push({ id: row.id, canonical });
+    }
+  }
+  if (old.length === 0) return { hidden: 0, twins: 0, skipped: null };
+  const { data: live } = await supabase
+    .from("products")
+    .select("external_id")
+    .eq("organization_id", organizationId)
+    .eq("source", CRAWL_SOURCE)
+    .eq("is_visible", true)
+    .like("product_url", `${origin}/%`)
+    .limit(20000);
+  const current = new Set(((live ?? []) as Array<{ external_id: string | null }>).map((r) => normalizeRef(r.external_id ?? "")));
+  const twins = old.filter((o) => current.has(normalizeRef(o.canonical)));
+  const rest = old.filter((o) => !current.has(normalizeRef(o.canonical)));
+  const plan = planForget({ existing: rest.map((r) => r.canonical), fullReadComplete: true, siteMap: read.siteMap, gone: read.gone });
+  const remove = new Set(plan.skipped ? [] : plan.remove);
+  const ids = [...twins.map((t) => t.id), ...rest.filter((r) => remove.has(r.canonical)).map((r) => r.id)];
+  for (let i = 0; i < ids.length; i += 200)
+    await supabase.from("products").update({ is_visible: false }).in("id", ids.slice(i, i + 200));
+  return { hidden: ids.length, twins: twins.length, skipped: plan.skipped };
 }
 
 /** Which listing page links to which product, read off the listing pages. */
