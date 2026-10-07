@@ -2528,7 +2528,7 @@ export async function finishEvent(
   eventId: string,
   failures: string[],
   cleanError: string | null,
-  /** Per-stage timings, stored on webhook_events.timing when that column exists. */
+  /** Per-stage timings, stored on webhook_events.timing. */
   timing: Record<string, unknown> | null = null,
 ): Promise<void> {
   if (failures.length === 0) {
@@ -2566,38 +2566,17 @@ export async function finishEvent(
   );
 }
 
-// Set once an update has shown webhook_events.timing doesn't exist yet
-// (migration 20261011_webhook_event_timing.sql not applied); looked for
-// again every 10 minutes so applying it needs no deploy.
-let timingColumnMissingUntil = 0;
-
-/** True when PostgREST/Postgres says the column isn't there. */
-function missingTimingColumn(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  const code = String(error.code ?? "");
-  return (code === "PGRST204" || code === "42703") && /timing/i.test(String(error.message ?? ""));
-}
-
-/**
- * Closes the event with its timings in the same write. Before the timing
- * column exists the write is repeated without it, so closing an event never
- * depends on the migration.
- */
+/** Closes the event with its timings (webhook_events.timing) in the same write. */
 async function updateEvent(
   supabase: SupabaseClient,
   eventId: string,
   patch: Record<string, unknown>,
   timing: Record<string, unknown> | null,
 ): Promise<void> {
-  if (timing && Date.now() >= timingColumnMissingUntil) {
-    const { error } = await supabase
-      .from("webhook_events")
-      .update({ ...patch, timing })
-      .eq("id", eventId);
-    if (!missingTimingColumn(error)) return;
-    timingColumnMissingUntil = Date.now() + 10 * 60_000;
-  }
-  await supabase.from("webhook_events").update(patch).eq("id", eventId);
+  await supabase
+    .from("webhook_events")
+    .update(timing ? { ...patch, timing } : patch)
+    .eq("id", eventId);
 }
 
 /**
