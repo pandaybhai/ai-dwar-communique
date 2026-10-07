@@ -157,15 +157,17 @@ describe("(7) cron secret: constant-time", () => {
     expect(res.status).toBe(401);
   });
 
-  it("no /api/internal route outside billing/campaigns compares the secret with !== / ===", () => {
+  it("no /api/internal route compares the secret with !== / === (billing and campaign workers included)", () => {
     const dir = new URL("../routes/api/internal/", import.meta.url);
-    const fenced = ["billing-monthly.ts", "billing-notify.ts", "billing-sweep.ts", "plan-billing.ts", "campaign-worker.ts"];
+    let checked = 0;
     for (const f of readdirSync(dir)) {
       const src = readFileSync(new URL(f, dir), "utf8");
-      if (!src.includes("CRON_SECRET") || fenced.includes(f)) continue;
+      if (!src.includes("CRON_SECRET")) continue;
+      checked += 1;
       expect(src, f).not.toMatch(/provided !== expected|=== cronSecret|provided !== secret/);
       expect(src, f).toMatch(/secretEquals\(/);
     }
+    expect(checked).toBe(15);
   });
 });
 
