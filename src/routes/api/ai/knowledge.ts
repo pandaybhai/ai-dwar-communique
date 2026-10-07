@@ -44,10 +44,11 @@ export const Route = createFileRoute("/api/ai/knowledge")({
             // Reading facts for website sources: what's left, tonight's plan, buttons.
             const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
             const service = getServiceClient();
-            const { loadReadingSettings } = await import("@/lib/reading.server");
-            const [reading, plan] = await Promise.all([
+            const { loadKnowledgeAutoRefresh, loadReadingSettings } = await import("@/lib/reading.server");
+            const [reading, plan, autoRefresh] = await Promise.all([
               loadReadingSettings(service),
               knowledge.planLimits(service, auth.organizationId),
+              loadKnowledgeAutoRefresh(service),
             ]);
             const withFailed = await Promise.all(
               rows.map(async (r) => {
@@ -113,7 +114,10 @@ export const Route = createFileRoute("/api/ai/knowledge")({
                     plan_cap: plan.cap,
                     paid: plan.paid,
                     tonight: plan.paid && reading.backfill_pages_per_day > 0 ? Math.min(unread, room, reading.backfill_pages_per_day) : 0,
-                    refresh_days: Number(r["refresh_days"] ?? 0) || reading.refresh_days,
+                    // No scheduled re-read while automatic re-reading is off: the
+                    // screen never promises one (0 hides "refreshes every N days").
+                    refresh_days: autoRefresh ? Number(r["refresh_days"] ?? 0) || reading.refresh_days : 0,
+                    auto_refresh: autoRefresh,
                     can_read_more: unread > 0,
                     changes_available_at: last && Date.now() - last < cooldownMs ? new Date(last + cooldownMs).toISOString() : null,
                     coverage,

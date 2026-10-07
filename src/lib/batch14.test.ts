@@ -335,16 +335,24 @@ describe("the reply goes out exactly as the model ordered it", () => {
   });
 
   it("two sets of pictures, each after the words written with it; a product without a photo goes as its caption", async () => {
-    const r = await reply((ctx) => {
-      if (ctx.step === 0)
-        return { text: "Rings:", calls: [send([{ id: chevron["id"], caption: "Chevron" }])] };
-      if (ctx.step === 1)
-        return {
-          text: "And earrings:",
-          calls: [send([{ id: earrings["id"], caption: "Pink sapphire earrings" }])],
-        };
-      return { text: "Which one?" };
-    });
+    // This model sends without searching. An ask the early catalogue search
+    // (Batch 15C) finds nothing for keeps it that way: with "show me rings"
+    // the early rings search would count as the run's search, and the
+    // only-offer-what-search-found guard rightly drops the unsearched
+    // "And earrings:" line.
+    const r = await reply(
+      (ctx) => {
+        if (ctx.step === 0)
+          return { text: "Rings:", calls: [send([{ id: chevron["id"], caption: "Chevron" }])] };
+        if (ctx.step === 1)
+          return {
+            text: "And earrings:",
+            calls: [send([{ id: earrings["id"], caption: "Pink sapphire earrings" }])],
+          };
+        return { text: "Which one?" };
+      },
+      { ask: "what do you have" },
+    );
     expect(r.sent.map((s) => [s.type, s.text])).toEqual([
       ["text", "Rings:"],
       ["image", "Chevron"],

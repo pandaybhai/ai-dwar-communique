@@ -88,7 +88,10 @@ export type KnowledgeSource = {
     plan_cap: number;
     paid: boolean;
     tonight: number;
+    /** 0 while automatic re-reading is off (platform_settings.knowledge_auto_refresh). */
     refresh_days: number;
+    /** Whether sites are re-read on a schedule at all; off = only when the merchant asks. */
+    auto_refresh?: boolean;
     can_read_more: boolean;
     changes_available_at: string | null;
     /** Which customer answers the pages read cover (by address or title). */

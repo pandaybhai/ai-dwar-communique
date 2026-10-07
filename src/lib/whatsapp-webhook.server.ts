@@ -1742,6 +1742,18 @@ export async function processWebhookPayload(
                 : null;
             codReads?.catch(() => {});
 
+            // The automations' own reads (the org's timezone and its active
+            // automations, cached per payload) — read-only, so they run with
+            // the message write instead of after the flows' turn.
+            const automationReads =
+              isCustomerNumber && !isSystemEcho
+                ? Promise.all([
+                    loadOrgTimezone(supabase, orgId, timezoneCache),
+                    loadAutomations(supabase, orgId, automationCache),
+                  ])
+                : null;
+            automationReads?.catch(() => {});
+
             const { data: inserted, error: insertError } = await messageWrite;
             // A failed write is not a duplicate: only an empty, error-free
             // result means Meta sent this message before.
@@ -2023,6 +2035,20 @@ export async function processWebhookPayload(
                 continue;
               }
             }
+            // No flow took it. The agent's set-up and its answer run's reads
+            // (read-only) start now, so they run alongside the window write,
+            // the automations and the burst wait instead of after them. Only
+            // used when nothing else answers; every gate is still applied, in
+            // the same order, in runAgentOnInbound.
+            const contactOptedOut = (contact as { opt_in_status?: string }).opt_in_status === "opted_out";
+            const agentPrepared =
+              !isSystemEcho && inserted && inserted.length > 0 && !optKeywordMatched && !codHandled && !contactOptedOut
+                ? import("@/lib/ai-agent.server").then(({ prepareAgentInbound }) =>
+                    prepareAgentInbound(supabase, orgId, conversation.id as string),
+                  )
+                : undefined;
+            agentPrepared?.catch(() => {});
+
             // Everything below may send: the window write lands first.
             await windowReady;
 
@@ -2031,10 +2057,12 @@ export async function processWebhookPayload(
             // outbound sends (including opt-out confirmations and automation
             // replies) never reach here.
             const beforeAutomations = new Date().toISOString();
-            const [orgTimezone, automations] = await Promise.all([
-              loadOrgTimezone(supabase, orgId, timezoneCache),
-              loadAutomations(supabase, orgId, automationCache),
-            ]);
+            const [orgTimezone, automations] = await (automationReads ?? Promise.reject(new Error("not read"))).catch(() =>
+              Promise.all([
+                loadOrgTimezone(supabase, orgId, timezoneCache),
+                loadAutomations(supabase, orgId, automationCache),
+              ]),
+            );
             await evaluateAutomations(supabase, {
               organizationId: orgId,
               phoneNumberId,
@@ -2055,61 +2083,78 @@ export async function processWebhookPayload(
             // answered this message. Never on our own echoes or on a duplicate
             // delivery, and never after an automation already replied.
             if (!isSystemEcho && inserted && inserted.length > 0) {
-              const { count: repliedCount } = await supabase
-                .from("messages")
-                .select("id", { count: "exact", head: true })
-                .eq("conversation_id", conversation.id)
-                .eq("direction", "outbound")
-                .gte("created_at", beforeAutomations);
+              // Did an automation (or anything else) already reply? Read now,
+              // while the burst window runs out, not before it.
+              const repliedRead = Promise.resolve(
+                supabase
+                  .from("messages")
+                  .select("id", { count: "exact", head: true })
+                  .eq("conversation_id", conversation.id)
+                  .eq("direction", "outbound")
+                  .gte("created_at", beforeAutomations),
+              ).then(({ count }) => count ?? 0);
 
               try {
-                const alreadyHandled =
-                  optKeywordMatched || codHandled || (repliedCount ?? 0) > 0;
+                const handledBefore = optKeywordMatched || codHandled;
                 const optedOut =
                   (contact as { opt_in_status?: string }).opt_in_status === "opted_out";
 
-                // Pictures and voice notes become words first, so a media-only
-                // message is never dropped on the floor.
-                let agentBody = body;
-                let mediaFallback: string | null = null;
-                if (media.media_url && !alreadyHandled && !optedOut) {
-                  const converted = await customerMediaToText(supabase, {
-                    organizationId: orgId,
-                    conversationId: conversation.id as string,
-                    messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
-                    accessToken,
-                    caption: body,
-                    media,
-                  });
-                  agentBody = converted.body;
-                  mediaFallback = converted.fallback;
-                }
-
-                // The agent's set-up and its answer run's reads start now, so
-                // they are done by the time the burst wait below is over.
                 const { runAgentOnInbound, prepareAgentInbound, readAgentGate } = await import("@/lib/ai-agent.server");
-                const prepared =
-                  alreadyHandled || optedOut ? undefined : prepareAgentInbound(supabase, orgId, conversation.id as string);
                 // The agent's gate (owner, hand-over, window) is read the
                 // moment the wait ends, alongside the burst read.
                 let gate: ReturnType<typeof readAgentGate> | undefined;
-
                 // Two texts typed a breath apart are one question: wait out the
                 // burst, answer once, and let the overtaken delivery stand down.
-                const burst =
+                const waitBurst = async (text: string | null) =>
+                  coalesceBurst(supabase, {
+                    conversationId: conversation.id as string,
+                    messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
+                    occurredAt,
+                    body: text,
+                    storedAt,
+                    windowMs: await burstWindow,
+                    afterWait: () => {
+                      gate = readAgentGate(supabase, conversation.id as string);
+                    },
+                  });
+
+                let alreadyHandled: boolean;
+                let agentBody = body;
+                let mediaFallback: string | null = null;
+                let burst: { proceed: boolean; body: string | null };
+                if (media.media_url) {
+                  // Pictures and voice notes become words first, so a
+                  // media-only message is never dropped on the floor — and
+                  // only once we know nothing else answered (it costs a read).
+                  alreadyHandled = handledBefore || (await repliedRead) > 0;
+                  if (!alreadyHandled && !optedOut) {
+                    const converted = await customerMediaToText(supabase, {
+                      organizationId: orgId,
+                      conversationId: conversation.id as string,
+                      messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
+                      accessToken,
+                      caption: body,
+                      media,
+                    });
+                    agentBody = converted.body;
+                    mediaFallback = converted.fallback;
+                  }
+                  burst = alreadyHandled || optedOut ? { proceed: true, body: agentBody } : await waitBurst(agentBody);
+                } else {
+                  // Text: the burst wait and the replied read run together.
+                  const waiting = handledBefore || optedOut ? null : waitBurst(agentBody);
+                  waiting?.catch(() => {});
+                  alreadyHandled = handledBefore || (await repliedRead) > 0;
+                  burst = waiting && !alreadyHandled ? await waiting : { proceed: true, body: agentBody };
+                }
+
+                // Started when no flow took the message (see above); an
+                // answered or opted-out message never uses it.
+                const prepared =
                   alreadyHandled || optedOut
-                    ? { proceed: true, body: agentBody }
-                    : await coalesceBurst(supabase, {
-                        conversationId: conversation.id as string,
-                        messageId: (inserted[0] as { id?: string } | undefined)?.id ?? null,
-                        occurredAt,
-                        body: agentBody,
-                        storedAt,
-                        windowMs: await burstWindow,
-                        afterWait: () => {
-                          gate = readAgentGate(supabase, conversation.id as string);
-                        },
-                      });
+                    ? undefined
+                    : (agentPrepared ?? prepareAgentInbound(supabase, orgId, conversation.id as string));
+
                 if (!burst.proceed) {
                   route = "ai_superseded";
                   console.log("[ai-agent] burst_superseded", conversation.id);

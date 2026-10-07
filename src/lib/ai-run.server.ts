@@ -40,6 +40,7 @@ import {
   type NeutralTurn,
   type Outage,
 } from "@/lib/ai-fallback.server";
+import { EARLY_CALL_ID, type EarlySearch } from "@/lib/early-search.server";
 import { productFacts, rupees } from "@/lib/product-facts";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
@@ -156,6 +157,12 @@ export type RunOptions = {
    * draw the first branded card ahead of time. Must not throw or block.
    */
   onProductsQueued?: (items: ChosenProduct[]) => void;
+  /**
+   * The material and the early catalogue search, already started by the
+   * caller for this same input (startAnswerLookups). Left out, executeRun
+   * starts them itself — in parallel with its prelude.
+   */
+  lookups?: AnswerLookups;
 };
 
 
@@ -1477,18 +1484,43 @@ export type RunPrelude = {
   tools: BrokeredTool[];
 };
 
+/**
+ * The prelude, plus two of its reads on their own: the tools this run may
+ * call and the visible product count. The early catalogue search starts on
+ * them while the rest of the prelude (brain, key, caps) is still being read.
+ */
+export type PreludeRead = Promise<RunPrelude> & {
+  toolsReady?: Promise<BrokeredTool[]>;
+  productsReady?: Promise<number>;
+};
+
 export function prepareRun(
   supabase: SupabaseClient,
   options: Pick<
     RunOptions,
     "organizationId" | "task" | "agentId" | "tier" | "useTools" | "principal" | "actorUserId" | "channel" | "preview" | "billingExempt" | "metadata"
   >,
-): Promise<RunPrelude> {
+): PreludeRead {
   const { organizationId, task } = options;
   const gates = workspaceGatesApply(options);
   const principal: ToolPrincipal =
     options.principal ?? (options.actorUserId ? userPrincipal(options.actorUserId) : agentPrincipal);
   const brain = resolveBrain(supabase, organizationId, task, options.agentId ?? null, options.tier ?? null);
+  const productCount: Promise<number> =
+    task === "agent_reply"
+      ? Promise.resolve(
+          supabase
+            .from("products")
+            .select("id", { count: "exact", head: true })
+            .eq("organization_id", organizationId)
+            .eq("is_visible", true),
+        ).then(({ count }) => count ?? 0)
+      : Promise.resolve(0);
+  const tools: Promise<BrokeredTool[]> = options.useTools
+    ? brokerTools(supabase, organizationId, principal)
+    : Promise.resolve([] as BrokeredTool[]);
+  productCount.catch(() => {});
+  tools.catch(() => {});
   const prelude = Promise.all([
     brain,
     resolveMarkup(supabase, organizationId),
@@ -1500,16 +1532,8 @@ export function prepareRun(
     gates ? overCap(supabase, organizationId) : null,
     overPlatformCap(supabase),
     brain.then((b) => resolveApiKey(supabase, organizationId, b.provider)),
-    task === "agent_reply"
-      ? Promise.resolve(
-          supabase
-            .from("products")
-            .select("id", { count: "exact", head: true })
-            .eq("organization_id", organizationId)
-            .eq("is_visible", true),
-        ).then(({ count }) => count ?? 0)
-      : 0,
-    options.useTools ? brokerTools(supabase, organizationId, principal) : ([] as BrokeredTool[]),
+    productCount,
+    tools,
   ]).then(([b, markup, aiEnabled, cap, platformCap, api, productCount, tools]) => ({
     brain: b,
     markup,
@@ -1522,7 +1546,7 @@ export function prepareRun(
   }));
   // Awaited by executeRun; a failure surfaces there, never as an unhandled rejection.
   prelude.catch(() => {});
-  return prelude;
+  return Object.assign(prelude, { toolsReady: tools, productsReady: productCount });
 }
 
 const ESCALATION_TOPICS = [
@@ -1553,9 +1577,114 @@ function topicNeedsHuman(question: string, extraRules: string): string | null {
   return null;
 }
 
+/** One matched piece of the business's material, as match_knowledge_chunks returns it. */
+export type KnowledgeRow = {
+  document_id: string;
+  source_type: string;
+  source_name: string;
+  source_ref: string;
+  title: string;
+  text: string;
+  similarity: number;
+};
+
+/** The question's matches, and a way to look again with the same vector. */
+export type KnowledgeMatch = { rows: KnowledgeRow[]; again: () => Promise<KnowledgeRow[]> };
+
+/**
+ * Embeds the question and matches it against the business's material —
+ * reads only (the embedding is never metered to the workspace). Null when
+ * there is no vector. The on-demand page read when nothing matched stays in
+ * executeRun, after the run's gates.
+ */
+export function matchKnowledge(
+  supabase: SupabaseClient,
+  args: { organizationId: string; agentId: string | null; input: string; merchantChannel: boolean },
+): Promise<KnowledgeMatch | null> {
+  const read = embedTexts([args.input]).then(async ([vector]) => {
+    if (!vector) return null;
+    // The owner's own chat asks broad questions ("what is the price?")
+    // against a small, fresh crawl, so it reaches a little further down.
+    const again = async () => {
+      const { data } = await supabase.rpc("match_knowledge_chunks", {
+        p_org: args.organizationId,
+        p_embedding: JSON.stringify(vector),
+        p_embedding_model: EMBEDDING_MODEL,
+        p_agent: args.agentId,
+        p_limit: 6,
+        p_min_similarity: args.merchantChannel ? 0.25 : 0.35,
+      });
+      return (data ?? []) as KnowledgeRow[];
+    };
+    return { rows: await again(), again };
+  });
+  read.catch(() => {});
+  return read;
+}
+
+/**
+ * What an answer reads besides the prelude — the business's material and the
+ * early catalogue search — started together, never one after the other.
+ * The inbound webhook starts them once the gate passed (ai-agent.server.ts);
+ * any other run starts them at the top of executeRun.
+ */
+export type AnswerLookups = {
+  knowledge?: Promise<KnowledgeMatch | null> | null;
+  early?: Promise<EarlySearch | null> | null;
+};
+
+export function startAnswerLookups(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    agentId: string | null;
+    input: string;
+    prelude: PreludeRead;
+    conversationId?: string | null;
+    contactId?: string | null;
+    /** Whose permissions the search runs under (the run's own); the agent when left out. */
+    principal?: ToolPrincipal;
+    actorUserId?: string | null;
+    knowledge: boolean;
+    early: boolean;
+  },
+): AnswerLookups {
+  const early = args.early
+    ? import("@/lib/early-search.server").then(({ earlyCatalogSearch }) =>
+        earlyCatalogSearch(supabase, {
+          organizationId: args.organizationId,
+          input: args.input,
+          tools: args.prelude.toolsReady ?? args.prelude.then((p) => p.tools),
+          visibleProducts: args.prelude.productsReady ?? args.prelude.then((p) => p.productCount),
+          subject: toolSubject({ conversationId: args.conversationId ?? null, contactId: args.contactId ?? null }),
+          principal: args.principal ?? agentPrincipal,
+          actorUserId: args.actorUserId ?? null,
+          smallTalk: isSmallTalk(args.input),
+        }),
+      )
+    : null;
+  early?.catch(() => {});
+  return {
+    knowledge: args.knowledge
+      ? matchKnowledge(supabase, {
+          organizationId: args.organizationId,
+          agentId: args.agentId,
+          input: args.input,
+          merchantChannel: false,
+        })
+      : null,
+    early,
+  };
+}
+
+/** A request the provider refused as malformed (not an outage). */
+function refusedRequest(error: unknown): boolean {
+  return error instanceof ProviderHttpError && (error.status === 400 || error.status === 422);
+}
+
 export async function executeRun(
   supabase: SupabaseClient,
-  options: RunOptions & { prelude?: Promise<RunPrelude> },
+  options: RunOptions & { prelude?: PreludeRead },
 ): Promise<RunResult> {
   const started = Date.now();
   const {
@@ -1574,7 +1703,49 @@ export async function executeRun(
     maxSteps = 4,
   } = options;
 
-  const prelude = await (options.prelude ?? prepareRun(supabase, options));
+  const preludeRead = options.prelude ?? prepareRun(supabase, options);
+  // The material and the early catalogue search run alongside the prelude
+  // (and alongside each other), never after it. A live customer answer only:
+  // the owner's chat, a picture being read and page reading never search early.
+  const earlyWanted =
+    task === "agent_reply" &&
+    useTools &&
+    options.channel !== "onboarding" &&
+    !options.imageDataUrl &&
+    !String((options.metadata as Record<string, unknown> | undefined)?.["purpose"] ?? "").startsWith("knowledge_");
+  const lookups: AnswerLookups = {
+    knowledge: useKnowledge
+      ? (options.lookups?.knowledge ??
+        matchKnowledge(supabase, {
+          organizationId,
+          agentId,
+          input,
+          merchantChannel: options.channel === "onboarding",
+        }))
+      : null,
+    early: earlyWanted
+      ? (options.lookups?.early ??
+        startAnswerLookups(supabase, {
+          organizationId,
+          agentId,
+          input,
+          prelude: preludeRead,
+          conversationId,
+          contactId,
+          principal: options.principal ?? (actorUserId ? userPrincipal(actorUserId) : agentPrincipal),
+          actorUserId,
+          knowledge: false,
+          early: true,
+        }).early ??
+        null)
+      : null,
+  };
+  let knowledgeSettled = false;
+  lookups.knowledge?.then(
+    () => (knowledgeSettled = true),
+    () => (knowledgeSettled = true),
+  );
+  const prelude = await preludeRead;
   const { brain, markup } = prelude;
   // Where the time went, kept on the ai_runs row (metadata.timing_ms).
   const timing: Record<string, number> = { prelude: Date.now() - started };
@@ -1739,84 +1910,90 @@ export async function executeRun(
     });
   }
 
+  // ---------------------------------------------------- early catalogue
+  // Started with the prelude; usually done by now. Its results reach the
+  // model only when they fit the customer's words (early-search.server.ts)
+  // and this run really offers catalog_search on a catalogue with products.
+  const earlyWaitStarted = Date.now();
+  const early = lookups.early ? await lookups.early.catch(() => null) : null;
+  if (lookups.early) timing["early_search"] = Date.now() - earlyWaitStarted;
+  const earlyFits = Boolean(
+    early?.usable &&
+      early.result &&
+      prelude.productCount > 0 &&
+      prelude.tools.some((t) => t.name === "catalog_search"),
+  );
+  // A pure product browse: products found for the customer's own words, and
+  // no question about a figure (price, time, how much) or a policy. Only then
+  // may the website's material be left out when it isn't ready yet.
+  const pureBrowse =
+    earlyFits && !input.includes("?") && !POLICY_TOPIC.test(input) && !asksForFigure(input);
+
   // ------------------------------------------------------------- knowledge
   const retrievalStarted = Date.now();
   const sources: RunSource[] = [];
   let knowledgeBlock = "";
-  if (useKnowledge) {
+  if (useKnowledge && lookups.knowledge) {
     try {
-      const [vector] = await embedTexts([input]);
-      if (vector) {
-        // The owner's own chat asks broad questions ("what is the price?")
-        // against a small, fresh crawl, so it reaches a little further down.
-        const isMerchantChannel = options.channel === "onboarding";
-        const match = () =>
-          supabase.rpc("match_knowledge_chunks", {
-            p_org: organizationId,
-            p_embedding: JSON.stringify(vector),
-            p_embedding_model: EMBEDDING_MODEL,
-            p_agent: agentId,
-            p_limit: 6,
-            p_min_similarity: isMerchantChannel ? 0.25 : 0.35,
-          });
-        let { data: matches } = await match();
-        // Nothing known: read one matching unread page of the site, then look again.
-        if (!(matches ?? []).length && !isMerchantChannel && conversationId && options.billingExempt !== true) {
-          const { readOnDemand } = await import("@/lib/knowledge.server");
-          if (await readOnDemand(supabase, organizationId, conversationId, input)) ({ data: matches } = await match());
-        }
-        const rows = (matches ?? []) as Array<{
-          document_id: string;
-          source_type: string;
-          source_name: string;
-          source_ref: string;
-          title: string;
-          text: string;
-          similarity: number;
-        }>;
-        if (isMerchantChannel) {
-          console.log(
-            "[merchant-retrieval]",
-            organizationId,
-            JSON.stringify(input).slice(0, 120),
-            rows
-              .slice(0, 6)
-              .map((r) => `${(r.title || r.source_name || "?").slice(0, 40)}=${Number(r.similarity).toFixed(3)}`)
-              .join(" | ") || "no candidates above 0.25",
-          );
-        }
-        for (const row of rows) {
-          sources.push({
-            kind: "knowledge",
-            label: row.title || row.source_name,
-            ref: row.source_ref,
-            similarity: Number(row.similarity),
-            sourceType: row.source_type,
-            documentId: row.document_id,
-          });
-        }
-        knowledgeBlock = rows
-          .map((r, i) => {
-            const url = /^https?:\/\//i.test(r.source_ref ?? "") ? `${r.source_ref}\n` : "";
-            return `[${i + 1}] ${r.title || r.source_name}\n${url}${r.text}`;
-          })
-          .join("\n\n");
-
-        // Something the merchant wrote themselves counts as used, so they can
-        // see their corrections doing work.
-        const taught = rows
-          .filter((r) => r.source_type === "manual_qa")
-          .map((r) => r.document_id);
-        if (taught.length) {
-          // Awaited: on the merchant channel the handler finishes before a
-          // fire-and-forget request leaves the worker, so the count never moved.
-          await supabase.rpc("record_knowledge_use", {
-            p_org: organizationId,
-            p_document_ids: taught,
-          });
+      const isMerchantChannel = options.channel === "onboarding";
+      let rows: KnowledgeRow[] = [];
+      if (pureBrowse && !knowledgeSettled) {
+        // Still being read: a browse answer doesn't wait for it.
+        runMeta["retrieval"] = "skipped_browse";
+      } else {
+        runMeta["retrieval"] = knowledgeSettled ? "ready" : "waited";
+        const matched = await lookups.knowledge;
+        if (matched) {
+          rows = matched.rows;
+          // Nothing known: read one matching unread page of the site, then
+          // look again (never for a browse the catalogue already answered).
+          if (!rows.length && !pureBrowse && !isMerchantChannel && conversationId && options.billingExempt !== true) {
+            const { readOnDemand } = await import("@/lib/knowledge.server");
+            if (await readOnDemand(supabase, organizationId, conversationId, input)) rows = await matched.again();
+          }
         }
       }
+      if (isMerchantChannel) {
+        console.log(
+          "[merchant-retrieval]",
+          organizationId,
+          JSON.stringify(input).slice(0, 120),
+          rows
+            .slice(0, 6)
+            .map((r) => `${(r.title || r.source_name || "?").slice(0, 40)}=${Number(r.similarity).toFixed(3)}`)
+            .join(" | ") || "no candidates above 0.25",
+        );
+      }
+      for (const row of rows) {
+        sources.push({
+          kind: "knowledge",
+          label: row.title || row.source_name,
+          ref: row.source_ref,
+          similarity: Number(row.similarity),
+          sourceType: row.source_type,
+          documentId: row.document_id,
+        });
+      }
+      knowledgeBlock = rows
+        .map((r, i) => {
+          const url = /^https?:\/\//i.test(r.source_ref ?? "") ? `${r.source_ref}\n` : "";
+          return `[${i + 1}] ${r.title || r.source_name}\n${url}${r.text}`;
+        })
+        .join("\n\n");
 
+      // Something the merchant wrote themselves counts as used, so they can
+      // see their corrections doing work.
+      const taught = rows
+        .filter((r) => r.source_type === "manual_qa")
+        .map((r) => r.document_id);
+      if (taught.length) {
+        // Awaited: on the merchant channel the handler finishes before a
+        // fire-and-forget request leaves the worker, so the count never moved.
+        await supabase.rpc("record_knowledge_use", {
+          p_org: organizationId,
+          p_document_ids: taught,
+        });
+      }
     } catch {
       // Retrieval failing is itself a reason to hand over, handled below.
     }
@@ -1912,12 +2089,49 @@ export async function executeRun(
    * Runs one turn's tool calls in order; returns what the model sees of each.
    * A turn that sends products keeps its own words, just before them.
    */
+  /** Records one tool call and its result; returns what the model sees of it. */
+  const recordToolCall = (
+    tc: { id: string; name: string; args: Record<string, unknown> },
+    result: Awaited<ReturnType<typeof runTool>>,
+    chosen: Array<ChosenProduct & { facts: unknown }>,
+  ): string => {
+    // A product id the model got wrong is answered to the model (it can
+    // try again); it is not a broken tool.
+    if (!result.ok && tc.name !== "send_products") anyToolFailed = true;
+    toolCalls.push({
+      tool: tc.name,
+      ok: result.ok,
+      ...(result.error ? { error: result.error } : {}),
+      ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
+      activityLogId: result.activityLogId ?? null,
+      args: result.arguments ?? {},
+      resultSummary: result.resultSummary ?? {},
+    });
+    sources.push({ kind: "tool", label: tc.name });
+    collectProductMedia(tc.name, result, foundMedia);
+    const picked = tc.name === "send_products" ? chosenProducts(result) : [];
+    chosen.push(...picked);
+    chosenFacts.push(...picked.map((p) => JSON.stringify(p.facts)));
+    const view = toolView(tc.name, result);
+    // A caption the model wrote is not support for anything it says.
+    if (tc.name !== "send_products") toolResultTexts.push(view);
+    return view;
+  };
+
+  /**
+   * Runs one turn's tool calls in order; returns what the model sees of each.
+   * A turn that sends products keeps its own words, just before them. When
+   * the turn only sent products (all of them real) and gave its closing
+   * words with them, `closing` is those words: the reply is complete and the
+   * model is not asked again.
+   */
   const runToolCalls = async (
     calls: { id: string; name: string; args: Record<string, unknown> }[],
     turnText = "",
-  ): Promise<string[]> => {
+  ): Promise<{ views: string[]; closing: string | null }> => {
     const views: string[] = [];
     const chosen: Array<ChosenProduct & { facts: unknown }> = [];
+    let complete = calls.length > 0;
     for (const tc of calls) {
       const result = await runTool(
         supabase,
@@ -1929,27 +2143,9 @@ export async function executeRun(
         subject,
         tools,
       );
-      // A product id the model got wrong is answered to the model (it can
-      // try again); it is not a broken tool.
-      if (!result.ok && tc.name !== "send_products") anyToolFailed = true;
-      toolCalls.push({
-        tool: tc.name,
-        ok: result.ok,
-        ...(result.error ? { error: result.error } : {}),
-        ...(typeof result.latencyMs === "number" ? { latencyMs: result.latencyMs } : {}),
-        activityLogId: result.activityLogId ?? null,
-        args: result.arguments ?? {},
-        resultSummary: result.resultSummary ?? {},
-      });
-      sources.push({ kind: "tool", label: tc.name });
-      collectProductMedia(tc.name, result, foundMedia);
-      const picked = tc.name === "send_products" ? chosenProducts(result) : [];
-      chosen.push(...picked);
-      chosenFacts.push(...picked.map((p) => JSON.stringify(p.facts)));
-      const view = JSON.stringify(modelView(productToolView(tc.name, result))).slice(0, 6000);
-      // A caption the model wrote is not support for anything it says.
-      if (tc.name !== "send_products") toolResultTexts.push(view);
-      views.push(view);
+      views.push(recordToolCall(tc, result, chosen));
+      const skipped = (result.data as { skipped?: unknown[] } | undefined)?.skipped;
+      if (tc.name !== "send_products" || !result.ok || (Array.isArray(skipped) && skipped.length > 0)) complete = false;
     }
     if (chosen.length > 0) {
       if (turnText.trim()) segments.push({ kind: "text", text: turnText });
@@ -1961,8 +2157,32 @@ export async function executeRun(
         // a head start only; never the run's problem
       }
     }
-    return views;
+    const closing = complete
+      ? (calls.map((c) => c.args["closing"]).find((c): c is string => typeof c === "string" && c.trim().length > 0) ?? null)
+      : null;
+    return { views, closing };
   };
+
+  // ------------------------------------------------- early search, given
+  // The early search, as if the model had called catalog_search with the
+  // customer's own words: the call and its result open the conversation, so
+  // the first model call can already send products and close. It is only
+  // counted (trace, sources, number guard) once the provider accepted it.
+  const earlyCall =
+    earlyFits && early?.result
+      ? { id: EARLY_CALL_ID, name: "catalog_search", args: early.args, result: early.result }
+      : null;
+  const earlyView = earlyCall ? toolView("catalog_search", earlyCall.result) : "";
+  let earlyGiven = false;
+  let earlyRefused = false;
+  const giveEarly = () => {
+    if (!earlyCall || earlyGiven || earlyRefused) return;
+    earlyGiven = true;
+    recordToolCall(earlyCall, earlyCall.result as Awaited<ReturnType<typeof runTool>>, []);
+    turns.push({ text: "", calls: [{ id: earlyCall.id, name: earlyCall.name, args: earlyCall.args }], outputs: [{ id: earlyCall.id, output: earlyView }] });
+  };
+  let modelCalls = 0;
+  let closedInCall = false;
 
   // The finished turns, in a vendor-neutral shape, so a backup provider can
   // pick the conversation up where the primary dropped it (tools already run
@@ -1986,9 +2206,29 @@ export async function executeRun(
     try {
       if (isOpenAiModel(brain.model_id) || (direct && brain.provider === "openai")) {
         const items = responsesInput(system, history, input, options.imageDataUrl ?? null);
+        const earlyAt = items.length;
+        if (earlyCall) {
+          items.push(
+            { type: "function_call", call_id: earlyCall.id, name: earlyCall.name, arguments: JSON.stringify(earlyCall.args) },
+            { type: "function_call_output", call_id: earlyCall.id, output: earlyView },
+          );
+        }
 
         for (let step = 0; step < maxSteps; step += 1) {
-          const call = await callResponses(apiBase, key, wire, items, tools, direct);
+          let call: Awaited<ReturnType<typeof callResponses>>;
+          try {
+            modelCalls += 1;
+            call = await callResponses(apiBase, key, wire, items, tools, direct);
+          } catch (error) {
+            // The provider refused the conversation with the early search in
+            // it: the same question again without it, exactly as before.
+            if (step !== 0 || !earlyCall || earlyGiven || !refusedRequest(error)) throw error;
+            earlyRefused = true;
+            items.splice(earlyAt, 2);
+            modelCalls += 1;
+            call = await callResponses(apiBase, key, wire, items, tools, direct);
+          }
+          giveEarly();
           inputTokens += call.inputTokens ?? 0;
           outputTokens += call.outputTokens ?? 0;
           answer = call.text || answer;
@@ -1998,7 +2238,7 @@ export async function executeRun(
           }
           // The function_call items must travel with their outputs.
           items.push(...call.items);
-          const views = await runToolCalls(call.toolCalls, call.text);
+          const { views, closing } = await runToolCalls(call.toolCalls, call.text);
           call.toolCalls.forEach((tc, i) =>
             items.push({
               type: "function_call_output",
@@ -2007,6 +2247,11 @@ export async function executeRun(
             }),
           );
           noteTurn(call, views);
+          if (closing !== null) {
+            closingText = closing;
+            closedInCall = true;
+            break;
+          }
         }
       } else {
         const messages: ChatMessage[] = [];
@@ -2021,9 +2266,42 @@ export async function executeRun(
               ]
             : input,
         });
+        const earlyAt = messages.length;
+        if (earlyCall) {
+          messages.push(
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: earlyCall.id,
+                  type: "function",
+                  function: { name: earlyCall.name, arguments: JSON.stringify(earlyCall.args) },
+                  // Gemini asks every replayed call for its thought signature;
+                  // a call it didn't make carries the documented stand-in.
+                  ...(brain.model_id.startsWith("google/") || (direct && brain.provider === "google")
+                    ? { extra_content: { google: { thought_signature: "skip_thought_signature_validator" } } }
+                    : {}),
+                },
+              ],
+            },
+            { role: "tool", tool_call_id: earlyCall.id, content: earlyView },
+          );
+        }
 
         for (let step = 0; step < maxSteps; step += 1) {
-          const call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
+          let call: GatewayCall;
+          try {
+            modelCalls += 1;
+            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
+          } catch (error) {
+            if (step !== 0 || !earlyCall || earlyGiven || !refusedRequest(error)) throw error;
+            earlyRefused = true;
+            messages.splice(earlyAt, 2);
+            modelCalls += 1;
+            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
+          }
+          giveEarly();
           inputTokens += call.inputTokens ?? 0;
           outputTokens += call.outputTokens ?? 0;
           answer = call.text || answer;
@@ -2032,7 +2310,7 @@ export async function executeRun(
             break;
           }
           messages.push(call.raw as ChatMessage);
-          const views = await runToolCalls(call.toolCalls, call.text);
+          const { views, closing } = await runToolCalls(call.toolCalls, call.text);
           call.toolCalls.forEach((tc, i) =>
             messages.push({
               role: "tool",
@@ -2041,6 +2319,11 @@ export async function executeRun(
             }),
           );
           noteTurn(call, views);
+          if (closing !== null) {
+            closingText = closing;
+            closedInCall = true;
+            break;
+          }
         }
       }
     } catch (error) {
@@ -2060,6 +2343,10 @@ export async function executeRun(
   }
   let served: { route: BackupRoute; model: string; inputTokens: number; outputTokens: number } | null = null;
   if (outage && backups.length > 0) {
+    // The backup picks the conversation up with the early search in it too
+    // (it is a finished turn, not a model step).
+    giveEarly();
+    const earlyTurns = earlyGiven ? 1 : 0;
     const attempts: Array<Record<string, unknown>> = [];
     for (const route of backups) {
       const used = { inputTokens: 0, outputTokens: 0, model: route.model };
@@ -2076,7 +2363,8 @@ export async function executeRun(
                 tier: brain.tier,
               })
             : openAiBackupConversation(route, { system, history, input, imageDataUrl: options.imageDataUrl ?? null, turns: turns.slice(), tools });
-        for (let step = turns.length; step < maxSteps; step += 1) {
+        for (let step = turns.length - earlyTurns; step < maxSteps; step += 1) {
+          modelCalls += 1;
           const call = await convo.step();
           used.inputTokens += call.inputTokens ?? 0;
           used.outputTokens += call.outputTokens ?? 0;
@@ -2086,9 +2374,14 @@ export async function executeRun(
             closingText = call.text;
             break;
           }
-          const views = await runToolCalls(call.toolCalls, call.text);
+          const { views, closing } = await runToolCalls(call.toolCalls, call.text);
           convo.addToolResults(call.toolCalls.map((tc, i) => ({ id: tc.id, output: views[i] ?? "" })));
           noteTurn(call, views);
+          if (closing !== null) {
+            closingText = closing;
+            closedInCall = true;
+            break;
+          }
         }
         served = { route, model: used.model, inputTokens: used.inputTokens, outputTokens: used.outputTokens };
         attempts.push({ provider: route.provider, model: used.model, ok: true });
@@ -2127,6 +2420,24 @@ export async function executeRun(
     if (options.deferUsage) options.deferUsage(report);
     else await report;
   }
+
+  // Whether the early search ran and was given to the model (and why not),
+  // how many model calls the answer took, and whether it closed in the
+  // same call that sent its products.
+  if (early) {
+    const own = toolCalls.filter((c, i) => c.tool === "catalog_search" && !(earlyGiven && i === 0)).length;
+    runMeta["early_search"] = {
+      ran: Boolean(early.result),
+      used: earlyGiven,
+      reason: earlyGiven ? "used" : earlyRefused ? "provider_refused" : early.usable && !earlyFits ? "no_catalogue" : early.reason,
+      rows: Array.isArray(early.result?.data) ? (early.result.data as unknown[]).length : 0,
+      ms: early.ms,
+      ...(early.missing?.length ? { missing: early.missing } : {}),
+      model_searched: own,
+    };
+  }
+  if (modelCalls > 0) runMeta["model_calls"] = modelCalls;
+  if (closedInCall) runMeta["closed_in_call"] = true;
 
   if (!key && !served) {
     return finish({
@@ -2848,6 +3159,11 @@ export function pickMediaForAnswer(found: RunMedia[], answer: string): RunMedia[
   const text = answer.toLowerCase();
   const named = found.filter((m) => m.title.length > 2 && text.includes(m.title.toLowerCase()));
   return (named.length > 0 ? named : found).slice(0, MAX_PRODUCT_IMAGES);
+}
+
+/** A tool result as the model reads it (one string, cut at 6,000 characters). */
+function toolView(name: string, result: { ok: boolean; found?: boolean; data?: unknown; error?: string }): string {
+  return JSON.stringify(modelView(productToolView(name, result))).slice(0, 6000);
 }
 
 function modelView(result: { ok: boolean; found?: boolean; data?: unknown; error?: string }) {

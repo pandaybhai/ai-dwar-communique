@@ -4,7 +4,14 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { executeRun, prepareRun, type RunOptions, type RunPrelude, type RunResult } from "@/lib/ai-run.server";
+import {
+  executeRun,
+  prepareRun,
+  type AnswerLookups,
+  type PreludeRead,
+  type RunOptions,
+  type RunResult,
+} from "@/lib/ai-run.server";
 
 export type Turn = { role: "user" | "assistant"; content: string };
 
@@ -373,10 +380,14 @@ export async function agentAnswer(
   /** Read ahead by the inbound webhook while it waited out a burst (speed). */
   prepared?: {
     agentId: string | null;
-    prelude: Promise<RunPrelude>;
+    prelude: PreludeRead;
     deferUsage?: (work: Promise<unknown>) => void;
     /** Earlier failures and the brief, read during the burst wait (answerReadsAhead). */
     ahead?: AnswerReadsAhead;
+    /** The chat itself, read the moment the burst wait ended (conversationTurns). */
+    chat?: ReturnType<typeof conversationTurns>;
+    /** The material and the early catalogue search for this question, already started (startAnswerLookups). */
+    lookups?: AnswerLookups;
   },
   /** The customer's message is a WhatsApp reply to this message of ours. */
   context?: { replyToMetaId?: string | null; onProductsQueued?: RunOptions["onProductsQueued"] },
@@ -384,7 +395,7 @@ export async function agentAnswer(
   // The chat, its earlier failures, the agent and the brief are independent
   // reads (the brief only needs the chat's language to finish its wording).
   const agentRead = prepared ? Promise.resolve(prepared.agentId) : defaultAgentId(supabase, common.organizationId);
-  const chat = conversationTurns(supabase, common.organizationId, conversationId);
+  const chat = prepared?.chat ?? conversationTurns(supabase, common.organizationId, conversationId);
   const ahead = prepared?.ahead ?? answerReadsAhead(supabase, common.organizationId, conversationId, agentRead);
   ahead.setLanguage(chat.then((c) => c.customerLanguage));
   // Only a reply-to message costs a read here; every other message reads nothing more.
@@ -423,6 +434,7 @@ export async function agentAnswer(
     useTools: true,
     ...(prepared ? { prelude: prepared.prelude } : {}),
     ...(prepared?.deferUsage ? { deferUsage: prepared.deferUsage } : {}),
+    ...(prepared?.lookups ? { lookups: prepared.lookups } : {}),
     ...(context?.onProductsQueued ? { onProductsQueued: context.onProductsQueued } : {}),
   });
 }

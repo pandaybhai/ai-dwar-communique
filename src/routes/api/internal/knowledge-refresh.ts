@@ -2,8 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { buildInfo } from "@/lib/build-info";
 
 /**
- * Live knowledge keeps itself current: any source whose refresh window has
- * passed is re-read here. Uploaded files are static and never queued.
+ * The scheduled re-read: any source whose refresh window has passed is
+ * re-read here. Only while platform_settings.knowledge_auto_refresh is on —
+ * off (the default, and while the column is missing) it does nothing, and a
+ * site is re-read only when the merchant asks. Uploaded files are static and
+ * never queued.
  */
 export const Route = createFileRoute("/api/internal/knowledge-refresh")({
   server: {
@@ -21,7 +24,10 @@ export const Route = createFileRoute("/api/internal/knowledge-refresh")({
         const supabase = getServiceClient();
 
         try {
-          const { loadReadingSettings } = await import("@/lib/reading.server");
+          const { loadKnowledgeAutoRefresh, loadReadingSettings } = await import("@/lib/reading.server");
+          if (!(await loadKnowledgeAutoRefresh(supabase))) {
+            return Response.json({ skipped: "auto_refresh_off", considered: 0, due: 0, refreshed: 0, queued: 0, failed: 0, commit: buildInfo().commit });
+          }
           const reading = await loadReadingSettings(supabase);
           const { data: raw } = await supabase
             .from("knowledge_sources")

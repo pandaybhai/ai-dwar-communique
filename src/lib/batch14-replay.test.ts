@@ -278,7 +278,11 @@ describe("this branch: every reply is the model's, cleanly", () => {
     const r = results.get("earrings-live-args")!;
     expect(r.sent.map((s) => s.type)).toEqual(["text", "text", "text", "text"]);
     expect(r.sent[1]!.text).toMatch(/Earrings — ₹[\d,]+\n https?:|Earrings — ₹[\d,]+\nhttps?:/);
-    const [call] = r.toolsMeta as Array<Record<string, unknown>>;
+    // The model's own live call (Batch 15C: the early search of the
+    // customer's words is listed before it, as the call it was given).
+    const tools = r.toolsMeta as Array<Record<string, unknown>>;
+    const call = tools.find((t) => (t["args"] as Record<string, unknown>)["gender"] === "female");
+    expect(tools[0]).toMatchObject({ tool: "catalog_search", args: { query: "earrings dikhao" } });
     expect(call).toMatchObject({
       tool: "catalog_search",
       ok: true,

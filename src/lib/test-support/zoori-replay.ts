@@ -935,7 +935,12 @@ export function zooriWorld(c: Case) {
         name: names.get(m.tool_call_id ?? "") ?? "",
         data: parseToolView(String(m.content)),
       }));
-    const step = body.messages.filter((m) => m.role === "assistant" && m.tool_calls?.length).length;
+    // The model's own tool turns: the early catalogue search (Batch 15C)
+    // opens the conversation but is not a step the script took. Its result
+    // is still in `seen`, as the model would see it.
+    const step = body.messages.filter(
+      (m) => m.role === "assistant" && m.tool_calls?.some((tc) => tc.id !== "early_catalog_search"),
+    ).length;
     const turn = c.model({ step, system, offers: (n) => toolsOffered.includes(n), seen });
     const toolCalls = (turn.calls ?? []).map((call, i) => ({
       id: `call-${step}-${i}`,
