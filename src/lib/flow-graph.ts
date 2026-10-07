@@ -296,6 +296,9 @@ export function outputsOf(node: FlowNode): string[] {
     case "goto_flow":
     case "close_chat":
       return [];
+    case "assign":
+      // "Hand to Aiden" ends the flow there; the other choices go on.
+      return d["mode"] === "aiden" ? [] : ["next"];
     case "text":
     case "form":
       return ["next", "window_closed"];

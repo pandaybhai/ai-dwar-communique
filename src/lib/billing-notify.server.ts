@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { money } from "@/lib/billing";
 import { normalizePhone } from "@/lib/phone";
+import { STAFF_HANDOFF_TEMPLATE } from "@/lib/handoff-alerts.server";
 
 /**
  * Delivery for queued billing notices.
@@ -95,6 +96,8 @@ export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
     body: "AiDwar AI alert: {{1}}. Right now {{2}}. Details are here: {{3}} — please check.",
     examples: ["Lovable AI gateway is out of credit or quota", "Aiden is answering on the anthropic backup", "https://aidwar.in/admin/ai"],
   },
+  // Batch 21: staff hand-off alert outside the 24-hour window (sent by handoff-alerts.server.ts).
+  STAFF_HANDOFF_TEMPLATE,
 ];
 
 /** audience:kind -> template name. Anything unmapped stays an in-app notice. */

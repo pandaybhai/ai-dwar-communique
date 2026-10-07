@@ -2,6 +2,7 @@
  * Editor simulator: walks a draft graph like the engine does, but locally.
  * Nothing is sent, nothing is saved, nothing is billed.
  */
+import { rulesHours } from "./aiden-flow-rules";
 import {
   MAX_STEPS_PER_RUN,
   edgeFrom,
@@ -233,6 +234,13 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
         break;
       }
       case "assign":
+        if (d["mode"] === "aiden") {
+          note(s, "Hands the chat to Aiden — the flow ends and Aiden answers the customer's next messages.");
+          if (String(d["behaviour"] ?? "").trim() || String(d["rules"] ?? "").trim())
+            note(s, `Aiden follows this step's Behaviour / Rules in this chat for ${rulesHours(d["rules_hours"])} hour(s).`);
+          s.done = true;
+          return s;
+        }
         note(s, "Assigns the chat to your team");
         break;
       case "needs_you":

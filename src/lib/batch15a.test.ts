@@ -564,11 +564,12 @@ describe("(5) a product read on www.… updates its old no-www row (same SKU) in
     });
   });
 
-  it("unchanged (Batch 13A): no SKU → the www page gets its own row (the old one is hidden by the read, not here)", async () => {
+  it("Batch 21 (was Batch 13A's own row): no SKU → the same page's no-www row is updated and moved, never a second row", async () => {
     const { saveCrawledProducts } = await import("./product-extract.server");
     const db = memoryDb({ products: [{ ...old, sku: null }] });
     await saveCrawledProducts(db.supabase, ORG, [{ ...draft, sku: null }]);
-    expect(db.rows("products")).toHaveLength(2);
+    expect(db.rows("products")).toHaveLength(1);
+    expect(db.rows("products")[0]).toMatchObject({ external_id: draft.externalId, product_url: draft.productUrl });
   });
 
   it("same SKU at another address: that row is the product", async () => {
