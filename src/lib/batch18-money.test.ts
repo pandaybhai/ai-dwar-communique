@@ -764,3 +764,178 @@ describe("(8) AI usage counters never lose a count", () => {
     expect(db.calls.filter((c) => c.rpc === "ai_usage_add")).toHaveLength(1);
   });
 });
+
+// ------------------------------------------------------------------ (9)
+describe("(9) small money fixes", () => {
+  beforeEach(() => vi.resetModules());
+
+  it("the 'scheduled' cancel: switching a feature off cancels waiting sends by their real status", async () => {
+    const db = fakeDb((op) =>
+      op.table === "profiles" ? { data: { is_super_admin: true }, error: null } : undefined,
+    );
+    const { setFeatureOverride } = await import("./billing.server");
+    await setFeatureOverride(db.supabase, { organizationId: "org-1", featureKey: "flows", enabled: false, force: true, actorId: "u-1" });
+    const cancel = db.ops.find((o) => o.table === "scheduled_sends" && o.kind === "update")!;
+    expect(cancel.payload).toEqual({ status: "cancelled" });
+    expect(cancel.filters).toContainEqual(["eq", ["status", "scheduled"]]);
+  });
+
+  describe("campaign controls never flip a campaign that finished meanwhile", () => {
+    const MOCKED = ["@/lib/whatsapp-api.server", "@/lib/campaign-billing.server"];
+    afterEach(() => {
+      for (const m of MOCKED) vi.doUnmock(m);
+    });
+    async function control(db: MemoryDb, orgId: string, campaignId: string, action: string) {
+      vi.doMock("@/lib/whatsapp-api.server", () => ({
+        requireOrgMember: async () => ({ supabase: db.client, organizationId: orgId, userId: "u-1" }),
+        isResponse: (r: unknown) => r instanceof Response,
+        jsonError: (error: string, status = 400) => Response.json({ error }, { status }),
+        logServerActivity: async () => {},
+        requirePermission: async () => null,
+      }));
+      const settle = vi.fn(async () => ({ ok: true }));
+      vi.doMock("@/lib/campaign-billing.server", () => ({ settleCampaignSpend: settle }));
+      const { Route } = await import("../routes/api/campaigns/control");
+      const post = (Route.options as unknown as { server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } } }).server.handlers.POST;
+      const res = await post({
+        request: new Request("http://x/api/campaigns/control", {
+          method: "POST",
+          body: JSON.stringify({ organization_id: orgId, campaign_id: campaignId, action }),
+        }),
+      });
+      return { res, settle };
+    }
+
+    for (const action of ["pause", "cancel"]) {
+      it(`completed campaign not flipped: ${action} while it completes → stays completed`, async () => {
+        const { db, campaigns } = world({ campaigns: [{ recipients: 1 }] });
+        const c = campaigns[0]!;
+        // The worker completes it between the route's read and its write.
+        let completed = false;
+        db.hook = (call) => {
+          if (call.table === "campaigns" && call.kind === "update" && !completed) {
+            completed = true;
+            campaignRow(db, c.id)["status"] = "completed";
+          }
+          return undefined;
+        };
+        const { res, settle } = await control(db, c.orgId, c.id, action);
+        expect(res.status).toBe(400);
+        expect(campaignRow(db, c.id)["status"]).toBe("completed");
+        expect(settle).not.toHaveBeenCalled();
+      });
+    }
+
+    it("resume of a campaign that is no longer paused changes nothing", async () => {
+      const { db, campaigns } = world({ campaigns: [{ recipients: 1, status: "paused" }] });
+      const c = campaigns[0]!;
+      db.hook = (call) => {
+        if (call.table === "campaigns" && call.kind === "update") campaignRow(db, c.id)["status"] = "cancelled";
+        return undefined;
+      };
+      const { res } = await control(db, c.orgId, c.id, "resume");
+      expect(res.status).toBe(400);
+      expect(campaignRow(db, c.id)["status"]).toBe("cancelled");
+    });
+
+    it("a normal pause still pauses (unchanged)", async () => {
+      const { db, campaigns } = world({ campaigns: [{ recipients: 1 }] });
+      const c = campaigns[0]!;
+      const { res } = await control(db, c.orgId, c.id, "pause");
+      expect(res.status).toBe(200);
+      expect(campaignRow(db, c.id)["status"]).toBe("paused");
+    });
+  });
+
+  it("double-counted campaign reply: two messages from one customer at once count one reply", async () => {
+    const { db, campaigns } = world({ campaigns: [{ recipients: 1 }] });
+    const c = campaigns[0]!;
+    const r = c.recipients[0]!;
+    r["status"] = "delivered";
+    r["replied_at"] = null;
+    db.hook = async () => {
+      await new Promise((res) => setTimeout(res, Math.random() * 3));
+      return undefined;
+    };
+    const { applyCampaignReply } = await import("./whatsapp-webhook.server");
+    await Promise.all([
+      applyCampaignReply(db.client, c.orgId, r["contact_id"] as string),
+      applyCampaignReply(db.client, c.orgId, r["contact_id"] as string),
+    ]);
+    expect(campaignRow(db, c.id)["replied_count"]).toBe(1);
+    expect(r["replied_at"]).toBeTruthy();
+  });
+
+  it("double billing WhatsApp: two drains at once send a notice once", async () => {
+    process.env["PLATFORM_ORG_ID"] = "plat";
+    process.env["BILLING_ADMIN_WHATSAPP"] = "+919811111111";
+    const notice: Record<string, unknown> = {
+      id: "n1",
+      organization_id: null,
+      audience: "admin",
+      kind: "ai_provider_alert",
+      channel: "whatsapp",
+      recipient: null,
+      status: "queued",
+      sent_at: null,
+      payload: { headline: "h", detail: "d", link: "https://aidwar.in/admin/ai" },
+    };
+    const db = fakeDb((op) => {
+      if (op.table === "billing_notifications" && op.kind === "select") return { data: [{ ...notice }], error: null };
+      if (op.table === "billing_notifications" && op.kind === "update") {
+        const p = op.payload as Record<string, unknown>;
+        if (p["status"]) {
+          Object.assign(notice, p);
+          return { data: null, error: null };
+        }
+        // The claim: a compare-and-set on sent_at.
+        const expected = op.filters.find(([n, a]) => n === "eq" && a[0] === "sent_at")?.[1][1] ?? null;
+        if (notice["status"] !== "queued" || (notice["sent_at"] ?? null) !== expected) return { data: [], error: null };
+        notice["sent_at"] = p["sent_at"];
+        return { data: [{ id: "n1" }], error: null };
+      }
+      if (op.table === "whatsapp_accounts")
+        return {
+          data: [{ id: "acc", organization_id: "plat", waba_id: "w", phone_number_id: "pn", display_phone_number: "91", status: "active", is_default: true }],
+          error: null,
+        };
+      if (op.table === "whatsapp_credentials") return { data: { access_token: "tok" }, error: null };
+      if (op.table === "contacts") return { data: [], error: null };
+      if (op.table === "message_templates")
+        return { data: { name: "admin_ai_provider_alert", language: "en", status: "APPROVED" }, error: null };
+      return undefined;
+    });
+    const sent: unknown[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      sent.push(init.body);
+      return new Response(JSON.stringify({ messages: [{ id: "wamid.1" }] }), { status: 200 });
+    });
+    const { drainBillingNotifications } = await import("./billing-notify.server");
+    const [a, b] = await Promise.all([drainBillingNotifications(db.supabase), drainBillingNotifications(db.supabase)]);
+    expect(sent).toHaveLength(1);
+    expect(a.sent + b.sent).toBe(1);
+    expect(notice["status"]).toBe("sent");
+  });
+
+  it("trial-ending notice sent twice: one run queues it once (it was queued by sweepTrials and again by the main loop), a re-run none", async () => {
+    const endsAt = new Date(Date.now() + 2.5 * 86_400_000).toISOString();
+    const notices: Array<Record<string, unknown>> = [];
+    const db = fakeDb((op) => {
+      if (op.table === "organizations" && op.kind === "select")
+        return { data: [{ id: "org-1", plan_status: "trial", trial_ends_at: endsAt, plan_version_id: "pv-1" }], error: null };
+      if (op.table === "billing_notifications" && op.kind === "insert") {
+        notices.push(op.payload as Record<string, unknown>);
+        return { data: null, error: null };
+      }
+      // sweepTrials' "a heads-up in the last week?" check.
+      if (op.table === "billing_notifications" && op.kind === "select")
+        return { data: notices.filter((n) => n["kind"] === "trial_ending").map(() => ({ id: "x" })), error: null };
+      return undefined;
+    });
+    const { runPlanBilling } = await import("./plan-billing.server");
+    await runPlanBilling(db.supabase);
+    expect(notices.filter((n) => n["kind"] === "trial_ending")).toHaveLength(1);
+    await runPlanBilling(db.supabase);
+    expect(notices.filter((n) => n["kind"] === "trial_ending")).toHaveLength(1);
+  });
+});

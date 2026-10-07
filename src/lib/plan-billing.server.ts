@@ -60,13 +60,12 @@ export async function runPlanBilling(supabase: SupabaseClient): Promise<Counts> 
     .in("plan_status", ["trial", "active", "past_due", "paused"])
     .limit(1000);
 
-  const { notify } = await import("@/lib/billing.server");
-
   for (const row of (orgs ?? []) as Record<string, unknown>[]) {
     const organizationId = String(row["id"]);
 
-    // Trial ending in three days: one friendly heads-up, once.
     // No trial end date means the trial has no end — never treat it as expired.
+    // The three-days-out heads-up is sweepTrials' (once, deduped); it was
+    // also sent here, so every trial got it twice.
     const trialEnds = (row["trial_ends_at"] as string | null) ?? null;
     if (row["plan_status"] === "trial") {
       if (trialEnds === null) {
@@ -74,15 +73,6 @@ export async function runPlanBilling(supabase: SupabaseClient): Promise<Counts> 
         continue;
       }
       const days = Math.ceil((new Date(trialEnds).getTime() - now.getTime()) / 864e5);
-      if (days === 3) {
-        await notify(supabase, {
-          organizationId,
-          audience: "client",
-          kind: "trial_ending",
-          payload: { days, ends_at: trialEnds },
-        });
-        counts.trial_notices += 1;
-      }
       if (days > 0) {
         counts.skipped += 1;
         continue;

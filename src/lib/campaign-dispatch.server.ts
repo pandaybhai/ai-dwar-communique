@@ -688,10 +688,11 @@ export async function runCampaignDispatch(
     // Every five minutes: ended campaigns still holding credits (a settle
     // that failed, or a campaign that failed after its hold) are settled.
     if (Math.floor(now() / 60_000) % 5 === 0) {
-      const { settleEndedHolds } = await import("@/lib/campaign-billing.server");
-      await settleEndedHolds(supabase).catch((error) =>
-        console.warn(JSON.stringify({ at: "campaign_hold_sweep_failed", error: String(error) })),
-      );
+      await import("@/lib/campaign-billing.server")
+        .then((m) => m.settleEndedHolds(supabase))
+        .catch((error) =>
+          console.warn(JSON.stringify({ at: "campaign_hold_sweep_failed", error: String(error) })),
+        );
     }
   }
   report.ms = now() - started;

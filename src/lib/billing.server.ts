@@ -1989,24 +1989,31 @@ async function pauseDependents(
   organizationId: string,
   featureKey: string,
 ): Promise<void> {
+  const must = (what: string, error: { message: string } | null) => {
+    if (error) throw new Error(`${what}: ${error.message}`);
+  };
   if (featureKey === "flows" || featureKey === "shopify" || featureKey === "templates") {
-    await supabase
+    const { error: flowsError } = await supabase
       .from("flows")
       .update({ is_enabled: false })
       .eq("organization_id", organizationId)
       .eq("is_enabled", true);
-    await supabase
+    must("pausing flows failed", flowsError);
+    // A waiting send's status is 'scheduled' ('pending' matched nothing).
+    const { error: sendsError } = await supabase
       .from("scheduled_sends")
       .update({ status: "cancelled" })
       .eq("organization_id", organizationId)
-      .eq("status", "pending");
+      .eq("status", "scheduled");
+    must("cancelling scheduled sends failed", sendsError);
   }
   if (featureKey === "campaigns" || featureKey === "templates" || featureKey === "contacts") {
-    await supabase
+    const { error: campaignsError } = await supabase
       .from("campaigns")
       .update({ status: "paused" })
       .eq("organization_id", organizationId)
       .in("status", ["sending", "scheduled"]);
+    must("pausing campaigns failed", campaignsError);
   }
 }
 

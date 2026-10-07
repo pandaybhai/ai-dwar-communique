@@ -603,7 +603,7 @@ const CHARGED_SYNC_EVERY_MS = 15_000;
 const chargedSyncedAt = new Map<string, number>();
 
 /** Counts one reply per contact per campaign for campaigns sent in the last 7 days. */
-async function applyCampaignReply(
+export async function applyCampaignReply(
   supabase: SupabaseClient,
   organizationId: string,
   contactId: string,
@@ -621,10 +621,16 @@ async function applyCampaignReply(
 
   for (const r of (recipients ?? []) as Array<Record<string, unknown>>) {
     if (r["replied_at"]) continue;
-    await supabase
+    // Only the update that sets replied_at counts it: two messages from the
+    // same customer at once can't both bump the counter.
+    const { data: marked, error: markError } = await supabase
       .from("campaign_recipients")
       .update({ replied_at: new Date().toISOString() })
-      .eq("id", r["id"] as string);
+      .eq("id", r["id"] as string)
+      .is("replied_at", null)
+      .select("id");
+    if (markError) throw new Error(markError.message);
+    if (!marked?.length) continue;
     await supabase.rpc("bump_campaign_counters", {
       p_campaign_id: r["campaign_id"] as string,
       p_replied: 1,

@@ -63,7 +63,7 @@ export const Route = createFileRoute("/api/campaigns/control")({
           if (notAllowed) return notAllowed;
           const future =
             campaign.scheduled_at && new Date(campaign.scheduled_at).getTime() > Date.now();
-          await supabase
+          const { data: moved, error: moveError } = await supabase
             .from("campaigns")
             .update({
               status: future ? "scheduled" : "sending",
@@ -71,20 +71,37 @@ export const Route = createFileRoute("/api/campaigns/control")({
               approved_by: userId,
               approved_at: new Date().toISOString(),
             })
-            .eq("id", campaignId);
+            .eq("id", campaignId)
+            .eq("status", "awaiting_approval")
+            .select("id");
+          if (moveError) return jsonError("We couldn't update this campaign. Please try again.", 500);
+          if (!moved?.length) return jsonError("This campaign changed meanwhile. Refresh and try again.");
         } else if (action === "pause") {
           if (status !== "sending" && status !== "scheduled") {
             return jsonError("Only a running or scheduled campaign can be paused.");
           }
-          await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
+          // Conditional on the status just read: a campaign that completed
+          // meanwhile is never flipped back.
+          const { data: moved, error: moveError } = await supabase
+            .from("campaigns")
+            .update({ status: "paused" })
+            .eq("id", campaignId)
+            .in("status", ["sending", "scheduled"])
+            .select("id");
+          if (moveError) return jsonError("We couldn't update this campaign. Please try again.", 500);
+          if (!moved?.length) return jsonError("This campaign has already finished.");
         } else if (action === "resume") {
           if (status !== "paused") return jsonError("This campaign isn't paused.");
           const future =
             campaign.scheduled_at && new Date(campaign.scheduled_at).getTime() > Date.now();
-          await supabase
+          const { data: moved, error: moveError } = await supabase
             .from("campaigns")
             .update({ status: future ? "scheduled" : "sending" })
-            .eq("id", campaignId);
+            .eq("id", campaignId)
+            .eq("status", "paused")
+            .select("id");
+          if (moveError) return jsonError("We couldn't update this campaign. Please try again.", 500);
+          if (!moved?.length) return jsonError("This campaign isn't paused.");
         } else {
           // One statement over every queued/sending row; a sender writing the
           // same rows at that moment can make Postgres pick this one as a
@@ -98,10 +115,14 @@ export const Route = createFileRoute("/api/campaigns/control")({
             if (!skipError) break;
             await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
           }
-          await supabase
+          const { data: moved, error: moveError } = await supabase
             .from("campaigns")
             .update({ status: "cancelled", completed_at: new Date().toISOString() })
-            .eq("id", campaignId);
+            .eq("id", campaignId)
+            .not("status", "in", "(completed,cancelled,failed)")
+            .select("id");
+          if (moveError) return jsonError("We couldn't cancel this campaign. Please try again.", 500);
+          if (!moved?.length) return jsonError("This campaign has already finished.");
 
           // Whatever was reserved and not spent goes back to the wallet.
           const { settleCampaignSpend } = await import("@/lib/campaign-billing.server");
