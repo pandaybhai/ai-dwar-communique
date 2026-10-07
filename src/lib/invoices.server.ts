@@ -688,7 +688,7 @@ export async function invoiceForPayment(
  * purchase link). Without either, the gross is re-derived from the base.
  */
 export function paymentGross(payment: Record<string, unknown> | null | undefined): number {
-  const raw = ((payment?.["raw"] ?? {}) as Record<string, unknown>) ?? {};
+  const raw = (payment?.["raw"] ?? {}) as Record<string, unknown>;
   const stated = Number(raw["gross_amount"] ?? raw["gross"] ?? Number.NaN);
   if (Number.isFinite(stated) && stated > 0) return round2(stated);
   const base = Number(payment?.["amount"] ?? 0);
