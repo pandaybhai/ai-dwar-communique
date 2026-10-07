@@ -7,9 +7,10 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import type { Plugin } from "vite";
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateFeatureRegistry } from "./src/lib/feature-registry.check";
+import { tslibEsmFile } from "./src/lib/tslib-esm.build";
 
 /**
  * Serves src/build-info.ts with the current git short SHA and an ISO build
@@ -121,8 +122,24 @@ function featureRegistrySync(): Plugin {
   };
 }
 
+/** Points every `import "tslib"` at that tslib's own pure-ESM file (see tslib-esm.build.ts). */
+function tslibEsm(): Plugin {
+  return {
+    name: "aidwar-tslib-esm",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (source !== "tslib") return null;
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      if (!resolved || resolved.external) return resolved;
+      return tslibEsmFile(resolved.id, existsSync) ?? resolved;
+    },
+  };
+}
+
 export default defineConfig({
-  vite: { plugins: [buildInfoGenerator(), featureRegistryGuard(), featureRegistrySync()] },
+  vite: {
+    plugins: [buildInfoGenerator(), featureRegistryGuard(), featureRegistrySync(), tslibEsm()],
+  },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this

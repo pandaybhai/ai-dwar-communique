@@ -171,12 +171,27 @@ export async function resolvePlatformOrg(supabase: SupabaseClient): Promise<stri
   return (membership as { organization_id?: string } | null)?.organization_id ?? null;
 }
 
+export type BillingTemplateOutcome = "created" | "skipped" | "failed" | "remaining";
+
 export type BillingTemplateReport = {
   created: string[];
   skipped: string[];
   failed: { name: string; error: string }[];
+  /** Not started because the run's time budget ran out — the next run picks them up. */
+  remaining: string[];
+  /** One row per template, in BILLING_TEMPLATES order, with Meta's own error text. */
+  results: { name: string; outcome: BillingTemplateOutcome; error: string | null }[];
   templates: { name: string; status: string | null; language: string; error: string | null }[];
 };
+
+/**
+ * One run of "Create billing templates" starts no new template after this
+ * long (each takes ~4 s at Meta), so a run always answers well inside the
+ * request limit; the admin page calls again for whatever is left.
+ */
+export const BILLING_TEMPLATE_BUDGET_MS = 20_000;
+/** Templates submitted side by side within one run. */
+const BILLING_TEMPLATE_CONCURRENCY = 3;
 
 /** A one-page sample PDF, so Meta can review the invoice notice's attachment. */
 async function sampleInvoicePdf(): Promise<Uint8Array> {
@@ -195,55 +210,23 @@ async function sampleInvoicePdf(): Promise<Uint8Array> {
   return doc.save();
 }
 
-/**
- * Creates every notice template on the platform workspace, through exactly the
- * same path the Templates page uses. Idempotent by name: a template we already
- * hold is skipped, never resubmitted.
- */
-export async function ensureBillingTemplates(
+type TemplateModules = {
+  templates: typeof import("@/lib/templates");
+  create: typeof import("@/lib/template-create.server");
+  media: typeof import("@/lib/template-media.server");
+};
+
+/** Submits one notice template. Never throws: every failure comes back as text. */
+async function createBillingTemplate(
   supabase: SupabaseClient,
+  orgId: string,
   actorId: string,
-): Promise<BillingTemplateReport> {
-  const { PermissionError } = await import("@/lib/billing.server");
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_super_admin")
-    .eq("id", actorId)
-    .maybeSingle();
-  if ((profile as { is_super_admin?: boolean } | null)?.is_super_admin !== true) {
-    throw new PermissionError("super_admin", "This is a platform-owner action.");
-  }
-
-  const created: string[] = [];
-  const skipped: string[] = [];
-  const failed: { name: string; error: string }[] = [];
-  const errors = new Map<string, string>();
-
-  const orgId = await resolvePlatformOrg(supabase);
-  if (!orgId) {
-    return {
-      created,
-      skipped,
-      failed: [{ name: "all", error: "No platform workspace is set up yet." }],
-      templates: await listBillingTemplates(supabase),
-    };
-  }
-
-  const { emptyDraft, extractVariables } = await import("@/lib/templates");
-  const { createTemplateFromDraft } = await import("@/lib/template-create.server");
-
-  for (const spec of BILLING_TEMPLATES) {
-    const { data: existing } = await supabase
-      .from("message_templates")
-      .select("id")
-      .eq("organization_id", orgId)
-      .eq("name", spec.name)
-      .eq("language", "en")
-      .maybeSingle();
-    if (existing) {
-      skipped.push(spec.name);
-      continue;
-    }
+  spec: BillingTemplateSpec,
+  modules: TemplateModules,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const { emptyDraft, extractVariables } = modules.templates;
+    const { createTemplateFromDraft } = modules.create;
 
     const draft = emptyDraft();
     draft.name = spec.name;
@@ -255,21 +238,28 @@ export async function ensureBillingTemplates(
     );
 
     if (spec.headerFormat === "DOCUMENT") {
-      const { uploadTemplateMedia } = await import("@/lib/template-media.server");
-      const uploaded = await uploadTemplateMedia(supabase, {
+      // Meta reviews a media header only with a sample uploaded through the
+      // resumable upload API (example.header_handle); uploadTemplateMedia is
+      // the same path the Templates page uses.
+      let bytes: Uint8Array;
+      try {
+        bytes = await sampleInvoicePdf();
+      } catch (error) {
+        return {
+          ok: false,
+          error: `We couldn't build the sample PDF: ${String((error as Error)?.message ?? error).slice(0, 200)}`,
+        };
+      }
+      const uploaded = await modules.media.uploadTemplateMedia(supabase, {
         organizationId: orgId,
         userId: actorId,
-        bytes: await sampleInvoicePdf(),
+        bytes,
         mime: "application/pdf",
         fileName: "sample-invoice.pdf",
         format: "DOCUMENT",
         slot: "header",
       });
-      if (!uploaded.ok) {
-        failed.push({ name: spec.name, error: uploaded.error });
-        errors.set(spec.name, uploaded.error);
-        continue;
-      }
+      if (!uploaded.ok) return { ok: false, error: uploaded.error };
       draft.headerFormat = "DOCUMENT";
       draft.headerHandle = uploaded.handle;
       draft.headerMediaUrl = uploaded.mediaUrl;
@@ -281,26 +271,141 @@ export async function ensureBillingTemplates(
       userId: actorId,
       draft,
     });
-    if (!result.ok) {
-      failed.push({ name: spec.name, error: result.error });
-      errors.set(spec.name, result.error);
-      continue;
-    }
-    created.push(spec.name);
+    return result.ok ? { ok: true } : { ok: false, error: result.error };
+  } catch (error) {
+    return { ok: false, error: String((error as Error)?.message ?? error).slice(0, 300) };
+  }
+}
+
+/**
+ * Creates every notice template on the platform workspace, through exactly the
+ * same path the Templates page uses. Each template stands alone: one failure
+ * never stops the rest. Idempotent by name: a template the platform workspace
+ * already holds (in any language) is skipped, never resubmitted. A run starts
+ * nothing new after BILLING_TEMPLATE_BUDGET_MS; what is left comes back as
+ * `remaining` for the next run, which passes them as `names` so a template
+ * that just failed isn't retried in the same click.
+ */
+export async function ensureBillingTemplates(
+  supabase: SupabaseClient,
+  actorId: string,
+  options: { budgetMs?: number; now?: () => number; names?: string[] | null } = {},
+): Promise<BillingTemplateReport> {
+  const { PermissionError } = await import("@/lib/billing.server");
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_super_admin")
+    .eq("id", actorId)
+    .maybeSingle();
+  if ((profile as { is_super_admin?: boolean } | null)?.is_super_admin !== true) {
+    throw new PermissionError("super_admin", "This is a platform-owner action.");
   }
 
-  await supabase.from("activity_log").insert({
-    organization_id: orgId,
-    user_id: actorId,
-    action: "billing_templates_created",
-    details: { created: created.length, skipped: skipped.length, failed: failed.length },
-  });
+  const now = options.now ?? Date.now;
+  const deadline = now() + (options.budgetMs ?? BILLING_TEMPLATE_BUDGET_MS);
+  const outcomes = new Map<string, { outcome: BillingTemplateOutcome; error: string | null }>();
 
+  const orgId = await resolvePlatformOrg(supabase);
+  if (!orgId) {
+    const error = "No platform workspace is set up yet.";
+    return {
+      created: [],
+      skipped: [],
+      failed: [{ name: "all", error }],
+      remaining: [],
+      results: BILLING_TEMPLATES.map((t) => ({ name: t.name, outcome: "failed" as const, error })),
+      templates: await listBillingTemplates(supabase),
+    };
+  }
+
+  // One read for what the platform already holds, whatever the language
+  // (staff_handoff_alert was first made by hand in en_US).
+  const { data: held, error: heldError } = await supabase
+    .from("message_templates")
+    .select("name")
+    .eq("organization_id", orgId)
+    .in(
+      "name",
+      BILLING_TEMPLATES.map((t) => t.name),
+    );
+  if (heldError) {
+    // Without knowing what exists, submitting would resubmit everything.
+    const error = `We couldn't read the existing templates: ${heldError.message}`;
+    return {
+      created: [],
+      skipped: [],
+      failed: [{ name: "all", error }],
+      remaining: [],
+      results: BILLING_TEMPLATES.map((t) => ({ name: t.name, outcome: "failed" as const, error })),
+      templates: await listBillingTemplates(supabase),
+    };
+  }
+  const heldNames = new Set(((held ?? []) as { name: string }[]).map((r) => r.name));
+
+  const only = options.names?.length ? new Set(options.names) : null;
+  const queue: BillingTemplateSpec[] = [];
+  for (const spec of BILLING_TEMPLATES) {
+    if (heldNames.has(spec.name)) outcomes.set(spec.name, { outcome: "skipped", error: null });
+    else if (only && !only.has(spec.name)) outcomes.set(spec.name, { outcome: "skipped", error: null });
+    else queue.push(spec);
+  }
+
+  // Loaded once, before templates are submitted side by side.
+  const modules: TemplateModules = {
+    templates: await import("@/lib/templates"),
+    create: await import("@/lib/template-create.server"),
+    media: await import("@/lib/template-media.server"),
+  };
+  const worker = async () => {
+    for (;;) {
+      if (now() >= deadline) return;
+      const spec = queue.shift();
+      if (!spec) return;
+      const result = await createBillingTemplate(supabase, orgId, actorId, spec, modules);
+      outcomes.set(
+        spec.name,
+        result.ok ? { outcome: "created", error: null } : { outcome: "failed", error: result.error },
+      );
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(BILLING_TEMPLATE_CONCURRENCY, queue.length) }, worker),
+  );
+  for (const spec of queue) outcomes.set(spec.name, { outcome: "remaining", error: null });
+
+  const results = BILLING_TEMPLATES.map((t) => ({
+    name: t.name,
+    ...(outcomes.get(t.name) ?? { outcome: "remaining" as const, error: null }),
+  }));
+  const pick = (o: BillingTemplateOutcome) => results.filter((r) => r.outcome === o);
+  const created = pick("created").map((r) => r.name);
+  const skipped = pick("skipped").map((r) => r.name);
+  const failed = pick("failed").map((r) => ({ name: r.name, error: r.error ?? "failed" }));
+  const remaining = pick("remaining").map((r) => r.name);
+
+  try {
+    await supabase.from("activity_log").insert({
+      organization_id: orgId,
+      user_id: actorId,
+      action: "billing_templates_created",
+      details: {
+        created: created.length,
+        skipped: skipped.length,
+        failed: failed.length,
+        remaining: remaining.length,
+        errors: failed,
+      },
+    });
+  } catch {
+    // the report matters more than the log line
+  }
+
+  const errors = new Map(failed.map((f) => [f.name, f.error]));
   const templates = (await listBillingTemplates(supabase)).map((t) => ({
     ...t,
     error: errors.get(t.name) ?? null,
   }));
-  return { created, skipped, failed, templates };
+  return { created, skipped, failed, remaining, results, templates };
 }
 
 /** What Meta currently says about each billing notice template. */
@@ -472,6 +577,18 @@ export async function recipientFor(
 const MAX_ATTEMPTS = 3;
 
 /**
+ * A notice not out within this long is never sent: it is failed as "stale"
+ * instead. A trial-ending or invoice notice days late is wrong, and a
+ * standing warning that old has been superseded by the sweep anyway.
+ */
+export const NOTICE_STALE_MS = 48 * 3600_000;
+
+export function isStaleNotice(createdAt: unknown, now = Date.now()): boolean {
+  const at = Date.parse(String(createdAt ?? ""));
+  return Number.isFinite(at) && now - at > NOTICE_STALE_MS;
+}
+
+/**
  * The live wording for a top-up notice: read from the task itself at send
  * time, so a corrected task is what the owner sees.
  */
@@ -526,17 +643,26 @@ export async function drainBillingNotifications(
 
   // Only work that is still pending: a notice already marked 'sent' is never
   // sent a second time, and a failed one is retried a limited number of times.
+  // Dead rows (out of attempts, or failed by hand with no attempt count) are
+  // left out in the query itself: filtered afterwards, 50 old dead rows
+  // filled the whole window and nothing newer went out (28 Sep - 7 Oct).
   const { data: rows } = await supabase
     .from("billing_notifications")
-    .select("id, organization_id, audience, kind, channel, recipient, payload, status, sent_at")
-    .in("status", ["queued", "failed"])
+    .select("id, organization_id, audience, kind, channel, recipient, payload, status, sent_at, created_at")
+    .or(
+      `status.eq.queued,and(status.eq.failed,payload->>attempts.in.(${Array.from(
+        { length: MAX_ATTEMPTS - 1 },
+        (_, i) => i + 1,
+      ).join(",")}))`,
+    )
     .order("created_at", { ascending: true })
     .limit(Math.min(Math.max(limit, 1), 50));
 
   const queued = ((rows ?? []) as Record<string, unknown>[]).filter((row) => {
-    if (row["status"] !== "failed") return true;
+    if (row["status"] === "queued") return true;
+    if (row["status"] !== "failed") return false;
     const attempts = Number(((row["payload"] ?? {}) as Record<string, unknown>)["attempts"] ?? 0);
-    return attempts < MAX_ATTEMPTS;
+    return attempts >= 1 && attempts < MAX_ATTEMPTS;
   });
   if (queued.length === 0) return counts;
 
@@ -550,6 +676,7 @@ export async function drainBillingNotifications(
     row: Record<string, unknown>,
     status: "sent" | "failed" | "skipped",
     error?: string,
+    attempts?: number,
   ) => {
     const payload = (row["payload"] ?? {}) as Record<string, unknown>;
     const patch: Record<string, unknown> = {
@@ -558,7 +685,10 @@ export async function drainBillingNotifications(
       sent_at: new Date().toISOString(),
     };
     if (status === "failed") {
-      patch["payload"] = { ...payload, attempts: Number(payload["attempts"] ?? 0) + 1 };
+      patch["payload"] = {
+        ...payload,
+        attempts: attempts ?? Number(payload["attempts"] ?? 0) + 1,
+      };
     }
     await supabase
       .from("billing_notifications")
@@ -574,6 +704,13 @@ export async function drainBillingNotifications(
         // their turn (the email sender isn't built yet) and in-app rows are
         // records, not messages — neither is a failure.
         counts.skipped += 1;
+        continue;
+      }
+
+      if (isStaleNotice(row["created_at"])) {
+        // Too late to be useful; out of attempts so it is never picked again.
+        await mark(row, "failed", "stale", MAX_ATTEMPTS);
+        counts.failed += 1;
         continue;
       }
 
