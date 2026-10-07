@@ -50,6 +50,20 @@ export async function holdCampaign(
   const estimate = Number(campaign.estimated_cost ?? 0);
   if (already > 0 || estimate <= 0) return { ok: true };
 
+  // A run that held and died before writing held_amount: adopt its hold,
+  // never hold a second time.
+  const { data: prior, error: priorError } = await supabase
+    .from("wallet_ledger")
+    .select("amount")
+    .eq("organization_id", organizationId)
+    .eq("entry_type", "hold")
+    .eq("reference_type", "campaign")
+    .eq("reference_id", campaignId)
+    .limit(1);
+  if (priorError) return { ok: false, error: priorError.message };
+  const priorHold = Math.abs(Number((prior as Array<{ amount: number }> | null)?.[0]?.amount ?? 0));
+  if (priorHold > 0) return claimHold(supabase, organizationId, campaignId, priorHold);
+
   const result = await holdCampaignSpend(supabase, {
     organizationId,
     campaignId,
@@ -58,8 +72,74 @@ export async function holdCampaign(
   });
   if ("error" in result) return { ok: false, error: result.error };
 
-  await supabase.from("campaigns").update({ held_amount: estimate }).eq("id", campaignId);
-  return { ok: true };
+  const claimed = await claimHold(supabase, organizationId, campaignId, estimate);
+  if (claimed.ok && !claimed.won) {
+    // Another run held it at the same moment and wrote first: give ours back.
+    const { error } = await supabase.rpc("wallet_apply", {
+      p_org: organizationId,
+      p_type: "hold_release",
+      p_amount: estimate,
+      p_ref_type: "campaign_duplicate_hold",
+      p_ref_id: campaignId,
+      p_description: "Duplicate campaign reservation returned",
+      p_metadata: { campaign_id: campaignId },
+      p_actor: null,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+  return { ok: claimed.ok, ...(claimed.error ? { error: claimed.error } : {}) };
+}
+
+/**
+ * Records the hold on the campaign in one conditional update (only while
+ * nothing is recorded), so of two runs holding at once exactly one wins.
+ */
+async function claimHold(
+  supabase: SupabaseClient,
+  organizationId: string,
+  campaignId: string,
+  amount: number,
+): Promise<{ ok: boolean; won: boolean; error?: string }> {
+  const { data, error } = await supabase
+    .from("campaigns")
+    .update({ held_amount: amount })
+    .eq("id", campaignId)
+    .eq("organization_id", organizationId)
+    .eq("held_amount", 0)
+    .select("id");
+  if (error) return { ok: false, won: false, error: error.message };
+  return { ok: true, won: Boolean(data?.length) };
+}
+
+/**
+ * Campaigns that ended (completed, cancelled or failed) while still holding
+ * credits — a settle that failed, or a campaign that failed after its hold —
+ * are settled here. settleCampaignSpend is safe to repeat.
+ */
+export async function settleEndedHolds(
+  supabase: SupabaseClient,
+  limit = 50,
+): Promise<{ settled: number; failed: number }> {
+  const { data, error } = await supabase
+    .from("campaigns")
+    .select("id, organization_id")
+    .in("status", ["completed", "cancelled", "failed"])
+    .gt("held_amount", 0)
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  let settled = 0;
+  let failed = 0;
+  for (const row of (data ?? []) as Array<{ id: string; organization_id: string }>) {
+    const result = await settleCampaignSpend(supabase, row.organization_id, row.id).catch(
+      (e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }),
+    );
+    if (result.ok) settled += 1;
+    else {
+      failed += 1;
+      console.error(JSON.stringify({ at: "campaign_settle_failed", campaign_id: row.id, error: result.error }));
+    }
+  }
+  return { settled, failed };
 }
 
 /**

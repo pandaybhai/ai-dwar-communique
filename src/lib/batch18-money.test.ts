@@ -199,3 +199,111 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
     expect(logged.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/message_row_failed.*wamid\.lost/);
   });
 });
+
+// ------------------------------------------------------------------ (2)
+describe("(2) campaign credits: held once, never held forever", () => {
+  /** wallet_apply as the database writes it: signed amount, reference kept. */
+  function realisticWallet(db: MemoryDb) {
+    db.rpcs.set("wallet_apply", (a, d) =>
+      d.insert("wallet_ledger", {
+        organization_id: a["p_org"],
+        entry_type: a["p_type"],
+        amount: ["hold", "debit_message"].includes(String(a["p_type"]))
+          ? -Math.abs(Number(a["p_amount"]))
+          : Math.abs(Number(a["p_amount"])),
+        reference_type: a["p_ref_type"],
+        reference_id: a["p_ref_id"],
+        metadata: a["p_metadata"],
+      })["id"],
+    );
+  }
+  const netHeld = (db: MemoryDb, campaignId: string) =>
+    db
+      .rows("wallet_ledger")
+      .filter((l) => l["reference_id"] === campaignId)
+      .reduce(
+        (s, l) =>
+          s +
+          (l["entry_type"] === "hold" ? Math.abs(Number(l["amount"])) : 0) -
+          (l["entry_type"] === "hold_release" ? Math.abs(Number(l["amount"])) : 0),
+        0,
+      );
+
+  it("double hold: two runs holding at the same moment reserve the estimate once", async () => {
+    const { db, campaigns } = world({ billing: true, campaigns: [{ recipients: 2, estimatedCost: 5 }] });
+    realisticWallet(db);
+    const c = campaigns[0]!;
+    const { holdCampaign } = await import("./campaign-billing.server");
+    const [a, b] = await Promise.all([holdCampaign(db.client, c.orgId, c.id), holdCampaign(db.client, c.orgId, c.id)]);
+    expect(a.ok && b.ok).toBe(true);
+    expect(campaignRow(db, c.id)["held_amount"]).toBe(5);
+    expect(netHeld(db, c.id)).toBe(5);
+    // And again later: nothing more.
+    await holdCampaign(db.client, c.orgId, c.id);
+    expect(netHeld(db, c.id)).toBe(5);
+  });
+
+  it("a run that held and died before recording it: the next run adopts that hold, never holds again", async () => {
+    const { db, campaigns } = world({ billing: true, campaigns: [{ recipients: 2, estimatedCost: 5 }] });
+    realisticWallet(db);
+    const c = campaigns[0]!;
+    const { holdCampaign } = await import("./campaign-billing.server");
+    db.hook = (call) =>
+      call.table === "campaigns" && call.kind === "update"
+        ? { data: null, error: { message: "connection reset" } }
+        : undefined;
+    const first = await holdCampaign(db.client, c.orgId, c.id);
+    // The campaign write failed: no longer reported as ok (it used to be ignored).
+    expect(first.ok).toBe(false);
+    expect(campaignRow(db, c.id)["held_amount"]).toBe(0);
+    db.hook = null;
+    expect((await holdCampaign(db.client, c.orgId, c.id)).ok).toBe(true);
+    expect(campaignRow(db, c.id)["held_amount"]).toBe(5);
+    expect(db.rows("wallet_ledger").filter((l) => l["entry_type"] === "hold")).toHaveLength(1);
+    expect(netHeld(db, c.id)).toBe(5);
+  });
+
+  it("stuck-hold sweep: a failed campaign and a completed one whose settle failed are both settled", async () => {
+    const { db, campaigns } = world({
+      billing: true,
+      campaigns: [
+        { recipients: 2, estimatedCost: 4 },
+        { recipients: 2, estimatedCost: 6 },
+      ],
+    });
+    realisticWallet(db);
+    const [failed, done] = campaigns;
+    const { holdCampaign, settleEndedHolds } = await import("./campaign-billing.server");
+    for (const c of [failed!, done!]) await holdCampaign(db.client, c.orgId, c.id);
+    // Launch failed writing the list after the hold.
+    campaignRow(db, failed!.id)["status"] = "failed";
+    // The other completes, but its settle's release fails (and is never retried by completion).
+    let failRelease = true;
+    db.hook = (call) =>
+      call.rpc === "wallet_apply" && failRelease ? { data: null, error: { message: "timeout" } } : undefined;
+    const g = meta();
+    await runCampaignDispatch(db.client, cfg(), { postMessage: g.postMessage });
+    expect(campaignRow(db, done!.id)).toMatchObject({ status: "completed", held_amount: 6 });
+    expect(campaignRow(db, failed!.id)).toMatchObject({ status: "failed", held_amount: 4 });
+
+    failRelease = false;
+    expect(await settleEndedHolds(db.client)).toEqual({ settled: 2, failed: 0 });
+    for (const c of [failed!, done!]) {
+      expect(campaignRow(db, c.id)["held_amount"]).toBe(0);
+      expect(netHeld(db, c.id)).toBe(0);
+    }
+    // Safe to repeat: nothing left to settle, nothing released twice.
+    expect(await settleEndedHolds(db.client)).toEqual({ settled: 0, failed: 0 });
+    expect(db.rows("wallet_ledger").filter((l) => l["entry_type"] === "hold_release")).toHaveLength(2);
+  });
+
+  it("a paused or sending campaign keeps its hold", async () => {
+    const { db, campaigns } = world({ billing: true, campaigns: [{ recipients: 1, estimatedCost: 2, status: "paused" }] });
+    realisticWallet(db);
+    const c = campaigns[0]!;
+    const { holdCampaign, settleEndedHolds } = await import("./campaign-billing.server");
+    await holdCampaign(db.client, c.orgId, c.id);
+    expect(await settleEndedHolds(db.client)).toEqual({ settled: 0, failed: 0 });
+    expect(campaignRow(db, c.id)["held_amount"]).toBe(2);
+  });
+});
