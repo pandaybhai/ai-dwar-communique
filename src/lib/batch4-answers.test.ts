@@ -253,8 +253,8 @@ describe("end to end through executeRun (the live replies, replayed)", () => {
     stubModel(`${LIVE_ANSWER} [2]\n{"needs_owner": false}`);
     const out = await run(runWorld({ chunks: [BADGES.split("\n").slice(2).join("\n")] }), "What is your return policy?", false);
     expect(out.output).not.toMatch(/\[\d\]|no questions|free maintenance|20-Day Free Returns/i);
-    // Nothing true was left to say: the run hands over, as any fully blocked reply does.
-    expect(out.status).toBe("escalated");
+    // Nothing true was left to say: filed for the merchant, never a hand-off (Batch 16).
+    expect(out.status).toBe("ok");
     expect(out.needsOwner).toBe(true);
   });
 
@@ -296,8 +296,9 @@ describe("end to end through executeRun (the live replies, replayed)", () => {
     const out = await run(runWorld({ chunks: ["Petal Band — handcrafted ring."] }), "price of petal band?", false);
     expect(out.output).toBe("Let me confirm that for you.");
     expect(out.needsOwner).toBe(true);
-    // Batch 5: nothing but the promise → the run hands over, so the promise is kept.
-    expect(out.status).toBe("escalated");
-    expect(out.escalationSignal).toBe("unsupported_number");
+    // Batch 16: nothing but the promise → filed for the merchant (whose
+    // answer reaches the customer), never a hand-off that silences Aiden.
+    expect(out.status).toBe("ok");
+    expect(out.escalationSignal ?? null).toBeNull();
   });
 });

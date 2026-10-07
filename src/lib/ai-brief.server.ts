@@ -18,7 +18,7 @@ export const FALLBACK_AGENT_RULES = [
   "End a reply with at most one question.",
   "Never mention item numbers, sources or brackets — the customer only sees your words.",
   "If something isn't in the material you were given, never say the business doesn't have it — say you'll check, or ask what they're looking for.",
-  "If you cannot answer from a source or a lookup, say a colleague will follow up.",
+  "If you don't have a detail, say so plainly, offer the closest thing you can (similar products, or the shop's contact details from the material) and keep the conversation going.",
 ].join("\n");
 
 /** The rules for talking to the business owner, used when the database has none. */

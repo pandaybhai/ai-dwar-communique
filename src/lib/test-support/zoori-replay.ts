@@ -723,6 +723,8 @@ export type Replay = {
   escalation: string | null;
   error?: string;
   gapFiled: boolean;
+  /** Batch 16: the run put the thread in front of a person (needs_human), silencing Aiden. */
+  handedOff?: boolean;
   /** What the model was told (system prompt), per call, for the checks. */
   systems: string[];
   toolsOffered: string[];
@@ -797,6 +799,7 @@ export function zooriWorld(c: Case) {
   let lastEmbedded = "";
   const runs: Row[] = [];
   let gapFiled = false;
+  let handedOff = false;
   const reply = (op: FakeOp) => {
     const t = op.table;
     if (t === "ai_agents") return { data: { id: "agent-zoori", mode: "replying" }, error: null };
@@ -819,6 +822,10 @@ export function zooriWorld(c: Case) {
         data: { ai_monthly_cap_amount: 100000, ai_cap_currency: "INR", ai_markup_multiplier: 3 },
         error: null,
       };
+    if (t === "conversations" && op.kind === "update" && (op.payload as Row | undefined)?.["needs_human"] === true) {
+      handedOff = true;
+      return { data: null, error: null };
+    }
     if (t === "conversations")
       return {
         data: {
@@ -970,6 +977,7 @@ export function zooriWorld(c: Case) {
       escalation: (run?.["escalation_signal"] as string | undefined) ?? null,
       ...(run?.["error"] ? { error: String(run["error"]) } : {}),
       gapFiled,
+      ...(handedOff ? { handedOff } : {}),
       systems,
       toolsOffered,
       ...((run?.["metadata"] as Record<string, unknown> | null)?.["tools"]

@@ -959,12 +959,42 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
    * page is counted before it is asked for, so parallel reads never go past
    * the limit (a paid attempt that fails still counts).
    */
+  /**
+   * Batch 16: on a re-read, a page only a browser can render is first
+   * checked for free — the price and title its raw HTML states (JSON-LD /
+   * Open Graph) against the product we saved for it. Unchanged: what we
+   * have stays and the paid reader is not asked. Anything else reads as before.
+   */
+  const keptUnchanged = new Set<string>();
+  const unchangedForFree = async (url: string): Promise<boolean> => {
+    if (!refreshing) return false;
+    try {
+      const { data } = await supabase
+        .from("products")
+        .select("title, price")
+        .eq("organization_id", organizationId)
+        .eq("product_url", url)
+        .limit(1)
+        .maybeSingle();
+      if (!data) return false;
+      const { fetchHtml, pageSignals, compareSignals } = await import("@/lib/price-check.server");
+      const html = await fetchHtml(url);
+      const signals = html ? await pageSignals(html, url) : null;
+      return compareSignals(signals, data as { title: string | null; price: number | null }) === "unchanged";
+    } catch {
+      return false;
+    }
+  };
   const readInRun = async (urls: string[], allowReader: boolean): Promise<Map<string, PageRead | null>> => {
     const own = await readPages(urls, { key, allowReader, ...readOpts, order: ["own"], ...(onStage ? { onStage } : {}) });
     if (!paidOrder.length) return own;
     for (const url of urls) {
       const first = own.get(url) ?? null;
       if (first && first.text.length >= MIN_MAIN_TEXT) continue;
+      if (await unchangedForFree(url)) {
+        keptUnchanged.add(url);
+        continue;
+      }
       if (paidPages >= paidCap) {
         paidCapped = true;
         continue;
@@ -1190,6 +1220,17 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
         return;
       }
       for (const url of batch) {
+        if (keptUnchanged.has(url)) {
+          // Unchanged by the free check: keep the page and product as saved;
+          // only its read time moves, so this refresh counts it as done.
+          await supabase
+            .from("knowledge_urls")
+            .update({ read_at: new Date().toISOString() })
+            .eq("source_id", sourceId)
+            .eq("url", url);
+          unchangedSkipped += 1;
+          continue;
+        }
         const page = pages.get(url) ?? null;
         if (page?.usedReader) readerCost += READER_COST;
         tally(page);

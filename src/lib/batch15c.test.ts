@@ -884,7 +884,8 @@ describe("(4b) no automatic website re-read unless platform_settings says so", (
 
   it("the merchant screen only promises a refresh while it is on; the migration adds one column, default off", () => {
     const api = readFileSync("src/routes/api/ai/knowledge.ts", "utf8");
-    expect(api).toMatch(/refresh_days: autoRefresh \?/);
+    // Batch 16: and only on a paid plan (trials re-read only when asked).
+    expect(api).toMatch(/refresh_days: autoRefresh && plan\.paid \?/);
     const screen = readFileSync("src/components/employee/knowledge-manager.tsx", "utf8");
     expect(screen).toMatch(/r\.auto_refresh !== false && r\.refresh_days > 0/);
     const sql = readFileSync(

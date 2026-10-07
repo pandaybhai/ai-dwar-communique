@@ -556,6 +556,56 @@ async function unsupportedPolicyClaims(
   }
 }
 
+/**
+ * Batch 16: when the policy check finds a claim the material doesn't support,
+ * the model is asked once to say the reply again without it — instead of
+ * code cutting the sentence out ("20-day no-questions returns hai" went and
+ * the reply began "Lekin…"). The reply's text parts (split at the product
+ * markers) are rewritten together, in one call, and come back in the same
+ * number. Null on any failure: the caller falls back to stripping.
+ */
+async function rewriteWithoutClaims(
+  supabase: SupabaseClient,
+  args: PolicyCheckWho & {
+    parts: string[];
+    claims: string[];
+    sources: string;
+    question: string;
+    prelude?: Promise<RunPrelude>;
+    deferUsage?: RunOptions["deferUsage"];
+  },
+): Promise<string[] | null> {
+  try {
+    const run = await executeRun(supabase, {
+      ...policyCheckRun(args),
+      metadata: { purpose: "policy_rewrite" },
+      ...(args.prelude ? { prelude: args.prelude } : {}),
+      ...(args.deferUsage ? { deferUsage: args.deferUsage } : {}),
+      system: [
+        "You edit a shop assistant's WhatsApp reply to a customer before it is sent.",
+        "Some claims in it are not supported by the shop's material. Rewrite the reply so it no longer makes those claims — not even in other words.",
+        "Where a removed claim answered the customer's question, say plainly that you don't have that detail right now. Keep everything else: the same language and script, tone, products, links and length. Never add a new fact, number, price, date or policy.",
+        'The reply is given as numbered parts. Answer with JSON only: {"parts": ["...", ...]} — the same number of parts, in order.',
+      ].join("\n"),
+      input:
+        `SHOP MATERIAL:\n${args.sources.slice(0, 16000)}\n\nCUSTOMER ASKED:\n${args.question.slice(0, 500)}\n\n` +
+        `UNSUPPORTED CLAIMS:\n${args.claims.map((c) => `- ${c}`).join("\n")}\n\n` +
+        `REPLY PARTS:\n${JSON.stringify(args.parts)}`,
+    });
+    if (run.status !== "ok" || !run.output.trim()) return null;
+    const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { parts?: unknown[] };
+    const parts = Array.isArray(parsed.parts) ? parsed.parts.map((p) => (typeof p === "string" ? p.trim() : null)) : [];
+    if (parts.length !== args.parts.length || parts.some((p) => p === null)) return null;
+    // A part that had words must still have words.
+    if (parts.some((p, i) => !p && args.parts[i]!.trim())) return null;
+    return parts as string[];
+  } catch (error) {
+    console.log("[policy-grounding] rewrite skipped", error instanceof Error ? error.message : "unknown");
+    return null;
+  }
+}
+
 export type RunResult = {
   runId: string | null;
   status: "ok" | "refused" | "escalated" | "capped" | "error";
@@ -1460,7 +1510,8 @@ function workspaceGatesApply(options: Pick<RunOptions, "channel" | "preview" | "
   // and must work whatever the workspace's AI mode is: off / draft / replying.
   const purpose = String((options.metadata as Record<string, unknown> | undefined)?.["purpose"] ?? "");
   const isKnowledgeReading =
-    options.billingExempt === true && (purpose.startsWith("knowledge_") || purpose === "policy_claim_check");
+    options.billingExempt === true &&
+    (purpose.startsWith("knowledge_") || purpose === "policy_claim_check" || purpose === "policy_rewrite");
   return !isMerchantOnboarding && !isAdminPreview && !isKnowledgeReading;
 }
 
@@ -2611,12 +2662,61 @@ export async function executeRun(
         })),
       ];
       if (unsupported.length > 0) {
+        result.needsOwner = true;
+        // Batch 16: the reply's own unsupported claims — ask the model once
+        // to say it again without them; the rewrite passes the same checks
+        // (numbers, times, policy) or today's stripping applies.
+        const replyUnsupported = unsupported.filter((u) => replyClaims.includes(u));
+        let rewritten = false;
+        if (replyUnsupported.length > 0) {
+          const textParts = result.output.split(PRODUCTS_MARK);
+          const attempt = await rewriteWithoutClaims(supabase, {
+            ...policyCheckWho,
+            parts: textParts,
+            claims: replyUnsupported,
+            sources: sourceText,
+            question: input,
+            ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
+            ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
+          });
+          let outcome = "failed";
+          if (attempt) {
+            const candidate = attempt.join(PRODUCTS_MARK);
+            const support = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts];
+            const guessed = [
+              ...unsupportedNumbers(candidate, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts]),
+              ...unsupportedTimeFacts(candidate, support),
+            ];
+            const again = policyClaimSentences(candidate);
+            const wordingAgain = again.length ? checkPolicyWording(again, sourceText) : { verbatim: [], unsupported: [], undecided: [] };
+            const stillUnsupported = [
+              ...wordingAgain.unsupported.map((u) => u.sentence),
+              ...(wordingAgain.undecided.length
+                ? await unsupportedPolicyClaims(supabase, {
+                    ...policyCheckWho,
+                    sentences: wordingAgain.undecided,
+                    sources: sourceText,
+                    ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
+                    ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
+                  })
+                : []),
+            ];
+            if (guessed.length === 0 && stillUnsupported.length === 0 && candidate.replace(PRODUCTS_MARK, "").trim()) {
+              result.output = candidate;
+              rewritten = true;
+              outcome = "rewritten";
+            } else {
+              outcome = "still_unsupported";
+            }
+          }
+          runMeta["policy_rewrite"] = { outcome, claims: replyUnsupported };
+          console.log("[policy-grounding] rewrite", organizationId, outcome);
+        }
         console.log("[policy-grounding] stripped", organizationId, unsupported.length);
         runMeta["policy_claims_stripped"] = unsupported;
-        if (unsupported.some((u) => replyClaims.includes(u))) result.output = stripSentences(result.output, unsupported);
+        if (!rewritten && replyUnsupported.length > 0) result.output = stripSentences(result.output, unsupported);
         for (const item of chosenMedia) item.caption = dropSentences(item.caption, (sentence) => unsupported.includes(sentence));
-        result.needsOwner = true;
-        policyStripped = true;
+        policyStripped = !rewritten || unsupported.length > replyUnsupported.length;
       }
     }
   }
@@ -2666,32 +2766,35 @@ export async function executeRun(
       priorFailedQuestions: options.priorFailedQuestions ?? [],
       customerLanguage: options.customerLanguage ?? null,
     });
-    // Nothing to answer from is no longer a reason to go quiet: the answer
-    // stands and the question is filed under Unanswered instead. Merchant
-    // handover rules and the other signals still hand the thread to a person.
-    if (signal === "no_source") {
-      result.needsOwner = true;
-    } else if (signal) {
+    // Not knowing is never a reason to go quiet (Batch 16): the answer
+    // stands and the question is filed for the merchant ("Aiden's questions
+    // for you"). Only a customer asking for a person, the merchant's own
+    // hand-over rule or a sensitive topic hands the thread to a person.
+    if (signal && isHandOffSignal(signal)) {
       result.status = "escalated";
       result.escalationSignal = signal;
+    } else if (signal) {
+      result.needsOwner = true;
+      runMeta["kept_talking"] = signal;
     }
   }
 
-  // ------------------------------------------ "let me confirm" = hand-over
+  // ------------------------------------------------- "let me confirm"
   // "Let me confirm that for you" promises that someone will come back. It
   // is added by the guards above (a stripped number or policy line) and by
-  // the model itself, but only a run that hands the thread to a person keeps
-  // that promise. Anywhere else it goes; the question is still filed under
-  // Unanswered (needsOwner, set above). A reply that was nothing but the
-  // promise becomes the hand-over it describes.
+  // the model itself. Next to anything else it goes; the question is still
+  // filed for the merchant (needsOwner, set above). A reply that was nothing
+  // but the promise goes as it is: the question is filed, and the merchant's
+  // answer to it reaches this customer — the thread is never handed over
+  // (and Aiden never silenced) for not knowing.
   if (task === "agent_reply" && result.status === "ok" && /let me confirm/i.test(result.output)) {
     const rest = withoutConfirmLine(result.output);
     if (rest) {
       runMeta["confirm_line_removed"] = true;
       result.output = rest;
     } else {
-      result.status = "escalated";
-      result.escalationSignal = numbersStripped ? "unsupported_number" : "no_source";
+      result.needsOwner = true;
+      runMeta["kept_talking"] = numbersStripped ? "unsupported_number" : "no_source";
     }
   }
 
@@ -3067,6 +3170,42 @@ export function unsupportedTimeFacts(answer: string, support: string[]): string[
   return out;
 }
 
+/**
+ * The only signals that hand a thread to a person (and so silence Aiden on
+ * it): the customer asked for one, the merchant's own hand-over rule, or a
+ * sensitive topic. A flow's Assign step hands over on its own (flow engine).
+ * Every other signal — nothing to answer from, a repeat, a failed lookup —
+ * keeps Aiden talking and files the question for the merchant.
+ */
+const HAND_OFF_SIGNALS = new Set(["asked_for_person", "merchant_rule", "sensitive_topic"]);
+
+export function isHandOffSignal(signal: string | null | undefined): boolean {
+  return Boolean(signal && HAND_OFF_SIGNALS.has(signal));
+}
+
+/**
+ * The customer asks to talk to a person (any business): "speak to a human",
+ * "can someone call me", "agent please", "kisi se baat karni hai". Asking
+ * whether a product suits a person is not asking for one.
+ */
+const PERSON_ASK = [
+  /\b(speak|talk|chat)(ing)?\s+(to|with)\s+(a\s+|an\s+|the\s+|some\s+|your\s+)?(human|person|real person|someone|somebody|agent|representative|executive|staff|team|owner|manager|support|customer care)\b/i,
+  /\b(human|real person|live agent|customer care|customer support|representative)\s*(please|pls|plz)?\s*$/i,
+  /\b(agent|human|person|executive)\s+(please|pls|plz)\b/i,
+  /\b(connect|transfer|put)\s+me\s+(to|with|through)\b/i,
+  /\b(can|could|will)\s+(someone|somebody|anyone|you)\s+(please\s+)?call\s+me\b/i,
+  /\bcall\s+me\s+(back|please|pls|asap|now)\b/i,
+  /\b(kisi|insaan|aadmi|owner|manager|staff)\s+se\s+baat\b/i,
+  /\bbaat\s+(karni|karna|karao|karwao|karwa\s+do|kara\s+do)\b/i,
+  /\b(mujhe\s+)?call\s+(karo|kariye|karna|kar\s+do|karein)\b/i,
+];
+
+export function asksForPerson(question: string): boolean {
+  const q = question.trim();
+  if (!q) return false;
+  return PERSON_ASK.some((re) => re.test(q));
+}
+
 /** Observable signals only — never the model's own opinion of its certainty. */
 export function decideEscalation(input: {
   question: string;
@@ -3085,6 +3224,9 @@ export function decideEscalation(input: {
 }): string | null {
   // Small talk is answerable on its own. Nothing below applies to "heya".
   if (isSmallTalk(input.question, input.customerLanguage ?? null)) return null;
+
+  // A customer who asks for a person gets one, whatever else happened.
+  if (asksForPerson(input.question)) return "asked_for_person";
 
   if (input.anyToolFailed) return "tool_failed";
 

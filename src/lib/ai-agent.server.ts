@@ -20,7 +20,7 @@ import {
   suggestReply,
   type AnswerReadsAhead,
 } from "@/lib/ai-tasks.server";
-import { startAnswerLookups, type ChosenProduct, type PreludeRead } from "@/lib/ai-run.server";
+import { isHandOffSignal, startAnswerLookups, type ChosenProduct, type PreludeRead } from "@/lib/ai-run.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
 import { sendServiceText } from "@/lib/service-text.server";
 import type { ReplyTimer } from "@/lib/reply-timing";
@@ -287,24 +287,37 @@ export async function runAgentOnInbound(
   const shouldSend =
     run.status === "ok" && (answer.length > 0 || Boolean(run.parts?.some((p) => p.kind === "products")));
 
+  // Not knowing never hands a chat over (Batch 16): a run that produced
+  // nothing to send without a hand-off signal (nothing to say, an error) is
+  // filed for the merchant and Aiden stays on for the next message. Only a
+  // customer asking for a person, the merchant's own rule or a sensitive
+  // topic (isHandOffSignal) — or a flow's Assign step — puts a person on it.
+  if (!shouldSend && !(run.status === "escalated" && isHandOffSignal(run.escalationSignal))) {
+    mark("held_back");
+    timing();
+    log("not_sent_kept_on", { conversation_id: args.conversationId, status: run.status, signal: run.escalationSignal ?? null });
+    if (run.status === "refused" || run.status === "escalated" || run.needsOwner) {
+      const { recordCustomerGap } = await import("@/lib/owner-replies.server");
+      const recorded = await recordCustomerGap(supabase, {
+        organizationId: args.organizationId,
+        conversationId: args.conversationId,
+        contactId: args.contactId,
+        question,
+        aiRunId: run.runId,
+      });
+      log("gap_filed", { conversation_id: args.conversationId, recorded });
+    }
+    return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
+  }
+
   if (!shouldSend) {
-    // The customer must never be left in silence. Say a person is coming,
-    // then put the thread in front of one.
-    const { defaultAgentId, handoverMessage, DEFAULT_HANDOVER_MESSAGE } = await import(
-      "@/lib/ai-tasks.server"
-    );
+    // The customer asked for a person (or the merchant's rule says so): say
+    // a person is coming, then put the thread in front of one.
+    const { defaultAgentId, handoverMessage } = await import("@/lib/ai-tasks.server");
     const { isServiceWindowOpen } = await import("@/lib/service-window");
     const agentId = (agentRow as { id?: string } | null)?.id
       ?? (await defaultAgentId(supabase, args.organizationId));
-    const configured = await handoverMessage(supabase, agentId);
-    // A missing number or a missing source is a "let me check", not a
-    // "let me help": the owner is about to be asked for the real answer.
-    const needsOwner =
-      run.escalationSignal === "unsupported_number" || run.escalationSignal === "no_source";
-    const text =
-      needsOwner && configured === DEFAULT_HANDOVER_MESSAGE
-        ? "Let me get someone from the team to confirm that — they'll reply here shortly."
-        : configured;
+    const text = await handoverMessage(supabase, agentId);
 
     const { data: convo } = await supabase
       .from("conversations")
@@ -358,9 +371,26 @@ export async function runAgentOnInbound(
       .eq("id", args.conversationId)
       .eq("organization_id", args.organizationId);
 
+    // A genuine hand-off: tell the staff (never the business's own number)
+    // and show the chat as "Waiting for you". Bookkeeping the reply doesn't wait on.
+    {
+      const alert = import("@/lib/handoff-alerts.server")
+        .then(({ sendHandoffAlert }) =>
+          sendHandoffAlert(supabase, {
+            organizationId: args.organizationId,
+            conversationId: args.conversationId,
+            reason: run.escalationSignal ?? run.status,
+            question,
+          }),
+        )
+        .catch(() => {});
+      if (args.later) args.later(alert);
+      else await alert;
+    }
+
     // File it under Unanswered. The owner is never messaged about a customer
     // question: they answer it from the dashboard whenever they like.
-    if (needsOwner || run.needsOwner) {
+    if (run.needsOwner) {
       const { recordCustomerGap } = await import("@/lib/owner-replies.server");
       const recorded = await recordCustomerGap(supabase, {
         organizationId: args.organizationId,
@@ -437,6 +467,7 @@ export async function runAgentOnInbound(
         ...(timer ? { timer } : {}),
         items: [{ ...item, metadata }],
         cards: withCard && item === cardItem,
+        ...(args.later ? { background: args.later } : {}),
         onFailure: (error) => log("picture_failed", { conversation_id: args.conversationId, error }),
       });
       if (shown > 0) {

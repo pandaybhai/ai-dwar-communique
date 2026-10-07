@@ -506,6 +506,16 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     // the budget, the words the customer typed are noise.
     const query = category && looksLikeSentence(rawQuery) ? "" : rawQuery;
 
+    // Batch 16 (flows "Show products", any direct call — not Aiden, whose
+    // shelf rule is below): a shelf is that shelf only. "%rings%" also
+    // matches "earrings"; the category must start at a word ("Rings", "Gold
+    // rings"), never inside another word. Fewer matches means fewer products
+    // sent — never another shelf topping them up. Read wider, then cut back.
+    const strictShelf = !keepUntaggedGender && Boolean(category);
+    const shelfWord = strictShelf ? new RegExp(`(^|[^\\p{L}\\p{N}])${category.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "iu") : null;
+    const onShelf = (rows: Array<Record<string, unknown>>) =>
+      shelfWord ? rows.filter((r) => shelfWord.test(String(r["category"] ?? ""))) : rows;
+
     const run = async (
       withQuery: string,
       withMaxPrice: number | null,
@@ -523,7 +533,7 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
         .eq("organization_id", ctx.organizationId)
         // Hidden products never reach a customer, whether searching or browsing.
         .eq("is_visible", true)
-        .limit(rowLimit);
+        .limit(strictShelf ? Math.max(rowLimit, 100) : rowLimit);
 
       if (withQuery) {
         const tsquery = toTsQuery(withQuery);
@@ -566,7 +576,8 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
 
       const { data, error } = await request;
       if (error) return { rows: null as Array<Record<string, unknown>> | null, error: error.message };
-      return { rows: (data ?? []) as Array<Record<string, unknown>>, error: null };
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      return { rows: strictShelf ? onShelf(rows).slice(0, rowLimit) : rows, error: null };
     };
 
     const sortRows = (rows: Array<Record<string, unknown>>, searched: boolean) => {
@@ -706,18 +717,16 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     return { ok: true, data: { queued: true, products, ...(skipped.length ? { skipped } : {}) } };
   },
 
+  /**
+   * The store integration's "search_products" tool is catalog_search (Batch
+   * 16): the older title-only search here ignored is_visible and could show a
+   * hidden product. One search, one set of rules — the tool name stays so
+   * workspaces offered it keep a product search.
+   */
   async searchProducts(ctx, args) {
     const query = str(args["query"]);
     if (!query) return { ok: false, error: "query is required." };
-    const limit = Math.min(Math.max(num(args["limit"], 5), 1), 20);
-    const safe = query.replace(/[%,()]/g, " ").trim();
-    const { data } = await ctx.supabase
-      .from("products")
-      .select("id, title, price, currency, status, product_url, image_url, description")
-      .eq("organization_id", ctx.organizationId)
-      .ilike("title", `%${safe}%`)
-      .limit(limit);
-    return { ok: true, data: data ?? [] };
+    return AI_TOOL_HANDLERS["catalogSearch"]!(ctx, { query, limit: Math.min(Math.max(num(args["limit"], 5), 1), 20) });
   },
 };
 

@@ -159,10 +159,11 @@ export function CoverageLine({ source, onAddAnswer }: { source: KnowledgeSource;
 }
 
 /**
- * "Next: 40 more pages tonight · refreshes every 7 days" — parts that don't
- * apply are hidden. The refresh part only while automatic re-reading is on
- * (platform_settings.knowledge_auto_refresh); otherwise a site is re-read
- * only when the merchant asks, and the screen never promises otherwise.
+ * "Next: 40 more pages tonight · changed pages re-read every 7 days" — parts
+ * that don't apply are hidden. The refresh part only while automatic
+ * re-reading is on (platform_settings.knowledge_auto_refresh) and the
+ * workspace is on a paid plan (Batch 16); a trial's site is re-read only when
+ * the merchant asks, and the screen never promises otherwise.
  */
 export function NextLine({ source }: { source: KnowledgeSource }) {
   const r = source.reading;
@@ -170,8 +171,10 @@ export function NextLine({ source }: { source: KnowledgeSource }) {
   const parts = [
     r.tonight > 0 ? `${nf(r.tonight)} more page${r.tonight === 1 ? "" : "s"} tonight` : null,
     r.auto_refresh !== false && r.refresh_days > 0
-      ? `refreshes every ${r.refresh_days} day${r.refresh_days === 1 ? "" : "s"}`
-      : null,
+      ? `changed pages re-read every ${r.refresh_days} day${r.refresh_days === 1 ? "" : "s"}`
+      : r.auto_refresh === true && r.paid === false
+        ? "re-read when you ask (automatic re-reading comes with a paid plan)"
+        : null,
   ].filter(Boolean);
   if (!parts.length) return null;
   return <p className="mt-0.5 text-xs text-muted-foreground">Next: {parts.join(" · ")}</p>;
@@ -1451,10 +1454,12 @@ export function UnansweredList({
     <section aria-labelledby="unanswered-heading" className="space-y-4">
       <div>
         <h2 id="unanswered-heading" className="text-lg font-semibold text-foreground">
-          Questions I couldn't answer
+          Aiden's questions for you
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Write the answer once. If the customer's chat is still open I'll send it straight away.
+          Customers asked these and I didn't have the detail — I kept the chat going and noted the
+          question here. Add the answer once: if the customer's chat is still open I'll send it
+          straight away, and I'll remember it for next time.
         </p>
       </div>
 
@@ -1493,7 +1498,7 @@ export function UnansweredList({
                   />
                   <Button size="sm" disabled={busy} onClick={() => void teach(gap)}>
                     {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Teach
+                    Add answer
                   </Button>
                   {gap.status === "pending" ? (
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => void dismiss(gap)}>

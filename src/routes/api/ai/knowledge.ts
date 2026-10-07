@@ -25,7 +25,8 @@ export const Route = createFileRoute("/api/ai/knowledge")({
         const canUse = await requirePermission(auth, "ai.use", "see what the AI knows");
         if (canUse) return canUse;
 
-        const configuring = action !== "list" && action !== "open" && action !== "gaps" && action !== "links";
+        const configuring =
+          action !== "list" && action !== "open" && action !== "gaps" && action !== "links" && action !== "price_reviews";
         if (configuring) {
           const denied = await requirePermission(auth, "ai.configure", "change what the AI knows");
           if (denied) return denied;
@@ -116,7 +117,8 @@ export const Route = createFileRoute("/api/ai/knowledge")({
                     tonight: plan.paid && reading.backfill_pages_per_day > 0 ? Math.min(unread, room, reading.backfill_pages_per_day) : 0,
                     // No scheduled re-read while automatic re-reading is off: the
                     // screen never promises one (0 hides "refreshes every N days").
-                    refresh_days: autoRefresh ? Number(r["refresh_days"] ?? 0) || reading.refresh_days : 0,
+                    // Batch 16: and never for a trial workspace (manual re-reads only).
+                    refresh_days: autoRefresh && plan.paid ? Number(r["refresh_days"] ?? 0) || reading.refresh_days : 0,
                     auto_refresh: autoRefresh,
                     can_read_more: unread > 0,
                     changes_available_at: last && Date.now() - last < cooldownMs ? new Date(last + cooldownMs).toISOString() : null,
@@ -518,6 +520,26 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               edited: true,
             });
             return Response.json(result);
+          }
+
+          // Batch 16: a product page whose price moved by more than half —
+          // the daily check never applies that on its own.
+          if (action === "price_reviews") {
+            const { priceReviews } = await import("@/lib/price-check.server");
+            return Response.json({ reviews: await priceReviews(auth.supabase, auth.organizationId) });
+          }
+          if (action === "resolve_price_review") {
+            const productId = String(payload["product_id"] ?? "");
+            if (!productId) return jsonError("Which product?");
+            const { resolvePriceReview } = await import("@/lib/price-check.server");
+            const apply = payload["apply"] === true;
+            const result = await resolvePriceReview(auth.supabase, auth.organizationId, productId, apply);
+            if (!result.ok) return jsonError(result.error ?? "Couldn't save that.", 400);
+            await logServerActivity(auth.supabase, auth.organizationId, auth.userId, "price_review_resolved", {
+              product_id: productId,
+              applied: apply,
+            });
+            return Response.json({ ok: true });
           }
 
           if (action === "gaps") {

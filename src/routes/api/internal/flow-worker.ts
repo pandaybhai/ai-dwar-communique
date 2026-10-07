@@ -518,9 +518,20 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
           noReply = { error: error instanceof Error ? error.message : String(error) };
         }
 
+        // Batch 16: one reminder for a chat still waiting on a person after
+        // 30 minutes, inside business hours. Isolated; never clears needs_human.
+        let handoffReminders: number | { error: string } = 0;
+        try {
+          const { remindWaitingHandoffs } = await import("@/lib/handoff-alerts.server");
+          handoffReminders = await remindWaitingHandoffs(supabase);
+        } catch (error) {
+          handoffReminders = { error: error instanceof Error ? error.message : String(error) };
+        }
+
         return Response.json({
           flow_runs: flowRuns,
           no_reply_triggers: noReply,
+          handoff_reminders: handoffReminders,
           claimed: batch.length,
           outcomes,
           cod_expired: codExpired,

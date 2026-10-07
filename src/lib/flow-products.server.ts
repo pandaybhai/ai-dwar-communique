@@ -99,6 +99,19 @@ export function withReadableName(row: Row): Row {
   return name ? { ...row, title: `${name} (${title})` } : row;
 }
 
+/**
+ * Batch 16: a product known only by a code ("ZLRG-0014") and with no photo
+ * tells a customer nothing — it is never sent. One with a photo, or a real
+ * name, still goes.
+ */
+export function sendable(rows: Row[]): Row[] {
+  return rows.filter((row) => {
+    const title = String(row["title"] ?? "").trim();
+    const sku = typeof row["sku"] === "string" ? row["sku"] : null;
+    return hasPhoto(row) || !isSkuLike(title, sku);
+  });
+}
+
 /** Rows → pictures (those with a picture) and plain lines (those without). */
 function split(rows: Row[], collect: (rows: Row[], into: RunMedia[]) => void): { pictures: RunMedia[]; plain: Row[] } {
   const pictures: RunMedia[] = [];
@@ -176,7 +189,7 @@ export async function showProducts(
   };
 
   const named = (list: Row[]) => (q.readableNames ? list.map(withReadableName) : list);
-  const found = Array.isArray(result.data) ? (result.data as Row[]) : [];
+  const found = sendable(Array.isArray(result.data) ? (result.data as Row[]) : []);
   const rows = named(extended(q) ? pickProducts(found, q) : found.slice(0, q.limit));
   if (rows.length > 0) {
     const shown = await send(rows);
@@ -185,7 +198,7 @@ export async function showProducts(
 
   // Nothing matches: say what does exist and what it really costs.
   const data = (result.data ?? {}) as { closest_above?: Row[]; lowest_price?: number | null };
-  const closest = named((data.closest_above ?? []).slice(0, Math.min(q.limit, 3)));
+  const closest = named(sendable(data.closest_above ?? []).slice(0, Math.min(q.limit, 3)));
   const lowest = typeof data.lowest_price === "number" ? data.lowest_price : null;
   if (closest.length === 0 || lowest === null) return { ok: true, found: false, shown: 0, error: null };
   const shelfWord = (shelf || q.category || "products").toLowerCase();

@@ -313,7 +313,9 @@ describe("(2) engine: Show products", () => {
     expect(w.has(search, "ilike", "category", "%pendants%")).toBe(true);
     expect(w.has(search, "lte", "price", 25000)).toBe(true);
     expect(filterArgs(search, "gte")).toEqual([]);
-    expect(w.has(search, "limit", 5)).toBe(true);
+    // Batch 16 (a): a shelf reads wider (100) and keeps only that shelf
+    // (word-start match: "rings" never "earrings"), then sends five at most.
+    expect(w.has(search, "limit", 100)).toBe(true);
 
     expect(sends).toEqual([
       { messaging_product: "whatsapp", to: "919800000001", type: "image", image: { link: RING_ROWS[0]!.image_url, caption: "Golden Petal — ₹19,604\nhttps://www.myzoori.com/product-detail/p1" } },
