@@ -699,3 +699,68 @@ describe("(6) older event flows: a send is never made (or charged) twice", () =>
     expect(String(w.row["error"])).toMatch(/interrupted/);
   });
 });
+
+// ------------------------------------------------------------------ (8)
+describe("(8) AI usage counters never lose a count", () => {
+  beforeEach(() => vi.resetModules());
+
+  async function usageDb(withRpc: boolean) {
+    const { MemoryDb } = await import("./test-support/campaign-memory-db");
+    const db = new MemoryDb();
+    // Every call yields, like a network round trip.
+    db.hook = async () => {
+      await new Promise((r) => setTimeout(r, Math.random() * 3));
+      return undefined;
+    };
+    if (withRpc) {
+      // ai_usage_add as in the migration: one statement, added in place.
+      db.rpcs.set("ai_usage_add", (a, d) => {
+        const row = d
+          .rows("ai_usage")
+          .find((r) => r["organization_id"] === a["p_org"] && r["usage_date"] === a["p_usage_date"] && r["task"] === a["p_task"]);
+        if (!row) {
+          d.insert("ai_usage", {
+            organization_id: a["p_org"],
+            usage_date: a["p_usage_date"],
+            task: a["p_task"],
+            runs: a["p_runs"],
+            input_tokens: a["p_input_tokens"],
+            output_tokens: a["p_output_tokens"],
+            cost_amount: a["p_cost_amount"],
+          });
+          return null;
+        }
+        row["runs"] = Number(row["runs"]) + Number(a["p_runs"]);
+        row["input_tokens"] = Number(row["input_tokens"]) + Number(a["p_input_tokens"]);
+        row["output_tokens"] = Number(row["output_tokens"]) + Number(a["p_output_tokens"]);
+        row["cost_amount"] = Number(row["cost_amount"]) + Number(a["p_cost_amount"]);
+        return null;
+      });
+    }
+    return db;
+  }
+
+  it("atomic counter: 20 workers metering at once add up to exactly 20 runs and their tokens", async () => {
+    const db = await usageDb(true);
+    const { meterAiUsage } = await import("./ai-run.server");
+    await Promise.all(
+      Array.from({ length: 20 }, () =>
+        meterAiUsage(db.client, "org-1", "embedding", { inputTokens: 100, costAmount: 0.5 }),
+      ),
+    );
+    const rows = db.rows("ai_usage");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ runs: 20, input_tokens: 2000, cost_amount: 10 });
+    // One call each, no read first.
+    expect(db.calls.filter((c) => c.table === "ai_usage")).toHaveLength(0);
+  });
+
+  it("before the migration: falls back to the old way, and stops asking for the function for a while", async () => {
+    const db = await usageDb(false);
+    const { meterAiUsage } = await import("./ai-run.server");
+    await meterAiUsage(db.client, "org-1", "website_read", { inputTokens: 10 });
+    await meterAiUsage(db.client, "org-1", "website_read", { inputTokens: 10 });
+    expect(db.rows("ai_usage")[0]).toMatchObject({ runs: 2, input_tokens: 20 });
+    expect(db.calls.filter((c) => c.rpc === "ai_usage_add")).toHaveLength(1);
+  });
+});
