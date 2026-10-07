@@ -1263,8 +1263,13 @@ async function advanceInner(
       }
       case "payment": {
         if (payWaiting) {
-          if (opts.paid) {
+          // A paid resume that was claimed but never finished (the process
+          // died): the sweeper's wake finishes it on the paid path, once.
+          const paidBefore = (vars["_paid_resume"] as { node?: string } | undefined)?.node === node.id;
+          if (opts.paid || (woke && paidBefore)) {
             opts.paid = false;
+            woke = false;
+            delete vars["_paid_resume"];
             vars["payment_status"] = "paid";
             run.status = "running";
             await logEvent(supabase, run, node.id, "paid");
@@ -1651,13 +1656,34 @@ export async function resumePaidRun(
     .maybeSingle();
   const run = data as Run | null;
   if (!run) return false;
-  if (!(await logEvent(supabase, run, args.nodeId, "payment_webhook", { link: args.paymentLinkId }, `${run.id}:${args.nodeId}:paid`))) return false;
   const graph = await loadGraph(supabase, run.version_id);
   if (!graph) return false;
-  run.variables = { ...run.variables, payment_id: args.paymentLinkId };
+  // The key is logged once per run and step. Logged already but the run is
+  // still waiting here with this same link's mark: an earlier resume of this
+  // payment died part-way, so this retry may finish it.
+  const mark = run.variables["_paid_resume"] as { node?: string; link?: string } | undefined;
+  const retry = mark?.node === args.nodeId && mark.link === args.paymentLinkId;
+  if (!(await logEvent(supabase, run, args.nodeId, "payment_webhook", { link: args.paymentLinkId }, `${run.id}:${args.nodeId}:paid`)) && !retry) return false;
+  // Exactly one resumer: the run moves from this wait to running with the
+  // mark saved. If this process dies, the 5-minute reclaim (claim_flow_runs)
+  // puts it back and the sweeper wakes it at wake_at, on the paid path.
+  run.variables = { ...run.variables, payment_id: args.paymentLinkId, _paid_resume: { node: args.nodeId, link: args.paymentLinkId } };
+  const { data: won } = await supabase
+    .from("flow_runs")
+    .update({ status: "running", claimed_at: new Date().toISOString(), wake_at: new Date(Date.now() + PAID_RESUME_RETRY_MS).toISOString(), variables: { ...run.variables } })
+    .eq("id", run.id)
+    .eq("status", "waiting")
+    .eq("waiting_for", "payment")
+    .eq("current_node_id", args.nodeId)
+    .select("id")
+    .maybeSingle();
+  if (!won) return false;
   await advance(supabase, run, graph, null, { paid: true });
   return true;
 }
+
+/** A claimed paid resume that dies is swept this long after its claim (the reclaim takes 5 minutes). */
+const PAID_RESUME_RETRY_MS = 5 * 60_000;
 
 /** STOP / opt-out anywhere: every active run for the contact ends. */
 export async function cancelRunsForContact(supabase: SupabaseClient, organizationId: string, contactId: string) {
