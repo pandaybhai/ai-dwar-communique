@@ -2114,23 +2114,6 @@ export async function holdCampaignSpend(
   return { ok: true };
 }
 
-/** Gives back whatever the campaign didn't use once it finishes. */
-export async function releaseCampaignHold(
-  supabase: SupabaseClient,
-  input: { organizationId: string; campaignId: string; amount: number },
-): Promise<void> {
-  if (input.amount <= 0) return;
-  await supabase.rpc("wallet_apply", {
-    p_org: input.organizationId,
-    p_type: "hold_release",
-    p_amount: input.amount,
-    p_ref_type: "campaign",
-    p_ref_id: input.campaignId,
-    p_description: "Unused campaign credits returned",
-    p_metadata: { campaign_id: input.campaignId },
-  });
-}
-
 // --------------------------------------------------------------- admin view
 
 export async function adminBillingOverview(supabase: SupabaseClient, actor: Actor) {

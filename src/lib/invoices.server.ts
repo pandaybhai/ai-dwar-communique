@@ -751,38 +751,6 @@ export async function markPaid(
   return { error: null };
 }
 
-/** A credit note against an issued invoice. The wallet refund is the caller's. */
-export async function createCreditNote(
-  supabase: SupabaseClient,
-  invoiceId: string,
-  lines: InvoiceLineInput[],
-  reason: string,
-  createdBy?: string | null,
-): Promise<{ invoice_id: string; invoice_number: string } | { error: string }> {
-  const { data: original } = await supabase
-    .from("invoices")
-    .select("id, organization_id, status, invoice_number")
-    .eq("id", invoiceId)
-    .maybeSingle();
-  if (!original) return { error: "That invoice no longer exists." };
-  if (!original["invoice_number"]) return { error: "You can only credit an issued invoice." };
-
-  const built = await buildInvoice(supabase, String(original["organization_id"]), {
-    kind: "credit_note",
-    purpose: "adjustment",
-    lines,
-    related_invoice_id: invoiceId,
-    notes: `Credit note against ${String(original["invoice_number"])} — ${reason}`,
-    negate: true,
-    created_by: createdBy ?? null,
-  });
-  if ("error" in built) return built;
-
-  const issued = await issueInvoice(supabase, built.invoice_id);
-  if ("error" in issued) return issued;
-  return { invoice_id: built.invoice_id, invoice_number: issued.invoice_number };
-}
-
 /** A quote, in its own PF series. Never a tax document. */
 export async function createProforma(
   supabase: SupabaseClient,
