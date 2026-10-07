@@ -577,3 +577,125 @@ describe("(5) a Razorpay event is never answered ok unless it was stored and han
     expect(res.status).toBe(500);
   });
 });
+
+// ------------------------------------------------------------------ (6)
+describe("(6) older event flows: a send is never made (or charged) twice", () => {
+  const MOCKED = [
+    "@/lib/whatsapp-webhook.server",
+    "@/lib/campaigns.server",
+    "@/lib/flows.server",
+    "@/lib/events.server",
+    "@/lib/cod.server",
+    "@/lib/flow-engine.server",
+    "@/lib/flow-triggers.server",
+  ];
+  const sends: unknown[] = [];
+  const order: string[] = [];
+  let client: unknown = null;
+  beforeEach(() => {
+    sends.length = 0;
+    order.length = 0;
+    vi.resetModules();
+    vi.stubEnv("CRON_SECRET", "cron");
+    vi.doMock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => client }));
+    vi.doMock("@/lib/campaigns.server", () => ({
+      loadSenderContext: async () => ({ accountId: "acc", wabaId: "waba", phoneNumberId: "pn", accessToken: "t" }),
+      sendCampaignTemplate: async (...a: unknown[]) => {
+        order.push("meta_send");
+        sends.push(a);
+        return { messageId: "m-new", error: null };
+      },
+    }));
+    vi.doMock("@/lib/flows.server", () => ({
+      messageClassOf: () => "transactional",
+      triggerStillValid: async () => ({ valid: true }),
+      stepGateAllows: async () => ({ allowed: true }),
+      optInAllows: () => ({ allowed: true }),
+      loadSendSettings: async () => ({}),
+      applyQuietHours: (now: Date) => now,
+      frequencyCapReached: async () => false,
+      flowLinkTarget: async () => null,
+      resolveFlowVariables: async () => ({}),
+      flowCarouselCards: async () => [],
+    }));
+    vi.doMock("@/lib/events.server", () => ({ emitEvent: async () => {} }));
+    vi.doMock("@/lib/cod.server", () => ({ noteCodAsk: async () => {}, expireCodConfirmations: async () => 0 }));
+    vi.doMock("@/lib/flow-engine.server", () => ({ tickRuns: async () => ({}) }));
+    vi.doMock("@/lib/flow-triggers.server", () => ({ dispatchNoReply: async () => ({}) }));
+  });
+  afterEach(() => {
+    for (const m of MOCKED) vi.doUnmock(m);
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  /** One claimed scheduled send, in the state a previous tick left it. */
+  function sendWorld(o: { error: string | null; priorMessage?: { id: string; status: string } | null }) {
+    const row: Record<string, unknown> = {
+      id: "ss-1",
+      organization_id: "org-1",
+      flow_id: "flow-1",
+      flow_step_id: "step-1",
+      contact_id: "c-1",
+      trigger_type: "order",
+      trigger_id: "o-1",
+      status: "scheduled",
+      error: o.error,
+      claimed_at: new Date().toISOString(),
+    };
+    const db = fakeDb(
+      (op) => {
+        if (op.table === "scheduled_sends" && op.kind === "update") {
+          const p = op.payload as Record<string, unknown>;
+          order.push(p["error"] === "send_started" ? "mark_started" : `finish:${String(p["status"])}`);
+          if (row["status"] === "scheduled") Object.assign(row, p);
+          return { data: null, error: null };
+        }
+        if (op.table === "scheduled_sends" && op.kind === "select") return { data: [], error: null };
+        if (op.table === "messages" && op.kind === "select") return { data: o.priorMessage ?? null, error: null };
+        if (op.table === "flows")
+          return { data: { id: "flow-1", key: "order_lifecycle", is_enabled: true, whatsapp_account_id: null, config: {} }, error: null };
+        if (op.table === "flow_steps")
+          return { data: { id: "step-1", step_order: 1, template_id: "tpl-1", condition: null, is_enabled: true }, error: null };
+        if (op.table === "contacts")
+          return { data: { id: "c-1", name: "Asha", phone: "+919800000001", opt_in_status: "opted_in" }, error: null };
+        if (op.table === "message_templates")
+          return { data: { name: "order_update", language: "en", category: "UTILITY", status: "APPROVED", components: [] }, error: null };
+        return undefined;
+      },
+      (call) => (call.name === "claim_scheduled_sends" ? { data: [{ ...row }], error: null } : undefined),
+    );
+    return { db, row };
+  }
+  async function tick() {
+    const { Route } = await import("../routes/api/internal/flow-worker");
+    const post = (Route.options as unknown as { server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } } }).server.handlers.POST;
+    return post({ request: new Request("http://x/api/internal/flow-worker", { method: "POST", headers: { "x-cron-secret": "cron" } }) });
+  }
+
+  it("a send is marked started before Meta is asked, and finished sent after", async () => {
+    const w = sendWorld({ error: null });
+    client = w.db.supabase;
+    await tick();
+    expect(order).toEqual(["mark_started", "meta_send", "finish:sent"]);
+    expect(w.row).toMatchObject({ status: "sent", error: null, message_id: "m-new" });
+  });
+
+  it("event-flow no double send: re-taken after a run died post-send, the message found → sent, never sent again", async () => {
+    const w = sendWorld({ error: "send_started", priorMessage: { id: "m-old", status: "pending" } });
+    client = w.db.supabase;
+    await tick();
+    expect(sends).toHaveLength(0);
+    expect(w.row).toMatchObject({ status: "sent", message_id: "m-old", error: null });
+  });
+
+  it("re-taken with no message on file → failed, never sent again (at most once)", async () => {
+    const w = sendWorld({ error: "send_started", priorMessage: null });
+    client = w.db.supabase;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await tick();
+    expect(sends).toHaveLength(0);
+    expect(w.row).toMatchObject({ status: "failed" });
+    expect(String(w.row["error"])).toMatch(/interrupted/);
+  });
+});
