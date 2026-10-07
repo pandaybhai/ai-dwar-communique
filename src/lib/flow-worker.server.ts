@@ -18,9 +18,15 @@ const CLAIM_LIMIT = 25;
  * a second time.
  */
 const SEND_STARTED = "send_started";
+/**
+ * pg_net drops the cron call at 120 s. A tick stops starting new work after
+ * this long and returns cleanly; whatever is left waits for the next minute.
+ */
+export const FLOW_WORKER_BUDGET_MS = 60_000;
 
 /** One flow-worker tick (the route checks the cron secret first). */
-export async function runFlowWorker(): Promise<Record<string, unknown>> {
+export async function runFlowWorker(deadlineAt: number = Date.now() + FLOW_WORKER_BUDGET_MS): Promise<Record<string, unknown>> {
+  const pastDeadline = () => Date.now() >= deadlineAt;
   const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
   const { loadSenderContext, sendCampaignTemplate } = await import("@/lib/campaigns.server");
   const { extractVariables, templateBodyText } = await import("@/lib/templates");
@@ -66,6 +72,15 @@ export async function runFlowWorker(): Promise<Record<string, unknown>> {
         });
       }
       outcomes.push({ id: send.id, status, ...patch });
+    };
+
+    // Out of time before Meta is asked: the claim is handed back (like a
+    // quiet-hours deferral) and the next tick sends it. Nothing was sent.
+    const releasedAtDeadline = async () => {
+      if (!pastDeadline()) return false;
+      await supabase.from("scheduled_sends").update({ claimed_at: null }).eq("id", send.id).eq("status", "scheduled");
+      outcomes.push({ id: send.id, status: "deferred", reason: "deadline" });
+      return true;
     };
 
     // Mark the send started (only while still scheduled) before Meta is asked.
@@ -278,6 +293,7 @@ export async function runFlowWorker(): Promise<Record<string, unknown>> {
         return;
       }
       const { sendFormMessage } = await import("@/lib/wa-forms.server");
+      if (await releasedAtDeadline()) return;
       await markStarted();
       const sentForm = await sendFormMessage(supabase, {
         organizationId: orgId,
@@ -367,6 +383,7 @@ export async function runFlowWorker(): Promise<Record<string, unknown>> {
         )
       : [];
 
+    if (await releasedAtDeadline()) return;
     await markStarted();
     const outcome = await sendCampaignTemplate(
       supabase,
@@ -542,13 +559,13 @@ export async function runFlowWorker(): Promise<Record<string, unknown>> {
 
   // Cash-on-delivery asks that got no answer within 24 hours.
   const { expireCodConfirmations } = await import("@/lib/cod.server");
-  const codExpired = await expireCodConfirmations(supabase);
+  const codExpired = pastDeadline() ? 0 : await expireCodConfirmations(supabase);
 
   // Flows v2 runs: due waits and reply timeouts. Isolated from the sends above.
   let flowRuns: Record<string, unknown> = {};
   try {
     const { tickRuns } = await import("@/lib/flow-engine.server");
-    flowRuns = await tickRuns(supabase);
+    flowRuns = await tickRuns(supabase, { deadlineAt });
   } catch (error) {
     flowRuns = { error: error instanceof Error ? error.message : String(error) };
   }
@@ -557,20 +574,23 @@ export async function runFlowWorker(): Promise<Record<string, unknown>> {
   let noReply: Record<string, unknown> = {};
   try {
     const { dispatchNoReply } = await import("@/lib/flow-triggers.server");
-    noReply = await dispatchNoReply(supabase);
+    noReply = await dispatchNoReply(supabase, { deadlineAt });
   } catch (error) {
     noReply = { error: error instanceof Error ? error.message : String(error) };
   }
 
   // Batch 16: one reminder for a chat still waiting on a person after
   // 30 minutes, inside business hours. Isolated; never clears needs_human.
-  let handoffReminders: number | { error: string } = 0;
+  let handoffReminders: number | { error: string } | "deferred" = 0;
   try {
     const { remindWaitingHandoffs } = await import("@/lib/handoff-alerts.server");
-    handoffReminders = await remindWaitingHandoffs(supabase);
+    handoffReminders = pastDeadline() ? "deferred" : await remindWaitingHandoffs(supabase);
   } catch (error) {
     handoffReminders = { error: error instanceof Error ? error.message : String(error) };
   }
+
+  if (pastDeadline())
+    console.warn(JSON.stringify({ scope: "flows", stage: "tick_deadline_reached", budget_ms: FLOW_WORKER_BUDGET_MS, claimed: batch.length }));
 
   return {
     flow_runs: flowRuns,

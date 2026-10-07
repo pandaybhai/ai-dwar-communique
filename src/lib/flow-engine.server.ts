@@ -476,7 +476,10 @@ async function activeRunFor(
 }
 
 /** Minute tick: due waits and reply timeouts, plus the 14-day age limit. */
-export async function tickRuns(supabase: SupabaseClient): Promise<{ processed: number; expired: number }> {
+export async function tickRuns(
+  supabase: SupabaseClient,
+  options: { deadlineAt?: number } = {},
+): Promise<{ processed: number; expired: number; deferred?: number }> {
   const cutoff = new Date(Date.now() - MAX_RUN_AGE_DAYS * 86_400_000).toISOString();
   const { data: old } = await supabase
     .from("flow_runs")
@@ -484,12 +487,28 @@ export async function tickRuns(supabase: SupabaseClient): Promise<{ processed: n
     .in("status", ["running", "waiting", "paused"])
     .lt("started_at", cutoff)
     .select("id");
+  // Past the worker's deadline nothing new is claimed; the next tick takes it.
+  const pastDeadline = () => options.deadlineAt != null && Date.now() >= options.deadlineAt;
+  if (pastDeadline()) return { processed: 0, expired: (old ?? []).length };
   // The claim moves each run to "running" (20261009_batch3_safety.sql), so a
   // reply arriving now can't take the same run; the run is advanced from the
   // wait it was claimed in.
   const { data: claimed } = await supabase.rpc("claim_flow_runs", { p_limit: 50 });
   const runs = (claimed ?? []) as Run[];
+  let processed = 0;
+  let deferred = 0;
   for (const run of runs) {
+    // Out of time: hand this claim straight back (only our own claim, still
+    // untouched) so the next tick advances it instead of the 5-minute reclaim.
+    if (pastDeadline()) {
+      const claimedAt = (run as Run & { claimed_at?: string | null }).claimed_at;
+      let putBack = supabase.from("flow_runs").update({ status: "waiting", claimed_at: null }).eq("id", run.id).eq("status", "running");
+      if (claimedAt) putBack = putBack.eq("claimed_at", claimedAt);
+      await putBack;
+      deferred += 1;
+      continue;
+    }
+    processed += 1;
     run.status = "waiting";
     try {
       const graph = await loadGraph(supabase, run.version_id);
@@ -502,7 +521,8 @@ export async function tickRuns(supabase: SupabaseClient): Promise<{ processed: n
       await failSafe(supabase, run, error);
     }
   }
-  return { processed: runs.length, expired: (old ?? []).length };
+  if (deferred > 0) console.warn("[flows-v2] tick deadline: runs handed back", JSON.stringify({ deferred, processed }));
+  return { processed, expired: (old ?? []).length, ...(deferred > 0 ? { deferred } : {}) };
 }
 
 export async function controlRun(
