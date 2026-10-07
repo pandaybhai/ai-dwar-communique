@@ -74,3 +74,5 @@ BEGIN
       rec.organization_id, rec.rows_archived, rec.were_visible, rec.null_sku;
   END LOOP;
 END $$;
+
+RESET lock_timeout;

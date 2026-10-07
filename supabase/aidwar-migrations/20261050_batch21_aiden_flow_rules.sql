@@ -14,3 +14,5 @@ SET lock_timeout = '5s';
 
 ALTER TABLE public.conversations
   ADD COLUMN IF NOT EXISTS aiden_flow_rules jsonb;
+
+RESET lock_timeout;
