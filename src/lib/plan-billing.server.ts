@@ -197,16 +197,9 @@ export async function invoicePlanFee(
   });
   if ("error" in built) {
     // Another run raised this period's invoice at the same moment (the
-    // plan_fee_invoice_period_uidx unique index refused ours).
+    // plan_fee_invoice_period_uidx unique index, 20261026, refused ours).
     const { data: raced } = await periodInvoices();
     return { error: raced?.length ? "already_invoiced" : built.error };
-  }
-  // Until that index is applied two runs can both get here: the oldest
-  // invoice stands and a later draft removes itself before it is numbered.
-  const { data: rivals, error: rivalsError } = await periodInvoices();
-  if (rivalsError || (rivals?.[0] && rivals[0].id !== built.invoice_id)) {
-    await supabase.from("invoices").delete().eq("id", built.invoice_id).eq("status", "draft");
-    return { error: rivalsError ? rivalsError.message : "already_invoiced" };
   }
 
   // Number and file it first, then attach the payment link, then send the

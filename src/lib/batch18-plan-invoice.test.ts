@@ -106,7 +106,10 @@ const db = () =>
 const period = { start: "2026-11-01", end: "2026-11-30" };
 
 describe("(7) one plan-fee invoice per workspace per period", () => {
-  it("duplicate plan-fee invoice: two runs at once raise one (before the unique index)", async () => {
+  it("duplicate plan-fee invoice: two runs at once raise one (the unique index, 20261026, refuses the second)", async () => {
+    // 20261026_plan_fee_invoice_unique.sql is applied live (Batch 20 item 10):
+    // the index, not a check in code, keeps one invoice per period.
+    h.uniqueIndex = true;
     const d = db();
     // Run A has read "nothing invoiced" and is building; run B reads, builds
     // and issues meanwhile; then A goes on. Both passed the read before either
