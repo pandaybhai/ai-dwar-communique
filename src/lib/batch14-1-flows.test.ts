@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { memoryDb } from "./test-support/memory-db";
-import { PRODUCTS } from "./test-support/zoori-replay";
+import { ORG_ROW, PRODUCTS } from "./test-support/zoori-replay";
 
 /**
  * Batch 14.1 — the flows "Show products" step must send exactly what it sent
@@ -45,6 +45,23 @@ const BUDGETS: Array<{ minPrice: number | null; maxPrice: number | null }> = [
   { minPrice: null, maxPrice: 5000 },
 ];
 
+/**
+ * The only queries allowed to differ from main, each with its reason.
+ *
+ * Batch 20 (an unknown category is never silently dropped): "Nose pins" is
+ * not a category in Zoori's catalogue. On main, with a budget, its words were
+ * dropped and every product in the budget went out in its place (rings,
+ * tanmaniya) — under 5,000 the step even said "our nose pins start at
+ * ₹18,016" and sent three rings. Now nothing is sent and the step takes its
+ * "None match" path. Without a budget main already sent nothing (unchanged).
+ */
+const ALLOWED: Array<{ key: string; why: string }> = ["-20000", "-50000", "30000-", "20000-50000", "-5000"].map(
+  (budget) => ({
+    key: `Nose pins | ${budget}`,
+    why: "a category the shop doesn't have is no longer swapped for other products (None match path)",
+  }),
+);
+
 async function runAll(): Promise<Record<string, unknown>> {
   const { showProducts } = await import("./flow-products.server");
   const out: Record<string, unknown> = {};
@@ -59,7 +76,7 @@ async function runAll(): Promise<Record<string, unknown>> {
         }
         throw new Error(`unexpected fetch ${String(url)}`);
       });
-      const db = memoryDb({ products: PRODUCTS });
+      const db = memoryDb({ products: PRODUCTS, organizations: [ORG_ROW] });
       const result = await showProducts(db.supabase, {
         organizationId: String(PRODUCTS[0]!["organization_id"]),
         contactId: "c1",
@@ -94,7 +111,15 @@ describe("flows 'Show products' is byte-identical to main", () => {
     }
     expect(existsSync(FILE)).toBe(true);
     const main = readFileSync(FILE, "utf8");
-    expect(`${JSON.stringify(now, null, 2)}\n`).toBe(main);
+    const recordedAll = JSON.parse(main) as Record<string, unknown>;
+    // Every other query byte for byte; the ALLOWED ones send nothing now.
+    const strip = (all: Record<string, unknown>) =>
+      Object.fromEntries(Object.entries(all).filter(([k]) => !ALLOWED.some((a) => a.key === k)));
+    expect(`${JSON.stringify(strip(now), null, 2)}\n`).toBe(`${JSON.stringify(strip(recordedAll), null, 2)}\n`);
+    for (const a of ALLOWED) {
+      expect(recordedAll[a.key]).toBeDefined();
+      expect(now[a.key]).toEqual({ result: { ok: true, found: false, shown: 0, error: null }, sent: [] });
+    }
     // The matrix really exercises the cases the gender/shelf rules touch.
     const recorded = JSON.parse(main) as Record<string, { sent: unknown[] }>;
     expect(JSON.stringify(recorded["rings | -"]!.sent)).toMatch(/Gilded Chevron/);

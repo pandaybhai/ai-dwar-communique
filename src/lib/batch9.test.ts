@@ -397,8 +397,10 @@ describe("unchanged: Aiden's product answers", () => {
     expect(out.ok).toBe(true);
     expect(out.found).toBe(true);
     expect(JSON.stringify(out.data)).toContain("https://x.in/p1.jpg");
-    const search = db.ops.find((o) => o.table === "products")!;
+    // The first products read is the shop's category list (Batch 20); then the search.
+    const search = db.ops.find((o) => o.table === "products" && o.select?.[0] !== "category")!;
     expect(db.has(search, "eq", "is_visible", true)).toBe(true);
+    expect(db.has(search, "in", "category", ["pendants"])).toBe(true);
     expect(db.has(search, "lte", "price", 25000)).toBe(true);
     expect(productCaption({ title: "Golden Petal", imageUrl: "https://x.in/p1.jpg", price: 19603.91, currency: "INR", productUrl: "https://x.in/p/p1" })).toBe("Golden Petal — ₹19,604");
   });

@@ -35,6 +35,24 @@ export const INSTRUCTIONS = {
     'Never quote a price, delivery time, resizing cost, making charge, EMI, exchange or offer that isn\'t on the website or in your notes — say "let me confirm that for you" and keep helping with the rest. Never promise same-day delivery. Never discuss competitors or other jewellers.',
 };
 
+/**
+ * Zoori's own words for its categories (organizations.branding.category_words),
+ * exactly as supabase/aidwar-migrations/20261052_zoori_category_words.sql
+ * saves them — the words Aiden's search used to carry as a fixed jewellery
+ * list in shared code (Batch 20).
+ */
+export const CATEGORY_WORDS: Record<string, string[]> = {
+  tanmaniya: ["mangalsutra", "mangal sutra", "tanmania"],
+  pendants: ["pendent", "locket"],
+  earrings: ["ear ring", "jhumka", "jhumki", "stud", "bali"],
+  bracelets: ["kada", "kadha"],
+  necklaces: ["haar", "set"],
+  rings: ["anguthi", "band"],
+};
+
+/** Zoori's organizations row as product search reads it. */
+export const ORG_ROW: Row = { id: ORG, branding: { category_words: CATEGORY_WORDS } };
+
 const IMG = "https://myzoori.com/storage/images/products";
 const product = (
   r: Partial<Row> & { id: string; title: string; price: number },
@@ -794,7 +812,7 @@ export function zooriWorld(c: Case) {
     meta_message_id: "wamid.ask",
     created_at: at(99),
   });
-  const mem = memoryDb({ products: PRODUCTS, messages });
+  const mem = memoryDb({ products: PRODUCTS, messages, organizations: [ORG_ROW] });
 
   let lastEmbedded = "";
   const runs: Row[] = [];
@@ -886,7 +904,7 @@ export function zooriWorld(c: Case) {
       return { data: 0, error: null };
     return undefined;
   });
-  const MEMORY = new Set(["products", "messages"]);
+  const MEMORY = new Set(["products", "messages", "organizations"]);
   const supabase = {
     from: (t: string) => (MEMORY.has(t) ? mem.supabase.from(t) : fake.supabase.from(t)),
     rpc: (n: string, a: Record<string, unknown>) => fake.supabase.rpc(n, a),

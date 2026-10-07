@@ -33,8 +33,18 @@ const SHAPE_WORDS =
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
-/** "₹19,604" — whole rupees, Indian grouping. Null when there is no real price. */
-export function rupees(value: unknown, currency: unknown = "INR"): string | null {
+/** The product's currency code; a product saved without one is in the platform's default, INR. */
+export function currencyOf(currency: unknown): string {
+  return typeof currency === "string" && /^[A-Z]{3}$/.test(currency.trim().toUpperCase())
+    ? currency.trim().toUpperCase()
+    : "INR";
+}
+
+/**
+ * A price in whole units of the product's own currency: "₹19,604" (Indian
+ * grouping for rupees), "$1,250", "€89". Null when there is no real price.
+ */
+export function formatPrice(value: unknown, currency: unknown = "INR"): string | null {
   const n =
     typeof value === "number"
       ? value
@@ -42,13 +52,21 @@ export function rupees(value: unknown, currency: unknown = "INR"): string | null
         ? Number(value)
         : NaN;
   if (!Number.isFinite(n) || n <= 0) return null;
-  const code = typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? currency : "INR";
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: code,
-    maximumFractionDigits: 0,
-  }).format(Math.round(n));
+  const code = currencyOf(currency);
+  try {
+    return new Intl.NumberFormat(code === "INR" ? "en-IN" : "en-US", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
+    }).format(Math.round(n));
+  } catch {
+    return `${code} ${new Intl.NumberFormat("en-US").format(Math.round(n))}`;
+  }
 }
+
+/** The older name for formatPrice, kept for existing callers. */
+export const rupees = formatPrice;
 
 /** "ZERN-0188", "ZLRG - 0001": a code, not a name a customer can read. */
 export function isSkuLike(title: string, sku?: string | null): boolean {

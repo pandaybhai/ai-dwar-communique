@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RunMedia } from "@/lib/ai-run.server";
 import type { productQueryOf } from "@/lib/flow-graph";
 import type { ReplyTimer } from "@/lib/reply-timing";
-import { isSkuLike, readableName } from "@/lib/product-facts";
+import { formatPrice, isSkuLike, readableName } from "@/lib/product-facts";
 
 /**
  * Flows v2 "Show products": no AI. The workspace's own products are searched
@@ -21,13 +21,14 @@ export type ProductQuery = ReturnType<typeof productQueryOf>;
 
 type Row = Record<string, unknown>;
 
-const money = (n: number) => `₹${new Intl.NumberFormat("en-IN").format(Math.floor(n))}`;
+/** A whole-unit price in the products' own currency ("₹25,000", "$1,250"). */
+const money = (n: number, currency: unknown = "INR") => formatPrice(Math.floor(n), currency) ?? String(Math.floor(n));
 
-/** "under ₹25,000", "between ₹25,000 and ₹50,000", "from ₹1,00,000", or "". */
-export function budgetWords(q: Pick<ProductQuery, "minPrice" | "maxPrice">): string {
-  if (q.minPrice !== null && q.maxPrice !== null) return `between ${money(q.minPrice)} and ${money(q.maxPrice)}`;
-  if (q.maxPrice !== null) return `under ${money(q.maxPrice)}`;
-  if (q.minPrice !== null) return `from ${money(q.minPrice)}`;
+/** "under ₹25,000", "between ₹25,000 and ₹50,000", "from ₹1,00,000", or "" — in the products' currency. */
+export function budgetWords(q: Pick<ProductQuery, "minPrice" | "maxPrice">, currency: unknown = "INR"): string {
+  if (q.minPrice !== null && q.maxPrice !== null) return `between ${money(q.minPrice, currency)} and ${money(q.maxPrice, currency)}`;
+  if (q.maxPrice !== null) return `under ${money(q.maxPrice, currency)}`;
+  if (q.minPrice !== null) return `from ${money(q.minPrice, currency)}`;
   return "";
 }
 
@@ -123,7 +124,7 @@ function split(rows: Row[], collect: (rows: Row[], into: RunMedia[]) => void): {
 function plainLine(row: Row): string {
   const price = Number(row["price"]);
   const url = typeof row["product_url"] === "string" ? row["product_url"] : "";
-  return `${String(row["title"]).trim()}${Number.isFinite(price) && price > 0 ? ` — ${money(price)}` : ""}${url ? `\n${url}` : ""}`;
+  return `${String(row["title"]).trim()}${Number.isFinite(price) && price > 0 ? ` — ${money(price, row["currency"])}` : ""}${url ? `\n${url}` : ""}`;
 }
 
 export async function showProducts(
@@ -141,17 +142,24 @@ export async function showProducts(
     query: ProductQuery;
   },
 ): Promise<{ ok: boolean; found: boolean; shown: number; error: string | null }> {
-  const { AI_TOOL_HANDLERS, canonCategory } = await import("@/lib/ai-tools.server");
+  const { AI_TOOL_HANDLERS } = await import("@/lib/ai-tools.server");
+  const { resolveShelf } = await import("@/lib/shop-categories");
+  const { loadShopVocabulary } = await import("@/lib/shop-categories.server");
   const { collectProductMedia } = await import("@/lib/ai-run.server");
   const { enabledFlags } = await import("@/lib/feature-flags.server");
   const { sendProductPictures } = await import("@/lib/product-pictures.server");
   const { sendServiceText } = await import("@/lib/service-text.server");
 
   const q = args.query;
-  const shelf = canonCategory(q.category);
+  // A shelf is one of this shop's own categories (or a word its settings
+  // give for one); any other word is searched for by name — and, being the
+  // kind of product asked for, never swapped for other products.
+  const vocab = q.category ? await loadShopVocabulary(supabase, args.organizationId) : null;
+  const shelf = vocab ? (resolveShelf(q.category, vocab)?.name ?? "") : "";
+  const search = searchArgs(q, shelf);
   const result = await AI_TOOL_HANDLERS["catalogSearch"]!(
     { supabase, organizationId: args.organizationId, actorUserId: null, initiatedBy: "ai" },
-    searchArgs(q, shelf),
+    !shelf && search["query"] ? { ...search, query_is_category: true } : search,
   );
   if (!result.ok) return { ok: false, found: false, shown: 0, error: result.error ?? "product_search_failed" };
 
@@ -205,10 +213,11 @@ export async function showProducts(
   // The keyword was searched for too, so it is part of what we don't have.
   const keywords = (q.keyword ?? "").split(/,|\/|\bor\b|\|/).map((k) => k.trim().toLowerCase()).filter(Boolean);
   const word = keywords.length ? `${keywords.join(" or ")} ${shelfWord}` : shelfWord;
-  const budget = budgetWords(q);
+  const currency = closest.find((r) => typeof r["currency"] === "string" && r["currency"])?.["currency"];
+  const budget = budgetWords(q, currency);
   const intro = await sendServiceText(supabase, {
     ...sender,
-    body: `We don't have ${word}${budget ? ` ${budget}` : ""} right now — our ${word} start at ${money(lowest)}. Here ${closest.length === 1 ? "is the closest one" : "are the closest ones"}:`,
+    body: `We don't have ${word}${budget ? ` ${budget}` : ""} right now — our ${word} start at ${money(lowest, currency)}. Here ${closest.length === 1 ? "is the closest one" : "are the closest ones"}:`,
     metadata: args.metadata,
   });
   if (!intro.ok) return { ok: false, found: false, shown: 0, error: intro.error ?? "send_failed" };

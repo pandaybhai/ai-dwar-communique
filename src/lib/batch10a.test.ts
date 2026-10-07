@@ -148,7 +148,10 @@ const events = (w: { ops: FakeOp[] }) =>
 const runUpdates = (w: { ops: FakeOp[] }) => w.ops.filter((o) => o.table === "flow_runs" && o.kind === "update").map((o) => o.payload as Record<string, unknown>);
 const TO = "919800000001";
 /** Reads of organizations.branding (the Cards page switch or card branding). */
-const readsSwitch = (w: { ops: FakeOp[] }) => w.ops.some((o) => o.table === "organizations" && JSON.stringify(o.select ?? []).includes("branding"));
+// The product-cards switch (branding.product_cards_in_answers); reading only a
+// shop's category words (Batch 20, product search) is not reading the switch.
+const readsSwitch = (w: { ops: FakeOp[] }) =>
+  w.ops.some((o) => o.table === "organizations" && JSON.stringify(o.select ?? []).includes("branding") && !JSON.stringify(o.select ?? []).includes("category_words"));
 
 // ------------------------------------------------------------------ graph + editor
 
