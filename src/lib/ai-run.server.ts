@@ -15,6 +15,7 @@
  *     degrading to a worse answer.
  */
 
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   brokerTools,
@@ -1086,7 +1087,7 @@ async function callChatCompletions(
       function: { name: t.name, description: t.description, parameters: t.parameters },
     }));
   }
-  const res = await fetch(`${base}/chat/completions`, {
+  const res = await outsideFetch("ai", `${base}/chat/completions`, {
     method: "POST",
     headers: gatewayHeaders(key, direct),
     body: JSON.stringify(body),
@@ -1142,11 +1143,13 @@ async function callResponses(
       strict: false,
     }));
   }
-  const res = await fetch(`${base}/responses`, {
-    method: "POST",
-    headers: gatewayHeaders(key, direct),
-    body: JSON.stringify(body),
-  });
+  // Silence (not total time) is what gives up here: these models think for minutes.
+  const res = await outsideFetch(
+    "ai_stream",
+    `${base}/responses`,
+    { method: "POST", headers: gatewayHeaders(key, direct), body: JSON.stringify(body) },
+    { idle: true },
+  );
   if (!res.ok || !res.body) {
     const text = res.ok ? "" : await res.text();
     throw new ProviderHttpError(gatewayErrorMessage(res.status, text), res.status, text);
@@ -1454,7 +1457,7 @@ async function embedBatch(
   let failure: unknown = null;
   if (key) {
     try {
-      const res = await fetch(`${GATEWAY}/embeddings`, {
+      const res = await outsideFetch("embeddings", `${GATEWAY}/embeddings`, {
         method: "POST",
         headers: gatewayHeaders(key),
         body: JSON.stringify({ model: EMBEDDING_MODEL, input: batch }),
@@ -1472,7 +1475,7 @@ async function embedBatch(
   } else {
     openAiKey = await backupKey();
   }
-  const res = await fetch(`${DIRECT_ENDPOINTS["openai"]}/embeddings`, {
+  const res = await outsideFetch("embeddings", `${DIRECT_ENDPOINTS["openai"]}/embeddings`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
     body: JSON.stringify({ model: wireModel("openai", EMBEDDING_MODEL), input: batch }),

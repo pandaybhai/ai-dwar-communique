@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServiceClient } from "@/lib/whatsapp-webhook.server";
 
@@ -110,7 +111,7 @@ export async function graphFetch(
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`);
   for (const [k, v] of Object.entries(init.query ?? {})) url.searchParams.set(k, v);
 
-  const res = await fetch(url.toString(), {
+  const res = await outsideFetch("meta", url.toString(), {
     method: init.method ?? "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -211,7 +212,7 @@ export async function debugToken(inputToken: string): Promise<TokenInfo> {
     const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/debug_token`);
     url.searchParams.set("input_token", inputToken);
     url.searchParams.set("access_token", `${appId}|${appSecret}`);
-    const res = await fetch(url.toString());
+    const res = await outsideFetch("meta", url.toString());
     const body = (await res.json()) as Record<string, unknown>;
     if (!res.ok) {
       return {

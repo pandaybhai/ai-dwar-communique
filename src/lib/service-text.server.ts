@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isServiceWindowOpen } from "@/lib/service-window";
 import { timed, type ReplyTimer } from "@/lib/reply-timing";
@@ -37,7 +38,7 @@ async function sendGraph(
 ): Promise<{ res: Response; json: AnyRecord }> {
   args.timer?.mark("send_start");
   return timed(args.timer, "send_api", async () => {
-    const res = await fetch(`https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
+    const res = await outsideFetch("meta", `https://graph.facebook.com/v25.0/${args.phoneNumberId}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${args.accessToken}`,

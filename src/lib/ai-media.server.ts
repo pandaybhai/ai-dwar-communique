@@ -6,6 +6,7 @@
  * understands, and every call is metered on the workspace like a reader call.
  */
 
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** ₹ per transcription call — the same order as the website reader. */
@@ -20,13 +21,13 @@ export async function fetchMetaMedia(
   maxBytes = 8 * 1024 * 1024,
 ): Promise<{ bytes: Uint8Array; mime: string | null } | null> {
   const { GRAPH_VERSION } = await import("@/lib/whatsapp-api.server");
-  const lookup = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+  const lookup = await outsideFetch("meta", `https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   const body = (await lookup.json().catch(() => ({}))) as Record<string, unknown>;
   const url = body["url"] as string | undefined;
   if (!lookup.ok || !url) return null;
-  const file = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const file = await outsideFetch("meta_media", url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!file.ok) return null;
   const buffer = await file.arrayBuffer();
   if (buffer.byteLength > maxBytes) return null;
@@ -99,7 +100,7 @@ export async function transcribeAudio(
         new Blob([bytes as unknown as ArrayBuffer], { type: mime ?? "audio/ogg" }),
         `voice.${audioExtension(mime)}`,
       );
-      const res = await fetch(`${attempt.base}/audio/transcriptions`, {
+      const res = await outsideFetch("transcription", `${attempt.base}/audio/transcriptions`, {
         method: "POST",
         headers: attempt.headers,
         body: form,
