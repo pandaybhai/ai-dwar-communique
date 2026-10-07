@@ -6,14 +6,13 @@ import { activeFlowRules, followingLabel, type AidenFlowRules } from "@/lib/aide
 
 /**
  * Batch 21: "Aiden is following: <flow name> rules" in the chat header while
- * a flow's Hand-to-Aiden Behaviour / Rules apply to this chat. Read with *
- * so nothing breaks before the column's migration is applied.
+ * a flow's Hand-to-Aiden Behaviour / Rules apply to this chat.
  */
 export function AidenRulesBadge({ conversationId }: { conversationId: string }) {
   const [rules, setRules] = useState<AidenFlowRules | null>(null);
 
   const load = useCallback(async () => {
-    const { data } = await aidwar.from("conversations").select("*").eq("id", conversationId).maybeSingle();
+    const { data } = await aidwar.from("conversations").select("aiden_flow_rules").eq("id", conversationId).maybeSingle();
     setRules(activeFlowRules((data as { aiden_flow_rules?: unknown } | null)?.aiden_flow_rules));
   }, [conversationId]);
 

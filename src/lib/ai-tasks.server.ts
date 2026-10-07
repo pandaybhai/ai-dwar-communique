@@ -35,9 +35,7 @@ export async function conversationTurns(
   const [{ data: convo }, { data: rows }] = await Promise.all([
     supabase
       .from("conversations")
-      // "*": aiden_flow_rules comes along once its migration is applied, and
-      // nothing breaks before.
-      .select("*, contacts(name)")
+      .select("contact_id, aiden_flow_rules, contacts(name)")
       .eq("id", conversationId)
       .eq("organization_id", organizationId)
       .maybeSingle(),

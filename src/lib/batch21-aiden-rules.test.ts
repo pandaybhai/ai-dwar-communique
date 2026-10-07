@@ -118,12 +118,12 @@ describe("item 2 — the engine stores them on the chat", () => {
     expect(db.rows("conversations").find((r) => r["id"] === "cv1")!["aiden_flow_rules"]).toBeNull();
   });
 
-  it("only this workspace's chat; a missing column (migration not applied) never throws", async () => {
+  it("only this workspace's chat; a failed write never throws", async () => {
     const { setAidenFlowRules } = await import("./flow-engine.server");
     const db = world();
     await setAidenFlowRules(db.supabase, { id: "run1", flow_id: "f1", organization_id: "o1", conversation_id: "cv2" }, { rules: "x" });
     expect(db.rows("conversations").find((r) => r["id"] === "cv2")!["aiden_flow_rules"]).toBeNull();
-    const broken = fakeDb((op) => (op.table === "conversations" ? { data: null, error: { code: "PGRST204", message: "column aiden_flow_rules does not exist" } } : undefined));
+    const broken = fakeDb((op) => (op.table === "conversations" ? { data: null, error: { message: "timeout" } } : undefined));
     await expect(setAidenFlowRules(broken.supabase, { id: "r", flow_id: "f1", organization_id: "o1", conversation_id: "cv1" }, { rules: "x" })).resolves.toBeUndefined();
   });
 
@@ -156,11 +156,11 @@ describe("item 2 — Aiden's answer", () => {
       return undefined;
     });
 
-  it("reads the chat with * (no named column that could break before the migration)", async () => {
+  it("reads the chat's contact and aiden_flow_rules by name", async () => {
     const { conversationTurns } = await import("./ai-tasks.server");
     const db = chatDb({});
     await conversationTurns(db.supabase, "o1", "cv1");
-    expect(db.ops.find((o) => o.table === "conversations")!.select).toEqual(["*, contacts(name)"]);
+    expect(db.ops.find((o) => o.table === "conversations")!.select).toEqual(["contact_id, aiden_flow_rules, contacts(name)"]);
   });
 
   it("with rules in force they follow the workspace's instructions in the system prompt", async () => {
