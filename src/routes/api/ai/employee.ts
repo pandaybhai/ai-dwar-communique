@@ -36,6 +36,7 @@ export const Route = createFileRoute("/api/ai/employee")({
           "save_skill",
           "add_skill",
           "delete_skill",
+          "save_handoff_alerts",
         ].includes(action);
 
         if (needsConfigure) {
@@ -385,6 +386,43 @@ export const Route = createFileRoute("/api/ai/employee")({
             }
             await logServerActivity(supabase, org, auth.userId, "ai_mode_changed", { mode });
             return Response.json({ ok: true, mode });
+          }
+
+          // Batch 16: who is told when a chat is handed to a person.
+          if (action === "handoff_alerts" || action === "save_handoff_alerts") {
+            const alerts = await import("@/lib/handoff-alerts.server");
+            const own = await alerts.businessNumbers(supabase, org);
+            if (action === "save_handoff_alerts") {
+              const checked = alerts.validateAlertSettings(
+                { phones: payload["phones"], email: payload["email"] },
+                own,
+              );
+              if (!checked.ok) return jsonError(checked.error, 400);
+              const { error } = await supabase.from("organization_ai_settings").upsert(
+                {
+                  organization_id: org,
+                  handoff_alert_phones: checked.settings.phones,
+                  handoff_alert_email: checked.settings.email,
+                },
+                { onConflict: "organization_id" },
+              );
+              if (error) return jsonError(error.message.replace(/^.*ERROR:\s*/, ""), 400);
+              await logServerActivity(supabase, org, auth.userId, "handoff_alerts_updated", {
+                phones: checked.settings.phones.length,
+                email: Boolean(checked.settings.email),
+              });
+            }
+            const saved = await alerts.loadAlertSettings(supabase, org);
+            const { ownerPhoneFor } = await import("@/lib/owner-replies.server");
+            const owner = await ownerPhoneFor(supabase, org);
+            return Response.json({
+              phones: saved.phones,
+              email: saved.email,
+              business_numbers: own,
+              // The fallback when no staff number is saved — and whether it is the shop's own number.
+              owner_phone: owner,
+              owner_is_business_number: Boolean(owner && own.some((n) => alerts.samePhone(n, owner))),
+            });
           }
 
           if (action === "save_settings") {

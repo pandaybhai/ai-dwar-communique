@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { AidenSetupCard } from "@/components/aiden-setup-card";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
+import { HandoffAlertsCard } from "@/components/employee/handoff-alerts-card";
 import { BrainPicker } from "@/components/employee/brain-picker";
 import { CorrectionsList } from "@/components/employee/corrections-list";
 import { KnowledgeManager, UnansweredList } from "@/components/employee/knowledge-manager";
@@ -310,6 +311,7 @@ function EmployeePage() {
                 canConfigure={canConfigure}
                 onChanged={load}
               />
+              <HandoffAlertsCard organizationId={active.organization.id} canConfigure={canConfigure} />
               <PromptPreview
                 organizationId={active.organization.id}
                 agentName={overview?.agent?.name ?? "your AI employee"}

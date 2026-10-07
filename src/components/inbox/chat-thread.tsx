@@ -361,7 +361,7 @@ export function ChatThread({
   onBack: () => void;
   onAssign: (userId: string | null) => void;
   onToggleStatus: () => void;
-  /** Clears the "Needs you" flag once a person has picked the thread up. */
+  /** Clears the "Waiting for you" flag once a person has picked the thread up (Aiden is back on it). */
   onResolveNeedsHuman?: () => void;
 
 }) {
@@ -573,7 +573,7 @@ export function ChatThread({
           <HandHelping className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <p className="font-medium">
-              Needs you.{" "}
+              Waiting for you.{" "}
               {handoverReasonText(conversation.needs_human_reason) ?? "I stepped back on this one."}
             </p>
             {conversation.needs_human_question ? (

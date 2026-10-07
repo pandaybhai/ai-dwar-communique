@@ -371,6 +371,23 @@ export async function runAgentOnInbound(
       .eq("id", args.conversationId)
       .eq("organization_id", args.organizationId);
 
+    // A genuine hand-off: tell the staff (never the business's own number)
+    // and show the chat as "Waiting for you". Bookkeeping the reply doesn't wait on.
+    {
+      const alert = import("@/lib/handoff-alerts.server")
+        .then(({ sendHandoffAlert }) =>
+          sendHandoffAlert(supabase, {
+            organizationId: args.organizationId,
+            conversationId: args.conversationId,
+            reason: run.escalationSignal ?? run.status,
+            question,
+          }),
+        )
+        .catch(() => {});
+      if (args.later) args.later(alert);
+      else await alert;
+    }
+
     // File it under Unanswered. The owner is never messaged about a customer
     // question: they answer it from the dashboard whenever they like.
     if (run.needsOwner) {
