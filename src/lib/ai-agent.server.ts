@@ -76,6 +76,18 @@ export function readAgentGate(supabase: SupabaseClient, conversationId: string):
   return read;
 }
 
+/**
+ * One Aiden switch: ai_agents.mode decides whether Aiden replies, and every
+ * save of it sets organization_ai_settings.ai_enabled to match (on unless
+ * mode is off). Called after each mode write.
+ */
+export async function syncAiSwitch(supabase: SupabaseClient, organizationId: string, mode: string): Promise<void> {
+  const { error } = await supabase
+    .from("organization_ai_settings")
+    .upsert({ organization_id: organizationId, ai_enabled: mode !== "off" }, { onConflict: "organization_id" });
+  if (error) console.error("[ai-agent] ai_enabled sync failed", organizationId, error.message);
+}
+
 /** The workspace's agent set-up, read once per inbound message. */
 export type AgentPrep = {
   agentRow: { id?: string; mode?: string } | null;
@@ -107,7 +119,8 @@ export function prepareAgentInbound(
   ]).then(([{ data: agentRow }, flags, { data: settings }]) => {
     const row = (agentRow ?? null) as { id?: string; mode?: string } | null;
     const aiEnabled = (settings as { ai_enabled?: boolean } | null)?.ai_enabled ?? null;
-    const replying = row?.mode === "replying" && flags.has("ai_features") && aiEnabled !== false;
+    // Batch 17: ai_agents.mode alone says whether Aiden replies (ai_enabled is kept equal on every save).
+    const replying = row?.mode === "replying" && flags.has("ai_features");
     return {
       agentRow: row,
       flags,
@@ -160,6 +173,9 @@ export async function runAgentOnInbound(
   if (!flags.has("ai_features")) return { acted: false, reason: "feature_off" };
 
   if (prep.aiEnabled === false) {
+    // Every save keeps ai_enabled equal to mode (syncAiSwitch); a row edited
+    // by hand that still disagrees is logged and nothing is sent.
+    console.warn(JSON.stringify({ scope: "ai_switch_mismatch", organization_id: args.organizationId, mode }));
     return { acted: false, reason: "ai_disabled" };
   }
 

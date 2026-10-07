@@ -384,6 +384,9 @@ export const Route = createFileRoute("/api/ai/employee")({
               }
               return jsonError("We couldn't change that. Please try again.");
             }
+            // One switch: ai_enabled follows the mode on every save.
+            const { syncAiSwitch } = await import("@/lib/ai-agent.server");
+            await syncAiSwitch(supabase, org, mode);
             await logServerActivity(supabase, org, auth.userId, "ai_mode_changed", { mode });
             return Response.json({ ok: true, mode });
           }
@@ -428,6 +431,15 @@ export const Route = createFileRoute("/api/ai/employee")({
           if (action === "save_settings") {
             const update: Record<string, unknown> = {};
             if (typeof payload["ai_enabled"] === "boolean") update["ai_enabled"] = payload["ai_enabled"];
+            // Switching AI off switches Aiden off too (one switch). Switching it
+            // on leaves the mode as it is: AI allowed (tests), Aiden not replying yet.
+            if (payload["ai_enabled"] === false) {
+              const agent = await agentRow();
+              if (agent && agent.mode !== "off") {
+                const { error: offError } = await supabase.from("ai_agents").update({ mode: "off" }).eq("id", agent.id);
+                if (offError) return jsonError("We couldn't change that. Please try again.");
+              }
+            }
             if (payload["ai_monthly_cap_amount"] !== undefined) {
               const cap = Number(payload["ai_monthly_cap_amount"]);
               // Zero used to mean "no limit". A missing limit now stops runs,

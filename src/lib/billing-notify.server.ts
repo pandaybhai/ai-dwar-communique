@@ -510,6 +510,9 @@ async function topupText(
   return `Top up ${money(meta)}${on} for ${orgName} · credits sold ${money(credits)} · your margin ${money(margin)}.`;
 }
 
+/** A drain's claim on a notice; older than this, the drain died. */
+const NOTICE_CLAIM_MS = 10 * 60_000;
+
 /** Sends up to `limit` pending notices. One bad notice never stops the rest. */
 export async function drainBillingNotifications(
   supabase: SupabaseClient,
@@ -521,7 +524,7 @@ export async function drainBillingNotifications(
   // sent a second time, and a failed one is retried a limited number of times.
   const { data: rows } = await supabase
     .from("billing_notifications")
-    .select("id, organization_id, audience, kind, channel, recipient, payload, status")
+    .select("id, organization_id, audience, kind, channel, recipient, payload, status, sent_at")
     .in("status", ["queued", "failed"])
     .order("created_at", { ascending: true })
     .limit(Math.min(Math.max(limit, 1), 50));
@@ -576,6 +579,28 @@ export async function drainBillingNotifications(
         // Nothing to send over WhatsApp: it stays an in-app record. 'sent' is
         // reserved for a message that actually left the platform number.
         await mark(row, "skipped", "no_template_for_kind");
+        counts.skipped += 1;
+        continue;
+      }
+
+      // Claim it first (compare-and-set on sent_at, which every outcome
+      // writes): two drains running at once can't both send it. A claim
+      // less than ten minutes old belongs to a drain still at work.
+      const claimedAt = (row["sent_at"] as string | null) ?? null;
+      if (claimedAt && Date.now() - Date.parse(claimedAt) < NOTICE_CLAIM_MS) {
+        counts.skipped += 1;
+        continue;
+      }
+      const claim = supabase
+        .from("billing_notifications")
+        .update({ sent_at: new Date().toISOString() })
+        .eq("id", row["id"] as string)
+        .eq("status", row["status"] as string);
+      const { data: claimed, error: claimError } = await (claimedAt
+        ? claim.eq("sent_at", claimedAt)
+        : claim.is("sent_at", null)
+      ).select("id");
+      if (claimError || !claimed?.length) {
         counts.skipped += 1;
         continue;
       }

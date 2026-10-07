@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { aidenWorld } from "./test-support/aiden-world";
 import { inboundPayload, latencyWorld } from "./test-support/latency-world";
+import { inVirtualTime } from "./test-support/virtual-time";
 import { prepareAgentInbound, runAgentOnInbound } from "./ai-agent.server";
 import { executeRun, prepareRun } from "./ai-run.server";
 import { processWebhookPayload } from "./whatsapp-webhook.server";
@@ -46,8 +47,11 @@ describe("(1) Aiden: set-up read during the burst, checks still after it", () =>
     vi.stubGlobal("fetch", w.fetchStub);
     const prepared = prepareAgentInbound(w.supabase, "org");
     await prepared.then((p) => p.prelude); // the burst wait covers this
-    w.t0.at = Date.now();
-    const out = await runAgentOnInbound(w.supabase, { ...args, prepared });
+    // Batch 17: on a virtual clock, so "within N round trips" never races a loaded machine.
+    const out = await inVirtualTime(async () => {
+      w.t0.at = Date.now();
+      return runAgentOnInbound(w.supabase, { ...args, prepared });
+    });
     // (This bare workspace brokers no tools, so the answer is handed over —
     // the path to the model call is the same either way.)
     expect(out).toMatchObject({ acted: true, mode: "replying" });

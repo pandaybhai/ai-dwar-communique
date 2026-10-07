@@ -33,7 +33,8 @@ export const Route = createFileRoute("/api/internal/ai-run")({
         const cronSecret = process.env["CRON_SECRET"];
         const providedSecret =
           request.headers.get("x-cron-secret") ?? request.headers.get("X-Cron-Secret");
-        const isPlatform = Boolean(cronSecret) && providedSecret === cronSecret;
+        const { secretEquals } = await import("@/lib/cron-auth.server");
+        const isPlatform = Boolean(cronSecret) && secretEquals(providedSecret, cronSecret);
 
         let supabase;
         let organizationId: string;

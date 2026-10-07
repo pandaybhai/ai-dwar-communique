@@ -103,51 +103,73 @@ export async function restoreAfterPayment(
   supabase: SupabaseClient,
   organizationId: string,
 ): Promise<void> {
-  const { data: org } = await supabase
+  // Every read and write is checked: a lift that half-happened throws, so
+  // the payment that paid for it is retried instead of marked done.
+  const must = (what: string, error: { message: string } | null) => {
+    if (error) throw new Error(`${what}: ${error.message}`);
+  };
+  const { data: org, error: orgError } = await supabase
     .from("organizations")
     .select("plan_status, plan_version_id")
     .eq("id", organizationId)
     .maybeSingle();
+  must("organization read failed", orgError);
   const status = (org?.["plan_status"] as string | null) ?? null;
 
-  const { data: settings } = await supabase
+  const { data: settings, error: settingsError } = await supabase
     .from("organization_billing_settings")
     .select("dunning_paused, dunning_stage")
     .eq("organization_id", organizationId)
     .maybeSingle();
+  must("billing settings read failed", settingsError);
   const paused = (settings?.["dunning_paused"] ?? {}) as {
     campaigns?: string[];
     automations?: string[];
   };
 
   if ((paused.campaigns ?? []).length > 0) {
-    await supabase
+    const { error } = await supabase
       .from("campaigns")
       .update({ status: "scheduled" })
       .in("id", paused.campaigns ?? [])
       .eq("organization_id", organizationId)
-      .eq("status", "paused");
+      .eq("status", "paused")
+      .not("scheduled_at", "is", null);
+    must("campaign restore failed", error);
+    // A "send now" campaign has no time: scheduled with none it would never
+    // be picked up again, so it goes out now.
+    const { error: nowError } = await supabase
+      .from("campaigns")
+      .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
+      .in("id", paused.campaigns ?? [])
+      .eq("organization_id", organizationId)
+      .eq("status", "paused")
+      .is("scheduled_at", null);
+    must("campaign restore failed", nowError);
   }
   if ((paused.automations ?? []).length > 0) {
-    await supabase
+    const { error } = await supabase
       .from("automations")
       .update({ is_active: true })
       .in("id", paused.automations ?? [])
       .eq("organization_id", organizationId);
+    must("automation restore failed", error);
   }
 
   if (settings) {
-    await supabase
+    const { error } = await supabase
       .from("organization_billing_settings")
       .update({ dunning_paused: {}, dunning_stage: null, dunning_last_at: null })
       .eq("organization_id", organizationId);
+    must("dunning clear failed", error);
   }
 
   if (
     (status === "past_due" || status === "paused" || status === "locked") &&
     org?.["plan_version_id"]
   ) {
-    await supabase.from("organizations").update({ plan_status: "active" }).eq("id", organizationId);
+    const { error } = await supabase.from("organizations").update({ plan_status: "active" }).eq("id", organizationId);
+    must("plan status restore failed", error);
   }
 
   if (settings?.["dunning_stage"]) {

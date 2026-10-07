@@ -11,9 +11,10 @@ export const Route = createFileRoute("/api/internal/demo-proof")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const { secretEquals } = await import("@/lib/cron-auth.server");
         const secret = process.env["CRON_SECRET"];
         const provided = request.headers.get("x-cron-secret");
-        if (!secret || provided !== secret) {
+        if (!secret || !secretEquals(provided, secret)) {
           return Response.json({ error: "Not authorised." }, { status: 401 });
         }
 

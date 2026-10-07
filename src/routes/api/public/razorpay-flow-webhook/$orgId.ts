@@ -33,8 +33,12 @@ export const Route = createFileRoute("/api/public/razorpay-flow-webhook/$orgId")
         try {
           const { resumePaidRun } = await import("@/lib/flow-engine.server");
           await resumePaidRun(svc, { organizationId: orgId, runId: notes["aidwar_run"], nodeId: notes["aidwar_node"], paymentLinkId: link?.id ?? "" });
-        } catch {
-          // Signature was valid; answer 200 so Razorpay doesn't replay.
+        } catch (error) {
+          // Not resumed: Razorpay delivers it again. A run that already took
+          // this payment is a no-op on the retry (its event key), so a retry
+          // never pays a path twice.
+          console.error("[razorpay-flow-webhook] resume failed", orgId, error instanceof Error ? error.message : String(error));
+          return new Response("retry", { status: 500 });
         }
         return new Response("ok");
       },

@@ -229,6 +229,8 @@ export async function acceptWebhook(
   },
 ): Promise<Response> {
   const started = Date.now();
+  // An unsigned body is never stored or processed (live: every Meta event is signed).
+  if (!args.signatureValid) return new Response("Invalid signature", { status: 401 });
   let payload: AnyRecord;
   try {
     payload = JSON.parse(args.rawBody) as AnyRecord;
@@ -245,6 +247,11 @@ export async function acceptWebhook(
     .select("id, received_at")
     .single();
   const storeMs = Date.now() - started;
+  // Not stored = not ours yet: Meta retries a non-2xx, so nothing is lost.
+  if (!event) {
+    console.error(JSON.stringify({ scope: "webhook_ack", event_id: null, stored: false }));
+    return new Response("Not stored", { status: 500 });
+  }
 
   let background = false;
   if (args.signatureValid && event) {
@@ -566,12 +573,44 @@ async function applyWhenWritten(
   return undefined;
 }
 
+/**
+ * A status the message already has: redo what a failed first try may have
+ * missed. The recipient move is conditional (counted once), and a message
+ * with no price yet is priced (price_message is idempotent and a message is
+ * debited at most once). Costs one read, only on this path.
+ */
+async function retakeStatusSteps(
+  supabase: SupabaseClient,
+  organizationId: string,
+  metaId: string,
+  nextStatus: string,
+  recipientId: string | null,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id, status, cost_amount, campaign_id, flow_id, created_at")
+    .eq("meta_message_id", metaId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const row = data as (StatusRow & { cost_amount?: number | null }) | null;
+  if (!row || (STATUS_RANK[String(row.status)] ?? -1) < STATUS_RANK[nextStatus]!) return;
+  const campaignMessage =
+    Boolean(row.campaign_id || recipientId) ||
+    (!row.flow_id && (!row.created_at || row.created_at < ATTRIBUTION_SINCE));
+  if (campaignMessage) await applyCampaignStatus(supabase, row.id, nextStatus, null, recipientId);
+  if ((nextStatus === "delivered" || nextStatus === "read") && row.cost_amount == null) {
+    const { error: priceError } = await supabase.rpc("price_message", { p_message_id: row.id });
+    if (priceError) throw new Error(`price: ${priceError.message}`);
+  }
+}
+
 /** Bring the campaign's charged total up to the ledger, at most every few seconds per campaign. */
 const CHARGED_SYNC_EVERY_MS = 15_000;
 const chargedSyncedAt = new Map<string, number>();
 
 /** Counts one reply per contact per campaign for campaigns sent in the last 7 days. */
-async function applyCampaignReply(
+export async function applyCampaignReply(
   supabase: SupabaseClient,
   organizationId: string,
   contactId: string,
@@ -589,10 +628,16 @@ async function applyCampaignReply(
 
   for (const r of (recipients ?? []) as Array<Record<string, unknown>>) {
     if (r["replied_at"]) continue;
-    await supabase
+    // Only the update that sets replied_at counts it: two messages from the
+    // same customer at once can't both bump the counter.
+    const { data: marked, error: markError } = await supabase
       .from("campaign_recipients")
       .update({ replied_at: new Date().toISOString() })
-      .eq("id", r["id"] as string);
+      .eq("id", r["id"] as string)
+      .is("replied_at", null)
+      .select("id");
+    if (markError) throw new Error(markError.message);
+    if (!marked?.length) continue;
     await supabase.rpc("bump_campaign_counters", {
       p_campaign_id: r["campaign_id"] as string,
       p_replied: 1,
@@ -1505,6 +1550,7 @@ export async function processWebhookPayload(
         for (const msg of (value["messages"] as AnyRecord[] | undefined) ?? []) {
           const clock = stageClock(eventId, receivedAt, timings);
           let route = "none";
+          let answerRowId: string | null = null;
           try {
             const waId = toWaId(msg["from"] as string | undefined);
             if (!waId) continue;
@@ -1754,10 +1800,16 @@ export async function processWebhookPayload(
                 : null;
             automationReads?.catch(() => {});
 
-            const { data: inserted, error: insertError } = await messageWrite;
+            const { data: stored, error: insertError } = await messageWrite;
             // A failed write is not a duplicate: only an empty, error-free
             // result means Meta sent this message before.
             if (insertError) throw new Error(`message insert failed: ${insertError.message}`);
+            const isNew = Boolean(stored && stored.length > 0);
+            // Stored is not answered: a message whose earlier pass died before
+            // it was answered is answered now, once (claimed); otherwise a
+            // duplicate stays a duplicate.
+            const inserted = isNew ? stored : await reclaimUnanswered(supabase, String(msg["id"] ?? ""));
+            answerRowId = (inserted?.[0]?.id as string | undefined) ?? null;
             const storedAt = Date.now();
 
             clock.mark("message_stored");
@@ -1767,7 +1819,7 @@ export async function processWebhookPayload(
             // alongside the reads below and is awaited (`windowReady`) before
             // anything that could send.
             let windowReady: Promise<unknown> = Promise.resolve();
-            if (inserted && inserted.length > 0) {
+            if (isNew && inserted) {
               windowReady = Promise.resolve(
                 supabase
                   .from("conversations")
@@ -2219,6 +2271,9 @@ export async function processWebhookPayload(
             failures.push(failureNote(`message ${String(msg["id"] ?? "")}`, err));
           } finally {
             clock.log(String(msg["id"] ?? ""), route);
+            // Awaited right after the reply, so a pass that dies later never
+            // makes the retry answer twice.
+            if (route !== "failed") await markAnswered(supabase, answerRowId);
             startAfterReply();
           }
         }
@@ -2276,7 +2331,15 @@ export async function processWebhookPayload(
                 continue;
               }
             }
-            if (!existing) continue;
+            if (!existing) {
+              // Already at this status: a retry of an event whose first try
+              // moved the message and then failed, or a late duplicate. Redo
+              // only the steps that are safe to repeat (never the event).
+              if (nextStatus !== "failed") {
+                await retakeStatusSteps(supabase, orgId, metaId, nextStatus, ours?.recipientId ?? null);
+              }
+              continue;
+            }
 
             // Every per-message event carries the same dimensions as the send.
             const statusProps = await messageEventDimensions(supabase, orgId, accountWabaId, existing);
@@ -2348,6 +2411,9 @@ export async function processWebhookPayload(
                   }),
                 );
               }
+              // Not priced = not billed: the event stays retryable, and the
+              // retry prices it (retakeStatusSteps).
+              if (priceError) failures.push(failureNote(`price ${metaId}`, priceError.message));
             }
 
             if (nextStatus === "delivered" || nextStatus === "read" || nextStatus === "sent") {
@@ -2377,6 +2443,64 @@ export async function processWebhookPayload(
   } catch (err) {
     await finishEvent(supabase, eventId, [failureNote("event", err)], null, timingRecord());
   }
+}
+
+/**
+ * Stored vs answered (messages.answered_at / answer_claimed_at, migration
+ * 20261032_batch17_message_answered.sql). Until it is applied the columns are
+ * missing and every helper steps aside: a duplicate stays a duplicate, as before.
+ */
+const REANSWER_AFTER_MS = 3 * 60_000;
+let answerColumnsMissingUntil = 0;
+
+function missingAnswerColumns(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  return (code === "PGRST204" || code === "42703") && /answer/i.test(String(error.message ?? ""));
+}
+
+async function answerWrite(run: () => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>) {
+  if (Date.now() < answerColumnsMissingUntil) return null;
+  try {
+    const { data, error } = await run();
+    if (missingAnswerColumns(error)) answerColumnsMissingUntil = Date.now() + 10 * 60_000;
+    return error ? null : data;
+  } catch {
+    return null;
+  }
+}
+
+/** This pass finished routing the message (answered, or deliberately not). */
+export async function markAnswered(supabase: SupabaseClient, rowId: string | null): Promise<void> {
+  if (!rowId) return;
+  await answerWrite(() =>
+    supabase.from("messages").update({ answered_at: new Date().toISOString() }).eq("id", rowId).is("answered_at", null),
+  );
+}
+
+/**
+ * A duplicate delivery of an inbound message that was stored but never
+ * answered (its pass died) and isn't being answered right now. The insert
+ * stamps answer_claimed_at (column default), so a live pass is never
+ * doubled; one conditional update claims it, so only one retry answers.
+ */
+export async function reclaimUnanswered(
+  supabase: SupabaseClient,
+  metaMessageId: string,
+): Promise<Array<{ id: string }> | null> {
+  if (!metaMessageId) return null;
+  const cutoff = new Date(Date.now() - REANSWER_AFTER_MS).toISOString();
+  const claimed = (await answerWrite(() =>
+    supabase
+      .from("messages")
+      .update({ answer_claimed_at: new Date().toISOString() })
+      .eq("meta_message_id", metaMessageId)
+      .eq("direction", "inbound")
+      .is("answered_at", null)
+      .lt("answer_claimed_at", cutoff)
+      .select("id"),
+  )) as Array<{ id: string }> | null;
+  return claimed?.length ? claimed : null;
 }
 
 /** Retries an event gets before it is recorded as given up. */
@@ -2506,6 +2630,7 @@ export async function reprocessUnprocessedEvents(
     .from("webhook_events")
     .select("id, payload")
     .is("processed_at", null)
+    .eq("provider", "meta")
     .eq("signature_valid", true)
     .lte("received_at", cutoff)
     .order("received_at", { ascending: true })

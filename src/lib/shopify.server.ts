@@ -710,6 +710,8 @@ export async function signInstallState(payload: {
   organizationId: string;
   shopDomain: string;
   userId: string;
+  /** Browser binding nonce (oauth-binding.server.ts). */
+  bind?: string;
 }, secret?: string): Promise<string> {
   const creds = { apiSecret: shopifyCredentials()?.apiSecret ?? secret ?? "" };
   if (!creds.apiSecret) throw new Error("Shopify app credentials are not configured.");
@@ -722,7 +724,7 @@ export async function signInstallState(payload: {
 export async function verifyInstallState(
   state: string,
   secret?: string,
-): Promise<{ organizationId: string; shopDomain: string; userId: string } | null> {
+): Promise<{ organizationId: string; shopDomain: string; userId: string; bind: string } | null> {
   const creds = { apiSecret: shopifyCredentials()?.apiSecret ?? secret ?? "" };
   if (!creds.apiSecret) return null;
   const [encoded, signature] = state.split(".");
@@ -738,8 +740,9 @@ export async function verifyInstallState(
     const organizationId = String(parsed["organizationId"] ?? "");
     const shopDomain = String(parsed["shopDomain"] ?? "");
     const userId = String(parsed["userId"] ?? "");
+    const bind = String(parsed["bind"] ?? "");
     if (!organizationId || !shopDomain) return null;
-    return { organizationId, shopDomain, userId };
+    return { organizationId, shopDomain, userId, bind };
   } catch {
     return null;
   }

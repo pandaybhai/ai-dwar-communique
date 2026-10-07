@@ -10,13 +10,14 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const { secretEquals } = await import("@/lib/cron-auth.server");
         const expected = process.env["CRON_SECRET"];
         const provided = request.headers.get("x-cron-secret") ?? request.headers.get("X-Cron-Secret");
-        if (!expected || provided !== expected) return Response.json({ error: "Unauthorized" }, { status: 401 });
+        if (!expected || !secretEquals(provided, expected)) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
         const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
         const { planLimits } = await import("@/lib/knowledge.server");
-        const { loadReadingSettings } = await import("@/lib/reading.server");
+        const { loadReadingSettings, backfillWanted } = await import("@/lib/reading.server");
         const supabase = getServiceClient();
         const reading = await loadReadingSettings(supabase);
         // Deleted websites past their 7-day Undo window are removed for good.
@@ -48,6 +49,7 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
             .eq("status", "ready")
             .limit(500);
           let queued = 0;
+          let skipped = 0;
           for (const src of (data ?? []) as Array<{ id: string; organization_id: string; pages_seen: number | null; config: Record<string, unknown> | null }>) {
             const { count } = await supabase
               .from("knowledge_urls")
@@ -57,6 +59,11 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
             if (!count) continue;
             const plan = await planLimits(supabase, src.organization_id);
             if (!plan.paid) continue;
+            // No WhatsApp number connected and AI off: nothing would use the pages.
+            if (!(await backfillWanted(supabase, src.organization_id))) {
+              skipped += 1;
+              continue;
+            }
             const room = plan.cap - Number(src.pages_seen ?? 0);
             if (room <= 0) continue;
             await supabase
@@ -77,7 +84,7 @@ export const Route = createFileRoute("/api/internal/knowledge-backfill")({
               .eq("status", "ready");
             queued += 1;
           }
-          return Response.json({ queued, purged, price_check: priceCheck, commit: buildInfo().commit });
+          return Response.json({ queued, skipped_unused: skipped, purged, price_check: priceCheck, commit: buildInfo().commit });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Backfill failed";
           console.error("[knowledge-backfill] failed", message);

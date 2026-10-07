@@ -7,18 +7,23 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import type { Plugin } from "vite";
 import { execSync } from "node:child_process";
-import { writeFileSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateFeatureRegistry } from "./src/lib/feature-registry.check";
 
 /**
- * Writes src/build-info.ts with the current git short SHA and an ISO build
+ * Serves src/build-info.ts with the current git short SHA and an ISO build
  * timestamp as literal constants, so build identity ships inside the bundle.
+ * Builds only, and in memory: the file on disk (the committed fallback) is
+ * never rewritten, by a build or a test run.
  */
 function buildInfoGenerator(): Plugin {
+  const target = resolve(import.meta.dirname, "src/build-info.ts");
+  let contents: string | null = null;
   return {
     name: "aidwar-build-info",
     enforce: "pre",
+    apply: "build",
     buildStart() {
       let commit =
         process.env["COMMIT_SHA"] ??
@@ -33,7 +38,6 @@ function buildInfoGenerator(): Plugin {
           commit = "";
         }
       }
-      const target = resolve(import.meta.dirname, "src/build-info.ts");
       let existing = "";
       try {
         existing = readFileSync(target, "utf8");
@@ -49,12 +53,14 @@ function buildInfoGenerator(): Plugin {
       }
       commit = commit.slice(0, 12);
 
-      const contents = `// AUTO-GENERATED at build time by the build-info Vite plugin. Do not edit.
+      contents = `// AUTO-GENERATED at build time by the build-info Vite plugin. Do not edit.
 export const COMMIT_SHA = ${JSON.stringify(commit)};
 export const BUILT_AT = ${JSON.stringify(new Date().toISOString())} as string | null;
 `;
-      if (existing === contents) return;
-      writeFileSync(target, contents);
+    },
+    load(id) {
+      if (contents !== null && id.split("?")[0] === target) return contents;
+      return null;
     },
   };
 }

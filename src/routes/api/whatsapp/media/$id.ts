@@ -77,14 +77,9 @@ export const Route = createFileRoute("/api/whatsapp/media/$id")({
           fileRes.headers.get("content-type") ??
           "application/octet-stream";
 
-        return new Response(fileRes.body, {
-          status: 200,
-          headers: {
-            "content-type": mime,
-            // Private per user session — never shared caches.
-            "cache-control": "private, max-age=300",
-          },
-        });
+        // Inline only for safe types; anything else downloads, never sniffed.
+        const { mediaResponseHeaders } = await import("@/lib/media-serve");
+        return new Response(fileRes.body, { status: 200, headers: mediaResponseHeaders(mime) });
       },
     },
   },

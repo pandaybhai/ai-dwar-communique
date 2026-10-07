@@ -109,15 +109,21 @@ export const Route = createFileRoute("/api/integrations/shopify")({
           }
 
           if (!creds) return jsonError("Shopify isn't configured for this store yet.", 400);
-          const state = await signInstallState({ organizationId, shopDomain, userId }, creds.apiSecret);
-          return Response.json({
-            install_url: buildInstallUrl({
-              shopDomain,
-              apiKey: creds.apiKey,
-              redirectUri: callbackUrl(request),
-              state,
-            }),
-          });
+          // Bound to this signed-in user's browser: the callback needs the cookie too.
+          const { newBinding, bindingCookie } = await import("@/lib/oauth-binding.server");
+          const bind = newBinding();
+          const state = await signInstallState({ organizationId, shopDomain, userId, bind }, creds.apiSecret);
+          return Response.json(
+            {
+              install_url: buildInstallUrl({
+                shopDomain,
+                apiKey: creds.apiKey,
+                redirectUri: callbackUrl(request),
+                state,
+              }),
+            },
+            { headers: { "Set-Cookie": bindingCookie("shopify", bind) } },
+          );
         }
 
         const integrationId = String(payload["integration_id"] ?? "");
