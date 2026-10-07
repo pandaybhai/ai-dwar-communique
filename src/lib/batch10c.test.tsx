@@ -68,11 +68,12 @@ describe("cards: reuse a stored card; record only real renders", () => {
     process.env["AIDWAR_SUPABASE_SERVICE_ROLE_KEY"] = "service-key";
     renders = [];
     heads = [];
-    // As live until Batch 18's ai_usage_add is applied: usage is written row by row.
+    // ai_usage_add fails here, so usage is written row by row (the on-error path).
     h.usage = fakeDb(
       () => undefined,
-      (c) => (c.name === "ai_usage_add" ? { data: null, error: { code: "PGRST202", message: "not found" } } : undefined),
+      (c) => (c.name === "ai_usage_add" ? { data: null, error: { message: "timeout" } } : undefined),
     );
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
   const brandDb = (branding: Record<string, unknown> = {}) =>

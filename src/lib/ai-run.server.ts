@@ -1390,22 +1390,18 @@ export async function meterAiUsage(
   const usageDate = new Date().toISOString().slice(0, 10);
   // Added in the database in one statement (ai_usage_add, migration
   // 20261027): read-add-write lost one of two concurrent additions, so the
-  // caps under-counted. Until it is applied, the old way below.
-  if (Date.now() >= aiUsageAddMissingUntil) {
-    const { error } = await supabase.rpc("ai_usage_add", {
-      p_org: organizationId,
-      p_usage_date: usageDate,
-      p_task: task,
-      p_runs: amounts.runs ?? 1,
-      p_input_tokens: amounts.inputTokens ?? 0,
-      p_output_tokens: amounts.outputTokens ?? 0,
-      p_cost_amount: amounts.costAmount ?? 0,
-    });
-    if (!error) return;
-    const code = String((error as { code?: string }).code ?? "");
-    if (code === "PGRST202" || code === "42883") aiUsageAddMissingUntil = Date.now() + 10 * 60_000;
-    else console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
-  }
+  // caps under-counted. A call that fails is logged and written the old way below.
+  const { error } = await supabase.rpc("ai_usage_add", {
+    p_org: organizationId,
+    p_usage_date: usageDate,
+    p_task: task,
+    p_runs: amounts.runs ?? 1,
+    p_input_tokens: amounts.inputTokens ?? 0,
+    p_output_tokens: amounts.outputTokens ?? 0,
+    p_cost_amount: amounts.costAmount ?? 0,
+  });
+  if (!error) return;
+  console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
   const { data } = await supabase
     .from("ai_usage")
     .select("id, runs, input_tokens, output_tokens, cost_amount")
@@ -1435,8 +1431,6 @@ export async function meterAiUsage(
   if (prior) await supabase.from("ai_usage").update(row).eq("id", prior.id);
   else await supabase.from("ai_usage").insert(row);
 }
-/** Set while ai_usage_add() isn't in the database yet; looked for again after 10 minutes. */
-let aiUsageAddMissingUntil = 0;
 
 /**
  * The OpenAI key for the embeddings backup: the platform's OpenAI key from the
@@ -3440,24 +3434,20 @@ export async function rollUpUsage(
   const today = new Date().toISOString().slice(0, 10);
   // One statement in the database (ai_usage_add, as meterAiUsage): two runs
   // finishing at once each lost the other's addition, so the monthly cap
-  // (billed_amount) under-counted. Until it is applied, the old way below.
-  if (Date.now() >= aiUsageAddMissingUntil) {
-    const { error } = await supabase.rpc("ai_usage_add", {
-      p_org: organizationId,
-      p_usage_date: today,
-      p_task: task,
-      p_runs: 1,
-      p_input_tokens: result.inputTokens ?? 0,
-      p_output_tokens: result.outputTokens ?? 0,
-      p_cost_amount: result.costAmount ?? 0,
-      p_billed_amount: result.billedAmount ?? 0,
-      p_currency: result.costCurrency ?? "INR",
-    });
-    if (!error) return;
-    const code = String((error as { code?: string }).code ?? "");
-    if (code === "PGRST202" || code === "42883") aiUsageAddMissingUntil = Date.now() + 10 * 60_000;
-    else console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
-  }
+  // (billed_amount) under-counted. A call that fails is logged and written the old way below.
+  const { error } = await supabase.rpc("ai_usage_add", {
+    p_org: organizationId,
+    p_usage_date: today,
+    p_task: task,
+    p_runs: 1,
+    p_input_tokens: result.inputTokens ?? 0,
+    p_output_tokens: result.outputTokens ?? 0,
+    p_cost_amount: result.costAmount ?? 0,
+    p_billed_amount: result.billedAmount ?? 0,
+    p_currency: result.costCurrency ?? "INR",
+  });
+  if (!error) return;
+  console.warn(JSON.stringify({ scope: "ai_usage_add", task, error: error.message }));
   const { data: existing } = await supabase
     .from("ai_usage")
     .select("id, runs, input_tokens, output_tokens, cost_amount, billed_amount")

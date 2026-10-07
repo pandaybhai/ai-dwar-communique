@@ -367,7 +367,7 @@ describe("(2) the answer's bookkeeping and the policy check's set-up leave the c
     expect(out.status).toBe("ok");
     expect(handed).toHaveLength(1);
     await Promise.all(handed);
-    // Batch 18: one ai_usage_add call once that migration is applied, else the row write as before.
+    // Batch 18: one ai_usage_add call (the row write as before only if that call fails).
     expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert") || db.rpcs.some((r) => r.name === "ai_usage_add")).toBe(true);
   });
 
@@ -375,7 +375,7 @@ describe("(2) the answer's bookkeeping and the policy check's set-up leave the c
     const db = aiDb([RETURNS]);
     stubModel(`${RETURNS}\n{"needs_owner": false}`);
     await ask(db, "What is your return policy?");
-    // Batch 18: one ai_usage_add call once that migration is applied, else the row write as before.
+    // Batch 18: one ai_usage_add call (the row write as before only if that call fails).
     expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert") || db.rpcs.some((r) => r.name === "ai_usage_add")).toBe(true);
   });
 });
