@@ -79,7 +79,7 @@ export const READING_AI_TASKS = ["knowledge_facts", "knowledge_image", "embeddin
 
 /**
  * Per-workspace daily cap on reading AI spend (platform_settings
- * .reading_ai_daily_cap, ₹). Missing column/row = the default; 0 = no cap.
+ * .reading_ai_daily_cap, ₹). A missing row or failed read = the default; 0 = no cap.
  * Read on its own, like knowledge_auto_refresh.
  */
 export async function loadReadingAiDailyCap(supabase: SupabaseClient): Promise<number> {
