@@ -50,6 +50,47 @@ export const CATEGORY_WORDS: Record<string, string[]> = {
   rings: ["anguthi", "band"],
 };
 
+/**
+ * Zoori's website source rules (knowledge_sources.config.category_rules), as
+ * 20261052_zoori_category_words.sql saves them: the item-code prefixes and
+ * shelf words the website reader used to carry in shared code (Batch 20).
+ * In order: codes first, then shelf words, then name-only words.
+ */
+export const READER_RULES: Array<{ match: string; category: string }> = [
+  ...(
+    [
+      // Item codes (a word start: "ZPND*" is also "zpnds-…").
+      ["ZLRG*", "rings"],
+      ["ZGRG*", "rings"],
+      ["ZPND*", "pendants"],
+      ["ZBSL*", "bracelets"],
+      ["ZTNM*", "tanmaniya"],
+      ["ZERG*", "earrings"],
+      ["ZERN*", "earrings"],
+      ["ZNCK*", "necklaces"],
+      ["ZNEK*", "necklaces"],
+      // Shelf words, in a page's category or a product's name / address.
+      ["tanmaniya*", "tanmaniya"],
+      ["tanmania*", "tanmaniya"],
+      ["mangalsutra*", "tanmaniya"],
+      ["ear ring*", "earrings"],
+      ["necklace*", "necklaces"],
+      ["pendant*", "pendants"],
+      ["pendent*", "pendants"],
+      ["bracelet*", "bracelets"],
+      ["bangle*", "bracelets"],
+      ["chain*", "chains"],
+      ["ring*", "rings"],
+      // Words that only ever name earrings (whole words).
+      ["stud", "earrings"],
+      ["drops", "earrings"],
+      ["dangler", "earrings"],
+      ["jhumk*", "earrings"],
+      ["hoop", "earrings"],
+    ] as const
+  ).map(([match, category]) => ({ match, category })),
+];
+
 /** Zoori's organizations row as product search reads it. */
 export const ORG_ROW: Row = { id: ORG, branding: { category_words: CATEGORY_WORDS } };
 

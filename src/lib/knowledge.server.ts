@@ -20,7 +20,9 @@ import {
   fillMissingProductDetails,
   hideAliasHostProducts,
   hideMissingCrawledProducts,
+  readCategoryRules,
   saveCrawledProducts,
+  type CategoryRule,
   type ProductDraft,
 } from "@/lib/product-extract.server";
 import {
@@ -506,6 +508,8 @@ type PageSaveContext = {
   /** Also for pages that carry a product (the day-one read always did). */
   factsOnProductPages: boolean;
   referrer?: string | null;
+  /** The source's own category rules (config.category_rules). */
+  categoryRules?: CategoryRule[];
 };
 
 export type PageSaveResult = {
@@ -575,7 +579,7 @@ export async function savePage(
   // One product, if this page is a product page. No extra fetch.
   let draft: ProductDraft | null = null;
   try {
-    draft = extractProduct(page.html, url, { referrer: ctx.referrer ?? null });
+    draft = extractProduct(page.html, url, { referrer: ctx.referrer ?? null, categoryRules: ctx.categoryRules ?? [] });
   } catch {
     // Never let reading a price stop the read.
   }
@@ -1175,6 +1179,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     readVia: refreshing ? "refresh" : mode,
     facts: true,
     factsOnProductPages: !staged,
+    categoryRules: readCategoryRules(config["category_rules"]),
   };
   /** Pages whose text was saved this run. */
   let savedPages = 0;
@@ -1362,6 +1367,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   // run that finishes the refresh.
   if (refreshing && !more && config["fill_products"] === true) {
     const filled = await fillMissingProductDetails(supabase, organizationId, origin, {
+      categoryRules: readCategoryRules(config["category_rules"]),
       budgetMs: Math.max(Math.min(45_000, timeLeft() - 10_000), 5_000),
     }).catch((error) => {
       console.error("[crawl] product fill failed", error instanceof Error ? error.message : String(error));

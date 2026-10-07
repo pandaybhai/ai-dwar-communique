@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb, type Row } from "./test-support/memory-db";
+import { READER_RULES } from "./test-support/zoori-replay";
 
 /**
  * Batch 13A — the website reader never stalls, never forgets, and one site has
@@ -313,7 +314,7 @@ describe("myzoori.com replay (www redirect, broken robots Sitemap line, 497-addr
     const SID = "eee17015-8d10-4d34-a9e3-41b0b246f5e7";
     const twinUuid = productUuids[1]!;
     const db = world(
-      { id: SID, organization_id: ORG, type: "website", name: "myzoori.com", status: "pending", config: { url: "https://myzoori.com/", mode: "full" }, refresh_days: 7 },
+      { id: SID, organization_id: ORG, type: "website", name: "myzoori.com", status: "pending", config: { url: "https://myzoori.com/", mode: "full", category_rules: READER_RULES }, refresh_days: 7 },
       {
         products: [
           // Saved by an earlier read under the bare host.

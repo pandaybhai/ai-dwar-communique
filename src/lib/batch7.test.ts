@@ -14,6 +14,7 @@ import {
 import { simReply, simStart } from "./flow-simulator";
 import { productCaption, sendProductPictures } from "./product-pictures.server";
 import { AI_TOOL_HANDLERS } from "./ai-tools.server";
+import { READER_RULES } from "./test-support/zoori-replay";
 import { budgetWords, searchArgs } from "./flow-products.server";
 import { extractProduct, saveCrawledProducts, type ProductDraft } from "./product-extract.server";
 
@@ -489,18 +490,21 @@ function zooriPage(opts: { name: string; code: string; price: string; jsonSku?: 
 
 describe("(3) the product reader on Zoori's pages", () => {
   const url = "https://myzoori.com/product-detail/a243f24d";
+  // Batch 20: Zoori's item codes and shelf words are its source's own rules.
+  const ZOORI = { categoryRules: READER_RULES };
 
   it("structured data without a price: the price beside the product's heading is kept", () => {
-    const draft = extractProduct(zooriPage({ name: "Golden Petal", code: "ZERN-0004", price: "₹24,662.21" }), url)!;
+    const draft = extractProduct(zooriPage({ name: "Golden Petal", code: "ZERN-0004", price: "₹24,662.21" }), url, ZOORI)!;
     expect(draft).toMatchObject({ title: "Golden Petal", price: 24662.21, imageUrl: null, sku: "ZERN-0004", category: "earrings" });
   });
 
   it("saves the metal / weight lines; the theme's placeholder text is never a description", () => {
-    const draft = extractProduct(zooriPage({ name: "Golden Petal", code: "ZERN-0004", price: "₹24,662.21" }), url)!;
+    const draft = extractProduct(zooriPage({ name: "Golden Petal", code: "ZERN-0004", price: "₹24,662.21" }), url, ZOORI)!;
     expect(draft.description).toBe("Metal: Gold, Diamond. Gross weight: 1.13 gm");
     const real = extractProduct(
       zooriPage({ name: "The Gilded Chevron", code: "ZLRG-0001", price: "₹19,603.91", description: "Band. ZLRG-0001 yellow Gold &nbsp;Description sort", image: "https://www.myzoori.com/storage/images/products/x/ZLRG.jpg" }),
       url,
+      ZOORI,
     )!;
     expect(real.description).toBe("Metal: Gold, Diamond. Gross weight: 1.13 gm. Band. yellow Gold");
     expect(real).toMatchObject({ price: 19603.91, category: "rings", imageUrl: "https://www.myzoori.com/storage/images/products/x/ZLRG.jpg" });
@@ -512,13 +516,13 @@ describe("(3) the product reader on Zoori's pages", () => {
     ["ZPND-0019", "pendants"],
     ["ZLRG-0025", "rings"],
   ])("a missing shelf comes from the item code in the page title (%s → %s)", (code, shelf) => {
-    const draft = extractProduct(zooriPage({ name: "Azure Evil Eye", code, price: "₹1,03,662.68", jsonSku: false }), url)!;
+    const draft = extractProduct(zooriPage({ name: "Azure Evil Eye", code, price: "₹1,03,662.68", jsonSku: false }), url, ZOORI)!;
     expect(draft.sku).toBeNull();
     expect(draft.category).toBe(shelf);
   });
 
   it("…or from the product's own name when it names one ('Curved Orbit Studs' → earrings)", () => {
-    const draft = extractProduct(zooriPage({ name: "Curved Orbit Studs", code: "X-1", price: "₹45,863.63", jsonSku: false }), url)!;
+    const draft = extractProduct(zooriPage({ name: "Curved Orbit Studs", code: "X-1", price: "₹45,863.63", jsonSku: false }), url, ZOORI)!;
     expect(draft.category).toBe("earrings");
   });
 

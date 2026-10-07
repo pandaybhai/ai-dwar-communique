@@ -61,31 +61,53 @@ function decode(text: string): string {
     .trim();
 }
 
-/** The words a shop uses for its shelves, written the same way every time. */
-const CATEGORY_WORDS: Array<[RegExp, string]> = [
-  [/tanmaniya|tanmania|mangalsutra/i, "tanmaniya"],
-  [/\bear[\s-]?ring/i, "earrings"],
-  [/\bnecklace/i, "necklaces"],
-  [/\bpendant|\bpendent/i, "pendants"],
-  [/\bbracelet|\bbangle/i, "bracelets"],
-  [/\bchain/i, "chains"],
-  [/\bring/i, "rings"],
-];
+/**
+ * A website source's own rule for naming a shelf (knowledge_sources.config
+ * .category_rules): text that starts a word in a product's category, code,
+ * name, page title, address or photo name → the category to save. The
+ * shared reader has no product words of its own (Batch 20): a shop's
+ * category is what its page says, and anything more (a coded SKU prefix, a
+ * shelf name it wants written differently) is that source's setting.
+ */
+export type CategoryRule = { match: string; category: string };
 
-/** Coded item numbers some jewellers use instead of words. */
-const SKU_WORDS: Array<[RegExp, string]> = [
-  [/\bZ[A-Z]?LRG|\bZGRG|\bZLRG/i, "rings"],
-  [/\bZPNDS?\b|\bZPND/i, "pendants"],
-  [/\bZBSL/i, "bracelets"],
-  [/\bZTNM/i, "tanmaniya"],
-  [/\bZERG|\bZERN/i, "earrings"],
-  [/\bZNCK|\bZNEK/i, "necklaces"],
-];
+/** The rules saved on a source, cleaned: text and category both set, at most 100. */
+export function readCategoryRules(raw: unknown): CategoryRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CategoryRule[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const match = String((item as Record<string, unknown>)["match"] ?? "").trim().slice(0, 60);
+    const category = String((item as Record<string, unknown>)["category"] ?? "").trim().toLowerCase().slice(0, 80);
+    if (match && category) out.push({ match, category });
+  }
+  return out.slice(0, 100);
+}
 
-/** Product-name words that only ever mean one shelf. */
-const TITLE_WORDS: Array<[RegExp, string]> = [
-  [/\bstuds?\b|\bdrops\b|\bdanglers?\b|\bjhumk|\bhoops?\b/i, "earrings"],
-];
+/**
+ * A rule's text as a pattern. Whole words, a plural "s"/"es" included:
+ * "stud" matches "Studs" but not "Studded"; a trailing "*" makes it a word
+ * start ("ZPND*" matches "zpnds-0040"); "ear ring" also matches "ear-ring"
+ * and "earring". Case never matters.
+ */
+function ruleRe(match: string): RegExp {
+  const text = match.trim();
+  const prefix = text.endsWith("*");
+  const parts = text
+    .replace(/\*+$/, "")
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const end = prefix ? "" : "(?:s|es)?(?![\\p{L}\\p{N}])";
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${parts.join("[\\s_-]*")}${end}`, "iu");
+}
+
+/** The first rule (in the source's order) whose text is in this part. */
+function ruleFor(rules: CategoryRule[], text: string | null | undefined): string | null {
+  if (!text) return null;
+  for (const rule of rules) if (ruleRe(rule.match).test(text)) return rule.category;
+  return null;
+}
 
 const ROUTE_WORDS =
   /^(home|shop|all|products?|product[-_ ]?details?|collections?|catalogue|catalog|listing|list|page|search|filter|new|sale|category|categories)$/i;
@@ -94,11 +116,17 @@ const ROUTE_WORDS =
  * A shelf name has to read like one. Anything that is really a page name, an
  * internal id or the product's own title is not a category.
  */
-function normalizeCategory(raw: string | null | undefined, title?: string | null): string | null {
+function normalizeCategory(
+  raw: string | null | undefined,
+  title?: string | null,
+  rules: CategoryRule[] = [],
+): string | null {
   if (!raw) return null;
   const text = decode(String(raw).replace(/[+%]/g, " ").replace(/[-_]+/g, " "));
   if (!text || text.length > 60) return null;
-  for (const [pattern, word] of CATEGORY_WORDS) if (pattern.test(text)) return word;
+  // The source's own rule may name this shelf differently.
+  const named = ruleFor(rules, text);
+  if (named) return named;
   const clean = text.trim().toLowerCase();
   if (!/^[a-z][a-z '&]*$/.test(clean)) return null; // ids, codes, addresses
   if (clean.split(/\s+/).length > 3) return null;
@@ -137,18 +165,22 @@ function breadcrumbText(html: string): string | null {
 }
 
 /** The listing page that pointed us here: /listing?categories[]=rings. */
-function categoryFromReferrer(referrer: string | null | undefined, title?: string | null): string | null {
+function categoryFromReferrer(
+  referrer: string | null | undefined,
+  title?: string | null,
+  rules: CategoryRule[] = [],
+): string | null {
   if (!referrer) return null;
   try {
     const url = new URL(referrer);
     for (const [key, value] of url.searchParams.entries()) {
       if (!/categor|collection|type|filter|shelf/i.test(key)) continue;
-      const word = normalizeCategory(value, title);
+      const word = normalizeCategory(value, title, rules);
       if (word) return word;
     }
     const parts = url.pathname.split("/").filter(Boolean).reverse();
     for (const part of parts) {
-      const word = normalizeCategory(decodeURIComponent(part), title);
+      const word = normalizeCategory(decodeURIComponent(part), title, rules);
       if (word) return word;
     }
     return null;
@@ -158,27 +190,17 @@ function categoryFromReferrer(referrer: string | null | undefined, title?: strin
 }
 
 /**
- * The shelf an item code names. Parts are read in the order given — the
- * product's own SKU first — so a reused photo's filename never outranks it
- * (myzoori.com: 24 ZERN earrings whose photos are named "zpnds-…" were saved
- * as pendants).
+ * The shelf a source's rules give a product the page doesn't put on one:
+ * its code first, then its name, the page title and address, and its photo
+ * name last — a reused photo's file name never outranks the product's own
+ * code (myzoori.com: earrings whose photos were named "zpnds-…").
  */
-function categoryFromCode(...parts: Array<string | null | undefined>): string | null {
+function categoryFromRules(rules: CategoryRule[], ...parts: Array<string | null | undefined>): string | null {
+  if (rules.length === 0) return null;
   for (const part of parts) {
-    if (!part) continue;
-    for (const [pattern, word] of SKU_WORDS) if (pattern.test(part)) return word;
+    const found = ruleFor(rules, part ? part.replace(/[-_/]+/g, " ") : part);
+    if (found) return found;
   }
-  return null;
-}
-
-/**
- * A shelf word inside a product name or a page address ("Solitaire Ring",
- * /rings/solitaire). Only the fixed shelf words count — a name is never a shelf.
- */
-function categoryWord(...parts: Array<string | null | undefined>): string | null {
-  const text = parts.filter(Boolean).join(" ").replace(/[-_/]+/g, " ");
-  if (!text) return null;
-  for (const [pattern, word] of [...CATEGORY_WORDS, ...TITLE_WORDS]) if (pattern.test(text)) return word;
   return null;
 }
 
@@ -200,13 +222,22 @@ function textLines(html: string): string[] {
     .filter(Boolean);
 }
 
-const SPEC_RE =
-  /^(metals?|material|purity|karat|carat|gold purity|stones?|gemstones?|diamond(?: quality)?|quality|gross weight|net weight|weight|finish|plating)\s*:\s*(.+)$/i;
+/** "Label: value" — a short label of words, then what it says. */
+const SPEC_RE = /^([\p{L}][\p{L}\p{N} .&/()'’-]{0,38}?)\s*:\s*(.+)$/u;
 
 /**
- * What the product is made of, as the page prints it: "Metal: Gold, Diamond",
- * "Gross weight: 1.05 gm", "Purity: 18K". Only labelled lines are kept —
- * nothing is guessed.
+ * Labels that are the page's own furniture or contact details, never what
+ * the product is: prices and totals (read separately), contact and address
+ * lines, sorting/filter controls, codes and dates. Language only.
+ */
+const NOT_A_SPEC =
+  /^(?:price|mrp|sale price|regular price|offer price|subtotal|total|tax(?:es)?|gst|vat|discount|you save|emi|qty|quantity|stock|availability|sku|item code|product code|code|barcode|ean|upc|id|phone|mobile|tel|telephone|call(?: us)?|whatsapp|e-?mail|email us|address|location|website|web|url|contact(?: us)?|follow us|share|copyright|sort(?: by)?|filter(?: by)?|show|view|search|language|currency|country|region|categor(?:y|ies)|tags?|brand|vendor|seller|sold by|shipping|delivery|returns?|exchange|warranty|note|date|time|hours|timings?|open|closed|rating|reviews?)$/i;
+
+/**
+ * What the product is, as the page prints it in labelled lines ("Material:
+ * Cotton", "Battery: 5000 mAh", "Metal: Gold, Diamond", "Gross weight: 1.05
+ * gm"). Any label the shop uses — nothing about one kind of product — and
+ * only labelled lines: nothing is guessed. At most four, in page order.
  */
 function specLines(html: string): string[] {
   const lines = textLines(html);
@@ -214,13 +245,16 @@ function specLines(html: string): string[] {
   const seen = new Set<string>();
   for (let i = 0; i < lines.length && out.length < 4; i++) {
     const line = lines[i]!;
+    if (line.length > 140) continue;
     const spec = line.match(SPEC_RE);
     if (spec) {
-      const label = spec[1]!.toLowerCase();
+      const label = spec[1]!.trim();
       const value = spec[2]!.trim();
-      if (seen.has(label) || value.length > 80 || /[₹{}<>]/.test(value)) continue;
-      seen.add(label);
-      out.push(`${spec[1]!.charAt(0).toUpperCase()}${spec[1]!.slice(1).toLowerCase()}: ${value}`);
+      const key = label.toLowerCase();
+      if (seen.has(key) || NOT_A_SPEC.test(key) || label.split(/\s+/).length > 4) continue;
+      if (!value || value.length > 80 || /[₹$€£{}<>]|https?:|www\.|@|\+?\d[\d\s-]{8,}\d/i.test(value)) continue;
+      seen.add(key);
+      out.push(`${label.charAt(0).toUpperCase()}${label.slice(1).toLowerCase()}: ${value}`);
     }
   }
   return out;
@@ -663,6 +697,8 @@ export function isLegalPage(pageUrl: string, html: string): boolean {
 export type ExtractContext = {
   /** The page that linked to this product — usually a category listing. */
   referrer?: string | null;
+  /** The website source's own category rules (config.category_rules). */
+  categoryRules?: CategoryRule[];
 };
 
 /** One product off one page, or nothing. First method that works wins. */
@@ -706,12 +742,14 @@ export function extractProduct(
 
   const crumbs = breadcrumbText(html);
   const docTitle = pageTitle(html);
+  // The shop's own shelf, as its page names it; the source's rules only
+  // where the page names none (or to write a shelf the way it asks).
+  const rules = context.categoryRules ?? [];
   draft.category =
-    normalizeCategory(draft.category, draft.title) ??
-    normalizeCategory(crumbs, draft.title) ??
-    categoryFromReferrer(context.referrer ?? null, draft.title) ??
-    categoryFromCode(draft.sku, draft.title, draft.imageUrl, docTitle) ??
-    categoryWord(draft.title, docTitle, new URL(pageUrl).pathname) ??
+    normalizeCategory(draft.category, draft.title, rules) ??
+    normalizeCategory(crumbs, draft.title, rules) ??
+    categoryFromReferrer(context.referrer ?? null, draft.title, rules) ??
+    categoryFromRules(rules, draft.sku, draft.title, docTitle, new URL(pageUrl).pathname, draft.imageUrl) ??
     null;
   const about = [...specLines(html), ...(draft.description ? [draft.description] : [])];
   draft.description = about.length > 0 ? about.join(". ").replace(/\.\./g, ".").slice(0, 500) : null;
@@ -1010,7 +1048,7 @@ export async function fillMissingProductDetails(
   supabase: SupabaseClient,
   organizationId: string,
   origin: string,
-  opts: { fetchHtml?: FetchHtml; maxPages?: number; budgetMs?: number } = {},
+  opts: { fetchHtml?: FetchHtml; maxPages?: number; budgetMs?: number; categoryRules?: CategoryRule[] } = {},
 ): Promise<FillReport> {
   const report: FillReport = { missing: 0, checked: 0, filled: 0, fields: { image_url: 0, description: 0, category: 0 } };
   const { data } = await supabase
@@ -1048,7 +1086,7 @@ export async function fillMissingProductDetails(
       try {
         const html = await fetchHtml(url);
         report.checked += 1;
-        const draft = html ? extractProduct(html, url) : null;
+        const draft = html ? extractProduct(html, url, { categoryRules: opts.categoryRules ?? [] }) : null;
         if (draft) found.push({ row, draft });
       } catch {
         // One page we cannot open never stops the rest.
@@ -1285,7 +1323,10 @@ export async function backfillProductsFromSource(
         if (!res || !res.ok) continue;
         if (!(res.headers.get("content-type") ?? "").toLowerCase().includes("text/html")) continue;
         const html = await res.text().catch(() => "");
-        const draft = extractProduct(html, next, { referrer: referrers.get(next) ?? null });
+        const draft = extractProduct(html, next, {
+          referrer: referrers.get(next) ?? null,
+          categoryRules: readCategoryRules(source.config?.["category_rules"]),
+        });
         if (draft) drafts.push(draft);
       } catch {
         // One unreadable page never stops the rest.

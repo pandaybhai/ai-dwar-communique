@@ -369,12 +369,21 @@ describe("ZERN earrings whose photo is named 'zpnds-…' are earrings", () => {
     const url = "https://www.myzoori.com/product-detail/a2d2a18b-597e-4c7a-ae6d-82ed5f8a1d89";
     const live =
       "https://www.myzoori.com/storage/images/products/a2d2a18b-597e-4c7a-ae6d-82ed5f8a1d89/zpnds-0040e2804-1790255812.jpg";
-    expect(extractProduct(zernPage(live), url)?.category).toBe("earrings");
-    // Unchanged: no SKU on the page → the photo's code still decides.
+    const { READER_RULES } = await import("./test-support/zoori-replay");
+    // Batch 20: Zoori's codes are its source's own rules (config.category_rules).
+    const zoori = { categoryRules: READER_RULES };
+    expect(extractProduct(zernPage(live), url, zoori)?.category).toBe("earrings");
+    // No SKU on the page: the product's own name ("Floral Cage Drops") now
+    // comes before its photo's file name — earrings, not the photo's "zpnds".
     const noSku = zernPage(live)
       .replace(/"sku":"ZERN-0040",/, "")
       .replace(" || ZERN-0040", "");
-    expect(extractProduct(noSku, url)?.category).toBe("pendants");
+    expect(extractProduct(noSku, url, zoori)?.category).toBe("earrings");
+    // Only the photo carries a code: the photo's code decides.
+    const photoOnly = noSku.split("Floral Cage Drops").join("Floral Cage");
+    expect(extractProduct(photoOnly, url, zoori)?.category).toBe("pendants");
+    // Without the source's rules nothing is guessed from codes or names.
+    expect(extractProduct(noSku, url)?.category).toBeNull();
   });
 
   it("a re-read that sees no gender keeps the one already set (Zoori's hand-set ZGRG/ZLRG genders)", async () => {
