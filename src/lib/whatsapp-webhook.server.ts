@@ -50,8 +50,8 @@ let burstSetting: { value: number; at: number } | null = null;
 
 /**
  * The platform's burst window, read at most once a minute per worker. A
- * missing column (migration 20261020 not applied), a missing row or a failed
- * read all mean the default — the setting can never stop a reply.
+ * missing row or a failed read means the default — the setting can never
+ * stop a reply.
  */
 export async function burstWindowMs(supabase: SupabaseClient, now = Date.now()): Promise<number> {
   if (burstSetting && now - burstSetting.at < 60_000) return burstSetting.value;

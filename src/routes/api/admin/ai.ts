@@ -462,11 +462,7 @@ export const Route = createFileRoute("/api/admin/ai")({
             .from("platform_settings")
             .update({ ai_burst_wait_ms: ms, updated_at: new Date().toISOString() })
             .eq("id", true);
-          if (error) {
-            return /ai_burst_wait_ms/.test(error.message ?? "")
-              ? jsonError("The wait can't be saved until the database update 20261020_ai_burst_wait.sql is applied.", 409)
-              : jsonError("The wait could not be saved.", 500);
-          }
+          if (error) return jsonError("The wait could not be saved.", 500);
           resetBurstWindowCache();
           await supabase
             .from("activity_log")
