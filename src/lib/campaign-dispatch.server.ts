@@ -1517,11 +1517,27 @@ class SendRecorder {
       const { error } = await supabase.from("messages").insert(uniform);
       if (!error) rows.forEach((row, i) => written.set(i, row.id));
       else {
-        // One bad row must not lose the rest: one at a time.
+        // One bad row must not lose the rest: one at a time, retried; a
+        // duplicate is a row the batch (or a try) already wrote. A sent row
+        // that still can't be written is logged with its Meta id: without it
+        // the delivered status, and so the price, has nothing to land on.
         await Promise.all(
           rows.map(async (row, i) => {
-            const { error: oneError } = await supabase.from("messages").insert(row);
+            const { error: oneError } = await withRetry(async () => {
+              const res = await supabase.from("messages").insert(row);
+              return (res.error as { code?: string } | null)?.code === "23505" ? { error: null } : res;
+            });
             written.set(i, oneError ? null : row.id);
+            if (oneError && row["meta_message_id"]) {
+              console.error(
+                JSON.stringify({
+                  at: "campaign_message_row_failed",
+                  campaign_id: row["campaign_id"],
+                  meta_message_id: row["meta_message_id"],
+                  error: oneError.message,
+                }),
+              );
+            }
           }),
         );
       }

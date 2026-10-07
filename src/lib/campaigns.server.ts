@@ -585,28 +585,60 @@ export async function sendCampaignTemplate(
   const nowIso = new Date().toISOString();
   const headerMedia = headerMediaFromComponents(built.payloadComponents as never);
 
-  const { data: message } = await supabase
+  const sentRow = {
+    organization_id: organizationId,
+    conversation_id: conversationId,
+    meta_message_id: metaMessageId,
+    direction: "outbound",
+    type: "template",
+    template_name: template.name,
+    ...(headerMedia
+      ? { media_url: headerMedia.url, media_mime: headerMedia.kind }
+      : {}),
+    // The values it was sent with, so the inbox shows "Hi Priya", not "Hi {{1}}".
+    ...(Object.keys(recipient.variables).length
+      ? { metadata: { template_params: recipient.variables } }
+      : {}),
+    status: "pending",
+    status_updated_at: nowIso,
+    ...attribution,
+  };
+  // Meta accepted it, so it is sent whatever happens here; but without its
+  // row the delivered status (and so the price) has nothing to land on. One
+  // more try, then a loud log with the Meta id so the row can be put back.
+  let { data: message, error: rowError } = await supabase
     .from("messages")
-    .insert({
-      organization_id: organizationId,
-      conversation_id: conversationId,
-      meta_message_id: metaMessageId,
-      direction: "outbound",
-      type: "template",
-      template_name: template.name,
-      ...(headerMedia
-        ? { media_url: headerMedia.url, media_mime: headerMedia.kind }
-        : {}),
-      // The values it was sent with, so the inbox shows "Hi Priya", not "Hi {{1}}".
-      ...(Object.keys(recipient.variables).length
-        ? { metadata: { template_params: recipient.variables } }
-        : {}),
-      status: "pending",
-      status_updated_at: nowIso,
-      ...attribution,
-    })
+    .insert(sentRow)
     .select("id")
     .single();
+  if (rowError) {
+    ({ data: message, error: rowError } = await supabase
+      .from("messages")
+      .insert(sentRow)
+      .select("id")
+      .single());
+    // Already there: the first try was written but its answer was lost.
+    if (rowError && (rowError as { code?: string }).code === "23505" && metaMessageId) {
+      ({ data: message, error: rowError } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("meta_message_id", metaMessageId)
+        .maybeSingle());
+    }
+  }
+  if (rowError) {
+    console.error(
+      JSON.stringify({
+        scope: "message_row_failed",
+        organization_id: organizationId,
+        meta_message_id: metaMessageId,
+        campaign_id: context.campaignId ?? null,
+        flow_id: context.flowId ?? null,
+        error: rowError.message,
+      }),
+    );
+  }
 
   if (conversationId) {
     await supabase.from("conversations").update({ last_message_at: nowIso }).eq("id", conversationId);
