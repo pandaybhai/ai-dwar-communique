@@ -419,24 +419,50 @@ function AdminBilling() {
             onClick={async () => {
               setTemplatesBusy(true);
               setTemplateNote(null);
-              const result = await callApi<{
-                created?: string[];
-                skipped?: string[];
-                failed?: { name: string; error: string }[];
-                templates?: TemplateRow[];
-                error?: string;
-              }>("/api/admin/billing", { body: { action: "create_billing_templates" } });
-              setTemplatesBusy(false);
-              if (result.error || result.data?.error) {
-                setError(result.error ?? result.data?.error ?? "We couldn't create the templates.");
-                return;
+              // Each run starts no new template after ~20 s and hands back
+              // what is left; templates already held are skipped, so calling
+              // again simply carries on. Errors are kept per template.
+              const counts = { created: 0, skipped: 0, failed: 0 };
+              const errors = new Map<string, string>();
+              let left: string[] = [];
+              let latest: TemplateRow[] | null = null;
+              for (let round = 0; round < 6; round += 1) {
+                const result = await callApi<{
+                  created?: string[];
+                  skipped?: string[];
+                  failed?: { name: string; error: string }[];
+                  remaining?: string[];
+                  templates?: TemplateRow[];
+                  error?: string;
+                }>("/api/admin/billing", {
+                  body: {
+                    action: "create_billing_templates",
+                    ...(round > 0 ? { names: left } : {}),
+                  },
+                });
+                if (result.error || result.data?.error) {
+                  setTemplatesBusy(false);
+                  setError(result.error ?? result.data?.error ?? "We couldn't create the templates.");
+                  return;
+                }
+                const d = result.data;
+                counts.created += d?.created?.length ?? 0;
+                if (round === 0) counts.skipped = d?.skipped?.length ?? 0;
+                for (const f of d?.failed ?? []) errors.set(f.name, f.error);
+                if (d?.templates) latest = d.templates;
+                left = d?.remaining ?? [];
+                if (left.length === 0) break;
               }
+              counts.failed = errors.size;
+              setTemplatesBusy(false);
               setError(null);
-              const d = result.data;
               setTemplateNote(
-                `Created ${d?.created?.length ?? 0} · Skipped ${d?.skipped?.length ?? 0} · Failed ${d?.failed?.length ?? 0}`,
+                `Created ${counts.created} · Skipped ${counts.skipped} · Failed ${counts.failed}` +
+                  (left.length > 0 ? ` · ${left.length} still to do — press again` : ""),
               );
-              if (d?.templates) setTemplates(d.templates);
+              if (latest) {
+                setTemplates(latest.map((t) => ({ ...t, error: errors.get(t.name) ?? t.error })));
+              }
             }}
           >
             <FileText className="mr-2 h-4 w-4" />

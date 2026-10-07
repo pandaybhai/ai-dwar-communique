@@ -1135,8 +1135,16 @@ export async function requestTopup(
   return { ok: true };
 }
 
-/** Standing-state warnings: at most one per workspace per 24 hours. */
-const ONCE_A_DAY_KINDS = new Set(["float_low", "low_credits"]);
+/**
+ * Warnings that describe a standing state (not an event). The nightly sweep
+ * looks every half hour, so notify() itself refuses a repeat: none while an
+ * earlier one for the same workspace and audience is still queued (however
+ * old — the drain fails it as stale after NOTICE_STALE_MS), and none within
+ * STANDING_NOTICE_REPEAT_MS of one that was sent or failed. low_credits is
+ * held further by the sweep: once per low spell, until credits recover.
+ */
+export const STANDING_NOTICE_KINDS = new Set(["float_low", "low_credits"]);
+export const STANDING_NOTICE_REPEAT_MS = 864e5;
 
 export async function notify(
   supabase: SupabaseClient,
@@ -1150,19 +1158,18 @@ export async function notify(
   },
 ): Promise<void> {
   try {
-    // Warnings that describe a standing state (not an event) go out at most
-    // once a day per workspace, whatever else triggers them.
-    if (ONCE_A_DAY_KINDS.has(input.kind) && input.organizationId) {
-      const since = new Date(Date.now() - 864e5).toISOString();
-      const { data: recent } = await supabase
+    if (STANDING_NOTICE_KINDS.has(input.kind) && input.organizationId) {
+      const since = new Date(Date.now() - STANDING_NOTICE_REPEAT_MS).toISOString();
+      const { data: recent, error } = await supabase
         .from("billing_notifications")
         .select("id")
         .eq("organization_id", input.organizationId)
+        .eq("audience", input.audience)
         .eq("kind", input.kind)
-        .in("status", ["queued", "sent"])
-        .gte("created_at", since)
+        .or(`status.eq.queued,created_at.gte.${since}`)
         .limit(1);
-      if ((recent as { id: string }[] | null)?.length) return;
+      // Can't tell whether one is pending: a missed warning beats a pile.
+      if (error || (recent as { id: string }[] | null)?.length) return;
     }
 
     await supabase.from("billing_notifications").insert({
