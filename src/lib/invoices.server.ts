@@ -700,33 +700,37 @@ export async function markPaid(
   invoiceId: string,
   paymentId: string | null,
   amount: number,
-): Promise<void> {
-  const { data: invoice } = await supabase
+): Promise<{ error: string | null }> {
+  const { data: invoice, error: readError } = await supabase
     .from("invoices")
     .select("id, total, amount_paid, organization_id, purpose")
     .eq("id", invoiceId)
     .maybeSingle();
-  if (!invoice) return;
+  if (readError) return { error: `invoice read failed: ${readError.message}` };
+  if (!invoice) return { error: null };
 
   const paid = round2(Number(invoice["amount_paid"] ?? 0) + Number(amount ?? 0));
   const total = Number(invoice["total"] ?? 0);
   const status = paid + 0.01 >= total ? "paid" : paid > 0 ? "partially_paid" : "issued";
 
-  await supabase
+  // amount 0 = a retry once the invoice already took this payment: nothing
+  // changes on it, but the dunning lift below runs again.
+  const { error: updateError } = await supabase
     .from("invoices")
     .update({
       amount_paid: paid,
       status,
-      payment_id: paymentId,
+      ...(Number(amount ?? 0) > 0 ? { payment_id: paymentId } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", invoiceId);
+  if (updateError) return { error: `invoice update failed: ${updateError.message}` };
 
   // A settled plan fee undoes the whole dunning ladder — but only once no
   // other plan invoice for the workspace is still overdue.
   if (status === "paid" && invoice["purpose"] === "plan_fee" && invoice["organization_id"]) {
     const orgId = String(invoice["organization_id"]);
-    const { data: stillOpen } = await supabase
+    const { data: stillOpen, error: openError } = await supabase
       .from("invoices")
       .select("id")
       .eq("organization_id", orgId)
@@ -734,11 +738,17 @@ export async function markPaid(
       .in("status", ["issued", "partially_paid"])
       .neq("id", invoiceId)
       .limit(1);
+    if (openError) return { error: `open invoices read failed: ${openError.message}` };
     if (!((stillOpen as { id: string }[] | null)?.length)) {
       const { restoreAfterPayment } = await import("@/lib/dunning.server");
-      await restoreAfterPayment(supabase, orgId);
+      try {
+        await restoreAfterPayment(supabase, orgId);
+      } catch (error) {
+        return { error: `dunning restore failed: ${error instanceof Error ? error.message : String(error)}` };
+      }
     }
   }
+  return { error: null };
 }
 
 /** A credit note against an issued invoice. The wallet refund is the caller's. */

@@ -812,14 +812,16 @@ export async function settlePayment(
       const outstanding = round2(
         Number(inv?.["total"] ?? 0) - Number(inv?.["amount_paid"] ?? 0),
       );
-      if (outstanding > 0) {
-        await markPaid(
-          supabase,
-          String(priorRaw["invoice_id"]),
-          payment.id as string,
-          Math.min(outstanding, grossAmount > 0 ? grossAmount : outstanding),
-        );
-      }
+      // Always run: a retry whose invoice already took the payment (0 left)
+      // still lifts dunning. A failure stops here, before the payment is
+      // marked paid, so the delivery is retried.
+      const settled = await markPaid(
+        supabase,
+        String(priorRaw["invoice_id"]),
+        payment.id as string,
+        outstanding > 0 ? Math.min(outstanding, grossAmount > 0 ? grossAmount : outstanding) : 0,
+      );
+      if (settled.error) throw new SettleError(settled.error);
       await markPaidNow();
       return { credited: false };
     }

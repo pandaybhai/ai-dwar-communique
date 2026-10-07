@@ -307,3 +307,104 @@ describe("(2) campaign credits: held once, never held forever", () => {
     expect(campaignRow(db, c.id)["held_amount"]).toBe(2);
   });
 });
+
+// ------------------------------------------------------------------ (3)
+describe("(3) a paid plan fee lifts dunning, or the payment isn't marked paid", () => {
+  const PLAN_PAYMENT = {
+    id: "pay-9",
+    organization_id: "org-9",
+    status: "pending",
+    amount: 1000,
+    currency: "INR",
+    credit_pack_id: null,
+    coupon_id: null,
+    purpose: "plan_fee",
+    raw: { gross: 1180, invoice_id: "inv-9" },
+  };
+  const webhook = {
+    event: "payment_link.paid",
+    payload: {
+      payment: { entity: { id: "pay_rzp_9", amount: 118000, currency: "INR", status: "captured", method: "upi" } },
+    },
+  };
+  function planWorld(o: { invoicePaid?: boolean; invoiceUpdateError?: boolean; restoreError?: boolean }) {
+    const log: string[] = [];
+    const db = fakeDb((op) => {
+      if (op.table === "payments" && op.kind === "select") return { data: PLAN_PAYMENT, error: null };
+      if (op.table === "payments" && op.kind === "update") {
+        const p = op.payload as Record<string, unknown>;
+        if (p["status"] === "paid") log.push("payment_paid");
+        else if (op.filters.some(([n]) => n === "or")) {
+          log.push("claim");
+          return { data: [{ id: "pay-9" }], error: null };
+        } else if ((p["raw"] as Record<string, unknown>)?.["settle_error"]) log.push("claim_released");
+        return { data: null, error: null };
+      }
+      if (op.table === "invoices" && op.kind === "select" && op.filters.some(([n, a]) => n === "eq" && a[0] === "id"))
+        return {
+          data: {
+            id: "inv-9",
+            total: 1180,
+            amount_paid: o.invoicePaid ? 1180 : 0,
+            organization_id: "org-9",
+            purpose: "plan_fee",
+          },
+          error: null,
+        };
+      if (op.table === "invoices" && op.kind === "select") return { data: [], error: null };
+      if (op.table === "invoices" && op.kind === "update") {
+        log.push(`invoice:${(op.payload as Record<string, unknown>)["status"]}`);
+        return { data: null, error: o.invoiceUpdateError ? { message: "lock timeout" } : null };
+      }
+      if (op.table === "organizations" && op.kind === "select")
+        return { data: { plan_status: "paused", plan_version_id: "pv-1" }, error: null };
+      if (op.table === "organization_billing_settings" && op.kind === "select")
+        return { data: { dunning_paused: {}, dunning_stage: "paused" }, error: null };
+      if (op.table === "organization_billing_settings" && op.kind === "update") {
+        log.push("dunning_cleared");
+        return { data: null, error: o.restoreError ? { message: "timeout" } : null };
+      }
+      if (op.table === "organizations" && op.kind === "update") log.push("plan_active");
+      return undefined;
+    });
+    return { ...db, log };
+  }
+
+  it("markPaid failure: the invoice write fails → settle throws before the payment is marked paid", async () => {
+    const db = planWorld({ invoiceUpdateError: true });
+    const { settlePayment, isSettleError } = await import("./billing.server");
+    const err = await settlePayment(db.supabase, "pay-9", "pay_rzp_9", webhook).catch((e) => e);
+    expect(isSettleError(err)).toBe(true);
+    expect(String(err.message)).toMatch(/invoice update failed/);
+    expect(db.log).not.toContain("payment_paid");
+    expect(db.log).not.toContain("dunning_cleared");
+    expect(db.log).toContain("claim_released");
+  });
+
+  it("markPaid failure: the dunning lift fails → settle throws; the retry (invoice already paid) lifts it", async () => {
+    const first = planWorld({ restoreError: true });
+    const { settlePayment, isSettleError } = await import("./billing.server");
+    const err = await settlePayment(first.supabase, "pay-9", "pay_rzp_9", webhook).catch((e) => e);
+    expect(isSettleError(err)).toBe(true);
+    expect(first.log).toContain("invoice:paid");
+    expect(first.log).not.toContain("payment_paid");
+
+    // Retry: 0 outstanding. Before Batch 18 markPaid was skipped here, so the
+    // merchant stayed paused although the payment was marked paid.
+    const retry = planWorld({ invoicePaid: true });
+    await settlePayment(retry.supabase, "pay-9", "pay_rzp_9", webhook);
+    expect(retry.log).toEqual(["claim", "invoice:paid", "dunning_cleared", "plan_active", "payment_paid"]);
+    const invoiceUpdate = retry.ops.find((o) => o.table === "invoices" && o.kind === "update")!;
+    // Nothing banked twice, and the invoice keeps the payment it was paid by.
+    expect(invoiceUpdate.payload).toMatchObject({ amount_paid: 1180, status: "paid" });
+    expect(invoiceUpdate.payload).not.toHaveProperty("payment_id");
+  });
+
+  it("markPaid reports a failed read instead of doing nothing", async () => {
+    const db = fakeDb((op) =>
+      op.table === "invoices" ? { data: null, error: { message: "connection reset" } } : undefined,
+    );
+    const { markPaid } = await import("./invoices.server");
+    expect((await markPaid(db.supabase, "inv-1", "pay-1", 100)).error).toMatch(/invoice read failed/);
+  });
+});
