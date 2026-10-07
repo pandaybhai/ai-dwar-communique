@@ -233,6 +233,11 @@ function run(graph: FlowGraph, s: SimState, reply: string | null): SimState {
         break;
       }
       case "assign":
+        if (d["mode"] === "aiden") {
+          note(s, "Hands the chat to Aiden — the flow ends and Aiden answers the customer's next messages.");
+          s.done = true;
+          return s;
+        }
         note(s, "Assigns the chat to your team");
         break;
       case "needs_you":

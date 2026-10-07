@@ -355,7 +355,11 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
           <select className={sel} value={String(d["mode"] ?? "queue")} onChange={(e) => set("mode", e.target.value)}>
             <option value="queue">To the team queue (Needs you)</option>
             <option value="round_robin">Round-robin — teammate with the fewest open chats</option>
+            <option value="aiden">Hand to Aiden — end the flow, Aiden replies</option>
           </select>
+          {d["mode"] === "aiden" && (
+            <p className="text-xs text-muted-foreground">The flow ends here and Aiden answers this customer's next messages. If a flow had passed this chat to your team, that is cleared; a chat a teammate took over stays theirs.</p>
+          )}
         </div>
       )}
       {node.type === "branch" && (

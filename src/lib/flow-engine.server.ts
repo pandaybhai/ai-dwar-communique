@@ -1030,6 +1030,12 @@ async function advanceInner(
         break;
       }
       case "assign":
+        // Batch 21: "Hand to Aiden" ends the flow; Aiden answers the next messages.
+        if (d["mode"] === "aiden") {
+          await finish("done", "ended", { reason: "hand_to_aiden" });
+          await handToAiden(supabase, run);
+          return;
+        }
         if (run.conversation_id) {
           const userId = d["mode"] === "round_robin" ? await pickRoundRobin(supabase, run.organization_id) : String(d["user_id"] ?? "").trim();
           await supabase
@@ -1579,6 +1585,23 @@ async function markNeedsYou(supabase: SupabaseClient, run: Run, note: string) {
     .from("conversations")
     .update({ needs_human: true, needs_human_reason: "flow", needs_human_question: note.slice(0, 300), needs_human_at: new Date().toISOString() })
     .eq("id", run.conversation_id);
+}
+
+/**
+ * An Assign step's "Hand to Aiden": clears a flow's own hand-off on the chat
+ * (Needs you from a flow step or Assign-to-queue) so Aiden answers again.
+ * Never touches assigned_to or a hand-off that wasn't a flow's (a person's
+ * own takeover, a customer asking for a person, Aiden's own escalation).
+ */
+export async function handToAiden(supabase: SupabaseClient, run: { organization_id: string; conversation_id: string | null }) {
+  if (!run.conversation_id) return;
+  await supabase
+    .from("conversations")
+    .update({ needs_human: false, needs_human_reason: null, needs_human_question: null, handover_state: null })
+    .eq("id", run.conversation_id)
+    .eq("organization_id", run.organization_id)
+    .eq("needs_human", true)
+    .in("needs_human_reason", ["flow", "flow_assign"]);
 }
 
 /** Next teammate in turn: whoever has the fewest open chats assigned right now. */
