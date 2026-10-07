@@ -706,18 +706,16 @@ export const AI_TOOL_HANDLERS: Record<string, Handler> = {
     return { ok: true, data: { queued: true, products, ...(skipped.length ? { skipped } : {}) } };
   },
 
+  /**
+   * The store integration's "search_products" tool is catalog_search (Batch
+   * 16): the older title-only search here ignored is_visible and could show a
+   * hidden product. One search, one set of rules — the tool name stays so
+   * workspaces offered it keep a product search.
+   */
   async searchProducts(ctx, args) {
     const query = str(args["query"]);
     if (!query) return { ok: false, error: "query is required." };
-    const limit = Math.min(Math.max(num(args["limit"], 5), 1), 20);
-    const safe = query.replace(/[%,()]/g, " ").trim();
-    const { data } = await ctx.supabase
-      .from("products")
-      .select("id, title, price, currency, status, product_url, image_url, description")
-      .eq("organization_id", ctx.organizationId)
-      .ilike("title", `%${safe}%`)
-      .limit(limit);
-    return { ok: true, data: data ?? [] };
+    return AI_TOOL_HANDLERS["catalogSearch"]!(ctx, { query, limit: Math.min(Math.max(num(args["limit"], 5), 1), 20) });
   },
 };
 

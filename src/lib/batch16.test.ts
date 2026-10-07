@@ -250,3 +250,41 @@ describe("Batch 16 item 2: hand-off alerts go to staff, never the business's own
     expect(await remindWaitingHandoffs(closed.supabase, new Date("2026-10-11T05:30:00Z"), deps)).toBe(0);
   });
 });
+
+describe("Batch 16 item 3: one product search — hidden products never come back", () => {
+  it("catalog_search, the store's search_products (now catalogSearch) and the flows pool all skip is_visible=false", async () => {
+    const { PRODUCTS } = await import("./test-support/zoori-replay");
+    const { memoryDb } = await import("./test-support/memory-db");
+    const real = await vi.importActual<typeof import("./ai-tools.server")>("./ai-tools.server");
+    const rings = PRODUCTS.filter((p) => /ring/i.test(String(p["category"] ?? "")));
+    expect(rings.length).toBeGreaterThan(1);
+    const hiddenIds = new Set(rings.slice(1).map((p) => p["id"]));
+    const rows = PRODUCTS.map((p) => (hiddenIds.has(p["id"]) ? { ...p, is_visible: false } : p));
+    const ctx = {
+      supabase: memoryDb({ products: rows }).supabase,
+      organizationId: "81c234b2-569f-40be-ad71-96c046de5d12",
+      actorUserId: null,
+      initiatedBy: "ai" as const,
+    };
+    const ids = (out: { data?: unknown }) => ((out.data as Array<Record<string, unknown>> | undefined) ?? []).map((r) => r["id"]);
+    const calls = [
+      real.AI_TOOL_HANDLERS["catalogSearch"]!(ctx, { category: "rings", limit: 25 }),
+      real.AI_TOOL_HANDLERS["catalogSearch"]!({ ...ctx, brokered: true }, { query: String(rings[1]!["title"]), limit: 25 }),
+      real.AI_TOOL_HANDLERS["catalogSearch"]!(ctx, { category: "rings", pool: true, limit: 100, order: "price_asc" }),
+      real.AI_TOOL_HANDLERS["searchProducts"]!(ctx, { query: String(rings[1]!["title"]) }),
+      real.AI_TOOL_HANDLERS["searchProducts"]!(ctx, { query: "ring", limit: 20 }),
+    ];
+    for (const out of await Promise.all(calls)) {
+      for (const id of ids(out)) expect(hiddenIds.has(id)).toBe(false);
+    }
+  });
+
+  it("no second product search is left: the only title/ilike product query in the AI tools is gone", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./ai-tools.server.ts", import.meta.url), "utf8");
+    expect(src).not.toMatch(/\.from\("products"\)[\s\S]{0,200}\.ilike\("title"/);
+    // every row-returning product read in the tools carries the visibility rule
+    const reads = src.split('.from("products")').slice(1).map((s) => s.slice(0, 600));
+    for (const r of reads) expect(r).toMatch(/is_visible/);
+  });
+});
