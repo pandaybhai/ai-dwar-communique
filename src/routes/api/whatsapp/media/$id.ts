@@ -54,7 +54,8 @@ export const Route = createFileRoute("/api/whatsapp/media/$id")({
         }
 
         // Step one: ask Meta where the file lives (the link is short-lived).
-        const lookup = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+        const { outsideFetch } = await import("@/lib/outside-call.server");
+        const lookup = await outsideFetch("meta", `https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
           headers: { Authorization: `Bearer ${connection.accessToken}` },
         });
         const lookupBody = (await lookup.json().catch(() => ({}))) as Record<string, unknown>;
@@ -64,9 +65,13 @@ export const Route = createFileRoute("/api/whatsapp/media/$id")({
         }
 
         // Step two: fetch the bytes. Meta requires the same token here too.
-        const fileRes = await fetch(fileUrl, {
-          headers: { Authorization: `Bearer ${connection.accessToken}` },
-        });
+        // Time to the first byte only: the file itself streams on to the browser.
+        const fileRes = await outsideFetch(
+          "meta_media",
+          fileUrl,
+          { headers: { Authorization: `Bearer ${connection.accessToken}` } },
+          { headersOnly: true },
+        );
         if (!fileRes.ok || !fileRes.body) {
           return jsonError("We couldn't download this file. Please try again.", 502);
         }

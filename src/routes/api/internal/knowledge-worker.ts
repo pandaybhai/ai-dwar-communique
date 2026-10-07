@@ -14,6 +14,13 @@ import { buildInfo } from "@/lib/build-info";
 const TICK_BUDGET_MS = 95_000;
 /** Time a claimed read needs to be worth starting. */
 const MIN_READ_MS = 45_000;
+/**
+ * Time the suggested behaviour (one AI call) needs. With less left it waits:
+ * the source is marked persona_pending and the next tick makes it first.
+ */
+const PERSONA_MIN_MS = 30_000;
+/** Time the onboarding nudges need; with less they wait for the next tick. */
+const NUDGES_MIN_MS = 15_000;
 
 export const Route = createFileRoute("/api/internal/knowledge-worker")({
   server: {
@@ -36,6 +43,35 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
         try {
           // A read that never finished is worth another try, from where it got to.
           await resetStaleReads(supabase);
+
+          // A suggested behaviour the last tick had no time for comes first
+          // (one per tick; suggestPersonaAfterRead does nothing once one exists).
+          let personaCaughtUp = 0;
+          try {
+            const { data: waiting } = await supabase
+              .from("knowledge_sources")
+              .select("id, config")
+              .eq("config->>persona_pending", "true")
+              .neq("status", "syncing")
+              .limit(1);
+            for (const row of (waiting ?? []) as Array<{ id: string; config: Record<string, unknown> | null }>) {
+              const { persona_pending: _done, ...config } = row.config ?? {};
+              const { data: took } = await supabase
+                .from("knowledge_sources")
+                .update({ config })
+                .eq("id", row.id)
+                .eq("config->>persona_pending", "true")
+                .neq("status", "syncing")
+                .select("id")
+                .maybeSingle();
+              if (!took) continue;
+              const { suggestPersonaAfterRead } = await import("@/lib/persona.server");
+              await suggestPersonaAfterRead(supabase, row.id);
+              personaCaughtUp += 1;
+            }
+          } catch (error) {
+            console.error("[knowledge-worker] deferred persona failed", error instanceof Error ? error.message : String(error));
+          }
 
           /** The oldest queued source, claimed so no other tick reads it too. */
           const claimNext = async (): Promise<string | null> => {
@@ -65,6 +101,7 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
           const claimed: string[] = [];
           let done = 0;
           let failed = 0;
+          let personaDeferred = 0;
           while (claimed.length < 3 && tickEnds - Date.now() >= MIN_READ_MS) {
             const sourceId = await claimNext();
             if (!sourceId) break;
@@ -82,8 +119,21 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
               const { finishOnboardingCrawl } = await import("@/lib/merchant-channel.server");
               await finishOnboardingCrawl(supabase, sourceId, result);
               // First website read with no behaviour yet → a suggested one to review.
-              const { suggestPersonaAfterRead } = await import("@/lib/persona.server");
-              await suggestPersonaAfterRead(supabase, sourceId);
+              // Out of time: the next tick makes it (never past this tick's end).
+              if (tickEnds - Date.now() >= PERSONA_MIN_MS) {
+                const { suggestPersonaAfterRead } = await import("@/lib/persona.server");
+                await suggestPersonaAfterRead(supabase, sourceId);
+              } else {
+                const { data: now } = await supabase.from("knowledge_sources").select("config").eq("id", sourceId).maybeSingle();
+                const config = ((now as { config?: Record<string, unknown> | null } | null)?.config ?? {}) as Record<string, unknown>;
+                await supabase
+                  .from("knowledge_sources")
+                  .update({ config: { ...config, persona_pending: true } })
+                  .eq("id", sourceId)
+                  .neq("status", "syncing");
+                console.warn("[knowledge-worker] persona deferred to next tick", sourceId);
+                personaDeferred += 1;
+              }
               done += 1;
             } catch (error) {
               const err = error instanceof Error ? error : new Error(String(error));
@@ -138,7 +188,9 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
           };
           try {
             const { runOnboardingNudges } = await import("@/lib/onboarding-nudges.server");
-            nudges = await runOnboardingNudges(supabase);
+            // Out of time: they are all still due on the next tick.
+            if (tickEnds - Date.now() >= NUDGES_MIN_MS) nudges = await runOnboardingNudges(supabase);
+            else nudges = { ...nudges, skipped: "deadline" };
           } catch (error) {
             console.error(
               "[onboarding-nudge] failed",
@@ -152,6 +204,8 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             failed,
             nudges,
             embeddings,
+            ...(personaDeferred > 0 ? { persona_deferred: personaDeferred } : {}),
+            ...(personaCaughtUp > 0 ? { persona_caught_up: personaCaughtUp } : {}),
             commit: buildInfo().commit,
           });
         } catch (error) {

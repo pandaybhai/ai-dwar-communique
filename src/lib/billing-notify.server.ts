@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { money } from "@/lib/billing";
 import { normalizePhone } from "@/lib/phone";
@@ -734,7 +735,8 @@ export async function drainBillingNotifications(
         continue;
       }
 
-      const res = await fetch(
+      const res = await outsideFetch(
+        "meta",
         `https://graph.facebook.com/v25.0/${connection.phoneNumberId}/messages`,
         {
           method: "POST",

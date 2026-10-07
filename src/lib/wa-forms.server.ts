@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isServiceWindowOpen } from "@/lib/service-window";
 import {
@@ -43,7 +44,7 @@ async function graph(
   token: string,
   init: { method?: string; body?: AnyRecord } = {},
 ): Promise<{ ok: boolean; body: AnyRecord }> {
-  const res = await fetch(`https://graph.facebook.com/v25.0/${path}`, {
+  const res = await outsideFetch("meta", `https://graph.facebook.com/v25.0/${path}`, {
     method: init.method ?? "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -108,7 +109,7 @@ export async function publishForm(
     fd.append("file", blob, "flow.json");
     fd.append("name", "flow.json");
     fd.append("asset_type", "FLOW_JSON");
-    const res = await fetch(`https://graph.facebook.com/v25.0/${metaFlowId}/assets`, {
+    const res = await outsideFetch("meta", `https://graph.facebook.com/v25.0/${metaFlowId}/assets`, {
       method: "POST",
       headers: { Authorization: `Bearer ${connection.accessToken}` },
       body: fd,
@@ -238,7 +239,7 @@ export async function sendFormMessage(
   const flowToken = `f:${form.id}:${crypto.randomUUID().slice(0, 8)}`;
   const bodyText = (args.body?.trim() || form.intro?.trim() || `Please fill in: ${form.name}`).slice(0, 1024);
 
-  const res = await fetch(`https://graph.facebook.com/v25.0/${connection.phoneNumberId}/messages`, {
+  const res = await outsideFetch("meta", `https://graph.facebook.com/v25.0/${connection.phoneNumberId}/messages`, {
     method: "POST",
     headers: { Authorization: `Bearer ${connection.accessToken}`, "content-type": "application/json" },
     body: JSON.stringify({

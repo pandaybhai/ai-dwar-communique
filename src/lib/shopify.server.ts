@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -269,7 +270,7 @@ export async function exchangeAccessToken(args: {
   apiSecret: string;
   code: string;
 }): Promise<{ ok: boolean; grant?: TokenGrant; error?: string }> {
-  const res = await fetch(`https://${args.shopDomain}/admin/oauth/access_token`, {
+  const res = await outsideFetch("shopify", `https://${args.shopDomain}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -304,7 +305,7 @@ export async function refreshAccessToken(args: {
 }): Promise<{ ok: true; grant: TokenGrant } | { ok: false; fatal: boolean; error: string }> {
   let res: Response;
   try {
-    res = await fetch(`https://${args.shopDomain}/admin/oauth/access_token`, {
+    res = await outsideFetch("shopify", `https://${args.shopDomain}/admin/oauth/access_token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -391,7 +392,7 @@ export async function shopifyRest(args: {
   );
   for (const [k, v] of Object.entries(args.query ?? {})) if (v) url.searchParams.set(k, v);
 
-  const res = await fetch(url.toString(), {
+  const res = await outsideFetch("shopify", url.toString(), {
     method: args.method ?? "GET",
     headers: {
       "X-Shopify-Access-Token": args.accessToken,

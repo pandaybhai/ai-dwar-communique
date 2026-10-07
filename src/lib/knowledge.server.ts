@@ -80,7 +80,12 @@ export type ConnectorContext = {
   onStage?: (stage: CrawlStage) => void;
   /** Epoch ms by which the run must be over (the worker's request ends then). */
   deadlineAt?: number;
+  /** A website read hands its forget data to this run's sync — never shared between runs. */
+  onForget?: (forget: ReadForget) => void;
 };
+
+/** What a website read tells the forget step. */
+export type ReadForget = { fullReadComplete: boolean; siteMap: string[]; gone: string[] };
 
 export type Connector = (ctx: ConnectorContext) => Promise<KnowledgeDocument[]>;
 
@@ -788,7 +793,7 @@ const PAGE_TIMEOUT_MS = 15_000;
  * resume and the worker picks it up again a minute later. Our own fetch reads
  * first; a paid reader is asked only for a page that came back nearly empty.
  */
-const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, config: givenConfig, onStage, deadlineAt }) => {
+const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, config: givenConfig, onStage, deadlineAt, onForget }) => {
   onStage?.("discover");
   let config: Record<string, unknown> = { ...givenConfig };
   const startUrl = String(config["url"] ?? "").trim();
@@ -1408,8 +1413,8 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     for (const row of (knownNow ?? []) as Array<{ url: string }>) siteMap.add(row.url);
     for (const url of gonePages) siteMap.delete(url);
   }
-  const forget = { fullReadComplete: replaceLive, siteMap: Array.from(siteMap), gone: Array.from(gonePages) };
-  lastReadForget = forget;
+  const forget: ReadForget = { fullReadComplete: replaceLive, siteMap: Array.from(siteMap), gone: Array.from(gonePages) };
+  onForget?.(forget);
   await hideMissingCrawledProducts(supabase, organizationId, origin, forget);
   if (replaceLive) {
     // The same products under the site's old address (myzoori.com before it
@@ -1649,13 +1654,16 @@ export async function syncSource(
   if (!connector)
     return { ok: false, itemCount: 0, error: "We can't read that kind of source yet." };
 
+  // The start time lets resetStaleReads recover a read that dies here
+  // (website reads keep it fresh as they go; the worker's claim sets it too).
   await supabase
     .from("knowledge_sources")
-    .update({ status: "syncing", last_error: null })
+    .update({ status: "syncing", last_error: null, sync_started_at: new Date().toISOString() })
     .eq("id", sourceId);
 
   try {
-    lastReadForget = null;
+    // This run's own forget data: two reads at once must never see each other's.
+    let readForget: ReadForget | null = null;
     // A website read saves its pages as it goes; anything it couldn't build
     // an index for yet counts here too.
     embedDeferred = 0;
@@ -1666,6 +1674,9 @@ export async function syncSource(
       config: source.config ?? {},
       ...(options?.onStage ? { onStage: options.onStage } : {}),
       ...(options?.deadlineAt ? { deadlineAt: options.deadlineAt } : {}),
+      onForget: (forget) => {
+        readForget = forget;
+      },
     });
 
     options?.onStage?.("embed");
@@ -1694,7 +1705,7 @@ export async function syncSource(
     // or no longer on the site map. Other source types report their whole list
     // every time, so for them "not in this list" means gone.
     if (source.type !== "manual_qa") {
-      const forget = source.type === "website" ? lastReadForget : {
+      const forget = source.type === "website" ? readForget : {
         fullReadComplete: documents.length > 0,
         siteMap: documents.map((d) => d.sourceRef),
         gone: [] as string[],
@@ -1724,7 +1735,6 @@ export async function syncSource(
         }
       }
     }
-    lastReadForget = null;
 
     // A website's pages were saved during the read: count what the source holds.
     let itemCount = documents.length;
@@ -1783,8 +1793,6 @@ export async function syncSource(
 let embedDeferred = 0;
 /** Embedding spend (₹, estimated as metered) since the module loaded; a read takes the difference. */
 let embedSpend = 0;
-/** What the website read just finished tells the forget step. Null = unknown. */
-let lastReadForget: { fullReadComplete: boolean; siteMap: string[]; gone: string[] } | null = null;
 
 /**
  * Store one document and (re)build its chunks when the text has changed.

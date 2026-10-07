@@ -14,6 +14,7 @@
  * to render the same words still go out as plain text.
  */
 
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getScript } from "@/lib/scripts.server";
 import { normalizePhone } from "@/lib/phone";
@@ -1348,13 +1349,13 @@ async function finishNumberConnected(
 /** The bytes behind an inbound picture or document. Null when Meta says no. */
 async function downloadMedia(mediaId: string, accessToken: string): Promise<Uint8Array | null> {
   const { GRAPH_VERSION } = await import("@/lib/whatsapp-api.server");
-  const lookup = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+  const lookup = await outsideFetch("meta", `https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   const body = (await lookup.json().catch(() => ({}))) as Record<string, unknown>;
   const url = body["url"] as string | undefined;
   if (!lookup.ok || !url) return null;
-  const file = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const file = await outsideFetch("meta_media", url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!file.ok) return null;
   const buffer = await file.arrayBuffer();
   if (buffer.byteLength > 8 * 1024 * 1024) return null;

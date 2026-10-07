@@ -356,7 +356,12 @@ const NO_REPLY_MAX_ATTEMPTS = 100;
  * Pages past contacts that already fired (or are busy) so the same few are
  * never re-picked every tick; at most 25 starts (100 attempts) per trigger per tick.
  */
-export async function dispatchNoReply(supabase: SupabaseClient): Promise<{ started: number }> {
+export async function dispatchNoReply(
+  supabase: SupabaseClient,
+  options: { deadlineAt?: number } = {},
+): Promise<{ started: number; deferred?: true }> {
+  // Past the worker's deadline no new run is started; the next tick goes on.
+  const pastDeadline = () => options.deadlineAt != null && Date.now() >= options.deadlineAt;
   const { data: triggers } = await supabase
     .from("flow_triggers")
     .select("id, organization_id, flow_id, kind, config")
@@ -365,6 +370,7 @@ export async function dispatchNoReply(supabase: SupabaseClient): Promise<{ start
     .limit(50);
   let started = 0;
   for (const t of (triggers ?? []) as Array<Trigger & { organization_id: string }>) {
+    if (pastDeadline()) return { started, deferred: true };
     const days = Math.min(Math.max(Number(t.config["days"] ?? 3), 1), 90);
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
     const seen = new Set<string>();
@@ -404,6 +410,7 @@ export async function dispatchNoReply(supabase: SupabaseClient): Promise<{ start
         const done = new Set<string>();
         for (const c of fresh) {
           if (full()) break;
+          if (pastDeadline()) return { started, deferred: true };
           if (skip.has(c.contact_id) || done.has(c.contact_id)) continue;
           done.add(c.contact_id);
           attempts += 1;

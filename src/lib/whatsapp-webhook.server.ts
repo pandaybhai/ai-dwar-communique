@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { detectLanguage } from "@/lib/languages";
 import { readCodIntent } from "@/lib/cod";
@@ -147,7 +148,7 @@ export function showTyping(
   void connection
     .then((c) => {
       if (!c?.accessToken) return;
-      return fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+      return outsideFetch("meta", `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
         method: "POST",
         headers: { Authorization: `Bearer ${c.accessToken}`, "content-type": "application/json" },
         body: JSON.stringify({

@@ -392,6 +392,9 @@ export async function activatePlanFromPayment(
 /**
  * A paid plan buys the whole website, not just the front page. Every website
  * source goes back in the queue in full mode, once, and the owner is told.
+ * A source being read right now is left to finish: queueing it again would
+ * start a second crawl of the same site and spend paid-reader pages twice.
+ * What that read leaves unread is picked up by the nightly backfill.
  */
 async function startFullSiteRead(
   supabase: SupabaseClient,
@@ -422,7 +425,8 @@ async function startFullSiteRead(
           sync_started_at: null,
           last_error: null,
         })
-        .eq("id", source.id);
+        .eq("id", source.id)
+        .neq("status", "syncing");
     }
 
     const site = sources[0]?.name ?? "your website";

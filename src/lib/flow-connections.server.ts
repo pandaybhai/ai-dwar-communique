@@ -1,3 +1,4 @@
+import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHmac, timingSafeEqual } from "crypto";
 
@@ -124,7 +125,7 @@ export function googleAuthUrl(origin: string, state: string): string {
 }
 
 export async function exchangeGoogleCode(origin: string, code: string): Promise<{ refreshToken: string; email: string } | { error: string }> {
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await outsideFetch("google", "https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -137,13 +138,13 @@ export async function exchangeGoogleCode(origin: string, code: string): Promise<
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, string>;
   if (!res.ok || !body["refresh_token"]) return { error: "Google didn't give us access. Please try connecting again." };
-  const who = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${body["access_token"]}` } });
+  const who = await outsideFetch("google", "https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${body["access_token"]}` } });
   const info = (await who.json().catch(() => ({}))) as { email?: string };
   return { refreshToken: body["refresh_token"], email: info.email ?? "Google account" };
 }
 
 async function googleAccessToken(refreshToken: string): Promise<string | null> {
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await outsideFetch("google", "https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -189,7 +190,7 @@ export async function appendSheetRow(
     await markError(supabase, organizationId, "google", "Google access was removed. Reconnect Google in Settings → Integrations.");
     return { ok: false, error: "google_access_revoked" };
   }
-  const res = await fetch(sheetAppendUrl(args.sheet, args.tab), {
+  const res = await outsideFetch("google", sheetAppendUrl(args.sheet, args.tab), {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ values: [args.values] }),
@@ -201,7 +202,7 @@ export async function appendSheetRow(
 // ---------------------------------------------------------------- Razorpay
 
 export async function verifyRazorpayKeys(keyId: string, keySecret: string): Promise<boolean> {
-  const res = await fetch("https://api.razorpay.com/v1/payment_links?count=1", {
+  const res = await outsideFetch("razorpay", "https://api.razorpay.com/v1/payment_links?count=1", {
     headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}` },
   });
   return res.ok;
@@ -217,7 +218,7 @@ export async function createPaymentLink(
   const amount = Math.round(args.amountRupees * 100);
   if (!Number.isFinite(amount) || amount < 100) return { error: "invalid_amount" };
   const expire = Math.floor(Date.now() / 1000) + Math.max(args.expireHours, 1) * 3600 + 20 * 60;
-  const res = await fetch("https://api.razorpay.com/v1/payment_links", {
+  const res = await outsideFetch("razorpay", "https://api.razorpay.com/v1/payment_links", {
     method: "POST",
     headers: {
       Authorization: `Basic ${Buffer.from(`${conn.secret["key_id"]}:${conn.secret["key_secret"]}`).toString("base64")}`,
