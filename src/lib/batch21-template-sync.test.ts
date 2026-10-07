@@ -30,11 +30,8 @@ describe("staff_handoff_alert in the platform template sync", () => {
       created.length = 0;
       const db = fakeDb((op) => {
         if (op.table === "profiles") return { data: { is_super_admin: true }, error: null };
-        if (op.table === "message_templates" && op.filters.some(([f]) => f === "maybeSingle")) {
-          const name = op.filters.find(([f, a]) => f === "eq" && a[0] === "name")?.[1][1];
-          return { data: held.includes(String(name)) ? { id: "t" } : null, error: null };
-        }
-        if (op.table === "message_templates") return { data: [], error: null };
+        // Batch 21b: one read of what the platform already holds, any language.
+        if (op.table === "message_templates") return { data: held.map((name) => ({ name, language: "en_US", status: "PENDING" })), error: null };
         return undefined;
       });
       return ensureBillingTemplates(db.supabase, "admin-1");
