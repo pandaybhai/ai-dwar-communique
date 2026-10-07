@@ -346,8 +346,9 @@ describe("(2) the answer's bookkeeping and the policy check's set-up leave the c
     expect(tiers).toHaveLength(2);
     expect(firstAfterModel).toBeGreaterThan(-1);
     expect(tiers[1]![1]).toBeLessThan(firstAfterModel);
-    // Both runs are still recorded.
-    expect(db.ops.filter((o) => o.table === "ai_runs" && o.kind === "insert")).toHaveLength(2);
+    // Every run is still recorded: the answer, the check and (Batch 16) the
+    // one rewrite attempt for the unsupported sentence.
+    expect(db.ops.filter((o) => o.table === "ai_runs" && o.kind === "insert")).toHaveLength(3);
   });
 
   it("with deferUsage the daily roll-up is handed over (one per run), not awaited before returning", async () => {
@@ -482,5 +483,84 @@ describe("(4) template sends keep their values; the inbox preview shows them", (
     const row = (preview: ConversationRow["preview"]) => ({ preview }) as ConversationRow;
     expect(previewText(row({ body: "hello", type: "text", direction: "inbound" }))).toBe("hello");
     expect(previewText(row({ body: null, type: "template", direction: "outbound", template_name: "order_update" }))).toBe("Template: order update");
+  });
+});
+
+// ------------------------------------------------------------------ Batch 16 item 4
+describe("Batch 16 item 4: an unsupported policy claim is rewritten once, not cut", () => {
+  const SOURCE = "Returns: we accept returns within 7 days of delivery for unused items with tags.";
+  // Live (Zoori): the claim went and the reply began "Lekin…". (The number
+  // guard handles a day count on its own, so the claim here has none.)
+  const ANSWER = "Haan ji, no-questions-asked returns hai. Lekin item unused hona chahiye with tags.";
+
+  function stub(rewrite: (parts: string[]) => string | null) {
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      if (String(url).endsWith("/embeddings")) return new Response(JSON.stringify({ data: [{ embedding: [0.1, 0.2] }] }));
+      const body = JSON.parse(String(init.body)) as Chat;
+      const system = String(body.messages[0]?.content ?? "");
+      const user = String(body.messages.at(-1)?.content ?? "");
+      if (system.startsWith("You check whether sentences")) {
+        seen.push("check");
+        const lines = user.match(/^\d+\. .*$/gm) ?? [];
+        const answers = lines.map((l) => (/no-questions|lifetime/i.test(l) ? "no" : "yes"));
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ answers }) } }] }));
+      }
+      if (system.startsWith("You edit a shop assistant")) {
+        seen.push("rewrite");
+        const parts = JSON.parse(user.slice(user.indexOf("REPLY PARTS:\n") + "REPLY PARTS:\n".length)) as string[];
+        const out = rewrite(parts);
+        return new Response(JSON.stringify({ choices: [{ message: { content: out ?? "sorry" } }] }));
+      }
+      seen.push("answer");
+      return new Response(JSON.stringify({ choices: [{ message: { content: `${ANSWER}\n{"needs_owner": false}` } }] }));
+    });
+    return seen;
+  }
+  const meta = (db: ReturnType<typeof aiDb>) =>
+    db.ops
+      .filter((o) => o.table === "ai_runs" && o.kind === "insert")
+      .map((o) => (o.payload as { metadata?: Record<string, unknown> }).metadata ?? {})
+      .find((m) => !m["purpose"])!;
+
+  beforeEach(() => {
+    process.env["LOVABLE_API_KEY"] = "test-key";
+  });
+
+  it("the model's rewrite (no unsupported claim) goes out instead of a cut reply; recorded on the run", async () => {
+    const db = aiDb([SOURCE]);
+    const seen = stub(() => JSON.stringify({ parts: ["Returns 7 din ke andar ho jaate hain, item unused hona chahiye with tags."] }));
+    const out = await ask(db, "return policy kya hai?");
+    // The wording check alone found the claim; the rewrite is then checked again.
+    expect(seen).toEqual(["answer", "rewrite", "check"]);
+    expect(out.output).toBe("Returns 7 din ke andar ho jaate hain, item unused hona chahiye with tags.");
+    expect(out.output).not.toMatch(/^Lekin/);
+    expect(meta(db)["policy_rewrite"]).toEqual({ outcome: "rewritten", claims: ["Haan ji, no-questions-asked returns hai."] });
+  });
+
+  it("the rewrite still makes an unsupported claim: today's stripping applies", async () => {
+    const db = aiDb([SOURCE]);
+    stub(() => JSON.stringify({ parts: ["Returns no-questions hote hain, lifetime exchange bhi."] }));
+    const out = await ask(db, "return policy kya hai?");
+    // Today's behaviour (the live fault): the claim is cut, the reply begins "Lekin…".
+    expect(out.output).toBe("Lekin item unused hona chahiye with tags.");
+    expect((meta(db)["policy_rewrite"] as { outcome: string }).outcome).toBe("still_unsupported");
+  });
+
+  it("the rewrite adds a number the material never states: today's stripping applies", async () => {
+    const db = aiDb([SOURCE]);
+    stub(() => JSON.stringify({ parts: ["Returns ke liye ₹200 fee lagti hai, item unused ho."] }));
+    const out = await ask(db, "return policy kya hai?");
+    expect(out.output).not.toMatch(/₹200/);
+    expect((meta(db)["policy_rewrite"] as { outcome: string }).outcome).toBe("still_unsupported");
+  });
+
+  it("the rewrite call fails (no JSON): today's stripping applies", async () => {
+    const db = aiDb([SOURCE]);
+    stub(() => null);
+    const out = await ask(db, "return policy kya hai?");
+    // Today's behaviour (the live fault): the claim is cut, the reply begins "Lekin…".
+    expect(out.output).toBe("Lekin item unused hona chahiye with tags.");
+    expect((meta(db)["policy_rewrite"] as { outcome: string }).outcome).toBe("failed");
   });
 });

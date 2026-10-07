@@ -556,6 +556,56 @@ async function unsupportedPolicyClaims(
   }
 }
 
+/**
+ * Batch 16: when the policy check finds a claim the material doesn't support,
+ * the model is asked once to say the reply again without it — instead of
+ * code cutting the sentence out ("20-day no-questions returns hai" went and
+ * the reply began "Lekin…"). The reply's text parts (split at the product
+ * markers) are rewritten together, in one call, and come back in the same
+ * number. Null on any failure: the caller falls back to stripping.
+ */
+async function rewriteWithoutClaims(
+  supabase: SupabaseClient,
+  args: PolicyCheckWho & {
+    parts: string[];
+    claims: string[];
+    sources: string;
+    question: string;
+    prelude?: Promise<RunPrelude>;
+    deferUsage?: RunOptions["deferUsage"];
+  },
+): Promise<string[] | null> {
+  try {
+    const run = await executeRun(supabase, {
+      ...policyCheckRun(args),
+      metadata: { purpose: "policy_rewrite" },
+      ...(args.prelude ? { prelude: args.prelude } : {}),
+      ...(args.deferUsage ? { deferUsage: args.deferUsage } : {}),
+      system: [
+        "You edit a shop assistant's WhatsApp reply to a customer before it is sent.",
+        "Some claims in it are not supported by the shop's material. Rewrite the reply so it no longer makes those claims — not even in other words.",
+        "Where a removed claim answered the customer's question, say plainly that you don't have that detail right now. Keep everything else: the same language and script, tone, products, links and length. Never add a new fact, number, price, date or policy.",
+        'The reply is given as numbered parts. Answer with JSON only: {"parts": ["...", ...]} — the same number of parts, in order.',
+      ].join("\n"),
+      input:
+        `SHOP MATERIAL:\n${args.sources.slice(0, 16000)}\n\nCUSTOMER ASKED:\n${args.question.slice(0, 500)}\n\n` +
+        `UNSUPPORTED CLAIMS:\n${args.claims.map((c) => `- ${c}`).join("\n")}\n\n` +
+        `REPLY PARTS:\n${JSON.stringify(args.parts)}`,
+    });
+    if (run.status !== "ok" || !run.output.trim()) return null;
+    const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { parts?: unknown[] };
+    const parts = Array.isArray(parsed.parts) ? parsed.parts.map((p) => (typeof p === "string" ? p.trim() : null)) : [];
+    if (parts.length !== args.parts.length || parts.some((p) => p === null)) return null;
+    // A part that had words must still have words.
+    if (parts.some((p, i) => !p && args.parts[i]!.trim())) return null;
+    return parts as string[];
+  } catch (error) {
+    console.log("[policy-grounding] rewrite skipped", error instanceof Error ? error.message : "unknown");
+    return null;
+  }
+}
+
 export type RunResult = {
   runId: string | null;
   status: "ok" | "refused" | "escalated" | "capped" | "error";
@@ -1460,7 +1510,8 @@ function workspaceGatesApply(options: Pick<RunOptions, "channel" | "preview" | "
   // and must work whatever the workspace's AI mode is: off / draft / replying.
   const purpose = String((options.metadata as Record<string, unknown> | undefined)?.["purpose"] ?? "");
   const isKnowledgeReading =
-    options.billingExempt === true && (purpose.startsWith("knowledge_") || purpose === "policy_claim_check");
+    options.billingExempt === true &&
+    (purpose.startsWith("knowledge_") || purpose === "policy_claim_check" || purpose === "policy_rewrite");
   return !isMerchantOnboarding && !isAdminPreview && !isKnowledgeReading;
 }
 
@@ -2611,12 +2662,61 @@ export async function executeRun(
         })),
       ];
       if (unsupported.length > 0) {
+        result.needsOwner = true;
+        // Batch 16: the reply's own unsupported claims — ask the model once
+        // to say it again without them; the rewrite passes the same checks
+        // (numbers, times, policy) or today's stripping applies.
+        const replyUnsupported = unsupported.filter((u) => replyClaims.includes(u));
+        let rewritten = false;
+        if (replyUnsupported.length > 0) {
+          const textParts = result.output.split(PRODUCTS_MARK);
+          const attempt = await rewriteWithoutClaims(supabase, {
+            ...policyCheckWho,
+            parts: textParts,
+            claims: replyUnsupported,
+            sources: sourceText,
+            question: input,
+            ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
+            ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
+          });
+          let outcome = "failed";
+          if (attempt) {
+            const candidate = attempt.join(PRODUCTS_MARK);
+            const support = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts];
+            const guessed = [
+              ...unsupportedNumbers(candidate, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts]),
+              ...unsupportedTimeFacts(candidate, support),
+            ];
+            const again = policyClaimSentences(candidate);
+            const wordingAgain = again.length ? checkPolicyWording(again, sourceText) : { verbatim: [], unsupported: [], undecided: [] };
+            const stillUnsupported = [
+              ...wordingAgain.unsupported.map((u) => u.sentence),
+              ...(wordingAgain.undecided.length
+                ? await unsupportedPolicyClaims(supabase, {
+                    ...policyCheckWho,
+                    sentences: wordingAgain.undecided,
+                    sources: sourceText,
+                    ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
+                    ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
+                  })
+                : []),
+            ];
+            if (guessed.length === 0 && stillUnsupported.length === 0 && candidate.replace(PRODUCTS_MARK, "").trim()) {
+              result.output = candidate;
+              rewritten = true;
+              outcome = "rewritten";
+            } else {
+              outcome = "still_unsupported";
+            }
+          }
+          runMeta["policy_rewrite"] = { outcome, claims: replyUnsupported };
+          console.log("[policy-grounding] rewrite", organizationId, outcome);
+        }
         console.log("[policy-grounding] stripped", organizationId, unsupported.length);
         runMeta["policy_claims_stripped"] = unsupported;
-        if (unsupported.some((u) => replyClaims.includes(u))) result.output = stripSentences(result.output, unsupported);
+        if (!rewritten && replyUnsupported.length > 0) result.output = stripSentences(result.output, unsupported);
         for (const item of chosenMedia) item.caption = dropSentences(item.caption, (sentence) => unsupported.includes(sentence));
-        result.needsOwner = true;
-        policyStripped = true;
+        policyStripped = !rewritten || unsupported.length > replyUnsupported.length;
       }
     }
   }
