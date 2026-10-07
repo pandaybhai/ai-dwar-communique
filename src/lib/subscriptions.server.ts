@@ -345,11 +345,19 @@ export async function applySubscriptionEvent(
   const providerId = String(subscription["id"] ?? "");
   if (!providerId) return;
 
-  const { data: row } = await supabase
+  // Every write is checked: a failure throws SettleError, so the webhook
+  // answers 500 and Razorpay delivers the event again (each step is safe to
+  // repeat; a charge already recorded is recognised by its payment id).
+  const { SettleError } = await import("@/lib/billing.server");
+  const must = (what: string, error: { message: string } | null) => {
+    if (error) throw new SettleError(`subscription ${what} failed: ${error.message}`);
+  };
+  const { data: row, error: rowError } = await supabase
     .from("subscriptions")
     .select("id, organization_id, plan_version_id, billing_cycle, billing_account_id, raw")
     .eq("provider_subscription_id", providerId)
     .maybeSingle();
+  must("read", rowError);
   if (!row) return;
 
   const orgId = String(row["organization_id"]);
@@ -366,14 +374,16 @@ export async function applySubscriptionEvent(
 
   if (kind === "authenticated" || kind === "activated") {
     patch["status"] = kind === "activated" ? "active" : "authenticated";
-    await supabase
+    const { error } = await supabase
       .from("organizations")
       .update({ plan_status: "active", trial_ends_at: null })
       .eq("id", orgId);
+    must("plan status", error);
     await unpauseForPayment(supabase, orgId);
   } else if (kind === "charged") {
     patch["status"] = "active";
-    await supabase.from("organizations").update({ plan_status: "active" }).eq("id", orgId);
+    const { error } = await supabase.from("organizations").update({ plan_status: "active" }).eq("id", orgId);
+    must("plan status", error);
     await unpauseForPayment(supabase, orgId);
     await recordPlanCharge(supabase, {
       organizationId: orgId,
@@ -384,7 +394,8 @@ export async function applySubscriptionEvent(
     });
   } else if (kind === "halted" || kind === "pending") {
     patch["status"] = kind;
-    await supabase.from("organizations").update({ plan_status: "past_due" }).eq("id", orgId);
+    const { error } = await supabase.from("organizations").update({ plan_status: "past_due" }).eq("id", orgId);
+    must("plan status", error);
     const { notify } = await import("@/lib/billing.server");
     await notify(supabase, {
       organizationId: orgId,
@@ -394,17 +405,24 @@ export async function applySubscriptionEvent(
     });
   } else if (kind === "cancelled" || kind === "completed") {
     patch["status"] = kind;
-    await supabase.from("organizations").update({ plan_status: "cancelled" }).eq("id", orgId);
+    const { error } = await supabase.from("organizations").update({ plan_status: "cancelled" }).eq("id", orgId);
+    must("plan status", error);
   } else if (kind === "paused") {
     patch["status"] = "paused";
   }
 
-  await supabase.from("subscriptions").update(patch).eq("id", row["id"] as string);
+  const { error: patchError } = await supabase.from("subscriptions").update(patch).eq("id", row["id"] as string);
+  must("update", patchError);
 }
 
 async function unpauseForPayment(supabase: SupabaseClient, organizationId: string): Promise<void> {
   const { restoreAfterPayment } = await import("@/lib/dunning.server");
-  await restoreAfterPayment(supabase, organizationId);
+  try {
+    await restoreAfterPayment(supabase, organizationId);
+  } catch (error) {
+    const { SettleError } = await import("@/lib/billing.server");
+    throw new SettleError(`dunning restore failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /**
@@ -423,12 +441,14 @@ async function recordPlanCharge(
   },
 ): Promise<void> {
   const providerPaymentId = (input.payment?.["id"] as string | null) ?? null;
+  const { SettleError } = await import("@/lib/billing.server");
   if (providerPaymentId) {
-    const { data: seen } = await supabase
+    const { data: seen, error: seenError } = await supabase
       .from("payments")
       .select("id")
       .eq("provider_payment_id", providerPaymentId)
       .maybeSingle();
+    if (seenError) throw new SettleError(`plan charge read failed: ${seenError.message}`);
     if (seen) return; // replay
   }
 
@@ -451,7 +471,7 @@ async function recordPlanCharge(
   // The mandate charges GST-inclusive; the invoice states the base.
   const base = listed === null || listed === undefined ? round2(gross / 1.18) : round2(Number(listed));
 
-  const { data: paymentRow } = await supabase
+  const { data: paymentRow, error: paymentError } = await supabase
     .from("payments")
     .insert({
       organization_id: input.organizationId,
@@ -470,6 +490,9 @@ async function recordPlanCharge(
     })
     .select("id")
     .maybeSingle();
+  // Nothing recorded yet: the retry records it. (Past this point the charge
+  // is on file; a missing invoice is raised by the nightly backfill.)
+  if (paymentError) throw new SettleError(`plan charge not recorded: ${paymentError.message}`);
 
   const { buildStatementLines, planFeeRoiSnapshot } = await import("@/lib/billing-statement.server");
   const { loadSupplier, buildInvoice, issueInvoice, markPaid } = await import(

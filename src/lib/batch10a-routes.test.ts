@@ -204,8 +204,12 @@ describe("inbox Send card (/api/cards send)", () => {
     expect(await res.json()).toEqual({ url: CARD_URL });
     expect(renders[0]).toMatchObject({ vars: { headline: `Preview ${n}`, offer: "Buy 1 get 1", validity: "", code: "" } });
     // Batch 10C: a real render is recorded (usage only) — a preview under its own task.
-    const usage = h.db.ops.filter((o) => o.table === "ai_usage" && o.kind !== "select");
-    expect(usage.map((o) => (o.payload as { task?: string }).task)).toEqual(["card_preview"]);
+    // (Batch 18: added in one call by ai_usage_add once that is applied, else written as before.)
+    const usage = [
+      ...h.db.ops.filter((o) => o.table === "ai_usage" && o.kind !== "select").map((o) => (o.payload as { task?: string }).task),
+      ...h.db.rpcs.filter((r) => r.name === "ai_usage_add").map((r) => r.args["p_task"]),
+    ];
+    expect(usage).toEqual(["card_preview"]);
     expect(h.db.ops.some((o) => o.table === "wallet_ledger") || h.db.rpcs.some((r) => r.name.startsWith("wallet"))).toBe(false);
   });
 });

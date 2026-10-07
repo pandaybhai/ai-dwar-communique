@@ -68,7 +68,11 @@ describe("cards: reuse a stored card; record only real renders", () => {
     process.env["AIDWAR_SUPABASE_SERVICE_ROLE_KEY"] = "service-key";
     renders = [];
     heads = [];
-    h.usage = fakeDb(() => undefined);
+    // As live until Batch 18's ai_usage_add is applied: usage is written row by row.
+    h.usage = fakeDb(
+      () => undefined,
+      (c) => (c.name === "ai_usage_add" ? { data: null, error: { code: "PGRST202", message: "not found" } } : undefined),
+    );
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
   const brandDb = (branding: Record<string, unknown> = {}) =>
@@ -113,7 +117,7 @@ describe("cards: reuse a stored card; record only real renders", () => {
     expect(rows[0]).not.toHaveProperty("billed_amount");
     // The caller's (member) client never writes usage: ai_usage is read-only to members.
     expect(db.ops.some((o) => o.table === "ai_usage")).toBe(false);
-    expect(h.usage!.ops.some((o) => o.table === "wallet_ledger") || h.usage!.rpcs.length > 0).toBe(false);
+    expect(h.usage!.ops.some((o) => o.table === "wallet_ledger") || h.usage!.rpcs.some((r) => r.name !== "ai_usage_add")).toBe(false);
   });
 
   it("render-card answering cached (it found the file itself) is a reuse: not recorded", async () => {

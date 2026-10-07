@@ -566,12 +566,44 @@ async function applyWhenWritten(
   return undefined;
 }
 
+/**
+ * A status the message already has: redo what a failed first try may have
+ * missed. The recipient move is conditional (counted once), and a message
+ * with no price yet is priced (price_message is idempotent and a message is
+ * debited at most once). Costs one read, only on this path.
+ */
+async function retakeStatusSteps(
+  supabase: SupabaseClient,
+  organizationId: string,
+  metaId: string,
+  nextStatus: string,
+  recipientId: string | null,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id, status, cost_amount, campaign_id, flow_id, created_at")
+    .eq("meta_message_id", metaId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const row = data as (StatusRow & { cost_amount?: number | null }) | null;
+  if (!row || (STATUS_RANK[String(row.status)] ?? -1) < STATUS_RANK[nextStatus]!) return;
+  const campaignMessage =
+    Boolean(row.campaign_id || recipientId) ||
+    (!row.flow_id && (!row.created_at || row.created_at < ATTRIBUTION_SINCE));
+  if (campaignMessage) await applyCampaignStatus(supabase, row.id, nextStatus, null, recipientId);
+  if ((nextStatus === "delivered" || nextStatus === "read") && row.cost_amount == null) {
+    const { error: priceError } = await supabase.rpc("price_message", { p_message_id: row.id });
+    if (priceError) throw new Error(`price: ${priceError.message}`);
+  }
+}
+
 /** Bring the campaign's charged total up to the ledger, at most every few seconds per campaign. */
 const CHARGED_SYNC_EVERY_MS = 15_000;
 const chargedSyncedAt = new Map<string, number>();
 
 /** Counts one reply per contact per campaign for campaigns sent in the last 7 days. */
-async function applyCampaignReply(
+export async function applyCampaignReply(
   supabase: SupabaseClient,
   organizationId: string,
   contactId: string,
@@ -589,10 +621,16 @@ async function applyCampaignReply(
 
   for (const r of (recipients ?? []) as Array<Record<string, unknown>>) {
     if (r["replied_at"]) continue;
-    await supabase
+    // Only the update that sets replied_at counts it: two messages from the
+    // same customer at once can't both bump the counter.
+    const { data: marked, error: markError } = await supabase
       .from("campaign_recipients")
       .update({ replied_at: new Date().toISOString() })
-      .eq("id", r["id"] as string);
+      .eq("id", r["id"] as string)
+      .is("replied_at", null)
+      .select("id");
+    if (markError) throw new Error(markError.message);
+    if (!marked?.length) continue;
     await supabase.rpc("bump_campaign_counters", {
       p_campaign_id: r["campaign_id"] as string,
       p_replied: 1,
@@ -2276,7 +2314,15 @@ export async function processWebhookPayload(
                 continue;
               }
             }
-            if (!existing) continue;
+            if (!existing) {
+              // Already at this status: a retry of an event whose first try
+              // moved the message and then failed, or a late duplicate. Redo
+              // only the steps that are safe to repeat (never the event).
+              if (nextStatus !== "failed") {
+                await retakeStatusSteps(supabase, orgId, metaId, nextStatus, ours?.recipientId ?? null);
+              }
+              continue;
+            }
 
             // Every per-message event carries the same dimensions as the send.
             const statusProps = await messageEventDimensions(supabase, orgId, accountWabaId, existing);
@@ -2348,6 +2394,9 @@ export async function processWebhookPayload(
                   }),
                 );
               }
+              // Not priced = not billed: the event stays retryable, and the
+              // retry prices it (retakeStatusSteps).
+              if (priceError) failures.push(failureNote(`price ${metaId}`, priceError.message));
             }
 
             if (nextStatus === "delivered" || nextStatus === "read" || nextStatus === "sent") {

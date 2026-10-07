@@ -12,6 +12,13 @@ import { buildInfo } from "@/lib/build-info";
  */
 
 const CLAIM_LIMIT = 25;
+/**
+ * Written on the row (error column) right before Meta is asked; the status
+ * check has no 'sending'. A row claimed again with it still there belongs to
+ * a run that died mid-send: it is settled from the message rows, never sent
+ * a second time.
+ */
+const SEND_STARTED = "send_started";
 
 export const Route = createFileRoute("/api/internal/flow-worker")({
   server: {
@@ -71,7 +78,52 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
             outcomes.push({ id: send.id, status, ...patch });
           };
 
+          // Mark the send started (only while still scheduled) before Meta is asked.
+          const markStarted = async () => {
+            const { error: markError } = await supabase
+              .from("scheduled_sends")
+              .update({ error: SEND_STARTED })
+              .eq("id", send.id)
+              .eq("status", "scheduled");
+            if (markError) throw new Error(`Could not mark the send started: ${markError.message}`);
+          };
+
           try {
+
+          if ((send as { error?: string | null }).error === SEND_STARTED) {
+            const retakeProps = {
+              flow_id: send.flow_id,
+              scheduled_send_id: send.id,
+              contact_id: send.contact_id,
+              trigger_type: send.trigger_type,
+              trigger_id: send.trigger_id,
+            };
+            // Re-taken after a run died mid-send: the message row says what
+            // happened. None = failed, never re-sent (at most once).
+            const { data: prior, error: priorError } = await supabase
+              .from("messages")
+              .select("id, status")
+              .eq("organization_id", orgId)
+              .eq("scheduled_send_id", send.id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (priorError) throw new Error(`Could not check an interrupted send: ${priorError.message}`);
+            const sentBefore = (prior as { status?: string } | null)?.status;
+            if (sentBefore && sentBefore !== "failed") {
+              await finish("sent", { message_id: (prior as { id: string }).id, error: null }, {
+                type: "flow.sent",
+                properties: { ...retakeProps, reason: "recovered_after_interrupt" },
+              });
+            } else {
+              await finish(
+                "failed",
+                { message_id: (prior as { id?: string } | null)?.id ?? null, error: "The send was interrupted; not sent again." },
+                { type: "flow.failed", properties: { ...retakeProps, reason: "send_interrupted" } },
+              );
+            }
+            return;
+          }
 
           const { data: flowRow } = await supabase
             .from("flows")
@@ -236,6 +288,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               return;
             }
             const { sendFormMessage } = await import("@/lib/wa-forms.server");
+            await markStarted();
             const sentForm = await sendFormMessage(supabase, {
               organizationId: orgId,
               conversationId: convRow.id as string,
@@ -324,6 +377,7 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
               )
             : [];
 
+          await markStarted();
           const outcome = await sendCampaignTemplate(
             supabase,
             orgId,

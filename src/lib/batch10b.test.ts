@@ -777,6 +777,9 @@ describe("(2) the platform owner is told, at most once an hour", () => {
     expect(spec.body.trim().startsWith("{{")).toBe(false);
     expect(spec.body.trim().endsWith("}}")).toBe(false);
     const db = fakeDb((op) => {
+      // Batch 18: the drain claims the notice before sending it.
+      if (op.table === "billing_notifications" && op.kind === "update" && !(op.payload as { status?: string }).status)
+        return { data: [{ id: "n1" }], error: null };
       if (op.table === "billing_notifications" && op.kind === "select")
         return {
           data: [

@@ -359,14 +359,16 @@ describe("(2) the answer's bookkeeping and the policy check's set-up leave the c
     expect(out.status).toBe("ok");
     expect(handed).toHaveLength(1);
     await Promise.all(handed);
-    expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert")).toBe(true);
+    // Batch 18: one ai_usage_add call once that migration is applied, else the row write as before.
+    expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert") || db.rpcs.some((r) => r.name === "ai_usage_add")).toBe(true);
   });
 
   it("unchanged: without deferUsage the roll-up is written before the run returns", async () => {
     const db = aiDb([RETURNS]);
     stubModel(`${RETURNS}\n{"needs_owner": false}`);
     await ask(db, "What is your return policy?");
-    expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert")).toBe(true);
+    // Batch 18: one ai_usage_add call once that migration is applied, else the row write as before.
+    expect(db.ops.some((o) => o.table === "ai_usage" && o.kind === "insert") || db.rpcs.some((r) => r.name === "ai_usage_add")).toBe(true);
   });
 });
 
