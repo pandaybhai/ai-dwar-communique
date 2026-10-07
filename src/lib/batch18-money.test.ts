@@ -907,6 +907,7 @@ describe("(8) AI usage counters never lose a count", () => {
             input_tokens: a["p_input_tokens"],
             output_tokens: a["p_output_tokens"],
             cost_amount: a["p_cost_amount"],
+            billed_amount: Number(a["p_billed_amount"] ?? 0),
           });
           return null;
         }
@@ -914,6 +915,7 @@ describe("(8) AI usage counters never lose a count", () => {
         row["input_tokens"] = Number(row["input_tokens"]) + Number(a["p_input_tokens"]);
         row["output_tokens"] = Number(row["output_tokens"]) + Number(a["p_output_tokens"]);
         row["cost_amount"] = Number(row["cost_amount"]) + Number(a["p_cost_amount"]);
+        row["billed_amount"] = Number(row["billed_amount"]) + Number(a["p_billed_amount"] ?? 0);
         return null;
       });
     }
@@ -933,6 +935,43 @@ describe("(8) AI usage counters never lose a count", () => {
     expect(rows[0]).toMatchObject({ runs: 20, input_tokens: 2000, cost_amount: 10 });
     // One call each, no read first.
     expect(db.calls.filter((c) => c.table === "ai_usage")).toHaveLength(0);
+  });
+
+  const runResult = {
+    inputTokens: 50,
+    outputTokens: 20,
+    costAmount: 0.2,
+    billedAmount: 0.5,
+    costCurrency: "INR",
+  };
+
+  it("atomic counter (run roll-up): 20 runs finishing at once count 20 runs and all their billed amount", async () => {
+    const db = await usageDb(true);
+    const { rollUpUsage } = await import("./ai-run.server");
+    await Promise.all(
+      Array.from({ length: 20 }, () =>
+        rollUpUsage(db.client, "org-1", "reply", runResult as never),
+      ),
+    );
+    const rows = db.rows("ai_usage");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      runs: 20,
+      input_tokens: 1000,
+      output_tokens: 400,
+      billed_amount: 10,
+    });
+    expect(Number(rows[0]!["cost_amount"])).toBeCloseTo(4);
+    expect(db.calls.filter((c) => c.table === "ai_usage")).toHaveLength(0);
+  });
+
+  it("run roll-up before the migration: written the old way, with billed_amount", async () => {
+    const db = await usageDb(false);
+    const { rollUpUsage } = await import("./ai-run.server");
+    await rollUpUsage(db.client, "org-1", "reply", runResult as never);
+    await rollUpUsage(db.client, "org-1", "reply", runResult as never);
+    expect(db.rows("ai_usage")[0]).toMatchObject({ runs: 2, input_tokens: 100, billed_amount: 1 });
+    expect(db.calls.filter((c) => c.rpc === "ai_usage_add")).toHaveLength(1);
   });
 
   it("before the migration: falls back to the old way, and stops asking for the function for a while", async () => {

@@ -1,15 +1,14 @@
 -- Batch 18 (NOT applied): AI usage counters added in the database.
 --
--- meterAiUsage (ai-run.server.ts) read the day's row, added in JS and wrote
--- the sum back, so two workers metering at once lost one of the two
--- additions and the AI caps under-counted. ai_usage_add() adds in one
+-- meterAiUsage and rollUpUsage (ai-run.server.ts) read the day's row, added
+-- in JS and wrote the sum back, so two workers metering at once lost one of
+-- the two additions and the AI caps (billed_amount) under-counted. ai_usage_add() adds in one
 -- statement (insert, or add to the existing row on its unique key
 -- organization_id + usage_date + task), so nothing is lost.
 --
--- The code works without this file: until it is applied meterAiUsage falls
--- back to what it did before (looked for again every 10 minutes, so applying
--- it needs no deploy). It also takes billed_amount so the run roll-up
--- (rollUpUsage) can use it later.
+-- The code works without this file: until it is applied both fall back to
+-- what they did before (looked for again every 10 minutes, so applying it
+-- needs no deploy). Sorts after Batch 16's 20261023-20261025 migrations.
 --
 -- Idempotent. Service role only.
 
