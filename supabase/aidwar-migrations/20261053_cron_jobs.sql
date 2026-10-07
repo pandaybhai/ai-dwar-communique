@@ -25,9 +25,9 @@
 --
 -- SQL jobs: public.retention_purge() is in the repo
 -- (20260824_retention_strip_extend.sql, identical to live: 4518 chars, md5
--- b63de0809cd2d49b290446953f887720). public.reprice_unpriced_messages() is
--- live only (md5 dc8fbb7ebc27d7e5432b06d7dcad74cf) — its definition is asked
--- for in PR #32 and is not part of this file.
+-- b63de0809cd2d49b290446953f887720). public.reprice_unpriced_messages() was
+-- live only; it is now in 20261054_live_only_functions.sql (identical to
+-- live: 609 chars, md5 dc8fbb7ebc27d7e5432b06d7dcad74cf).
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;

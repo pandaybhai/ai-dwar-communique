@@ -348,9 +348,10 @@ describe("the live-only functions in the repo (20261054, 20261055)", () => {
   const grantsOf = (name: string) =>
     [...live.matchAll(new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${name}\\([^)]*\\) TO ([^;]+);`, "g"))].map((m) => m[1]);
 
-  it("all six are defined, with the live grants", () => {
-    for (const name of ["ai_answers_allowance", "client_rate_for", "firecrawl_try_spend", "meta_balance_estimate", "next_invoice_number", "wallet_apply"])
+  it("all seven are defined, with the live grants", () => {
+    for (const name of ["ai_answers_allowance", "client_rate_for", "firecrawl_try_spend", "meta_balance_estimate", "next_invoice_number", "wallet_apply", "reprice_unpriced_messages"])
       expect(live).toContain(`CREATE OR REPLACE FUNCTION public.${name}(`);
+    expect(grantsOf("reprice_unpriced_messages")).toEqual(["service_role"]);
     expect(grantsOf("ai_answers_allowance")).toEqual(["authenticated, service_role"]);
     expect(grantsOf("client_rate_for")).toEqual(["authenticated, service_role"]);
     for (const name of ["firecrawl_try_spend", "meta_balance_estimate", "next_invoice_number", "wallet_apply"])

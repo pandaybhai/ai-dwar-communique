@@ -1,4 +1,4 @@
--- Batch 20 item 7 (NOT applied): the six functions that existed only on the
+-- Batch 20 item 7 (NOT applied): the seven functions that existed only on the
 -- live database, saved exactly as it runs them — pg_get_functiondef output
 -- and EXECUTE grants pulled read-only on 7 Oct 2026 12:25 UTC (PR #32).
 -- Definitions are byte-for-byte as pasted; only the closing semicolons and
@@ -9,7 +9,7 @@
 -- Live grants (owner postgres):
 --   ai_answers_allowance, client_rate_for  -> authenticated, service_role
 --   firecrawl_try_spend, meta_balance_estimate, next_invoice_number,
---   wallet_apply                           -> service_role only
+--   wallet_apply, reprice_unpriced_messages -> service_role only
 -- The first two are SECURITY DEFINER and executable by any signed-in user for
 -- any p_org; 20261055_revoke_billing_reads.sql removes that, on its own.
 --
@@ -17,7 +17,7 @@
 -- plan_versions, message_rates, rate_cards, platform_settings
 -- (firecrawl_monthly_credit_cap, firecrawl_workspace_monthly_cap),
 -- firecrawl_usage, meta_prepaid_ledger, invoice_sequences, billing_fy(date),
--- wallet_balances, wallet_ledger.
+-- wallet_balances, wallet_ledger, messages, price_message(uuid).
 
 SET lock_timeout = '5s';
 
@@ -189,3 +189,29 @@ REVOKE ALL ON FUNCTION public.wallet_apply(uuid, text, numeric, text, uuid, text
 REVOKE ALL ON FUNCTION public.wallet_apply(uuid, text, numeric, text, uuid, text, jsonb, uuid) FROM anon;
 REVOKE ALL ON FUNCTION public.wallet_apply(uuid, text, numeric, text, uuid, text, jsonb, uuid) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.wallet_apply(uuid, text, numeric, text, uuid, text, jsonb, uuid) TO service_role;
+
+-- reprice_unpriced_messages: live grants postgres, service_role
+-- (pasted separately on PR #32; 609 chars, md5 dc8fbb7ebc27d7e5432b06d7dcad74cf
+-- as live. Calls public.price_message(uuid), 20260831_message_cost_receipts.sql.)
+CREATE OR REPLACE FUNCTION public.reprice_unpriced_messages(p_older_than interval DEFAULT '00:10:00'::interval)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare n int := 0; r record;
+begin
+  for r in select id from public.messages
+    where direction='outbound' and status in ('delivered','read') and cost_amount is null and billable is not false
+      and created_at < now() - p_older_than and created_at > now() - interval '30 days'
+    limit 500
+  loop
+    if public.price_message(r.id) then n := n + 1; end if;
+  end loop;
+  return n;
+end $function$;
+
+REVOKE ALL ON FUNCTION public.reprice_unpriced_messages(interval) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.reprice_unpriced_messages(interval) FROM anon;
+REVOKE ALL ON FUNCTION public.reprice_unpriced_messages(interval) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.reprice_unpriced_messages(interval) TO service_role;
