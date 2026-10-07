@@ -362,9 +362,12 @@ describe("myzoori.com replay (www redirect, broken robots Sitemap line, 497-addr
     expect(String(one["image_url"])).toContain(`/storage/images/products/${productUuids[0]}/`);
     expect(row["products_found"]).toBe(472);
 
-    // The old bare-host copy is hidden, never deleted.
+    // The old bare-host copy is never deleted. Batch 21 (Vinay, 7 Oct): it is
+    // the same page, so the read updates that row and moves it to www instead
+    // of adding a second row beside it (how Zoori's 120 duplicates formed).
     const old = db.rows("products").find((p) => p["id"] === "old-twin")!;
-    expect(old["is_visible"]).toBe(false);
+    expect(old["external_id"]).toBe(`https://www.myzoori.com/product-detail/${twinUuid}`);
+    expect(db.rows("products").filter((p) => String(p["external_id"]).endsWith(`/product-detail/${twinUuid}`))).toHaveLength(1);
 
     // (e) every page here has enough text: no paid reader was asked.
     expect(fetched.some((f) => /tavily|firecrawl|r\.jina\.ai/.test(f))).toBe(false);

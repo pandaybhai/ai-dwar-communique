@@ -27,6 +27,7 @@ import {
   toTsQuery,
   type CollectionRow,
   type ProductRow,
+  NOT_ARCHIVED_DUPLICATE,
 } from "@/lib/catalog";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { NoResults, Pagination, TableSkeleton } from "@/components/data-pagination";
@@ -133,6 +134,7 @@ export function CatalogView({ organizationId }: { organizationId: string }) {
       .from("products")
       .select(PRODUCT_COLUMNS, { count: "exact" })
       .eq("organization_id", organizationId)
+      .or(NOT_ARCHIVED_DUPLICATE)
       .order("updated_at", { ascending: false })
       .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 

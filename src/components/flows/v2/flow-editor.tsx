@@ -248,9 +248,11 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     const keep = new Set([...((data["buttons"] as Array<{ id: string }>) ?? []), ...((data["rows"] as Array<{ id: string }>) ?? []), ...((data["branches"] as Array<{ id: string }>) ?? [])].map((o) => o.id));
     const optionBased = ["buttons", "list", "branch"].includes(node.data.kind);
     const fixed = new Set(["next", "else", "window_closed", "invalid", "timeout"]);
+    // "Hand to Aiden" ends the flow: the Assign step has no way out.
+    const handsOff = node.data.kind === "assign" && data["mode"] === "aiden";
     commit({
       nodes: snap.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, data } } : n)),
-      edges: optionBased ? snap.edges.filter((e) => e.source !== id || fixed.has(e.sourceHandle ?? "next") || keep.has(e.sourceHandle ?? "")) : snap.edges,
+      edges: handsOff ? snap.edges.filter((e) => e.source !== id) : optionBased ? snap.edges.filter((e) => e.source !== id || fixed.has(e.sourceHandle ?? "next") || keep.has(e.sourceHandle ?? "")) : snap.edges,
     });
   };
 

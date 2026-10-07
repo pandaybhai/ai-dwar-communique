@@ -12,6 +12,7 @@ import {
   type RunOptions,
   type RunResult,
 } from "@/lib/ai-run.server";
+import { activeFlowRules, briefTextWithFlowRules, flowRulesBlock, type AidenFlowRules } from "@/lib/aiden-flow-rules";
 
 export type Turn = { role: "user" | "assistant"; content: string };
 
@@ -27,12 +28,16 @@ export async function conversationTurns(
   contactName: string | null;
   /** The language of the customer's most recent message, when we could tell. */
   customerLanguage: string | null;
+  /** A flow's Hand-to-Aiden Behaviour / Rules for this chat, while in force (Batch 21). */
+  flowRules?: AidenFlowRules | null;
 }> {
   // Independent reads: one round trip, not two.
   const [{ data: convo }, { data: rows }] = await Promise.all([
     supabase
       .from("conversations")
-      .select("id, contact_id, contacts(name)")
+      // "*": aiden_flow_rules comes along once its migration is applied, and
+      // nothing breaks before.
+      .select("*, contacts(name)")
       .eq("id", conversationId)
       .eq("organization_id", organizationId)
       .maybeSingle(),
@@ -47,6 +52,7 @@ export async function conversationTurns(
   const c = convo as {
     contact_id: string | null;
     contacts?: { name?: string | null } | null;
+    aiden_flow_rules?: unknown;
   } | null;
 
   const all = (rows ?? []) as Array<{
@@ -70,6 +76,7 @@ export async function conversationTurns(
     contactId: c?.contact_id ?? null,
     contactName: c?.contacts?.name ?? null,
     customerLanguage,
+    flowRules: activeFlowRules(c?.aiden_flow_rules),
   };
 }
 
@@ -134,7 +141,7 @@ export async function suggestReply(
   conversationId: string,
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
-  const { turns, contactId, customerLanguage } = await conversationTurns(
+  const { turns, contactId, customerLanguage, flowRules } = await conversationTurns(
     supabase,
     common.organizationId,
     conversationId,
@@ -156,6 +163,7 @@ export async function suggestReply(
     input: last || "Write the next reply in this conversation.",
     system: [
       brief,
+      flowRulesBlock(flowRules ?? null),
       spoken,
       "Draft the next reply for a human teammate to check and send.",
       "Keep it under 60 words, plain and specific. No greetings padding, no emoji unless the customer used one.",
@@ -402,7 +410,7 @@ export async function agentAnswer(
   const replyNote = context?.replyToMetaId
     ? replyContextNote(supabase, common.organizationId, conversationId, context.replyToMetaId).catch(() => null)
     : Promise.resolve(null);
-  const [agentId, { turns, contactId, customerLanguage }, { data: pastRuns }, brief, replyTo] = await Promise.all([
+  const [agentId, { turns, contactId, customerLanguage, flowRules }, { data: pastRuns }, brief, replyTo] = await Promise.all([
     agentRead,
     chat,
     ahead.pastRuns,
@@ -425,7 +433,10 @@ export async function agentAnswer(
     history: turns.slice(0, -1),
     input: question,
     // Escalation rules are part of the assembled brief — exactly once.
-    system: replyTo ? `${brief.text}\n\n${replyTo}` : brief.text,
+    // A flow's Behaviour / Rules for this chat sit right after the workspace's instructions.
+    system: replyTo
+      ? `${briefTextWithFlowRules(brief, flowRulesBlock(flowRules ?? null))}\n\n${replyTo}`
+      : briefTextWithFlowRules(brief, flowRulesBlock(flowRules ?? null)),
     handoverRules: brief.instructions.escalationRules,
     promptRulesVersion: brief.rulesVersion,
     customerLanguage,

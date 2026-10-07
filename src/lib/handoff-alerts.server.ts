@@ -14,6 +14,11 @@
  * is refused with a plain explanation, and every send checks again.
  *
  * Alerts are never customer reply text: they go to staff, not customers.
+ *
+ * Batch 21: free text from the platform number only arrives inside the 24-hour
+ * window, so outside it the alert goes as the approved UTILITY template
+ * staff_handoff_alert (STAFF_HANDOFF_TEMPLATE); until Meta approves it,
+ * nothing changes (email as before).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -129,7 +134,92 @@ export type AlertOutcome = {
   email: string | null;
   refused: string[];
   skipped?: string;
+  /** Of `whatsapp`, the numbers reached with the staff_handoff_alert template (outside the 24-hour window). */
+  templated?: string[];
 };
+
+/**
+ * Batch 21: the staff alert as an approved UTILITY template, for a staff
+ * number outside WhatsApp's 24-hour window with the platform number (free
+ * text only arrives inside it). Same shape as the platform's notice
+ * templates (billing-notify BILLING_TEMPLATES): Meta rejects a body that
+ * starts or ends with a variable, so it is wrapped in words. Never customer
+ * reply text: it goes to staff.
+ */
+export const STAFF_HANDOFF_TEMPLATE = {
+  name: "staff_handoff_alert",
+  body: "AiDwar alert for {{1}}: {{2}} is waiting for a person in the Inbox because {{3}}. Open the Inbox here: {{4}} — Aiden has stepped back on this chat until your team replies.",
+  examples: ["Sharma Textiles", "Asha (+91 98765 43210)", "a customer asked to talk to a person", "https://aidwar.in/app/inbox"],
+};
+export const INBOX_LINK = "https://aidwar.in/app/inbox";
+
+/** A template variable: one line, no tabs or runs of spaces (Meta refuses them), capped. */
+function templateParam(value: string, max: number): string {
+  const one = value.replace(/\s+/g, " ").trim();
+  return one.length > max ? `${one.slice(0, max - 1).trimEnd()}…` : one;
+}
+
+/** The four values for STAFF_HANDOFF_TEMPLATE: workspace, customer, short reason, inbox link. */
+export function staffAlertParams(args: { business: string; customer: string; why: string; reminder?: boolean }): string[] {
+  return [
+    templateParam(args.business, 60),
+    templateParam(args.customer, 60),
+    templateParam(`${args.reminder ? "(reminder, still waiting) " : ""}${args.why}`, 120),
+    INBOX_LINK,
+  ];
+}
+
+/**
+ * Sends STAFF_HANDOFF_TEMPLATE from the platform number once it is approved
+ * on the platform workspace; false (nothing sent) while it is missing or not
+ * approved, or the platform number isn't connected. Resolved once per alert.
+ */
+function platformTemplateSender(supabase: SupabaseClient) {
+  let ready: Promise<{ send: (phone: string, params: string[]) => Promise<boolean> } | null> | null = null;
+  const resolve = async () => {
+    const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+    const platformOrgId = await resolvePlatformOrg(supabase);
+    if (!platformOrgId) return null;
+    const { data: rows } = await supabase
+      .from("message_templates")
+      .select("name, language, components, status")
+      .eq("organization_id", platformOrgId)
+      .eq("name", STAFF_HANDOFF_TEMPLATE.name);
+    const template = ((rows ?? []) as Array<{ name: string; language: string; components: unknown; status: string | null }>).find(
+      (t) => String(t.status ?? "").toUpperCase() === "APPROVED",
+    );
+    if (!template) return null;
+    const { data: setting } = await supabase.from("platform_settings").select("onboarding_whatsapp_account_id").maybeSingle();
+    const accountId = (setting as { onboarding_whatsapp_account_id?: string | null } | null)?.onboarding_whatsapp_account_id ?? null;
+    if (!accountId) return null;
+    const { loadSenderContext, sendCampaignTemplate } = await import("@/lib/campaigns.server");
+    const sender = await loadSenderContext(supabase, platformOrgId, accountId);
+    if (!sender) return null;
+    return {
+      send: async (phone: string, params: string[]) => {
+        const outcome = await sendCampaignTemplate(
+          supabase,
+          platformOrgId,
+          sender,
+          { contactId: null, phone, variables: Object.fromEntries(params.map((v, i) => [String(i + 1), v])) },
+          {
+            name: template.name,
+            language: template.language,
+            variableOrder: params.map((_, i) => i + 1),
+            components: (template.components ?? null) as import("@/lib/templates").TemplateComponent[] | null,
+          },
+          { campaignId: null, category: "utility" },
+        );
+        return Boolean(outcome.messageId && !outcome.error);
+      },
+    };
+  };
+  return async (phone: string, params: string[]) => {
+    ready ??= resolve().catch(() => null);
+    const r = await ready;
+    return r ? r.send(phone, params) : false;
+  };
+}
 
 const REASON_TEXT: Record<string, string> = {
   asked_for_person: "a customer asked to talk to a person",
@@ -156,6 +246,8 @@ export async function sendHandoffAlert(
     sendWhatsApp?: (channel: NonNullable<Awaited<ReturnType<typeof platformChannelFor>>>, body: string) => Promise<boolean>;
     sendEmail?: (to: string, subject: string, body: string) => Promise<boolean>;
     channelFor?: (phone: string) => Promise<unknown>;
+    /** Outside the 24-hour window: STAFF_HANDOFF_TEMPLATE with these four values (Batch 21). */
+    sendTemplate?: (phone: string, params: string[]) => Promise<boolean>;
   } = {},
 ): Promise<AlertOutcome> {
   const outcome: AlertOutcome = { whatsapp: [], email: null, refused: [] };
@@ -195,9 +287,19 @@ export async function sendHandoffAlert(
         const { sendServiceText } = await import("@/lib/service-text.server");
         return (await sendServiceText(supabase, { ...channel, body: text })).ok;
       });
+    const sendTemplate = deps.sendTemplate ?? platformTemplateSender(supabase);
     for (const phone of safe) {
       const channel = (await channelFor(phone)) as NonNullable<Awaited<ReturnType<typeof platformChannelFor>>> | null;
-      if (channel && (await sendWhatsApp(channel, body))) outcome.whatsapp.push(phone);
+      if (channel) {
+        // Inside the 24-hour window: free text, as before.
+        if (await sendWhatsApp(channel, body)) outcome.whatsapp.push(phone);
+        continue;
+      }
+      // Outside it (or never messaged the platform number): the approved template.
+      if (await sendTemplate(phone, staffAlertParams({ business, customer, why, reminder: Boolean(args.reminder) }))) {
+        outcome.whatsapp.push(phone);
+        (outcome.templated ??= []).push(phone);
+      }
     }
     if (outcome.whatsapp.length === 0 && settings.email) {
       const send =
@@ -215,7 +317,7 @@ export async function sendHandoffAlert(
       .from("conversations")
       .update(args.reminder ? { handoff_reminded_at: new Date().toISOString() } : { handoff_alert_at: new Date().toISOString() })
       .eq("id", args.conversationId);
-    console.log("[handoff-alert]", JSON.stringify({ conversation_id: args.conversationId, reason: args.reason, reminder: Boolean(args.reminder), ...outcome, whatsapp: outcome.whatsapp.length }));
+    console.log("[handoff-alert]", JSON.stringify({ conversation_id: args.conversationId, reason: args.reason, reminder: Boolean(args.reminder), ...outcome, whatsapp: outcome.whatsapp.length, templated: outcome.templated?.length ?? 0 }));
   } catch (error) {
     console.warn("[handoff-alert] failed", error instanceof Error ? error.message : String(error));
     outcome.skipped = "error";

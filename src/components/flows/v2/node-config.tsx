@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { IMAGE_MAX_BYTES, IMAGE_TYPES, MAX_BRANCHES, MAX_BUTTONS, MAX_CONDITIONS, MAX_LIST_ROWS, MAX_PRODUCT_ITEMS, PRODUCT_SORTS, imageProblem, parseBudget, type Branch, type Condition, type FlowNode } from "@/lib/flow-graph";
 import { NODE_META, uid } from "./node-meta";
 import { SendCardConfig } from "./send-card-config";
+import { MAX_RULES_CHARS, rulesHours } from "@/lib/aiden-flow-rules";
 
 export type Pickers = {
   templates: Array<{ id: string; name: string; status: string }>;
@@ -355,7 +356,30 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
           <select className={sel} value={String(d["mode"] ?? "queue")} onChange={(e) => set("mode", e.target.value)}>
             <option value="queue">To the team queue (Needs you)</option>
             <option value="round_robin">Round-robin — teammate with the fewest open chats</option>
+            <option value="aiden">Hand to Aiden — end the flow, Aiden replies</option>
           </select>
+          {d["mode"] === "aiden" && (
+            <>
+              <p className="text-xs text-muted-foreground">The flow ends here and Aiden answers this customer's next messages. If a flow had passed this chat to your team, that is cleared; a chat a teammate took over stays theirs.</p>
+              <div className="space-y-1.5 pt-2">
+                <Label>Behaviour (optional)</Label>
+                <Textarea rows={3} maxLength={MAX_RULES_CHARS} placeholder="e.g. Be warm and brief. Ask which occasion they are shopping for before showing products." value={String(d["behaviour"] ?? "")} onChange={(e) => set("behaviour", e.target.value)} />
+                <p className="text-xs text-muted-foreground">How Aiden should come across in this chat. Written by you, used only for this customer.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Rules (optional)</Label>
+                <Textarea rows={3} maxLength={MAX_RULES_CHARS} placeholder="e.g. Only suggest products under ₹25,000. Offer a video call for anything custom." value={String(d["rules"] ?? "")} onChange={(e) => set("rules", e.target.value)} />
+                <p className="text-xs text-muted-foreground">What Aiden must or must not do in this chat. They're added after your usual instructions for Aiden. Aiden still never makes up prices, times or policies.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Follow these for</Label>
+                <select className={sel} value={String(rulesHours(d["rules_hours"]))} onChange={(e) => set("rules_hours", Number(e.target.value))}>
+                  {[[1, "1 hour"], [6, "6 hours"], [24, "24 hours"], [72, "3 days"], [168, "7 days"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <p className="text-xs text-muted-foreground">After this, Aiden goes back to your usual instructions for this chat. The inbox shows "Aiden is following: this flow's rules" while they apply.</p>
+              </div>
+            </>
+          )}
         </div>
       )}
       {node.type === "branch" && (

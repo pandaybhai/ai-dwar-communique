@@ -95,7 +95,7 @@ export function summary(node: FlowNode): string {
     case "tag": return `${d["action"] === "remove" ? "Remove" : "Add"} "${String(d["tag"] ?? "")}"`;
     case "set_field": return `${String(d["field"] ?? "")} = ${String(d["value"] ?? "")}`;
     case "needs_you": return String(d["note"] ?? "");
-    case "assign": return d["mode"] === "round_robin" ? "Round-robin across the team" : d["user_id"] ? "To a teammate" : "To the team queue";
+    case "assign": return d["mode"] === "aiden" ? "Hand to Aiden (ends the flow)" : d["mode"] === "round_robin" ? "Round-robin across the team" : d["user_id"] ? "To a teammate" : "To the team queue";
     case "cta_url": return `${String(d["text"] ?? "")}\n[${String(d["button_text"] ?? "")}] ${String(d["url"] ?? "")}`;
     case "location_request": return String(d["text"] ?? "");
     case "location_send": return String(d["name"] || d["address"] || `${d["latitude"]}, ${d["longitude"]}`);

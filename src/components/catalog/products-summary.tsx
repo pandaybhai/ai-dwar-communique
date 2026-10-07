@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
 import { usePermissions } from "@/hooks/use-permissions";
-import { STORE_PRODUCT_SOURCES, productsSummaryLine } from "@/lib/catalog";
+import { NOT_ARCHIVED_DUPLICATE, STORE_PRODUCT_SOURCES, productsSummaryLine } from "@/lib/catalog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -32,7 +32,7 @@ export function ProductsSummary({ organizationId }: { organizationId: string }) 
   const load = useCallback(async () => {
     const count = (q: PromiseLike<{ count: number | null }>) => Promise.resolve(q).then((r) => r.count ?? 0);
     const base = () =>
-      aidwar.from("products").select("id", { count: "exact", head: true }).eq("organization_id", organizationId);
+      aidwar.from("products").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).or(NOT_ARCHIVED_DUPLICATE);
     const [total, website, store, latest, site] = await Promise.all([
       count(base()),
       count(base().eq("source", "crawl")),
