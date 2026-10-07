@@ -679,7 +679,7 @@ describe("status webhook: cheap, monotonic, counted once", () => {
   });
 
   async function sentCampaign(
-    spec: { ledgerRpc?: boolean; billing?: boolean } = {},
+    spec: { billing?: boolean } = {},
   ) {
     const w = world({ campaigns: [{ recipients: 3 }], ...spec });
     const g = meta();
@@ -837,7 +837,7 @@ describe("status webhook: cheap, monotonic, counted once", () => {
   });
 
   it("the campaign's charged total is re-read at most every few seconds per campaign, not on every price", async () => {
-    const { db, campaigns, metaIdOf } = await sentCampaign({ ledgerRpc: true });
+    const { db, campaigns, metaIdOf } = await sentCampaign();
     const c = campaigns[0]!;
     const before = db.calls.length;
     for (const r of c.recipients) {
@@ -927,27 +927,7 @@ describe("catching up stored webhook events", () => {
 describe("charged_amount: the whole ledger, not its first 1000 rows", () => {
   beforeEach(() => vi.resetModules());
 
-  it("without campaign_ledger_charge() the debit rows are read page by page", async () => {
-    const { syncCampaignCharged } = await import("./campaign-billing.server");
-    const db = new MemoryDb();
-    const org = crypto.randomUUID();
-    const campaign = db.insert("campaigns", { organization_id: org, charged_amount: 0 });
-    for (let i = 0; i < 2_500; i++) {
-      db.insert("wallet_ledger", {
-        id: `l-${String(i).padStart(5, "0")}`,
-        organization_id: org,
-        entry_type: "debit_message",
-        amount: -0.86,
-        metadata: { campaign_id: campaign["id"] },
-      });
-    }
-    const result = await syncCampaignCharged(db.client, org, campaign["id"] as string);
-    expect(result).toEqual({ ok: true, amount: 2150 });
-    expect(campaign["charged_amount"]).toBe(2150);
-    expect(db.calls.filter((x) => x.table === "wallet_ledger")).toHaveLength(3);
-  });
-
-  it("with it: one call, and raise-only as before", async () => {
+  it("the charged total is one call (campaign_ledger_charge), raise-only", async () => {
     const { syncCampaignCharged } = await import("./campaign-billing.server");
     const db = new MemoryDb();
     db.rpcs.set("campaign_ledger_charge", () => 12.5);

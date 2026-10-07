@@ -19,7 +19,6 @@ export function world(spec: {
     scheduledAt?: string;
   }>;
   billing?: boolean;
-  ledgerRpc?: boolean;
 }) {
   const db = new MemoryDb();
   db.embeds.set("campaign_recipients.messages", {
@@ -77,18 +76,16 @@ export function world(spec: {
         metadata: a["p_metadata"],
       })["id"],
   );
-  if (spec.ledgerRpc) {
-    db.rpcs.set("campaign_ledger_charge", (a, d) =>
-      d
-        .rows("wallet_ledger")
-        .filter(
-          (r) =>
-            r["entry_type"] === "debit_message" &&
-            (r["metadata"] as Row)?.["campaign_id"] === a["p_campaign_id"],
-        )
-        .reduce((s, r) => s + Math.abs(Number(r["amount"])), 0),
-    );
-  }
+  db.rpcs.set("campaign_ledger_charge", (a, d) =>
+    d
+      .rows("wallet_ledger")
+      .filter(
+        (r) =>
+          r["entry_type"] === "debit_message" &&
+          (r["metadata"] as Row)?.["campaign_id"] === a["p_campaign_id"],
+      )
+      .reduce((s, r) => s + Math.abs(Number(r["amount"])), 0),
+  );
   db.rpcs.set("campaign_recipient_status", (a, d) => {
     const r = d
       .rows("campaign_recipients")
