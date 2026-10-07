@@ -22,41 +22,48 @@ const TTL_MS = 60_000;
 const cache = new WeakMap<object, Map<string, { at: number; value: Promise<ShopVocabulary> }>>();
 
 async function read(supabase: SupabaseClient, organizationId: string): Promise<ShopVocabulary> {
-  const counts = new Map<string, number>();
-  let complete = true;
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
+  const page = (from: number, count = false) =>
+    supabase
       .from("products")
-      .select("category")
+      .select("category", count ? { count: "exact" } : undefined)
       .eq("organization_id", organizationId)
       .eq("is_visible", true)
       .not("category", "is", null)
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
-    if (error) return EMPTY_VOCABULARY;
-    const rows = (data ?? []) as Array<{ category?: unknown }>;
-    for (const r of rows) {
-      const name = typeof r.category === "string" ? r.category.trim() : "";
-      if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
-    if (rows.length < PAGE) break;
-    if (from + PAGE >= MAX_ROWS) {
-      complete = false;
-      break;
-    }
-  }
+  // The first page also says how many rows there are; the rest are read
+  // together, so a big catalogue costs two round trips, not one per page.
   // Only the category words, never the rest of the white-label settings.
-  const { data: org } = await supabase
+  const words = supabase
     .from("organizations")
     .select(`${CATEGORY_WORDS_SETTING}:branding->${CATEGORY_WORDS_SETTING}`)
     .eq("id", organizationId)
-    .maybeSingle();
-  const row = (org ?? {}) as Record<string, unknown> & { branding?: Record<string, unknown> | null };
-  const words = row[CATEGORY_WORDS_SETTING] ?? row.branding?.[CATEGORY_WORDS_SETTING];
+    .maybeSingle()
+    .then(({ data }) => {
+      const row = (data ?? {}) as Record<string, unknown> & { branding?: Record<string, unknown> | null };
+      return row[CATEGORY_WORDS_SETTING] ?? row.branding?.[CATEGORY_WORDS_SETTING];
+    });
+  const first = await page(0, true);
+  if (first.error) return EMPTY_VOCABULARY;
+  const total = Math.min(typeof first.count === "number" ? first.count : 0, MAX_ROWS);
+  const rest: number[] = [];
+  for (let from = PAGE; from < total; from += PAGE) rest.push(from);
+  const more = await Promise.all(rest.map((from) => page(from)));
+  if (more.some((r) => r.error)) return EMPTY_VOCABULARY;
+  const counts = new Map<string, number>();
+  for (const rows of [first.data, ...more.map((r) => r.data)]) {
+    for (const r of (rows ?? []) as Array<{ category?: unknown }>) {
+      const name = typeof r.category === "string" ? r.category.trim() : "";
+      if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+  // No count back and a full first page: there may be more than was read.
+  const complete =
+    typeof first.count === "number" ? first.count <= MAX_ROWS : (first.data ?? []).length < PAGE;
   const categories: ShopCategory[] = [...counts.entries()]
     .map(([name, products]) => ({ name, products }))
     .sort((a, b) => b.products - a.products || a.name.localeCompare(b.name));
-  return { categories, words: cleanCategoryWords(words), complete };
+  return { categories, words: cleanCategoryWords(await words.then((w) => w, () => null)), complete };
 }
 
 /** The workspace's categories and extra words. Never throws: a failed read is an empty list. */
