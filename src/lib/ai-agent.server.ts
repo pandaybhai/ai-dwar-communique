@@ -467,6 +467,7 @@ export async function runAgentOnInbound(
         ...(timer ? { timer } : {}),
         items: [{ ...item, metadata }],
         cards: withCard && item === cardItem,
+        ...(args.later ? { background: args.later } : {}),
         onFailure: (error) => log("picture_failed", { conversation_id: args.conversationId, error }),
       });
       if (shown > 0) {

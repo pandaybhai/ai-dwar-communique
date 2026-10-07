@@ -288,3 +288,59 @@ describe("Batch 16 item 3: one product search — hidden products never come bac
     for (const r of reads) expect(r).toMatch(/is_visible/);
   });
 });
+
+describe("Batch 16 item 5: a card not ready in ~1 s never holds the product photo", () => {
+  it("slow card: the plain photo goes with the same caption within ~1 s; the card finishes for next time", async () => {
+    process.env["AIDWAR_SUPABASE_URL"] = "https://db.example";
+    process.env["AIDWAR_SUPABASE_SERVICE_ROLE_KEY"] = "svc";
+    const { fakeDb } = await import("./test-support/fake-db");
+    const db = fakeDb((op) => (op.table === "conversations" ? { data: { id: "conv-1", last_customer_message_at: new Date().toISOString() }, error: null } : undefined));
+    const started = Date.now();
+    const sends: Array<{ link: string; caption: string; at: number }> = [];
+    let renders = 0;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (init?.method === "HEAD") return new Response(null, { status: 404 });
+      if (u.includes("/functions/v1/render-card")) {
+        renders += 1;
+        await new Promise((r) => setTimeout(r, 1600));
+        return new Response(JSON.stringify({ url: "https://db.example/cards/drawn.png" }), { status: 200 });
+      }
+      if (u.includes("graph.facebook.com")) {
+        const body = JSON.parse(String(init?.body)) as { image: { link: string; caption: string } };
+        sends.push({ link: body.image.link, caption: body.image.caption, at: Date.now() - started });
+        return new Response(JSON.stringify({ messages: [{ id: `wamid.${sends.length}` }] }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const { sendProductPictures, CARD_WAIT_MS } = await import("./product-pictures.server");
+    const background: Promise<unknown>[] = [];
+    const item = { title: "The Architect", imageUrl: "https://shop.example/architect.jpg", caption: "The Architect — ₹26,446", price: 26446, currency: "INR", productUrl: null };
+    const args = {
+      organizationId: "org-card",
+      contactId: "c1",
+      conversationId: "conv-1",
+      to: "919800000001",
+      phoneNumberId: "pn",
+      accessToken: "tok",
+      windowOpen: true,
+      cards: true,
+      items: [item],
+      background: (w: Promise<unknown>) => background.push(w),
+    } as unknown as Parameters<typeof sendProductPictures>[1];
+    expect(CARD_WAIT_MS).toBe(1000);
+    expect(await sendProductPictures(db.supabase, args)).toBe(1);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.link).toBe(item.imageUrl);
+    expect(sends[0]!.caption).toBe(item.caption);
+    expect(sends[0]!.at).toBeLessThan(1500);
+    expect(background).toHaveLength(1);
+    // The card finishes drawing in the background…
+    await Promise.all(background);
+    // …and the next customer gets the card itself, at once, without a new render.
+    expect(await sendProductPictures(db.supabase, args)).toBe(1);
+    expect(sends[1]!.link).toBe("https://db.example/cards/drawn.png");
+    expect(sends[1]!.caption).toBe(item.caption);
+    expect(renders).toBe(1);
+  }, 10_000);
+});

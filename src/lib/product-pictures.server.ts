@@ -47,6 +47,9 @@ export function productCaption(item: PictureItem, withLink = false): string {
  * out as a card; any card failure falls back to the plain picture. Returns how
  * many went out.
  */
+/** How long a product's branded card may take before its plain photo goes instead (Batch 16). */
+export const CARD_WAIT_MS = 1000;
+
 export async function sendProductPictures(
   supabase: SupabaseClient,
   args: {
@@ -65,6 +68,8 @@ export async function sendProductPictures(
     /** The webhook's reply timer (Aiden's sends); left out, nothing is timed. */
     timer?: ReplyTimer;
     onFailure?: (error: string | null) => void;
+    /** Keeps a card still drawing after its ~1 s wait alive past the reply (the webhook's later()). */
+    background?: (work: Promise<unknown>) => void;
   },
 ): Promise<number> {
   const { sendServiceImage } = await import("@/lib/service-text.server");
@@ -86,6 +91,11 @@ export async function sendProductPictures(
           caption,
           ...(item.metadata ? { metadata } : {}),
           ...(args.timer ? { timer: args.timer } : {}),
+          // Batch 16: a card not ready within ~1 s never holds the reply —
+          // the plain photo goes with the same caption (below) and the card
+          // is drawn in the background for next time.
+          waitMs: CARD_WAIT_MS,
+          ...(args.background ? { background: args.background } : {}),
         });
         if (card.sent) {
           cardSent = true;
