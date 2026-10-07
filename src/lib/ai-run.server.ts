@@ -3098,12 +3098,14 @@ function normaliseQuestion(text: string): string {
 
 // ------------------------------------------------------- numeric grounding
 
+/** Currency marks a figure may carry, in any common currency ("₹", "Rs", "$", "€", "AED"). */
+const CURRENCY_MARK = "(?:[₹$€£¥]|Rs\\.?\\s?|\\b(?:INR|USD|EUR|GBP|AED|SGD|AUD|CAD)\\s?)";
 /** Every number-looking run of characters, with currency and percent signs. */
-const NUMBER_PATTERN = /(?:₹|Rs\.?\s?)?\d[\d,]*(?:\.\d+)?\s?%?/g;
+const NUMBER_PATTERN = new RegExp(`${CURRENCY_MARK}?\\d[\\d,]*(?:\\.\\d+)?\\s?%?`, "g");
 
-/** ₹, Rs, commas and spaces carry no meaning for a comparison. */
+/** Currency marks, commas and spaces carry no meaning for a comparison. */
 function stripNumericNoise(text: string): string {
-  return text.replace(/₹|Rs\.?/gi, "").replace(/[,\s]/g, "");
+  return text.replace(new RegExp(CURRENCY_MARK, "gi"), "").replace(/[,\s]/g, "");
 }
 
 /**
@@ -3139,7 +3141,7 @@ export function unsupportedNumbers(answer: string, support: string[]): string[] 
     if (!value) continue;
     const bare = value.replace(/%$/, "");
     const trivial =
-      !/[₹%]|Rs/i.test(token) && !bare.includes(".") && bare.replace(/\D/g, "").length <= 2;
+      !/%/.test(token) && !new RegExp(CURRENCY_MARK, "i").test(token) && !bare.includes(".") && bare.replace(/\D/g, "").length <= 2;
     if (trivial) continue;
     if (haystack.includes(value)) continue;
     if (!out.includes(token)) out.push(token);

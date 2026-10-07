@@ -114,7 +114,7 @@ describe("(a) one site, one identity", () => {
     expect(canonicalPageUrl("https://instagram.com/myzoori", O, O)).toBeNull();
     expect(canonicalPageUrl("https://shop.myzoori.com/x", O, O)).toBeNull();
     expect(canonicalPageUrl("https://myzoori.com:8443/x", O, O)).toBeNull();
-    expect(canonicalPageUrl("mailto:hi@myzoori.com", O, O)).toBeNull();
+    expect(canonicalPageUrl("mailto:hi@example.com", O, O)).toBeNull();
   });
 
   it("the other ways the origin is written", () => {

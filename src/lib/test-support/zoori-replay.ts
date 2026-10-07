@@ -27,7 +27,7 @@ export const INSTRUCTIONS = {
   handover_message: "Let me get someone from the team to help — they'll reply here shortly.",
   working_hours_behaviour: "always",
   instructions:
-    "You are Zoori's assistant on WhatsApp. Zoori is a Hyderabad jewellery brand — rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya/mangalsutra — in certified diamonds, real gemstones and hallmarked gold. Two showrooms: Somajiguda (GF 1, Olbee Centre, Rajbhavan Road, near Skoda showroom, +91 70412 54772) and Bolarum, Secunderabad (GF06 Fairmount Square, Ruby Block, Brundavan Colony, +91 90909 05050).\n\n" +
+    "You are Zoori's assistant on WhatsApp. Zoori is a Hyderabad jewellery brand — rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya/mangalsutra — in certified diamonds, real gemstones and hallmarked gold. Two showrooms: Somajiguda (GF 1, Olbee Centre, Rajbhavan Road, near Skoda showroom, +91 98000 00011) and Bolarum, Secunderabad (GF06 Fairmount Square, Ruby Block, Brundavan Colony, +91 98000 00012).\n\n" +
     "Three promises you can always state: lifelong free maintenance, 20-day no-questions returns, certified stones and real gold. Website prices are the price to pay — no showroom markup.\n\n" +
     "Style: reply in the customer's language (Hindi, Hinglish or English), 2–4 short lines like a WhatsApp chat, never long paragraphs, no citation marks or brackets. End most replies with one helpful question.\n\n" +
     "Showing products: when a customer wants to see, choose or compare, show 2–3 pieces with price and link, then ask about budget, style or occasion. If nothing matches their budget, offer the closest above it or a different type.\n\n" +
@@ -1058,7 +1058,7 @@ export function zooriWorld(c: Case) {
       contactId: CONTACT,
       phoneNumberId: "pn-zoori",
       accessToken: "token",
-      waId: "917981223192",
+      waId: "919800000099",
       body: c.ask,
       alreadyHandled: false,
       optedOut: false,

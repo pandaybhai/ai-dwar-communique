@@ -16,12 +16,14 @@ export type PictureItem = Pick<RunMedia, "title" | "imageUrl" | "price" | "curre
   metadata?: Record<string, unknown>;
 };
 
-/** "₹19,604", or "" when the product has no price. */
+/** "₹19,604" / "$1,250" in the product's own currency, or "" when the product has no price. */
 export function productPrice(item: Pick<RunMedia, "price" | "currency">): string {
   if (item.price === null) return "";
-  return new Intl.NumberFormat("en-IN", {
+  const currency = item.currency || "INR";
+  // Indian grouping (1,00,000) for rupees only.
+  return new Intl.NumberFormat(currency.toUpperCase() === "INR" ? "en-IN" : "en-US", {
     style: "currency",
-    currency: item.currency || "INR",
+    currency,
     maximumFractionDigits: 0,
   }).format(item.price);
 }

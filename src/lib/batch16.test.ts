@@ -159,7 +159,7 @@ describe("Batch 16 item 1: not knowing never silences Aiden", () => {
 
 describe("Batch 16 item 2: hand-off alerts go to staff, never the business's own number", () => {
   const ORG = "81c234b2-569f-40be-ad71-96c046de5d12";
-  const OWN = "+91 91210 24545";
+  const OWN = "+91 98000 00098";
 
   async function world(opts: { phones?: string[]; email?: string | null; ownerPhone?: string; waiting?: boolean }) {
     const { fakeDb } = await import("./test-support/fake-db");
@@ -169,7 +169,7 @@ describe("Batch 16 item 2: hand-off alerts go to staff, never the business's own
       if (op.table === "whatsapp_accounts") return { data: [{ display_phone_number: OWN }], error: null };
       if (op.table === "organizations") return { data: { name: "Zoori", timezone: "Asia/Kolkata" }, error: null };
       if (op.table === "organization_members") return { data: [{ user_id: "u1" }], error: null };
-      if (op.table === "profiles") return { data: { phone: opts.ownerPhone ?? "+919121024545" }, error: null };
+      if (op.table === "profiles") return { data: { phone: opts.ownerPhone ?? "+919800000098" }, error: null };
       if (op.table === "conversations" && op.kind === "select" && opts.waiting)
         return { data: [{ id: "c1", organization_id: ORG, needs_human_reason: "asked_for_person", needs_human_question: "call me" }], error: null };
       if (op.table === "conversations" && op.kind === "select")
@@ -180,14 +180,14 @@ describe("Batch 16 item 2: hand-off alerts go to staff, never the business's own
 
   it("saving the business's own number is refused with a plain explanation", async () => {
     const { validateAlertSettings } = await import("./handoff-alerts.server");
-    const own = ["+91 91210 24545"];
-    for (const typed of ["+919121024545", "09121024545", "91210 24545"]) {
+    const own = ["+91 98000 00098"];
+    for (const typed of ["+919800000098", "09800000098", "98000 00098"]) {
       const r = validateAlertSettings({ phones: [typed] }, own);
       expect(r.ok, typed).toBe(false);
       if (!r.ok) expect(r.error).toMatch(/this business's own WhatsApp number/);
     }
-    const ok = validateAlertSettings({ phones: ["+91 98765 43210", ""], email: "team@zoori.in" }, own);
-    expect(ok).toEqual({ ok: true, settings: { phones: ["+919876543210"], email: "team@zoori.in" } });
+    const ok = validateAlertSettings({ phones: ["+91 98765 43210", ""], email: "team@example.com" }, own);
+    expect(ok).toEqual({ ok: true, settings: { phones: ["+919876543210"], email: "team@example.com" } });
     expect(validateAlertSettings({ phones: ["+919876543210", "+919876543211", "+919876543212"] }, own).ok).toBe(false);
     expect(validateAlertSettings({ phones: [], email: "not-an-email" }, own).ok).toBe(false);
   });
@@ -202,7 +202,7 @@ describe("Batch 16 item 2: hand-off alerts go to staff, never the business's own
       { channelFor: async (p) => ({ to: p }), sendWhatsApp: async (c) => (whatsapp.push((c as unknown as { to: string }).to), true) },
     );
     expect(whatsapp).toEqual([]);
-    expect(out.refused).toEqual(["+919121024545"]);
+    expect(out.refused).toEqual(["+919800000098"]);
     expect(out.skipped).toBe("no_staff_contact");
   });
 
@@ -225,7 +225,7 @@ describe("Batch 16 item 2: hand-off alerts go to staff, never the business's own
 
   it("WhatsApp can't reach the staff member (no open chat): the email goes instead", async () => {
     const { sendHandoffAlert } = await import("./handoff-alerts.server");
-    const db = await world({ phones: ["+919876543210"], email: "team@zoori.in" });
+    const db = await world({ phones: ["+919876543210"], email: "team@example.com" });
     const emails: string[] = [];
     const out = await sendHandoffAlert(
       db.supabase,
@@ -233,7 +233,7 @@ describe("Batch 16 item 2: hand-off alerts go to staff, never the business's own
       { channelFor: async () => null, sendEmail: async (to) => (emails.push(to), true) },
     );
     expect(out.whatsapp).toEqual([]);
-    expect(emails).toEqual(["team@zoori.in"]);
+    expect(emails).toEqual(["team@example.com"]);
   });
 
   it("one reminder after 30 minutes, only inside business hours", async () => {

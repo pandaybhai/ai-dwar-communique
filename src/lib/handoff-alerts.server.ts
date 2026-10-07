@@ -10,7 +10,7 @@
  *
  * Never to the business's own WhatsApp number: an alert sent from the
  * platform to the shop's own number lands in the very inbox it is about
- * (Zoori: owner_phone +919121024545 is its own number). Saving such a number
+ * (a workspace whose owner_phone is its own sending number). Saving such a number
  * is refused with a plain explanation, and every send checks again.
  *
  * Alerts are never customer reply text: they go to staff, not customers.
@@ -33,7 +33,7 @@ export type HandoffAlertSettings = {
   email: string | null;
 };
 
-/** Same number, written either way: "+91 91210 24545", "09121024545", "919121024545". */
+/** Same number, written either way: "+91 98000 00098", "09800000098", "919800000098". */
 export function samePhone(a: string | null | undefined, b: string | null | undefined): boolean {
   const x = String(a ?? "").replace(/\D/g, "");
   const y = String(b ?? "").replace(/\D/g, "");
