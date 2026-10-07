@@ -281,3 +281,30 @@ describe("no industry presets in shared code", () => {
     expect(sql).toMatch(/NOT \(coalesce\(config, '\{\}'::jsonb\) \? 'category_rules'\)/);
   });
 });
+
+describe("pg_cron jobs in the repo (20261053, draft)", () => {
+  const sql = readFileSync(join(__dirname, "..", "..", "supabase", "aidwar-migrations", "20261053_cron_jobs.sql"), "utf8");
+  it("every live job is there; knowledge-refresh is paused", () => {
+    for (const job of [
+      "campaign-worker",
+      "reprocess-events",
+      "shopify-sync-worker",
+      "flow-worker",
+      "flow-scan",
+      "knowledge-refresh",
+      "billing-notify",
+      "billing-sweep",
+      "billing-monthly",
+      "knowledge-worker",
+      "knowledge-backfill",
+    ])
+      expect(sql).toMatch(new RegExp(`aidwar_reschedule\\(\\s*'${job}'`));
+    expect(sql).toMatch(/aidwar_reschedule\('knowledge-refresh'[\s\S]*?, false\);/);
+  });
+  it("the secret only ever comes from the Vault, never a literal", () => {
+    expect(sql).not.toMatch(/"x-cron-secret"\s*:|'x-cron-secret',\s*'[^']/);
+    expect(sql.match(/name = 'aidwar_cron_secret'/g)!.length).toBeGreaterThanOrEqual(2);
+    // Still a draft: it refuses to run until the live schedules are in.
+    expect(sql).toMatch(/RAISE EXCEPTION 'Batch 20 draft/);
+  });
+});
