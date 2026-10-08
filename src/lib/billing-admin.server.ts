@@ -827,6 +827,19 @@ export async function adminAdjustment(
   if (input.amount === 0) return { error: "An adjustment of zero doesn't change anything." };
   if (!input.reason.trim()) return { error: "An adjustment always needs a reason." };
 
+  // A negative adjustment lowers the balance only on a wallet_apply that
+  // treats 'adjustment' as signed (20261065_batch26a_wallet.sql). An older
+  // one adds abs(amount), so a negative is never sent to it.
+  if (input.amount < 0) {
+    const { data: version, error: versionError } = await supabase.rpc("wallet_apply_version");
+    if (versionError || Number(version ?? 0) < 2) {
+      return {
+        error:
+          "Negative adjustments need the Batch 26a wallet update (20261065) applied to the database first.",
+      };
+    }
+  }
+
   const { error } = await supabase.rpc("wallet_apply", {
     p_org: input.organizationId,
     p_type: "adjustment",
@@ -837,7 +850,13 @@ export async function adminAdjustment(
     p_metadata: { manual: true },
     p_actor: input.actorId,
   });
-  if (error) return { error: "We couldn't apply that adjustment. Please try again." };
+  if (error) {
+    return {
+      error: error.message.includes("INSUFFICIENT_CREDITS")
+        ? "That adjustment would take the balance below the workspace's overdraft limit."
+        : "We couldn't apply that adjustment. Please try again.",
+    };
+  }
 
   await supabase.from("activity_log").insert({
     organization_id: input.organizationId,

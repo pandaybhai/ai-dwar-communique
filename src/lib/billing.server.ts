@@ -2133,11 +2133,16 @@ export async function estimateCampaignCost(
   };
 }
 
-/** Holds the estimate so two campaigns can't spend the same credits. */
+/**
+ * Holds the estimate so two campaigns can't spend the same credits. The
+ * database refuses a hold the wallet can't cover (balance + overdraft −
+ * already held, 20261065_batch26a_wallet.sql): code "insufficient_credits".
+ * Anything else (the call itself failed) is "hold_failed" and may be retried.
+ */
 export async function holdCampaignSpend(
   supabase: SupabaseClient,
   input: { organizationId: string; campaignId: string; amount: number; actorId: string | null },
-): Promise<{ ok: true } | { error: string }> {
+): Promise<{ ok: true } | { error: string; code: "insufficient_credits" | "hold_failed" }> {
   // The dispatch worker holds on behalf of whoever launched the campaign; a
   // null actor means the platform itself and is only reachable from workers.
   if (input.actorId) {
@@ -2156,13 +2161,36 @@ export async function holdCampaignSpend(
     p_actor: input.actorId,
   });
   if (error) {
-    return {
-      error: error.message.includes("INSUFFICIENT_CREDITS")
-        ? "There aren't enough credits to cover this campaign."
-        : "We couldn't reserve credits for this campaign. Please try again.",
-    };
+    return error.message.includes("INSUFFICIENT_CREDITS")
+      ? { error: "There aren't enough credits to cover this campaign.", code: "insufficient_credits" }
+      : {
+          error: "We couldn't reserve credits for this campaign. Please try again.",
+          code: "hold_failed",
+        };
   }
   return { ok: true };
+}
+
+/**
+ * Whether the wallet can reserve `amount` right now (the same sum the hold
+ * itself checks). Used to answer a resume at once instead of letting the
+ * worker pause the campaign again a minute later.
+ */
+export async function creditsCover(
+  supabase: SupabaseClient,
+  organizationId: string,
+  amount: number,
+): Promise<{ covers: boolean; available: number }> {
+  const [wallet, settings] = await Promise.all([
+    ensureWallet(supabase, organizationId),
+    ensureSettings(supabase, organizationId),
+  ]);
+  const available = round2(
+    Number(wallet["balance"] ?? 0) +
+      Number(settings["overdraft_limit"] ?? 0) -
+      Number(wallet["held"] ?? 0),
+  );
+  return { covers: amount <= 0 || available >= round2(amount), available };
 }
 
 // --------------------------------------------------------------- admin view

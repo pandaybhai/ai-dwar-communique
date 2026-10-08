@@ -10,6 +10,11 @@ import { round2 } from "@/lib/billing";
  * messages: low credits is said once per low spell (until credits recover),
  * the float warning at most once a day, and notify() never queues either
  * while an earlier one is still waiting to go out.
+ *
+ * Every run also retries the message debits the database could not take
+ * when the message was priced (Batch 26a): a message that went out is always
+ * charged, at the latest once the workspace has credits again, and the
+ * platform admins hear about what is still uncharged once a day.
  */
 
 const DAY_MS = 864e5;
@@ -22,7 +27,91 @@ export type SweepCounts = {
   reminders: number;
   expired: number;
   expiry_skipped: number;
+  debits_retried: number;
+  debits_charged: number;
+  debits_failing: number;
 };
+
+/** activity_log action (and admin notice kind) for uncharged message debits. */
+export const DEBIT_ALERT_ACTION = "billing_debit_alert";
+const DEBIT_ALERT_EVERY_MS = DAY_MS;
+
+type RetryResult = {
+  retried?: number;
+  charged?: number;
+  closed?: number;
+  failing?: number;
+  failing_rows?: Array<{ organization_id?: string; message_id?: string; since?: string; error?: string }>;
+};
+
+/**
+ * Retries the debits trg_messages_billing could not take (usage_records,
+ * meter billing_debit_failed) through billing_retry_failed_debits
+ * (20261065_batch26a_wallet.sql; idempotent per message, never charges
+ * twice). What still can't be charged is raised to the platform admins: an
+ * activity_log row and one WhatsApp notice on the admin alert template, at
+ * most once a day. Never throws.
+ */
+export async function retryFailedDebits(
+  supabase: SupabaseClient,
+): Promise<{ retried: number; charged: number; failing: number; alerted: boolean }> {
+  const out = { retried: 0, charged: 0, failing: 0, alerted: false };
+  try {
+    const { data, error } = await supabase.rpc("billing_retry_failed_debits", { p_limit: 200 });
+    if (error) {
+      console.error(JSON.stringify({ at: "billing_debit_retry_failed", error: error.message }));
+      return out;
+    }
+    const r = (data ?? {}) as RetryResult;
+    out.retried = Number(r.retried ?? 0);
+    out.charged = Number(r.charged ?? 0);
+    out.failing = Number(r.failing ?? 0);
+    if (out.failing === 0) return out;
+
+    const { data: recent } = await supabase
+      .from("activity_log")
+      .select("id")
+      .eq("action", DEBIT_ALERT_ACTION)
+      .gte("created_at", new Date(Date.now() - DEBIT_ALERT_EVERY_MS).toISOString())
+      .limit(1);
+    if (Array.isArray(recent) && recent.length > 0) return out;
+
+    const rows = r.failing_rows ?? [];
+    const orgs = [...new Set(rows.map((x) => x.organization_id).filter(Boolean))] as string[];
+    const oldest = rows.map((x) => x.since ?? "").filter(Boolean).sort()[0] ?? null;
+    const headline = `${out.failing} sent message${out.failing === 1 ? "" : "s"} could not be charged`;
+    const who = orgs.length === 1 ? "1 workspace owes" : `${orgs.length} workspaces owe`;
+    const detail = `${who} for messages already sent; they are retried every sweep`;
+    await supabase.from("activity_log").insert({
+      organization_id: null,
+      action: DEBIT_ALERT_ACTION,
+      details: {
+        failing: out.failing,
+        organizations: orgs,
+        oldest,
+        first_error: rows[0]?.error ?? null,
+        headline,
+        detail,
+      },
+    });
+    const { notify } = await import("@/lib/billing.server");
+    await notify(supabase, {
+      organizationId: null,
+      audience: "admin",
+      kind: DEBIT_ALERT_ACTION,
+      payload: { headline, detail, link: "https://aidwar.in/admin/billing" },
+    });
+    out.alerted = true;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        at: "billing_debit_retry_failed",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+  return out;
+}
 
 function olderThan(iso: string | null | undefined, ms: number): boolean {
   if (!iso) return true;
@@ -38,7 +127,16 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     reminders: 0,
     expired: 0,
     expiry_skipped: 0,
+    debits_retried: 0,
+    debits_charged: 0,
+    debits_failing: 0,
   };
+
+  // ---- messages already sent whose debit failed: charge them now if we can
+  const debits = await retryFailedDebits(supabase);
+  counts.debits_retried = debits.retried;
+  counts.debits_charged = debits.charged;
+  counts.debits_failing = debits.failing;
 
   const { billingEnabled, notify, createCreditPurchase } = await import("@/lib/billing.server");
   const nowIso = new Date().toISOString();

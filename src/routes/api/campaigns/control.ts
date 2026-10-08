@@ -45,7 +45,7 @@ export const Route = createFileRoute("/api/campaigns/control")({
 
         const { data: campaign } = await supabase
           .from("campaigns")
-          .select("id, status, scheduled_at, held_amount, charged_amount")
+          .select("id, status, scheduled_at, held_amount, charged_amount, estimated_cost")
           .eq("id", campaignId)
           .eq("organization_id", organizationId)
           .maybeSingle();
@@ -92,6 +92,21 @@ export const Route = createFileRoute("/api/campaigns/control")({
           if (!moved?.length) return jsonError("This campaign has already finished.");
         } else if (action === "resume") {
           if (status !== "paused") return jsonError("This campaign isn't paused.");
+          // Not reserved yet (paused before it started, e.g. for credits): the
+          // worker would only pause it again, so say so now (Batch 26a).
+          const estimate = Number(campaign.estimated_cost ?? 0);
+          if (estimate > 0 && Number(campaign.held_amount ?? 0) <= 0) {
+            const { billingEnabled, creditsCover } = await import("@/lib/billing.server");
+            if (await billingEnabled(supabase, organizationId)) {
+              const cover = await creditsCover(supabase, organizationId, estimate);
+              if (!cover.covers) {
+                return jsonError(
+                  `This campaign needs about ${estimate.toFixed(2)} in credits and ${Math.max(0, cover.available).toFixed(2)} is available. Add credits, then resume.`,
+                  402,
+                );
+              }
+            }
+          }
           const future =
             campaign.scheduled_at && new Date(campaign.scheduled_at).getTime() > Date.now();
           const { data: moved, error: moveError } = await supabase
@@ -102,6 +117,15 @@ export const Route = createFileRoute("/api/campaigns/control")({
             .select("id");
           if (moveError) return jsonError("We couldn't update this campaign. Please try again.", 500);
           if (!moved?.length) return jsonError("This campaign isn't paused.");
+          // Best effort: a database without the column still resumes.
+          await supabase
+            .from("campaigns")
+            .update({ pause_reason: null })
+            .eq("id", campaignId)
+            .then(
+              () => null,
+              () => null,
+            );
         } else {
           // One statement over every queued/sending row; a sender writing the
           // same rows at that moment can make Postgres pick this one as a

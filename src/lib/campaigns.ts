@@ -57,6 +57,8 @@ export type CampaignRow = {
   returned_amount?: number | null;
   approved_by?: string | null;
   approved_at?: string | null;
+  /** Why the sender paused it, e.g. "insufficient_credits" (Batch 26a). */
+  pause_reason?: string | null;
 };
 
 

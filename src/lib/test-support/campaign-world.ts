@@ -151,6 +151,7 @@ export function world(spec: {
   }> = [];
   // phone_number_id is globally unique in real life; caches key on it.
   const uniq = crypto.randomUUID().slice(0, 8);
+  const seededAt = Date.now() - 60 * 60 * 1000;
   spec.campaigns.forEach((c, i) => {
     const org = db.insert("organizations", { name: `Store ${i + 1}` });
     const account = db.insert("whatsapp_accounts", {
@@ -211,7 +212,9 @@ export function world(spec: {
           phone: contact["phone"],
           resolved_variables: { "1": contact["name"] },
           status: "queued",
-          created_at: new Date(Date.UTC(2026, 9, 1) + n).toISOString(),
+          // In claim order, and recent: replies count only for recipients of
+          // the last 7 days (a fixed date stopped counting them on 8 Oct 2026).
+          created_at: new Date(seededAt + n).toISOString(),
           updated_at: now(),
         }),
       );
