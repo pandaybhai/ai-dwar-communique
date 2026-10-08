@@ -35,13 +35,10 @@ describe("(1a) the burst wait: a platform setting, 1 s by default", () => {
   const settingsDb = (reply: { data: unknown; error: { message: string } | null }) =>
     fakeDb((op) => (op.table === "platform_settings" ? reply : undefined));
 
-  it("no column yet (migration not applied), no row or a failed read: 1 s", async () => {
+  it("no row, a bad value or a failed read: 1 s", async () => {
     const { burstWindowMs, resetBurstWindowCache } = await import("./whatsapp-webhook.server");
     for (const reply of [
-      {
-        data: null,
-        error: { message: "column platform_settings.ai_burst_wait_ms does not exist" },
-      },
+      { data: null, error: { message: "timeout" } },
       { data: null, error: null },
       { data: { ai_burst_wait_ms: "fast" }, error: null },
       { data: { ai_burst_wait_ms: 999_999 }, error: null },

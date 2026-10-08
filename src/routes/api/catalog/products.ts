@@ -3,7 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 /**
  * Every catalogue write goes through here so that permission, activity logging
  * and the Shopify-ownership rules live in one place. Reads happen straight
- * from the browser under RLS.
+ * from the browser under RLS. Also the workspace's words for its categories
+ * (save_category_words → organizations.branding.category_words).
  */
 
 type AnyRecord = Record<string, unknown>;
@@ -289,6 +290,30 @@ export const Route = createFileRoute("/api/catalog/products")({
             removed: remove,
           });
           return Response.json({ ok: true });
+        }
+
+        // --------------------------------------------- category words
+        // Batch 20: the extra words this workspace's customers use for its
+        // own categories ({ category: [words] }), read by product search.
+        if (action === "save_category_words") {
+          const { CATEGORY_WORDS_SETTING, cleanCategoryWords } = await import("@/lib/shop-categories");
+          const words = cleanCategoryWords(payload["category_words"]);
+          const { data: org, error: readError } = await supabase
+            .from("organizations")
+            .select("branding")
+            .eq("id", organizationId)
+            .maybeSingle();
+          if (readError) return jsonError("We couldn't save that — please try again.");
+          const existing = ((org as { branding?: AnyRecord | null } | null)?.branding ?? {}) as AnyRecord;
+          const { error } = await supabase
+            .from("organizations")
+            .update({ branding: { ...existing, [CATEGORY_WORDS_SETTING]: words } })
+            .eq("id", organizationId);
+          if (error) return jsonError("We couldn't save that — please try again.");
+          await logServerActivity(supabase, organizationId, userId, "catalog_category_words_updated", {
+            categories: Object.keys(words).length,
+          });
+          return Response.json({ ok: true, category_words: words });
         }
 
         return jsonError("Unknown action.");

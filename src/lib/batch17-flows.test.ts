@@ -67,7 +67,6 @@ function world(rows: Row[]) {
       if (op.table === "flow_versions" && op.kind === "update") return { data: [{ id: "x" }], error: null };
       return undefined;
     },
-    (c) => (c.name === "flow_publish_version" ? { data: null, error: { code: "PGRST202", message: "missing" } } : undefined),
   );
   h.db = db;
   return db;
@@ -88,7 +87,7 @@ describe("(2) the server only uses this workspace's version rows", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, version: 2 });
     expect(touched(db, "evil")).toBe(false);
-    expect(touched(db, "mine")).toBe(true);
+    expect(db.rpcs.filter((r) => r.name === "flow_publish_version").map((r) => r.args["p_version_id"])).toEqual(["mine"]);
   });
 
   it("publish: only a foreign draft exists → 'no draft to publish', nothing written", async () => {

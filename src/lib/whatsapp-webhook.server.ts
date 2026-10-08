@@ -50,8 +50,8 @@ let burstSetting: { value: number; at: number } | null = null;
 
 /**
  * The platform's burst window, read at most once a minute per worker. A
- * missing column (migration 20261020 not applied), a missing row or a failed
- * read all mean the default — the setting can never stop a reply.
+ * missing row or a failed read means the default — the setting can never
+ * stop a reply.
  */
 export async function burstWindowMs(supabase: SupabaseClient, now = Date.now()): Promise<number> {
   if (burstSetting && now - burstSetting.at < 60_000) return burstSetting.value;
@@ -294,30 +294,12 @@ const STATUS_RANK: Record<string, number> = {
 
 const REPLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Recipient statuses a status webhook may move on from, per incoming status. */
-const RECIPIENT_BELOW: Record<string, string[]> = {
-  sent: ["queued", "sending", "skipped"],
-  delivered: ["queued", "sending", "sent", "skipped"],
-  read: ["queued", "sending", "sent", "skipped"],
-};
-
-// Set once the database says campaign_recipient_status() isn't there yet
-// (migration 20261016_send_at_scale.sql not applied); looked for again
-// every 10 minutes so applying it needs no deploy.
-let recipientRpcMissingUntil = 0;
-
-function missingFunction(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  const code = String(error.code ?? "");
-  return code === "PGRST202" || code === "42883";
-}
-
 /**
  * Mirrors a message status onto its campaign recipient (monotonic) and bumps
- * the campaign's delivered/read/failed counters exactly once per transition.
- * Every move is a conditional update ("only if it isn't there yet"), so two
- * copies of the same webhook processed together can't both count it. The
- * recipient is found by id when Meta echoed our callback data (it may not
+ * the campaign's delivered/read/failed counters exactly once per transition,
+ * in one database call (campaign_recipient_status, 20261016_send_at_scale.sql),
+ * so two copies of the same webhook processed together can't both count it.
+ * The recipient is found by id when Meta echoed our callback data (it may not
  * have its message id yet — the sender writes in batches), else by message.
  */
 async function applyCampaignStatus(
@@ -327,58 +309,13 @@ async function applyCampaignStatus(
   errorDetail: string | null,
   recipientId: string | null = null,
 ): Promise<void> {
-  if (Date.now() >= recipientRpcMissingUntil) {
-    const { error } = await supabase.rpc("campaign_recipient_status", {
-      p_message_id: messageId,
-      p_recipient_id: recipientId,
-      p_status: nextStatus,
-      p_error: errorDetail,
-    });
-    if (!error) return;
-    if (!missingFunction(error)) throw new Error(error.message);
-    recipientRpcMissingUntil = Date.now() + 10 * 60_000;
-  }
-
-  const target = () => {
-    const q = supabase.from("campaign_recipients");
-    return {
-      update: (patch: Record<string, unknown>) => {
-        const u = q.update(recipientId ? { ...patch, message_id: messageId } : patch);
-        return recipientId ? u.eq("id", recipientId) : u.eq("message_id", messageId);
-      },
-    };
-  };
-  const bump = (campaignId: string, counts: Record<string, number>) =>
-    supabase.rpc("bump_campaign_counters", { p_campaign_id: campaignId, ...counts });
-
-  if (nextStatus === "failed") {
-    const { data } = await target()
-      .update({ status: "failed", error: (errorDetail ?? "Delivery failed").slice(0, 300) })
-      .neq("status", "failed")
-      .select("campaign_id");
-    const row = (data as Array<{ campaign_id: string }> | null)?.[0];
-    if (row) await bump(row.campaign_id, { p_failed: 1 });
-    return;
-  }
-
-  const below = RECIPIENT_BELOW[nextStatus];
-  if (!below) return;
-  const { data } = await target().update({ status: nextStatus }).in("status", below).select("campaign_id");
-  const row = (data as Array<{ campaign_id: string }> | null)?.[0];
-  if (row) {
-    if (nextStatus === "delivered") await bump(row.campaign_id, { p_delivered: 1 });
-    // Read without a delivered first: it was delivered too.
-    if (nextStatus === "read") await bump(row.campaign_id, { p_read: 1, p_delivered: 1 });
-    return;
-  }
-  if (nextStatus === "read") {
-    const { data: fromDelivered } = await target()
-      .update({ status: "read" })
-      .eq("status", "delivered")
-      .select("campaign_id");
-    const moved = (fromDelivered as Array<{ campaign_id: string }> | null)?.[0];
-    if (moved) await bump(moved.campaign_id, { p_read: 1 });
-  }
+  const { error } = await supabase.rpc("campaign_recipient_status", {
+    p_message_id: messageId,
+    p_recipient_id: recipientId,
+    p_status: nextStatus,
+    p_error: errorDetail,
+  });
+  if (error) throw new Error(error.message);
 }
 
 /** Messages from before attribution lived on the row (first attributed send: 2026-08-14). */
@@ -2448,23 +2385,14 @@ export async function processWebhookPayload(
 
 /**
  * Stored vs answered (messages.answered_at / answer_claimed_at, migration
- * 20261032_batch17_message_answered.sql). Until it is applied the columns are
- * missing and every helper steps aside: a duplicate stays a duplicate, as before.
+ * 20261032_batch17_message_answered.sql). A failed write steps aside: a
+ * duplicate stays a duplicate.
  */
 const REANSWER_AFTER_MS = 3 * 60_000;
-let answerColumnsMissingUntil = 0;
-
-function missingAnswerColumns(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  const code = String(error.code ?? "");
-  return (code === "PGRST204" || code === "42703") && /answer/i.test(String(error.message ?? ""));
-}
 
 async function answerWrite(run: () => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>) {
-  if (Date.now() < answerColumnsMissingUntil) return null;
   try {
     const { data, error } = await run();
-    if (missingAnswerColumns(error)) answerColumnsMissingUntil = Date.now() + 10 * 60_000;
     return error ? null : data;
   } catch {
     return null;
@@ -2528,7 +2456,7 @@ export async function finishEvent(
   eventId: string,
   failures: string[],
   cleanError: string | null,
-  /** Per-stage timings, stored on webhook_events.timing when that column exists. */
+  /** Per-stage timings, stored on webhook_events.timing. */
   timing: Record<string, unknown> | null = null,
 ): Promise<void> {
   if (failures.length === 0) {
@@ -2566,38 +2494,17 @@ export async function finishEvent(
   );
 }
 
-// Set once an update has shown webhook_events.timing doesn't exist yet
-// (migration 20261011_webhook_event_timing.sql not applied); looked for
-// again every 10 minutes so applying it needs no deploy.
-let timingColumnMissingUntil = 0;
-
-/** True when PostgREST/Postgres says the column isn't there. */
-function missingTimingColumn(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  const code = String(error.code ?? "");
-  return (code === "PGRST204" || code === "42703") && /timing/i.test(String(error.message ?? ""));
-}
-
-/**
- * Closes the event with its timings in the same write. Before the timing
- * column exists the write is repeated without it, so closing an event never
- * depends on the migration.
- */
+/** Closes the event with its timings (webhook_events.timing) in the same write. */
 async function updateEvent(
   supabase: SupabaseClient,
   eventId: string,
   patch: Record<string, unknown>,
   timing: Record<string, unknown> | null,
 ): Promise<void> {
-  if (timing && Date.now() >= timingColumnMissingUntil) {
-    const { error } = await supabase
-      .from("webhook_events")
-      .update({ ...patch, timing })
-      .eq("id", eventId);
-    if (!missingTimingColumn(error)) return;
-    timingColumnMissingUntil = Date.now() + 10 * 60_000;
-  }
-  await supabase.from("webhook_events").update(patch).eq("id", eventId);
+  await supabase
+    .from("webhook_events")
+    .update(timing ? { ...patch, timing } : patch)
+    .eq("id", eventId);
 }
 
 /**

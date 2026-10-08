@@ -368,7 +368,7 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
               </div>
               <div className="space-y-1.5">
                 <Label>Rules (optional)</Label>
-                <Textarea rows={3} maxLength={MAX_RULES_CHARS} placeholder="e.g. Only suggest products under ₹25,000. Offer a video call for anything custom." value={String(d["rules"] ?? "")} onChange={(e) => set("rules", e.target.value)} />
+                <Textarea rows={3} maxLength={MAX_RULES_CHARS} placeholder="e.g. Only suggest products under 25,000. Offer a video call for anything custom." value={String(d["rules"] ?? "")} onChange={(e) => set("rules", e.target.value)} />
                 <p className="text-xs text-muted-foreground">What Aiden must or must not do in this chat. They're added after your usual instructions for Aiden. Aiden still never makes up prices, times or policies.</p>
               </div>
               <div className="space-y-1.5">
@@ -519,7 +519,8 @@ function ImageField({ d, set, upload, caption = false }: { d: Record<string, unk
 function ShowProductsConfig({ d, set, variables }: { d: Record<string, unknown>; set: (k: string, v: unknown) => void; variables: string[] }) {
   const budget = String(d["budget"] ?? "");
   const range = budget && !budget.includes("{{") ? parseBudget(budget) : null;
-  const inr = (n: number) => `₹${new Intl.NumberFormat("en-IN").format(n)}`;
+  // Budgets are in the shop's own currency (each product's), so no symbol here.
+  const amount = (n: number) => new Intl.NumberFormat("en-IN").format(n);
   const chips = (key: string) => (
     <div className="flex flex-wrap gap-1">
       {variables.map((v) => (
@@ -533,9 +534,9 @@ function ShowProductsConfig({ d, set, variables }: { d: Record<string, unknown>;
     <>
       <div className="space-y-1.5">
         <Label>Category</Label>
-        <Input placeholder="Rings, or {{category}}" value={String(d["category"] ?? "")} onChange={(e) => set("category", e.target.value)} />
+        <Input placeholder="One of your product categories, or {{category}}" value={String(d["category"] ?? "")} onChange={(e) => set("category", e.target.value)} />
         {chips("category")}
-        <p className="text-xs text-muted-foreground">A fixed shelf, or the variable a List/Buttons step saved the customer's choice to. Leave empty for all products.</p>
+        <p className="text-xs text-muted-foreground">One of the categories your products have (or a word you added for one on the Products page), or the variable a List/Buttons step saved the customer's choice to. Leave empty for all products. A word that isn't one of your categories is searched for in product names — nothing else is sent in its place.</p>
       </div>
       <div className="space-y-1.5">
         <Label>Budget</Label>
@@ -543,17 +544,17 @@ function ShowProductsConfig({ d, set, variables }: { d: Record<string, unknown>;
         {chips("budget")}
         <p className="text-xs text-muted-foreground">
           {range
-            ? `Searches ${range.min !== null && range.max !== null ? `${inr(range.min)} – ${inr(range.max)}` : range.max !== null ? `up to ${inr(range.max)}` : `from ${inr(range.min!)}`}.`
+            ? `Searches ${range.min !== null && range.max !== null ? `${amount(range.min)} – ${amount(range.max)}` : range.max !== null ? `up to ${amount(range.max)}` : `from ${amount(range.min!)}`}, in your products' currency.`
             : 'Choices like "Under 25k", "25-50k", "50k-1L" and "1L+" are read as price ranges (k = thousand, L = lakh).'}
         </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1.5"><Label>Lowest price (₹, optional)</Label><Input value={String(d["min_price"] ?? "")} onChange={(e) => set("min_price", e.target.value)} placeholder="Overrides the budget" /></div>
-        <div className="space-y-1.5"><Label>Highest price (₹, optional)</Label><Input value={String(d["max_price"] ?? "")} onChange={(e) => set("max_price", e.target.value)} placeholder="Overrides the budget" /></div>
+        <div className="space-y-1.5"><Label>Lowest price (optional)</Label><Input value={String(d["min_price"] ?? "")} onChange={(e) => set("min_price", e.target.value)} placeholder="Overrides the budget" /></div>
+        <div className="space-y-1.5"><Label>Highest price (optional)</Label><Input value={String(d["max_price"] ?? "")} onChange={(e) => set("max_price", e.target.value)} placeholder="Overrides the budget" /></div>
       </div>
       <div className="space-y-1.5">
         <Label>Keyword (optional)</Label>
-        <Input placeholder="Ruby, Pearl — or {{stones}}" value={String(d["keyword"] ?? "")} onChange={(e) => set("keyword", e.target.value)} />
+        <Input placeholder="Blue, Cotton — or {{keyword}}" value={String(d["keyword"] ?? "")} onChange={(e) => set("keyword", e.target.value)} />
         {chips("keyword")}
         <p className="text-xs text-muted-foreground">Only products whose name or description has this word. Separate choices with commas. Leave empty to show every match.</p>
       </div>
@@ -575,10 +576,10 @@ function ShowProductsConfig({ d, set, variables }: { d: Record<string, unknown>;
       </label>
       <label className="flex items-start gap-2 text-sm">
         <input type="checkbox" className="mt-0.5" checked={d["readable_names"] === true} onChange={(e) => set("readable_names", e.target.checked ? true : undefined)} />
-        <span>Readable names for coded products<span className="block text-xs text-muted-foreground">A product called only by its code (e.g. ZERN-0207) is shown as "Diamond Gold Earrings (ZERN-0207)".</span></span>
+        <span>Readable names for coded products<span className="block text-xs text-muted-foreground">A product called only by its code (e.g. AB-0207) is shown with a name from its own description, e.g. "Cotton T-Shirt (AB-0207)".</span></span>
       </label>
       <p className="text-xs text-muted-foreground">
-        Each product goes out as its picture with name, price and link. If nothing matches, the customer is told what you do have and its real starting price (e.g. "our pendants start at ₹27,000") with the closest products, and the flow takes the "None match" path. No AI is used and nothing is made up.
+        Each product goes out as its picture with name, price and link. If nothing matches, the customer is told what you do have and its real starting price (e.g. "our jackets start at 2,499", in your products' currency) with the closest products, and the flow takes the "None match" path. No AI is used and nothing is made up.
       </p>
     </>
   );

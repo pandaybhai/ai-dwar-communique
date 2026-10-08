@@ -27,13 +27,72 @@ export const INSTRUCTIONS = {
   handover_message: "Let me get someone from the team to help — they'll reply here shortly.",
   working_hours_behaviour: "always",
   instructions:
-    "You are Zoori's assistant on WhatsApp. Zoori is a Hyderabad jewellery brand — rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya/mangalsutra — in certified diamonds, real gemstones and hallmarked gold. Two showrooms: Somajiguda (GF 1, Olbee Centre, Rajbhavan Road, near Skoda showroom, +91 70412 54772) and Bolarum, Secunderabad (GF06 Fairmount Square, Ruby Block, Brundavan Colony, +91 90909 05050).\n\n" +
+    "You are Zoori's assistant on WhatsApp. Zoori is a Hyderabad jewellery brand — rings, pendants, earrings, bracelets, necklaces, chains, tanmaniya/mangalsutra — in certified diamonds, real gemstones and hallmarked gold. Two showrooms: Somajiguda (GF 1, Olbee Centre, Rajbhavan Road, near Skoda showroom, +91 98000 00011) and Bolarum, Secunderabad (GF06 Fairmount Square, Ruby Block, Brundavan Colony, +91 98000 00012).\n\n" +
     "Three promises you can always state: lifelong free maintenance, 20-day no-questions returns, certified stones and real gold. Website prices are the price to pay — no showroom markup.\n\n" +
     "Style: reply in the customer's language (Hindi, Hinglish or English), 2–4 short lines like a WhatsApp chat, never long paragraphs, no citation marks or brackets. End most replies with one helpful question.\n\n" +
     "Showing products: when a customer wants to see, choose or compare, show 2–3 pieces with price and link, then ask about budget, style or occasion. If nothing matches their budget, offer the closest above it or a different type.\n\n" +
     "Buying: when a customer says they want to buy, order or book a piece — congratulate briefly, repeat the name and price, and give two options: (1) order online at the product link, ring size chosen at checkout; (2) the Zoori team confirms size and payment right here on WhatsApp. For rings, ask their ring size; if they don't know it, point them to myzoori.com/size-guide. If they choose option 2 or ask how to pay, fetch a person and state what they want to buy.\n\n" +
     'Never quote a price, delivery time, resizing cost, making charge, EMI, exchange or offer that isn\'t on the website or in your notes — say "let me confirm that for you" and keep helping with the rest. Never promise same-day delivery. Never discuss competitors or other jewellers.',
 };
+
+/**
+ * Zoori's own words for its categories (organizations.branding.category_words),
+ * exactly as supabase/aidwar-migrations/20261052_zoori_category_words.sql
+ * saves them — the words Aiden's search used to carry as a fixed jewellery
+ * list in shared code (Batch 20).
+ */
+export const CATEGORY_WORDS: Record<string, string[]> = {
+  tanmaniya: ["mangalsutra", "mangal sutra", "tanmania"],
+  pendants: ["pendent", "locket"],
+  earrings: ["ear ring", "jhumka", "jhumki", "stud", "bali"],
+  bracelets: ["kada", "kadha"],
+  necklaces: ["haar", "set"],
+  rings: ["anguthi", "band"],
+};
+
+/**
+ * Zoori's website source rules (knowledge_sources.config.category_rules), as
+ * 20261052_zoori_category_words.sql saves them: the item-code prefixes and
+ * shelf words the website reader used to carry in shared code (Batch 20).
+ * In order: codes first, then shelf words, then name-only words.
+ */
+export const READER_RULES: Array<{ match: string; category: string }> = [
+  ...(
+    [
+      // Item codes (a word start: "ZPND*" is also "zpnds-…").
+      ["ZLRG*", "rings"],
+      ["ZGRG*", "rings"],
+      ["ZPND*", "pendants"],
+      ["ZBSL*", "bracelets"],
+      ["ZTNM*", "tanmaniya"],
+      ["ZERG*", "earrings"],
+      ["ZERN*", "earrings"],
+      ["ZNCK*", "necklaces"],
+      ["ZNEK*", "necklaces"],
+      // Shelf words, in a page's category or a product's name / address.
+      ["tanmaniya*", "tanmaniya"],
+      ["tanmania*", "tanmaniya"],
+      ["mangalsutra*", "tanmaniya"],
+      ["ear ring*", "earrings"],
+      ["necklace*", "necklaces"],
+      ["pendant*", "pendants"],
+      ["pendent*", "pendants"],
+      ["bracelet*", "bracelets"],
+      ["bangle*", "bracelets"],
+      ["chain*", "chains"],
+      ["ring*", "rings"],
+      // Words that only ever name earrings (whole words).
+      ["stud", "earrings"],
+      ["drops", "earrings"],
+      ["dangler", "earrings"],
+      ["jhumk*", "earrings"],
+      ["hoop", "earrings"],
+    ] as const
+  ).map(([match, category]) => ({ match, category })),
+];
+
+/** Zoori's organizations row as product search reads it. */
+export const ORG_ROW: Row = { id: ORG, branding: { category_words: CATEGORY_WORDS } };
 
 const IMG = "https://myzoori.com/storage/images/products";
 const product = (
@@ -706,8 +765,12 @@ export const CASES: Case[] = [
         return {
           text: 'Which piece do you mean? Could you share its name?\n{"needs_owner": false}',
         };
+      // Batch 20: the facts carry the shop's own labelled details
+      // ({ Metal: "Gold, Diamond", "Gross weight": "3.05 gm" }), read as written.
+      const details = (p["details"] ?? {}) as Record<string, string>;
+      const [metal, ...stones] = String(details["Metal"] ?? "gold").split(/,\s*/);
       return {
-        text: `${nameOf(p)} is in ${String(p["metal"] ?? "gold")} with ${String((p["stones"] as string[] | undefined)?.join(", ") ?? "diamonds").toLowerCase()}, ${String(p["weight"] ?? "")}. For white gold, let me confirm that for you.\nWould you like to see similar rings meanwhile?\n{"needs_owner": true}`,
+        text: `${nameOf(p)} is in ${metal} with ${(stones.length ? stones.join(", ") : "diamonds").toLowerCase()}, ${details["Gross weight"] ?? ""}. For white gold, let me confirm that for you.\nWould you like to see similar rings meanwhile?\n{"needs_owner": true}`,
       };
     },
     checks: ["reply_to_known"],
@@ -766,14 +829,37 @@ function judge(body: { messages: Array<{ content: unknown }> }): string {
  * One customer message through runAgentOnInbound against the Zoori world.
  * `fetch` must be stubbed by the caller with the returned `fetchStub`.
  */
-export function zooriWorld(c: Case) {
+/**
+ * A shop a replay runs against: Zoori by default. Batch 20 runs a
+ * non-jewellery shop through the same world (apparel-shop.ts) so nothing
+ * jewellery-specific can creep back into shared code unnoticed.
+ */
+export type ReplayShop = {
+  org: string;
+  products: Row[];
+  orgRow: Row;
+  instructions: Record<string, unknown>;
+  chunks: Array<{ when: RegExp; title: string; ref: string; text: string }>;
+  sourceName: string;
+};
+
+export const ZOORI_SHOP: ReplayShop = {
+  org: ORG,
+  products: PRODUCTS,
+  orgRow: ORG_ROW,
+  instructions: INSTRUCTIONS,
+  chunks: CHUNKS,
+  sourceName: "myzoori.com",
+};
+
+export function zooriWorld(c: Case, shop: ReplayShop = ZOORI_SHOP) {
   const now = Date.UTC(2026, 9, 6, 10, 20, 0);
   const messages: Row[] = [];
   const at = (i: number) => new Date(now - (100 - i) * 1000).toISOString();
   (c.history ?? []).forEach((m, i) =>
     messages.push({
       id: `m${i}`,
-      organization_id: ORG,
+      organization_id: shop.org,
       conversation_id: CONV,
       direction: m.direction,
       type: m.type ?? "text",
@@ -786,7 +872,7 @@ export function zooriWorld(c: Case) {
   );
   messages.push({
     id: "m-ask",
-    organization_id: ORG,
+    organization_id: shop.org,
     conversation_id: CONV,
     direction: "inbound",
     type: "text",
@@ -794,7 +880,7 @@ export function zooriWorld(c: Case) {
     meta_message_id: "wamid.ask",
     created_at: at(99),
   });
-  const mem = memoryDb({ products: PRODUCTS, messages });
+  const mem = memoryDb({ products: shop.products, messages, organizations: [shop.orgRow] });
 
   let lastEmbedded = "";
   const runs: Row[] = [];
@@ -834,12 +920,15 @@ export function zooriWorld(c: Case) {
           assigned_to: null,
           needs_human: false,
           status: "open",
-          last_customer_message_at: new Date(now).toISOString(),
+          // The customer's message just arrived, by the test's own clock (a
+          // frozen one in the replays): a fixed date here closed the 24-hour
+          // window for every test that runs on the real clock a day later.
+          last_customer_message_at: new Date(Date.now()).toISOString(),
           contacts: { name: "Tester" },
         },
         error: null,
       };
-    if (t === "ai_instructions") return { data: INSTRUCTIONS, error: null };
+    if (t === "ai_instructions") return { data: shop.instructions, error: null };
     if (t === "ai_tiers")
       return {
         data: {
@@ -869,10 +958,10 @@ export function zooriWorld(c: Case) {
   };
   const fake = fakeDb(reply, (call) => {
     if (call.name === "match_knowledge_chunks") {
-      const rows = CHUNKS.filter((k) => k.when.test(lastEmbedded)).map((k, i) => ({
+      const rows = shop.chunks.filter((k) => k.when.test(lastEmbedded)).map((k, i) => ({
         document_id: `doc-${i}`,
         source_type: "website",
-        source_name: "myzoori.com",
+        source_name: shop.sourceName,
         source_ref: k.ref,
         title: k.title,
         text: k.text,
@@ -886,7 +975,7 @@ export function zooriWorld(c: Case) {
       return { data: 0, error: null };
     return undefined;
   });
-  const MEMORY = new Set(["products", "messages"]);
+  const MEMORY = new Set(["products", "messages", "organizations"]);
   const supabase = {
     from: (t: string) => (MEMORY.has(t) ? mem.supabase.from(t) : fake.supabase.from(t)),
     rpc: (n: string, a: Record<string, unknown>) => fake.supabase.rpc(n, a),
@@ -990,12 +1079,12 @@ export function zooriWorld(c: Case) {
     fetchStub,
     result,
     args: {
-      organizationId: ORG,
+      organizationId: shop.org,
       conversationId: CONV,
       contactId: CONTACT,
       phoneNumberId: "pn-zoori",
       accessToken: "token",
-      waId: "917981223192",
+      waId: "919800000099",
       body: c.ask,
       alreadyHandled: false,
       optedOut: false,

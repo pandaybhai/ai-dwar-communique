@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 const ORG = "81c234b2-569f-40be-ad71-96c046de5d12";
-const OWN = "+91 91210 24545";
+const OWN = "+91 98000 00098";
 
 function world(opts: { phones?: string[]; email?: string | null; template?: { status: string } | null; customer?: Record<string, unknown> }) {
   return fakeDb((op) => {
@@ -31,7 +31,7 @@ function world(opts: { phones?: string[]; email?: string | null; template?: { st
     if (op.table === "whatsapp_accounts") return { data: [{ display_phone_number: OWN }], error: null };
     if (op.table === "organizations") return { data: { name: "Zoori", timezone: "Asia/Kolkata" }, error: null };
     if (op.table === "organization_members") return { data: [{ user_id: "u1" }], error: null };
-    if (op.table === "profiles") return { data: { phone: "+919121024545" }, error: null };
+    if (op.table === "profiles") return { data: { phone: "+919800000098" }, error: null };
     if (op.table === "platform_settings") return { data: { onboarding_whatsapp_account_id: "acc-platform" }, error: null };
     if (op.table === "message_templates")
       return { data: opts.template ? [{ name: "staff_handoff_alert", language: "en", components: null, ...opts.template }] : [], error: null };
@@ -84,7 +84,7 @@ describe("sendHandoffAlert inside / outside the 24-hour window", () => {
   it("outside it: the approved template from the platform number, with the four values", async () => {
     const { sendHandoffAlert, INBOX_LINK } = await import("./handoff-alerts.server");
     const out = await sendHandoffAlert(
-      world({ phones: ["+919876543210"], email: "team@zoori.in", template: { status: "APPROVED" } }).supabase,
+      world({ phones: ["+919876543210"], email: "team@example.com", template: { status: "APPROVED" } }).supabase,
       { organizationId: ORG, conversationId: "c1", reason: "flow_assign" },
       { channelFor: async () => null, sendEmail: async () => true },
     );
@@ -106,13 +106,13 @@ describe("sendHandoffAlert inside / outside the 24-hour window", () => {
     for (const template of [{ status: "PENDING" }, null]) {
       const emails: string[] = [];
       const out = await sendHandoffAlert(
-        world({ phones: ["+919876543210"], email: "team@zoori.in", template }).supabase,
+        world({ phones: ["+919876543210"], email: "team@example.com", template }).supabase,
         { organizationId: ORG, conversationId: "c1", reason: "asked_for_person" },
         { channelFor: async () => null, sendEmail: async (to) => (emails.push(to), true) },
       );
       expect(sent).toHaveLength(0);
       expect(out.whatsapp).toEqual([]);
-      expect(emails).toEqual(["team@zoori.in"]);
+      expect(emails).toEqual(["team@example.com"]);
     }
   });
 
@@ -123,7 +123,7 @@ describe("sendHandoffAlert inside / outside the 24-hour window", () => {
       { organizationId: ORG, conversationId: "c1", reason: "asked_for_person" },
       { channelFor: async () => null },
     );
-    expect(out.refused).toEqual(["+919121024545"]);
+    expect(out.refused).toEqual(["+919800000098"]);
     expect(sent).toHaveLength(0);
   });
 

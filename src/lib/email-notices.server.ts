@@ -6,7 +6,7 @@ import { isEmailAddress, sendEmail, type EmailMessage, type EmailResult } from "
  * Delivery for billing notices queued with channel 'email' (today: the
  * invoice copy for a workspace's billing email, from deliverInvoice).
  *
- * The WhatsApp drain (drainBillingNotifications) leaves these rows alone;
+ * The WhatsApp drain (drainBillingNotifications) never reads these rows;
  * this one sends them. Same rules: claim before sending (two drains never
  * send one notice twice), every outcome is written on the row, a failed
  * notice is retried a few times, and the loop never throws.

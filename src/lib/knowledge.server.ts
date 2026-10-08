@@ -20,7 +20,9 @@ import {
   fillMissingProductDetails,
   hideAliasHostProducts,
   hideMissingCrawledProducts,
+  readCategoryRules,
   saveCrawledProducts,
+  type CategoryRule,
   type ProductDraft,
 } from "@/lib/product-extract.server";
 import {
@@ -506,6 +508,8 @@ type PageSaveContext = {
   /** Also for pages that carry a product (the day-one read always did). */
   factsOnProductPages: boolean;
   referrer?: string | null;
+  /** The source's own category rules (config.category_rules). */
+  categoryRules?: CategoryRule[];
 };
 
 export type PageSaveResult = {
@@ -575,7 +579,7 @@ export async function savePage(
   // One product, if this page is a product page. No extra fetch.
   let draft: ProductDraft | null = null;
   try {
-    draft = extractProduct(page.html, url, { referrer: ctx.referrer ?? null });
+    draft = extractProduct(page.html, url, { referrer: ctx.referrer ?? null, categoryRules: ctx.categoryRules ?? [] });
   } catch {
     // Never let reading a price stop the read.
   }
@@ -740,20 +744,20 @@ export async function raiseSiteAlert(
   }
 }
 
-/** Every address this source knows, with its sitemap date when the database keeps one. */
+/** Every address this source knows, with its sitemap date. */
 async function loadKnownUrls(
   supabase: SupabaseClient,
   sourceId: string,
 ): Promise<Array<{ url: string; priority: number | null; status: string; read_at: string | null; lastmod?: string | null }>> {
-  const read = (columns: string) =>
-    supabase.from("knowledge_urls").select(columns).eq("source_id", sourceId).limit(20000);
-  let { data, error } = await read("url, priority, status, read_at, lastmod");
-  // Until 20261018_knowledge_urls_lastmod.sql is applied there is no lastmod.
-  if (error) ({ data, error } = await read("url, priority, status, read_at"));
+  const { data } = await supabase
+    .from("knowledge_urls")
+    .select("url, priority, status, read_at, lastmod")
+    .eq("source_id", sourceId)
+    .limit(20000);
   return (data ?? []) as unknown as Array<{ url: string; priority: number | null; status: string; read_at: string | null; lastmod?: string | null }>;
 }
 
-/** Keep each address's sitemap date. A quiet no-op until the lastmod column exists. */
+/** Keep each address's sitemap date (a failed write is quietly skipped). */
 async function saveLastmods(
   supabase: SupabaseClient,
   organizationId: string,
@@ -1175,6 +1179,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     readVia: refreshing ? "refresh" : mode,
     facts: true,
     factsOnProductPages: !staged,
+    categoryRules: readCategoryRules(config["category_rules"]),
   };
   /** Pages whose text was saved this run. */
   let savedPages = 0;
@@ -1362,6 +1367,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   // run that finishes the refresh.
   if (refreshing && !more && config["fill_products"] === true) {
     const filled = await fillMissingProductDetails(supabase, organizationId, origin, {
+      categoryRules: readCategoryRules(config["category_rules"]),
       budgetMs: Math.max(Math.min(45_000, timeLeft() - 10_000), 5_000),
     }).catch((error) => {
       console.error("[crawl] product fill failed", error instanceof Error ? error.message : String(error));

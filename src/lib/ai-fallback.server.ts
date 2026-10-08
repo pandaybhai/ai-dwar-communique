@@ -193,8 +193,7 @@ export async function loadPlatformBackup(supabase: SupabaseClient, opts: { fresh
           .select("provider, vault_secret_name, is_active")
           .in("provider", ["anthropic", "openai"]),
       ).catch(() => ({ data: null })),
-      // Until migration 20261017_ai_backup_model.sql is applied this column
-      // does not exist: the read errors and the default model applies.
+      // A failed read: the default model applies.
       Promise.resolve(
         supabase.from("platform_settings").select("ai_backup_anthropic_model").eq("id", true).maybeSingle(),
       ).catch(() => ({ data: null })),

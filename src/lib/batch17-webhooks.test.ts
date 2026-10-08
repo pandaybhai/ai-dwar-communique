@@ -152,7 +152,7 @@ const answeredWrites = (ops: FakeOp[]) =>
 const claims = (ops: FakeOp[]) =>
   ops.filter((o) => o.table === "messages" && o.kind === "update" && "answer_claimed_at" in (o.payload as object));
 
-async function deliver(opts: { duplicate: boolean; reclaim?: "claimed" | "busy" | "missing"; failFlow?: boolean }) {
+async function deliver(opts: { duplicate: boolean; reclaim?: "claimed" | "busy" | "failed"; failFlow?: boolean }) {
   const w = latencyWorld({
     org: `o17-${Math.random()}`,
     rttMs: 0,
@@ -162,8 +162,7 @@ async function deliver(opts: { duplicate: boolean; reclaim?: "claimed" | "busy" 
     override: (op) => {
       if (op.table === "messages" && op.kind === "update" && "answer_claimed_at" in (op.payload as object)) {
         if (opts.reclaim === "claimed") return { data: [{ id: "m-in" }], error: null };
-        if (opts.reclaim === "missing")
-          return { data: null, error: { code: "PGRST204", message: "Could not find the 'answer_claimed_at' column of 'messages'" } };
+        if (opts.reclaim === "failed") return { data: null, error: { message: "timeout" } };
         return { data: [], error: null };
       }
       if (opts.failFlow && op.table === "flow_runs" && op.kind === "select") return { data: null, error: { message: "boom" } } as never;
@@ -229,13 +228,13 @@ describe("(3) stored is not answered: the retry answers a message whose pass die
     expect(answeredWrites(retry.ops)).toHaveLength(1);
   });
 
-  it("before the migration (columns missing): a duplicate stays a duplicate, exactly as today", async () => {
-    const w = await deliver({ duplicate: true, reclaim: "missing" });
+  it("a failed claim write: a duplicate stays a duplicate", async () => {
+    const w = await deliver({ duplicate: true, reclaim: "failed" });
     expect(w.graphSends).toEqual([]);
   });
 });
 
-describe("(3) migration (not applied): answered is separate from stored", () => {
+describe("(3) migration: answered is separate from stored", () => {
   const sql = readFileSync(new URL("../../supabase/aidwar-migrations/20261032_batch17_message_answered.sql", import.meta.url), "utf8");
   it("old rows read answered (constant default, then dropped); the insert stamps the claim", () => {
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS answered_at timestamptz DEFAULT 'epoch';\s*ALTER TABLE public\.messages ALTER COLUMN answered_at DROP DEFAULT;/);

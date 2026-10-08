@@ -14,6 +14,7 @@ import {
 import { simReply, simStart } from "./flow-simulator";
 import { productCaption, sendProductPictures } from "./product-pictures.server";
 import { AI_TOOL_HANDLERS } from "./ai-tools.server";
+import { READER_RULES } from "./test-support/zoori-replay";
 import { budgetWords, searchArgs } from "./flow-products.server";
 import { extractProduct, saveCrawledProducts, type ProductDraft } from "./product-extract.server";
 
@@ -302,20 +303,27 @@ describe("(1) engine: pictures on Buttons and Message steps", () => {
   });
 });
 
+/** The shop's category list read (shop-categories.server.ts), not a product search. */
+const isShelfRead = (op: FakeOp) => op.select?.[0] === "category";
+/** The first product search (after the category list read). */
+const productSearch = (ops: FakeOp[]) => ops.find((o) => o.table === "products" && !isShelfRead(o))!;
+/** A catalogue with these categories and no product in the searched budget. */
+const shelves = (names: string[]) => (op: FakeOp) => (isShelfRead(op) ? names.map((category) => ({ category })) : []);
+
 describe("(2) engine: Show products", () => {
   it("budget 'Under 25k' for Pendants → pictures with name, price and link, then the found path", async () => {
     const w = zooriWorld("o7-found", { waitingAt: "budget", vars: { category: "Pendants" }, products: () => RING_ROWS });
     const sends = await deliver(w, "o7-found", listReply("budget:r1", "Under 25k"));
 
     // Aiden's catalogue search: visible products, the pendants shelf, ≤ ₹25,000, five at most.
-    const search = w.ops.find((o) => o.table === "products")!;
+    const search = productSearch(w.ops);
     expect(w.has(search, "eq", "is_visible", true)).toBe(true);
-    expect(w.has(search, "ilike", "category", "%pendants%")).toBe(true);
+    // Batch 20: the shelf is the shop's own category ("pendants", from its
+    // products), matched exactly — "rings" never "earrings".
+    expect(w.has(search, "in", "category", ["pendants"])).toBe(true);
     expect(w.has(search, "lte", "price", 25000)).toBe(true);
     expect(filterArgs(search, "gte")).toEqual([]);
-    // Batch 16 (a): a shelf reads wider (100) and keeps only that shelf
-    // (word-start match: "rings" never "earrings"), then sends five at most.
-    expect(w.has(search, "limit", 100)).toBe(true);
+    expect(w.has(search, "limit", 5)).toBe(true);
 
     expect(sends).toEqual([
       { messaging_product: "whatsapp", to: "919800000001", type: "image", image: { link: RING_ROWS[0]!.image_url, caption: "Golden Petal — ₹19,604\nhttps://www.myzoori.com/product-detail/p1" } },
@@ -330,12 +338,12 @@ describe("(2) engine: Show products", () => {
   });
 
   it("a range ('50k-1L') searches between both prices", async () => {
-    const w = zooriWorld("o7-range", { waitingAt: "budget", vars: { category: "Rings" }, products: () => [] });
+    const w = zooriWorld("o7-range", { waitingAt: "budget", vars: { category: "Rings" }, products: shelves(["rings", "earrings"]) });
     await deliver(w, "o7-range", listReply("budget:r3", "50k-1L"));
-    const search = w.ops.find((o) => o.table === "products")!;
+    const search = productSearch(w.ops);
     expect(w.has(search, "lte", "price", 100000)).toBe(true);
     expect(w.has(search, "gte", "price", 50000)).toBe(true);
-    expect(w.has(search, "ilike", "category", "%rings%")).toBe(true);
+    expect(w.has(search, "in", "category", ["rings"])).toBe(true);
   });
 
   it("nothing in the budget → the real starting price and the closest products, then the none path", async () => {
@@ -355,10 +363,10 @@ describe("(2) engine: Show products", () => {
   });
 
   it("nothing on that shelf at all → nothing invented, straight to the none path", async () => {
-    const w = zooriWorld("o7-empty", { waitingAt: "budget", vars: { category: "Earrings" }, products: () => [] });
+    const w = zooriWorld("o7-empty", { waitingAt: "budget", vars: { category: "Earrings" }, products: shelves(["earrings"]) });
     const sends = await deliver(w, "o7-empty", listReply("budget:r4", "1L+"));
     expect(sends.map((s) => s["text"])).toEqual([{ body: "Our team will message you with options." }]);
-    const search = w.ops.find((o) => o.table === "products")!;
+    const search = productSearch(w.ops);
     expect(w.has(search, "gte", "price", 100000)).toBe(true);
     expect(filterArgs(search, "lte")).toEqual([]);
   });
@@ -374,10 +382,10 @@ describe("(2) search arguments", () => {
   });
 
   it("unchanged for Aiden: no min_price → no price floor, and the closest-above fallback as before", async () => {
-    const db = fakeDb((op) => (op.table === "products" ? { data: [], error: null } : undefined));
+    const db = fakeDb((op) => (op.table === "products" ? { data: shelves(["rings"])(op), error: null } : undefined));
     const out = await AI_TOOL_HANDLERS["catalogSearch"]!({ supabase: db.supabase, organizationId: "o", actorUserId: null, initiatedBy: "ai" }, { category: "rings", max_price: 25000 });
     expect(out).toEqual({ ok: true, found: false, data: [] });
-    const [first, closest] = db.ops.filter((o) => o.table === "products");
+    const [first, closest] = db.ops.filter((o) => o.table === "products" && !isShelfRead(o));
     expect(filterArgs(first!, "gte")).toEqual([]);
     expect(db.has(first!, "lte", "price", 25000)).toBe(true);
     expect(filterArgs(closest!, "lte")).toEqual([]);
@@ -385,9 +393,9 @@ describe("(2) search arguments", () => {
   });
 
   it("with min_price: the floor applies to the search, never to the closest-above fallback", async () => {
-    const db = fakeDb((op) => (op.table === "products" ? { data: [], error: null } : undefined));
+    const db = fakeDb((op) => (op.table === "products" ? { data: shelves(["rings"])(op), error: null } : undefined));
     await AI_TOOL_HANDLERS["catalogSearch"]!({ supabase: db.supabase, organizationId: "o", actorUserId: null, initiatedBy: "ai" }, { category: "rings", min_price: 100000 });
-    const [first, closest] = db.ops.filter((o) => o.table === "products");
+    const [first, closest] = db.ops.filter((o) => o.table === "products" && !isShelfRead(o));
     expect(db.has(first!, "gte", "price", 100000)).toBe(true);
     expect(closest).toBeDefined();
     expect(filterArgs(closest!, "gte")).toEqual([]);
@@ -482,18 +490,21 @@ function zooriPage(opts: { name: string; code: string; price: string; jsonSku?: 
 
 describe("(3) the product reader on Zoori's pages", () => {
   const url = "https://myzoori.com/product-detail/a243f24d";
+  // Batch 20: Zoori's item codes and shelf words are its source's own rules.
+  const ZOORI = { categoryRules: READER_RULES };
 
   it("structured data without a price: the price beside the product's heading is kept", () => {
-    const draft = extractProduct(zooriPage({ name: "Golden Petal", code: "ZERN-0004", price: "₹24,662.21" }), url)!;
+    const draft = extractProduct(zooriPage({ name: "Golden Petal", code: "ZERN-0004", price: "₹24,662.21" }), url, ZOORI)!;
     expect(draft).toMatchObject({ title: "Golden Petal", price: 24662.21, imageUrl: null, sku: "ZERN-0004", category: "earrings" });
   });
 
   it("saves the metal / weight lines; the theme's placeholder text is never a description", () => {
-    const draft = extractProduct(zooriPage({ name: "Golden Petal", code: "ZERN-0004", price: "₹24,662.21" }), url)!;
+    const draft = extractProduct(zooriPage({ name: "Golden Petal", code: "ZERN-0004", price: "₹24,662.21" }), url, ZOORI)!;
     expect(draft.description).toBe("Metal: Gold, Diamond. Gross weight: 1.13 gm");
     const real = extractProduct(
       zooriPage({ name: "The Gilded Chevron", code: "ZLRG-0001", price: "₹19,603.91", description: "Band. ZLRG-0001 yellow Gold &nbsp;Description sort", image: "https://www.myzoori.com/storage/images/products/x/ZLRG.jpg" }),
       url,
+      ZOORI,
     )!;
     expect(real.description).toBe("Metal: Gold, Diamond. Gross weight: 1.13 gm. Band. yellow Gold");
     expect(real).toMatchObject({ price: 19603.91, category: "rings", imageUrl: "https://www.myzoori.com/storage/images/products/x/ZLRG.jpg" });
@@ -505,13 +516,13 @@ describe("(3) the product reader on Zoori's pages", () => {
     ["ZPND-0019", "pendants"],
     ["ZLRG-0025", "rings"],
   ])("a missing shelf comes from the item code in the page title (%s → %s)", (code, shelf) => {
-    const draft = extractProduct(zooriPage({ name: "Azure Evil Eye", code, price: "₹1,03,662.68", jsonSku: false }), url)!;
+    const draft = extractProduct(zooriPage({ name: "Azure Evil Eye", code, price: "₹1,03,662.68", jsonSku: false }), url, ZOORI)!;
     expect(draft.sku).toBeNull();
     expect(draft.category).toBe(shelf);
   });
 
   it("…or from the product's own name when it names one ('Curved Orbit Studs' → earrings)", () => {
-    const draft = extractProduct(zooriPage({ name: "Curved Orbit Studs", code: "X-1", price: "₹45,863.63", jsonSku: false }), url)!;
+    const draft = extractProduct(zooriPage({ name: "Curved Orbit Studs", code: "X-1", price: "₹45,863.63", jsonSku: false }), url, ZOORI)!;
     expect(draft.category).toBe("earrings");
   });
 

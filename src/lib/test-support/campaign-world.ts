@@ -19,8 +19,6 @@ export function world(spec: {
     scheduledAt?: string;
   }>;
   billing?: boolean;
-  recipientRpc?: boolean;
-  ledgerRpc?: boolean;
 }) {
   const db = new MemoryDb();
   db.embeds.set("campaign_recipients.messages", {
@@ -78,75 +76,71 @@ export function world(spec: {
         metadata: a["p_metadata"],
       })["id"],
   );
-  if (spec.ledgerRpc) {
-    db.rpcs.set("campaign_ledger_charge", (a, d) =>
-      d
-        .rows("wallet_ledger")
-        .filter(
-          (r) =>
-            r["entry_type"] === "debit_message" &&
-            (r["metadata"] as Row)?.["campaign_id"] === a["p_campaign_id"],
-        )
-        .reduce((s, r) => s + Math.abs(Number(r["amount"])), 0),
-    );
-  }
-  if (spec.recipientRpc) {
-    db.rpcs.set("campaign_recipient_status", (a, d) => {
-      const r = d
-        .rows("campaign_recipients")
-        .find((x) =>
-          a["p_recipient_id"]
-            ? x["id"] === a["p_recipient_id"]
-            : x["message_id"] === a["p_message_id"],
-        );
-      if (!r) return "none";
-      const bump = (k: string, n = 1) => {
-        const c = d.rows("campaigns").find((x) => x["id"] === r["campaign_id"])!;
-        c[`${k}_count`] = Number(c[`${k}_count`] ?? 0) + n;
-      };
-      const prev = String(r["status"]);
-      const setMsg = () => {
-        if (a["p_recipient_id"]) r["message_id"] = a["p_message_id"];
-      };
-      const below = ["queued", "sending", "sent", "skipped"];
-      switch (a["p_status"]) {
-        case "failed":
-          if (prev === "failed") return "noop";
-          r["status"] = "failed";
-          r["error"] = String(a["p_error"] ?? "Delivery failed").slice(0, 300);
+  db.rpcs.set("campaign_ledger_charge", (a, d) =>
+    d
+      .rows("wallet_ledger")
+      .filter(
+        (r) =>
+          r["entry_type"] === "debit_message" &&
+          (r["metadata"] as Row)?.["campaign_id"] === a["p_campaign_id"],
+      )
+      .reduce((s, r) => s + Math.abs(Number(r["amount"])), 0),
+  );
+  db.rpcs.set("campaign_recipient_status", (a, d) => {
+    const r = d
+      .rows("campaign_recipients")
+      .find((x) =>
+        a["p_recipient_id"]
+          ? x["id"] === a["p_recipient_id"]
+          : x["message_id"] === a["p_message_id"],
+      );
+    if (!r) return "none";
+    const bump = (k: string, n = 1) => {
+      const c = d.rows("campaigns").find((x) => x["id"] === r["campaign_id"])!;
+      c[`${k}_count`] = Number(c[`${k}_count`] ?? 0) + n;
+    };
+    const prev = String(r["status"]);
+    const setMsg = () => {
+      if (a["p_recipient_id"]) r["message_id"] = a["p_message_id"];
+    };
+    const below = ["queued", "sending", "sent", "skipped"];
+    switch (a["p_status"]) {
+      case "failed":
+        if (prev === "failed") return "noop";
+        r["status"] = "failed";
+        r["error"] = String(a["p_error"] ?? "Delivery failed").slice(0, 300);
+        setMsg();
+        bump("failed");
+        return "applied";
+      case "sent":
+        if (!["queued", "sending", "skipped"].includes(prev)) return "noop";
+        r["status"] = "sent";
+        setMsg();
+        return "applied";
+      case "delivered":
+        if (!below.includes(prev)) return "noop";
+        r["status"] = "delivered";
+        setMsg();
+        bump("delivered");
+        return "applied";
+      case "read":
+        if (below.includes(prev)) {
+          r["status"] = "read";
           setMsg();
-          bump("failed");
-          return "applied";
-        case "sent":
-          if (!["queued", "sending", "skipped"].includes(prev)) return "noop";
-          r["status"] = "sent";
-          setMsg();
-          return "applied";
-        case "delivered":
-          if (!below.includes(prev)) return "noop";
-          r["status"] = "delivered";
-          setMsg();
+          bump("read");
           bump("delivered");
           return "applied";
-        case "read":
-          if (below.includes(prev)) {
-            r["status"] = "read";
-            setMsg();
-            bump("read");
-            bump("delivered");
-            return "applied";
-          }
-          if (prev === "delivered") {
-            r["status"] = "read";
-            setMsg();
-            bump("read");
-            return "applied";
-          }
-          return "noop";
-      }
-      return "noop";
-    });
-  }
+        }
+        if (prev === "delivered") {
+          r["status"] = "read";
+          setMsg();
+          bump("read");
+          return "applied";
+        }
+        return "noop";
+    }
+    return "noop";
+  });
 
   const campaigns: Array<{
     id: string;

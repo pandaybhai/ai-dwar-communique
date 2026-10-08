@@ -34,6 +34,18 @@ export const Route = createFileRoute("/api/admin/billing")({
         const action = String(payload["action"] ?? "overview");
         const orgId = (payload["organization_id"] as string | undefined) ?? "";
         const actorId = user.id;
+        // Invoice actions that change files or reach no single buyer are
+        // logged on the platform workspace, with the actor.
+        const logPlatformAction = async (logAction: string, details: Record<string, unknown>) => {
+          try {
+            const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+            const { logServerActivity } = await import("@/lib/whatsapp-api.server");
+            const platformOrg = await resolvePlatformOrg(supabase);
+            if (platformOrg) await logServerActivity(supabase, platformOrg, actorId, logAction, details);
+          } catch {
+            // logging must never break the action
+          }
+        };
 
         try {
           const admin = await import("@/lib/billing-admin.server");
@@ -302,7 +314,13 @@ export const Route = createFileRoute("/api/admin/billing")({
 
             case "issue_pending_invoices": {
               const { issuePendingInvoices } = await import("@/lib/invoices.server");
-              return Response.json(await issuePendingInvoices(supabase));
+              const result = await issuePendingInvoices(supabase);
+              await logPlatformAction("invoices_backfill_run", {
+                issued: result.issued,
+                pdfs_regenerated: result.pdfs_regenerated,
+                failed: result.failed.length,
+              });
+              return Response.json(result);
             }
 
             case "invoices": {
@@ -356,18 +374,22 @@ export const Route = createFileRoute("/api/admin/billing")({
             }
 
             case "regenerate_invoice_pdf": {
+              // Re-renders and files the PDF only; it never sends anything.
               const { ensureInvoicePdf } = await import("@/lib/invoices.server");
-              const path = await ensureInvoicePdf(supabase, String(payload["invoice_id"] ?? ""), {
-                force: true,
-              });
+              const invoiceId = String(payload["invoice_id"] ?? "");
+              const path = await ensureInvoicePdf(supabase, invoiceId, { force: true });
+              await logPlatformAction("invoice_pdf_regenerated", { invoice_id: invoiceId, ok: Boolean(path) });
               if (!path) return jsonError("We couldn't regenerate that PDF — check the invoice's pdf_error.");
               return Response.json({ ok: true, pdf_path: path });
             }
 
             case "resend_invoice": {
-              const { deliverInvoice } = await import("@/lib/invoices.server");
-              const result = await deliverInvoice(supabase, String(payload["invoice_id"] ?? ""), {
-                fallbackToQueue: false,
+              // Explicit and confirmed only; logged with the actor inside.
+              const { resendInvoice } = await import("@/lib/invoices.server");
+              const result = await resendInvoice(supabase, {
+                invoiceId: String(payload["invoice_id"] ?? ""),
+                actorId,
+                confirmed: payload["confirmed"] === true,
               });
               if (!result.ok) return jsonError(result.error);
               return Response.json(result);

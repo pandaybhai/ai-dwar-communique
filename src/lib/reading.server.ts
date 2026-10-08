@@ -59,10 +59,8 @@ export async function loadReadingSettings(supabase: SupabaseClient): Promise<Rea
 /**
  * Whether websites are re-read automatically on a schedule
  * (platform_settings.knowledge_auto_refresh). Off unless set: a missing
- * column (migration 20261022 not applied), a missing row or a failed read
- * all mean off — a site is then re-read only when the merchant asks.
- * Read on its own, never in READING_COLUMNS, so a missing column can't
- * hide the other reading settings.
+ * row or a failed read means off — a site is then re-read only when the
+ * merchant asks. Read on its own, never in READING_COLUMNS.
  */
 export async function loadKnowledgeAutoRefresh(supabase: SupabaseClient): Promise<boolean> {
   try {
@@ -81,7 +79,7 @@ export const READING_AI_TASKS = ["knowledge_facts", "knowledge_image", "embeddin
 
 /**
  * Per-workspace daily cap on reading AI spend (platform_settings
- * .reading_ai_daily_cap, ₹). Missing column/row = the default; 0 = no cap.
+ * .reading_ai_daily_cap, ₹). A missing row or failed read = the default; 0 = no cap.
  * Read on its own, like knowledge_auto_refresh.
  */
 export async function loadReadingAiDailyCap(supabase: SupabaseClient): Promise<number> {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fakeDb, type FakeOp, type FakeRpc } from "./test-support/fake-db";
+import { fakeDb, type FakeRpc } from "./test-support/fake-db";
 
 /**
  * Batch 9, server side:
@@ -98,21 +98,17 @@ function flowsWorld(graph: FlowGraph, catalogs: Array<{ id: string }>) {
     (op) => {
       if (op.table === "flows" && op.kind === "select") return { data: { id: FLOW_ID, name: "Welcome menu", key: "v2:abc", whatsapp_account_id: null }, error: null };
       if (op.table === "flow_versions" && op.kind === "select") return { data: [{ id: "ver-2", graph, version: 2 }], error: null };
-      // Batch 10C: publishing a draft returns the row it published.
-      if (op.table === "flow_versions" && op.kind === "update") return { data: [{ id: "ver-2" }], error: null };
       if (op.table === "whatsapp_catalogs") return { data: catalogs, error: null };
       if (op.table === "whatsapp_accounts") return { data: [], error: null };
       if (op.table === "organization_members") return { data: [], error: null };
       return undefined;
     },
-    // Batch 10C: the live database doesn't have flow_publish_version yet, so publish runs step by step.
-    (call) => (call.name === "flow_publish_version" ? { data: null, error: { code: "PGRST202", message: "Could not find the function public.flow_publish_version" } } : undefined),
   );
   h.db = db;
   return db;
 }
-const published = (db: ReturnType<typeof fakeDb>) =>
-  db.ops.some((o) => o.table === "flow_versions" && o.kind === "update" && (o.payload as { status?: string }).status === "published");
+/** Published = the one-transaction publish (flow_publish_version) ran. */
+const published = (db: ReturnType<typeof fakeDb>) => db.rpcs.some((r) => r.name === "flow_publish_version");
 
 describe("(2) publish: the WhatsApp shop guard", () => {
   it("unchanged: a flow without a WhatsApp shop step publishes, and the shop is never looked up", async () => {
@@ -151,7 +147,6 @@ describe("(2) publish: the WhatsApp shop guard", () => {
 
 // ------------------------------------------------------------------ (4)
 
-const ledgerFilter = (op: FakeOp, col: string, val: unknown) => op.filters.some(([n, a]) => n === "eq" && a[0] === col && a[1] === val);
 
 /** The live "Demo" case: 4.16 held, settled at completion, then three 1.04 prices land. */
 function campaignWorld(state: { debits: number[]; charged: number; held: number }) {
@@ -170,12 +165,11 @@ function campaignWorld(state: { debits: number[]; charged: number; held: number 
         if (p.held_amount !== undefined) state.held = p.held_amount;
         return { data: null, error: null };
       }
-      if (op.table === "wallet_ledger" && ledgerFilter(op, "entry_type", "debit_message"))
-        return { data: state.debits.map((a) => ({ amount: -a })), error: null };
       if (op.table === "wallet_ledger") return { data: [], error: null };
       return undefined;
     },
-    () => ({ data: "entry", error: null }),
+    // campaign_ledger_charge: the sum of the campaign's debit_message rows.
+    (c) => (c.name === "campaign_ledger_charge" ? { data: state.debits.reduce((s, a) => s + a, 0), error: null } : { data: "entry", error: null }),
   );
   return db;
 }
@@ -199,7 +193,7 @@ describe("(4) campaign charged total = sum of its debit_message rows", () => {
     expect(db.has(last, "eq", "id", "camp")).toBe(true);
     expect(db.has(last, "eq", "organization_id", "org")).toBe(true);
     expect(db.has(last, "lt", "charged_amount", 3.12)).toBe(true);
-    expect(db.ops.find((o) => o.table === "wallet_ledger" && ledgerFilter(o, "entry_type", "debit_message"))!.filters).toContainEqual(["eq", ["metadata->>campaign_id", "camp"]]);
+    expect(db.rpcs.find((r) => r.name === "campaign_ledger_charge")!.args).toEqual({ p_org: "org", p_campaign_id: "camp" });
   });
 
   it("settle after the prices: charged = the debits, only the unused hold comes back", async () => {
@@ -207,7 +201,6 @@ describe("(4) campaign charged total = sum of its debit_message rows", () => {
     const db = campaignWorld(state);
     await settleCampaignSpend(db.supabase, "org", "camp");
     expect(state.charged).toBe(3.12);
-    // (campaign_ledger_charge is asked first; this fake has none, so the rows are read.)
     expect(db.rpcs.filter((r) => r.name !== "campaign_ledger_charge").map((r) => [r.args["p_type"], r.args["p_amount"]])).toEqual([["hold_release", 1.04]]);
   });
 
@@ -216,7 +209,7 @@ describe("(4) campaign charged total = sum of its debit_message rows", () => {
     const db = campaignWorld(state);
     expect(await syncCampaignCharged(db.supabase, "org", "camp")).toEqual({ ok: true, amount: 0 });
     expect(db.ops.some((o) => o.table === "campaigns" && o.kind === "update")).toBe(false);
-    const broken = fakeDb((op) => (op.table === "wallet_ledger" ? { data: null, error: { message: "timeout" } } : undefined));
+    const broken = fakeDb(() => undefined, (c) => (c.name === "campaign_ledger_charge" ? { data: null, error: { message: "timeout" } } : undefined));
     expect((await syncCampaignCharged(broken.supabase, "org", "camp")).ok).toBe(false);
     expect(broken.ops.some((o) => o.kind === "update")).toBe(false);
   });
@@ -249,7 +242,6 @@ describe("(4) campaign charged total = sum of its debit_message rows", () => {
           // Batch 12: the status is one conditional update that returns the row.
           if (op.table === "messages" && op.kind === "update")
             return { data: [{ id: "m-out", status: "delivered", type: "template", conversation_id: "cv1", campaign_id: opts.campaignId, created_at: "2026-10-01T00:00:00Z" }], error: null };
-          if (op.table === "wallet_ledger") return { data: [{ amount: -1.04 }, { amount: -1.04 }], error: null };
           return undefined;
         },
         (c: FakeRpc) =>
@@ -257,7 +249,9 @@ describe("(4) campaign charged total = sum of its debit_message rows", () => {
             ? opts.priceError
               ? { data: null, error: { message: "no rate" } }
               : { data: opts.priced ?? true, error: null }
-            : undefined,
+            : c.name === "campaign_ledger_charge"
+              ? { data: 2.08, error: null } // two debit_message rows of 1.04
+              : undefined,
       );
       h.db = db;
       return db;
@@ -277,7 +271,7 @@ describe("(4) campaign charged total = sum of its debit_message rows", () => {
         const db = world(opts);
         await processWebhookPayload(db.supabase, "ev-x", statusPayload("delivered"));
         expect(chargedUpdates(db)).toEqual([]);
-        expect(db.ops.some((o) => o.table === "wallet_ledger")).toBe(false);
+        expect(db.rpcs.some((r) => r.name === "campaign_ledger_charge")).toBe(false);
       }
     });
 

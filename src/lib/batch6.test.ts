@@ -102,27 +102,6 @@ describe("(1) timings are stored on the webhook event", () => {
     expect(m.received_to_send_ms).toBeGreaterThanOrEqual(m.marks["send_start"]! + 300);
   });
 
-  it("before the migration: the update is repeated without timing, and the column isn't tried again for a while", async () => {
-    const calls: Array<Record<string, unknown>> = [];
-    const db = fakeDb((op) => {
-      if (op.table !== "webhook_events" || op.kind !== "update") return undefined;
-      const p = op.payload as Record<string, unknown>;
-      calls.push(p);
-      return "timing" in p
-        ? { data: null, error: { code: "PGRST204", message: "Could not find the 'timing' column of 'webhook_events' in the schema cache" } }
-        : { data: null, error: null };
-    });
-    await finishEvent(db.supabase, "ev-a", [], null, { v: 1, messages: [] });
-    expect(calls).toHaveLength(2);
-    expect("timing" in calls[0]!).toBe(true);
-    expect(calls[1]).toEqual({ processed_at: expect.any(String), error: null });
-    // Next event: straight to the plain update (no failed attempt first).
-    await finishEvent(db.supabase, "ev-b", ["message x: boom"], null, { v: 1, messages: [] });
-    expect(calls).toHaveLength(3);
-    expect("timing" in calls[2]!).toBe(false);
-    expect(String(calls[2]!["error"])).toMatch(/^retry:1 /);
-  });
-
   it("unchanged: an event with nothing to time is closed exactly as before (no timing key)", async () => {
     const db = fakeDb(() => undefined);
     await finishEvent(db.supabase, "ev-c", [], "unknown_phone_number_id");

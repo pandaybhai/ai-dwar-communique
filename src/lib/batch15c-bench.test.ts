@@ -144,8 +144,8 @@ function world(e: Event) {
       return {
         data: {
           name: "Tester",
-          phone: "+917981223192",
-          wa_id: "917981223192",
+          phone: "+919800000099",
+          wa_id: "919800000099",
           opt_in_status: "unknown",
         },
         error: null,
@@ -161,7 +161,7 @@ function world(e: Event) {
           status: "open",
           last_customer_message_at: now,
           whatsapp_account_id: account.id,
-          contacts: { phone: "+917981223192", name: "Tester" },
+          contacts: { phone: "+919800000099", name: "Tester" },
         },
         error: null,
       };
@@ -383,10 +383,10 @@ async function replay(e: Event) {
               field: "messages",
               value: {
                 metadata: { phone_number_id: "pn", display_phone_number: "911111111111" },
-                contacts: [{ wa_id: "917981223192", profile: { name: "Tester" } }],
+                contacts: [{ wa_id: "919800000099", profile: { name: "Tester" } }],
                 messages: [
                   {
-                    from: "917981223192",
+                    from: "919800000099",
                     id: `wamid.${e.id}`,
                     timestamp: String(Math.floor(Date.now() / 1000)),
                     type: "text",

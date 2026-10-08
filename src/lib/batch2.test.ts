@@ -192,25 +192,26 @@ describe("(B) campaign money: charged once, from the ledger", () => {
             data: { ...campaign, held_amount: opts.held ?? campaign.held_amount },
             error: null,
           };
-        if (op.table === "wallet_ledger" && db_has(op, "entry_type", "debit_message"))
-          return opts.ledgerError
-            ? { data: null, error: { message: opts.ledgerError } }
-            : { data: (opts.debits ?? []).map((a) => ({ amount: -a })), error: null };
         if (op.table === "wallet_ledger" && db_has(op, "entry_type", "hold_release"))
           return { data: opts.released ? [{ id: "l-1" }] : [], error: null };
         return undefined;
       },
-      (call) =>
-        call.name === "wallet_apply" && opts.rpcError
+      (call) => {
+        // The ledger total: the sum of the campaign's debit_message rows.
+        if (call.name === "campaign_ledger_charge")
+          return opts.ledgerError
+            ? { data: null, error: { message: opts.ledgerError } }
+            : { data: (opts.debits ?? []).reduce((s, a) => s + a, 0), error: null };
+        return call.name === "wallet_apply" && opts.rpcError
           ? { data: null, error: { message: opts.rpcError } }
-          : undefined,
+          : undefined;
+      },
     );
   const db_has = (op: FakeOp, col: string, val: unknown) =>
     op.filters.some(([n, a]) => n === "eq" && a[0] === col && a[1] === val);
   const update = (db: ReturnType<typeof world>) =>
     db.ops.find((o) => o.table === "campaigns" && o.kind === "update");
-  // Batch 12: the ledger total is first asked of campaign_ledger_charge(); this
-  // fake has no such function, so the rows are read as before.
+  // The ledger total comes from campaign_ledger_charge(); the wallet calls are the rest.
   const walletCalls = (db: ReturnType<typeof world>) =>
     db.rpcs.filter((r) => r.name !== "campaign_ledger_charge");
 

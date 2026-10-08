@@ -49,7 +49,7 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
   });
 
   async function sentCampaign() {
-    const w = world({ campaigns: [{ recipients: 2 }], recipientRpc: true });
+    const w = world({ campaigns: [{ recipients: 2 }] });
     const g = meta();
     await runCampaignDispatch(w.db.client, cfg(), { postMessage: g.postMessage });
     const messageOf = (recipientId: string) =>
@@ -879,7 +879,7 @@ describe("(6) older event flows: a send is never made (or charged) twice", () =>
 describe("(8) AI usage counters never lose a count", () => {
   beforeEach(() => vi.resetModules());
 
-  async function usageDb(withRpc: boolean) {
+  async function usageDb() {
     const { MemoryDb } = await import("./test-support/campaign-memory-db");
     const db = new MemoryDb();
     // Every call yields, like a network round trip.
@@ -887,43 +887,41 @@ describe("(8) AI usage counters never lose a count", () => {
       await new Promise((r) => setTimeout(r, Math.random() * 3));
       return undefined;
     };
-    if (withRpc) {
-      // ai_usage_add as in the migration: one statement, added in place.
-      db.rpcs.set("ai_usage_add", (a, d) => {
-        const row = d
-          .rows("ai_usage")
-          .find(
-            (r) =>
-              r["organization_id"] === a["p_org"] &&
-              r["usage_date"] === a["p_usage_date"] &&
-              r["task"] === a["p_task"],
-          );
-        if (!row) {
-          d.insert("ai_usage", {
-            organization_id: a["p_org"],
-            usage_date: a["p_usage_date"],
-            task: a["p_task"],
-            runs: a["p_runs"],
-            input_tokens: a["p_input_tokens"],
-            output_tokens: a["p_output_tokens"],
-            cost_amount: a["p_cost_amount"],
-            billed_amount: Number(a["p_billed_amount"] ?? 0),
-          });
-          return null;
-        }
-        row["runs"] = Number(row["runs"]) + Number(a["p_runs"]);
-        row["input_tokens"] = Number(row["input_tokens"]) + Number(a["p_input_tokens"]);
-        row["output_tokens"] = Number(row["output_tokens"]) + Number(a["p_output_tokens"]);
-        row["cost_amount"] = Number(row["cost_amount"]) + Number(a["p_cost_amount"]);
-        row["billed_amount"] = Number(row["billed_amount"]) + Number(a["p_billed_amount"] ?? 0);
+    // ai_usage_add as in the migration: one statement, added in place.
+    db.rpcs.set("ai_usage_add", (a, d) => {
+      const row = d
+        .rows("ai_usage")
+        .find(
+          (r) =>
+            r["organization_id"] === a["p_org"] &&
+            r["usage_date"] === a["p_usage_date"] &&
+            r["task"] === a["p_task"],
+        );
+      if (!row) {
+        d.insert("ai_usage", {
+          organization_id: a["p_org"],
+          usage_date: a["p_usage_date"],
+          task: a["p_task"],
+          runs: a["p_runs"],
+          input_tokens: a["p_input_tokens"],
+          output_tokens: a["p_output_tokens"],
+          cost_amount: a["p_cost_amount"],
+          billed_amount: Number(a["p_billed_amount"] ?? 0),
+        });
         return null;
-      });
-    }
+      }
+      row["runs"] = Number(row["runs"]) + Number(a["p_runs"]);
+      row["input_tokens"] = Number(row["input_tokens"]) + Number(a["p_input_tokens"]);
+      row["output_tokens"] = Number(row["output_tokens"]) + Number(a["p_output_tokens"]);
+      row["cost_amount"] = Number(row["cost_amount"]) + Number(a["p_cost_amount"]);
+      row["billed_amount"] = Number(row["billed_amount"]) + Number(a["p_billed_amount"] ?? 0);
+      return null;
+    });
     return db;
   }
 
   it("atomic counter: 20 workers metering at once add up to exactly 20 runs and their tokens", async () => {
-    const db = await usageDb(true);
+    const db = await usageDb();
     const { meterAiUsage } = await import("./ai-run.server");
     await Promise.all(
       Array.from({ length: 20 }, () =>
@@ -946,7 +944,7 @@ describe("(8) AI usage counters never lose a count", () => {
   };
 
   it("atomic counter (run roll-up): 20 runs finishing at once count 20 runs and all their billed amount", async () => {
-    const db = await usageDb(true);
+    const db = await usageDb();
     const { rollUpUsage } = await import("./ai-run.server");
     await Promise.all(
       Array.from({ length: 20 }, () =>
@@ -965,22 +963,20 @@ describe("(8) AI usage counters never lose a count", () => {
     expect(db.calls.filter((c) => c.table === "ai_usage")).toHaveLength(0);
   });
 
-  it("run roll-up before the migration: written the old way, with billed_amount", async () => {
-    const db = await usageDb(false);
+  it("a failed ai_usage_add call is logged and written the old way, with billed_amount", async () => {
+    const db = await usageDb();
+    db.rpcs.set("ai_usage_add", () => {
+      throw new Error("timeout");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { rollUpUsage } = await import("./ai-run.server");
     await rollUpUsage(db.client, "org-1", "reply", runResult as never);
     await rollUpUsage(db.client, "org-1", "reply", runResult as never);
     expect(db.rows("ai_usage")[0]).toMatchObject({ runs: 2, input_tokens: 100, billed_amount: 1 });
-    expect(db.calls.filter((c) => c.rpc === "ai_usage_add")).toHaveLength(1);
-  });
-
-  it("before the migration: falls back to the old way, and stops asking for the function for a while", async () => {
-    const db = await usageDb(false);
-    const { meterAiUsage } = await import("./ai-run.server");
-    await meterAiUsage(db.client, "org-1", "website_read", { inputTokens: 10 });
-    await meterAiUsage(db.client, "org-1", "website_read", { inputTokens: 10 });
-    expect(db.rows("ai_usage")[0]).toMatchObject({ runs: 2, input_tokens: 20 });
-    expect(db.calls.filter((c) => c.rpc === "ai_usage_add")).toHaveLength(1);
+    // Asked every time: nothing remembers a failure.
+    expect(db.calls.filter((c) => c.rpc === "ai_usage_add")).toHaveLength(2);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
   });
 });
 
