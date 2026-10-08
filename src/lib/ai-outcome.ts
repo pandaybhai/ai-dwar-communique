@@ -33,6 +33,9 @@ export const HANDOVER_REASONS: Record<string, string> = {
   customer_frustrated: "They sounded unhappy, so I fetched a person.",
   asked_for_person: "They asked to talk to a person.",
   flow_assign: "A flow handed this chat to you.",
+  // Batch 27: a run that broke or hit the spending limit is handed over, never left silent.
+  ai_error: "Something went wrong while I was answering, so I passed it to you.",
+  ai_capped: "This month's AI spending limit was reached, so I passed it to you.",
 };
 
 export function handoverReasonText(signal: string | null | undefined): string | null {

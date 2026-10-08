@@ -515,7 +515,8 @@ async function applyWhenWritten(
  * A status the message already has: redo what a failed first try may have
  * missed. The recipient move is conditional (counted once), and a message
  * with no price yet is priced (price_message is idempotent and a message is
- * debited at most once). Costs one read, only on this path.
+ * debited at most once). Costs one read, only on this path. False when
+ * there is no such message (yet).
  */
 async function retakeStatusSteps(
   supabase: SupabaseClient,
@@ -523,7 +524,7 @@ async function retakeStatusSteps(
   metaId: string,
   nextStatus: string,
   recipientId: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const { data, error } = await supabase
     .from("messages")
     .select("id, status, cost_amount, campaign_id, flow_id, created_at")
@@ -532,7 +533,8 @@ async function retakeStatusSteps(
     .maybeSingle();
   if (error) throw new Error(error.message);
   const row = data as (StatusRow & { cost_amount?: number | null }) | null;
-  if (!row || (STATUS_RANK[String(row.status)] ?? -1) < STATUS_RANK[nextStatus]!) return;
+  if (!row) return false;
+  if ((STATUS_RANK[String(row.status)] ?? -1) < STATUS_RANK[nextStatus]!) return true;
   const campaignMessage =
     Boolean(row.campaign_id || recipientId) ||
     (!row.flow_id && (!row.created_at || row.created_at < ATTRIBUTION_SINCE));
@@ -541,7 +543,16 @@ async function retakeStatusSteps(
     const { error: priceError } = await supabase.rpc("price_message", { p_message_id: row.id });
     if (priceError) throw new Error(`price: ${priceError.message}`);
   }
+  return true;
 }
+
+/**
+ * Batch 27: how long after Meta's timestamp a status for a message we have
+ * no row for is kept for the retry pass. Our own sends write their row a
+ * moment after Meta accepts them, so a status can arrive first; past this it
+ * is a message we never sent (another app on the number) and is dropped.
+ */
+export const STATUS_ROW_WAIT_MS = 10 * 60_000;
 
 /** Bring the campaign's charged total up to the ledger, at most every few seconds per campaign. */
 const CHARGED_SYNC_EVERY_MS = 15_000;
@@ -1184,7 +1195,12 @@ export async function processWebhookPayload(
   /** webhook_events.received_at, for the timing log. */
   receivedAt: string | null = null,
   /** How long storing the event took (acceptWebhook), for webhook_events.timing. */
-  meta: { storeMs?: number; prefetch?: InboundPrefetch } = {},
+  meta: {
+    storeMs?: number;
+    prefetch?: InboundPrefetch;
+    /** Run by catch-up under a lease (webhook_events.lease_until): closing the event lets it go. */
+    leased?: boolean;
+  } = {},
 ): Promise<void> {
   const processingStart = Date.now();
   const timings: MessageTiming[] = [];
@@ -1384,13 +1400,10 @@ export async function processWebhookPayload(
           const templateName = value["message_template_name"] as string | undefined;
           const templateLanguage = value["message_template_language"] as string | undefined;
           const metaTemplateId = value["message_template_id"];
-          const event = String(value["event"] ?? "").toUpperCase();
-          const allowed = ["PENDING", "APPROVED", "REJECTED", "PAUSED"];
-          const nextStatus = allowed.includes(event)
-            ? event
-            : event === "FLAGGED" || event === "PENDING_DELETION"
-              ? "PAUSED"
-              : null;
+          // Batch 27 (M12): DISABLED / DELETED (and the rest Meta sends) stop the
+          // template from being sent; REINSTATED makes it sendable again.
+          const { metaTemplateStatus } = await import("@/lib/templates");
+          const nextStatus = metaTemplateStatus(value["event"]);
           if (!nextStatus) continue;
 
           const reason = (value["reason"] as string | undefined) ?? null;
@@ -2084,6 +2097,10 @@ export async function processWebhookPayload(
                   .gte("created_at", beforeAutomations),
               ).then(({ count }) => count ?? 0);
 
+              // Batch 27 (H2): set while Aiden is answering this message, so a
+              // throw from that pass hands the chat to a person, not silence.
+              let agentAnswering = false;
+              let agentQuestion: string | null = null;
               try {
                 const handledBefore = optKeywordMatched || codHandled;
                 const optedOut =
@@ -2111,6 +2128,9 @@ export async function processWebhookPayload(
                 let alreadyHandled: boolean;
                 let agentBody = body;
                 let mediaFallback: string | null = null;
+                // M7: a chat a person owns (or that waits on one) is theirs:
+                // no transcription and no automatic fallback, at our cost.
+                let personOwns = false;
                 let burst: { proceed: boolean; body: string | null };
                 if (media.media_url) {
                   // Pictures and voice notes become words first, so a
@@ -2118,6 +2138,10 @@ export async function processWebhookPayload(
                   // only once we know nothing else answered (it costs a read).
                   alreadyHandled = handledBefore || (await repliedRead) > 0;
                   if (!alreadyHandled && !optedOut) {
+                    const owner = await readAgentGate(supabase, conversation.id as string);
+                    personOwns = Boolean(owner?.assigned_to) || owner?.needs_human === true;
+                  }
+                  if (!alreadyHandled && !optedOut && !personOwns) {
                     const converted = await customerMediaToText(supabase, {
                       organizationId: orgId,
                       conversationId: conversation.id as string,
@@ -2154,6 +2178,8 @@ export async function processWebhookPayload(
                 clock.mark("burst");
 
                 route = "ai";
+                agentAnswering = !alreadyHandled && !optedOut;
+                agentQuestion = agentBody;
                 const outcome = await runAgentOnInbound(supabase, {
                   organizationId: orgId,
                   conversationId: conversation.id as string,
@@ -2172,11 +2198,12 @@ export async function processWebhookPayload(
                   onWillReply: () => showTyping(connectionP, phoneNumberId, String(msg["id"] ?? "")),
                   later,
                 });
+                agentAnswering = false;
                 clock.mark("ai_done");
 
                 // Only a live-replying agent speaks; otherwise the thread just
                 // sits unread in the inbox for a person, as it always has.
-                if (mediaFallback && !outcome.acted && outcome.reason === "no_text") {
+                if (mediaFallback && !personOwns && !outcome.acted && outcome.reason === "no_text") {
                   const { data: agentRow } = await supabase
                     .from("ai_agents")
                     .select("mode")
@@ -2200,6 +2227,21 @@ export async function processWebhookPayload(
                   "[ai-agent] failed",
                   error instanceof Error ? error.message : String(error),
                 );
+                if (agentAnswering) {
+                  const { stepBackAfterAgentFailure } = await import("@/lib/ai-agent.server");
+                  const handed = await stepBackAfterAgentFailure(supabase, {
+                    organizationId: orgId,
+                    conversationId: conversation.id as string,
+                    contactId: contact.id as string,
+                    phoneNumberId,
+                    accessToken,
+                    waId,
+                    question: agentQuestion,
+                    since: beforeAutomations,
+                    later,
+                  });
+                  if (handed) console.log("[ai-agent] stepped_back_after_failure", conversation.id);
+                }
               }
             }
           } catch (err) {
@@ -2273,8 +2315,17 @@ export async function processWebhookPayload(
               // Already at this status: a retry of an event whose first try
               // moved the message and then failed, or a late duplicate. Redo
               // only the steps that are safe to repeat (never the event).
-              if (nextStatus !== "failed") {
-                await retakeStatusSteps(supabase, orgId, metaId, nextStatus, ours?.recipientId ?? null);
+              const known =
+                existing === null && nextStatus !== "failed"
+                  ? await retakeStatusSteps(supabase, orgId, metaId, nextStatus, ours?.recipientId ?? null)
+                  : Boolean(ours);
+              // Batch 27: no row at all for one of our non-campaign messages
+              // (Aiden, flows, the inbox) — its row is written a moment after
+              // Meta accepts the send, and this status beat it. Leave the
+              // event for the retry pass instead of losing the status, while
+              // it is recent; an old one is a message we never sent.
+              if (!known && Date.now() - Date.parse(at) < STATUS_ROW_WAIT_MS) {
+                failures.push(`status ${metaId}: message not written yet`);
               }
               continue;
             }
@@ -2377,9 +2428,13 @@ export async function processWebhookPayload(
 
     startAfterReply();
     await Promise.all(deferred);
-    await finishEvent(supabase, eventId, failures, routedAny ? null : "unknown_phone_number_id", timingRecord());
+    await finishEvent(supabase, eventId, failures, routedAny ? null : "unknown_phone_number_id", timingRecord(), {
+      leased: Boolean(meta.leased),
+    });
   } catch (err) {
-    await finishEvent(supabase, eventId, [failureNote("event", err)], null, timingRecord());
+    await finishEvent(supabase, eventId, [failureNote("event", err)], null, timingRecord(), {
+      leased: Boolean(meta.leased),
+    });
   }
 }
 
@@ -2388,7 +2443,7 @@ export async function processWebhookPayload(
  * 20261032_batch17_message_answered.sql). A failed write steps aside: a
  * duplicate stays a duplicate.
  */
-const REANSWER_AFTER_MS = 3 * 60_000;
+export const REANSWER_AFTER_MS = 3 * 60_000;
 
 async function answerWrite(run: () => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>) {
   try {
@@ -2458,9 +2513,14 @@ export async function finishEvent(
   cleanError: string | null,
   /** Per-stage timings, stored on webhook_events.timing. */
   timing: Record<string, unknown> | null = null,
+  /** leased: a catch-up pass held the event (lease_until); closing it lets the lease go. */
+  options: { leased?: boolean } = {},
 ): Promise<void> {
+  // Only a leased run writes lease_until: the live path never needs the
+  // column (so it works before 20261070_batch27_webhook_lease.sql is applied).
+  const lease = options.leased ? { lease_until: null } : {};
   if (failures.length === 0) {
-    await updateEvent(supabase, eventId, { processed_at: new Date().toISOString(), error: cleanError }, timing);
+    await updateEvent(supabase, eventId, { processed_at: new Date().toISOString(), error: cleanError, ...lease }, timing);
     return;
   }
   const { data: prior } = await supabase
@@ -2489,6 +2549,7 @@ export async function finishEvent(
         0,
         500,
       ),
+      ...lease,
     },
     timing,
   );
@@ -2508,10 +2569,34 @@ async function updateEvent(
 }
 
 /**
+ * Batch 27 (H1): catch-up never takes a customer message before a retry may
+ * re-answer it (reclaimUnanswered: REANSWER_AFTER_MS) plus the live pass's
+ * own life (~30 s, cut by the platform). An event caught any earlier found
+ * its message "stored, claimed by a live pass" and was closed as a duplicate,
+ * so the customer was never answered. Status-only events keep their 60 s.
+ */
+export const CATCH_UP_MESSAGES_AFTER_MS = REANSWER_AFTER_MS + 30_000;
+/** How long one catch-up pass holds an event (webhook_events.lease_until) before another may take it. */
+export const CATCH_UP_LEASE_MS = 3 * 60_000;
+
+type CatchUpRow = {
+  id: unknown;
+  payload: unknown;
+  received_at?: string | null;
+  lease_until?: string | null;
+  error?: string | null;
+};
+
+/**
  * Catch-up processing: re-run processing for stored events that have a valid
  * signature and were never processed. Used by each incoming webhook (for
  * events older than `olderThanSeconds`) and after a WhatsApp account is
  * connected (with `olderThanSeconds: 0`, so earlier messages get routed).
+ *
+ * An event is held with a lease while it runs (lease_until, migration
+ * 20261070_batch27_webhook_lease.sql) and marked processed only when it
+ * closes, so a pass that dies leaves it for the next one. Before that column
+ * exists it is claimed with processed_at, as before.
  */
 export async function reprocessUnprocessedEvents(
   supabase: SupabaseClient,
@@ -2532,35 +2617,83 @@ export async function reprocessUnprocessedEvents(
   const limit = options.limit ?? 50;
   const concurrency = Math.max(1, options.statusConcurrency ?? 1);
   const deadline = options.budgetMs !== undefined ? Date.now() + options.budgetMs : Infinity;
-  const cutoff = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
+  const startedAt = Date.now();
+  const cutoff = new Date(startedAt - olderThanSeconds * 1000).toISOString();
+  // olderThanSeconds 0 (a number just connected) still means "everything now".
+  const messageCutoff =
+    olderThanSeconds > 0 ? startedAt - Math.max(olderThanSeconds * 1000, CATCH_UP_MESSAGES_AFTER_MS) : Infinity;
 
-  const { data: events } = await supabase
-    .from("webhook_events")
-    .select("id, payload")
-    .is("processed_at", null)
-    .eq("provider", "meta")
-    .eq("signature_valid", true)
-    .lte("received_at", cutoff)
-    .order("received_at", { ascending: true })
-    .limit(limit);
+  const read = (columns: string) =>
+    supabase
+      .from("webhook_events")
+      .select(columns)
+      .is("processed_at", null)
+      .eq("provider", "meta")
+      .eq("signature_valid", true)
+      .lte("received_at", cutoff)
+      .order("received_at", { ascending: true })
+      .limit(limit);
+  let leases = true;
+  let { data: events, error: readError } = (await read("id, payload, received_at, lease_until, error")) as unknown as {
+    data: CatchUpRow[] | null;
+    error: unknown;
+  };
+  if (readError) {
+    // lease_until not there yet (or a bad read): claim with processed_at, as before.
+    leases = false;
+    ({ data: events } = (await read("id, payload, received_at")) as unknown as { data: CatchUpRow[] | null });
+  }
 
   if (!events?.length) return 0;
   let handled = 0;
-  const one = async (event: { id: unknown; payload: unknown }) => {
-    // Claim the event first: two overlapping catch-up passes used to pick the
-    // same rows and could each run a reply.
-    const { data: claimed } = await supabase
-      .from("webhook_events")
-      .update({ processed_at: new Date().toISOString() })
-      .eq("id", event.id as string)
-      .is("processed_at", null)
-      .select("id");
-    if (!claimed?.length) return;
+
+  /** Hold the event for this pass; false when another pass holds it or closed it. */
+  const claim = async (event: CatchUpRow): Promise<boolean> => {
+    if (!leases) {
+      // Claim the event first: two overlapping catch-up passes used to pick the
+      // same rows and could each run a reply.
+      const { data: claimed } = await supabase
+        .from("webhook_events")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("id", event.id as string)
+        .is("processed_at", null)
+        .select("id");
+      return Boolean(claimed?.length);
+    }
+    const now = Date.now();
+    const held = event.lease_until ? Date.parse(event.lease_until) : NaN;
+    if (Number.isFinite(held) && held > now) return false; // another pass is on it
+    // A lease that ran out while the event is still open: that pass died.
+    // It counts as an attempt, so an event that kills every pass still ends.
+    const died = Number.isFinite(held);
+    const attempt = died ? webhookAttempts(event.error) + 1 : 0;
+    const givenUp = died && attempt >= WEBHOOK_MAX_ATTEMPTS;
+    const patch: Record<string, unknown> = givenUp
+      ? { processed_at: new Date(now).toISOString(), lease_until: null, error: `gave_up:${attempt} catch-up pass never finished` }
+      : {
+          lease_until: new Date(now + CATCH_UP_LEASE_MS).toISOString(),
+          ...(died ? { error: `retry:${attempt} catch-up pass never finished` } : {}),
+        };
+    // Compare-and-set on the lease value we read: one pass wins.
+    let q = supabase.from("webhook_events").update(patch).eq("id", event.id as string).is("processed_at", null);
+    q = event.lease_until ? q.eq("lease_until", event.lease_until) : q.is("lease_until", null);
+    const { data: claimed } = await q.select("id");
+    if (givenUp && claimed?.length) {
+      console.error(JSON.stringify({ at: "webhook_event_failed", event_id: event.id, attempt, given_up: true, detail: "lease expired" }));
+      return false;
+    }
+    return Boolean(claimed?.length);
+  };
+
+  const one = async (event: CatchUpRow) => {
+    if (!(await claim(event))) return;
     handled += 1;
     await processWebhookPayload(
       supabase,
       event.id as string,
       (event.payload ?? {}) as AnyRecord,
+      null,
+      leases ? { leased: true } : {},
     );
   };
   const statusOnly = (payload: unknown) =>
@@ -2570,7 +2703,7 @@ export async function reprocessUnprocessedEvents(
       ),
     ) ?? false;
 
-  const batch: Array<{ id: unknown; payload: unknown }> = [];
+  const batch: CatchUpRow[] = [];
   const flush = async () => {
     for (let i = 0; i < batch.length; i += concurrency) {
       await Promise.all(batch.slice(i, i + concurrency).map(one));
@@ -2579,7 +2712,11 @@ export async function reprocessUnprocessedEvents(
   };
   for (const event of events) {
     if (Date.now() >= deadline) break;
-    if (concurrency > 1 && statusOnly(event.payload)) {
+    const onlyStatuses = statusOnly(event.payload);
+    // A customer message too young to re-answer waits for a later pass (H1).
+    const receivedAt = event.received_at ? Date.parse(event.received_at) : NaN;
+    if (!onlyStatuses && Number.isFinite(receivedAt) && receivedAt > messageCutoff) continue;
+    if (concurrency > 1 && onlyStatuses) {
       batch.push(event);
       if (batch.length >= concurrency) await flush();
       continue;

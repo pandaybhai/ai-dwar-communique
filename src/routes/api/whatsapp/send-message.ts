@@ -307,6 +307,9 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
             .from("conversations")
             .update({ last_message_at: nowIso })
             .eq("id", conversation.id);
+          // Batch 27 (M6): a person replied — the hand-off reminder stops (Aiden stays off).
+          const { staffReplied } = await import("@/lib/handoff-alerts.server");
+          await staffReplied(supabase, conversation.id);
         }
 
         // Capture + metering. Meta bills on template category, so a text reply

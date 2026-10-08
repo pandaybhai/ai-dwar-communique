@@ -1,12 +1,15 @@
 /**
  * Hand-off alerts (Batch 16 item 2).
  *
- * When a chat genuinely needs a person — the customer asked for one, or a
- * flow's Assign step ran — the workspace's staff are told: a WhatsApp from
+ * When a chat genuinely needs a person — the customer asked for one, a
+ * flow's Assign step ran, or (Batch 27) Aiden's answer broke or hit the
+ * spending limit — the workspace's staff are told: a WhatsApp from
  * the AiDwar platform number to a staff number (1–2 of them), else an email.
  * The Inbox shows the chat as "Waiting for you". One reminder goes after 30
- * minutes, inside business hours only. Nothing here ever hands the chat back
- * to Aiden: needs_human is only ever cleared by a person.
+ * minutes, inside business hours only — each hand-off gets its own, and it
+ * stops once a person replied from the Inbox (staffReplied). Nothing here
+ * ever hands the chat back to Aiden: needs_human is only ever cleared by a
+ * person.
  *
  * Never to the business's own WhatsApp number: an alert sent from the
  * platform to the shop's own number lands in the very inbox it is about
@@ -229,6 +232,9 @@ const REASON_TEXT: Record<string, string> = {
   flow: "a flow asked for a person",
   merchant_rule: "a chat matched one of your hand-over rules",
   sensitive_topic: "a customer raised something sensitive",
+  // Batch 27: Aiden's answer broke or hit the spending limit (never left silent).
+  ai_error: "Aiden couldn't answer a customer's message",
+  ai_capped: "this month's AI spending limit was reached",
 };
 
 /**
@@ -317,9 +323,16 @@ export async function sendHandoffAlert(
     if (outcome.whatsapp.length === 0 && !outcome.email)
       outcome.skipped = safe.length === 0 && !settings.email ? "no_staff_contact" : "not_delivered";
 
+    // A fresh alert starts its own reminder clock: handoff_reminded_at is
+    // cleared with it, so a second hand-off on the same chat is reminded too
+    // (it used to stay set from the first one, forever).
     await supabase
       .from("conversations")
-      .update(args.reminder ? { handoff_reminded_at: new Date().toISOString() } : { handoff_alert_at: new Date().toISOString() })
+      .update(
+        args.reminder
+          ? { handoff_reminded_at: new Date().toISOString() }
+          : { handoff_alert_at: new Date().toISOString(), handoff_reminded_at: null },
+      )
       .eq("id", args.conversationId);
     console.log("[handoff-alert]", JSON.stringify({ conversation_id: args.conversationId, reason: args.reason, reminder: Boolean(args.reminder), ...outcome, whatsapp: outcome.whatsapp.length, templated: outcome.templated?.length ?? 0 }));
   } catch (error) {
@@ -330,9 +343,32 @@ export async function sendHandoffAlert(
 }
 
 /**
+ * Batch 27 (M6): someone from the team replied in this chat from the Inbox.
+ * The 30-minute reminder is no longer needed, so it is marked done
+ * (handoff_reminded_at) — but the chat stays with the person: needs_human
+ * is untouched and Aiden stays off until someone hands it back ("Mark as
+ * handled"). One conditional write, only while a reminder is pending.
+ * Never throws.
+ */
+export async function staffReplied(supabase: SupabaseClient, conversationId: string | null | undefined): Promise<void> {
+  if (!conversationId) return;
+  try {
+    await supabase
+      .from("conversations")
+      .update({ handoff_reminded_at: new Date().toISOString() })
+      .eq("id", conversationId)
+      .eq("needs_human", true)
+      .is("handoff_reminded_at", null);
+  } catch {
+    // the reminder is a courtesy; the reply already went
+  }
+}
+
+/**
  * One reminder per hand-off, 30 minutes after the alert, only inside the
- * workspace's business hours. Called from the flow worker's minute tick.
- * Never clears needs_human.
+ * workspace's business hours, unless a person already replied (staffReplied
+ * marks it done). Called from the flow worker's minute tick. Never clears
+ * needs_human.
  */
 export async function remindWaitingHandoffs(
   supabase: SupabaseClient,

@@ -145,6 +145,164 @@ function log(outcome: string, detail: Record<string, unknown>) {
   console.log("[ai-agent]", outcome, JSON.stringify(detail));
 }
 
+/** M1: the live reply's first model call gives up after this long (elsewhere 120 s). */
+export const LIVE_FIRST_CALL_TIMEOUT_MS = 20_000;
+
+type HandToPersonArgs = Pick<
+  AgentInboundArgs,
+  "organizationId" | "conversationId" | "contactId" | "phoneNumberId" | "accessToken" | "waId" | "later"
+>;
+
+/**
+ * Put the chat in front of a person: the workspace's hand-over line to the
+ * customer (its own wording, else the configured default — never text
+ * written here), "Waiting for you" (needs_human) with the staff alert, and
+ * — when asked — the question filed under Unanswered. Used by a genuine
+ * hand-off and, since Batch 27, by a run that errored or was capped.
+ */
+async function handToPerson(
+  supabase: SupabaseClient,
+  args: HandToPersonArgs,
+  opts: {
+    agentId: string | null;
+    reason: string;
+    status: string;
+    signal: string | null;
+    question: string;
+    runId: string | null;
+    fileGap: boolean;
+    onSent?: () => void;
+  },
+): Promise<void> {
+  const { defaultAgentId, handoverMessage } = await import("@/lib/ai-tasks.server");
+  const agentId = opts.agentId ?? (await defaultAgentId(supabase, args.organizationId));
+  const text = await handoverMessage(supabase, agentId);
+
+  const { data: convo } = await supabase
+    .from("conversations")
+    .select("last_customer_message_at")
+    .eq("id", args.conversationId)
+    .maybeSingle();
+
+  let handoverState: "sent" | "window_closed" | "failed" | "not_configured" = "not_configured";
+  if (!text.trim()) {
+    handoverState = "not_configured";
+  } else if (!isServiceWindowOpen(convo as { last_customer_message_at?: string | null } | null)) {
+    handoverState = "window_closed";
+  } else {
+    const handover = await sendServiceText(supabase, {
+      organizationId: args.organizationId,
+      phoneNumberId: args.phoneNumberId,
+      accessToken: args.accessToken,
+      conversationId: args.conversationId,
+      to: args.waId,
+      body: text,
+    });
+    handoverState = handover.ok ? "sent" : "failed";
+    if (!handover.ok) {
+      log("handover_send_failed", {
+        conversation_id: args.conversationId,
+        error: handover.error,
+      });
+    }
+  }
+
+  opts.onSent?.();
+  log("held_back", {
+    conversation_id: args.conversationId,
+    status: opts.status,
+    signal: opts.signal,
+    handover: handoverState,
+  });
+
+  // Anything it wouldn't answer becomes a person's job: surface the thread.
+  await supabase
+    .from("conversations")
+    .update({
+      status: "open",
+      needs_human: true,
+      needs_human_reason: opts.reason,
+      needs_human_question: opts.question.slice(0, 500),
+      needs_human_at: new Date().toISOString(),
+      handover_state: handoverState,
+    })
+    .eq("id", args.conversationId)
+    .eq("organization_id", args.organizationId);
+
+  // Tell the staff (never the business's own number) and show the chat as
+  // "Waiting for you". Bookkeeping the reply doesn't wait on.
+  {
+    const alert = import("@/lib/handoff-alerts.server")
+      .then(({ sendHandoffAlert }) =>
+        sendHandoffAlert(supabase, {
+          organizationId: args.organizationId,
+          conversationId: args.conversationId,
+          reason: opts.reason,
+          question: opts.question,
+        }),
+      )
+      .catch(() => {});
+    if (args.later) args.later(alert);
+    else await alert;
+  }
+
+  // File it under Unanswered. The owner is never messaged about a customer
+  // question: they answer it from the dashboard whenever they like.
+  if (opts.fileGap) {
+    const { recordCustomerGap } = await import("@/lib/owner-replies.server");
+    const recorded = await recordCustomerGap(supabase, {
+      organizationId: args.organizationId,
+      conversationId: args.conversationId,
+      contactId: args.contactId,
+      question: opts.question,
+      aiRunId: opts.runId,
+    });
+    log("gap_filed", { conversation_id: args.conversationId, recorded });
+  }
+}
+
+/**
+ * Batch 27 (H2): the webhook's answer pass threw while Aiden was answering.
+ * When Aiden is replying on this chat, nobody else owns it, the window is
+ * open and nothing went to the customer since their message, the chat is
+ * handed to a person exactly like an errored run. Never throws.
+ */
+export async function stepBackAfterAgentFailure(
+  supabase: SupabaseClient,
+  args: HandToPersonArgs & { question: string | null; since: string },
+): Promise<boolean> {
+  try {
+    const [prep, gate, replied] = await Promise.all([
+      prepareAgentInbound(supabase, args.organizationId),
+      readAgentGate(supabase, args.conversationId),
+      Promise.resolve(
+        supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("conversation_id", args.conversationId)
+          .eq("direction", "outbound")
+          .gte("created_at", args.since),
+      ).then(({ count, error }) => (error ? 1 : (count ?? 0))),
+    ]);
+    if (prep.agentRow?.mode !== "replying" || !prep.flags.has("ai_features") || prep.aiEnabled === false) return false;
+    if (gate?.assigned_to || gate?.needs_human === true || !isServiceWindowOpen(gate)) return false;
+    if (replied > 0) return false;
+    await handToPerson(supabase, args, {
+      agentId: prep.agentRow?.id ?? null,
+      reason: "ai_error",
+      status: "error",
+      signal: null,
+      question: (args.question ?? "").trim(),
+      runId: null,
+      fileGap: Boolean((args.question ?? "").trim()),
+    });
+    return true;
+  } catch (error) {
+    console.error("[ai-agent] step_back_failed", error instanceof Error ? error.message : String(error));
+    return false;
+  }
+}
+
 export async function runAgentOnInbound(
   supabase: SupabaseClient,
   args: AgentInboundArgs,
@@ -266,26 +424,45 @@ export async function runAgentOnInbound(
       })
     : null;
 
-  const run = await agentAnswer(
-    supabase,
-    common,
-    args.conversationId,
-    question,
-    prep.prelude
-      ? {
-          agentId: agentRow?.id ?? null,
-          prelude: prep.prelude,
-          ...(args.later ? { deferUsage: args.later } : {}),
-          ...(prep.ahead ? { ahead: prep.ahead } : {}),
-          ...(chat ? { chat } : {}),
-          ...(lookups ? { lookups } : {}),
-        }
-      : undefined,
-    {
-      ...(args.replyToMetaId ? { replyToMetaId: args.replyToMetaId } : {}),
-      onProductsQueued: prewarmCard,
-    },
-  );
+  let run: Awaited<ReturnType<typeof agentAnswer>>;
+  try {
+    run = await agentAnswer(
+      supabase,
+      common,
+      args.conversationId,
+      question,
+      prep.prelude
+        ? {
+            agentId: agentRow?.id ?? null,
+            prelude: prep.prelude,
+            ...(args.later ? { deferUsage: args.later } : {}),
+            ...(prep.ahead ? { ahead: prep.ahead } : {}),
+            ...(chat ? { chat } : {}),
+            ...(lookups ? { lookups } : {}),
+          }
+        : undefined,
+      {
+        ...(args.replyToMetaId ? { replyToMetaId: args.replyToMetaId } : {}),
+        onProductsQueued: prewarmCard,
+        // M1: a hung first model call fails over to the backup while the
+        // webhook's background work (~30 s) is still alive.
+        firstCallTimeoutMs: LIVE_FIRST_CALL_TIMEOUT_MS,
+      },
+    );
+  } catch (error) {
+    // Batch 27 (H2): the run threw before anything was sent — never silence.
+    log("run_failed", { conversation_id: args.conversationId, error: error instanceof Error ? error.message : String(error) });
+    await handToPerson(supabase, args, {
+      agentId: agentRow?.id ?? null,
+      reason: "ai_error",
+      status: "error",
+      signal: null,
+      question,
+      runId: null,
+      fileGap: true,
+    });
+    return { acted: true, mode: "replying", runId: null, status: "error", sent: false };
+  }
   mark("answer");
   timer?.mark("ai_run");
   const timing = () =>
@@ -303,8 +480,27 @@ export async function runAgentOnInbound(
   const shouldSend =
     run.status === "ok" && (answer.length > 0 || Boolean(run.parts?.some((p) => p.kind === "products")));
 
+  // Batch 27 (H2): a run that broke (error) or hit a spending limit
+  // (capped) has nothing to say, and the customer would hear nothing. It is
+  // a person's job now: filed under Unanswered, "Waiting for you" with the
+  // staff alert, and the same hand-over line a hand-off sends.
+  if (!shouldSend && (run.status === "error" || run.status === "capped")) {
+    mark("held_back");
+    timing();
+    await handToPerson(supabase, args, {
+      agentId: (agentRow as { id?: string } | null)?.id ?? null,
+      reason: run.status === "capped" ? "ai_capped" : "ai_error",
+      status: run.status,
+      signal: null,
+      question,
+      runId: run.runId,
+      fileGap: true,
+    });
+    return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
+  }
+
   // Not knowing never hands a chat over (Batch 16): a run that produced
-  // nothing to send without a hand-off signal (nothing to say, an error) is
+  // nothing to send without a hand-off signal (nothing to say, a refusal) is
   // filed for the merchant and Aiden stays on for the next message. Only a
   // customer asking for a person, the merchant's own rule or a sensitive
   // topic (isHandOffSignal) — or a flow's Assign step — puts a person on it.
@@ -329,95 +525,19 @@ export async function runAgentOnInbound(
   if (!shouldSend) {
     // The customer asked for a person (or the merchant's rule says so): say
     // a person is coming, then put the thread in front of one.
-    const { defaultAgentId, handoverMessage } = await import("@/lib/ai-tasks.server");
-    const { isServiceWindowOpen } = await import("@/lib/service-window");
-    const agentId = (agentRow as { id?: string } | null)?.id
-      ?? (await defaultAgentId(supabase, args.organizationId));
-    const text = await handoverMessage(supabase, agentId);
-
-    const { data: convo } = await supabase
-      .from("conversations")
-      .select("last_customer_message_at")
-      .eq("id", args.conversationId)
-      .maybeSingle();
-
-    let handoverState: "sent" | "window_closed" | "failed" | "not_configured" = "not_configured";
-    if (!text.trim()) {
-      handoverState = "not_configured";
-    } else if (!isServiceWindowOpen(convo as { last_customer_message_at?: string | null } | null)) {
-      handoverState = "window_closed";
-    } else {
-      const handover = await sendServiceText(supabase, {
-        organizationId: args.organizationId,
-        phoneNumberId: args.phoneNumberId,
-        accessToken: args.accessToken,
-        conversationId: args.conversationId,
-        to: args.waId,
-        body: text,
-      });
-      handoverState = handover.ok ? "sent" : "failed";
-      if (!handover.ok) {
-        log("handover_send_failed", {
-          conversation_id: args.conversationId,
-          error: handover.error,
-        });
-      }
-    }
-
-    mark("handover_sent");
-    timing();
-    log("held_back", {
-      conversation_id: args.conversationId,
+    await handToPerson(supabase, args, {
+      agentId: (agentRow as { id?: string } | null)?.id ?? null,
+      reason: run.escalationSignal ?? run.status,
       status: run.status,
-      signal: run.escalationSignal,
-      handover: handoverState,
+      signal: run.escalationSignal ?? null,
+      question,
+      runId: run.runId,
+      fileGap: Boolean(run.needsOwner),
+      onSent: () => {
+        mark("handover_sent");
+        timing();
+      },
     });
-
-    // Anything it wouldn't answer becomes a person's job: surface the thread.
-    await supabase
-      .from("conversations")
-      .update({
-        status: "open",
-        needs_human: true,
-        needs_human_reason: run.escalationSignal ?? run.status,
-        needs_human_question: question.slice(0, 500),
-        needs_human_at: new Date().toISOString(),
-        handover_state: handoverState,
-      })
-      .eq("id", args.conversationId)
-      .eq("organization_id", args.organizationId);
-
-    // A genuine hand-off: tell the staff (never the business's own number)
-    // and show the chat as "Waiting for you". Bookkeeping the reply doesn't wait on.
-    {
-      const alert = import("@/lib/handoff-alerts.server")
-        .then(({ sendHandoffAlert }) =>
-          sendHandoffAlert(supabase, {
-            organizationId: args.organizationId,
-            conversationId: args.conversationId,
-            reason: run.escalationSignal ?? run.status,
-            question,
-          }),
-        )
-        .catch(() => {});
-      if (args.later) args.later(alert);
-      else await alert;
-    }
-
-    // File it under Unanswered. The owner is never messaged about a customer
-    // question: they answer it from the dashboard whenever they like.
-    if (run.needsOwner) {
-      const { recordCustomerGap } = await import("@/lib/owner-replies.server");
-      const recorded = await recordCustomerGap(supabase, {
-        organizationId: args.organizationId,
-        conversationId: args.conversationId,
-        contactId: args.contactId,
-        question,
-        aiRunId: run.runId,
-      });
-      log("gap_filed", { conversation_id: args.conversationId, recorded });
-    }
-
     return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
   }
 
