@@ -1,14 +1,19 @@
 name: CI
 
-# Every push and pull request: typecheck and the full test suite must pass.
-# Lint is advisory (reported, never blocking) until formatting is fixed.
+# Every push and pull request: typecheck, the full test suite and the
+# production build must pass. Lint is advisory (reported, never blocking)
+# until formatting is fixed. Also daily, so a test that depends on the date
+# goes red the day it breaks, not on the next push.
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 2 * * *" # 07:47 IST
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,6 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -27,6 +34,50 @@ jobs:
         run: npx tsc --noEmit -p .
       - name: Tests
         run: bun run test
+      - name: Build
+        run: bun run build
       - name: Lint (advisory)
         continue-on-error: true
         run: bun run lint
+
+  # The suite again on other days and in other timezones, with the wall clock
+  # moved by src/lib/test-support/shift-clock.mjs: no test may depend on the
+  # real date, the time of day or the machine's timezone.
+  shifted-clock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: last minutes of the UTC month
+            at: '$(date -u -d "$(date -u +%Y-%m-01) +1 month -4 minutes" +%FT%TZ)'
+            tz: Asia/Kolkata
+          - name: Los Angeles business hours (Wednesday 19:00 UTC)
+            at: '$(date -u -d "next wednesday 19:00" +%FT%TZ)'
+            tz: America/Los_Angeles
+          - name: 30 days ahead
+            at: '$(date -u -d "+30 days" +%FT%TZ)'
+            tz: UTC
+          - name: a year ahead, late evening
+            at: '$(date -u -d "+365 days 21:30" +%FT%TZ)'
+            tz: Pacific/Kiritimati
+    name: shifted clock (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Tests at a shifted clock
+        env:
+          TZ: ${{ matrix.tz }}
+        run: |
+          export AIDWAR_TEST_NOW="${{ matrix.at }}"
+          export NODE_OPTIONS="--import $GITHUB_WORKSPACE/src/lib/test-support/shift-clock.mjs"
+          echo "Clock: $AIDWAR_TEST_NOW, TZ=$TZ"
+          bun run test
