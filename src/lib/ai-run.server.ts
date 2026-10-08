@@ -168,6 +168,13 @@ export type RunOptions = {
    */
   onProductsQueued?: (items: ChosenProduct[]) => void;
   /**
+   * Batch 27 (M1): the primary model's first call gives up after this long
+   * (the whole exchange) instead of OUTSIDE_CALL_TIMEOUT_MS.ai / ai_stream,
+   * so a hung model fails over to the backup while a live reply's webhook
+   * work is still alive. Only the live customer reply sets it.
+   */
+  firstCallTimeoutMs?: number;
+  /**
    * The material and the early catalogue search, already started by the
    * caller for this same input (startAnswerLookups). Left out, executeRun
    * starts them itself — in parallel with its prelude.
@@ -503,7 +510,10 @@ export function stripSentences(answer: string, drop: string[]): string {
 
 /**
  * One small model call judging every candidate sentence against this run's
- * material. Any failure keeps the reply as it is — the check never blocks.
+ * material. Batch 27 (M11): a sentence the check couldn't decide — the check
+ * failed, or gave no answer for it — counts as unsupported (the caller
+ * rewrites or strips it, and the question is filed for the merchant); it
+ * used to pass as supported. The check never blocks the reply itself.
  */
 type PolicyCheckWho = {
   organizationId: string;
@@ -561,10 +571,11 @@ async function unsupportedPolicyClaims(
     const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { answers?: unknown[] };
     const answers = Array.isArray(parsed.answers) ? parsed.answers : [];
-    return args.sentences.filter((_, i) => String(answers[i] ?? "yes").toLowerCase().startsWith("n"));
+    // Only a plain "yes" is support; "no", a missing or garbled answer is not.
+    return args.sentences.filter((_, i) => !String(answers[i] ?? "").trim().toLowerCase().startsWith("y"));
   } catch (error) {
-    console.log("[policy-grounding] check skipped", error instanceof Error ? error.message : "unknown");
-    return [];
+    console.log("[policy-grounding] check undecided", error instanceof Error ? error.message : "unknown");
+    return args.sentences;
   }
 }
 
@@ -1088,6 +1099,8 @@ async function callChatCompletions(
   messages: ChatMessage[],
   tools: BrokeredTool[],
   direct = false,
+  /** Overrides OUTSIDE_CALL_TIMEOUT_MS.ai for this call (RunOptions.firstCallTimeoutMs). */
+  timeoutMs?: number,
 ): Promise<GatewayCall> {
   const body: Record<string, unknown> = { model, messages };
   // Anthropic's compatible endpoint insists on an explicit output cap.
@@ -1098,11 +1111,16 @@ async function callChatCompletions(
       function: { name: t.name, description: t.description, parameters: t.parameters },
     }));
   }
-  const res = await outsideFetch("ai", `${base}/chat/completions`, {
-    method: "POST",
-    headers: gatewayHeaders(key, direct),
-    body: JSON.stringify(body),
-  });
+  const res = await outsideFetch(
+    "ai",
+    `${base}/chat/completions`,
+    {
+      method: "POST",
+      headers: gatewayHeaders(key, direct),
+      body: JSON.stringify(body),
+    },
+    timeoutMs ? { timeoutMs } : {},
+  );
 
   if (!res.ok) {
     const text = await res.text();
@@ -1143,6 +1161,8 @@ async function callResponses(
   input: unknown[],
   tools: BrokeredTool[],
   direct = false,
+  /** The whole exchange gives up after this long, instead of ai_stream's idle limit. */
+  timeoutMs?: number,
 ): Promise<GatewayCall & { items: unknown[] }> {
   const body: Record<string, unknown> = { model, input, stream: true, store: false };
   if (tools.length > 0) {
@@ -1159,7 +1179,7 @@ async function callResponses(
     "ai_stream",
     `${base}/responses`,
     { method: "POST", headers: gatewayHeaders(key, direct), body: JSON.stringify(body) },
-    { idle: true },
+    timeoutMs ? { timeoutMs } : { idle: true },
   );
   if (!res.ok || !res.body) {
     const text = res.ok ? "" : await res.text();
@@ -2319,6 +2339,8 @@ export async function executeRun(
   let backups: BackupRoute[] = [];
 
   let modelError: unknown = null;
+  // M1: only the primary's first call is cut short; every later step keeps the 120 s.
+  const firstCallMs = (step: number): number | undefined => (step === 0 ? options.firstCallTimeoutMs : undefined);
   if (key) {
     try {
       if (isOpenAiModel(brain.model_id) || (direct && brain.provider === "openai")) {
@@ -2335,7 +2357,7 @@ export async function executeRun(
           let call: Awaited<ReturnType<typeof callResponses>>;
           try {
             modelCalls += 1;
-            call = await callResponses(apiBase, key, wire, items, tools, direct);
+            call = await callResponses(apiBase, key, wire, items, tools, direct, firstCallMs(step));
           } catch (error) {
             // The provider refused the conversation with the early search in
             // it: the same question again without it, exactly as before.
@@ -2343,7 +2365,7 @@ export async function executeRun(
             earlyRefused = true;
             items.splice(earlyAt, 2);
             modelCalls += 1;
-            call = await callResponses(apiBase, key, wire, items, tools, direct);
+            call = await callResponses(apiBase, key, wire, items, tools, direct, firstCallMs(step));
           }
           giveEarly();
           inputTokens += call.inputTokens ?? 0;
@@ -2410,13 +2432,13 @@ export async function executeRun(
           let call: GatewayCall;
           try {
             modelCalls += 1;
-            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
+            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct, firstCallMs(step));
           } catch (error) {
             if (step !== 0 || !earlyCall || earlyGiven || !refusedRequest(error)) throw error;
             earlyRefused = true;
             messages.splice(earlyAt, 2);
             modelCalls += 1;
-            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct);
+            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct, firstCallMs(step));
           }
           giveEarly();
           inputTokens += call.inputTokens ?? 0;

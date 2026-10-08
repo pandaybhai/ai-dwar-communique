@@ -396,7 +396,12 @@ export async function agentAnswer(
     lookups?: AnswerLookups;
   },
   /** The customer's message is a WhatsApp reply to this message of ours. */
-  context?: { replyToMetaId?: string | null; onProductsQueued?: RunOptions["onProductsQueued"] },
+  context?: {
+    replyToMetaId?: string | null;
+    onProductsQueued?: RunOptions["onProductsQueued"];
+    /** The live reply's first-model-call limit (RunOptions.firstCallTimeoutMs). */
+    firstCallTimeoutMs?: number;
+  },
 ): Promise<RunResult> {
   // The chat, its earlier failures, the agent and the brief are independent
   // reads (the brief only needs the chat's language to finish its wording).
@@ -445,6 +450,7 @@ export async function agentAnswer(
     ...(prepared?.deferUsage ? { deferUsage: prepared.deferUsage } : {}),
     ...(prepared?.lookups ? { lookups: prepared.lookups } : {}),
     ...(context?.onProductsQueued ? { onProductsQueued: context.onProductsQueued } : {}),
+    ...(context?.firstCallTimeoutMs ? { firstCallTimeoutMs: context.firstCallTimeoutMs } : {}),
   });
 }
 

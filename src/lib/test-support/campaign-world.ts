@@ -21,6 +21,9 @@ export function world(spec: {
   billing?: boolean;
 }) {
   const db = new MemoryDb();
+  // Recipients are queued an hour before the test clock, in order: inside
+  // every look-back window (the 7-day reply window) on any day the suite runs.
+  const queuedAt = Date.now() - 3_600_000;
   db.embeds.set("campaign_recipients.messages", {
     table: "messages",
     local: "message_id",
@@ -211,7 +214,7 @@ export function world(spec: {
           phone: contact["phone"],
           resolved_variables: { "1": contact["name"] },
           status: "queued",
-          created_at: new Date(Date.UTC(2026, 9, 1) + n).toISOString(),
+          created_at: new Date(queuedAt + n).toISOString(),
           updated_at: now(),
         }),
       );

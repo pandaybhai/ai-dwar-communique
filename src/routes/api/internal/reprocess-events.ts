@@ -27,6 +27,8 @@ export const Route = createFileRoute("/api/internal/reprocess-events")({
         // Batch 12: a campaign day leaves thousands of status events; they are
         // caught up 10 at a time (customer messages still one by one, in
         // order), for up to 20 s, and the pass keeps going if pg_net hangs up.
+        // Batch 27: 60 s is for status-only events; an event with a customer
+        // message waits CATCH_UP_MESSAGES_AFTER_MS so its retry can re-answer it.
         const work = reprocessUnprocessedEvents(supabase, {
           olderThanSeconds: 60,
           limit: 500,
