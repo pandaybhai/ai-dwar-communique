@@ -21,6 +21,9 @@ export function world(spec: {
   billing?: boolean;
 }) {
   const db = new MemoryDb();
+  // Recipients are queued an hour before the test clock, in order: inside
+  // every look-back window (the 7-day reply window) on any day the suite runs.
+  const queuedAt = Date.now() - 3_600_000;
   db.embeds.set("campaign_recipients.messages", {
     table: "messages",
     local: "message_id",
@@ -151,7 +154,6 @@ export function world(spec: {
   }> = [];
   // phone_number_id is globally unique in real life; caches key on it.
   const uniq = crypto.randomUUID().slice(0, 8);
-  const seededAt = Date.now() - 60 * 60 * 1000;
   spec.campaigns.forEach((c, i) => {
     const org = db.insert("organizations", { name: `Store ${i + 1}` });
     const account = db.insert("whatsapp_accounts", {
@@ -212,9 +214,7 @@ export function world(spec: {
           phone: contact["phone"],
           resolved_variables: { "1": contact["name"] },
           status: "queued",
-          // In claim order, and recent: replies count only for recipients of
-          // the last 7 days (a fixed date stopped counting them on 8 Oct 2026).
-          created_at: new Date(seededAt + n).toISOString(),
+          created_at: new Date(queuedAt + n).toISOString(),
           updated_at: now(),
         }),
       );

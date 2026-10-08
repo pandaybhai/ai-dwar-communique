@@ -106,6 +106,66 @@ export function templateParamsFromComponents(
   return out;
 }
 
+/** The four statuses message_templates.status may hold (its CHECK constraint). */
+export type StoredTemplateStatus = "PENDING" | "APPROVED" | "REJECTED" | "PAUSED";
+
+/**
+ * Batch 27 (M12): any status Meta reports (a webhook event or a template
+ * listing) as one we store. A template Meta switched off — DISABLED,
+ * DELETED, PENDING_DELETION, FLAGGED, ARCHIVED, LIMIT_EXCEEDED — is PAUSED,
+ * so nothing sends it; REINSTATED is APPROVED again; IN_APPEAL waits like
+ * PENDING. Null for a status we don't know (the caller decides).
+ */
+export function metaTemplateStatus(raw: unknown): StoredTemplateStatus | null {
+  const status = String(raw ?? "").trim().toUpperCase();
+  switch (status) {
+    case "PENDING":
+    case "APPROVED":
+    case "REJECTED":
+    case "PAUSED":
+      return status;
+    case "REINSTATED":
+      return "APPROVED";
+    case "IN_APPEAL":
+      return "PENDING";
+    case "FLAGGED":
+    case "PENDING_DELETION":
+    case "DISABLED":
+    case "DELETED":
+    case "ARCHIVED":
+    case "LIMIT_EXCEEDED":
+      return "PAUSED";
+    default:
+      return null;
+  }
+}
+
+/** Pages a template listing may take before the sync stops (200 a page: 10,000 templates). */
+export const TEMPLATE_SYNC_MAX_PAGES = 50;
+
+/**
+ * Batch 27 (M12): every template on a WABA, following Meta's paging cursor
+ * (the sync used to read only the first 200). `fetchPage` is graphFetch for
+ * one page; `error` is set when a page failed (the rows read before it are
+ * still returned).
+ */
+export async function fetchAllTemplatePages(
+  fetchPage: (after: string | null) => Promise<{ ok: boolean; body: Record<string, unknown> }>,
+): Promise<{ rows: Array<Record<string, unknown>>; error: Record<string, unknown> | null; pages: number }> {
+  const rows: Array<Record<string, unknown>> = [];
+  let after: string | null = null;
+  for (let page = 0; page < TEMPLATE_SYNC_MAX_PAGES; page += 1) {
+    const result = await fetchPage(after);
+    if (!result.ok) return { rows, error: result.body, pages: page };
+    rows.push(...(((result.body["data"] as Array<Record<string, unknown>> | undefined) ?? [])));
+    const paging = result.body["paging"] as { next?: unknown; cursors?: { after?: unknown } } | undefined;
+    const next = typeof paging?.cursors?.after === "string" ? paging.cursors.after : null;
+    if (!paging?.next || !next || next === after) return { rows, error: null, pages: page + 1 };
+    after = next;
+  }
+  return { rows, error: null, pages: TEMPLATE_SYNC_MAX_PAGES };
+}
+
 export function statusBadgeClass(status: string): string {
   switch (status.toUpperCase()) {
     case "APPROVED":

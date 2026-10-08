@@ -112,6 +112,9 @@ export const Route = createFileRoute("/api/forms")({
             source: "inbox",
           });
           if (!result.ok) return jsonError(result.error ?? "Couldn't send the form.", 400);
+          // Batch 27 (M6): a person replied — the hand-off reminder stops (Aiden stays off).
+          const { staffReplied } = await import("@/lib/handoff-alerts.server");
+          await staffReplied(supabase, parsed.conversation_id);
           return Response.json({ ok: true, message_id: result.messageId });
         }
 

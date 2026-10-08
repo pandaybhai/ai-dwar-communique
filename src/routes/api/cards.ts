@@ -286,6 +286,9 @@ async function sendFromInbox(auth: Auth, payload: Record<string, unknown>): Prom
       res.reason && res.reason.startsWith("Outside") ? 422 : 502,
     );
   }
+  // Batch 27 (M6): a person replied — the hand-off reminder stops (Aiden stays off).
+  const { staffReplied } = await import("@/lib/handoff-alerts.server");
+  await staffReplied(supabase, conversation.id);
   await logServerActivity(supabase, organizationId, userId, "card_sent_inbox", {
     kind,
     design: cardDesign(kind)?.title ?? kind,

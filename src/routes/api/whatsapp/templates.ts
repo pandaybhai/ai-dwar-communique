@@ -77,22 +77,21 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           const failures: string[] = [];
 
           for (const target of targets) {
-            const result = await graphFetch(
-              `${target.wabaId}/message_templates`,
-              target.accessToken,
-              {
+            // Batch 27 (M12): every page, not just the first 200.
+            const { fetchAllTemplatePages, metaTemplateStatus } = await import("@/lib/templates");
+            const listing = await fetchAllTemplatePages((after) =>
+              graphFetch(`${target.wabaId}/message_templates`, target.accessToken, {
                 query: {
                   limit: "200",
                   fields: "id,name,language,category,status,components,rejected_reason",
+                  ...(after ? { after } : {}),
                 },
-              },
+              }),
             );
-            if (!result.ok) {
-              failures.push(graphErrorMessage(result.body));
-              continue;
-            }
+            if (listing.error) failures.push(graphErrorMessage(listing.error));
+            if (listing.error && listing.rows.length === 0) continue;
 
-            const rows = (result.body["data"] as AnyRecord[] | undefined) ?? [];
+            const rows = listing.rows as AnyRecord[];
             total += rows.length;
 
             // What we already hold for this WABA. Meta hands back its own
@@ -134,7 +133,9 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
                   name,
                   language,
                   category: (t["category"] as string) ?? null,
-                  status: String(t["status"] ?? "PENDING").toUpperCase(),
+                  // DISABLED / DELETED / REINSTATED … mapped onto what the table holds
+                  // (a raw DISABLED failed the status check and the row stayed APPROVED).
+                  status: metaTemplateStatus(t["status"]) ?? "PENDING",
                   components: merged,
                   rejection_reason: rejected && rejected !== "NONE" ? String(rejected) : null,
                   updated_at: nowIso,
