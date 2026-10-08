@@ -389,8 +389,13 @@ export async function runAgentOnInbound(
     const first = items.find((p) => p.hasPhoto);
     // A product that will go as a WhatsApp catalogue card needs no picture card.
     if (prewarmed || !first || !flags.has("cards") || (flags.has("whatsapp_catalog") && first.inCatalog)) return;
+    // Batch 28: the drawing writes a stored file and a usage row, so it is
+    // handed to the webhook's later() (awaited before the event closes); with
+    // no later() there is no request to keep it alive, and the card is simply
+    // drawn when it is sent.
+    if (!args.later) return;
     prewarmed = true;
-    void cards()
+    const drawing = cards()
       .then(async (on) => {
         if (!on) return;
         const [{ renderCustomerCard }, { productCardVars }] = await Promise.all([
@@ -400,6 +405,7 @@ export async function runAgentOnInbound(
         await renderCustomerCard(supabase, { organizationId: args.organizationId, kind: "customer_product", vars: productCardVars(first) });
       })
       .catch(() => {});
+    args.later(drawing);
   };
 
   if (mode === "draft") {
