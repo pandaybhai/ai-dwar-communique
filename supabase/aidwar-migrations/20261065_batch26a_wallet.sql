@@ -5,10 +5,11 @@
 --        balance + overdraft - (held + amount) < 0  ->  INSUFFICIENT_CREDITS.
 --      Before, a hold only raised `held` and never checked anything, so two
 --      campaigns launched back to back both held and both sent.
---      billing_retry_failed_debits() retries the message debits that
---      trg_messages_billing swallowed into usage_records
---      (meter billing_debit_failed); the billing sweep calls it and alerts
---      the platform admins about what is still uncharged.
+--      billing_retry_failed_debits() retries the debits that
+--      trg_messages_billing (messages) and trg_ai_runs_billing (AI answers
+--      over the allowance) swallowed into usage_records (meter
+--      billing_debit_failed); the billing sweep calls it and alerts the
+--      platform admins about what is still uncharged.
 --  H3  An 'adjustment' is signed: -50 lowers the balance by 50 (it used to
 --      add abs(amount)). Every other entry type is unchanged.
 --  H4  A campaign message debit marked from_hold takes from `held` only what
@@ -25,8 +26,9 @@
 -- wallet_apply, price_message and reprice_unpriced_messages are given here
 -- with their full new bodies; the previous bodies are in
 -- 20261054_live_only_functions.sql and 20260831_message_cost_receipts.sql.
--- billing_debit_message / trg_messages_billing are NOT redefined (their live
--- bodies are being saved separately, item M17).
+-- billing_debit_message, trg_messages_billing and trg_ai_runs_billing are
+-- NOT redefined here; their live bodies are saved as they are in
+-- 20261066_live_only_billing.sql (item M17).
 
 SET lock_timeout = '5s';
 
@@ -200,13 +202,65 @@ REVOKE ALL ON FUNCTION public.wallet_apply_version() FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.wallet_apply_version() TO service_role;
 
 -- ------------------------------------------------------------ C1: debits that failed
--- trg_messages_billing catches a failed billing_debit_message into
--- usage_records (meter billing_debit_failed, metadata.message_id). This
--- retries them, oldest first. billing_debit_message is idempotent per
--- message, so a retry never charges twice. A row is closed
--- (metadata.resolved_at) once the debit is in the ledger or there is nothing
--- to charge; otherwise attempts / last_error / last_attempt_at are kept and
--- the next sweep tries again (e.g. after the workspace adds credits).
+-- Two live triggers catch a failed debit into usage_records (meter
+-- billing_debit_failed), see 20261066_live_only_billing.sql:
+--   trg_messages_billing  -> metadata.message_id  (billing_debit_message)
+--   trg_ai_runs_billing   -> metadata.ai_run_id   (an over-allowance debit_ai)
+-- billing_retry_failed_debits retries both, oldest first. Each retry is
+-- idempotent per message / AI run, so it never charges twice. A row is
+-- closed (metadata.resolved_at) once the debit is in the ledger or there is
+-- nothing to charge; otherwise attempts / last_error / last_attempt_at are
+-- kept and the next sweep tries again (e.g. after the workspace adds credits).
+
+-- The over-allowance AI debit trg_ai_runs_billing could not take, taken now.
+-- The trigger records a failure only for a run it had found over the month's
+-- allowance, so that decision stands; the debit, its ledger reference
+-- (reference_type 'ai_run') and its description are the trigger's own. The
+-- month's billed_amount on ai_usage_months is brought up to date the same way
+-- the trigger does it. Returns true when it charged, false when there was
+-- nothing to charge (already debited, not billable, billing off).
+CREATE OR REPLACE FUNCTION public.billing_debit_ai_run(p_ai_run_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare r record; enabled_at timestamptz; used int; allowance int; m date;
+begin
+  select id, organization_id, status, billed_amount, cost_amount, created_at
+    into r from public.ai_runs where id = p_ai_run_id;
+  if r.id is null or r.status <> 'ok' or coalesce(r.billed_amount, 0) <= 0 then return false; end if;
+  if exists(select 1 from public.wallet_ledger
+             where reference_type = 'ai_run' and reference_id = r.id and entry_type = 'debit_ai') then
+    return false;
+  end if;
+  if not public.org_flag_enabled(r.organization_id, 'billing') then return false; end if;
+  select billing_enabled_at into enabled_at from public.organizations where id = r.organization_id;
+  if enabled_at is null or r.created_at < enabled_at then return false; end if;
+
+  m := public.ist_month(r.created_at);
+  select a.allowance into allowance from public.ai_usage_months a
+   where a.organization_id = r.organization_id and a.month = m;
+  select count(*) into used from public.ai_runs
+   where organization_id = r.organization_id and status = 'ok' and id <> r.id
+     and public.ist_month(created_at) = m and created_at < r.created_at;
+
+  perform public.wallet_apply(r.organization_id, 'debit_ai', r.billed_amount, 'ai_run', r.id, 'AI answer (over allowance)',
+    jsonb_build_object('provider_cost', r.cost_amount, 'used_this_month', used + 1, 'allowance', allowance, 'retried', true));
+
+  update public.ai_usage_months a set
+    billed_amount = coalesce((select sum(-l.amount) from public.wallet_ledger l join public.ai_runs x on x.id = l.reference_id
+                              where l.entry_type = 'debit_ai' and l.reference_type = 'ai_run' and x.organization_id = a.organization_id
+                                and public.ist_month(x.created_at) = a.month), 0),
+    updated_at = now()
+  where a.organization_id = r.organization_id and a.month = m;
+  return true;
+end $function$;
+
+REVOKE ALL ON FUNCTION public.billing_debit_ai_run(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.billing_debit_ai_run(uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.billing_debit_ai_run(uuid) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.billing_debit_ai_run(uuid) TO service_role;
 CREATE INDEX IF NOT EXISTS usage_records_debit_failed_open_idx
   ON public.usage_records (occurred_at)
   WHERE meter_key = 'billing_debit_failed' AND NOT (metadata ? 'resolved_at');
@@ -217,7 +271,7 @@ CREATE OR REPLACE FUNCTION public.billing_retry_failed_debits(p_limit integer DE
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-declare r record; v_msg uuid; charged boolean; n_retried int := 0; n_charged int := 0;
+declare r record; v_msg uuid; v_run uuid; charged boolean; n_retried int := 0; n_charged int := 0;
   n_closed int := 0; n_failing int := 0; failing jsonb := '[]'::jsonb;
 begin
   for r in
@@ -230,15 +284,21 @@ begin
     n_retried := n_retried + 1;
     v_msg := case when coalesce(r.metadata->>'message_id','') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
                   then (r.metadata->>'message_id')::uuid end;
-    if v_msg is null then
+    v_run := case when coalesce(r.metadata->>'ai_run_id','') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                  then (r.metadata->>'ai_run_id')::uuid end;
+    if v_msg is null and v_run is null then
       update public.usage_records
-         set metadata = metadata || jsonb_build_object('resolved_at', now(), 'resolution', 'no_message')
+         set metadata = metadata || jsonb_build_object('resolved_at', now(), 'resolution', 'no_reference')
        where id = r.id;
       n_closed := n_closed + 1;
       continue;
     end if;
     begin
-      charged := public.billing_debit_message(v_msg);
+      if v_msg is not null then
+        charged := public.billing_debit_message(v_msg);
+      else
+        charged := public.billing_debit_ai_run(v_run);
+      end if;
       update public.usage_records
          set metadata = metadata || jsonb_build_object(
                'resolved_at', now(),
@@ -255,7 +315,7 @@ begin
        where id = r.id;
       n_failing := n_failing + 1;
       failing := failing || jsonb_build_object(
-        'organization_id', r.organization_id, 'message_id', v_msg,
+        'organization_id', r.organization_id, 'message_id', v_msg, 'ai_run_id', v_run,
         'since', r.occurred_at, 'error', left(sqlerrm, 120));
     end;
   end loop;

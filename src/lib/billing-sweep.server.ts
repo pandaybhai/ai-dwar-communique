@@ -41,7 +41,13 @@ type RetryResult = {
   charged?: number;
   closed?: number;
   failing?: number;
-  failing_rows?: Array<{ organization_id?: string; message_id?: string; since?: string; error?: string }>;
+  failing_rows?: Array<{
+    organization_id?: string;
+    message_id?: string | null;
+    ai_run_id?: string | null;
+    since?: string;
+    error?: string;
+  }>;
 };
 
 /**

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { pgAvailable, startScratchPg, type ScratchPg } from "./test-support/scratch-pg";
@@ -30,13 +31,20 @@ const MIGRATION = join(
   import.meta.dirname,
   "../../supabase/aidwar-migrations/20261065_batch26a_wallet.sql",
 );
+const LIVE = join(
+  import.meta.dirname,
+  "../../supabase/aidwar-migrations/20261066_live_only_billing.sql",
+);
 const SCHEMA = join(import.meta.dirname, "test-support/loadtest/schema.sql");
+const STUBS = join(import.meta.dirname, "test-support/wallet-stubs.sql");
 const runSql = pgAvailable() || Boolean(process.env["CI"]);
 
 describe.runIf(runSql)("Batch 26a — wallet SQL (real Postgres)", () => {
   let pg: ScratchPg;
   beforeAll(() => {
-    pg = startScratchPg({ schemaFile: SCHEMA, migrations: [MIGRATION] });
+    // The live billing bodies saved in M17 (with test stand-ins for what they
+    // touch that the load-test schema lacks), then this batch's migration.
+    pg = startScratchPg({ schemaFile: SCHEMA, migrations: [STUBS, LIVE, MIGRATION] });
   }, 120_000);
   afterAll(() => pg?.stop());
 
@@ -156,6 +164,44 @@ describe.runIf(runSql)("Batch 26a — wallet SQL (real Postgres)", () => {
     expect(
       pg.sql(`select count(*) from wallet_ledger where reference_id = '${msg}' and entry_type = 'debit_message'`),
     ).toBe("1");
+  });
+
+  it("C1: an AI answer over the allowance at zero credits is charged by the retry once credits arrive", () => {
+    const org = workspace(0);
+    pg.sql(`update organization_billing_settings set ai_answers_included_override = 1 where organization_id = '${org}'`);
+    // Within the allowance: never charged.
+    pg.sql(`insert into ai_runs (organization_id, status, billed_amount, created_at)
+            values ('${org}', 'ok', 2, now() - interval '1 minute')`);
+    // Over it, at zero credits: the live trigger swallows the failed debit.
+    const run = pg.sql(
+      `insert into ai_runs (organization_id, status, billed_amount, cost_amount) values ('${org}', 'ok', 2, 0.4) returning id`,
+    );
+    expect(
+      pg.sql(`select count(*) from usage_records where meter_key = 'billing_debit_failed' and metadata->>'ai_run_id' = '${run}'`),
+    ).toBe("1");
+
+    const first = JSON.parse(pg.sql(`select billing_retry_failed_debits(200)`));
+    expect(first).toMatchObject({ retried: 1, charged: 0, failing: 1 });
+    expect(first.failing_rows[0]).toMatchObject({ organization_id: org, ai_run_id: run });
+
+    pg.sql(`select wallet_apply('${org}', 'credit_purchase', 10)`);
+    expect(JSON.parse(pg.sql(`select billing_retry_failed_debits(200)`))).toMatchObject({ charged: 1, failing: 0 });
+    expect(wallet(org).balance).toBe(8);
+    expect(
+      pg.sql(`select entry_type || ' ' || amount || ' ' || description from wallet_ledger where reference_type = 'ai_run' and reference_id = '${run}'`),
+    ).toBe("debit_ai -2.00 AI answer (over allowance)");
+    expect(pg.sql(`select billed_amount from ai_usage_months where organization_id = '${org}'`)).toBe("2.00");
+    // Never twice.
+    expect(JSON.parse(pg.sql(`select billing_retry_failed_debits(200)`))).toMatchObject({ retried: 0 });
+    expect(pg.sql(`select billing_debit_ai_run('${run}')`)).toBe("f");
+  });
+
+  it("M17: the saved live billing file applies twice without error (idempotent)", () => {
+    // Applied once in beforeAll; the trigger and policy statements re-run cleanly.
+    expect(() => pg.sql(readFileSync(LIVE, "utf8"))).not.toThrow();
+    expect(
+      pg.sql(`select count(*) from pg_trigger where tgname in ('messages_billing_debit','ai_runs_billing_debit','coupons_super_admin_audit')`),
+    ).toBe("3");
   });
 
   // ------------------------------------------------------------------ H3
@@ -498,7 +544,6 @@ describe("C1: the sweep retries failed debits and tells the admins once a day", 
   });
 
   it("the alert kind is mapped to the approved admin_ai_provider_alert template", async () => {
-    const { readFileSync } = await import("node:fs");
     const src = readFileSync(join(import.meta.dirname, "billing-notify.server.ts"), "utf8");
     expect(src).toContain('"admin:billing_debit_alert": "admin_ai_provider_alert"');
     expect(src).toMatch(/case "billing_debit_alert":\s*\n\s*return \[/);
