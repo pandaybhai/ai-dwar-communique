@@ -332,13 +332,26 @@ describe("Automations → Flows templates", () => {
     // Every older template is still there, unchanged in order.
     expect(STARTERS.slice(4).map((s) => s.key)).toEqual(["welcome_menu", "lead_qualification", "appointment", "order_status", "feedback"]);
   });
+  // The simulator answers Business hours from the clock: pin it, so the away
+  // message runs while Los Angeles is closed (Sunday 05:00 PDT) on any day the
+  // suite runs, and stays silent while it is open (Wednesday 11:00 PDT).
+  const LA_CLOSED = new Date("2026-10-11T12:00:00Z");
+  const LA_OPEN = new Date("2026-10-14T18:00:00Z");
+  afterEach(() => vi.useRealTimers());
   it.each(["welcome_message", "keyword_reply", "away_message"])("%s validates clean and sends one message", (key) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: LA_CLOSED });
     const g = STARTERS.find((s) => s.key === key)!.graph();
     expect(validateGraph(g)).toEqual([]);
     const s = simStart(g, "Asha", { timezone: key === "away_message" ? "America/Los_Angeles" : "Asia/Kolkata" });
     expect(s.done).toBe(true);
     expect(s.messages.filter((m) => m.kind === "text")).toHaveLength(1);
     expect(g.nodes.filter((n) => n.type === "text")).toHaveLength(1);
+  });
+  it("away_message sends nothing while the workspace is open", () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: LA_OPEN });
+    const s = simStart(STARTERS.find((s) => s.key === "away_message")!.graph(), "Asha", { timezone: "America/Los_Angeles" });
+    expect(s.done).toBe(true);
+    expect(s.messages.filter((m) => m.kind === "text")).toHaveLength(0);
   });
   it("the Automations menu hides only for a workspace known to have none", () => {
     expect(automationsNavHidden(0)).toBe(true);

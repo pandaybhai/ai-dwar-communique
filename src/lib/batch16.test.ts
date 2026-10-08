@@ -54,11 +54,14 @@ vi.mock("@/lib/ai-tools.server", async (importOriginal) => {
   };
 });
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env["LOVABLE_API_KEY"] = "test-key";
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
-});
+  // Load Aiden once, outside any test's 5 s: on a busy machine the cold import
+  // alone timed the first replay out, and its late sends spilled into the next.
+  await import("./ai-agent.server");
+}, 120_000);
 afterEach(() => vi.unstubAllGlobals());
 
 async function replay(c: Case, gate?: Record<string, unknown>): Promise<{ r: Replay; outcome: Record<string, unknown> }> {

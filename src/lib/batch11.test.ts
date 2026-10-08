@@ -185,6 +185,13 @@ describe("(1) AI backup card", () => {
 // ------------------------------------------------------------------ (2)
 describe("(2) card usage alarm", () => {
   const ORG = "org-cards";
+  // Mid-month, so "10 minutes later" is always the same month (the alarm's
+  // month is UTC): the real clock failed this in each month's last 10 minutes.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-15T09:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
   const world = (runs: number[], alreadyAlerted = false) =>
     fakeDb((op) => {
       if (op.table === "ai_usage") return { data: runs.map((r) => ({ runs: r })), error: null };

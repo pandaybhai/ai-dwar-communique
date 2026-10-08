@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryDb } from "./test-support/campaign-memory-db";
 import {
   DISPATCH_DEFAULTS,
@@ -27,6 +27,7 @@ import { campaignCallbackData, parseCampaignCallbackData } from "./campaign-call
  */
 
 import { meta, world, type Row } from "./test-support/campaign-world";
+import { inVirtualTime } from "./test-support/virtual-time";
 
 const now = () => new Date().toISOString();
 
@@ -48,6 +49,20 @@ const recipientOfTag = (tag: string) => parseCampaignCallbackData(tag)?.recipien
 
 beforeEach(() => resetDispatchCaches());
 afterEach(() => vi.useRealTimers());
+
+// The sender loads these on first use. Load them before any run's budget
+// starts, so a cold import on a busy machine never eats the time budget.
+beforeAll(async () => {
+  await Promise.all([
+    import("./whatsapp-api.server"),
+    import("./campaign-billing.server"),
+    import("./templates"),
+    import("./customer-cards.server"),
+    import("./opt-out.server"),
+    import("./campaigns.server"),
+    import("./phone"),
+  ]);
+}, 120_000);
 
 // ----------------------------------------------------------------- pure parts
 
@@ -216,7 +231,11 @@ describe("sending: each recipient at most once, recorded like before", () => {
   it("sends every recipient once; message rows, recipients, events, meters and counters are written; completes once", async () => {
     const { db, campaigns } = world({ campaigns: [{ recipients: 40 }] });
     const g = meta();
-    const report = await runCampaignDispatch(db.client, cfg(), { postMessage: g.postMessage });
+    // On the virtual clock: the 3 s budget counts the run's own waits, never
+    // how busy the machine is (under CPU load this sent 0 of 40).
+    const report = await inVirtualTime(() =>
+      runCampaignDispatch(db.client, cfg(), { postMessage: g.postMessage }),
+    );
     const c = campaigns[0]!;
     expect(g.sends).toHaveLength(40);
     expect(new Set(g.sends.map((s) => s.tag)).size).toBe(40);
