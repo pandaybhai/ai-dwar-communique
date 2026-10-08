@@ -19,8 +19,11 @@ export const Route = createFileRoute("/sitemap.xml")({
           { path: "/privacy", changefreq: "yearly", priority: "0.3" },
           { path: "/terms", changefreq: "yearly", priority: "0.3" },
           { path: "/data-deletion", changefreq: "yearly", priority: "0.3" },
-          { path: "/login", changefreq: "monthly", priority: "0.4" },
-          { path: "/signup", changefreq: "monthly", priority: "0.5" },
+          { path: "/demo", changefreq: "monthly", priority: "0.8" },
+          { path: "/whatsapp-ai-employee", changefreq: "monthly", priority: "0.8" },
+          { path: "/whatsapp-marketing", changefreq: "monthly", priority: "0.8" },
+          { path: "/whatsapp-ai-chatbot-for-shopify", changefreq: "monthly", priority: "0.8" },
+          { path: "/faq", changefreq: "monthly", priority: "0.8" },
         ];
 
         const urls = entries.map((e) =>

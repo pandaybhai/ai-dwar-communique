@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "@/components/marketing/reveal";
 
-const TITLE = "Pricing — AiDwar WhatsApp marketing plans";
+const TITLE = "AiDwar Pricing | WhatsApp AI Employee & Marketing Plans";
 const DESCRIPTION =
   "Simple monthly plans for WhatsApp marketing in India. Pay for the platform, top up message credits as you go. GST invoices on every payment.";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
+    links: [{ rel: "canonical", href: "https://aidwar.in/pricing" }],
     meta: [
       { title: TITLE },
       { name: "description", content: DESCRIPTION },
@@ -73,7 +74,6 @@ function PricingPage() {
   const failed = !loaded.ok || loaded.plans.length === 0;
   const [annual, setAnnual] = useState(false);
 
-
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader />
@@ -88,7 +88,7 @@ function PricingPage() {
             </p>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
               One monthly plan for the platform. Message credits are topped up separately and
-              charged at cost plus a small margin — you always see the per-message rate before you
+              charged at the rate shown in your billing page — check the applicable rate before you
               send.
             </p>
 
@@ -219,10 +219,9 @@ function PricingPage() {
             <h2 className="font-heading text-2xl font-bold">How message credits work</h2>
             <div className="mt-6 space-y-5 text-sm leading-relaxed text-muted-foreground">
               <p>
-                Meta charges per conversation, and the rate depends on what you're sending —
-                promotions, order updates or one-time passcodes. We pass that through with a clear
-                margin, show you the exact rate in your billing page before you send, and never
-                bill you for replies inside the 24-hour service window.
+                Messaging charges depend on the applicable message category and rates —
+                including marketing, utility and authentication. Check the rate shown in your
+                billing page before sending. Message credits are separate from your platform plan.
               </p>
               <p>
                 Credits are prepaid: top up whenever you like, and every campaign tells you what it

@@ -26,9 +26,9 @@ import { DemoForm } from "@/components/marketing/demo-form";
 import { trackMarketing } from "@/lib/marketing-analytics";
 import { getPublicPlans } from "@/lib/public-plans.functions";
 
-const TITLE = "AiDwar — Your AI employee inside WhatsApp";
+const TITLE = "AiDwar | Your AI employee in your WhatsApp";
 const DESCRIPTION =
-  "AiDwar understands your business, replies to customers on WhatsApp, and asks for your approval when needed. Book a personalised demo.";
+  "Your AI employee in your WhatsApp. Answer customer questions, run campaigns and automate follow-ups with AiDwar on the official WhatsApp Business Platform.";
 
 export const Route = createFileRoute("/")({
   loader: () => getPublicPlans(),
@@ -84,7 +84,10 @@ const CAPABILITIES = [
   },
 ];
 
-const AUDIENCE_BENEFITS: Record<ProofAudience, { icon: typeof Store; title: string; points: string[] }> = {
+const AUDIENCE_BENEFITS: Record<
+  ProofAudience,
+  { icon: typeof Store; title: string; points: string[] }
+> = {
   retail: {
     icon: Store,
     title: "Retail & D2C",
@@ -203,12 +206,13 @@ function Index() {
               <h1 className="mt-7 max-w-2xl text-[2.75rem] font-extrabold leading-[1.03] tracking-tight text-foreground sm:text-[3.75rem]">
                 Your AI employee.{" "}
                 <span className="bg-gradient-to-r from-primary to-teal-500 bg-clip-text text-transparent">
-                  Inside every customer chat.
+                  In your WhatsApp.
                 </span>
               </h1>
               <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                It reads your website and catalogue, answers customers in their own language within
-                seconds, and brings you in the moment it is unsure. Nights, Sundays, festival rush.
+                An AI employee and WhatsApp marketing platform for your business. Answer customer
+                questions using your website and catalogue, run campaigns, automate follow-ups, and
+                manage conversations with your team.
               </p>
 
               <ul className="mt-7 grid gap-2.5 text-sm text-foreground sm:grid-cols-2">
@@ -228,11 +232,17 @@ function Index() {
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Button
                   size="lg"
-                  onClick={() => scrollToId("demo")}
+                  asChild
                   className="w-full rounded-full bg-gradient-to-r from-primary to-teal-500 px-8 shadow-lg shadow-primary/25 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.99] motion-reduce:transform-none sm:w-auto"
                 >
-                  Book a personalised demo
-                  <ArrowRight className="size-4" />
+                  <Link
+                    to="/signup"
+                    onClick={() =>
+                      trackMarketing("signup_link_clicked", { placement: "hero_primary" })
+                    }
+                  >
+                    Start free <ArrowRight className="size-4" />
+                  </Link>
                 </Button>
                 <button
                   type="button"
@@ -244,13 +254,9 @@ function Index() {
               </div>
 
               <p className="mt-6 text-sm text-muted-foreground">
-                Rather try it yourself?{" "}
-                <Link
-                  to="/signup"
-                  className="font-medium text-primary underline underline-offset-4"
-                  onClick={() => trackMarketing("signup_link_clicked", { placement: "hero" })}
-                >
-                  Start free
+                Prefer a walkthrough?{" "}
+                <Link to="/demo" className="font-medium text-primary underline underline-offset-4">
+                  Book a personalised demo
                 </Link>{" "}
                 ·{" "}
                 <Link to="/pricing" className="underline underline-offset-4 hover:text-foreground">
@@ -267,6 +273,53 @@ function Index() {
                 <HeroExample onSeeMore={() => scrollToId("proof")} />
               </div>
             </Reveal>
+          </div>
+        </section>
+
+        <section className="border-t border-border bg-secondary/25">
+          <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8">
+            <h2 className="text-3xl font-bold tracking-tight">
+              Customer replies and WhatsApp marketing, together
+            </h2>
+            <div className="mt-8 grid gap-6 md:grid-cols-3">
+              {[
+                {
+                  href: "/whatsapp-ai-employee",
+                  title: "Your WhatsApp AI employee",
+                  text: "Learn from your business information, draft or send replies, and bring your team in for owner review.",
+                },
+                {
+                  href: "/whatsapp-marketing",
+                  title: "WhatsApp marketing",
+                  text: "Run campaigns with approved templates, organise customer segments, and build automated follow-ups.",
+                },
+                {
+                  href: "/whatsapp-ai-chatbot-for-shopify",
+                  title: "Built for Shopify conversations",
+                  text: "Connect your catalogue, support product enquiries and manage commerce follow-ups. Shopify sync is included from Growth.",
+                },
+              ].map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className="rounded-2xl border border-border bg-card p-6 transition-colors hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  <h3 className="text-xl font-semibold">{item.title}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{item.text}</p>
+                  <span className="mt-5 inline-block text-sm font-semibold text-primary">
+                    Explore features →
+                  </span>
+                </a>
+              ))}
+            </div>
+            <p className="mt-6 text-sm text-muted-foreground">
+              Starter includes AI drafts for review. Growth adds automatic AI replies and Shopify
+              sync.{" "}
+              <Link to="/pricing" className="underline underline-offset-4">
+                Compare plans and usage limits
+              </Link>
+              .
+            </p>
           </div>
         </section>
 
@@ -362,7 +415,9 @@ function Index() {
                     </span>
                     <div>
                       <h3 className="text-base font-semibold">{s.title}</h3>
-                      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{s.body}</p>
+                      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                        {s.body}
+                      </p>
                     </div>
                   </li>
                 </Reveal>
@@ -455,7 +510,11 @@ function PlansStrip() {
   const { plans } = Route.useLoaderData();
   if (!plans.length) return null;
   const inr = (v: number) =>
-    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }).format(v);
   return (
     <section className="border-t border-border">
       <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
@@ -465,7 +524,10 @@ function PlansStrip() {
         </p>
         <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {plans.map((plan) => (
-            <li key={plan.key} className="rounded-2xl border border-border bg-background p-6 transition-shadow duration-200 hover:shadow-md">
+            <li
+              key={plan.key}
+              className="rounded-2xl border border-border bg-background p-6 transition-shadow duration-200 hover:shadow-md"
+            >
               <h3 className="font-heading text-lg font-bold">{plan.name}</h3>
               <p className="mt-2 font-heading text-2xl font-bold">
                 {plan.price_monthly ? (
@@ -477,11 +539,16 @@ function PlansStrip() {
                   "Let's talk"
                 )}
               </p>
-              {plan.tagline ? <p className="mt-2 text-sm text-muted-foreground">{plan.tagline}</p> : null}
+              {plan.tagline ? (
+                <p className="mt-2 text-sm text-muted-foreground">{plan.tagline}</p>
+              ) : null}
             </li>
           ))}
         </ul>
-        <Link to="/pricing" className="mt-8 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+        <Link
+          to="/pricing"
+          className="mt-8 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+        >
           Compare every plan <ArrowRight className="h-4 w-4" />
         </Link>
       </div>

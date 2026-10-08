@@ -14,12 +14,16 @@ import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as DataDeletionRouteImport } from './routes/data-deletion'
 import { Route as DemoRouteImport } from './routes/demo'
+import { Route as FaqRouteImport } from './routes/faq'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as WhatsappAiChatbotForShopifyRouteImport } from './routes/whatsapp-ai-chatbot-for-shopify'
+import { Route as WhatsappAiEmployeeRouteImport } from './routes/whatsapp-ai-employee'
+import { Route as WhatsappMarketingRouteImport } from './routes/whatsapp-marketing'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminActivityRouteImport } from './routes/admin/activity'
 import { Route as AdminAiRouteImport } from './routes/admin/ai'
@@ -154,6 +158,11 @@ const DemoRoute = DemoRouteImport.update({
   path: '/demo',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FaqRoute = FaqRouteImport.update({
+  id: '/faq',
+  path: '/faq',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -182,6 +191,22 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WhatsappAiChatbotForShopifyRoute =
+  WhatsappAiChatbotForShopifyRouteImport.update({
+    id: '/whatsapp-ai-chatbot-for-shopify',
+    path: '/whatsapp-ai-chatbot-for-shopify',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const WhatsappAiEmployeeRoute = WhatsappAiEmployeeRouteImport.update({
+  id: '/whatsapp-ai-employee',
+  path: '/whatsapp-ai-employee',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WhatsappMarketingRoute = WhatsappMarketingRouteImport.update({
+  id: '/whatsapp-marketing',
+  path: '/whatsapp-marketing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -755,12 +780,16 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRouteRouteWithChildren
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
+  '/faq': typeof FaqRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/whatsapp-ai-chatbot-for-shopify': typeof WhatsappAiChatbotForShopifyRoute
+  '/whatsapp-ai-employee': typeof WhatsappAiEmployeeRoute
+  '/whatsapp-marketing': typeof WhatsappMarketingRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/aiden': typeof AdminAidenRoute
@@ -874,12 +903,16 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
+  '/faq': typeof FaqRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/whatsapp-ai-chatbot-for-shopify': typeof WhatsappAiChatbotForShopifyRoute
+  '/whatsapp-ai-employee': typeof WhatsappAiEmployeeRoute
+  '/whatsapp-marketing': typeof WhatsappMarketingRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/aiden': typeof AdminAidenRoute
@@ -996,12 +1029,16 @@ export interface FileRoutesById {
   '/app': typeof AppRouteRouteWithChildren
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
+  '/faq': typeof FaqRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/whatsapp-ai-chatbot-for-shopify': typeof WhatsappAiChatbotForShopifyRoute
+  '/whatsapp-ai-employee': typeof WhatsappAiEmployeeRoute
+  '/whatsapp-marketing': typeof WhatsappMarketingRoute
   '/admin/activity': typeof AdminActivityRoute
   '/admin/ai': typeof AdminAiRoute
   '/admin/aiden': typeof AdminAidenRoute
@@ -1119,12 +1156,16 @@ export interface FileRouteTypes {
     | '/app'
     | '/data-deletion'
     | '/demo'
+    | '/faq'
     | '/login'
     | '/pricing'
     | '/privacy'
     | '/signup'
     | '/sitemap.xml'
     | '/terms'
+    | '/whatsapp-ai-chatbot-for-shopify'
+    | '/whatsapp-ai-employee'
+    | '/whatsapp-marketing'
     | '/admin/activity'
     | '/admin/ai'
     | '/admin/aiden'
@@ -1238,12 +1279,16 @@ export interface FileRouteTypes {
     | '/'
     | '/data-deletion'
     | '/demo'
+    | '/faq'
     | '/login'
     | '/pricing'
     | '/privacy'
     | '/signup'
     | '/sitemap.xml'
     | '/terms'
+    | '/whatsapp-ai-chatbot-for-shopify'
+    | '/whatsapp-ai-employee'
+    | '/whatsapp-marketing'
     | '/admin/activity'
     | '/admin/ai'
     | '/admin/aiden'
@@ -1359,12 +1404,16 @@ export interface FileRouteTypes {
     | '/app'
     | '/data-deletion'
     | '/demo'
+    | '/faq'
     | '/login'
     | '/pricing'
     | '/privacy'
     | '/signup'
     | '/sitemap.xml'
     | '/terms'
+    | '/whatsapp-ai-chatbot-for-shopify'
+    | '/whatsapp-ai-employee'
+    | '/whatsapp-marketing'
     | '/admin/activity'
     | '/admin/ai'
     | '/admin/aiden'
@@ -1481,12 +1530,16 @@ export interface RootRouteChildren {
   AppRouteRoute: typeof AppRouteRouteWithChildren
   DataDeletionRoute: typeof DataDeletionRoute
   DemoRoute: typeof DemoRoute
+  FaqRoute: typeof FaqRoute
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   SignupRoute: typeof SignupRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  WhatsappAiChatbotForShopifyRoute: typeof WhatsappAiChatbotForShopifyRoute
+  WhatsappAiEmployeeRoute: typeof WhatsappAiEmployeeRoute
+  WhatsappMarketingRoute: typeof WhatsappMarketingRoute
   ApiCardsRoute: typeof ApiCardsRoute
   ApiEventsRoute: typeof ApiEventsRoute
   ApiFormsRoute: typeof ApiFormsRoute
@@ -1605,6 +1658,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/faq': {
+      id: '/faq'
+      path: '/faq'
+      fullPath: '/faq'
+      preLoaderRoute: typeof FaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -1645,6 +1705,27 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/whatsapp-ai-chatbot-for-shopify': {
+      id: '/whatsapp-ai-chatbot-for-shopify'
+      path: '/whatsapp-ai-chatbot-for-shopify'
+      fullPath: '/whatsapp-ai-chatbot-for-shopify'
+      preLoaderRoute: typeof WhatsappAiChatbotForShopifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/whatsapp-ai-employee': {
+      id: '/whatsapp-ai-employee'
+      path: '/whatsapp-ai-employee'
+      fullPath: '/whatsapp-ai-employee'
+      preLoaderRoute: typeof WhatsappAiEmployeeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/whatsapp-marketing': {
+      id: '/whatsapp-marketing'
+      path: '/whatsapp-marketing'
+      fullPath: '/whatsapp-marketing'
+      preLoaderRoute: typeof WhatsappMarketingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -2490,12 +2571,16 @@ const rootRouteChildren: RootRouteChildren = {
   AppRouteRoute: AppRouteRouteWithChildren,
   DataDeletionRoute: DataDeletionRoute,
   DemoRoute: DemoRoute,
+  FaqRoute: FaqRoute,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   SignupRoute: SignupRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  WhatsappAiChatbotForShopifyRoute: WhatsappAiChatbotForShopifyRoute,
+  WhatsappAiEmployeeRoute: WhatsappAiEmployeeRoute,
+  WhatsappMarketingRoute: WhatsappMarketingRoute,
   ApiCardsRoute: ApiCardsRoute,
   ApiEventsRoute: ApiEventsRoute,
   ApiFormsRoute: ApiFormsRoute,

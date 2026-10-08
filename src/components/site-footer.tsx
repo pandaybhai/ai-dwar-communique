@@ -10,10 +10,22 @@ export function SiteFooter() {
               Ai<span className="text-primary">Dwar</span>
             </div>
             <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-              AI-powered marketing on the official WhatsApp Business Platform.
+              Your AI employee in your WhatsApp. Customer replies, campaigns and follow-ups on the
+              official WhatsApp Business Platform.
             </p>
           </div>
           <div className="flex flex-col gap-3 text-sm sm:items-end">
+            {[
+              ["/whatsapp-ai-employee", "AI employee"],
+              ["/whatsapp-marketing", "WhatsApp marketing"],
+              ["/whatsapp-ai-chatbot-for-shopify", "Shopify"],
+              ["/faq", "FAQs"],
+              ["/demo", "See a demo"],
+            ].map(([href, label]) => (
+              <a key={href} href={href} className="text-muted-foreground hover:text-foreground">
+                {label}
+              </a>
+            ))}
             <Link to="/pricing" className="text-muted-foreground hover:text-foreground">
               Pricing
             </Link>
