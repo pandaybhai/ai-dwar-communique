@@ -124,6 +124,9 @@ const TEMPLATE_FOR: Record<string, string> = {
   // A merchant's website moved, lost many pages or grew a shelf
   // (knowledge.server.ts raiseSiteAlert): same approved template.
   "admin:site_change_alert": "admin_ai_provider_alert",
+  // Sent messages whose debit still failed after a retry (billing-sweep
+  // retryFailedDebits, Batch 26a): same approved template.
+  "admin:billing_debit_alert": "admin_ai_provider_alert",
 };
 
 /**
@@ -484,6 +487,7 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
     case "ai_provider_alert":
     case "card_usage_alert":
     case "site_change_alert":
+    case "billing_debit_alert":
       return [
         String(payload["headline"] ?? "the AI provider is failing"),
         String(payload["detail"] ?? "Aiden replies may be failing"),

@@ -797,8 +797,29 @@ async function loadActiveCampaigns(
           // Reserve the credits before the first message leaves, then start.
           const { holdCampaign } = await import("@/lib/campaign-billing.server");
           const hold = await holdCampaign(supabase, orgId, campaignId);
+          if (!hold.ok && hold.code !== "insufficient_credits") {
+            // The reservation call itself failed: nothing is sent without
+            // one, and the next tick tries again.
+            report.campaigns.push({ campaign_id: campaignId, hold_error: hold.error ?? "hold_failed" });
+            return null;
+          }
           if (!hold.ok) {
-            await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
+            // The wallet can't cover it (Batch 26a): pause, and say why. The
+            // reason is its own write so a database without the column
+            // (20261065 not applied yet) still pauses.
+            await supabase
+              .from("campaigns")
+              .update({ status: "paused" })
+              .eq("id", campaignId)
+              .in("status", ["sending", "scheduled"]);
+            await supabase
+              .from("campaigns")
+              .update({ pause_reason: "insufficient_credits" })
+              .eq("id", campaignId)
+              .then(
+                () => null,
+                () => null,
+              );
             report.campaigns.push({ campaign_id: campaignId, paused: "insufficient_credits" });
             return null;
           }

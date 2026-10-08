@@ -34,12 +34,23 @@ async function loadCampaign(
   return (data as Campaign | null) ?? null;
 }
 
-/** Reserve the estimate once, at the moment the first batch goes out. */
+export type HoldResult = {
+  ok: boolean;
+  error?: string;
+  /** Set when the wallet refused the reservation (not a failed call). */
+  code?: "insufficient_credits" | "hold_failed";
+};
+
+/**
+ * Reserve the estimate once, at the moment the first batch goes out. The
+ * wallet refuses a reservation it can't cover (code "insufficient_credits"),
+ * so a campaign never starts sending on credits it doesn't have.
+ */
 export async function holdCampaign(
   supabase: SupabaseClient,
   organizationId: string,
   campaignId: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<HoldResult> {
   const { billingEnabled, holdCampaignSpend } = await import("@/lib/billing.server");
   if (!(await billingEnabled(supabase, organizationId))) return { ok: true };
 
@@ -70,7 +81,13 @@ export async function holdCampaign(
     amount: estimate,
     actorId: null,
   });
-  if ("error" in result) return { ok: false, error: result.error };
+  if ("error" in result) {
+    // A run overlapping this one may have held and recorded it meanwhile; its
+    // reservation is this campaign's, so ours being refused changes nothing.
+    const now = await loadCampaign(supabase, organizationId, campaignId);
+    if (Number(now?.held_amount ?? 0) > 0) return { ok: true };
+    return { ok: false, error: result.error, code: result.code };
+  }
 
   const claimed = await claimHold(supabase, organizationId, campaignId, estimate);
   if (claimed.ok && !claimed.won) {

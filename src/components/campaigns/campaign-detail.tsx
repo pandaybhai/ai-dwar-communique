@@ -234,6 +234,11 @@ export function CampaignDetail({
               {campaign.template_name} · {campaign.template_language} ·{" "}
               {campaign.total_recipients} recipients
             </p>
+            {campaign.status === "paused" && campaign.pause_reason === "insufficient_credits" && (
+              <p className="mt-1 text-sm text-destructive">
+                Paused: not enough credits to cover this campaign. Add credits, then resume.
+              </p>
+            )}
           </div>
 
           {isAdmin && (
