@@ -310,12 +310,24 @@ export function InvoicesTab() {
                           className="rounded-full"
                           title="Resend on WhatsApp"
                           disabled={busy === `send:${inv.id}` || !inv.invoice_number || inv.status === "void"}
-                          onClick={() =>
-                            void act(`send:${inv.id}`, { action: "resend_invoice", invoice_id: inv.id }, () => {
-                              toast.success("Invoice sent.");
-                              void load();
-                            })
-                          }
+                          onClick={() => {
+                            // A resend reaches the buyer again: ask first, every time.
+                            const sentBefore = inv.whatsapp_at ? ` It was already sent on ${day(inv.whatsapp_at)}.` : "";
+                            if (
+                              !window.confirm(
+                                `Send invoice ${inv.invoice_number ?? ""} to ${inv.organization_name ?? "this workspace"}'s billing WhatsApp now?${sentBefore}`,
+                              )
+                            )
+                              return;
+                            void act(
+                              `send:${inv.id}`,
+                              { action: "resend_invoice", invoice_id: inv.id, confirmed: true },
+                              () => {
+                                toast.success("Invoice sent.");
+                                void load();
+                              },
+                            );
+                          }}
                         >
                           {busy === `send:${inv.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                         </Button>

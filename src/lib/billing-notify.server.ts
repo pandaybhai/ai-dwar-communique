@@ -646,9 +646,13 @@ export async function drainBillingNotifications(
   // Dead rows (out of attempts, or failed by hand with no attempt count) are
   // left out in the query itself: filtered afterwards, 50 old dead rows
   // filled the whole window and nothing newer went out (28 Sep - 7 Oct).
+  // Only WhatsApp rows: email rows are sent by drainEmailNotices
+  // (email-notices.server.ts) and in-app rows are records, so neither may
+  // take a place in this batch.
   const { data: rows } = await supabase
     .from("billing_notifications")
     .select("id, organization_id, audience, kind, channel, recipient, payload, status, sent_at, created_at")
+    .eq("channel", "whatsapp")
     .or(
       `status.eq.queued,and(status.eq.failed,payload->>attempts.in.(${Array.from(
         { length: MAX_ATTEMPTS - 1 },
@@ -700,9 +704,8 @@ export async function drainBillingNotifications(
     try {
       const channel = String(row["channel"] ?? "whatsapp");
       if (channel !== "whatsapp") {
-        // Only WhatsApp rows ever touch the WhatsApp path. Email rows wait
-        // their turn (the email sender isn't built yet) and in-app rows are
-        // records, not messages — neither is a failure.
+        // The query reads WhatsApp rows only; should another ever come back,
+        // it is left untouched for its own sender, never sent from here.
         counts.skipped += 1;
         continue;
       }
@@ -715,6 +718,24 @@ export async function drainBillingNotifications(
       }
 
       const kind = String(row["kind"]);
+      if (kind === "invoice_issued" && (row["payload"] as Record<string, unknown> | null)?.["invoice_id"]) {
+        // The invoice as it stands now: already on the buyer's WhatsApp (a
+        // super admin's resend went first) → never a second copy; otherwise
+        // its PDF may have been filed after the notice was queued.
+        const payload = row["payload"] as Record<string, unknown>;
+        const { data: invoice } = await supabase
+          .from("invoices")
+          .select("pdf_path, sent")
+          .eq("id", String(payload["invoice_id"]))
+          .maybeSingle();
+        const inv = (invoice ?? {}) as Record<string, unknown>;
+        if (((inv["sent"] ?? {}) as Record<string, unknown>)["whatsapp_at"]) {
+          await mark(row, "skipped", "already_delivered");
+          counts.skipped += 1;
+          continue;
+        }
+        if (inv["pdf_path"]) row["payload"] = { ...payload, pdf_path: inv["pdf_path"] };
+      }
       const templateName = TEMPLATE_FOR[`${String(row["audience"])}:${kind}`];
       if (!templateName) {
         // Nothing to send over WhatsApp: it stays an in-app record. 'sent' is

@@ -1047,6 +1047,10 @@ export const FEATURES: readonly FeatureManifest[] = [
       "dunning_advanced",
       "dunning_cleared",
       "credit_note_issued",
+      // Batch 23: invoice actions by a super admin, with the actor.
+      "invoice_resent",
+      "invoice_pdf_regenerated",
+      "invoices_backfill_run",
       "billing_templates_created",
       "trial_expired",
       // A super admin moved trial_ends_at only (billing.server.ts extendTrial).

@@ -990,7 +990,7 @@ export async function settlePayment(
       payment_id: payment.id as string,
     });
     if (!("error" in built)) {
-      const issued = await issueInvoice(supabase, built.invoice_id);
+      const issued = await issueInvoice(supabase, built.invoice_id, { deliver: true });
       if (!("error" in issued)) {
         // The invoice is paid in full by the gross the customer actually paid.
         const gross = Number(priorRaw["gross"] ?? 0) || withGst(credits).total;
@@ -1146,6 +1146,39 @@ export async function requestTopup(
 export const STANDING_NOTICE_KINDS = new Set(["float_low", "low_credits"]);
 export const STANDING_NOTICE_REPEAT_MS = 864e5;
 
+/**
+ * An invoice reaches its buyer at most once per channel automatically: no
+ * invoice_issued notice is queued while one for the same invoice (payload
+ * invoice_id, else invoice_number) and channel is already queued or sent. A
+ * failed one does not hold it. Can't read → nothing queued: a super admin can
+ * resend, a buyer can't unreceive (Batch 23). The partial unique index in
+ * 20261060_invoice_notice_once.sql refuses a second queued row from a race.
+ */
+async function invoiceNoticeExists(
+  supabase: SupabaseClient,
+  input: { organizationId: string | null; channel: string; payload: Record<string, unknown> },
+): Promise<boolean> {
+  const invoiceId = input.payload["invoice_id"];
+  const invoiceNumber = input.payload["invoice_number"];
+  if (!invoiceId && !invoiceNumber) return false;
+  let query = supabase
+    .from("billing_notifications")
+    .select("id")
+    .eq("kind", "invoice_issued")
+    .eq("channel", input.channel)
+    .in("status", ["queued", "sent"]);
+  if (input.organizationId) query = query.eq("organization_id", input.organizationId);
+  query = invoiceId
+    ? query.eq("payload->>invoice_id", String(invoiceId))
+    : query.eq("payload->>invoice_number", String(invoiceNumber));
+  const { data, error } = await query.limit(1);
+  if (error) {
+    console.error("[billing] invoice notice guard failed", invoiceId ?? invoiceNumber, error.message);
+    return true;
+  }
+  return Boolean((data as { id: string }[] | null)?.length);
+}
+
 export async function notify(
   supabase: SupabaseClient,
   input: {
@@ -1170,6 +1203,17 @@ export async function notify(
         .limit(1);
       // Can't tell whether one is pending: a missed warning beats a pile.
       if (error || (recent as { id: string }[] | null)?.length) return;
+    }
+
+    if (
+      input.kind === "invoice_issued" &&
+      (await invoiceNoticeExists(supabase, {
+        organizationId: input.organizationId,
+        channel: input.channel ?? "whatsapp",
+        payload: input.payload,
+      }))
+    ) {
+      return;
     }
 
     await supabase.from("billing_notifications").insert({
