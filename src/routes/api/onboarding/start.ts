@@ -98,6 +98,17 @@ export const Route = createFileRoute("/api/onboarding/start")({
           const done = status !== null && !["pending", "bound", "expired"].includes(status);
           if (done) return Response.json({ show_setup: false, status });
 
+          // Batch 28: "Aiden isn't set up yet" only while nothing has been
+          // read — a workspace with knowledge or a read website is set up,
+          // whatever its onboarding session says (7 items + a read site
+          // still showed the card).
+          const { count: readSources } = await supabaseAdmin
+            .from("knowledge_sources")
+            .select("id", { count: "exact", head: true })
+            .eq("organization_id", auth.organizationId)
+            .or("item_count.gt.0,status.eq.ready");
+          if ((readSources ?? 0) > 0) return Response.json({ show_setup: false, status });
+
           const { data: agent } = await supabaseAdmin
             .from("ai_agents")
             .select("mode")

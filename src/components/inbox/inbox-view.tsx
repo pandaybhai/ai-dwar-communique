@@ -26,6 +26,7 @@ import {
   fillTemplateText,
   templateBodyOf,
   initials,
+  latestThreadMessages,
   previewText,
   relativeTime,
   type ConversationRow,
@@ -96,18 +97,8 @@ export function InboxView() {
   const [activeId, setActiveId] = useState<string | null>(null);
 
   // /app/inbox?c=<conversation id> opens that thread once it has loaded
-  // (Home's "Reply" links land here).
+  // (Home's "Reply" links land here) — see the effect after openConversation.
   const wantedIdRef = useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    if (wantedIdRef.current === undefined) {
-      wantedIdRef.current = new URLSearchParams(window.location.search).get("c");
-    }
-    const wanted = wantedIdRef.current;
-    if (wanted && conversations.some((c) => c.id === wanted)) {
-      setActiveId(wanted);
-      wantedIdRef.current = null;
-    }
-  }, [conversations]);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [threadLoading, setThreadLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -235,18 +226,18 @@ export function InboxView() {
     };
   }, [orgId, loadConversations]);
 
+  // Batch 28: the newest open wins. A slower earlier open (or the ?c= link
+  // resolving late) used to overwrite the chat just clicked — the "first
+  // click is ignored" after the list loads.
+  const openSeq = useRef(0);
   const openConversation = useCallback(async (id: string) => {
+    const seq = ++openSeq.current;
+    wantedIdRef.current = null; // a click beats the ?c= link
     setActiveId(id);
     setThreadLoading(true);
-    const { data } = await aidwar
-      .from("messages")
-      .select(
-        "id, conversation_id, direction, type, body, media_url, media_mime, template_name, status, error_detail, sent_by, detected_language, metadata, created_at",
-      )
-      .eq("conversation_id", id)
-      .order("created_at", { ascending: true })
-      .limit(500);
-    setMessages(await withTemplateText(orgId, (data ?? []) as unknown as MessageRow[]));
+    const rows = await withTemplateText(orgId, await latestThreadMessages(aidwar as never, id));
+    if (seq !== openSeq.current) return;
+    setMessages(rows);
     setThreadLoading(false);
 
     setConversations((prev) =>
@@ -254,6 +245,19 @@ export function InboxView() {
     );
     await aidwar.from("conversations").update({ unread_count: 0 }).eq("id", id);
   }, [orgId]);
+
+  // ?c=<id>: opened like a click (messages loaded) once the list has it —
+  // unless someone already clicked a chat.
+  useEffect(() => {
+    if (wantedIdRef.current === undefined) {
+      wantedIdRef.current = new URLSearchParams(window.location.search).get("c");
+    }
+    const wanted = wantedIdRef.current;
+    if (wanted && conversations.some((c) => c.id === wanted)) {
+      wantedIdRef.current = null;
+      if (activeIdRef.current === null) void openConversation(wanted);
+    }
+  }, [conversations, openConversation]);
 
   const numberById = useMemo(
     () => new Map(numbers.map((n) => [n.id, n])),
@@ -330,15 +334,8 @@ export function InboxView() {
   };
 
   const openRefresh = async (id: string) => {
-    const { data } = await aidwar
-      .from("messages")
-      .select(
-        "id, conversation_id, direction, type, body, media_url, media_mime, template_name, status, error_detail, sent_by, detected_language, metadata, created_at",
-      )
-      .eq("conversation_id", id)
-      .order("created_at", { ascending: true })
-      .limit(500);
-    setMessages(await withTemplateText(orgId, (data ?? []) as unknown as MessageRow[]));
+    const rows = await withTemplateText(orgId, await latestThreadMessages(aidwar as never, id));
+    if (activeIdRef.current === id) setMessages(rows);
   };
 
   const handleAssign = async (assignee: string | null) => {

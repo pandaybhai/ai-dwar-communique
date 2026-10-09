@@ -142,6 +142,16 @@ export const FLOW_COPY: Record<string, { title: string; promise: string; trigger
 };
 
 
+/**
+ * The step count under a store flow's switch. Batch 28: a flow that is off
+ * sends nothing, so its steps are "ready", never "switched on" (the card said
+ * "Nothing is switched on yet" and "2 of 2 messages switched on" together).
+ */
+export function flowStepsLabel(flowEnabled: boolean, enabledSteps: number, totalSteps: number): string {
+  if (!flowEnabled) return `${enabledSteps} ${enabledSteps === 1 ? "message" : "messages"} ready`;
+  return `${enabledSteps} of ${totalSteps} ${totalSteps === 1 ? "message" : "messages"} switched on`;
+}
+
 export function flowTitle(flow: Pick<FlowRow, "key" | "name">): string {
   return FLOW_COPY[flow.key]?.title ?? flow.name;
 }

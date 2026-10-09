@@ -418,9 +418,15 @@ export function ChatThread({
   }, [messages]);
   const [teaching, setTeaching] = useState<AiRunNote | null>(null);
 
+  // Batch 28: on the newest message whenever a chat opens or grows — also
+  // after its messages finish loading (the end marker only exists then), and
+  // when the new chat happens to have as many messages as the last one.
+  const lastMessageId = messages[messages.length - 1]?.id ?? null;
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, conversation.id]);
+    if (loading) return;
+    const frame = requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
+    return () => cancelAnimationFrame(frame);
+  }, [messages.length, lastMessageId, conversation.id, loading]);
 
   useEffect(() => {
     setSummary(null);

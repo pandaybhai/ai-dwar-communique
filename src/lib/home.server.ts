@@ -35,33 +35,6 @@ export type HomeSummary = {
   generated_at: string;
 };
 
-function startOfTodayIso(timezone: string): string {
-  // Midnight in the workspace's own timezone, expressed as an instant.
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
-  const localMidnightAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), 0, 0, 0);
-  const localNowAsUtc = Date.UTC(
-    get("year"),
-    get("month") - 1,
-    get("day"),
-    get("hour"),
-    get("minute"),
-    get("second"),
-  );
-  const offsetMs = now.getTime() - localNowAsUtc;
-  return new Date(localMidnightAsUtc + offsetMs).toISOString();
-}
-
 export async function getHomeSummary(
   supabase: SupabaseClient,
   organizationId: string,
@@ -78,7 +51,8 @@ export async function getHomeSummary(
     plan_version_id?: string | null;
   };
   const timezone = org.timezone || "Asia/Kolkata";
-  const since = startOfTodayIso(timezone);
+  const { localDayStartIso } = await import("@/lib/local-day");
+  const since = localDayStartIso(timezone);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const [
@@ -90,11 +64,16 @@ export async function getHomeSummary(
     pending,
     learnedRows,
   ] = await Promise.all([
+    // Batch 28: conversations with a customer message today, counted from
+    // the messages themselves (what Analytics counts) — last_customer_
+    // message_at isn't moved by every path that stores a customer message,
+    // and Home said 0 with a customer message in today.
     supabase
       .from("conversations")
-      .select("id", { count: "exact", head: true })
+      .select("id, messages!inner(id)", { count: "exact", head: true })
       .eq("organization_id", organizationId)
-      .gte("last_customer_message_at", since),
+      .eq("messages.direction", "inbound")
+      .gte("messages.created_at", since),
     supabase
       .from("ai_runs")
       .select("id", { count: "exact", head: true })
