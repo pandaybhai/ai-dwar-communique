@@ -13,20 +13,37 @@ import { fakeDb, type FakeOp } from "./test-support/fake-db";
  *   (c) a day-one read of a Play Store link reads only that app's page.
  */
 
-type Run = { organization_id: string; task: string; status: string; metadata: Record<string, unknown>; output: string };
+type Run = {
+  organization_id: string;
+  task: string;
+  status: string;
+  metadata: Record<string, unknown>;
+  output: string;
+};
 const h = vi.hoisted(() => ({ runs: [] as Array<Record<string, unknown>>, output: "" }));
 vi.mock("@/lib/ai-run.server", async (orig) => ({
   ...(await orig<typeof import("@/lib/ai-run.server")>()),
   executeRun: vi.fn(async (_db: unknown, opts: Record<string, unknown>) => {
     h.runs.push(opts);
-    return { output: h.output, costAmount: 0.7, inputTokens: 1000, outputTokens: 100, status: "ok" };
+    return {
+      output: h.output,
+      costAmount: 0.7,
+      inputTokens: 1000,
+      outputTokens: 100,
+      status: "ok",
+    };
   }),
   embedTexts: vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2])),
   meterAiUsage: vi.fn(async () => {}),
 }));
 
 import { savePage } from "./knowledge.server";
-import { BACKGROUND_AI_DAILY_CAP_DEFAULT, BACKGROUND_AI_TASKS, backgroundAiCapReached, loadBackgroundAiDailyCap } from "./reading.server";
+import {
+  BACKGROUND_AI_DAILY_CAP_DEFAULT,
+  BACKGROUND_AI_TASKS,
+  backgroundAiCapReached,
+  loadBackgroundAiDailyCap,
+} from "./reading.server";
 import { canonicalPageUrl, pageInScope } from "./site-urls";
 
 afterEach(() => {
@@ -35,7 +52,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const FACTS = "Fact: the shop ships across India in 3–5 days and takes returns within 7 days of delivery. ".repeat(2);
+const FACTS =
+  "Fact: the shop ships across India in 3–5 days and takes returns within 7 days of delivery. ".repeat(
+    2,
+  );
 const LONG = "We are a family business in Jaipur making silver jewellery since 1998. ".repeat(40);
 
 /**
@@ -43,19 +63,40 @@ const LONG = "We are a family business in Jaipur making silver jewellery since 1
  * is written to ai_runs as the real one would (task, status ok, metadata,
  * output). `todayRuns` = background runs already counted today.
  */
-function world(opts: { todayRuns?: number; cap?: number | null; capError?: boolean; capLoggedToday?: boolean } = {}) {
+function world(
+  opts: {
+    todayRuns?: number;
+    cap?: number | null;
+    capError?: boolean;
+    capLoggedToday?: boolean;
+  } = {},
+) {
   const docs: Array<Record<string, unknown>> = [];
   const aiRuns: Run[] = [];
   const logs: string[] = [];
-  const eqv = (op: FakeOp, col: string) => op.filters.find(([n, a]) => n === "eq" && a[0] === col)?.[1][1];
+  const eqv = (op: FakeOp, col: string) =>
+    op.filters.find(([n, a]) => n === "eq" && a[0] === col)?.[1][1];
   const db = fakeDb((op) => {
     if (op.table === "platform_settings") {
       if (opts.capError && String(op.select?.[0] ?? "").includes("background_ai_daily_cap"))
-        return { data: null, error: { code: "42703", message: "column platform_settings.background_ai_daily_cap does not exist" } };
-      return { data: opts.cap === undefined || opts.cap === null ? null : { background_ai_daily_cap: opts.cap, reading_ai_daily_cap: 0 }, error: null };
+        return {
+          data: null,
+          error: {
+            code: "42703",
+            message: "column platform_settings.background_ai_daily_cap does not exist",
+          },
+        };
+      return {
+        data:
+          opts.cap === undefined || opts.cap === null
+            ? null
+            : { background_ai_daily_cap: opts.cap, reading_ai_daily_cap: 0 },
+        error: null,
+      };
     }
     if (op.table === "ai_usage") return { data: [], error: null };
-    if (op.table === "activity_log" && op.kind === "select") return { data: opts.capLoggedToday ? [{ id: "a1" }] : [], error: null };
+    if (op.table === "activity_log" && op.kind === "select")
+      return { data: opts.capLoggedToday ? [{ id: "a1" }] : [], error: null };
     if (op.table === "activity_log" && op.kind === "insert") {
       logs.push(String((op.payload as Record<string, unknown>)["action"]));
       return { data: null, error: null };
@@ -63,15 +104,32 @@ function world(opts: { todayRuns?: number; cap?: number | null; capError?: boole
     if (op.table === "ai_runs") {
       if (op.select?.[1]) return { data: null, error: null, count: opts.todayRuns ?? 0 };
       const hash = eqv(op, "metadata->>page_hash");
-      const hit = aiRuns.find((r) => r.organization_id === eqv(op, "organization_id") && r.task === eqv(op, "task") && r.status === "ok" && r.metadata["page_hash"] === hash);
+      const hit = aiRuns.find(
+        (r) =>
+          r.organization_id === eqv(op, "organization_id") &&
+          r.task === eqv(op, "task") &&
+          r.status === "ok" &&
+          r.metadata["page_hash"] === hash,
+      );
       return { data: hit ? { output: hit.output } : null, error: null };
     }
     if (op.table === "knowledge_documents") {
       if (op.kind === "select") {
-        const contains = op.filters.find(([n]) => n === "contains")?.[1][1] as Record<string, unknown> | undefined;
+        const contains = op.filters.find(([n]) => n === "contains")?.[1][1] as
+          Record<string, unknown> | undefined;
         const hit = contains
-          ? docs.find((d) => d["source_id"] === eqv(op, "source_id") && Object.entries(contains).every(([k, v]) => (d["metadata"] as Record<string, unknown>)[k] === v))
-          : docs.find((d) => d["source_ref"] === eqv(op, "source_ref") && d["source_id"] === eqv(op, "source_id"));
+          ? docs.find(
+              (d) =>
+                d["source_id"] === eqv(op, "source_id") &&
+                Object.entries(contains).every(
+                  ([k, v]) => (d["metadata"] as Record<string, unknown>)[k] === v,
+                ),
+            )
+          : docs.find(
+              (d) =>
+                d["source_ref"] === eqv(op, "source_ref") &&
+                d["source_id"] === eqv(op, "source_id"),
+            );
         return { data: hit ?? null, error: null };
       }
       if (op.kind === "insert") {
@@ -89,11 +147,35 @@ function world(opts: { todayRuns?: number; cap?: number | null; capError?: boole
   const save = async (url: string, text: string, sourceId = "src-1") => {
     const before = h.runs.length;
     const out = await savePage(
-      { supabase: db.supabase as never, organizationId: "org", sourceId, origin: "https://shop.example", platform: null, readVia: "own", facts: true, factsOnProductPages: false } as never,
+      {
+        supabase: db.supabase as never,
+        organizationId: "org",
+        sourceId,
+        origin: "https://shop.example",
+        platform: null,
+        readVia: "own",
+        facts: true,
+        factsOnProductPages: false,
+      } as never,
       url,
-      { title: "About", text, html: `<html><body><p>${text}</p></body></html>`, links: [], usedReader: false, status: 200, contentType: "text/html" } as never,
+      {
+        title: "About",
+        text,
+        html: `<html><body><p>${text}</p></body></html>`,
+        links: [],
+        usedReader: false,
+        status: 200,
+        contentType: "text/html",
+      } as never,
     );
-    for (const r of h.runs.slice(before)) aiRuns.push({ organization_id: "org", task: "extract_facts", status: "ok", metadata: r["metadata"] as Record<string, unknown>, output: h.output });
+    for (const r of h.runs.slice(before))
+      aiRuns.push({
+        organization_id: "org",
+        task: "extract_facts",
+        status: "ok",
+        metadata: r["metadata"] as Record<string, unknown>,
+        output: h.output,
+      });
     return out;
   };
   return { db, docs, aiRuns, logs, save };
@@ -105,7 +187,10 @@ describe("item 2a — facts once per page text, DB-backed", () => {
     const w = world();
     await w.save("https://shop.example/about", LONG);
     expect(h.runs).toHaveLength(1);
-    expect(h.runs[0]!["metadata"]).toMatchObject({ purpose: "knowledge_facts", page_hash: expect.any(String) });
+    expect(h.runs[0]!["metadata"]).toMatchObject({
+      purpose: "knowledge_facts",
+      page_hash: expect.any(String),
+    });
   });
 
   it("facts too short to keep: the same text is never sent again (this is what re-ran ~12x a text)", async () => {
@@ -122,7 +207,11 @@ describe("item 2a — facts once per page text, DB-backed", () => {
     const again = await w.save("https://shop.example/about", LONG, "src-2");
     expect(h.runs).toHaveLength(1);
     expect(again.cost).toBe(0);
-    expect(String(w.docs.find((d) => d["source_id"] === "src-2")!["content"]).startsWith("Fact: the shop ships")).toBe(true);
+    expect(
+      String(w.docs.find((d) => d["source_id"] === "src-2")!["content"]).startsWith(
+        "Fact: the shop ships",
+      ),
+    ).toBe(true);
   });
 
   it("changed text still gets facts", async () => {
@@ -166,12 +255,22 @@ describe("item 2b — daily cap on background AI runs", () => {
     expect(await loadBackgroundAiDailyCap(world().db.supabase)).toBe(300);
     expect(await loadBackgroundAiDailyCap(world({ capError: true }).db.supabase)).toBe(300);
     expect(await loadBackgroundAiDailyCap(world({ cap: 25 }).db.supabase)).toBe(25);
-    expect(await backgroundAiCapReached(world({ cap: 0, todayRuns: 10_000 }).db.supabase, "org-off")).toBe(false);
+    expect(
+      await backgroundAiCapReached(world({ cap: 0, todayRuns: 10_000 }).db.supabase, "org-off"),
+    ).toBe(false);
   });
 
   it("migration: the setting column (default 300) and the page-hash index, idempotent", () => {
-    const sql = readFileSync(new URL("../../supabase/aidwar-migrations/20261081_batch28_background_ai_cap.sql", import.meta.url), "utf8");
-    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS background_ai_daily_cap integer NOT NULL DEFAULT 300/);
+    const sql = readFileSync(
+      new URL(
+        "../../supabase/aidwar-migrations/20261081_batch28_background_ai_cap.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(sql).toMatch(
+      /ADD COLUMN IF NOT EXISTS background_ai_daily_cap integer NOT NULL DEFAULT 300/,
+    );
     expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS ai_runs_facts_page_hash_idx/);
   });
 });
@@ -200,15 +299,41 @@ describe("item 2c — a day-one read stays on the merchant's own page", () => {
 
   it("a day-one read of a deep path keeps to that path; the site root and a full read reach the whole site", () => {
     const seller = "https://market.example/sellers/meezoy";
-    expect(pageInScope("https://market.example/sellers/meezoy/about", { home: seller, onePage: false, shallow: true })).toBe(true);
-    expect(pageInScope("https://market.example/sellers/someone-else", { home: seller, onePage: false, shallow: true })).toBe(false);
-    expect(pageInScope("https://shop.example/about", { home: "https://shop.example/", onePage: false, shallow: true })).toBe(true);
-    expect(pageInScope("https://market.example/sellers/someone-else", { home: seller, onePage: false, shallow: false })).toBe(true);
+    expect(
+      pageInScope("https://market.example/sellers/meezoy/about", {
+        home: seller,
+        onePage: false,
+        shallow: true,
+      }),
+    ).toBe(true);
+    expect(
+      pageInScope("https://market.example/sellers/someone-else", {
+        home: seller,
+        onePage: false,
+        shallow: true,
+      }),
+    ).toBe(false);
+    expect(
+      pageInScope("https://shop.example/about", {
+        home: "https://shop.example/",
+        onePage: false,
+        shallow: true,
+      }),
+    ).toBe(true);
+    expect(
+      pageInScope("https://market.example/sellers/someone-else", {
+        home: seller,
+        onePage: false,
+        shallow: false,
+      }),
+    ).toBe(true);
   });
 
   it("the reader applies it to every address it considers, and a listing host is one page whatever the stored config says", () => {
     const src = readFileSync(new URL("./knowledge.server.ts", import.meta.url), "utf8");
     expect(src).toMatch(/if \(!pageInScope\(url, scope\)\) return;/);
-    expect(src).toMatch(/const singlePage = config\["single_page"\] === true \|\| listingLabel\(String\(config\["url"\] \?\? ""\)\) !== null;/);
+    expect(src).toMatch(
+      /const singlePage = config\["single_page"\] === true \|\| listingLabel\(String\(config\["url"\] \?\? ""\)\) !== null;/,
+    );
   });
 });

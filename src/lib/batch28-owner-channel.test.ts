@@ -27,11 +27,19 @@ vi.mock("@/lib/owner-replies.server", () => ({
   openPendingReplies: async () => [],
 }));
 vi.mock("@/lib/service-text.server", () => {
-  const send = async (_s: unknown, a: { body: string; metadata?: Record<string, unknown> | undefined }) => {
+  const send = async (
+    _s: unknown,
+    a: { body: string; metadata?: Record<string, unknown> | undefined },
+  ) => {
     h.sent.push({ body: a.body, metadata: a.metadata });
     return { ok: true, messageId: "m", error: null };
   };
-  return { sendServiceText: send, sendServiceImage: send, sendServiceButtons: send, sendServiceList: send };
+  return {
+    sendServiceText: send,
+    sendServiceImage: send,
+    sendServiceButtons: send,
+    sendServiceList: send,
+  };
 });
 vi.mock("@/lib/onboarding-cards.server", () => ({ renderCard: async () => null }));
 
@@ -61,18 +69,26 @@ const expiredSession = {
 };
 
 /** Sessions by status filter: only the "any status, in member orgs" read finds the expired one. */
-function world(opts: { sessions?: Array<Record<string, unknown>>; greeted?: number; noted?: number } = {}) {
+function world(
+  opts: { sessions?: Array<Record<string, unknown>>; greeted?: number; noted?: number } = {},
+) {
   return fakeDb((op: FakeOp) => {
     if (op.table === "messages" && op.kind === "select") {
       const kind = op.filters.find(([n, a]) => n === "eq" && a[0] === "metadata->>kind")?.[1][1];
-      const n = kind === "stranger_greeting" ? (opts.greeted ?? 0) : kind === "known_owner" ? (opts.noted ?? 0) : 0;
+      const n =
+        kind === "stranger_greeting"
+          ? (opts.greeted ?? 0)
+          : kind === "known_owner"
+            ? (opts.noted ?? 0)
+            : 0;
       return { data: Array.from({ length: n }, (_, i) => ({ id: `m${i}` })), error: null };
     }
     if (op.table === "onboarding_sessions" && op.kind === "select") {
       const anyStatus = op.filters.some(([n, a]) => n === "in" && a[0] === "organization_id");
       return { data: anyStatus ? (opts.sessions ?? []) : [], error: null };
     }
-    if (op.table === "onboarding_sessions" && op.kind === "update") return { data: [{ id: "sess-old" }], error: null };
+    if (op.table === "onboarding_sessions" && op.kind === "update")
+      return { data: [{ id: "sess-old" }], error: null };
     if (op.table === "organizations") return { data: { name: "Zoori" }, error: null };
     if (op.table === "profiles") return { data: { full_name: "Vinay P" }, error: null };
     return undefined;
@@ -104,7 +120,12 @@ describe("item 6 — known owners are never greeted as strangers", () => {
     expect(h.sent.map((m) => m.body)).toEqual(["Here and ready. Ask me anything about Zoori."]);
     expect(dots).toBe(1);
     // The expired row is used in memory only: its status is never rewritten.
-    const statusWrites = db.ops.filter((o) => o.table === "onboarding_sessions" && o.kind === "update" && "status" in (o.payload as object));
+    const statusWrites = db.ops.filter(
+      (o) =>
+        o.table === "onboarding_sessions" &&
+        o.kind === "update" &&
+        "status" in (o.payload as object),
+    );
     expect(statusWrites).toEqual([]);
   });
 

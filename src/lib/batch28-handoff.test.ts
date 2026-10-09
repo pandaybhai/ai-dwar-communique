@@ -12,7 +12,9 @@ import { fakeDb, type FakeOp } from "./test-support/fake-db";
 const alert = vi.hoisted(() => ({ calls: [] as Array<Record<string, unknown>>, finished: 0 }));
 vi.mock("@/lib/ai-tools.server", () => ({ enabledFlags: async () => new Set(["flows_v2"]) }));
 vi.mock("@/lib/feature-flags.server", () => ({ enabledFlags: async () => new Set(["flows_v2"]) }));
-vi.mock("@/lib/flows.server", () => ({ loadSendSettings: async () => ({ timezone: "Asia/Kolkata" }) }));
+vi.mock("@/lib/flows.server", () => ({
+  loadSendSettings: async () => ({ timezone: "Asia/Kolkata" }),
+}));
 vi.mock("@/lib/whatsapp-numbers.server", () => ({
   ACCOUNT_COLUMNS: "id, organization_id, waba_id",
   getWhatsAppConnection: async () => ({ connection: null }),
@@ -72,15 +74,28 @@ describe("item 1 — a flow's Assign step sends the staff alert before the worke
     const { tickRuns } = await import("./flow-engine.server");
     const db = fakeDb(
       (op: FakeOp) => {
-        if (op.table === "contacts") return { data: { name: "Asha", phone: "+919800000001", wa_id: null, attributes: {}, opt_in_status: "opted_in" }, error: null };
+        if (op.table === "contacts")
+          return {
+            data: {
+              name: "Asha",
+              phone: "+919800000001",
+              wa_id: null,
+              attributes: {},
+              opt_in_status: "opted_in",
+            },
+            error: null,
+          };
         if (op.table === "flow_versions") return { data: { graph: WAIT_THEN_ASSIGN }, error: null };
-        if (op.table === "flow_runs" && op.kind === "select") return { data: { trigger: {} }, error: null };
+        if (op.table === "flow_runs" && op.kind === "select")
+          return { data: { trigger: {} }, error: null };
         return undefined;
       },
       (call) => (call.name === "claim_flow_runs" ? { data: [claimed], error: null } : undefined),
     );
     await tickRuns(db.supabase, { deadlineAt: Date.now() + 60_000 });
-    expect(alert.calls).toEqual([{ organizationId: "org-1", conversationId: "conv-1", reason: "flow_assign" }]);
+    expect(alert.calls).toEqual([
+      { organizationId: "org-1", conversationId: "conv-1", reason: "flow_assign" },
+    ]);
     expect(alert.finished).toBe(1);
     // The chat is marked as waiting for a person first.
     const marked = db.ops.find((o) => o.table === "conversations" && o.kind === "update");
@@ -89,17 +104,27 @@ describe("item 1 — a flow's Assign step sends the staff alert before the worke
 });
 
 /** One waiting chat with a staff phone and an email saved. */
-function alertWorld(settings: Record<string, unknown> = { handoff_alert_phones: ["+919876543210"], handoff_alert_email: "team@shop.test" }) {
+function alertWorld(
+  settings: Record<string, unknown> = {
+    handoff_alert_phones: ["+919876543210"],
+    handoff_alert_email: "team@shop.test",
+  },
+) {
   return fakeDb((op) => {
-    if (op.table === "organization_ai_settings") return { data: { handoff_alert_hours: null, ...settings }, error: null };
-    if (op.table === "whatsapp_accounts") return { data: [{ display_phone_number: "+91 98000 00098" }], error: null };
+    if (op.table === "organization_ai_settings")
+      return { data: { handoff_alert_hours: null, ...settings }, error: null };
+    if (op.table === "whatsapp_accounts")
+      return { data: [{ display_phone_number: "+91 98000 00098" }], error: null };
     if (op.table === "organizations") return { data: { name: "Zoori" }, error: null };
-    if (op.table === "conversations" && op.kind === "select") return { data: { contacts: { name: "Asha", phone: "+919800000001" } }, error: null };
+    if (op.table === "conversations" && op.kind === "select")
+      return { data: { contacts: { name: "Asha", phone: "+919800000001" } }, error: null };
     return undefined;
   });
 }
 const updates = (db: ReturnType<typeof alertWorld>) =>
-  db.ops.filter((o) => o.table === "conversations" && o.kind === "update").map((o) => o.payload as Record<string, unknown>);
+  db.ops
+    .filter((o) => o.table === "conversations" && o.kind === "update")
+    .map((o) => o.payload as Record<string, unknown>);
 
 describe("item 1 — sendHandoffAlert always completes and records who was told", () => {
   it("a WhatsApp send that throws still falls back to email and writes handoff_alert_at + the result", async () => {
@@ -123,7 +148,12 @@ describe("item 1 — sendHandoffAlert always completes and records who was told"
     expect(Object.keys(stamp!)).toEqual(["handoff_alert_at", "handoff_reminded_at"]);
     // The result is its own write: a database without the column keeps the timestamp.
     expect(Object.keys(result!)).toEqual(["handoff_alert_result"]);
-    expect(result!["handoff_alert_result"]).toMatchObject({ whatsapp: [], email: "team@shop.test", skipped: null, reminder: false });
+    expect(result!["handoff_alert_result"]).toMatchObject({
+      whatsapp: [],
+      email: "team@shop.test",
+      skipped: null,
+      reminder: false,
+    });
   });
 
   it("the approved template reaches staff any time (no open chat needed)", async () => {
@@ -137,7 +167,10 @@ describe("item 1 — sendHandoffAlert always completes and records who was told"
     expect(out.whatsapp).toEqual(["+919876543210"]);
     expect(out.templated).toEqual(["+919876543210"]);
     expect(out.email).toBeNull();
-    expect(updates(db)[1]!["handoff_alert_result"]).toMatchObject({ whatsapp: ["+919876543210"], email: null });
+    expect(updates(db)[1]!["handoff_alert_result"]).toMatchObject({
+      whatsapp: ["+919876543210"],
+      email: null,
+    });
   });
 
   it("a failed settings read still records the alert (so the 30-minute reminder retries it)", async () => {
@@ -146,7 +179,11 @@ describe("item 1 — sendHandoffAlert always completes and records who was told"
       if (op.table === "organization_ai_settings") throw new Error("connection reset");
       return undefined;
     });
-    const out = await sendHandoffAlert(db.supabase, { organizationId: "org-1", conversationId: "conv-1", reason: "flow_assign" });
+    const out = await sendHandoffAlert(db.supabase, {
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      reason: "flow_assign",
+    });
     expect(out.skipped).toBe("error");
     expect(updates(db)[0]).toHaveProperty("handoff_alert_at");
   });
@@ -155,12 +192,18 @@ describe("item 1 — sendHandoffAlert always completes and records who was told"
     const { describeAlertResult } = await import("./ai-outcome");
     const at = "2026-10-08T06:00:00.000Z";
     expect(describeAlertResult(null)).toBeNull();
-    expect(describeAlertResult({ at, whatsapp: ["+919876543210"], email: null, skipped: null })).toBe(
-      "Your team was told: +919876543210 on WhatsApp.",
+    expect(
+      describeAlertResult({ at, whatsapp: ["+919876543210"], email: null, skipped: null }),
+    ).toBe("Your team was told: +919876543210 on WhatsApp.");
+    expect(describeAlertResult({ at, whatsapp: [], email: "team@shop.test", skipped: null })).toBe(
+      "Your team was told: team@shop.test by email.",
     );
-    expect(describeAlertResult({ at, whatsapp: [], email: "team@shop.test", skipped: null })).toBe("Your team was told: team@shop.test by email.");
-    expect(describeAlertResult({ at, whatsapp: [], email: null, skipped: "no_staff_contact" })).toMatch(/^Nobody on your team was told/);
-    expect(describeAlertResult({ at, whatsapp: [], email: null, skipped: "not_delivered" })).toMatch(/^Nobody on your team could be reached/);
+    expect(
+      describeAlertResult({ at, whatsapp: [], email: null, skipped: "no_staff_contact" }),
+    ).toMatch(/^Nobody on your team was told/);
+    expect(
+      describeAlertResult({ at, whatsapp: [], email: null, skipped: "not_delivered" }),
+    ).toMatch(/^Nobody on your team could be reached/);
   });
 
   it("a flow's hand-off no longer claims a message to the customer failed", () => {
@@ -170,7 +213,10 @@ describe("item 1 — sendHandoffAlert always completes and records who was told"
   });
 
   it("settings copy: alerts go as an approved WhatsApp message any time; email only if WhatsApp fails", () => {
-    const src = readFileSync(join(__dirname, "../components/employee/handoff-alerts-card.tsx"), "utf8");
+    const src = readFileSync(
+      join(__dirname, "../components/employee/handoff-alerts-card.tsx"),
+      "utf8",
+    );
     expect(src).not.toMatch(/last 24 hours/);
     expect(src).toMatch(/any time of day/);
     expect(src).toMatch(/email is used only if WhatsApp can't reach anyone/);

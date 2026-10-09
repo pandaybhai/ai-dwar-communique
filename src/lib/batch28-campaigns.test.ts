@@ -1,6 +1,11 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MemoryDb } from "./test-support/campaign-memory-db";
-import { DISPATCH_DEFAULTS, resetDispatchCaches, runCampaignDispatch, type DispatchConfig } from "./campaign-dispatch.server";
+import {
+  DISPATCH_DEFAULTS,
+  resetDispatchCaches,
+  runCampaignDispatch,
+  type DispatchConfig,
+} from "./campaign-dispatch.server";
 import { campaignCallbackData } from "./campaign-callback";
 import { meta, world, type Row } from "./test-support/campaign-world";
 
@@ -34,12 +39,22 @@ const campaignRow = (db: MemoryDb, id: string) => db.rows("campaigns").find((r) 
 beforeEach(() => resetDispatchCaches());
 afterEach(() => vi.restoreAllMocks());
 beforeAll(async () => {
-  await Promise.all([import("./whatsapp-api.server"), import("./campaign-billing.server"), import("./templates"), import("./customer-cards.server")]);
+  await Promise.all([
+    import("./whatsapp-api.server"),
+    import("./campaign-billing.server"),
+    import("./templates"),
+    import("./customer-cards.server"),
+  ]);
 });
 
 const statusPayload = (pn: string, statuses: Array<Record<string, unknown>>) => ({
   object: "whatsapp_business_account",
-  entry: [{ id: "waba", changes: [{ field: "messages", value: { metadata: { phone_number_id: pn }, statuses } }] }],
+  entry: [
+    {
+      id: "waba",
+      changes: [{ field: "messages", value: { metadata: { phone_number_id: pn }, statuses } }],
+    },
+  ],
 });
 
 async function deliver(db: MemoryDb, pn: string, statuses: Array<Record<string, unknown>>) {
@@ -55,8 +70,17 @@ async function sentCampaign(recipients = 1) {
   await runCampaignDispatch(w.db.client, cfg(), { postMessage: g.postMessage });
   const c = w.campaigns[0]!;
   const r = c.recipients[0]!;
-  const metaId = w.db.rows("messages").find((m) => (m["metadata"] as Row)["campaign_recipient_id"] === r["id"])!["meta_message_id"] as string;
-  const st = (status: string) => ({ id: metaId, status, timestamp: "1760000000", biz_opaque_callback_data: campaignCallbackData(c.id, r["id"] as string) });
+  const metaId = w.db
+    .rows("messages")
+    .find((m) => (m["metadata"] as Row)["campaign_recipient_id"] === r["id"])![
+    "meta_message_id"
+  ] as string;
+  const st = (status: string) => ({
+    id: metaId,
+    status,
+    timestamp: "1760000000",
+    biz_opaque_callback_data: campaignCallbackData(c.id, r["id"] as string),
+  });
   return { ...w, c, r, metaId, st };
 }
 
@@ -75,8 +99,16 @@ describe("item 8 — a status never depends on the counter function", () => {
     const message = db.rows("messages").find((m) => m["meta_message_id"] === metaId)!;
     expect(message["status"]).toBe("delivered");
     expect(priced).toEqual([message["id"]]);
-    expect(db.rows("analytics_events").filter((e) => e["event_type"] === "message.delivered")).toHaveLength(1);
-    expect(warn.mock.calls.some((args) => String(args[0]).includes('"scope":"campaign_counter"') && String(args[0]).includes("PGRST202"))).toBe(true);
+    expect(
+      db.rows("analytics_events").filter((e) => e["event_type"] === "message.delivered"),
+    ).toHaveLength(1);
+    expect(
+      warn.mock.calls.some(
+        (args) =>
+          String(args[0]).includes('"scope":"campaign_counter"') &&
+          String(args[0]).includes("PGRST202"),
+      ),
+    ).toBe(true);
     // The counter alone keeps the event retryable.
     expect(event["processed_at"]).toBeFalsy();
     expect(String(event["error"])).toMatch(/counter/);
@@ -93,9 +125,23 @@ describe("item 8 — a status never depends on the counter function", () => {
     const { campaignLedgerCharge } = await import("./campaign-billing.server");
     const { db, c } = await sentCampaign();
     db.rpcs.delete("campaign_ledger_charge");
-    for (const amount of [-0.86, -0.18]) db.insert("wallet_ledger", { organization_id: c.orgId, entry_type: "debit_message", amount, metadata: { campaign_id: c.id } });
-    db.insert("wallet_ledger", { organization_id: c.orgId, entry_type: "debit_message", amount: -5, metadata: { campaign_id: "another" } });
-    expect(await campaignLedgerCharge(db.client, c.orgId, c.id)).toEqual({ amount: 1.04, error: null });
+    for (const amount of [-0.86, -0.18])
+      db.insert("wallet_ledger", {
+        organization_id: c.orgId,
+        entry_type: "debit_message",
+        amount,
+        metadata: { campaign_id: c.id },
+      });
+    db.insert("wallet_ledger", {
+      organization_id: c.orgId,
+      entry_type: "debit_message",
+      amount: -5,
+      metadata: { campaign_id: "another" },
+    });
+    expect(await campaignLedgerCharge(db.client, c.orgId, c.id)).toEqual({
+      amount: 1.04,
+      error: null,
+    });
   });
 
   it("ai_usage_add missing (PGRST202): meterAiUsage still adds to the day's row (20261027's fallback)", async () => {
@@ -135,7 +181,12 @@ describe("item 7 — campaign counts", () => {
 function realWallet(db: MemoryDb) {
   const holdRow = (cid: string, org: string) => {
     let r = db.rows("wallet_campaign_holds").find((x) => x["campaign_id"] === cid);
-    if (!r) r = db.insert("wallet_campaign_holds", { campaign_id: cid, organization_id: org, remaining: 0 });
+    if (!r)
+      r = db.insert("wallet_campaign_holds", {
+        campaign_id: cid,
+        organization_id: org,
+        remaining: 0,
+      });
     return r;
   };
   db.rpcs.set("wallet_apply", (a, d) => {
@@ -165,7 +216,12 @@ function realWallet(db: MemoryDb) {
     const r = holdRow(cid, org);
     const taken = Math.min(price, Number(r["remaining"]));
     r["remaining"] = Number(r["remaining"]) - taken;
-    db.insert("wallet_ledger", { organization_id: org, entry_type: "debit_message", amount: -price, metadata: { campaign_id: cid, from_hold: "true", held_taken: taken } });
+    db.insert("wallet_ledger", {
+      organization_id: org,
+      entry_type: "debit_message",
+      amount: -price,
+      metadata: { campaign_id: cid, from_hold: "true", held_taken: taken },
+    });
   };
 }
 
@@ -176,7 +232,10 @@ describe("item 12 — a campaign priced after it completed is settled by the bil
     const c = w.campaigns[0]!;
     const ledgerFn = w.db.rpcs.get("campaign_ledger_charge")!;
     // 8 Oct 12:30: the function wasn't on live yet — the settle at completion failed.
-    if (opts.settleFails) w.db.rpcs.set("campaign_ledger_charge", () => { throw new Error("Could not find the function"); });
+    if (opts.settleFails)
+      w.db.rpcs.set("campaign_ledger_charge", () => {
+        throw new Error("Could not find the function");
+      });
     vi.spyOn(console, "error").mockImplementation(() => {});
     const g = meta();
     await runCampaignDispatch(w.db.client, cfg(), { postMessage: g.postMessage });
@@ -192,13 +251,25 @@ describe("item 12 — a campaign priced after it completed is settled by the bil
     return { ...w, c, counts };
   }
   const ledgerSum = (db: MemoryDb, cid: string) =>
-    db.rows("wallet_ledger").filter((r) => r["entry_type"] === "debit_message" && (r["metadata"] as Row)["campaign_id"] === cid).reduce((s, r) => s + Math.abs(Number(r["amount"])), 0);
+    db
+      .rows("wallet_ledger")
+      .filter(
+        (r) => r["entry_type"] === "debit_message" && (r["metadata"] as Row)["campaign_id"] === cid,
+      )
+      .reduce((s, r) => s + Math.abs(Number(r["amount"])), 0);
   const released = (db: MemoryDb, cid: string) =>
-    db.rows("wallet_ledger").filter((r) => r["entry_type"] === "hold_release" && r["reference_id"] === cid).reduce((s, r) => s + Number(r["amount"]), 0);
+    db
+      .rows("wallet_ledger")
+      .filter((r) => r["entry_type"] === "hold_release" && r["reference_id"] === cid)
+      .reduce((s, r) => s + Number(r["amount"]), 0);
 
   it("live case (1803da67): settle failed at completion, priced from the hold later → held 0, charged 1.04, nothing released twice", async () => {
     const { db, c, counts } = await completedAlone({ settleFails: true });
-    expect(campaignRow(db, c.id)).toMatchObject({ held_amount: 0, charged_amount: 1.04, returned_amount: 0 });
+    expect(campaignRow(db, c.id)).toMatchObject({
+      held_amount: 0,
+      charged_amount: 1.04,
+      returned_amount: 0,
+    });
     expect(ledgerSum(db, c.id)).toBeCloseTo(1.04);
     expect(released(db, c.id)).toBe(0);
     expect(counts.campaigns_settled).toBe(1);
@@ -209,7 +280,9 @@ describe("item 12 — a campaign priced after it completed is settled by the bil
     expect(campaignRow(db, c.id)).toMatchObject({ held_amount: 0, charged_amount: 1.04 });
     expect(ledgerSum(db, c.id)).toBeCloseTo(1.04);
     expect(released(db, c.id)).toBeCloseTo(1.04);
-    expect(db.rows("wallet_ledger").filter((r) => r["entry_type"] === "debit_message")).toHaveLength(1);
+    expect(
+      db.rows("wallet_ledger").filter((r) => r["entry_type"] === "debit_message"),
+    ).toHaveLength(1);
   });
 
   it("a second sweep changes nothing", async () => {

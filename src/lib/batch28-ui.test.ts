@@ -15,12 +15,21 @@ describe("AI employee page", () => {
   it("'Aiden isn't set up yet' only while nothing has been read", async () => {
     const { hasReadSomething } = await import("../components/aiden-setup-card");
     expect(hasReadSomething([])).toBe(false);
-    expect(hasReadSomething([{ status: "pending", item_count: 0 }, { status: "syncing", item_count: 0 }])).toBe(false);
+    expect(
+      hasReadSomething([
+        { status: "pending", item_count: 0 },
+        { status: "syncing", item_count: 0 },
+      ]),
+    ).toBe(false);
     expect(hasReadSomething([{ status: "ready", item_count: 0 }])).toBe(true);
     expect(hasReadSomething([{ status: "error", item_count: 7 }])).toBe(true);
-    expect(src("components/aiden-setup-card.tsx")).toMatch(/if \(!handoff \|\| !sourcesLoaded \|\| hasReadSomething\(sources\)\) return null;/);
+    expect(src("components/aiden-setup-card.tsx")).toMatch(
+      /if \(!handoff \|\| !sourcesLoaded \|\| hasReadSomething\(sources\)\) return null;/,
+    );
     // The server's card check says the same (7 items + a read site showed the card).
-    expect(src("routes/api/onboarding/start.ts")).toMatch(/\.or\("item_count\.gt\.0,status\.eq\.ready"\)/);
+    expect(src("routes/api/onboarding/start.ts")).toMatch(
+      /\.or\("item_count\.gt\.0,status\.eq\.ready"\)/,
+    );
   });
 
   it("switched off for the workspace: that state shows first and Draft / Replying wait until it is on", () => {
@@ -34,8 +43,13 @@ describe("AI employee page", () => {
 
 describe("Inbox", () => {
   it("a thread opens on its newest messages (it loaded the oldest 500)", async () => {
-    const { latestThreadMessages, THREAD_MESSAGE_LIMIT } = await import("../components/inbox/inbox-utils");
-    const newestFirst = [{ id: "m3", created_at: "3" }, { id: "m2", created_at: "2" }, { id: "m1", created_at: "1" }];
+    const { latestThreadMessages, THREAD_MESSAGE_LIMIT } =
+      await import("../components/inbox/inbox-utils");
+    const newestFirst = [
+      { id: "m3", created_at: "3" },
+      { id: "m2", created_at: "2" },
+      { id: "m1", created_at: "1" },
+    ];
     const db = fakeDb(() => ({ data: newestFirst, error: null }));
     const rows = await latestThreadMessages(db.supabase as never, "cv1");
     expect(rows.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
@@ -63,10 +77,16 @@ describe("Home", () => {
   it("'today' starts at local midnight, the boundary Analytics uses", async () => {
     const { localDayStartIso } = await import("./local-day");
     // 00:30 IST on 9 Oct = 19:00 UTC on 8 Oct: today began at 18:30 UTC on 8 Oct.
-    expect(localDayStartIso("Asia/Kolkata", new Date("2026-10-08T19:00:00Z"))).toBe("2026-10-08T18:30:00.000Z");
+    expect(localDayStartIso("Asia/Kolkata", new Date("2026-10-08T19:00:00Z"))).toBe(
+      "2026-10-08T18:30:00.000Z",
+    );
     // 23:59 IST on 8 Oct.
-    expect(localDayStartIso("Asia/Kolkata", new Date("2026-10-08T18:29:00Z"))).toBe("2026-10-07T18:30:00.000Z");
-    expect(localDayStartIso("UTC", new Date("2026-10-08T23:59:59Z"))).toBe("2026-10-08T00:00:00.000Z");
+    expect(localDayStartIso("Asia/Kolkata", new Date("2026-10-08T18:29:00Z"))).toBe(
+      "2026-10-07T18:30:00.000Z",
+    );
+    expect(localDayStartIso("UTC", new Date("2026-10-08T23:59:59Z"))).toBe(
+      "2026-10-08T00:00:00.000Z",
+    );
   });
 
   it("'Conversations today' counts chats with a customer message today, from the messages (as Analytics)", async () => {

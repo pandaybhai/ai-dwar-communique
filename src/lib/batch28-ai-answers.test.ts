@@ -34,23 +34,39 @@ describe.runIf(runSql)("item 11 — what counts as an AI answer (real Postgres)"
 
   /** Billing on, `allowance` answers included, `credits` in the wallet. */
   const workspace = (allowance: number, credits = 100): string => {
-    const id = pg.sql(`insert into organizations (name, billing_enabled_at) values ('Store', now() - interval '1 day') returning id`);
+    const id = pg.sql(
+      `insert into organizations (name, billing_enabled_at) values ('Store', now() - interval '1 day') returning id`,
+    );
     pg.sql(`insert into organization_billing_settings values ('${id}', 0)`);
-    pg.sql(`update organization_billing_settings set ai_answers_included_override = ${allowance} where organization_id = '${id}'`);
+    pg.sql(
+      `update organization_billing_settings set ai_answers_included_override = ${allowance} where organization_id = '${id}'`,
+    );
     if (credits > 0) pg.sql(`select wallet_apply('${id}', 'credit_purchase', ${credits})`);
     return id;
   };
-  const run = (org: string, task: string, opts: { conversation?: boolean; metadata?: Record<string, unknown> } = {}) =>
+  const run = (
+    org: string,
+    task: string,
+    opts: { conversation?: boolean; metadata?: Record<string, unknown> } = {},
+  ) =>
     pg.sql(
       `insert into ai_runs (organization_id, status, task, conversation_id, metadata, billed_amount, cost_amount)
        values ('${org}', 'ok', '${task}', ${opts.conversation === false ? "null" : "gen_random_uuid()"},
                '${JSON.stringify(opts.metadata ?? {})}'::jsonb, 2, 0.4) returning id`,
     );
   const month = (org: string) => {
-    const [answers, over] = pg.sql(`select answers, over_answers from ai_usage_months where organization_id = '${org}'`).split("|").map(Number);
+    const [answers, over] = pg
+      .sql(`select answers, over_answers from ai_usage_months where organization_id = '${org}'`)
+      .split("|")
+      .map(Number);
     return { answers, over };
   };
-  const aiDebits = (org: string) => Number(pg.sql(`select count(*) from wallet_ledger where organization_id = '${org}' and entry_type = 'debit_ai'`));
+  const aiDebits = (org: string) =>
+    Number(
+      pg.sql(
+        `select count(*) from wallet_ledger where organization_id = '${org}' and entry_type = 'debit_ai'`,
+      ),
+    );
 
   it("extract_facts (website reading) does not count and is never charged", () => {
     const org = workspace(0);
@@ -87,7 +103,11 @@ describe.runIf(runSql)("item 11 — what counts as an AI answer (real Postgres)"
     expect(aiDebits(org)).toBe(0);
     const over = run(org, "agent_reply");
     expect(month(org)).toEqual({ answers: 2, over: 1 });
-    expect(pg.sql(`select entry_type || ' ' || amount from wallet_ledger where reference_type = 'ai_run' and reference_id = '${over}'`)).toBe("debit_ai -2.00");
+    expect(
+      pg.sql(
+        `select entry_type || ' ' || amount from wallet_ledger where reference_type = 'ai_run' and reference_id = '${over}'`,
+      ),
+    ).toBe("debit_ai -2.00");
     expect(pg.sql(`select billing_debit_ai_run('${over}')`)).toBe("f"); // never twice
   });
 
@@ -109,13 +129,17 @@ describe.runIf(runSql)("item 11 — what counts as an AI answer (real Postgres)"
     run(org, "agent_reply");
     run(org, "extract_facts", { conversation: false });
     // What the old trigger had written.
-    pg.sql(`update ai_usage_months set answers = 863, over_answers = 862 where organization_id = '${org}'`);
+    pg.sql(
+      `update ai_usage_months set answers = 863, over_answers = 862 where organization_id = '${org}'`,
+    );
     const ledgerBefore = pg.sql(`select count(*), coalesce(sum(amount), 0) from wallet_ledger`);
     pg.sql(readFileSync(MIGRATION, "utf8"));
     expect(month(org)).toEqual({ answers: 1, over: 0 });
     pg.sql(readFileSync(MIGRATION, "utf8"));
     expect(month(org)).toEqual({ answers: 1, over: 0 });
-    expect(pg.sql(`select count(*), coalesce(sum(amount), 0) from wallet_ledger`)).toBe(ledgerBefore);
+    expect(pg.sql(`select count(*), coalesce(sum(amount), 0) from wallet_ledger`)).toBe(
+      ledgerBefore,
+    );
   });
 });
 
@@ -128,24 +152,44 @@ describe("item 11 — the new bodies are the old ones plus the filter only", () 
   /** Undo exactly the Batch 28 edits; what is left must be the live body byte for byte. */
   const unfilter = (sql: string) =>
     sql
-      .replace(/\n\s*and public\.ai_run_is_customer_answer\(new\.task, new\.conversation_id, new\.metadata\)/, "")
-      .replace(/\n\s*and public\.ai_run_is_customer_answer\(task, conversation_id, metadata\);/, ";")
-      .replace("count(*) filter (where public.ai_run_is_customer_answer(task, conversation_id, metadata)) answers", "count(*) answers")
+      .replace(
+        /\n\s*and public\.ai_run_is_customer_answer\(new\.task, new\.conversation_id, new\.metadata\)/,
+        "",
+      )
+      .replace(
+        /\n\s*and public\.ai_run_is_customer_answer\(task, conversation_id, metadata\);/,
+        ";",
+      )
+      .replace(
+        "count(*) filter (where public.ai_run_is_customer_answer(task, conversation_id, metadata)) answers",
+        "count(*) answers",
+      )
       .replace(", created_at, task, conversation_id, metadata\n", ", created_at\n")
-      .replace(/\n\s*if not public\.ai_run_is_customer_answer\(r\.task, r\.conversation_id, r\.metadata\) then return false; end if;/, "");
+      .replace(
+        /\n\s*if not public\.ai_run_is_customer_answer\(r\.task, r\.conversation_id, r\.metadata\) then return false; end if;/,
+        "",
+      );
 
   it("trg_ai_runs_billing = 20261066's live body + the answer filter", () => {
-    expect(unfilter(body("20261084_batch28_ai_answers_only_replies.sql", "trg_ai_runs_billing"))).toBe(body("20261066_live_only_billing.sql", "trg_ai_runs_billing"));
+    expect(
+      unfilter(body("20261084_batch28_ai_answers_only_replies.sql", "trg_ai_runs_billing")),
+    ).toBe(body("20261066_live_only_billing.sql", "trg_ai_runs_billing"));
   });
 
   it("billing_debit_ai_run = 20261065's body + the answer filter", () => {
-    expect(unfilter(body("20261084_batch28_ai_answers_only_replies.sql", "billing_debit_ai_run"))).toBe(body("20261065_batch26a_wallet.sql", "billing_debit_ai_run"));
+    expect(
+      unfilter(body("20261084_batch28_ai_answers_only_replies.sql", "billing_debit_ai_run")),
+    ).toBe(body("20261065_batch26a_wallet.sql", "billing_debit_ai_run"));
   });
 
   it("the back-fill writes ai_usage_months only — no ledger or wallet statement", () => {
     // Outside the function bodies: the statements the file itself runs.
-    const sql = readFileSync(MIGRATION, "utf8").replace(/--.*$/gm, "").replace(/\$function\$[\s\S]*?\$function\$/g, "");
-    const writes = [...sql.matchAll(/\b(UPDATE|INSERT INTO|DELETE FROM)\s+public\.(\w+)/gi)].map((m) => m[2]);
+    const sql = readFileSync(MIGRATION, "utf8")
+      .replace(/--.*$/gm, "")
+      .replace(/\$function\$[\s\S]*?\$function\$/g, "");
+    const writes = [...sql.matchAll(/\b(UPDATE|INSERT INTO|DELETE FROM)\s+public\.(\w+)/gi)].map(
+      (m) => m[2],
+    );
     expect(writes).toEqual(["ai_usage_months"]);
   });
 });
@@ -164,7 +208,9 @@ describe("item 11 — the app counts answers the same way", () => {
 
   it("the Billing page's 'AI answers used' and the statement count with the same filters", async () => {
     const db = fakeDb(() => ({ data: null, error: null, count: 0 }));
-    await onlyCustomerAnswers(db.supabase.from("ai_runs").select("id", { count: "exact", head: true }));
+    await onlyCustomerAnswers(
+      db.supabase.from("ai_runs").select("id", { count: "exact", head: true }),
+    );
     const op = db.ops[0]!;
     expect(db.has(op, "eq", "status", "ok")).toBe(true);
     expect(db.has(op, "eq", "task", "agent_reply")).toBe(true);
@@ -172,8 +218,13 @@ describe("item 11 — the app counts answers the same way", () => {
     expect(db.has(op, "is", "metadata->>purpose", null)).toBe(true);
     for (const file of ["billing.server.ts", "billing-statement.server.ts"]) {
       const src = readFileSync(join(import.meta.dirname, file), "utf8");
-      const counts = [...src.matchAll(/\.from\("ai_runs"\)\s*\.select\("id", \{ count: "exact", head: true \}\)/g)].length;
-      const filtered = [...src.matchAll(/onlyCustomerAnswers\(\s*supabase\s*\.from\("ai_runs"\)/g)].length;
+      const counts = [
+        ...src.matchAll(
+          /\.from\("ai_runs"\)\s*\.select\("id", \{ count: "exact", head: true \}\)/g,
+        ),
+      ].length;
+      const filtered = [...src.matchAll(/onlyCustomerAnswers\(\s*supabase\s*\.from\("ai_runs"\)/g)]
+        .length;
       // Every ai_runs count is an answer count except the statement's escalations.
       expect(filtered, file).toBe(counts - (file === "billing-statement.server.ts" ? 1 : 0));
     }

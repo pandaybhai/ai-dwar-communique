@@ -18,7 +18,14 @@ export function localDayStartIso(timezone: string, now: Date = new Date()): stri
   }).formatToParts(now);
   const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
   const localMidnightAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), 0, 0, 0);
-  const localNowAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  const localNowAsUtc = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
   const offsetMs = Math.round((now.getTime() - localNowAsUtc) / 1000) * 1000;
   return new Date(localMidnightAsUtc + offsetMs).toISOString();
 }

@@ -43,7 +43,11 @@ describe("item 5 — Aiden's dots", () => {
   });
 
   it("an answer: the dots once, then the answer", async () => {
-    const r = await replay({ id: "b28-answer", ask: "who are you?", model: () => ({ text: "I'm Aiden, Zoori's assistant." }) });
+    const r = await replay({
+      id: "b28-answer",
+      ask: "who are you?",
+      model: () => ({ text: "I'm Aiden, Zoori's assistant." }),
+    });
     expect(r.sent.length).toBeGreaterThan(0);
     expect(r.dots).toBe(1);
   });
