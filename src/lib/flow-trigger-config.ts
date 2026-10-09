@@ -43,3 +43,22 @@ export function configError(kind: string, config: Record<string, unknown>): stri
 export function importStartsFlows(payload: Record<string, unknown>): boolean {
   return payload["start_flows"] === true;
 }
+
+/**
+ * Batch 28: an unpinned flow ("All numbers") starts on every number of its
+ * workspace except the AiDwar setup (onboarding) number, where only flows
+ * pinned to it run (dispatchInboundTriggers, onThisNumber). Said when such a
+ * flow is saved in the workspace that owns that number; null elsewhere.
+ */
+export function unpinnedFlowNote(
+  numbers: Array<{ label: string; onboarding: boolean }>,
+  pinned: string | null | undefined,
+): string | null {
+  if (pinned) return null;
+  const setup = numbers.find((n) => n.onboarding);
+  if (!setup) return null;
+  const others = numbers.filter((n) => !n.onboarding).length;
+  return others > 0
+    ? `“All numbers” runs this flow on your other numbers, but not on the AiDwar setup number (${setup.label}). To run it there, pick that number under Flow settings → Which number.`
+    : `“All numbers” doesn't include the AiDwar setup number (${setup.label}), and this workspace has no other number — so this flow won't start anywhere. Pick that number under Flow settings → Which number.`;
+}
