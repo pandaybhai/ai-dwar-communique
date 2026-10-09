@@ -29,7 +29,13 @@ jobs:
         with:
           node-version: 22
       - name: Install
-        run: bun install --frozen-lockfile
+        # bun.lock (written by Lovable) pins tarballs on Lovable's private npm
+        # cache, which answers GitHub runners with 403 since 9 Oct. CI fetches
+        # the same tarballs from the public registry instead; --frozen-lockfile
+        # still checks every integrity hash. The committed lockfile is unchanged.
+        run: |
+          sed -i -E 's#https://europe-west[0-9]+-npm\.pkg\.dev/lovable-core-prod/sandbox-npm-cache/#https://registry.npmjs.org/#g' bun.lock
+          bun install --frozen-lockfile
       - name: Typecheck
         run: npx tsc --noEmit -p .
       - name: Tests
@@ -72,7 +78,13 @@ jobs:
         with:
           node-version: 22
       - name: Install
-        run: bun install --frozen-lockfile
+        # bun.lock (written by Lovable) pins tarballs on Lovable's private npm
+        # cache, which answers GitHub runners with 403 since 9 Oct. CI fetches
+        # the same tarballs from the public registry instead; --frozen-lockfile
+        # still checks every integrity hash. The committed lockfile is unchanged.
+        run: |
+          sed -i -E 's#https://europe-west[0-9]+-npm\.pkg\.dev/lovable-core-prod/sandbox-npm-cache/#https://registry.npmjs.org/#g' bun.lock
+          bun install --frozen-lockfile
       - name: Tests at a shifted clock
         env:
           TZ: ${{ matrix.tz }}

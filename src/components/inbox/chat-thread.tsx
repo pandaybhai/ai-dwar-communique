@@ -34,7 +34,7 @@ import { SendCardButton } from "@/components/inbox/send-card-button";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
 import { languageLabel } from "@/lib/languages";
-import { handoverReasonText } from "@/lib/ai-outcome";
+import { describeAlertResult, handoverReasonText, type HandoffAlertResult } from "@/lib/ai-outcome";
 import { aiRunFor, questionBefore, type AiRunNote, type AiRunRow } from "@/lib/inbox-ai-runs";
 
 import {
@@ -225,6 +225,33 @@ function useAiRuns(organizationId: string | null, conversationId: string) {
   return runs;
 }
 
+/**
+ * Batch 28: who the staff alert for this waiting chat reached (or that nobody
+ * could be). Its own read, so the Inbox list never depends on the column; a
+ * failed read (e.g. 20261080 not applied yet) just shows nothing.
+ */
+function useHandoffAlertText(conversationId: string, waiting: boolean, waitingSince: string | null | undefined) {
+  const [text, setText] = useState<string | null>(null);
+  useEffect(() => {
+    setText(null);
+    if (!waiting) return;
+    let live = true;
+    void Promise.resolve(
+      aidwar.from("conversations").select("handoff_alert_result").eq("id", conversationId).maybeSingle(),
+    )
+      .then(({ data, error }) => {
+        if (!live || error) return;
+        const result = (data as { handoff_alert_result?: Partial<HandoffAlertResult> | null } | null)?.handoff_alert_result;
+        setText(describeAlertResult(result));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [conversationId, waiting, waitingSince]);
+  return text;
+}
+
 /** A filled-in WhatsApp form, read as "question: answer" rows. */
 function FormAnswers({ name, answers }: { name: string; answers: Array<{ label: string; value: string }> }) {
   return (
@@ -380,6 +407,7 @@ export function ChatThread({
   // Saving an answer (knowledge "correct") needs ai.configure.
   const canTeach = can("ai.configure");
   const aiRuns = useAiRuns(organizationId, conversation.id);
+  const alertText = useHandoffAlertText(conversation.id, Boolean(conversation.needs_human), conversation.needs_human_at);
   // What the customer actually writes in, from their most recent message.
   const customerLanguage = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -390,9 +418,15 @@ export function ChatThread({
   }, [messages]);
   const [teaching, setTeaching] = useState<AiRunNote | null>(null);
 
+  // Batch 28: on the newest message whenever a chat opens or grows — also
+  // after its messages finish loading (the end marker only exists then), and
+  // when the new chat happens to have as many messages as the last one.
+  const lastMessageId = messages[messages.length - 1]?.id ?? null;
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, conversation.id]);
+    if (loading) return;
+    const frame = requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
+    return () => cancelAnimationFrame(frame);
+  }, [messages.length, lastMessageId, conversation.id, loading]);
 
   useEffect(() => {
     setSummary(null);
@@ -584,13 +618,18 @@ export function ChatThread({
                 They asked: “{conversation.needs_human_question}”
               </p>
             ) : null}
-            <p className="mt-0.5 opacity-80">
-              {conversation.handover_state === "sent"
-                ? "I told them a colleague would reply here shortly."
-                : conversation.handover_state === "window_closed"
-                  ? "Their 24-hour window had closed, so I couldn't tell them — send an approved template."
-                  : "I couldn't get a message to them, so they're still waiting."}
-            </p>
+            {/* What the customer was told — only when Aiden tried to tell them
+                (a flow's hand-off sends the customer nothing, so it says nothing). */}
+            {conversation.handover_state ? (
+              <p className="mt-0.5 opacity-80">
+                {conversation.handover_state === "sent"
+                  ? "I told them a colleague would reply here shortly."
+                  : conversation.handover_state === "window_closed"
+                    ? "Their 24-hour window had closed, so I couldn't tell them — send an approved template."
+                    : "I couldn't get a message to them, so they're still waiting."}
+              </p>
+            ) : null}
+            {alertText ? <p className="mt-0.5 opacity-80">{alertText}</p> : null}
           </div>
           {onResolveNeedsHuman ? (
             <Button size="sm" variant="outline" className="rounded-full" onClick={onResolveNeedsHuman}>

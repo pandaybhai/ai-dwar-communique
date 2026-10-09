@@ -173,8 +173,9 @@ async function recentRepliesOfKind(
   supabase: SupabaseClient,
   conversationId: string,
   kind: string,
+  windowMs: number = WRONG_CODE_WINDOW_MS,
 ): Promise<number> {
-  const since = new Date(Date.now() - WRONG_CODE_WINDOW_MS).toISOString();
+  const since = new Date(Date.now() - windowMs).toISOString();
   const { data } = await supabase
     .from("messages")
     .select("id")
@@ -200,6 +201,8 @@ async function findSession(
   session: OnboardingSession | null;
   byCode: boolean;
   codeState?: "wrong" | "locked";
+  /** Batch 28: no session, but this phone is an owner/member of a workspace. */
+  knownOwner?: boolean;
 }> {
   const match = body.match(CODE_PATTERN);
   if (match) {
@@ -241,8 +244,33 @@ async function findSession(
     .order("last_inbound_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(1);
-  return { session: ((doneRows ?? []) as OnboardingSession[])[0] ?? null, byCode: false };
+  const done = ((doneRows ?? []) as OnboardingSession[])[0] ?? null;
+  if (done) return { session: done, byCode: false };
+
+  // Batch 28: every session of theirs expired, but the phone on their
+  // profile is an owner/member of a workspace — still our owner. Their newest
+  // session for one of those workspaces is used as a finished setup (in
+  // memory only; the row is not rewritten). No session at all: known, but
+  // nothing to resume (handleMerchantInbound says how to start).
+  const { memberOrganizationIds } = await import("@/lib/owner-replies.server");
+  const orgs = await memberOrganizationIds(supabase, waId);
+  if (orgs.length === 0) return { session: null, byCode: false };
+  const { data: anyRows } = await supabase
+    .from("onboarding_sessions")
+    .select(SESSION_COLUMNS)
+    .eq("phone", normalizePhone(waId))
+    .in("organization_id", orgs)
+    .order("last_inbound_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const known = ((anyRows ?? []) as OnboardingSession[])[0] ?? null;
+  if (known) return { session: { ...known, status: "completed" }, byCode: false, knownOwner: true };
+  return { session: null, byCode: false, knownOwner: true };
 }
+
+/** Text for an owner/member the platform number knows but has no setup to resume with (once a day). */
+export const KNOWN_OWNER_NOTE =
+  "Hi — this number belongs to someone on an AiDwar workspace, so I know you. To work on it here, open AiDwar and send me the code shown on your setup screen.";
 
 /** How many times we've greeted this number in the last day (from the chat log). */
 async function strangerGreetCount(
@@ -339,9 +367,25 @@ export async function handleMerchantInbound(
     mediaMime?: string | null;
     /** The document's filename, when Meta sent one. */
     mediaName?: string | null;
+    /**
+     * Batch 28: called once, as soon as it is certain a reply goes back
+     * (the webhook shows the typing dots then — never for a message that
+     * gets no answer).
+     */
+    onWillReply?: () => void;
   },
 ): Promise<void> {
   const body = (args.body ?? "").trim();
+  let toldWillReply = false;
+  const willReply = () => {
+    if (toldWillReply) return;
+    toldWillReply = true;
+    try {
+      args.onWillReply?.();
+    } catch {
+      // the dots are a courtesy
+    }
+  };
   const interactiveId = args.interactiveId ?? null;
 
   const channel = {
@@ -372,7 +416,7 @@ export async function handleMerchantInbound(
   const multiBusiness = ownerOrgs.length > 1;
 
   // ------------------------------------------------ whose chat this is
-  const { session, byCode, codeState } = await findSession(
+  const { session, byCode, codeState, knownOwner } = await findSession(
     supabase,
     args.waId,
     body,
@@ -384,6 +428,7 @@ export async function handleMerchantInbound(
   if (codeState === "locked") {
     // One polite note per hour; after that we stay quiet.
     if ((await recentRepliesOfKind(supabase, args.conversationId, "code_locked")) === 0) {
+      willReply();
       await sendServiceText(supabase, {
         ...channel,
         body: "That's a few codes that didn't match, so I've paused code checks for this number. Please try again in an hour.",
@@ -393,6 +438,7 @@ export async function handleMerchantInbound(
     return;
   }
   if (codeState === "wrong") {
+    willReply();
     await sendServiceText(supabase, {
       ...channel,
       body: "That code doesn't match an open setup. Please check the code on your AiDwar screen and send it again.",
@@ -401,9 +447,20 @@ export async function handleMerchantInbound(
     return;
   }
 
+  if (!session && knownOwner) {
+    // Batch 28: a known owner is never greeted as a stranger. One note a
+    // day on how to pick their workspace up here; nothing else.
+    if ((await recentRepliesOfKind(supabase, args.conversationId, "known_owner", STRANGER_QUIET_MS)) === 0) {
+      willReply();
+      await sendServiceText(supabase, { ...channel, body: KNOWN_OWNER_NOTE, metadata: { kind: "known_owner" } });
+    }
+    return;
+  }
+
   if (!session) {
     const greeted = await strangerGreetCount(supabase, args.conversationId);
     if (greeted < 3) {
+      willReply();
       const quietNote =
         greeted === 2 ? " I'll go quiet now until you send a code." : "";
       await sendServiceText(supabase, {
@@ -430,6 +487,9 @@ export async function handleMerchantInbound(
       return;
     }
   }
+
+  // From here on an owner's message is always answered.
+  willReply();
 
   const [, { data: org }, { data: profile }] = await Promise.all([
     supabase

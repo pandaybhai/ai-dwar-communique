@@ -76,6 +76,31 @@ export function canonicalPageUrl(
   }
 }
 
+/**
+ * Batch 28: whether a read that started at `scope.home` may queue `url`
+ * (both already canonical, on the same site).
+ *   onePage — an app store, social or marketplace listing: that page only.
+ *   shallow — a day-one read: a page named by its query (details?id=X) is
+ *             that page only; a deep path keeps to that path and below; the
+ *             site root reaches the whole site, as before.
+ * A full read (neither) reaches the whole site.
+ */
+export function pageInScope(url: string, scope: { home: string; onePage: boolean; shallow: boolean }): boolean {
+  if (url === scope.home) return true;
+  if (scope.onePage) return false;
+  if (!scope.shallow) return true;
+  try {
+    const home = new URL(scope.home);
+    if (home.search) return false;
+    const base = home.pathname.replace(/\/+$/, "");
+    if (!base) return true;
+    const path = new URL(url).pathname.replace(/\/+$/, "");
+    return path === base || path.startsWith(`${base}/`);
+  } catch {
+    return false;
+  }
+}
+
 /** The other ways a site's origin is written: http/https × www/no-www. */
 export function aliasOrigins(origin: string): string[] {
   try {

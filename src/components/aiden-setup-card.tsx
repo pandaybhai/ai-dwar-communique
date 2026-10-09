@@ -11,6 +11,11 @@ import { callApi } from "@/lib/whatsapp-client";
 type Handoff = { code: string; wa_link: string; show_setup?: boolean };
 
 const DISMISS_KEY = (sourceId: string) => `aidwar.read-done.${sourceId}`;
+
+/** Batch 28: something has been read (a ready source, or one with items) — Aiden is set up. */
+export function hasReadSomething(sources: Array<Pick<KnowledgeSource, "status" | "item_count">>): boolean {
+  return sources.some((s) => s.status === "ready" || Number(s.item_count ?? 0) > 0);
+}
 /** A finish is only news for a day. */
 const FRESH_MS = 24 * 60 * 60 * 1000;
 
@@ -38,6 +43,7 @@ export function AidenSetupCard({
 }) {
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [sourcesLoaded, setSourcesLoaded] = useState(false);
   const [dismissed, setDismissed] = useState<string[]>([]);
 
   useEffect(() => {
@@ -63,6 +69,7 @@ export function AidenSetupCard({
     });
     const list = data?.sources ?? [];
     setSources(list);
+    setSourcesLoaded(true);
     return list;
   }, [organizationId]);
 
@@ -160,7 +167,8 @@ export function AidenSetupCard({
     );
   }
 
-  if (!handoff) return null;
+  // Only while nothing has been read (and once we know that).
+  if (!handoff || !sourcesLoaded || hasReadSomething(sources)) return null;
 
   return (
     <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-5 sm:p-6 animate-in fade-in slide-in-from-bottom-2 duration-500">

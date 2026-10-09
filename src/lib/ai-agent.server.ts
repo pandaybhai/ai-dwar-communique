@@ -48,8 +48,10 @@ export type AgentInboundArgs = {
   /** The webhook's reply timer: Aiden's stages and sends land on webhook_events.timing. */
   timer?: ReplyTimer;
   /**
-   * Called once the gates pass and a live reply is coming (not for drafts):
-   * the webhook marks the message read and shows the typing dots. Never awaited.
+   * Called once an answer is certain to be sent (Replying mode, the run
+   * produced something to send — Batch 28; never for drafts, Aiden off or
+   * a run with nothing to say): the webhook marks the message read and
+   * shows the typing dots. Never awaited.
    */
   onWillReply?: () => void;
 };
@@ -150,7 +152,7 @@ export const LIVE_FIRST_CALL_TIMEOUT_MS = 20_000;
 
 type HandToPersonArgs = Pick<
   AgentInboundArgs,
-  "organizationId" | "conversationId" | "contactId" | "phoneNumberId" | "accessToken" | "waId" | "later"
+  "organizationId" | "conversationId" | "contactId" | "phoneNumberId" | "accessToken" | "waId" | "later" | "onWillReply"
 >;
 
 /**
@@ -190,6 +192,12 @@ async function handToPerson(
   } else if (!isServiceWindowOpen(convo as { last_customer_message_at?: string | null } | null)) {
     handoverState = "window_closed";
   } else {
+    // The hand-over line is a reply: the dots go with it (Batch 28).
+    try {
+      args.onWillReply?.();
+    } catch {
+      // the dots are a courtesy
+    }
     const handover = await sendServiceText(supabase, {
       organizationId: args.organizationId,
       phoneNumberId: args.phoneNumberId,
@@ -368,13 +376,6 @@ export async function runAgentOnInbound(
 
   const common = { organizationId: args.organizationId, actorUserId: null, actingRole: null };
   timer?.mark("ai_gates");
-  if (mode === "replying") {
-    try {
-      args.onWillReply?.();
-    } catch {
-      // the dots are a courtesy
-    }
-  }
 
   // The Cards page switch, read once and only when a picture goes out (or is
   // about to: the first card is drawn while the model writes its closing words).
@@ -389,8 +390,13 @@ export async function runAgentOnInbound(
     const first = items.find((p) => p.hasPhoto);
     // A product that will go as a WhatsApp catalogue card needs no picture card.
     if (prewarmed || !first || !flags.has("cards") || (flags.has("whatsapp_catalog") && first.inCatalog)) return;
+    // Batch 28: the drawing writes a stored file and a usage row, so it is
+    // handed to the webhook's later() (awaited before the event closes); with
+    // no later() there is no request to keep it alive, and the card is simply
+    // drawn when it is sent.
+    if (!args.later) return;
     prewarmed = true;
-    void cards()
+    const drawing = cards()
       .then(async (on) => {
         if (!on) return;
         const [{ renderCustomerCard }, { productCardVars }] = await Promise.all([
@@ -400,6 +406,7 @@ export async function runAgentOnInbound(
         await renderCustomerCard(supabase, { organizationId: args.organizationId, kind: "customer_product", vars: productCardVars(first) });
       })
       .catch(() => {});
+    args.later(drawing);
   };
 
   if (mode === "draft") {
@@ -479,6 +486,17 @@ export async function runAgentOnInbound(
   // Pictures the model sent are an answer even without words.
   const shouldSend =
     run.status === "ok" && (answer.length > 0 || Boolean(run.parts?.some((p) => p.kind === "products")));
+  // Batch 28: read receipt + typing dots only once an answer is certain to
+  // go. They used to start before the model ran, so a run with nothing to
+  // send (a stale button, a refusal) left the customer watching "typing…"
+  // and then nothing.
+  if (shouldSend) {
+    try {
+      args.onWillReply?.();
+    } catch {
+      // the dots are a courtesy
+    }
+  }
 
   // Batch 27 (H2): a run that broke (error) or hit a spending limit
   // (capped) has nothing to say, and the customer would hear nothing. It is

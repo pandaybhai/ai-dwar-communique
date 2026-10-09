@@ -170,6 +170,9 @@ export async function suggestPersonaAfterRead(supabase: SupabaseClient, sourceId
       .or("updated_by.not.is.null,origin.not.is.null")
       .limit(1);
     if ((authored ?? []).length > 0) return;
+    // Over today's background AI cap: no suggestion now; the next read makes it.
+    const { backgroundAiCapReached } = await import("@/lib/reading.server");
+    if (await backgroundAiCapReached(supabase, src.organization_id)) return;
 
     const result = await generatePersona(supabase, src.organization_id, { agentId });
     if (!result.ok) {

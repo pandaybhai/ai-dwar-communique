@@ -55,13 +55,17 @@ export async function buildStatementLines(
     });
   }
 
+  // Batch 28: answers = replies to customers only (onlyCustomerAnswers).
+  const { onlyCustomerAnswers } = await import("@/lib/ai-answers");
   const [{ count: aiUsed }, { data: settings }, { data: org }] = await Promise.all([
-    supabase
-      .from("ai_runs")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", organizationId)
-      .gte("created_at", periodStart)
-      .lt("created_at", periodEnd),
+    onlyCustomerAnswers(
+      supabase
+        .from("ai_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
+        .gte("created_at", periodStart)
+        .lt("created_at", periodEnd),
+    ),
     supabase
       .from("organization_billing_settings")
       .select("ai_answers_included_override")
@@ -105,6 +109,7 @@ export async function planFeeRoiSnapshot(
   escalations: number;
   revenue_attributed: number | null;
 }> {
+  const { onlyCustomerAnswers } = await import("@/lib/ai-answers");
   const [{ data: revenue }, { data: ledger }, { count: messages }, { count: aiAnswers }, { count: escalations }] =
     await Promise.all([
       supabase
@@ -128,12 +133,14 @@ export async function planFeeRoiSnapshot(
         .eq("direction", "outbound")
         .gte("created_at", periodStart)
         .lt("created_at", periodEnd),
-      supabase
-        .from("ai_runs")
-        .select("id", { count: "exact", head: true })
-        .eq("organization_id", organizationId)
-        .gte("created_at", periodStart)
-        .lt("created_at", periodEnd),
+      onlyCustomerAnswers(
+        supabase
+          .from("ai_runs")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", organizationId)
+          .gte("created_at", periodStart)
+          .lt("created_at", periodEnd),
+      ),
       supabase
         .from("ai_runs")
         .select("id", { count: "exact", head: true })

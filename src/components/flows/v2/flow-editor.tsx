@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { callApi, uploadApi } from "@/lib/whatsapp-client";
+import { unpinnedFlowNote } from "@/lib/flow-trigger-config";
 import { maskHttpSecrets, validateGraph, type FlowGraph, type GraphProblem, type NodeType } from "@/lib/flow-graph";
 import { FlowNodeCard, type RFData } from "./flow-node";
 import { NODE_META, paletteTypes, uid } from "./node-meta";
@@ -143,6 +144,8 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     if (error) { toast.error(error); return; }
     setEdCtx((c) => ({ ...c, pinned: id }));
     toast.success(id ? "This flow now runs only on that number." : "This flow now runs on all your numbers.");
+    const note = unpinnedFlowNote(edCtx.numbers, id);
+    if (note) toast.warning(note);
   };
   const testHttp = useCallback(async (data: Record<string, unknown>) => {
     const { data: out, error } = await callApi<{ result: { ok: boolean; status: number | null; error: string | null; saved: Record<string, string>; preview: string } }>("/api/flows/v2", {
@@ -287,7 +290,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     return () => window.removeEventListener("keydown", onKey);
   }, [snap, canEdit, undo, redo, commit, view]);
 
-  const saveDraft = async (): Promise<boolean> => {
+  const saveDraft = async (opts: { quiet?: boolean } = {}): Promise<boolean> => {
     setBusy(true);
     // A save that fails — refused, or never reached us (offline) — is said out
     // loud and the changes stay marked unsaved; it never fails silently.
@@ -307,13 +310,17 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     if (sealed.size) setSnap((s) => ({ ...s, nodes: s.nodes.map((n) => (sealed.has(n.id) ? { ...n, data: { ...n.data, data: { ...n.data.data, headers: sealed.get(n.id) } } } : n)) }));
     setDirty(false);
     onChanged();
+    if (!opts.quiet) {
+      const note = unpinnedFlowNote(edCtx.numbers, edCtx.pinned);
+      if (note) toast.warning(note);
+    }
     return true;
   };
 
   const publish = async () => {
     const local = validateGraph(graph, validateOpts);
     if (local.length) { toast.error(`Fix ${local.length} problem${local.length === 1 ? "" : "s"} before publishing.`); return; }
-    if (!(await saveDraft())) return;
+    if (!(await saveDraft({ quiet: true }))) return;
     setBusy(true);
     let error: string | null = null;
     let raw: unknown = null;
@@ -328,6 +335,8 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     if (r?.problems?.length) { setServerProblems(r.problems); toast.error("Some steps need fixing before publishing."); return; }
     if (error) { toast.error(error); return; }
     toast.success("Published — new runs use this version.");
+    const note = unpinnedFlowNote(edCtx.numbers, edCtx.pinned);
+    if (note) toast.warning(note);
     onChanged();
   };
 

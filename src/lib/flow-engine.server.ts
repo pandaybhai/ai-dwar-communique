@@ -1064,12 +1064,12 @@ async function advanceInner(
             .update(userId ? { assigned_to: userId } : { needs_human: true, needs_human_reason: "flow_assign", needs_human_at: new Date().toISOString() })
             .eq("id", run.conversation_id);
           // Batch 16: a hand-off to the team (no one picked) alerts the staff.
-          // Fire-and-forget: the alert never holds or changes the run.
+          // Batch 28: awaited — a fire-and-forget alert died with the worker
+          // request before it was sent (handoff_alert_at stayed NULL on every
+          // row). sendHandoffAlert never throws, so it never changes the run.
           if (!userId) {
-            const conversationId = run.conversation_id;
-            void import("@/lib/handoff-alerts.server")
-              .then(({ sendHandoffAlert }) => sendHandoffAlert(supabase, { organizationId: run.organization_id, conversationId, reason: "flow_assign" }))
-              .catch(() => {});
+            const { sendHandoffAlert } = await import("@/lib/handoff-alerts.server");
+            await sendHandoffAlert(supabase, { organizationId: run.organization_id, conversationId: run.conversation_id, reason: "flow_assign" });
           }
         }
         break;
