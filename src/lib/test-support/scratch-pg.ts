@@ -22,6 +22,8 @@ export function pgAvailable(): boolean {
 export type ScratchPg = {
   /** Runs SQL, returns psql's unaligned, tuples-only output. Throws on error. */
   sql: (text: string) => string;
+  /** The same for a SQL file (for text too long for a command line). */
+  file: (path: string) => string;
   stop: () => void;
 };
 
@@ -82,5 +84,10 @@ export function startScratchPg(opts: { schemaFile: string; migrations: string[] 
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
-  return { sql, stop };
+  const file = (path: string) =>
+    execFileSync("psql", [...base, "-d", "scratch", "-f", path], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  return { sql, file, stop };
 }
