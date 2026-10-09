@@ -1149,10 +1149,17 @@ export const STANDING_NOTICE_REPEAT_MS = 864e5;
 /**
  * An invoice reaches its buyer at most once per channel automatically: no
  * invoice_issued notice is queued while one for the same invoice (payload
- * invoice_id, else invoice_number) and channel is already queued or sent. A
- * failed one does not hold it. Can't read → nothing queued: a super admin can
- * resend, a buyer can't unreceive (Batch 23). The partial unique index in
- * 20261060_invoice_notice_once.sql refuses a second queued row from a race.
+ * invoice_id, else invoice_number) and channel is already queued or sent —
+ * nor while one failed by the drain (payload.attempts set): that row is the
+ * channel's one retry chain, retried alone with backoff up to the cap
+ * (noticeRetryDue, billing-notify.server.ts), so a later pass never starts a
+ * second chain or re-queues the channel that already went out (Batch 28:
+ * AD/2026-27/00013 was emailed six times while its WhatsApp half failed).
+ * A row failed by hand (no attempt count) does not hold. Can't read →
+ * nothing queued: a super admin can resend, a buyer can't unreceive
+ * (Batch 23). The partial unique indexes in 20261060_invoice_notice_once.sql
+ * (queued) and 20261083_batch28_invoice_notice_once.sql (sent) refuse a
+ * second row from a race.
  */
 async function invoiceNoticeExists(
   supabase: SupabaseClient,
@@ -1161,22 +1168,34 @@ async function invoiceNoticeExists(
   const invoiceId = input.payload["invoice_id"];
   const invoiceNumber = input.payload["invoice_number"];
   if (!invoiceId && !invoiceNumber) return false;
-  let query = supabase
-    .from("billing_notifications")
-    .select("id")
-    .eq("kind", "invoice_issued")
-    .eq("channel", input.channel)
-    .in("status", ["queued", "sent"]);
-  if (input.organizationId) query = query.eq("organization_id", input.organizationId);
-  query = invoiceId
-    ? query.eq("payload->>invoice_id", String(invoiceId))
-    : query.eq("payload->>invoice_number", String(invoiceNumber));
-  const { data, error } = await query.limit(1);
-  if (error) {
-    console.error("[billing] invoice notice guard failed", invoiceId ?? invoiceNumber, error.message);
+  const base = () => {
+    let query = supabase
+      .from("billing_notifications")
+      .select("id, status, payload")
+      .eq("kind", "invoice_issued")
+      .eq("channel", input.channel);
+    if (input.organizationId) query = query.eq("organization_id", input.organizationId);
+    return invoiceId
+      ? query.eq("payload->>invoice_id", String(invoiceId))
+      : query.eq("payload->>invoice_number", String(invoiceNumber));
+  };
+  const guardFailed = (message: string) => {
+    console.error("[billing] invoice notice guard failed", invoiceId ?? invoiceNumber, message);
     return true;
-  }
-  return Boolean((data as { id: string }[] | null)?.length);
+  };
+
+  const { data, error } = await base().in("status", ["queued", "sent"]).limit(1);
+  if (error) return guardFailed(error.message);
+  if ((data as { id: string }[] | null)?.length) return true;
+
+  const { data: retrying, error: retryError } = await base()
+    .eq("status", "failed")
+    .not("payload->>attempts", "is", null)
+    .limit(1);
+  if (retryError) return guardFailed(retryError.message);
+  return ((retrying ?? []) as { status?: string; payload?: Record<string, unknown> | null }[]).some(
+    (r) => r.status === "failed" && Number(r.payload?.["attempts"] ?? 0) >= 1,
+  );
 }
 
 export async function notify(

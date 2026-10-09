@@ -577,8 +577,109 @@ export async function recipientFor(
   return ownerPhone ? normalizePhone(ownerPhone) : null;
 }
 
-/** How many times a failed notice is retried before it is left alone. */
-const MAX_ATTEMPTS = 3;
+/**
+ * How many times a notice is tried in all before it is left alone. Shared
+ * with the email drain (email-notices.server.ts): one rule for every channel.
+ */
+export const NOTICE_MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = NOTICE_MAX_ATTEMPTS;
+
+/**
+ * A failed notice waits before its next try: 15 min after the first failure,
+ * 60 min after the second (×4 each time), counted from its last outcome
+ * (sent_at, which every outcome writes). Without it every drain tick retried
+ * at once, and a WhatsApp template still pending at Meta used its three
+ * tries within minutes (Batch 28, invoice AD/2026-27/00013, 7 Oct).
+ */
+export const NOTICE_RETRY_BACKOFF_MS = 15 * 60_000;
+
+export function noticeAttempts(row: Record<string, unknown>): number {
+  const n = Number(((row["payload"] ?? {}) as Record<string, unknown>)["attempts"] ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** The pending rows a drain reads: queued, or failed with tries left. Dead rows never take a place. */
+export function pendingNoticeFilter(): string {
+  return `status.eq.queued,and(status.eq.failed,payload->>attempts.in.(${Array.from(
+    { length: NOTICE_MAX_ATTEMPTS - 1 },
+    (_, i) => i + 1,
+  ).join(",")}))`;
+}
+
+/**
+ * Whether a drain may try this row now: queued → yes; failed → only with
+ * tries left (attempts 1…cap−1; none means failed by hand, never retried)
+ * and once its backoff has passed. Only this row is retried — never its
+ * invoice's other channel.
+ */
+export function noticeRetryDue(row: Record<string, unknown>, now = Date.now()): boolean {
+  if (row["status"] === "queued") return true;
+  if (row["status"] !== "failed") return false;
+  const attempts = noticeAttempts(row);
+  if (attempts < 1 || attempts >= NOTICE_MAX_ATTEMPTS) return false;
+  const last = Date.parse(String(row["sent_at"] ?? ""));
+  if (!Number.isFinite(last)) return true;
+  return now - last >= NOTICE_RETRY_BACKOFF_MS * 4 ** (attempts - 1);
+}
+
+/**
+ * An invoice notice reaches its buyer once per channel: true when another
+ * invoice_issued row for the same workspace, channel and invoice is already
+ * 'sent' (checked right before sending, so a second row — a race, or one
+ * from before the guards — is closed instead of delivered again). Can't
+ * read → "unknown": the row is left as it is for the next drain (a buyer
+ * can't unreceive).
+ */
+export async function invoiceNoticeSentElsewhere(
+  supabase: SupabaseClient,
+  row: Record<string, unknown>,
+): Promise<"sent" | "not_sent" | "unknown"> {
+  if (row["kind"] !== "invoice_issued") return "not_sent";
+  const invoiceId = ((row["payload"] ?? {}) as Record<string, unknown>)["invoice_id"];
+  if (!invoiceId) return "not_sent";
+  let query = supabase
+    .from("billing_notifications")
+    .select("id, status")
+    .eq("kind", "invoice_issued")
+    .eq("channel", String(row["channel"] ?? "whatsapp"))
+    .eq("status", "sent")
+    .eq("payload->>invoice_id", String(invoiceId))
+    .neq("id", String(row["id"]));
+  if (row["organization_id"]) query = query.eq("organization_id", String(row["organization_id"]));
+  const { data, error } = await query.limit(1);
+  if (error) return "unknown";
+  return ((data ?? []) as { id: string; status?: string }[]).some(
+    (r) => r.id !== row["id"] && r.status === "sent",
+  )
+    ? "sent"
+    : "not_sent";
+}
+
+/**
+ * Writes a notice's outcome. 'sent' refused by the one-sent-per-invoice index
+ * (23505, 20261083_batch28_invoice_notice_once.sql) means another row
+ * already delivered this invoice on this channel: the row is closed as
+ * skipped "already_sent" — never left pending, where a later drain would
+ * send it again. Any other failed write is tried once more.
+ */
+export async function writeNoticeOutcome(
+  supabase: SupabaseClient,
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<"written" | "already_sent" | "error"> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { error } = await supabase.from("billing_notifications").update(patch).eq("id", id);
+    if (!error) return "written";
+    if (patch["status"] === "sent" && (error as { code?: string }).code === "23505") {
+      await supabase
+        .from("billing_notifications")
+        .update({ ...patch, status: "skipped", error: "already_sent" })
+        .eq("id", id);
+      return "already_sent";
+    }
+  }
+  return "error";
+}
 
 /**
  * A notice not out within this long is never sent: it is failed as "stale"
@@ -657,21 +758,15 @@ export async function drainBillingNotifications(
     .from("billing_notifications")
     .select("id, organization_id, audience, kind, channel, recipient, payload, status, sent_at, created_at")
     .eq("channel", "whatsapp")
-    .or(
-      `status.eq.queued,and(status.eq.failed,payload->>attempts.in.(${Array.from(
-        { length: MAX_ATTEMPTS - 1 },
-        (_, i) => i + 1,
-      ).join(",")}))`,
-    )
+    .or(pendingNoticeFilter())
     .order("created_at", { ascending: true })
     .limit(Math.min(Math.max(limit, 1), 50));
 
-  const queued = ((rows ?? []) as Record<string, unknown>[]).filter((row) => {
-    if (row["status"] === "queued") return true;
-    if (row["status"] !== "failed") return false;
-    const attempts = Number(((row["payload"] ?? {}) as Record<string, unknown>)["attempts"] ?? 0);
-    return attempts >= 1 && attempts < MAX_ATTEMPTS;
-  });
+  // A failed row waits out its backoff (noticeRetryDue); it is not counted.
+  const nowMs = Date.now();
+  const queued = ((rows ?? []) as Record<string, unknown>[]).filter((row) =>
+    noticeRetryDue(row, nowMs),
+  );
   if (queued.length === 0) return counts;
 
   const platformOrgId = await resolvePlatformOrg(supabase);
@@ -698,10 +793,7 @@ export async function drainBillingNotifications(
         attempts: attempts ?? Number(payload["attempts"] ?? 0) + 1,
       };
     }
-    await supabase
-      .from("billing_notifications")
-      .update(patch)
-      .eq("id", row["id"] as string);
+    await writeNoticeOutcome(supabase, row["id"] as string, patch);
   };
 
   for (const row of queued) {
@@ -735,6 +827,14 @@ export async function drainBillingNotifications(
         const inv = (invoice ?? {}) as Record<string, unknown>;
         if (((inv["sent"] ?? {}) as Record<string, unknown>)["whatsapp_at"]) {
           await mark(row, "skipped", "already_delivered");
+          counts.skipped += 1;
+          continue;
+        }
+        // Another row for this invoice already went out on WhatsApp: close
+        // this one, never a second copy (Batch 28). Can't tell → next drain.
+        const elsewhere = await invoiceNoticeSentElsewhere(supabase, row);
+        if (elsewhere !== "not_sent") {
+          if (elsewhere === "sent") await mark(row, "skipped", "already_sent");
           counts.skipped += 1;
           continue;
         }
