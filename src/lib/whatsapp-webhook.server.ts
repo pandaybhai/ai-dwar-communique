@@ -136,16 +136,22 @@ export async function coalesceBurst(
 
 /**
  * Marks a customer's message read and shows the typing dots (WhatsApp Cloud
- * API; they last until our reply arrives or ~25 s). Fire-and-forget: it never
- * delays or blocks a reply, and a failure is silent.
+ * API; they last until our reply arrives or ~25 s). Never awaited on the
+ * reply's path: it never delays or blocks a reply, and a failure is silent.
+ * The caller hands the returned promise to the webhook's later() so the
+ * request isn't over before it is sent.
+ *
+ * Batch 28: called only once a reply is certain to go (Aiden in Replying
+ * mode past its gates, an owner's message on the AiDwar number) — dots
+ * followed by nothing (Draft mode, Aiden off, a stale button) are gone.
  */
 export function showTyping(
   connection: Promise<{ accessToken?: string | null } | null>,
   phoneNumberId: string,
   messageId: string,
-): void {
-  if (!messageId) return;
-  void connection
+): Promise<unknown> {
+  if (!messageId) return Promise.resolve();
+  return connection
     .then((c) => {
       if (!c?.accessToken) return;
       return outsideFetch("meta", `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
@@ -1506,12 +1512,11 @@ export async function processWebhookPayload(
             const waId = toWaId(msg["from"] as string | undefined);
             if (!waId) continue;
 
-            // On the onboarding number the owner is watching the chat, so mark
-            // the message read and start the typing dots before anything else.
-            // Fire-and-forget: it must never delay or block the reply.
-            if (onboardingAccountId && accountId === onboardingAccountId) {
-              showTyping(connectionP, phoneNumberId, String(msg["id"] ?? ""));
-            }
+            // Batch 28: no typing dots up front on the onboarding number any
+            // more — they went out before anyone knew a reply would follow
+            // (a stranger past the greeting limit, a stale button, a flow
+            // step that sends nothing). handleMerchantInbound starts them
+            // (onWillReply) once a reply is certain.
 
             // Our own number appearing as the sender means this is an echo of a
             // message we sent (confirmation, automation reply). Never automate on it.
@@ -1904,6 +1909,7 @@ export async function processWebhookPayload(
                   mediaUrl: media.media_url,
                   mediaMime: media.media_mime,
                   mediaName: media.media_name,
+                  onWillReply: () => later(showTyping(connectionP, phoneNumberId, String(msg["id"] ?? ""))),
                 });
               }
               continue;
@@ -2195,7 +2201,7 @@ export async function processWebhookPayload(
                   ...(contextMetaId ? { replyToMetaId: contextMetaId } : {}),
                   timer: clock.timer,
                   // A live reply is coming: read receipt + typing dots now.
-                  onWillReply: () => showTyping(connectionP, phoneNumberId, String(msg["id"] ?? "")),
+                  onWillReply: () => later(showTyping(connectionP, phoneNumberId, String(msg["id"] ?? ""))),
                   later,
                 });
                 agentAnswering = false;

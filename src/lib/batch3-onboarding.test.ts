@@ -8,6 +8,7 @@ vi.mock("@/lib/scripts.server", () => ({ getScript: async (_s: unknown, key: str
 vi.mock("@/lib/owner-replies.server", () => ({
   onboardingChannelFor: async () => null,
   ownerOrganizationIds: async () => [],
+  memberOrganizationIds: async () => [],
   orgNames: async () => new Map(),
   prefixFor: () => "",
   withPrefix: (_p: string, t: string) => t,

@@ -48,6 +48,43 @@ const ALLOWED: Array<{ shape: string; part: "validate" | "sim" | "engine"; scrip
   ),
 ];
 
+/**
+ * Batch 28 item 1 (hand-off alerts awaited): an Assign step that hands the
+ * chat to the team now finishes its staff alert before the run moves on, so
+ * the alert's own record — handoff_alert_at, then handoff_alert_result —
+ * appears right after the flow's needs_human write. On main the alert was
+ * fired and forgotten and never wrote anything (handoff_alert_at was NULL on
+ * every live row). Sends, run state, events and every other write are
+ * unchanged: only those two writes, in that place, are allowed.
+ */
+const ALERT_RECORDED: Array<{ shape: string; why: string }> = [
+  { shape: "2beb029bc421ff9027c8b9551ac3ae0c", why: "Ai Dwar \"Appointment request\" ends with Assign → team: its staff alert is now recorded" },
+  { shape: "53abdf009779d2e5122143632ad7bf32", why: "\"zoori welcome flow\": a menu option ending in Assign → team: its staff alert is now recorded" },
+  { shape: "c2749820fd04d10ec09e783c16214eb0", why: "\"Welcome menu\": a menu option ending in Assign → team: its staff alert is now recorded" },
+  { shape: "f6cb73e97e5799e787f00cb5c445317a", why: "\"Demo: menu\": a menu option ending in Assign → team: its staff alert is now recorded" },
+];
+const ASSIGN_WRITE = 'conversation:{"needs_human":true,"needs_human_reason":"flow_assign","needs_human_at":"<time>"}';
+
+/** The transcript without the alert's two writes after each flow_assign hand-off (null when there were none). */
+function withoutAlertRecord(t: unknown): unknown | null {
+  const writes = (t as { writes?: string[] } | null)?.writes;
+  if (!Array.isArray(writes)) return null;
+  const kept: string[] = [];
+  let stripped = false;
+  for (let i = 0; i < writes.length; i++) {
+    kept.push(writes[i]!);
+    if (
+      writes[i] === ASSIGN_WRITE &&
+      writes[i + 1]?.startsWith('conversation:{"handoff_alert_at":') &&
+      writes[i + 2]?.startsWith('conversation:{"handoff_alert_result":')
+    ) {
+      i += 2;
+      stripped = true;
+    }
+  }
+  return stripped ? { ...(t as object), writes: kept } : null;
+}
+
 const NOW = new Date("2026-10-05T05:30:00Z"); // Monday 11:00 in Asia/Kolkata
 
 beforeAll(() => {
@@ -111,6 +148,13 @@ describe("live flows replay", () => {
       for (const part of ["sim", "engine"] as const) {
         const keys = new Set([...Object.keys(cur[part] ?? {}), ...Object.keys(was[part] ?? {})]);
         for (const k of keys) {
+          if (part === "engine" && ALERT_RECORDED.some((a) => a.shape === shape)) {
+            const plain = withoutAlertRecord(cur[part]![k]);
+            if (plain) {
+              used.add(`${shape} alert`);
+              cur[part]![k] = plain;
+            }
+          }
           if (JSON.stringify(cur[part]![k]) === JSON.stringify(was[part]?.[k])) continue;
           if (ALLOWED.some((a) => a.shape === shape && a.part === part && a.script === k)) {
             used.add(`${shape} ${part} ${k}`);
@@ -124,6 +168,8 @@ describe("live flows replay", () => {
     }
     expect(diffs.join("\n\n")).toBe("");
     // Every allowed difference really happened (the list never goes stale).
-    expect([...used].sort()).toEqual(ALLOWED.map((a) => `${a.shape} ${a.part} ${a.script}`).sort());
+    expect([...used].sort()).toEqual(
+      [...ALLOWED.map((a) => `${a.shape} ${a.part} ${a.script}`), ...ALERT_RECORDED.map((a) => `${a.shape} alert`)].sort(),
+    );
   });
 });

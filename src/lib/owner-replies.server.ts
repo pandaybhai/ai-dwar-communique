@@ -93,19 +93,28 @@ export async function ownerOrganizationIds(
     ids.add(row.organization_id);
   }
 
-  const { data: profiles } = await supabase.from("profiles").select("id").eq("phone", phone);
-  const userIds = ((profiles ?? []) as Array<{ id: string }>).map((r) => r.id);
-  if (userIds.length > 0) {
-    const { data: members } = await supabase
-      .from("organization_members")
-      .select("organization_id")
-      .in("user_id", userIds);
-    for (const row of (members ?? []) as Array<{ organization_id: string }>) {
-      ids.add(row.organization_id);
-    }
-  }
+  for (const id of await memberOrganizationIds(supabase, phone)) ids.add(id);
 
   return Array.from(ids);
+}
+
+/**
+ * The workspaces this phone is an owner or member of, by the phone on their
+ * profile (organization_members) — not by onboarding sessions, which a code
+ * that lapsed also leaves behind. Batch 28: a known owner whose setup sessions
+ * all expired is still an owner on the AiDwar number, never a stranger.
+ */
+export async function memberOrganizationIds(supabase: SupabaseClient, phoneOrWaId: string): Promise<string[]> {
+  const phone = normalizePhone(phoneOrWaId);
+  if (!phone) return [];
+  const { data: profiles } = await supabase.from("profiles").select("id").eq("phone", phone);
+  const userIds = ((profiles ?? []) as Array<{ id: string }>).map((r) => r.id);
+  if (userIds.length === 0) return [];
+  const { data: members } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .in("user_id", userIds);
+  return [...new Set(((members ?? []) as Array<{ organization_id: string }>).map((r) => r.organization_id))];
 }
 
 /** "[Chai Point] " when this owner runs more than one business, else "". */

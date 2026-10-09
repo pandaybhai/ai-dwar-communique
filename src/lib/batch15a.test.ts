@@ -243,7 +243,7 @@ describe("(1c) the first product goes at once, the rest together", () => {
 
 // ------------------------------------------------------------------ (1d)
 describe("(1d) read receipt + typing dots as soon as a live reply is coming", () => {
-  it("once, after the gates pass", async () => {
+  it("once, when the answer is ready to go (Batch 28)", async () => {
     process.env["LOVABLE_API_KEY"] = "test-key";
     const r = await reply(CASES.find((c) => c.id === "who-are-you")!);
     expect(r.typing).toBe(1);
@@ -331,6 +331,8 @@ describe("(1d) read receipt + typing dots as soon as a live reply is coming", ()
       "ev-typing",
       inboundPayload({ id: "wamid.hi", type: "text", text: { body: "who are you?" } }),
     );
+    // Batch 28: the dots go only with a reply (here the hand-over line).
+    expect(bodies.filter((b) => b["type"] && !b["typing_indicator"])).toHaveLength(1);
     expect(bodies.find((b) => b["typing_indicator"])).toMatchObject({
       status: "read",
       message_id: "wamid.hi",
