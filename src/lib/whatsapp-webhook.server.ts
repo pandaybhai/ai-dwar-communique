@@ -314,14 +314,30 @@ async function applyCampaignStatus(
   nextStatus: string,
   errorDetail: string | null,
   recipientId: string | null = null,
-): Promise<void> {
-  const { error } = await supabase.rpc("campaign_recipient_status", {
-    p_message_id: messageId,
-    p_recipient_id: recipientId,
-    p_status: nextStatus,
-    p_error: errorDetail,
-  });
-  if (error) throw new Error(error.message);
+): Promise<string | null> {
+  // Batch 28 (item 8): never throws. The message's own status, its price and
+  // its event never depend on this counter (8 Oct: the function wasn't on
+  // live and every campaign status failed, unpriced). A failure is logged on
+  // its own and returned, so the event stays retryable for the counter alone
+  // (the retry finds the message already moved and redoes only this and an
+  // unpriced message's price — retakeStatusSteps; the function is idempotent).
+  try {
+    const { error } = await supabase.rpc("campaign_recipient_status", {
+      p_message_id: messageId,
+      p_recipient_id: recipientId,
+      p_status: nextStatus,
+      p_error: errorDetail,
+    });
+    if (!error) return null;
+    console.warn(
+      JSON.stringify({ scope: "campaign_counter", message_id: messageId, status: nextStatus, code: error.code ?? null, error: error.message }),
+    );
+    return `counter: ${error.message}`;
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    console.warn(JSON.stringify({ scope: "campaign_counter", message_id: messageId, status: nextStatus, error: text }));
+    return `counter: ${text}`;
+  }
 }
 
 /** Messages from before attribution lived on the row (first attributed send: 2026-08-14). */
@@ -544,11 +560,13 @@ async function retakeStatusSteps(
   const campaignMessage =
     Boolean(row.campaign_id || recipientId) ||
     (!row.flow_id && (!row.created_at || row.created_at < ATTRIBUTION_SINCE));
-  if (campaignMessage) await applyCampaignStatus(supabase, row.id, nextStatus, null, recipientId);
+  const counterError = campaignMessage ? await applyCampaignStatus(supabase, row.id, nextStatus, null, recipientId) : null;
   if ((nextStatus === "delivered" || nextStatus === "read") && row.cost_amount == null) {
     const { error: priceError } = await supabase.rpc("price_message", { p_message_id: row.id });
     if (priceError) throw new Error(`price: ${priceError.message}`);
   }
+  // Priced either way; the counter alone keeps the event retryable.
+  if (counterError) throw new Error(counterError);
   return true;
 }
 
@@ -2344,7 +2362,8 @@ export async function processWebhookPayload(
 
             if (nextStatus === "failed") {
               if (campaignMessage) {
-                await applyCampaignStatus(supabase, existing.id, "failed", detail, ours?.recipientId ?? null);
+                const counterError = await applyCampaignStatus(supabase, existing.id, "failed", detail, ours?.recipientId ?? null);
+                if (counterError) failures.push(failureNote(`status ${metaId}`, counterError));
               }
               await emitEvent(supabase, "message.failed", {
                 organizationId: orgId,
@@ -2362,7 +2381,9 @@ export async function processWebhookPayload(
             }
 
             if (campaignMessage) {
-              await applyCampaignStatus(supabase, existing.id, nextStatus, null, ours?.recipientId ?? null);
+              // Never stops the price and the event below (Batch 28).
+              const counterError = await applyCampaignStatus(supabase, existing.id, nextStatus, null, ours?.recipientId ?? null);
+              if (counterError) failures.push(failureNote(`status ${metaId}`, counterError));
             }
 
             // Priced from the rate card, in the database, so a missing rate is a

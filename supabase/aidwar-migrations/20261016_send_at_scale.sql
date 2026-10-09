@@ -1,7 +1,13 @@
 -- Batch 12: send at scale. Idempotent. NOT applied by the PR that adds it.
 --
--- The code works without this file (it falls back to what it did before)
--- and is cheaper with it:
+-- Batch 28 correction: this used to say "the code works without this file
+-- (it falls back to what it did before)". It did not: on live (applied by
+-- hand 8 Oct 12:36) every campaign status failed on (2) and every campaign
+-- settle on (1). Since Batch 28 the code really works without it — (1) falls
+-- back to summing the debit rows (campaignLedgerCharge, PGRST202), and a
+-- failing (2) no longer stops a status: the message is moved, priced and its
+-- event emitted; only the counter waits for a retry. Tested in
+-- src/lib/batch28-campaigns.test.ts. The file is cheaper with it:
 --   1. campaign_ledger_charge(): a campaign's charged total summed in the
 --      database (one row back) instead of paging through every debit row.
 --   2. campaign_recipient_status(): a status webhook's recipient move and
