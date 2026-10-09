@@ -266,13 +266,18 @@ async function summaryUnchecked(
   const version = (orgRow["plan_versions"] ?? null) as Record<string, unknown> | null;
   const planRow = (version?.["plans"] ?? null) as Record<string, unknown> | null;
 
+  // Batch 28: "AI answers used" counts replies to customers only — the same
+  // rule as the billing trigger (onlyCustomerAnswers, src/lib/ai-answers.ts).
+  const { onlyCustomerAnswers } = await import("@/lib/ai-answers");
   const [{ count: aiUsed }, { data: account }] = await Promise.all([
-    supabase
-      .from("ai_runs")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", organizationId)
-      .gte("created_at", start)
-      .lt("created_at", end),
+    onlyCustomerAnswers(
+      supabase
+        .from("ai_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
+        .gte("created_at", start)
+        .lt("created_at", end),
+    ),
     orgRow["billing_account_id"]
       ? supabase
           .from("billing_accounts")
@@ -1276,12 +1281,16 @@ export async function recommendPlan(
   ]);
 
   const { start, end } = monthWindow();
-  const { count: aiUsed } = await supabase
-    .from("ai_runs")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", organizationId)
-    .gte("created_at", start)
-    .lt("created_at", end);
+  // The plan's ai_answers limit is about replies to customers (Batch 28).
+  const { onlyCustomerAnswers } = await import("@/lib/ai-answers");
+  const { count: aiUsed } = await onlyCustomerAnswers(
+    supabase
+      .from("ai_runs")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .gte("created_at", start)
+      .lt("created_at", end),
+  );
 
   const rows = ((versions ?? []) as Record<string, unknown>[])
     .map((v) => ({

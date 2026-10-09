@@ -186,7 +186,7 @@ export async function aiRunDetail(
     supabase
       .from("ai_runs")
       .select(
-        "id, created_at, task, tier, model, status, cost_amount, billed_amount, markup_multiplier, conversation_id",
+        "id, created_at, task, tier, model, status, cost_amount, billed_amount, markup_multiplier, conversation_id, metadata",
       )
       .eq("organization_id", input.organizationId)
       .eq("status", "ok")
@@ -212,11 +212,15 @@ export async function aiRunDetail(
     debitByRun.set(id, (debitByRun.get(id) ?? 0) + Math.abs(Number(row["amount"] ?? 0)));
   }
 
+  const { isCustomerAnswer } = await import("@/lib/ai-answers");
   let providerCost = 0;
   let billedTotal = 0;
+  let answers = 0;
   const out: AiRunDetailRow[] = [];
   for (const run of (runs ?? []) as Record<string, unknown>[]) {
     const id = String(run["id"]);
+    // Every ok run costs; only a reply to a customer is an answer (Batch 28).
+    if (isCustomerAnswer(run as never)) answers += 1;
     const debit = debitByRun.get(id) ?? null;
     const cost = Number(run["cost_amount"] ?? 0);
     providerCost += cost;
@@ -243,7 +247,7 @@ export async function aiRunDetail(
   return {
     runs: out,
     totals: {
-      answers: out.length,
+      answers,
       provider_cost: round2(providerCost),
       billed: round2(billedTotal),
       margin: round2(billedTotal - providerCost),
