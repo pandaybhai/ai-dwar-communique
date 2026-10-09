@@ -391,19 +391,13 @@ export const Route = createFileRoute("/api/admin/ai")({
               .from("ai_rates")
               .select("provider, model, input_rate, output_rate, currency, effective_from")
               .order("effective_from", { ascending: false }),
-            supabase
-              .from("ai_runs")
-              .select("cost_amount, billed_amount, cost_source")
-              .gte("created_at", new Date(Date.now() - 30 * 864e5).toISOString()),
-            supabase.rpc("platform_ai_month_spend"),
+            // Batch 28: one aggregate in the database (ai_cost_totals) — the
+            // rows read here stopped at 1,000 (Rs 22.01 shown for ~Rs 830).
+            import("@/lib/billing-ai-economics.server").then(({ aiCostTotals }) =>
+              aiCostTotals(supabase, { fromIso: new Date(Date.now() - 30 * 864e5).toISOString() }),
+            ),
+            import("@/lib/ai-run.server").then(({ platformMonthSpend }) => platformMonthSpend(supabase)),
           ]);
-          const runRows = (runs.data ?? []) as Array<{
-            cost_amount: number | null;
-            billed_amount: number | null;
-            cost_source: string | null;
-          }>;
-          const cost = runRows.reduce((sum, row) => sum + Number(row.cost_amount ?? 0), 0);
-          const billed = runRows.reduce((sum, row) => sum + Number(row.billed_amount ?? 0), 0);
           return Response.json({
             markup: Number(settings.data?.ai_markup_multiplier ?? 3),
             // The ceiling on total billed spend across every organisation.
@@ -413,7 +407,7 @@ export const Route = createFileRoute("/api/admin/ai")({
               ),
               currency:
                 (settings.data as { ai_cap_currency?: string } | null)?.ai_cap_currency ?? "INR",
-              spent: Number((platformSpend.data as number | null) ?? 0),
+              spent: platformSpend,
             },
             providers: ((providers.data ?? []) as Array<{
               provider: string;
@@ -432,7 +426,15 @@ export const Route = createFileRoute("/api/admin/ai")({
             tiers: tiers.data ?? [],
             models: models.data ?? [],
             rates: rates.data ?? [],
-            totals: { cost, billed, margin: billed - cost, runs: runRows.length },
+            // Never a smaller number: unavailable says why (PGRST202 until 20261082 is applied).
+            totals: runs.ok
+              ? { cost: runs.totals.provider_cost, billed: runs.totals.billed, margin: runs.totals.billed - runs.totals.provider_cost, runs: runs.totals.runs }
+              : null,
+            totals_error: runs.ok
+              ? null
+              : runs.code === "PGRST202"
+                ? "AI totals need the database function ai_cost_totals (migration 20261082), which isn't applied yet."
+                : `AI totals couldn't be read: ${runs.error}`,
             // Configured yes/no and the model name only — never a key.
             backup: await (async () => {
               const { backupStatus, loadPlatformBackup } = await import("@/lib/ai-fallback.server");

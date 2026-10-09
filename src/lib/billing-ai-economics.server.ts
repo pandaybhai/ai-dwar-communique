@@ -65,6 +65,96 @@ export function istMonthWindow(month: string): { fromIso: string; toIso: string;
   };
 }
 
+/** One window's AI totals from ai_cost_totals (20261082). */
+export type AiCostGroup = {
+  organization_id: string;
+  /** Asia/Kolkata month, YYYY-MM. */
+  month: string;
+  runs: number;
+  ok_runs: number;
+  provider_cost: number;
+  billed: number;
+  charged: number;
+  everyday: number;
+  careful: number;
+};
+export type AiCostTotals = Omit<AiCostGroup, "organization_id" | "month" | "charged"> & {
+  charged: number | null;
+  by_org_month: AiCostGroup[];
+};
+let costTotalsMissingUntil = 0;
+/** Only for tests: forget that the function was missing. */
+export function resetAiCostTotalsCache(): void {
+  costTotalsMissingUntil = 0;
+}
+
+export type AiCostTotalsResult = { ok: true; totals: AiCostTotals } | { ok: false; error: string; code: string | null };
+
+/**
+ * Batch 28 (item 3): AI runs, provider cost, list-price billed and what the
+ * wallet charged, summed in the database (ai_cost_totals, service role only)
+ * — /admin/ai, the /admin/billing AI margin and the platform monthly ceiling
+ * all read this one function, so their numbers agree. Reading rows and
+ * summing here stopped at PostgREST's 1,000 rows (Rs 22.01 shown for ~Rs 830).
+ * Never throws: a failed call (PGRST202 until 20261082 is applied) is
+ * returned with its reason, never as a smaller number.
+ */
+export async function aiCostTotals(
+  supabase: SupabaseClient,
+  input: { fromIso: string; toIso?: string | null; organizationId?: string | null; breakdown?: boolean },
+): Promise<AiCostTotalsResult> {
+  // The platform ceiling asks before every AI run: a function that isn't
+  // there yet is looked for again every 10 minutes, not on every run.
+  if (Date.now() < costTotalsMissingUntil)
+    return { ok: false, error: "Could not find the function public.ai_cost_totals", code: "PGRST202" };
+  try {
+    const { data, error } = await supabase.rpc("ai_cost_totals", {
+      p_from: input.fromIso,
+      p_to: input.toIso ?? null,
+      p_org: input.organizationId ?? null,
+      p_breakdown: Boolean(input.breakdown),
+    });
+    if (error) {
+      const code = (error as { code?: string }).code ?? null;
+      if (code === "PGRST202" || code === "42883") costTotalsMissingUntil = Date.now() + 10 * 60_000;
+      return { ok: false, error: error.message, code };
+    }
+    const row = (data ?? {}) as Record<string, unknown>;
+    const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    const groups = Array.isArray(row["by_org_month"]) ? (row["by_org_month"] as Record<string, unknown>[]) : [];
+    return {
+      ok: true,
+      totals: {
+        runs: num(row["runs"]),
+        ok_runs: num(row["ok_runs"]),
+        provider_cost: round4(num(row["provider_cost"])),
+        billed: round4(num(row["billed"])),
+        charged: row["charged"] === null || row["charged"] === undefined ? null : round4(num(row["charged"])),
+        everyday: num(row["everyday"]),
+        careful: num(row["careful"]),
+        by_org_month: groups.map((g) => ({
+          organization_id: String(g["organization_id"]),
+          month: String(g["month"]),
+          runs: num(g["runs"]),
+          ok_runs: num(g["ok_runs"]),
+          provider_cost: round4(num(g["provider_cost"])),
+          billed: round4(num(g["billed"])),
+          charged: round4(num(g["charged"])),
+          everyday: num(g["everyday"]),
+          careful: num(g["careful"]),
+        })),
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error), code: null };
+  }
+}
+
+/** The start of the current Asia/Kolkata month, as an instant. */
+export function istMonthStartIso(now: Date = new Date()): string {
+  return istMonthWindow(istMonthKey(now)).fromIso;
+}
+
 /** Which model handled each answer — the only thing still counted from ai_runs. */
 async function tierMix(
   supabase: SupabaseClient,
@@ -124,21 +214,40 @@ export async function aiUsageByOrgMonth(
 ): Promise<Map<string, OrgAiEconomics>> {
   const start = istMonthWindow(monthFrom);
   const end = istMonthWindow(monthTo);
-  const [{ data: usage }, mix] = await Promise.all([
+  const [{ data: usage }, totals] = await Promise.all([
     supabase
       .from("ai_usage_months")
       .select("organization_id, month, allowance, answers, over_answers, billed_amount, provider_cost")
       .gte("month", start.monthDate)
       .lte("month", end.monthDate)
       .limit(20_000),
-    tierMix(supabase, start.fromIso, end.toIso),
+    aiCostTotals(supabase, { fromIso: start.fromIso, toIso: end.toIso, breakdown: true }),
   ]);
+
+  // Batch 28: provider cost, what was charged and the model mix come from
+  // ai_cost_totals (the same sums /admin/ai and the platform ceiling read);
+  // the allowance and answers stay the frozen ones. Until 20261082 is
+  // applied: the frozen totals and the raw-row mix, as before.
+  const groups = new Map<string, AiCostGroup>();
+  let mix: Map<string, { everyday: number; careful: number }>;
+  if (totals.ok) {
+    for (const g of totals.totals.by_org_month) groups.set(`${g.organization_id}|${g.month}`, g);
+    mix = new Map([...groups].map(([key, g]) => [key, { everyday: g.everyday, careful: g.careful }]));
+  } else {
+    console.warn(JSON.stringify({ scope: "ai_cost_totals", error: totals.error, code: totals.code }));
+    mix = await tierMix(supabase, start.fromIso, end.toIso);
+  }
 
   const out = new Map<string, OrgAiEconomics>();
   for (const row of (usage ?? []) as Record<string, unknown>[]) {
     const month = String(row["month"]).slice(0, 7);
     const key = `${String(row["organization_id"])}|${month}`;
-    out.set(key, toEconomics(row, mix.get(key)));
+    const g = groups.get(key);
+    out.set(key, toEconomics(g ? { ...row, provider_cost: g.provider_cost, billed_amount: g.charged } : row, mix.get(key)));
+  }
+  // A workspace that spent on AI without a frozen month row (background work only).
+  for (const [key, g] of groups) {
+    if (!out.has(key)) out.set(key, toEconomics({ answers: 0, over_answers: 0, allowance: 0, provider_cost: g.provider_cost, billed_amount: g.charged }, mix.get(key)));
   }
   return out;
 }

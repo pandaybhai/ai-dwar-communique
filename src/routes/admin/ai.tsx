@@ -67,7 +67,9 @@ type Overview = {
   providers: Provider[];
   tiers: Tier[];
   models: Model[];
-  totals: { cost: number; billed: number; margin: number; runs: number };
+  /** Null when ai_cost_totals couldn't be read (totals_error says why) — never a partial sum. */
+  totals: { cost: number; billed: number; margin: number; runs: number } | null;
+  totals_error?: string | null;
 };
 
 function money(value: number) {
@@ -124,12 +126,17 @@ function AdminAi() {
       <PageHeader title="AI operations" description="The provider truth, cost basis, merchant pricing, and tier mapping live here." />
       {error ? <ErrorState message={error} /> : null}
 
+      {data.totals_error ? (
+        <p role="status" className="rounded-xl bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+          {data.totals_error}
+        </p>
+      ) : null}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ["Provider cost", money(data.totals.cost)],
-          ["Billed revenue", money(data.totals.billed)],
-          ["Margin", money(data.totals.margin)],
-          ["Runs · 30 days", String(data.totals.runs)],
+          ["Provider cost · 30 days", data.totals ? money(data.totals.cost) : "Unavailable"],
+          ["Billed revenue · 30 days", data.totals ? money(data.totals.billed) : "Unavailable"],
+          ["Margin · 30 days", data.totals ? money(data.totals.margin) : "Unavailable"],
+          ["Runs · 30 days", data.totals ? String(data.totals.runs) : "Unavailable"],
         ].map(([label, value]) => (
           <div key={label} className="rounded-xl border border-border/70 bg-card p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
