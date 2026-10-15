@@ -440,40 +440,73 @@ export const Route = createFileRoute("/api/admin/ai")({
               const { backupStatus, loadPlatformBackup } = await import("@/lib/ai-fallback.server");
               return backupStatus(process.env, await loadPlatformBackup(supabase, { fresh: true }));
             })(),
-            // How long Aiden waits for a second text (null: the column isn't there yet).
+            // Batch 29: Aiden's reply speed per workspace (one SQL aggregate, reply_speed_stats).
+            reply_speed: await (async () => {
+              const { replySpeedStats } = await import("@/lib/reply-speed.server");
+              const r = await replySpeedStats(supabase);
+              return r.ok
+                ? { ...r.stats, error: null }
+                : {
+                    slow_ms: 30_000,
+                    workspaces: [],
+                    slow: [],
+                    error:
+                      r.code === "PGRST202"
+                        ? "Reply speed needs the database function reply_speed_stats (migration 20261090), which isn't applied yet."
+                        : `Reply speed couldn't be read: ${r.error}`,
+                  };
+            })(),
+            // Batch 29: the adaptive burst wait (quiet gap + cap); the defaults until 20261090 is applied.
             burst_wait: await (async () => {
-              const { DEFAULT_BURST_WINDOW_MS } = await import("@/lib/whatsapp-webhook.server");
+              const { DEFAULT_BURST_QUIET_MS, DEFAULT_BURST_CAP_MS } = await import("@/lib/whatsapp-webhook.server");
               const { data: row, error: readError } = await supabase
                 .from("platform_settings")
-                .select("ai_burst_wait_ms")
+                .select("ai_burst_quiet_ms, ai_burst_cap_ms")
                 .eq("id", true)
                 .maybeSingle();
-              const saved = readError ? null : ((row as { ai_burst_wait_ms?: number } | null)?.ai_burst_wait_ms ?? null);
-              return { ms: saved ?? DEFAULT_BURST_WINDOW_MS, saved: saved !== null, default_ms: DEFAULT_BURST_WINDOW_MS };
+              const saved = readError ? null : (row as { ai_burst_quiet_ms?: number; ai_burst_cap_ms?: number } | null);
+              return {
+                quiet_ms: saved?.ai_burst_quiet_ms ?? DEFAULT_BURST_QUIET_MS,
+                cap_ms: saved?.ai_burst_cap_ms ?? DEFAULT_BURST_CAP_MS,
+                saved: Boolean(saved && saved.ai_burst_quiet_ms != null),
+                column_missing: Boolean(readError),
+                default_quiet_ms: DEFAULT_BURST_QUIET_MS,
+                default_cap_ms: DEFAULT_BURST_CAP_MS,
+              };
             })(),
           });
         }
 
-        // How long Aiden waits for a second text before answering (the burst window).
+        // Batch 29: how long Aiden waits for a second text — answer after
+        // quiet_ms without a new message, never more than cap_ms (adaptive burst).
         if (action === "set_burst_wait") {
           const { MAX_BURST_WINDOW_MS, resetBurstWindowCache } = await import("@/lib/whatsapp-webhook.server");
-          const ms = Number(payload["ms"]);
-          if (!Number.isInteger(ms) || ms < 0 || ms > MAX_BURST_WINDOW_MS)
-            return jsonError(`Choose a wait between 0 and ${MAX_BURST_WINDOW_MS / 1000} seconds.`);
+          const quietMs = Number(payload["quiet_ms"]);
+          const capMs = Number(payload["cap_ms"]);
+          const ok = (ms: number) => Number.isInteger(ms) && ms >= 0 && ms <= MAX_BURST_WINDOW_MS;
+          if (!ok(quietMs) || !ok(capMs))
+            return jsonError(`Choose waits between 0 and ${MAX_BURST_WINDOW_MS / 1000} seconds.`);
+          if (quietMs > capMs) return jsonError("The quiet gap can't be longer than the longest wait.");
           const { error } = await supabase
             .from("platform_settings")
-            .update({ ai_burst_wait_ms: ms, updated_at: new Date().toISOString() })
+            .update({ ai_burst_quiet_ms: quietMs, ai_burst_cap_ms: capMs, updated_at: new Date().toISOString() })
             .eq("id", true);
-          if (error) return jsonError("The wait could not be saved.", 500);
+          if (error)
+            return jsonError(
+              error.code === "42703"
+                ? "The wait settings need migration 20261090, which isn't applied yet (the defaults are in use)."
+                : "The wait could not be saved.",
+              500,
+            );
           resetBurstWindowCache();
           await supabase
             .from("activity_log")
-            .insert({ organization_id: null, user_id: user.id, action: "ai_burst_wait_set", details: { ms } })
+            .insert({ organization_id: null, user_id: user.id, action: "ai_burst_wait_set", details: { quiet_ms: quietMs, cap_ms: capMs } })
             .then(
               () => undefined,
               () => undefined,
             );
-          return Response.json({ ok: true, ms });
+          return Response.json({ ok: true, quiet_ms: quietMs, cap_ms: capMs });
         }
 
         // One tiny prompt to each configured backup provider: how long it took,

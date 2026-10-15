@@ -140,9 +140,11 @@ describe("(1) Aiden: set-up read during the burst, checks still after it", () =>
     const burstRead = (o: { table: string; filters: Array<[string, unknown[]]> }) =>
       o.table === "messages" && o.filters.some(([f, a]) => f === "limit" && a[0] === 30);
     expect(w.ops.some((o) => o.table === "ai_agents")).toBe(true);
-    expect(w.ops.some(burstRead)).toBe(false);
+    // Batch 29: the adaptive wait reads the burst once as it starts (where
+    // the burst began) and once when it ends; the set-up never waits for the end.
+    expect(w.ops.filter(burstRead).length).toBeLessThanOrEqual(1);
     await vi.advanceTimersByTimeAsync(6000);
     await done;
-    expect(w.ops.some(burstRead)).toBe(true);
+    expect(w.ops.filter(burstRead).length).toBe(2);
   });
 });

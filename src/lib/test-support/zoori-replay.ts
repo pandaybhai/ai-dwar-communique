@@ -790,6 +790,8 @@ export type Replay = {
   handedOff?: boolean;
   /** What the model was told (system prompt), per call, for the checks. */
   systems: string[];
+  /** Batch 29: each answer-model request body as sent, for input-size measurements. */
+  requests?: string[];
   toolsOffered: string[];
   /** The answer run's metadata.tools (Batch 14.1), when the build writes it. */
   toolsMeta?: unknown;
@@ -839,7 +841,7 @@ export type ReplayShop = {
   products: Row[];
   orgRow: Row;
   instructions: Record<string, unknown>;
-  chunks: Array<{ when: RegExp; title: string; ref: string; text: string }>;
+  chunks: Array<{ when: RegExp; title: string; ref: string; text: string; similarity?: number }>;
   sourceName: string;
 };
 
@@ -965,7 +967,7 @@ export function zooriWorld(c: Case, shop: ReplayShop = ZOORI_SHOP) {
         source_ref: k.ref,
         title: k.title,
         text: k.text,
-        similarity: 0.6 - i * 0.01,
+        similarity: k.similarity ?? 0.6 - i * 0.01,
       }));
       return { data: rows, error: null };
     }
@@ -983,6 +985,7 @@ export function zooriWorld(c: Case, shop: ReplayShop = ZOORI_SHOP) {
 
   const sent: Sent[] = [];
   const systems: string[] = [];
+  const requests: string[] = [];
   let toolsOffered: string[] = [];
   let out = 0;
   const fetchStub = async (url: string, init?: RequestInit) => {
@@ -1021,6 +1024,8 @@ export function zooriWorld(c: Case, shop: ReplayShop = ZOORI_SHOP) {
       return new Response(JSON.stringify({ choices: [{ message: { content: judge(body) } }] }));
     toolsOffered = (body.tools ?? []).map((t) => t.function.name);
     systems.push(system);
+    // Batch 29: every answer-model request as sent (input size per reply).
+    requests.push(String(init?.body ?? ""));
     // The tool results so far, in order, matched to the calls that asked for them.
     const names = new Map<string, string>();
     for (const m of body.messages)
@@ -1068,6 +1073,7 @@ export function zooriWorld(c: Case, shop: ReplayShop = ZOORI_SHOP) {
       gapFiled,
       ...(handedOff ? { handedOff } : {}),
       systems,
+      requests,
       toolsOffered,
       ...((run?.["metadata"] as Record<string, unknown> | null)?.["tools"]
         ? { toolsMeta: (run!["metadata"] as Record<string, unknown>)["tools"] }

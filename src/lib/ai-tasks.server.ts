@@ -331,6 +331,36 @@ export async function handoverMessage(
 
 /** The real answer the agent would give a customer. */
 /** The run options agentAnswer uses that don't depend on the chat (for prepareRun). */
+/**
+ * Batch 29: how much of the chat a customer reply carries. The last
+ * `keepMessages` messages go as they are (each cut at `maxChars`); of the
+ * older ones only the customer's own words go, as one short note (their most
+ * recent `summaryItems`, each cut at `summaryItemChars`) — what they asked
+ * for, their budget, who it's for — never our earlier replies in full.
+ */
+export const REPLY_HISTORY = { keepMessages: 12, maxChars: 600, summaryItems: 8, summaryItemChars: 100 } as const;
+
+const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
+
+export function compactHistory(
+  turns: Turn[],
+  limits: { keepMessages: number; maxChars: number; summaryItems: number; summaryItemChars: number } = REPLY_HISTORY,
+): { history: Turn[]; summary: string | null } {
+  const keep = turns.slice(-limits.keepMessages).map((t) => ({ ...t, content: cut(t.content, limits.maxChars) }));
+  const older = turns.slice(0, Math.max(0, turns.length - limits.keepMessages));
+  const said = older
+    .filter((t) => t.role === "user")
+    .map((t) => cut(t.content.replace(/\s+/g, " ").trim(), limits.summaryItemChars))
+    .filter(Boolean)
+    .slice(-limits.summaryItems);
+  const summary = said.length
+    ? `Earlier in this chat (${older.length} older message${older.length === 1 ? "" : "s"} not shown), the customer wrote, oldest first: ${said
+        .map((t) => `"${t}"`)
+        .join(" · ")}`
+    : null;
+  return { history: keep, summary };
+}
+
 export function agentAnswerPrelude(supabase: SupabaseClient, organizationId: string, agentId: string | null) {
   return prepareRun(supabase, { organizationId, task: "agent_reply", agentId, actorUserId: null, useTools: true });
 }
@@ -425,6 +455,9 @@ export async function agentAnswer(
     .map((r) => (r.input_summary ?? "").trim())
     .filter(Boolean);
 
+  // Batch 29: the recent chat as it is, the older part as one short note.
+  const { history, summary } = compactHistory(turns.slice(0, -1));
+
   return executeRun(supabase, {
     organizationId: common.organizationId,
     task: "agent_reply",
@@ -433,13 +466,14 @@ export async function agentAnswer(
     contactId,
     actorUserId: common.actorUserId,
     actingRole: common.actingRole ?? null,
-    history: turns.slice(0, -1),
+    history,
     input: question,
     // Escalation rules are part of the assembled brief — exactly once.
     // A flow's Behaviour / Rules for this chat sit right after the workspace's instructions.
-    system: replyTo
-      ? `${briefTextWithFlowRules(brief, flowRulesBlock(flowRules ?? null))}\n\n${replyTo}`
-      : briefTextWithFlowRules(brief, flowRulesBlock(flowRules ?? null)),
+    system: briefTextWithFlowRules(brief, flowRulesBlock(flowRules ?? null)),
+    // About this message only: after the stable brief, rules and material (Batch 29).
+    ...(summary ? { contextNotes: [summary] } : {}),
+    ...(replyTo ? { supportNotes: [replyTo] } : {}),
     handoverRules: brief.instructions.escalationRules,
     promptRulesVersion: brief.rulesVersion,
     customerLanguage,

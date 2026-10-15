@@ -130,7 +130,9 @@ function world(e: Event) {
           ai_monthly_cap_amount: 100000,
           ai_cap_currency: "INR",
           ai_markup_multiplier: 3,
-          ai_burst_wait_ms: Math.round(s(1000)),
+          // Batch 29: the adaptive burst wait at its defaults (1.5 s quiet, 3 s at most).
+          ai_burst_quiet_ms: Math.round(s(1500)),
+          ai_burst_cap_ms: Math.round(s(3000)),
           on_demand_read: false,
         },
         error: null,

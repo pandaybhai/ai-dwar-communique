@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 84, column 1030, view 2, function 99, index 145, trigger 65, cron_job 14.
+-- Expected objects: table 84, column 1032, view 2, function 100, index 145, trigger 65, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -867,6 +867,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'platform_ai_providers', 'updated_at', NULL, 'timestamp with time zone', '20260903_ai_resale.sql'),
     ('column', 'public', 'platform_ai_providers', 'vault_secret_name', NULL, 'text', '20260903_ai_resale.sql'),
     ('column', 'public', 'platform_settings', 'ai_backup_anthropic_model', NULL, 'text', '20261017_ai_backup_model.sql'),
+    ('column', 'public', 'platform_settings', 'ai_burst_cap_ms', NULL, 'integer', '20261090_batch29_reply_speed.sql'),
+    ('column', 'public', 'platform_settings', 'ai_burst_quiet_ms', NULL, 'integer', '20261090_batch29_reply_speed.sql'),
     ('column', 'public', 'platform_settings', 'ai_burst_wait_ms', NULL, 'integer', '20261020_ai_burst_wait.sql'),
     ('column', 'public', 'platform_settings', 'ai_cap_currency', NULL, 'text', '20260906_platform_cap_and_tool_outcomes.sql'),
     ('column', 'public', 'platform_settings', 'ai_markup_multiplier', NULL, 'numeric', '20260903_ai_resale.sql'),
@@ -1205,6 +1207,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'record_ai_tool_calls', NULL, ARRAY['uuid', 'uuid', 'jsonb'], 'public.record_ai_tool_calls(uuid, uuid, jsonb)', '20260904_ai_operations.sql'),
     ('function', 'public', 'record_knowledge_use', NULL, ARRAY['uuid', 'uuid[]'], 'public.record_knowledge_use(uuid, uuid[])', '20260914_ai_skills_teaching_languages.sql'),
     ('function', 'public', 'replace_knowledge_chunks', NULL, ARRAY['uuid', 'jsonb'], 'public.replace_knowledge_chunks(uuid, jsonb)', '20261007_flows_batch1_safety.sql'),
+    ('function', 'public', 'reply_speed_stats', NULL, ARRAY['timestamp with time zone', 'integer', 'integer'], 'public.reply_speed_stats(timestamp with time zone, integer, integer)', '20261090_batch29_reply_speed.sql'),
     ('function', 'public', 'reprice_unpriced_messages', NULL, ARRAY['interval'], 'public.reprice_unpriced_messages(interval)', '20261054_live_only_functions.sql'),
     ('function', 'public', 'reset_handoff_alert', NULL, '{}'::text[], 'public.reset_handoff_alert()', '20261024_handoff_alerts.sql'),
     ('function', 'public', 'retention_purge', NULL, '{}'::text[], 'public.retention_purge()', '20260817_retention_purge.sql'),

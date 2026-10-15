@@ -741,7 +741,11 @@ describe("(3) pre-AI steps overlap; who answers is unchanged", () => {
         return AI_ON()(op);
       },
     });
-    expect(r.calls).toEqual([]);
+    // Batch 29: the material match for its words starts inside the burst wait
+    // (a text can't know it will be overtaken until the wait ends), so an
+    // overtaken text may cost that one read — never a model call or a send.
+    expect(r.calls.filter((c) => c !== "embedding")).toEqual([]);
+    expect(r.calls.length).toBeLessThanOrEqual(1);
     expect(r.w.graphSends).toEqual([]);
   }, 20_000);
 

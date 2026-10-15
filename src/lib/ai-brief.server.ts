@@ -3,6 +3,7 @@
  * and the prompt a customer's answer came from cannot drift apart.
  */
 
+import { promptSections } from "@/lib/brief-order";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listSkills, skillsBlock, type SkillState } from "@/lib/ai-skills.server";
 import { DEFAULT_LANGUAGES, languageName } from "@/lib/languages";
@@ -268,7 +269,7 @@ export async function assembleBrief(
     },
   ];
 
-  const text = sections
+  const text = promptSections(sections)
     .map((s) => s.text.trim())
     .filter(Boolean)
     .join("\n\n");

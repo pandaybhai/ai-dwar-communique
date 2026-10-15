@@ -232,18 +232,25 @@ describe("(2) flow replies: fewer round trips before the send", () => {
 describe("(2) burst window: counted from when the message was stored", () => {
   const burstDb = (rows: Array<{ id: string; direction: string; body: string }>) =>
     fakeDb((op) => (op.table === "messages" ? { data: rows, error: null } : undefined));
-  // The mechanism at a 5 s window (Batch 15A: the default is now 1 s, a platform setting).
-  const args = { conversationId: "cv", messageId: "m2", occurredAt: new Date().toISOString(), body: "under 2000?", windowMs: 5000 };
+  // The mechanism at a 5 s quiet gap and cap (Batch 29: adaptive, 1.5 s quiet / 3 s cap by default).
+  // Batch 29: one read of the burst while the wait runs, one after it.
+  const args = {
+    conversationId: "cv",
+    messageId: "m2",
+    occurredAt: new Date().toISOString(),
+    body: "under 2000?",
+    settings: { quietMs: 5000, capMs: 5000 },
+  };
 
   it("3 s already spent since storing → waits the remaining 2 s, not 5", async () => {
     vi.useFakeTimers();
     const db = burstDb([{ id: "m2", direction: "inbound", body: "under 2000?" }]);
     const out = coalesceBurst(db.supabase, { ...args, storedAt: Date.now() - 3000 });
     await vi.advanceTimersByTimeAsync(1990);
-    expect(db.ops).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(20);
-    expect(await out).toEqual({ proceed: true, body: "under 2000?" });
     expect(db.ops).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(20);
+    expect(await out).toMatchObject({ proceed: true, body: "under 2000?" });
+    expect(db.ops).toHaveLength(2);
   });
 
   it("the window already over → no wait at all", async () => {
@@ -252,18 +259,19 @@ describe("(2) burst window: counted from when the message was stored", () => {
     const out = coalesceBurst(db.supabase, { ...args, storedAt: Date.now() - 6000 });
     await vi.advanceTimersByTimeAsync(0);
     await out;
+    // Batch 29: and no start-of-wait read either — only the burst read itself.
     expect(db.ops).toHaveLength(1);
   });
 
-  it("unchanged: without a stored time the full window (5 s here) is waited", async () => {
+  it("unchanged: without a stored time the full quiet gap (5 s here) is waited", async () => {
     vi.useFakeTimers();
     const db = burstDb([]);
     const out = coalesceBurst(db.supabase, args);
     await vi.advanceTimersByTimeAsync(4990);
-    expect(db.ops).toHaveLength(0);
+    expect(db.ops).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(20);
     await out;
-    expect(db.ops).toHaveLength(1);
+    expect(db.ops).toHaveLength(2);
   });
 
   it("unchanged: the last text answers for the burst; an overtaken one stands down", async () => {
@@ -275,8 +283,8 @@ describe("(2) burst window: counted from when the message was stored", () => {
     const last = coalesceBurst(burstDb(rows).supabase, { ...args, storedAt: Date.now() - 1000 });
     const first = coalesceBurst(burstDb(rows).supabase, { ...args, messageId: "m1", body: "silver rings", storedAt: Date.now() - 1000 });
     await vi.advanceTimersByTimeAsync(5000);
-    expect(await last).toEqual({ proceed: true, body: "silver rings\nunder 2000?" });
-    expect(await first).toEqual({ proceed: false, body: null });
+    expect(await last).toMatchObject({ proceed: true, body: "silver rings\nunder 2000?" });
+    expect(await first).toMatchObject({ proceed: false, body: null });
   });
 });
 

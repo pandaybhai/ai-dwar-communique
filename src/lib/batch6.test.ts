@@ -121,11 +121,15 @@ describe("(1) timings are stored on the webhook event", () => {
     timer.mark("send_start"); // first occurrence wins
     timer.span("send_api", 400);
     timer.span("send_api", 100);
+    now = 1700;
+    timer.mark("send_ok"); // Batch 29: WhatsApp accepted it (a moment, not a stage)
     now = 1900;
     const t = result("wamid.1", "flow");
-    expect(t.marks).toEqual({ contact: 100, account: 100, send_start: 300 });
+    expect(t.marks).toEqual({ contact: 100, account: 100, send_start: 300, send_ok: 700 });
     expect(t.ms).toEqual({ account: 100, contact: 0, send_start: 200, send_api: 500 });
-    expect(t.received_to_send_ms).toBe(550);
+    // Batch 29: received → accepted; the old measure (→ the call starting) is kept beside it.
+    expect(t.received_to_send_ms).toBe(950);
+    expect(t.received_to_send_start_ms).toBe(550);
     expect(t.total_ms).toBe(900);
   });
 });
@@ -401,8 +405,8 @@ describe("(3) Aiden: same gates and burst, less waiting around them", () => {
         occurredAt: new Date().toISOString(),
         body: "hi",
         storedAt: Date.now() - 1000,
-        // The mechanism at a 5 s window (Batch 15A: the default is now 1 s).
-        windowMs: 5000,
+        // The mechanism at a 5 s quiet gap (Batch 29: adaptive, 1.5 s / 3 s cap by default).
+        settings: { quietMs: 5000, capMs: 5000 },
         afterWait: () => (calledAt = Date.now() - start),
       });
       await vi.advanceTimersByTimeAsync(3999);
