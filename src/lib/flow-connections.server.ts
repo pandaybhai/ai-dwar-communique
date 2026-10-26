@@ -261,3 +261,51 @@ export async function razorpayWebhookSecretFor(supabase: SupabaseClient, organiz
   const conn = await loadSecret(supabase, organizationId, "razorpay");
   return conn?.secret["webhook_secret"] || null;
 }
+
+// ---------------------------------------------------------------- Cashfree
+
+/** The merchant's own Cashfree keys are checked with a live read before saving. */
+export async function verifyCashfreeConnection(clientId: string, clientSecret: string, env: "sandbox" | "production"): Promise<boolean> {
+  const { verifyCashfreeKeys } = await import("@/lib/cashfree.server");
+  return verifyCashfreeKeys(clientId, clientSecret, env);
+}
+
+async function createCashfreePaymentLink(
+  supabase: SupabaseClient,
+  organizationId: string,
+  secret: Record<string, string>,
+  args: { amountRupees: number; description: string; name: string | null; phone: string; expireHours: number; runId: string; nodeId: string },
+): Promise<{ url: string; id: string } | { error: string }> {
+  if (!Number.isFinite(args.amountRupees) || args.amountRupees < 1) return { error: "invalid_amount" };
+  const { createPaymentLink: cfLink } = await import("@/lib/cashfree.server");
+  const { APP_PUBLIC_URL } = await import("@/lib/app-url");
+  const env = secret["env"] === "production" ? "production" : "sandbox";
+  const expire = Math.floor(Date.now() / 1000) + Math.max(args.expireHours, 1) * 3600 + 20 * 60;
+  const { link, error } = await cfLink(
+    { clientId: secret["client_id"]!, clientSecret: secret["client_secret"]!, env },
+    {
+      amount: args.amountRupees,
+      currency: "INR",
+      description: args.description,
+      reference: `flow_${args.runId.replace(/[^A-Za-z0-9_-]/g, "")}`,
+      customer: { name: args.name, contact: args.phone },
+      callbackUrl: `${APP_PUBLIC_URL}/pay/done`,
+      notifyUrl: `${APP_PUBLIC_URL}/api/public/cashfree-flow-webhook/${organizationId}`,
+      notes: { aidwar_org: organizationId, aidwar_run: args.runId, aidwar_node: args.nodeId },
+      expireBy: expire,
+    },
+  );
+  if (!link) {
+    if (error?.includes("refused") && /auth|credential|unauthor/i.test(error)) {
+      await markError(supabase, organizationId, "cashfree", "Cashfree rejected the saved keys. Enter new keys in Settings → Integrations.");
+      return { error: "cashfree_keys_rejected" };
+    }
+    return { error: "payment_link_failed" };
+  }
+  return { url: link.short_url, id: link.id };
+}
+
+export async function cashfreeWebhookSecretFor(supabase: SupabaseClient, organizationId: string): Promise<string | null> {
+  const conn = await loadSecret(supabase, organizationId, "cashfree");
+  return conn?.secret["webhook_secret"] || null;
+}
