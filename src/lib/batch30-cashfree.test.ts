@@ -170,7 +170,7 @@ describe("flow payment link provider choice", () => {
     ({
       rpc: (name: string, args: Record<string, string>) => {
         if (name !== "workspace_connection_secret") return Promise.resolve({ data: null, error: null });
-        const secret = connections[args["p_provider"]];
+        const secret = connections[String(args["p_provider"])];
         return Promise.resolve({
           data: secret
             ? [{ id: "c1", status: "active", public_config: {}, secret: JSON.stringify(secret) }]
