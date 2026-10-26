@@ -356,7 +356,11 @@ export async function alignSubscriptionToPlan(
   }
   const gross = withGst(Number(base)).total;
 
-  const plan = await createPlan(keys, {
+  // A Cashfree mandate can't be moved onto another plan: it is cancelled at
+  // the period end and the workspace sets up a fresh mandate on the new plan.
+  if (cfKeys) return fail("This provider can't move a mandate to another plan.");
+
+  const plan = await razorpay.createPlan(rzpKeys!, {
     period: cycle === "annual" ? "yearly" : "monthly",
     amount: gross,
     name: `AiDwar ${planName} (${cycle})`,
@@ -364,7 +368,7 @@ export async function alignSubscriptionToPlan(
   });
   if (!plan.ok) return fail(plan.error ?? "The payment provider couldn't create the new plan.");
 
-  const updated = await updateSubscriptionPlan(keys, subscriptionId, String(plan.body["id"]));
+  const updated = await razorpay.updateSubscriptionPlan(rzpKeys!, subscriptionId, String(plan.body["id"]));
   if (!updated.ok) return fail(updated.error ?? "The mandate couldn't be moved to the new plan.");
 
   await supabase
