@@ -29,6 +29,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { callApi } from "@/lib/whatsapp-client";
+import {
+  confirmCashfreeReturn,
+  openCashfreeCheckout,
+  type CashfreeCheckout,
+} from "@/lib/cashfree-checkout";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
   type BillingSummary,
@@ -81,16 +86,27 @@ export function BillingView({
     void load();
   }, [load]);
 
-  // Coming back from a payment link: poll briefly so the balance catches up.
+  // Coming back from the payment page: our server confirms the payment with
+  // the gateway (never the redirect alone), then the balance catches up.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (!params.has("payment")) return;
+    const paymentId = params.get("payment");
+    if (!paymentId) return;
     let tries = 0;
+    let done = false;
     const timer = window.setInterval(() => {
       tries += 1;
-      void load();
-      if (tries >= 5) window.clearInterval(timer);
+      void (async () => {
+        if (!done) {
+          const status = await confirmCashfreeReturn(paymentId);
+          if (status === "paid" || status === "failed") done = true;
+          if (status === "failed" && tries === 1)
+            toast.error("That payment didn't go through. You can try again.");
+        }
+        await load();
+      })();
+      if (tries >= 8) window.clearInterval(timer);
     }, 3000);
     return () => window.clearInterval(timer);
   }, [load]);
@@ -486,14 +502,22 @@ function BuyCreditsDialog({
   const buy = async () => {
     if (!packId) return;
     setBusy(true);
-    const { data, error } = await callApi<{ url: string }>("/api/billing/purchase", {
-      body: { organization_id: organizationId, pack_id: packId, coupon_code: coupon || null },
-    });
-    setBusy(false);
+    const { data, error } = await callApi<{ url: string; checkout?: CashfreeCheckout }>(
+      "/api/billing/purchase",
+      { body: { organization_id: organizationId, pack_id: packId, coupon_code: coupon || null } },
+    );
     if (error || !data?.url) {
+      setBusy(false);
       toast.error(error ?? "We couldn't start that payment. Please try again.");
       return;
     }
+    if (data.checkout) {
+      const problem = await openCashfreeCheckout(data.checkout);
+      setBusy(false);
+      if (problem) toast.error(problem);
+      return;
+    }
+    setBusy(false);
     window.location.href = data.url;
   };
 
@@ -503,8 +527,8 @@ function BuyCreditsDialog({
         <DialogHeader>
           <DialogTitle>Buy credits</DialogTitle>
           <DialogDescription>
-            Credits pay for the messages you send. Pick a pack — you'll be taken to a secure payment
-            page and brought straight back.
+            Credits pay for the messages you send. Pick a pack — you'll pay on a secure checkout
+            page and come straight back.
           </DialogDescription>
         </DialogHeader>
 

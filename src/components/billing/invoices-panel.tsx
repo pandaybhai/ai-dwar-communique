@@ -9,6 +9,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
 import { money } from "@/lib/billing";
 import { callApi } from "@/lib/whatsapp-client";
+import {
+  openCashfreeSubscriptionCheckout,
+  type CashfreeSubscriptionCheckout,
+} from "@/lib/cashfree-checkout";
 
 type InvoiceRow = {
   id: string;
@@ -37,6 +41,10 @@ type AutoPay = {
   short_url: string | null;
   /** The first charge, still ahead (the trial's remaining days are kept). */
   starts_at?: string | null;
+  /** No auto-pay on offer yet: each month's invoice comes with a pay link. */
+  pay_per_period?: boolean;
+  /** A Cashfree mandate waiting for its authorisation. */
+  checkout?: CashfreeSubscriptionCheckout | null;
 };
 
 const STATUS_COPY: Record<string, { label: string; tone: string }> = {
@@ -104,10 +112,19 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
 
   const setupAutoPay = async () => {
     setBusy("autopay");
-    const { data, error } = await callApi<{ url: string }>("/api/billing/invoices", {
+    const { data, error } = await callApi<{
+      url?: string;
+      checkout?: CashfreeSubscriptionCheckout;
+    }>("/api/billing/invoices", {
       method: "POST",
       body: { organization_id: organizationId, action: "autopay_setup", cycle: "monthly" },
     });
+    if (data?.checkout) {
+      const problem = await openCashfreeSubscriptionCheckout(data.checkout);
+      setBusy(null);
+      if (problem) toast.error(problem);
+      return;
+    }
     setBusy(null);
     if (error || !data?.url) {
       toast.error(error ?? "We couldn't set up auto-pay. Please try again.");
@@ -179,6 +196,12 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
                 </Button>
               ) : null}
             </>
+          ) : autopay?.pay_per_period ? (
+            <p className="text-sm text-muted-foreground">
+              Auto-pay isn't available yet. Each month you'll get your plan invoice with a Cashfree
+              payment link on WhatsApp and email — pay it from there, or with Pay now on the invoice
+              below.
+            </p>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
@@ -197,7 +220,7 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
                   ) : (
                     <RefreshCw className="mr-2 h-4 w-4" />
                   )}
-                  Set up auto-pay
+                  {autopay?.checkout ? "Finish setting up auto-pay" : "Set up auto-pay"}
                 </Button>
               ) : (
                 <p className="text-xs text-muted-foreground">

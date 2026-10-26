@@ -760,7 +760,7 @@ export async function saveOrgBillingSettings(
 
 // ------------------------------------------------------------------ wallet
 
-/** Money taken outside Razorpay — a bank transfer or a goodwill credit. */
+/** Money taken outside the payment gateway — a bank transfer or a goodwill credit. */
 export async function adminAddCredits(
   supabase: SupabaseClient,
   input: {
@@ -916,9 +916,29 @@ export async function adminOrgPayments(
   await requireSuper(supabase, actorId);
   const { data } = await supabase
     .from("payments")
-    .select("id, provider, method, purpose, status, amount, currency, paid_at, created_at")
+    .select("id, provider, method, purpose, status, amount, currency, paid_at, created_at, raw")
     .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
     .limit(50);
-  return (data ?? []) as Record<string, unknown>[];
+  // What was collected and refunded, from the figures on the payment; the
+  // rest of raw (gateway payloads) stays server-side.
+  return ((data ?? []) as Record<string, unknown>[]).map(({ raw, ...row }) => {
+    const r = (raw ?? {}) as Record<string, unknown>;
+    const gross = Number(r["gross_amount"] ?? r["gross"] ?? Number.NaN);
+    const failure = (r["failure"] ?? {}) as Record<string, unknown>;
+    return {
+      ...row,
+      gross_amount: Number.isFinite(gross) ? gross : null,
+      refunded_amount: Number(r["refunded_amount"] ?? 0),
+      refunds: ((r["refunds"] ?? []) as Record<string, unknown>[]).map((x) => ({
+        refund_id: x["refund_id"],
+        amount: x["amount"],
+        status: x["status"],
+        reason: x["reason"],
+        credit_note: x["credit_note"] ?? null,
+        requested_at: x["requested_at"],
+      })),
+      failure_reason: (failure["reason"] as string | undefined) ?? null,
+    };
+  });
 }

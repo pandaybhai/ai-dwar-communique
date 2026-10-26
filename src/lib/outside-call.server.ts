@@ -1,5 +1,5 @@
 /**
- * Every call to an outside service (AI providers, Meta, Razorpay, Google,
+ * Every call to an outside service (AI providers, Meta, Razorpay, Cashfree, Google,
  * Shopify, Resend, media downloads) gives up after a set time instead of hanging a
  * worker until pg_net or the platform cuts it.
  *
@@ -24,6 +24,8 @@ export const OUTSIDE_CALL_TIMEOUT_MS = {
   meta: 20_000,
   meta_media: 60_000,
   razorpay: 15_000,
+  /** AiDwar's own billing gateway (orders, refunds, subscriptions). */
+  cashfree: 15_000,
   google: 15_000,
   shopify: 20_000,
   /** One Resend send, or fetching the file it attaches. */

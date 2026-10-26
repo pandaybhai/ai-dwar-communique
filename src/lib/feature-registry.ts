@@ -1317,6 +1317,31 @@ export const FEATURES: readonly FeatureManifest[] = [
     ai_tools: [],
     data_tables: ["flow_versions", "flow_runs", "flow_run_events", "workspace_connections"],
   },
+  {
+    // Batch 31: a switch, not a page. On = this workspace's NEW payments (credit
+    // top-ups, plan purchase, plan-fee invoices, auto-pay) go through Cashfree;
+    // off (the default) = the Razorpay path exactly as before. Rows are in
+    // 20261100_batch31_cashfree.sql.
+    key: "cashfree_billing",
+    depends_on: ["billing"],
+    name: "Cashfree payments",
+    description:
+      "Take this workspace's new payments (credits, plan fee, auto-pay) through Cashfree instead of Razorpay.",
+    icon: "credit-card",
+    flag_key: "cashfree_billing",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "cashfree_billing.pay",
+        name: "Pay through Cashfree",
+        description: "Buy credits, pay the plan fee and set up auto-pay on Cashfree's checkout.",
+        min_role: "owner",
+      },
+    ],
+    analytics: none,
+    activity_actions: ["payment_refunded"],
+    data_tables: [],
+  },
 ] as const;
 
 export const ROLE_RANK: Record<OrgRole, number> = { owner: 4, admin: 3, marketer: 2, agent: 1 };

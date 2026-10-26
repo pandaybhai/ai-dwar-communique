@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 84, column 1032, view 2, function 100, index 145, trigger 65, cron_job 14.
+-- Expected objects: table 84, column 1032, view 2, function 100, index 147, trigger 65, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -1341,6 +1341,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'orders_org_contact_idx', NULL, NULL, 'on public.orders', '20260821_shopify_integration.sql'),
     ('index', 'public', 'orders_org_number_idx', NULL, NULL, 'on public.orders', '20260821_shopify_integration.sql'),
     ('index', 'public', 'orders_org_placed_idx', NULL, NULL, 'on public.orders', '20260821_shopify_integration.sql'),
+    ('index', 'public', 'payments_cashfree_payment_once', NULL, NULL, 'unique on public.payments', '20261100_batch31_cashfree.sql'),
+    ('index', 'public', 'payments_cashfree_pending_idx', NULL, NULL, 'on public.payments', '20261100_batch31_cashfree.sql'),
     ('index', 'public', 'plan_fee_invoice_period_uidx', NULL, NULL, 'unique on public.invoices', '20261026_plan_fee_invoice_unique.sql'),
     ('index', 'public', 'product_collection_items_product_idx', NULL, NULL, 'on public.product_collection_items', '20260910_catalog.sql'),
     ('index', 'public', 'product_collections_org_slug_unique_idx', NULL, NULL, 'unique on public.product_collections', '20260910_catalog.sql'),

@@ -67,6 +67,7 @@ function orFilter(expr: string): Filter {
       if (op === "eq") return String(v) === value;
       if (op === "in") return v != null && value.replace(/^\(|\)$/g, "").split(",").includes(String(v));
       if (op === "gt") return Number(v) > Number(value);
+      if (op === "lt") return v != null && cmp(v, value) < 0;
       if (op === "lte") return v != null && cmp(v, value) <= 0;
       if (op === "ilike") return v != null && likeToRe(value.toLowerCase()).test(String(v).toLowerCase());
       return false;
@@ -125,6 +126,12 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
           return true;
         });
       b["or"] = (expr: string) => add(orFilter(expr));
+      // jsonb @> for a flat object: every key/value given is on the row's column.
+      b["contains"] = (c: string, v: Record<string, unknown>) =>
+        add((r) => {
+          const have = (r[c] ?? {}) as Record<string, unknown>;
+          return Object.entries(v).every(([k, x]) => JSON.stringify(have[k]) === JSON.stringify(x));
+        });
       // "gilded:* & chevron:*" — every term starts a word of the row's text;
       // "(ruby:*) | (pearl:*)" — any one of the choices does; "emerald"
       // (no ":*") must be a whole word, as in Postgres.

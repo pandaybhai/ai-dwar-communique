@@ -141,6 +141,7 @@ export const Route = createFileRoute("/api/admin/billing")({
                 .select("id, name, amount, bonus_amount")
                 .eq("is_active", true)
                 .order("sort_order");
+              const { paymentGateway } = await import("@/lib/cashfree-billing.server");
               return Response.json({
                 ...detail,
                 organization: org ?? null,
@@ -149,7 +150,21 @@ export const Route = createFileRoute("/api/admin/billing")({
                 bsp_accounts: bsp ?? [],
                 packs: packs ?? [],
                 payments,
+                payment_gateway: await paymentGateway(supabase, orgId),
               });
+            }
+
+            case "refund_payment": {
+              // Explicit, with a reason; the wallet and the credit note follow inside.
+              const { refundPayment } = await import("@/lib/cashfree-refunds.server");
+              const result = await refundPayment(supabase, {
+                actorId,
+                paymentId: String(payload["payment_id"] ?? ""),
+                amount: Number(payload["amount"] ?? 0),
+                reason: String(payload["reason"] ?? ""),
+              });
+              if ("error" in result) return jsonError(result.error);
+              return Response.json(result);
             }
 
             case "plan_change_preview":
