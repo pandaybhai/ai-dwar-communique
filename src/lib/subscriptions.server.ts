@@ -295,7 +295,7 @@ export async function alignSubscriptionToPlan(
 ): Promise<{ changed: boolean; note: string; needs_new_mandate?: boolean }> {
   const { data: row } = await supabase
     .from("subscriptions")
-    .select("id, provider_subscription_id, plan_version_id, billing_cycle")
+    .select("id, provider, provider_subscription_id, plan_version_id, billing_cycle")
     .eq("organization_id", input.organizationId)
     .in("status", ACTIVE_STATES)
     .order("created_at", { ascending: false })
@@ -306,15 +306,13 @@ export async function alignSubscriptionToPlan(
     return { changed: false, note: "Auto-pay already matches this plan." };
   }
 
-  const {
-    razorpayKeys,
-    createPlan,
-    updateSubscriptionPlan,
-    cancelSubscription,
-    PAYMENTS_NOT_CONFIGURED,
-  } = await import("@/lib/razorpay.server");
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { changed: false, note: PAYMENTS_NOT_CONFIGURED };
+  const razorpay = await import("@/lib/razorpay.server");
+  const cashfree = await import("@/lib/cashfree.server");
+  // The mandate is managed with the provider that holds it.
+  const rowProvider = String(row["provider"] ?? "razorpay");
+  const rzpKeys = rowProvider === "razorpay" ? await razorpay.razorpayKeys(supabase) : null;
+  const cfKeys = rowProvider === "cashfree" ? await cashfree.cashfreeKeys(supabase) : null;
+  if (!rzpKeys && !cfKeys) return { changed: false, note: razorpay.PAYMENTS_NOT_CONFIGURED };
 
   const cycle = String(row["billing_cycle"] ?? "monthly") === "annual" ? "annual" : "monthly";
   const { data: version } = await supabase
