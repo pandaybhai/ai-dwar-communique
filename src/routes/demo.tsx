@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { SiteFooter } from "@/components/site-footer";
 import {
   ArrowRight,
   BadgeCheck,
@@ -478,19 +479,7 @@ function DemoPage({ proof }: { proof: PublicProof[] }) {
         </section>
       </main>
 
-      <footer className="border-t border-border pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-7 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
-          <p>Meezoy Ventures Private Limited</p>
-          <nav aria-label="Legal" className="flex gap-5">
-            <Link to="/privacy" className="min-h-11 py-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              Privacy
-            </Link>
-            <Link to="/terms" className="min-h-11 py-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              Terms
-            </Link>
-          </nav>
-        </div>
-      </footer>
+      <SiteFooter />
 
       <div
         aria-hidden={!showSticky}

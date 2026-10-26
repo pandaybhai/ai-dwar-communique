@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage, Section, Bullets } from "@/components/legal-page";
 
 const TITLE = "Terms of Service — AiDwar";
@@ -19,7 +19,7 @@ export const Route = createFileRoute("/terms")({
 
 function TermsPage() {
   return (
-    <LegalPage title="Terms of Service" effectiveDate="August 13, 2026">
+    <LegalPage title="Terms of Service" effectiveDate="October 26, 2026">
       <p>
         These Terms of Service ("Terms") form a binding agreement between Meezoy Ventures Private
         Limited ("Meezoy", "we", "us") and the person or entity using AiDwar (the "Service", "you").
@@ -76,12 +76,29 @@ function TermsPage() {
       </Section>
 
       <Section heading="5. Fees and billing">
-        <p>
-          The Service is currently offered in early access. Paid plans and usage-based charges
-          (including any per-conversation charges levied by Meta) will be introduced in the future,
-          and these Terms will be updated with the applicable pricing, billing cycle, taxes and
-          refund terms before any fees become payable. We will give notice before charging you.
-        </p>
+        <Bullets
+          items={[
+            <>
+              Plans and prices are as listed on our{" "}
+              <Link to="/pricing" className="text-primary hover:underline">
+                pricing page
+              </Link>
+              . Prices are in Indian Rupees (INR) and exclude GST, which is charged at 18%.
+            </>,
+            "Plan fees are billed monthly or yearly, in advance, for the period you choose.",
+            "Message credits are prepaid. Each message is charged from your credits at the published rate for its category, shown before every send.",
+            "We issue a GST invoice for every payment.",
+            "Auto-pay is optional. You can turn it on or off from Billing.",
+            "If a payment is not made, we may pause your plan after giving you notice.",
+            <>
+              Refunds and cancellations are as set out in our{" "}
+              <Link to="/refunds" className="text-primary hover:underline">
+                Refunds &amp; Cancellations
+              </Link>{" "}
+              policy.
+            </>,
+          ]}
+        />
       </Section>
 
       <Section heading="6. Third-party services">

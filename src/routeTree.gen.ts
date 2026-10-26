@@ -12,11 +12,16 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as AppRouteRouteImport } from './routes/app/route'
+import { Route as CancellationPolicyRouteImport } from './routes/cancellation-policy'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DataDeletionRouteImport } from './routes/data-deletion'
 import { Route as DemoRouteImport } from './routes/demo'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
+import { Route as RefundsRouteImport } from './routes/refunds'
+import { Route as ShippingRouteImport } from './routes/shipping'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
@@ -144,6 +149,16 @@ const AppRouteRoute = AppRouteRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CancellationPolicyRoute = CancellationPolicyRouteImport.update({
+  id: '/cancellation-policy',
+  path: '/cancellation-policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DataDeletionRoute = DataDeletionRouteImport.update({
   id: '/data-deletion',
   path: '/data-deletion',
@@ -167,6 +182,21 @@ const PricingRoute = PricingRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RefundPolicyRoute = RefundPolicyRouteImport.update({
+  id: '/refund-policy',
+  path: '/refund-policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RefundsRoute = RefundsRouteImport.update({
+  id: '/refunds',
+  path: '/refunds',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShippingRoute = ShippingRouteImport.update({
+  id: '/shipping',
+  path: '/shipping',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignupRoute = SignupRouteImport.update({
@@ -753,11 +783,16 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/cancellation-policy': typeof CancellationPolicyRoute
+  '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/refund-policy': typeof RefundPolicyRoute
+  '/refunds': typeof RefundsRoute
+  '/shipping': typeof ShippingRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
@@ -872,11 +907,16 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cancellation-policy': typeof CancellationPolicyRoute
+  '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/refund-policy': typeof RefundPolicyRoute
+  '/refunds': typeof RefundsRoute
+  '/shipping': typeof ShippingRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
@@ -994,11 +1034,16 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/cancellation-policy': typeof CancellationPolicyRoute
+  '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/refund-policy': typeof RefundPolicyRoute
+  '/refunds': typeof RefundsRoute
+  '/shipping': typeof ShippingRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
@@ -1117,11 +1162,16 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/cancellation-policy'
+    | '/contact'
     | '/data-deletion'
     | '/demo'
     | '/login'
     | '/pricing'
     | '/privacy'
+    | '/refund-policy'
+    | '/refunds'
+    | '/shipping'
     | '/signup'
     | '/sitemap.xml'
     | '/terms'
@@ -1236,11 +1286,16 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/cancellation-policy'
+    | '/contact'
     | '/data-deletion'
     | '/demo'
     | '/login'
     | '/pricing'
     | '/privacy'
+    | '/refund-policy'
+    | '/refunds'
+    | '/shipping'
     | '/signup'
     | '/sitemap.xml'
     | '/terms'
@@ -1357,11 +1412,16 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/cancellation-policy'
+    | '/contact'
     | '/data-deletion'
     | '/demo'
     | '/login'
     | '/pricing'
     | '/privacy'
+    | '/refund-policy'
+    | '/refunds'
+    | '/shipping'
     | '/signup'
     | '/sitemap.xml'
     | '/terms'
@@ -1479,11 +1539,16 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AppRouteRoute: typeof AppRouteRouteWithChildren
+  CancellationPolicyRoute: typeof CancellationPolicyRoute
+  ContactRoute: typeof ContactRoute
   DataDeletionRoute: typeof DataDeletionRoute
   DemoRoute: typeof DemoRoute
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
+  RefundPolicyRoute: typeof RefundPolicyRoute
+  RefundsRoute: typeof RefundsRoute
+  ShippingRoute: typeof ShippingRoute
   SignupRoute: typeof SignupRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
@@ -1591,6 +1656,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cancellation-policy': {
+      id: '/cancellation-policy'
+      path: '/cancellation-policy'
+      fullPath: '/cancellation-policy'
+      preLoaderRoute: typeof CancellationPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/data-deletion': {
       id: '/data-deletion'
       path: '/data-deletion'
@@ -1624,6 +1703,27 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/refund-policy': {
+      id: '/refund-policy'
+      path: '/refund-policy'
+      fullPath: '/refund-policy'
+      preLoaderRoute: typeof RefundPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/refunds': {
+      id: '/refunds'
+      path: '/refunds'
+      fullPath: '/refunds'
+      preLoaderRoute: typeof RefundsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/shipping': {
+      id: '/shipping'
+      path: '/shipping'
+      fullPath: '/shipping'
+      preLoaderRoute: typeof ShippingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup': {
@@ -2488,11 +2588,16 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
   AppRouteRoute: AppRouteRouteWithChildren,
+  CancellationPolicyRoute: CancellationPolicyRoute,
+  ContactRoute: ContactRoute,
   DataDeletionRoute: DataDeletionRoute,
   DemoRoute: DemoRoute,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
+  RefundPolicyRoute: RefundPolicyRoute,
+  RefundsRoute: RefundsRoute,
+  ShippingRoute: ShippingRoute,
   SignupRoute: SignupRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
