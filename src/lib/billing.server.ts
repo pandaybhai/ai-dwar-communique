@@ -438,8 +438,9 @@ export async function createCreditPurchase(
     coupon = found as Record<string, unknown>;
   }
 
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  const rzpKeys = provider === "razorpay" ? await razorpayKeys(supabase) : null;
+  const cfKeys = provider === "cashfree" ? await cashfree.cashfreeKeys(supabase) : null;
+  if (!rzpKeys && !cfKeys) return { error: PAYMENTS_NOT_CONFIGURED };
 
   const base = Number(pack.amount);
   const { gst, total } = withGst(base);
@@ -487,7 +488,7 @@ export async function createCreditPurchase(
     .insert({
       organization_id: input.organizationId,
       billing_account_id: ((org ?? {}) as Record<string, unknown>)["billing_account_id"] ?? null,
-      provider: "razorpay",
+      provider,
       purpose: "credit_purchase",
       credit_pack_id: pack.id,
       coupon_id: coupon ? (coupon["id"] as string) : null,

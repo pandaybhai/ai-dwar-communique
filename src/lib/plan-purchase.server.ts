@@ -290,7 +290,7 @@ export async function startPlanPurchase(
     .insert({
       organization_id: input.organizationId,
       billing_account_id: account.id,
-      provider: "razorpay",
+      provider,
       purpose: "plan_fee",
       amount: base, // ex-GST, like every plan_fee row
       currency: "INR",
