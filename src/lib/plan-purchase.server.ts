@@ -218,10 +218,15 @@ export async function startPlanPurchase(
     return { error: "That billing WhatsApp number looks too short." };
   }
 
-  const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } =
+  const { razorpayKeys, createPaymentLink: rzpCreateLink, PAYMENTS_NOT_CONFIGURED } =
     await import("@/lib/razorpay.server");
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  const cashfree = await import("@/lib/cashfree.server");
+  // Cashfree takes this workspace's new payments only when its
+  // cashfree_billing flag is on; everything else stays on Razorpay.
+  const provider = await cashfree.platformPaymentProvider(supabase, input.organizationId);
+  const rzpKeys = provider === "razorpay" ? await razorpayKeys(supabase) : null;
+  const cfKeys = provider === "cashfree" ? await cashfree.cashfreeKeys(supabase) : null;
+  if (!rzpKeys && !cfKeys) return { error: PAYMENTS_NOT_CONFIGURED };
 
   const [{ data: org }, { data: profile }] = await Promise.all([
     supabase

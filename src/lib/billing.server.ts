@@ -404,8 +404,12 @@ export async function createCreditPurchase(
 ): Promise<{ url: string; payment_id: string } | { error: string }> {
   await requirePerm(supabase, input.organizationId, { userId: input.userId }, "billing.pay");
 
-  const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } =
+  const { razorpayKeys, createPaymentLink: rzpCreateLink, PAYMENTS_NOT_CONFIGURED } =
     await import("@/lib/razorpay.server");
+  const cashfree = await import("@/lib/cashfree.server");
+  // Cashfree takes this workspace's new payments only when its
+  // cashfree_billing flag is on; everything else stays on Razorpay.
+  const provider = await cashfree.platformPaymentProvider(supabase, input.organizationId);
 
   const { data: pack } = await supabase
     .from("credit_packs")
