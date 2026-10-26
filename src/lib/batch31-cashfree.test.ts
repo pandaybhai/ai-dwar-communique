@@ -426,6 +426,24 @@ describe("webhook signature: base64(HMAC-SHA256(timestamp + raw body))", () => {
     expect(cashfreeSignature(success, TS, CLIENT_SECRET)).toBe(SIGNED.success.plain);
   });
 
+  it("which key and form matched is reported (for the logs), never the key", async () => {
+    const { matchCashfreeSignature } = await import("./cashfree.server");
+    const keys = [CLIENT_SECRET, WEBHOOK_SECRET];
+    expect(matchCashfreeSignature(success, TS, SIGNED.success.plain, keys)).toEqual({
+      key: "client_secret",
+      form: "plain",
+    });
+    expect(matchCashfreeSignature(success, TS, SIGNED.success.dot, keys)).toEqual({
+      key: "client_secret",
+      form: "dot",
+    });
+    expect(matchCashfreeSignature(success, TS, SIGNED.success.webhookSecret, keys)).toEqual({
+      key: "webhook_secret",
+      form: "plain",
+    });
+    expect(matchCashfreeSignature(success, TS, "bm9wZQ==", keys)).toBeNull();
+  });
+
   it('the "." form from Cashfree\'s pseudocode is accepted too', () => {
     expect(verifyCashfreeSignature(success, TS, SIGNED.success.dot, CLIENT_SECRET)).toBe(true);
   });

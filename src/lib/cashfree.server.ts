@@ -325,17 +325,41 @@ export function verifyCashfreeSignature(
   signature: string,
   secrets: string | readonly string[],
 ): boolean {
+  return matchCashfreeSignature(rawBody, timestamp, signature, secrets) !== null;
+}
+
+export type SignatureMatch = {
+  /** Which key signed it: CASHFREE_CLIENT_SECRET or CASHFREE_WEBHOOK_SECRET. */
+  key: "client_secret" | "webhook_secret";
+  /** "plain" = timestamp + body (the primary form), "dot" = timestamp + "." + body. */
+  form: "plain" | "dot";
+};
+
+/** Which key and form a valid signature matched (never the key itself), or null. */
+export function matchCashfreeSignature(
+  rawBody: string,
+  timestamp: string,
+  signature: string,
+  secrets: string | readonly string[],
+): SignatureMatch | null {
   const keys = (typeof secrets === "string" ? [secrets] : [...secrets]).filter((k) => k.length > 0);
-  if (!rawBody || !timestamp || !signature || keys.length === 0) return false;
-  let ok = false;
+  if (!rawBody || !timestamp || !signature || keys.length === 0) return null;
+  let match: SignatureMatch | null = null;
   // Every candidate is computed (no early exit on a match).
-  for (const key of keys) {
-    for (const separator of ["", "."]) {
-      if (sameSignature(cashfreeSignature(rawBody, timestamp, key, separator), signature))
-        ok = true;
+  keys.forEach((key, index) => {
+    for (const [separator, form] of [
+      ["", "plain"],
+      [".", "dot"],
+    ] as const) {
+      if (
+        sameSignature(cashfreeSignature(rawBody, timestamp, key, separator), signature) &&
+        !match
+      ) {
+        match = { key: index === 0 ? "client_secret" : "webhook_secret", form };
+      }
     }
-  }
-  return ok;
+  });
+  return match;
 }
 
 /** The timestamp header is milliseconds; a 10-digit value is read as seconds. */

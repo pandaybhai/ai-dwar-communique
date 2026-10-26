@@ -24,12 +24,22 @@ export const Route = createFileRoute("/api/public/cashfree-webhook")({
         const signature = request.headers.get("x-webhook-signature") ?? "";
         const timestamp = request.headers.get("x-webhook-timestamp") ?? "";
 
-        const { verifyCashfreeSignature, webhookTimestampFresh, cashfreeConfig } =
+        const { matchCashfreeSignature, webhookTimestampFresh, cashfreeConfig } =
           await import("@/lib/cashfree.server");
         const config = cashfreeConfig();
-        if (!config || !verifyCashfreeSignature(raw, timestamp, signature, config.webhookSecrets)) {
+        const matched = config
+          ? matchCashfreeSignature(raw, timestamp, signature, config.webhookSecrets)
+          : null;
+        if (!matched) {
+          console.warn(
+            "[cashfree-webhook] signature not valid",
+            JSON.stringify({ configured: Boolean(config) }),
+          );
           return new Response("Invalid signature", { status: 401 });
         }
+        // Which key and form Cashfree signed with (never the key): confirms the
+        // timestamp+body form on the first real delivery.
+        console.info("[cashfree-webhook] signature", JSON.stringify(matched));
         if (!webhookTimestampFresh(timestamp)) {
           return new Response("Stale timestamp", { status: 401 });
         }
