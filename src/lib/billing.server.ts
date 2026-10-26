@@ -404,8 +404,12 @@ export async function createCreditPurchase(
 ): Promise<{ url: string; payment_id: string } | { error: string }> {
   await requirePerm(supabase, input.organizationId, { userId: input.userId }, "billing.pay");
 
-  const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } =
+  const { razorpayKeys, createPaymentLink: rzpCreateLink, PAYMENTS_NOT_CONFIGURED } =
     await import("@/lib/razorpay.server");
+  const cashfree = await import("@/lib/cashfree.server");
+  // Cashfree takes this workspace's new payments only when its
+  // cashfree_billing flag is on; everything else stays on Razorpay.
+  const provider = await cashfree.platformPaymentProvider(supabase, input.organizationId);
 
   const { data: pack } = await supabase
     .from("credit_packs")
@@ -434,8 +438,9 @@ export async function createCreditPurchase(
     coupon = found as Record<string, unknown>;
   }
 
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  const rzpKeys = provider === "razorpay" ? await razorpayKeys(supabase) : null;
+  const cfKeys = provider === "cashfree" ? await cashfree.cashfreeKeys(supabase) : null;
+  if (!rzpKeys && !cfKeys) return { error: PAYMENTS_NOT_CONFIGURED };
 
   const base = Number(pack.amount);
   const { gst, total } = withGst(base);
@@ -483,7 +488,7 @@ export async function createCreditPurchase(
     .insert({
       organization_id: input.organizationId,
       billing_account_id: ((org ?? {}) as Record<string, unknown>)["billing_account_id"] ?? null,
-      provider: "razorpay",
+      provider,
       purpose: "credit_purchase",
       credit_pack_id: pack.id,
       coupon_id: coupon ? (coupon["id"] as string) : null,
@@ -498,7 +503,7 @@ export async function createCreditPurchase(
     .single();
   if (payErr || !payment) return { error: "We couldn't start this payment. Please try again." };
 
-  const { link, error } = await createPaymentLink(keys, {
+  const linkInput = {
     amount: total,
     currency: pack.currency ?? "INR",
     description: `${pack.name} credits for ${String(((org ?? {}) as Record<string, unknown>)["name"] ?? "your workspace")}`,
@@ -513,7 +518,13 @@ export async function createCreditPurchase(
     callbackUrl: `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
     expireBy: Math.floor(Date.now() / 1000) + 24 * 3600,
     notes: { organization_id: input.organizationId, payment_id: payment.id as string },
-  });
+  };
+  const { link, error } = cfKeys
+    ? await cashfree.createPaymentLink(cfKeys, {
+        ...linkInput,
+        notifyUrl: `${APP_PUBLIC_URL}/api/public/cashfree-webhook`,
+      })
+    : await rzpCreateLink(rzpKeys!, linkInput);
 
   if (!link || error) {
     await supabase

@@ -218,10 +218,15 @@ export async function startPlanPurchase(
     return { error: "That billing WhatsApp number looks too short." };
   }
 
-  const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } =
+  const { razorpayKeys, createPaymentLink: rzpCreateLink, PAYMENTS_NOT_CONFIGURED } =
     await import("@/lib/razorpay.server");
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  const cashfree = await import("@/lib/cashfree.server");
+  // Cashfree takes this workspace's new payments only when its
+  // cashfree_billing flag is on; everything else stays on Razorpay.
+  const provider = await cashfree.platformPaymentProvider(supabase, input.organizationId);
+  const rzpKeys = provider === "razorpay" ? await razorpayKeys(supabase) : null;
+  const cfKeys = provider === "cashfree" ? await cashfree.cashfreeKeys(supabase) : null;
+  if (!rzpKeys && !cfKeys) return { error: PAYMENTS_NOT_CONFIGURED };
 
   const [{ data: org }, { data: profile }] = await Promise.all([
     supabase
@@ -285,7 +290,7 @@ export async function startPlanPurchase(
     .insert({
       organization_id: input.organizationId,
       billing_account_id: account.id,
-      provider: "razorpay",
+      provider,
       purpose: "plan_fee",
       amount: base, // ex-GST, like every plan_fee row
       currency: "INR",
@@ -297,7 +302,7 @@ export async function startPlanPurchase(
     .single();
   if (payErr || !payment) return { error: "We couldn't start this payment. Please try again." };
 
-  const { link, error } = await createPaymentLink(keys, {
+  const linkInput = {
     amount: total,
     currency: "INR",
     description: `AiDwar ${plan.name} plan — first month (incl. 18% GST)`,
@@ -314,7 +319,13 @@ export async function startPlanPurchase(
       payment_id: payment.id as string,
       plan_key: plan.key,
     },
-  });
+  };
+  const { link, error } = cfKeys
+    ? await cashfree.createPaymentLink(cfKeys, {
+        ...linkInput,
+        notifyUrl: `${APP_PUBLIC_URL}/api/public/cashfree-webhook`,
+      })
+    : await rzpCreateLink(rzpKeys!, linkInput);
   if (!link || error) {
     await supabase
       .from("payments")

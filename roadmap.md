@@ -39,3 +39,12 @@
 - [x] Flows v2 live fixes (a–f): held replies, trigger fires, which number, keyword winner, 4 new steps, speed
 - [ ] Step B Forms Phase A finish + publish; ask before test form to +91 79812 23192
 - [ ] Step C Aiden collects node + start_collect/record_fields (flag aiden_collect, Ai Dwar only)
+
+## Cashfree cutover (Oct 26)
+- [x] cashfree.server.ts (links, subscriptions, webhook verify), platform + flow webhooks, provider selection behind cashfree_billing flag, merchant Cashfree connection in Settings → Integrations, migration 20261026 applied, batch30 tests (12) + all money tests green
+- [ ] User adds CASHFREE_CLIENT_ID / CASHFREE_CLIENT_SECRET / CASHFREE_WEBHOOK_SECRET / CASHFREE_ENV (secure form was declined; ask again or they add in Project Settings → Secrets; mirror into Vault as cashfree_client_id/cashfree_client_secret/cashfree_webhook_secret/cashfree_env)
+- [ ] Cashfree dashboard webhooks: https://aidwar.in/api/public/cashfree-webhook (platform) — merchant webhook URL is per-workspace, shown in Settings → Integrations
+- [ ] Sandbox end-to-end: top-up, plan purchase, subscription cycle, flow payment link (flag ON for Ai Dwar org only)
+- [ ] Validate Cashfree subscription field names against sandbox responses (sub_auth_link, subscription_id, SUBSCRIPTION_* payloads) — written from docs, untested
+- [ ] Switch CASHFREE_ENV=production, flag ON for all orgs
+- [ ] Later phase: remove Razorpay code/keys once all Razorpay mandates and links have ended

@@ -25,6 +25,8 @@ export const Route = createFileRoute("/api/integrations/flow-connections")({
           google: pick("google"),
           razorpay: pick("razorpay"),
           razorpay_webhook_url: `${url.origin}/api/public/razorpay-flow-webhook/${auth.organizationId}`,
+          cashfree: pick("cashfree"),
+          cashfree_webhook_url: `${url.origin}/api/public/cashfree-flow-webhook/${auth.organizationId}`,
         });
       },
 
@@ -78,8 +80,30 @@ export const Route = createFileRoute("/api/integrations/flow-connections")({
           return Response.json({ ok: true });
         }
 
+        if (action === "cashfree_save") {
+          const clientId = String(p["client_id"] ?? "").trim();
+          const clientSecret = String(p["client_secret"] ?? "").trim();
+          const webhookSecret = String(p["webhook_secret"] ?? "").trim();
+          const env = p["env"] === "production" ? "production" : "sandbox";
+          if (clientId.length < 8) return jsonError("Paste the full Cashfree Client ID.", 400);
+          if (clientSecret.length < 10) return jsonError("Paste the full Client Secret.", 400);
+          if (webhookSecret.length < 8) return jsonError("Add the webhook secret you set in Cashfree (8+ characters).", 400);
+          if (!(await lib.verifyCashfreeConnection(clientId, clientSecret, env))) return jsonError("Cashfree didn't accept these keys. Check the Client ID and Secret, and whether they are sandbox or production keys.", 400);
+          const { error } = await lib.saveConnection(svc, {
+            organizationId,
+            provider: "cashfree",
+            label: `${clientId.slice(0, 10)}…`,
+            config: { mode: env === "production" ? "live" : "test" },
+            secret: { client_id: clientId, client_secret: clientSecret, webhook_secret: webhookSecret, env },
+            userId,
+          });
+          if (error) return jsonError(error, 500);
+          await logServerActivity(svc, organizationId, userId, "flow_connection_added", { provider: "cashfree", mode: env });
+          return Response.json({ ok: true });
+        }
+
         if (action === "disconnect") {
-          const provider = p["provider"] === "google" ? "google" : p["provider"] === "razorpay" ? "razorpay" : null;
+          const provider = p["provider"] === "google" ? "google" : p["provider"] === "razorpay" ? "razorpay" : p["provider"] === "cashfree" ? "cashfree" : null;
           if (!provider) return jsonError("Unknown connection.", 400);
           await lib.deleteConnection(svc, organizationId, provider);
           await logServerActivity(svc, organizationId, userId, "flow_connection_removed", { provider });

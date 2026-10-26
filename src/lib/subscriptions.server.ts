@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2, withGst } from "@/lib/billing";
+import { APP_PUBLIC_URL } from "@/lib/app-url";
 
 /**
  * Auto-pay for the monthly plan fee.
@@ -99,11 +100,14 @@ export async function setupAutoPay(
   }
   if (existing.short_url) return { url: existing.short_url };
 
-  const { razorpayKeys, createPlan, createSubscription, PAYMENTS_NOT_CONFIGURED } = await import(
-    "@/lib/razorpay.server"
-  );
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  const razorpay = await import("@/lib/razorpay.server");
+  const cashfree = await import("@/lib/cashfree.server");
+  // New mandates go to Cashfree only when the workspace's cashfree_billing
+  // flag is on; everything else stays on Razorpay, exactly as before.
+  const provider = await cashfree.platformPaymentProvider(supabase, input.organizationId);
+  const rzpKeys = provider === "razorpay" ? await razorpay.razorpayKeys(supabase) : null;
+  const cfKeys = provider === "cashfree" ? await cashfree.cashfreeKeys(supabase) : null;
+  if (!rzpKeys && !cfKeys) return { error: razorpay.PAYMENTS_NOT_CONFIGURED };
 
   const { data: org } = await supabase
     .from("organizations")
@@ -130,37 +134,84 @@ export async function setupAutoPay(
   const planName = (version["plans"] as unknown as Record<string, unknown>)?.["name"] as string;
   const gross = withGst(Number(base)).total;
 
-  const plan = await createPlan(keys, {
-    period: input.cycle === "annual" ? "yearly" : "monthly",
-    amount: gross,
-    name: `AiDwar ${planName} (${input.cycle})`,
-    description: `AiDwar ${planName} plan fee, inclusive of 18% GST`,
-  });
-  if (!plan.ok) return { error: plan.error ?? "We couldn't set up auto-pay." };
-
   // A trial workspace keeps its remaining trial days: the first charge is on
   // the day the trial ends.
   const startAt = firstChargeAt((org ?? {}) as { plan_status?: string | null; trial_ends_at?: string | null });
-  const subscription = await createSubscription(keys, {
-    planId: String(plan.body["id"]),
-    cycle: input.cycle,
-    organizationId: input.organizationId,
-    ...(startAt ? { startAt } : {}),
-  });
-  if (!subscription.ok) return { error: subscription.error ?? "We couldn't set up auto-pay." };
 
-  const shortUrl = String(subscription.body["short_url"] ?? "");
+  let providerPlanId: string;
+  let providerSubId: string;
+  let shortUrl: string;
+  let rawBody: Record<string, unknown>;
+
+  if (cfKeys) {
+    const plan = await cashfree.createPlan(cfKeys, {
+      period: input.cycle === "annual" ? "yearly" : "monthly",
+      amount: gross,
+      name: `AiDwar ${planName} (${input.cycle})`,
+      description: `AiDwar ${planName} plan fee, inclusive of 18% GST`,
+    });
+    if (!plan.ok) return { error: plan.error ?? "We couldn't set up auto-pay." };
+    providerPlanId = String(plan.body["plan_id"] ?? plan.body["id"] ?? "");
+
+    const { data: billAccount } = ((org?.["billing_account_id"]
+      ? await supabase
+          .from("billing_accounts")
+          .select("name, billing_email, billing_whatsapp")
+          .eq("id", org["billing_account_id"] as string)
+          .maybeSingle()
+      : { data: null }) as { data: Record<string, unknown> | null });
+
+    const subscription = await cashfree.createSubscription(cfKeys, {
+      planId: providerPlanId,
+      cycle: input.cycle,
+      organizationId: input.organizationId,
+      customer: {
+        name: (billAccount?.["name"] as string | null) ?? ((org?.["name"] as string | null) ?? null),
+        email: (billAccount?.["billing_email"] as string | null) ?? null,
+        contact: (billAccount?.["billing_whatsapp"] as string | null) ?? null,
+      },
+      returnUrl: `${APP_PUBLIC_URL}/app/billing`,
+      firstChargeAt: startAt,
+    });
+    if (!subscription.ok) return { error: subscription.error ?? "We couldn't set up auto-pay." };
+    providerSubId = String(
+      subscription.body["subscription_id"] ?? subscription.body["cf_subscription_id"] ?? "",
+    );
+    shortUrl = String(subscription.body["sub_auth_link"] ?? subscription.body["auth_link"] ?? "");
+    rawBody = subscription.body;
+  } else {
+    const plan = await razorpay.createPlan(rzpKeys!, {
+      period: input.cycle === "annual" ? "yearly" : "monthly",
+      amount: gross,
+      name: `AiDwar ${planName} (${input.cycle})`,
+      description: `AiDwar ${planName} plan fee, inclusive of 18% GST`,
+    });
+    if (!plan.ok) return { error: plan.error ?? "We couldn't set up auto-pay." };
+    providerPlanId = String(plan.body["id"]);
+
+    const subscription = await razorpay.createSubscription(rzpKeys!, {
+      planId: providerPlanId,
+      cycle: input.cycle,
+      organizationId: input.organizationId,
+      ...(startAt ? { startAt } : {}),
+    });
+    if (!subscription.ok) return { error: subscription.error ?? "We couldn't set up auto-pay." };
+    providerSubId = String(subscription.body["id"]);
+    shortUrl = String(subscription.body["short_url"] ?? "");
+    rawBody = subscription.body;
+  }
+
   await supabase.from("subscriptions").insert({
     organization_id: input.organizationId,
     billing_account_id: (org?.["billing_account_id"] as string | null) ?? null,
     plan_version_id: planVersionId,
     billing_cycle: input.cycle,
-    provider: "razorpay",
-    provider_subscription_id: String(subscription.body["id"]),
-    provider_plan_id: String(plan.body["id"]),
+    provider: cfKeys ? "cashfree" : "razorpay",
+    provider_subscription_id: providerSubId,
+    provider_plan_id: providerPlanId,
     status: "created",
     mandate_max_amount: round2(gross),
-    raw: { ...subscription.body, short_url: shortUrl, ...(startAt ? { start_at: startAt } : {}) },
+    raw: { ...rawBody, short_url: shortUrl, ...(startAt ? { start_at: startAt } : {}) },
   });
 
   await supabase.from("activity_log").insert({
@@ -190,7 +241,7 @@ export async function cancelAutoPay(
 
   const { data: row } = await supabase
     .from("subscriptions")
-    .select("id, provider_subscription_id")
+    .select("id, provider, provider_subscription_id")
     .eq("organization_id", input.organizationId)
     .in("status", ACTIVE_STATES)
     .order("created_at", { ascending: false })
@@ -198,13 +249,24 @@ export async function cancelAutoPay(
     .maybeSingle();
   if (!row) return { error: "There's no auto-pay to cancel." };
 
-  const { razorpayKeys, cancelSubscription, PAYMENTS_NOT_CONFIGURED } = await import(
-    "@/lib/razorpay.server"
-  );
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
-
-  const result = await cancelSubscription(keys, String(row["provider_subscription_id"]), true);
+  // The mandate is cancelled with the provider that holds it.
+  const rowProvider = String(row["provider"] ?? "razorpay");
+  let result: { ok: boolean; error: string | null };
+  if (rowProvider === "cashfree") {
+    const cashfree = await import("@/lib/cashfree.server");
+    const keys = await cashfree.cashfreeKeys(supabase);
+    if (!keys) return { error: "Online payments aren't switched on yet." };
+    // Cashfree cancels immediately (no cancel-at-period-end); the workspace
+    // keeps access until the provider's cancelled event lands.
+    result = await cashfree.cancelSubscription(keys, String(row["provider_subscription_id"]));
+  } else {
+    const { razorpayKeys, cancelSubscription, PAYMENTS_NOT_CONFIGURED } = await import(
+      "@/lib/razorpay.server"
+    );
+    const keys = await razorpayKeys(supabase);
+    if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+    result = await cancelSubscription(keys, String(row["provider_subscription_id"]), true);
+  }
   if (!result.ok) return { error: result.error ?? "We couldn't cancel auto-pay." };
 
   await supabase
@@ -233,7 +295,7 @@ export async function alignSubscriptionToPlan(
 ): Promise<{ changed: boolean; note: string; needs_new_mandate?: boolean }> {
   const { data: row } = await supabase
     .from("subscriptions")
-    .select("id, provider_subscription_id, plan_version_id, billing_cycle")
+    .select("id, provider, provider_subscription_id, plan_version_id, billing_cycle")
     .eq("organization_id", input.organizationId)
     .in("status", ACTIVE_STATES)
     .order("created_at", { ascending: false })
@@ -244,15 +306,13 @@ export async function alignSubscriptionToPlan(
     return { changed: false, note: "Auto-pay already matches this plan." };
   }
 
-  const {
-    razorpayKeys,
-    createPlan,
-    updateSubscriptionPlan,
-    cancelSubscription,
-    PAYMENTS_NOT_CONFIGURED,
-  } = await import("@/lib/razorpay.server");
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { changed: false, note: PAYMENTS_NOT_CONFIGURED };
+  const razorpay = await import("@/lib/razorpay.server");
+  const cashfree = await import("@/lib/cashfree.server");
+  // The mandate is managed with the provider that holds it.
+  const rowProvider = String(row["provider"] ?? "razorpay");
+  const rzpKeys = rowProvider === "razorpay" ? await razorpay.razorpayKeys(supabase) : null;
+  const cfKeys = rowProvider === "cashfree" ? await cashfree.cashfreeKeys(supabase) : null;
+  if (!rzpKeys && !cfKeys) return { changed: false, note: razorpay.PAYMENTS_NOT_CONFIGURED };
 
   const cycle = String(row["billing_cycle"] ?? "monthly") === "annual" ? "annual" : "monthly";
   const { data: version } = await supabase
@@ -269,7 +329,9 @@ export async function alignSubscriptionToPlan(
 
   const subscriptionId = String(row["provider_subscription_id"]);
   const fail = async (note: string) => {
-    const cancelled = await cancelSubscription(keys, subscriptionId, true);
+    const cancelled = cfKeys
+      ? await cashfree.cancelSubscription(cfKeys, subscriptionId)
+      : await razorpay.cancelSubscription(rzpKeys!, subscriptionId, true);
     if (cancelled.ok) {
       await supabase
         .from("subscriptions")
@@ -294,7 +356,11 @@ export async function alignSubscriptionToPlan(
   }
   const gross = withGst(Number(base)).total;
 
-  const plan = await createPlan(keys, {
+  // A Cashfree mandate can't be moved onto another plan: it is cancelled at
+  // the period end and the workspace sets up a fresh mandate on the new plan.
+  if (cfKeys) return fail("This provider can't move a mandate to another plan.");
+
+  const plan = await razorpay.createPlan(rzpKeys!, {
     period: cycle === "annual" ? "yearly" : "monthly",
     amount: gross,
     name: `AiDwar ${planName} (${cycle})`,
@@ -302,7 +368,7 @@ export async function alignSubscriptionToPlan(
   });
   if (!plan.ok) return fail(plan.error ?? "The payment provider couldn't create the new plan.");
 
-  const updated = await updateSubscriptionPlan(keys, subscriptionId, String(plan.body["id"]));
+  const updated = await razorpay.updateSubscriptionPlan(rzpKeys!, subscriptionId, String(plan.body["id"]));
   if (!updated.ok) return fail(updated.error ?? "The mandate couldn't be moved to the new plan.");
 
   await supabase
@@ -391,6 +457,7 @@ export async function applySubscriptionEvent(
       entity: subscription,
       payment,
       raw,
+      provider: "razorpay",
     });
   } else if (kind === "halted" || kind === "pending") {
     patch["status"] = kind;
@@ -430,7 +497,7 @@ async function unpauseForPayment(supabase: SupabaseClient, organizationId: strin
  * The mandate charges the plan fee only — usage is never added on to it; it
  * is debited from prepaid credits and only stated on the invoice.
  */
-async function recordPlanCharge(
+export async function recordPlanCharge(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
@@ -438,6 +505,7 @@ async function recordPlanCharge(
     entity: Record<string, unknown>;
     payment: Record<string, unknown> | null;
     raw: Record<string, unknown>;
+    provider: string;
   },
 ): Promise<void> {
   const providerPaymentId = (input.payment?.["id"] as string | null) ?? null;
@@ -476,7 +544,7 @@ async function recordPlanCharge(
     .insert({
       organization_id: input.organizationId,
       billing_account_id: (input.subscription["billing_account_id"] as string | null) ?? null,
-      provider: "razorpay",
+      provider: input.provider,
       provider_payment_id: providerPaymentId,
       purpose: "plan_fee",
       // Same convention as credit purchases: the payment carries the ex-GST
@@ -521,4 +589,105 @@ async function recordPlanCharge(
   if ("error" in built) return;
   await issueInvoice(supabase, built.invoice_id, { deliver: true });
   await markPaid(supabase, built.invoice_id, (paymentRow?.["id"] as string | null) ?? null, gross);
+}
+
+// ------------------------------------------------------ Cashfree webhook side
+
+/**
+ * Applies a Cashfree SUBSCRIPTION_* event. Safe to replay. The Cashfree
+ * payload is normalised into the same shapes applySubscriptionEvent uses
+ * (ids as strings, amounts in paise, times as Unix seconds), so the charge
+ * recording and invoicing path is shared, not duplicated.
+ */
+export async function applyCashfreeSubscriptionEvent(
+  supabase: SupabaseClient,
+  type: string,
+  data: Record<string, unknown>,
+  raw: Record<string, unknown>,
+): Promise<void> {
+  const sub = (data["subscription"] ?? {}) as Record<string, unknown>;
+  const providerId = String(sub["subscription_id"] ?? sub["cf_subscription_id"] ?? "");
+  if (!providerId) return;
+
+  const { SettleError } = await import("@/lib/billing.server");
+  const must = (what: string, error: { message: string } | null) => {
+    if (error) throw new SettleError(`subscription ${what} failed: ${error.message}`);
+  };
+  const { data: row, error: rowError } = await supabase
+    .from("subscriptions")
+    .select("id, organization_id, plan_version_id, billing_cycle, billing_account_id, raw")
+    .eq("provider_subscription_id", providerId)
+    .maybeSingle();
+  must("read", rowError);
+  if (!row) return;
+
+  const orgId = String(row["organization_id"]);
+  const existingRaw = (row["raw"] ?? {}) as Record<string, unknown>;
+  const patch: Record<string, unknown> = {
+    raw: { ...existingRaw, last_event: type, entity: sub },
+    updated_at: new Date().toISOString(),
+  };
+
+  const subStatus = String(sub["subscription_status"] ?? sub["status"] ?? "").toUpperCase();
+
+  if (type === "SUBSCRIPTION_AUTH_STATUS" && (subStatus === "AUTHORIZED" || subStatus === "ACTIVE")) {
+    patch["status"] = "authenticated";
+    const { error } = await supabase
+      .from("organizations")
+      .update({ plan_status: "active", trial_ends_at: null })
+      .eq("id", orgId);
+    must("plan status", error);
+    await unpauseForPayment(supabase, orgId);
+  } else if (type === "SUBSCRIPTION_STATUS_CHANGED") {
+    if (subStatus === "ACTIVE") {
+      patch["status"] = "active";
+      const { error } = await supabase.from("organizations").update({ plan_status: "active" }).eq("id", orgId);
+      must("plan status", error);
+      await unpauseForPayment(supabase, orgId);
+    } else if (subStatus === "CANCELLED" || subStatus === "EXPIRED" || subStatus === "COMPLETED") {
+      patch["status"] = subStatus === "CANCELLED" ? "cancelled" : "completed";
+      const { error } = await supabase.from("organizations").update({ plan_status: "cancelled" }).eq("id", orgId);
+      must("plan status", error);
+    } else if (subStatus === "PAUSED") {
+      patch["status"] = "paused";
+    } else if (subStatus === "ONHOLD" || subStatus === "PENDING") {
+      patch["status"] = "halted";
+      const { error } = await supabase.from("organizations").update({ plan_status: "past_due" }).eq("id", orgId);
+      must("plan status", error);
+    }
+  } else if (type === "SUBSCRIPTION_PAYMENT_SUCCESS") {
+    patch["status"] = "active";
+    const { error } = await supabase.from("organizations").update({ plan_status: "active" }).eq("id", orgId);
+    must("plan status", error);
+    await unpauseForPayment(supabase, orgId);
+    const pay = (data["payment"] ?? {}) as Record<string, unknown>;
+    const amountRupees = Number(pay["payment_amount"] ?? pay["order_amount"] ?? 0);
+    await recordPlanCharge(supabase, {
+      organizationId: orgId,
+      subscription: row as Record<string, unknown>,
+      entity: sub,
+      payment: {
+        id: String(pay["cf_payment_id"] ?? pay["payment_id"] ?? ""),
+        amount: Math.round(amountRupees * 100),
+      },
+      raw,
+      provider: "cashfree",
+    });
+  } else if (type === "SUBSCRIPTION_PAYMENT_FAILED") {
+    patch["status"] = "halted";
+    const { error } = await supabase.from("organizations").update({ plan_status: "past_due" }).eq("id", orgId);
+    must("plan status", error);
+    const { notify } = await import("@/lib/billing.server");
+    await notify(supabase, {
+      organizationId: orgId,
+      audience: "client",
+      kind: "payment_failed",
+      payload: { reason: "subscription_payment_failed" },
+    });
+  } else {
+    return; // reminders and notifications need no state change
+  }
+
+  const { error: patchError } = await supabase.from("subscriptions").update(patch).eq("id", row["id"] as string);
+  must("update", patchError);
 }
