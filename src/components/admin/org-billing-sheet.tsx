@@ -65,6 +65,14 @@ type OrgBilling = {
   bsp_accounts: AnyRow[];
   packs: AnyRow[];
   payments: AnyRow[];
+  /** The gateway this workspace's new payments go through (its cashfree_billing flag). */
+  payment_gateway?: "cashfree" | "razorpay";
+};
+
+const GATEWAY_COPY: Record<string, string> = {
+  cashfree: "Cashfree",
+  razorpay: "Razorpay",
+  manual: "Manual",
 };
 
 const SETTINGS_FIELDS: { key: string; label: string; type: "number" | "text" | "switch" }[] = [
@@ -150,6 +158,9 @@ export function OrgBillingSheet({
   const [walletAmount, setWalletAmount] = useState("");
   const [walletReason, setWalletReason] = useState("");
   const [planPreview, setPlanPreview] = useState<PlanChangePreview | null>(null);
+  const [refunding, setRefunding] = useState<AnyRow | null>(null);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
 
 
   const load = useCallback(async () => {
@@ -1032,7 +1043,12 @@ export function OrgBillingSheet({
                 </div>
               </Section>
 
-              <Section title="Payments" description="What they've paid us, and how.">
+              <Section
+                title="Payments"
+                description={`What they've paid us, and how. New payments go through ${
+                  GATEWAY_COPY[data.payment_gateway ?? "razorpay"] ?? data.payment_gateway
+                }; older ones stay on the gateway they were made on.`}
+              >
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="border-b border-border/70 text-left text-xs text-muted-foreground">
@@ -1041,22 +1057,75 @@ export function OrgBillingSheet({
                         <th className="py-2">Provider</th>
                         <th className="py-2">Status</th>
                         <th className="py-2">Amount</th>
+                        <th className="py-2" />
                       </tr>
                     </thead>
                     <tbody>
-                      {data.payments.map((p) => (
-                        <tr
-                          key={String(p["id"])}
-                          className="border-b border-border/50 last:border-0"
-                        >
-                          <td className="py-2 text-xs text-muted-foreground">
-                            {new Date(String(p["created_at"])).toLocaleString("en-IN")}
-                          </td>
-                          <td className="py-2">{String(p["provider"] ?? "—")}</td>
-                          <td className="py-2">{String(p["status"] ?? "—")}</td>
-                          <td className="py-2">{money(Number(p["amount"] ?? 0))}</td>
-                        </tr>
-                      ))}
+                      {data.payments.map((p) => {
+                        const refunded = Number(p["refunded_amount"] ?? 0);
+                        const gross =
+                          p["gross_amount"] === null || p["gross_amount"] === undefined
+                            ? null
+                            : Number(p["gross_amount"]);
+                        const refundable =
+                          p["provider"] === "cashfree" &&
+                          p["status"] === "paid" &&
+                          gross !== null &&
+                          refunded < gross;
+                        return (
+                          <tr
+                            key={String(p["id"])}
+                            className="border-b border-border/50 last:border-0 align-top"
+                          >
+                            <td className="py-2 text-xs text-muted-foreground">
+                              {new Date(String(p["created_at"])).toLocaleString("en-IN")}
+                            </td>
+                            <td className="py-2">
+                              {GATEWAY_COPY[String(p["provider"] ?? "")] ??
+                                String(p["provider"] ?? "—")}
+                            </td>
+                            <td className="py-2">
+                              {String(p["status"] ?? "—")}
+                              {p["failure_reason"] ? (
+                                <div className="text-xs text-muted-foreground">
+                                  {String(p["failure_reason"])}
+                                </div>
+                              ) : null}
+                              {refunded > 0 ? (
+                                <div className="text-xs text-muted-foreground">
+                                  Refunded {money(refunded)}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="py-2">
+                              {money(Number(p["amount"] ?? 0))}
+                              {gross !== null ? (
+                                <div className="text-xs text-muted-foreground">
+                                  {money(gross)} incl. GST
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="py-2 text-right">
+                              {refundable ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-full"
+                                  onClick={() => {
+                                    setRefunding(p);
+                                    setRefundAmount(
+                                      String(Math.round((gross - refunded) * 100) / 100),
+                                    );
+                                    setRefundReason("");
+                                  }}
+                                >
+                                  Refund
+                                </Button>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1065,6 +1134,69 @@ export function OrgBillingSheet({
           </Tabs>
         )}
       </SheetContent>
+
+      <AlertDialog open={refunding !== null} onOpenChange={(o) => !o && setRefunding(null)}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Refund this payment through Cashfree?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The money goes back to how they paid. A credit note is issued against the invoice
+              {refunding?.["purpose"] === "credit_purchase"
+                ? ", and the credits bought with it come off their wallet in proportion"
+                : ""}
+              . This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="refund-amount">Amount to refund (incl. GST)</Label>
+              <Input
+                id="refund-amount"
+                inputMode="decimal"
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="refund-reason">Reason</Label>
+              <Textarea
+                id="refund-reason"
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+                placeholder="Why this is being refunded"
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                busy === "refund" || !(Number(refundAmount) > 0) || refundReason.trim().length < 3
+              }
+              onClick={(event) => {
+                event.preventDefault();
+                if (!refunding) return;
+                void (async () => {
+                  const ok = await act(
+                    "refund_payment",
+                    {
+                      payment_id: refunding["id"],
+                      amount: Number(refundAmount),
+                      reason: refundReason.trim(),
+                    },
+                    "refund",
+                    "Refund sent to Cashfree.",
+                  );
+                  if (ok) setRefunding(null);
+                })();
+              }}
+            >
+              {busy === "refund" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Refund
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={planPreview !== null} onOpenChange={(o) => !o && setPlanPreview(null)}>
         <AlertDialogContent className="max-w-lg">

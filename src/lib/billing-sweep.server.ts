@@ -34,6 +34,9 @@ export type SweepCounts = {
   campaigns_settled: number;
   campaigns_settle_failed: number;
   campaigns_synced: number;
+  /** Batch 31: unpaid Cashfree orders checked with GET order / found paid and settled. */
+  cashfree_checked: number;
+  cashfree_settled: number;
 };
 
 /** activity_log action (and admin notice kind) for uncharged message debits. */
@@ -143,6 +146,8 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     campaigns_settled: 0,
     campaigns_settle_failed: 0,
     campaigns_synced: 0,
+    cashfree_checked: 0,
+    cashfree_settled: 0,
   };
 
   // ---- messages already sent whose debit failed: charge them now if we can
@@ -161,6 +166,21 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     counts.campaigns_synced = ended.synced;
   } catch (error) {
     console.warn(JSON.stringify({ at: "campaign_reconcile_failed", error: error instanceof Error ? error.message : String(error) }));
+  }
+
+  // ---- Cashfree orders still unpaid on our side (a webhook refused as
+  // stale, or never delivered): asked with GET order, settled once if paid.
+  try {
+    const pending = await reconcilePendingCashfree(supabase);
+    counts.cashfree_checked = pending.checked;
+    counts.cashfree_settled = pending.settled;
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        at: "cashfree_reconcile_failed",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
   }
 
   const { billingEnabled, notify, createCreditPurchase } = await import("@/lib/billing.server");
@@ -328,6 +348,42 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
  * untouched only when the balance has never dipped below where that purchase
  * left it — a partly-spent pack is left alone and logged as a skip.
  */
+/**
+ * Unpaid Cashfree payments of the last few days, confirmed against Cashfree
+ * (confirmCashfreePayment: GET order, settlePayment if paid). Bounded; a
+ * payment that fails to confirm is left for the next run.
+ */
+export async function reconcilePendingCashfree(
+  supabase: SupabaseClient,
+  options: { limit?: number; sinceMs?: number } = {},
+): Promise<{ checked: number; settled: number }> {
+  const { cashfreeConfig } = await import("@/lib/cashfree.server");
+  const config = cashfreeConfig();
+  if (!config) return { checked: 0, settled: 0 };
+  const since = new Date(Date.now() - (options.sinceMs ?? 3 * DAY_MS)).toISOString();
+  const { data } = await supabase
+    .from("payments")
+    .select("id")
+    .eq("provider", "cashfree")
+    .in("status", ["pending", "failed"])
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(options.limit ?? 25);
+  const { confirmCashfreePayment } = await import("@/lib/cashfree-billing.server");
+  let checked = 0;
+  let settled = 0;
+  for (const row of (data ?? []) as Array<{ id: string }>) {
+    checked += 1;
+    try {
+      const result = await confirmCashfreePayment(supabase, row.id, { config });
+      if (result.status === "paid") settled += 1;
+    } catch {
+      // settlePayment already told an admin; the next run tries again
+    }
+  }
+  return { checked, settled };
+}
+
 async function expireCredits(
   supabase: SupabaseClient,
   organizationId: string,

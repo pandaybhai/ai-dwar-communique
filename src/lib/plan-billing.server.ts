@@ -6,7 +6,8 @@ import { round2, withGst } from "@/lib/billing";
  *
  * Workspaces on auto-pay are charged by the provider and settled through the
  * webhook — this job leaves them alone. Everyone else gets an invoice and a
- * payment link on their billing day. Trials get a heads-up three days before
+ * payment link on their billing day (on Cashfree without Subscriptions, this
+ * is how the plan fee is paid: pay-per-period). Trials get a heads-up three days before
  * the trial ends rather than a surprise charge.
  */
 
@@ -248,6 +249,11 @@ async function createPlanPaymentLink(
     billingAccountId: string | null;
   },
 ): Promise<string | null> {
+  const { paymentGateway } = await import("@/lib/cashfree-billing.server");
+  if ((await paymentGateway(supabase, input.organizationId)) === "cashfree") {
+    return createCashfreePlanOrder(supabase, input);
+  }
+
   const { razorpayKeys, createPaymentLink } = await import("@/lib/razorpay.server");
   const keys = await razorpayKeys(supabase);
   if (!keys) return null;
@@ -314,6 +320,92 @@ async function createPlanPaymentLink(
   await supabase.from("invoices").update({ payment_id: payment["id"] }).eq("id", input.invoiceId);
 
   return link.short_url || null;
+}
+
+/**
+ * Pay-per-period on Cashfree: one order for this invoice, paid from our pay
+ * page (the link the invoice notice already carries). The paid order settles
+ * the invoice through settlePayment -> markPaid, like a Razorpay link did.
+ */
+async function createCashfreePlanOrder(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    invoiceId: string;
+    invoiceNumber: string;
+    amount: number;
+    gross: number;
+    orgName: string;
+    billingAccountId: string | null;
+  },
+): Promise<string | null> {
+  const { cashfreeConfig } = await import("@/lib/cashfree.server");
+  const config = cashfreeConfig();
+  if (!config) return null;
+
+  const raw = {
+    invoice_id: input.invoiceId,
+    gst_amount: round2(input.gross - input.amount),
+    gross_amount: round2(input.gross),
+  };
+  const { data: payment } = await supabase
+    .from("payments")
+    .insert({
+      organization_id: input.organizationId,
+      billing_account_id: input.billingAccountId,
+      provider: "cashfree",
+      purpose: "plan_fee",
+      amount: round2(input.amount),
+      currency: "INR",
+      status: "created",
+      raw,
+    })
+    .select("id")
+    .maybeSingle();
+  if (!payment) return null;
+  const paymentId = String(payment["id"]);
+
+  const { data: account } = input.billingAccountId
+    ? await supabase
+        .from("billing_accounts")
+        .select("legal_name, billing_email, billing_phone, billing_whatsapp")
+        .eq("id", input.billingAccountId)
+        .maybeSingle()
+    : { data: null };
+  const { orderCustomer, startCashfreeOrder, payPageUrl } =
+    await import("@/lib/cashfree-billing.server");
+  const customer = await orderCustomer(supabase, input.organizationId, {
+    name: (account?.["legal_name"] as string | null) ?? input.orgName,
+    email: (account?.["billing_email"] as string | null) ?? null,
+    phone:
+      (account?.["billing_whatsapp"] as string | null) ??
+      (account?.["billing_phone"] as string | null) ??
+      null,
+  });
+  if ("error" in customer) {
+    await supabase
+      .from("payments")
+      .update({ status: "failed", raw: { ...raw, error: customer.error } })
+      .eq("id", paymentId);
+    return null;
+  }
+  const started = await startCashfreeOrder(supabase, config, {
+    paymentId,
+    gross: round2(input.gross),
+    currency: "INR",
+    customer,
+    note: `AiDwar plan fee, invoice ${input.invoiceNumber}`,
+    returnUrl: `${payPageUrl(paymentId)}?return=1`,
+    raw,
+    tags: {
+      organization_id: input.organizationId,
+      purpose: "plan_fee",
+      invoice_id: input.invoiceId,
+    },
+  });
+  if ("error" in started) return null;
+  await supabase.from("invoices").update({ payment_id: paymentId }).eq("id", input.invoiceId);
+  return started.url;
 }
 
 /**

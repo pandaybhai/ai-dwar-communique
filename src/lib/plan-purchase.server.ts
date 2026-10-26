@@ -3,7 +3,9 @@ import { APP_PUBLIC_URL } from "@/lib/app-url";
 import { round2, withGst } from "@/lib/billing";
 
 /**
- * Self-serve plan purchase for trial and locked workspaces.
+ * Self-serve plan purchase for trial and locked workspaces, paid through the
+ * workspace's gateway (Cashfree checkout with the cashfree_billing flag on,
+ * else a Razorpay link as before).
  *
  * The app only ever sets organizations.plan_version_id + plan_status='active'.
  * Database triggers (org_plan_assigned_before / org_plan_assigned_billing_on)
@@ -196,7 +198,14 @@ export async function startPlanPurchase(
     gstin?: string | null;
     billingWhatsapp?: string | null;
   },
-): Promise<{ url: string; payment_id: string } | { error: string }> {
+): Promise<
+  | {
+      url: string;
+      payment_id: string;
+      checkout?: import("@/lib/cashfree-billing.server").CheckoutSession;
+    }
+  | { error: string }
+> {
   const { hasPermission } = await import("@/lib/permissions.server");
   if (!(await hasPermission(supabase, input.organizationId, input.userId, "billing.pay"))) {
     return { error: "Only an owner can choose a plan for this workspace." };
@@ -220,8 +229,20 @@ export async function startPlanPurchase(
 
   const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } =
     await import("@/lib/razorpay.server");
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  // Cashfree only with the workspace's cashfree_billing flag on; otherwise Razorpay as before.
+  const { paymentGateway, startCashfreeOrder, orderCustomer } =
+    await import("@/lib/cashfree-billing.server");
+  const { cashfreeConfig } = await import("@/lib/cashfree.server");
+  const gateway = await paymentGateway(supabase, input.organizationId);
+  const cashfree = gateway === "cashfree" ? cashfreeConfig() : null;
+  const keys = gateway === "razorpay" ? await razorpayKeys(supabase) : null;
+  if (gateway === "cashfree" ? !cashfree : !keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  if (
+    gateway === "cashfree" &&
+    !(await hasPermission(supabase, input.organizationId, input.userId, "cashfree_billing.pay"))
+  ) {
+    return { error: "Only an owner can pay for this workspace." };
+  }
 
   const [{ data: org }, { data: profile }] = await Promise.all([
     supabase
@@ -285,7 +306,7 @@ export async function startPlanPurchase(
     .insert({
       organization_id: input.organizationId,
       billing_account_id: account.id,
-      provider: "razorpay",
+      provider: gateway,
       purpose: "plan_fee",
       amount: base, // ex-GST, like every plan_fee row
       currency: "INR",
@@ -296,6 +317,41 @@ export async function startPlanPurchase(
     .select("id")
     .single();
   if (payErr || !payment) return { error: "We couldn't start this payment. Please try again." };
+
+  if (cashfree) {
+    const customer = await orderCustomer(supabase, input.organizationId, {
+      name: String(o["name"] ?? ""),
+      email: ((profile as Record<string, unknown> | null)?.["email"] as string | null) ?? null,
+      phone: billingWhatsapp,
+    });
+    if ("error" in customer) {
+      await supabase
+        .from("payments")
+        .update({ status: "failed", raw: { ...raw, error: customer.error } })
+        .eq("id", payment.id);
+      return customer;
+    }
+    const started = await startCashfreeOrder(supabase, cashfree, {
+      paymentId: payment.id as string,
+      gross: total,
+      currency: "INR",
+      customer,
+      note: `AiDwar ${plan.name} plan, first month (incl. 18% GST)`,
+      returnUrl: `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
+      raw,
+      tags: { organization_id: input.organizationId, purpose: "plan_fee", plan_key: plan.key },
+      expiresAt: new Date(Date.now() + 24 * 3600e3),
+    });
+    if ("error" in started) return started;
+    await supabase.from("activity_log").insert({
+      organization_id: input.organizationId,
+      user_id: input.userId,
+      action: "plan_purchase_started",
+      details: { payment_id: payment.id, plan_key: plan.key, amount: base, gateway },
+    });
+    return { url: started.url, payment_id: payment.id as string, checkout: started.checkout };
+  }
+  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
 
   const { link, error } = await createPaymentLink(keys, {
     amount: total,

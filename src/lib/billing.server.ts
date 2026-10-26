@@ -401,7 +401,14 @@ export async function listBillingDocuments(
 export async function createCreditPurchase(
   supabase: SupabaseClient,
   input: ActorContext & { packId: string; couponCode?: string | null; origin: string },
-): Promise<{ url: string; payment_id: string } | { error: string }> {
+): Promise<
+  | {
+      url: string;
+      payment_id: string;
+      checkout?: import("@/lib/cashfree-billing.server").CheckoutSession;
+    }
+  | { error: string }
+> {
   await requirePerm(supabase, input.organizationId, { userId: input.userId }, "billing.pay");
 
   const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } =
@@ -434,8 +441,23 @@ export async function createCreditPurchase(
     coupon = found as Record<string, unknown>;
   }
 
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  // Cashfree only for a workspace with the cashfree_billing flag on; flag
+  // off, every step below is the Razorpay path exactly as before.
+  const { paymentGateway, startCashfreeOrder, orderCustomer } =
+    await import("@/lib/cashfree-billing.server");
+  const gateway = await paymentGateway(supabase, input.organizationId);
+  const { cashfreeConfig } = await import("@/lib/cashfree.server");
+  const cashfree = gateway === "cashfree" ? cashfreeConfig() : null;
+  const keys = gateway === "razorpay" ? await razorpayKeys(supabase) : null;
+  if (gateway === "cashfree" ? !cashfree : !keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  if (gateway === "cashfree") {
+    await requirePerm(
+      supabase,
+      input.organizationId,
+      { userId: input.userId },
+      "cashfree_billing.pay",
+    );
+  }
 
   const base = Number(pack.amount);
   const { gst, total } = withGst(base);
@@ -483,11 +505,11 @@ export async function createCreditPurchase(
     .insert({
       organization_id: input.organizationId,
       billing_account_id: ((org ?? {}) as Record<string, unknown>)["billing_account_id"] ?? null,
-      provider: "razorpay",
+      provider: gateway,
       purpose: "credit_purchase",
       credit_pack_id: pack.id,
       coupon_id: coupon ? (coupon["id"] as string) : null,
-      // Stored ex-GST; the gross that Razorpay collects lives in raw.
+      // Stored ex-GST; the gross the gateway collects lives in raw.
       amount: base,
       currency: pack.currency ?? "INR",
       status: "created",
@@ -497,6 +519,37 @@ export async function createCreditPurchase(
     .select("id")
     .single();
   if (payErr || !payment) return { error: "We couldn't start this payment. Please try again." };
+
+  if (cashfree) {
+    const customer = await orderCustomer(supabase, input.organizationId, {
+      name:
+        (account?.["name"] as string) ??
+        (((org ?? {}) as Record<string, unknown>)["name"] as string),
+      email: (account?.["billing_email"] as string) ?? null,
+      phone: (account?.["billing_whatsapp"] as string) ?? null,
+    });
+    if ("error" in customer) {
+      await supabase
+        .from("payments")
+        .update({ status: "failed", raw: { ...packRaw, error: customer.error } })
+        .eq("id", payment.id);
+      return customer;
+    }
+    const started = await startCashfreeOrder(supabase, cashfree, {
+      paymentId: payment.id as string,
+      gross: total,
+      currency: pack.currency ?? "INR",
+      customer,
+      note: `${pack.name} credits`,
+      returnUrl: `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
+      raw: packRaw,
+      tags: { organization_id: input.organizationId, purpose: "credit_purchase" },
+      expiresAt: new Date(Date.now() + 24 * 3600e3),
+    });
+    if ("error" in started) return started;
+    return { url: started.url, payment_id: payment.id as string, checkout: started.checkout };
+  }
+  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
 
   const { link, error } = await createPaymentLink(keys, {
     amount: total,
@@ -652,12 +705,18 @@ async function creditOnce(
  * follow-up work. The payment is only marked paid once the credit landed; a
  * failure leaves it unpaid, releases the claim, tells an admin and throws a
  * SettleError so the webhook is retried.
+ *
+ * `facts` is what a gateway other than Razorpay says it collected (Cashfree:
+ * settleFactsFrom, from its signed webhook or its own GET order). Absent, the
+ * Razorpay webhook body is read exactly as before. Every gateway settles here,
+ * so wallet_ledger_payment_credit_once and the invoice rules guard them all.
  */
 export async function settlePayment(
   supabase: SupabaseClient,
   paymentId: string,
   providerPaymentId: string | null,
   raw: Record<string, unknown>,
+  facts?: import("@/lib/cashfree.server").SettleFacts,
 ): Promise<{ credited: boolean }> {
   const { data: payment, error: loadError } = await supabase
     .from("payments")
@@ -680,7 +739,9 @@ export async function settlePayment(
 
   // Only what we asked for is credited. Anything else waits for a human.
   const expected = expectedGrossPaise(priorRaw);
-  const captured = capturedFromWebhook(raw);
+  const captured = facts
+    ? { paise: facts.paise, status: facts.status, currency: facts.currency }
+    : capturedFromWebhook(raw);
   const problem = amountProblem(expected, captured, String(payment.currency ?? "INR"));
   if (problem) {
     const already = (priorRaw["amount_check"] as { reason?: string } | undefined)?.reason === problem;
@@ -716,18 +777,19 @@ export async function settlePayment(
     return { credited: false };
   }
 
-  // What Razorpay actually collected, spelled out on the payment itself so a
-  // receipt or a reconciliation never has to re-derive it.
+  // What the gateway actually collected, spelled out on the payment itself so
+  // a receipt or a reconciliation never has to re-derive it.
   const grossAmount = round2((captured.paise as number) / 100);
   const gstAmount = round2(grossAmount - Number(payment.amount ?? 0));
   // Razorpay reports the family in `method` and the instrument alongside it
   // ('upi' + vpa, 'wallet' + wallet name, 'card' + network).
-  const methodDetail =
-    (entity?.["vpa"] as string | undefined) ??
-    (entity?.["wallet"] as string | undefined) ??
-    (entity?.["bank"] as string | undefined) ??
-    (entity?.["card_id"] as string | undefined) ??
-    null;
+  const methodDetail = facts
+    ? facts.methodDetail
+    : ((entity?.["vpa"] as string | undefined) ??
+      (entity?.["wallet"] as string | undefined) ??
+      (entity?.["bank"] as string | undefined) ??
+      (entity?.["card_id"] as string | undefined) ??
+      null);
 
   // Claim: one delivery settles at a time. A claim older than five minutes
   // belongs to a delivery that died, and can be taken over.
@@ -766,8 +828,15 @@ export async function settlePayment(
       .update({
         status: "paid",
         provider_payment_id: providerPaymentId,
-        ...(entity?.["order_id"] ? { provider_order_id: String(entity["order_id"]) } : {}),
-        ...(entity?.["method"] ? { method: String(entity["method"]) } : {}),
+        ...(facts
+          ? {
+              ...(facts.orderId ? { provider_order_id: facts.orderId } : {}),
+              ...(facts.method ? { method: facts.method } : {}),
+            }
+          : {
+              ...(entity?.["order_id"] ? { provider_order_id: String(entity["order_id"]) } : {}),
+              ...(entity?.["method"] ? { method: String(entity["method"]) } : {}),
+            }),
         paid_at: new Date().toISOString(),
         raw: finalRaw,
       })

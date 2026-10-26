@@ -18,6 +18,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
 import { money, withGst } from "@/lib/billing";
 import { callApi } from "@/lib/whatsapp-client";
+import {
+  confirmCashfreeReturn,
+  openCashfreeCheckout,
+  type CashfreeCheckout,
+} from "@/lib/cashfree-checkout";
 import { cn } from "@/lib/utils";
 
 type Plan = {
@@ -64,7 +69,8 @@ function limitLines(limits: Record<string, unknown>): string[] {
 
 /**
  * The plan picker for a workspace on trial or locked. Pays the first month's
- * fee through a hosted payment link; activation lands through the webhook.
+ * fee on Cashfree's checkout (or a Razorpay link, when that gateway is
+ * chosen); activation lands once our server has confirmed the payment.
  */
 export function PlanChooser({
   organizationId,
@@ -106,10 +112,13 @@ export function PlanChooser({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (!params.has("payment")) return;
+    const paymentId = params.get("payment");
+    if (!paymentId) return;
     let tries = 0;
     const timer = window.setInterval(async () => {
       tries += 1;
+      // Our server asks the gateway; the redirect alone never activates a plan.
+      await confirmCashfreeReturn(paymentId);
       const { data } = await callApi<PlanState>(
         `/api/billing/plan?organization_id=${organizationId}`,
         { method: "GET" },
@@ -128,19 +137,29 @@ export function PlanChooser({
   async function pay() {
     if (!selected) return;
     setBusy(true);
-    const { data, error } = await callApi<{ url: string }>("/api/billing/plan", {
-      body: {
-        organization_id: organizationId,
-        plan_key: selected.key,
-        gstin: gstin.trim() || null,
-        billing_whatsapp: whatsapp.trim() || null,
+    const { data, error } = await callApi<{ url: string; checkout?: CashfreeCheckout }>(
+      "/api/billing/plan",
+      {
+        body: {
+          organization_id: organizationId,
+          plan_key: selected.key,
+          gstin: gstin.trim() || null,
+          billing_whatsapp: whatsapp.trim() || null,
+        },
       },
-    });
-    setBusy(false);
+    );
     if (error || !data?.url) {
+      setBusy(false);
       toast.error(error ?? "We couldn't start the payment.");
       return;
     }
+    if (data.checkout) {
+      const problem = await openCashfreeCheckout(data.checkout);
+      setBusy(false);
+      if (problem) toast.error(problem);
+      return;
+    }
+    setBusy(false);
     window.location.assign(data.url);
   }
 

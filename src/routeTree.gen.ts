@@ -52,6 +52,7 @@ import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as PayPaymentIdRouteImport } from './routes/pay.$paymentId'
 import { Route as RTokenRouteImport } from './routes/r.$token'
 import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
@@ -102,6 +103,8 @@ import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/int
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
 import { Route as ApiOnboardingStartRouteImport } from './routes/api/onboarding/start'
+import { Route as ApiPublicCashfreePayRouteImport } from './routes/api/public/cashfree-pay'
+import { Route as ApiPublicCashfreeWebhookRouteImport } from './routes/api/public/cashfree-webhook'
 import { Route as ApiPublicDemoLeadsRouteImport } from './routes/api/public/demo-leads'
 import { Route as ApiPublicGoogleOauthCallbackRouteImport } from './routes/api/public/google-oauth-callback'
 import { Route as ApiPublicPlansRouteImport } from './routes/api/public/plans'
@@ -347,6 +350,11 @@ const AppTemplatesRoute = AppTemplatesRouteImport.update({
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PayPaymentIdRoute = PayPaymentIdRouteImport.update({
+  id: '/pay/$paymentId',
+  path: '/pay/$paymentId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RTokenRoute = RTokenRouteImport.update({
@@ -610,6 +618,17 @@ const ApiOnboardingStartRoute = ApiOnboardingStartRouteImport.update({
   path: '/api/onboarding/start',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicCashfreePayRoute = ApiPublicCashfreePayRouteImport.update({
+  id: '/api/public/cashfree-pay',
+  path: '/api/public/cashfree-pay',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicCashfreeWebhookRoute =
+  ApiPublicCashfreeWebhookRouteImport.update({
+    id: '/api/public/cashfree-webhook',
+    path: '/api/public/cashfree-webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicDemoLeadsRoute = ApiPublicDemoLeadsRouteImport.update({
   id: '/api/public/demo-leads',
   path: '/api/public/demo-leads',
@@ -821,6 +840,7 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
+  '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
@@ -873,6 +893,8 @@ export interface FileRoutesByFullPath {
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
+  '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
+  '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
   '/api/public/plans': typeof ApiPublicPlansRoute
@@ -945,6 +967,7 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
+  '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
@@ -997,6 +1020,8 @@ export interface FileRoutesByTo {
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
+  '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
+  '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
   '/api/public/plans': typeof ApiPublicPlansRoute
@@ -1072,6 +1097,7 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/join/$token': typeof JoinTokenRoute
+  '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
@@ -1124,6 +1150,8 @@ export interface FileRoutesById {
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
+  '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
+  '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
   '/api/public/plans': typeof ApiPublicPlansRoute
@@ -1200,6 +1228,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
+    | '/pay/$paymentId'
     | '/r/$token'
     | '/admin/'
     | '/app/'
@@ -1252,6 +1281,8 @@ export interface FileRouteTypes {
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
     | '/api/onboarding/start'
+    | '/api/public/cashfree-pay'
+    | '/api/public/cashfree-webhook'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
     | '/api/public/plans'
@@ -1324,6 +1355,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
+    | '/pay/$paymentId'
     | '/r/$token'
     | '/admin'
     | '/app'
@@ -1376,6 +1408,8 @@ export interface FileRouteTypes {
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
     | '/api/onboarding/start'
+    | '/api/public/cashfree-pay'
+    | '/api/public/cashfree-webhook'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
     | '/api/public/plans'
@@ -1450,6 +1484,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/join/$token'
+    | '/pay/$paymentId'
     | '/r/$token'
     | '/admin/'
     | '/app/'
@@ -1502,6 +1537,8 @@ export interface FileRouteTypes {
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
     | '/api/onboarding/start'
+    | '/api/public/cashfree-pay'
+    | '/api/public/cashfree-webhook'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
     | '/api/public/plans'
@@ -1557,6 +1594,7 @@ export interface RootRouteChildren {
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  PayPaymentIdRoute: typeof PayPaymentIdRoute
   RTokenRoute: typeof RTokenRoute
   ApiAdminAiRoute: typeof ApiAdminAiRoute
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
@@ -1607,6 +1645,8 @@ export interface RootRouteChildren {
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
   ApiOnboardingStartRoute: typeof ApiOnboardingStartRoute
+  ApiPublicCashfreePayRoute: typeof ApiPublicCashfreePayRoute
+  ApiPublicCashfreeWebhookRoute: typeof ApiPublicCashfreeWebhookRoute
   ApiPublicDemoLeadsRoute: typeof ApiPublicDemoLeadsRoute
   ApiPublicGoogleOauthCallbackRoute: typeof ApiPublicGoogleOauthCallbackRoute
   ApiPublicPlansRoute: typeof ApiPublicPlansRoute
@@ -1934,6 +1974,13 @@ declare module '@tanstack/react-router' {
       path: '/join/$token'
       fullPath: '/join/$token'
       preLoaderRoute: typeof JoinTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pay/$paymentId': {
+      id: '/pay/$paymentId'
+      path: '/pay/$paymentId'
+      fullPath: '/pay/$paymentId'
+      preLoaderRoute: typeof PayPaymentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/r/$token': {
@@ -2286,6 +2333,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOnboardingStartRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cashfree-pay': {
+      id: '/api/public/cashfree-pay'
+      path: '/api/public/cashfree-pay'
+      fullPath: '/api/public/cashfree-pay'
+      preLoaderRoute: typeof ApiPublicCashfreePayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/cashfree-webhook': {
+      id: '/api/public/cashfree-webhook'
+      path: '/api/public/cashfree-webhook'
+      fullPath: '/api/public/cashfree-webhook'
+      preLoaderRoute: typeof ApiPublicCashfreeWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/demo-leads': {
       id: '/api/public/demo-leads'
       path: '/api/public/demo-leads'
@@ -2606,6 +2667,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,
+  PayPaymentIdRoute: PayPaymentIdRoute,
   RTokenRoute: RTokenRoute,
   ApiAdminAiRoute: ApiAdminAiRoute,
   ApiAdminBillingRoute: ApiAdminBillingRoute,
@@ -2656,6 +2718,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
   ApiOnboardingStartRoute: ApiOnboardingStartRoute,
+  ApiPublicCashfreePayRoute: ApiPublicCashfreePayRoute,
+  ApiPublicCashfreeWebhookRoute: ApiPublicCashfreeWebhookRoute,
   ApiPublicDemoLeadsRoute: ApiPublicDemoLeadsRoute,
   ApiPublicGoogleOauthCallbackRoute: ApiPublicGoogleOauthCallbackRoute,
   ApiPublicPlansRoute: ApiPublicPlansRoute,

@@ -301,9 +301,16 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     y -= 11;
   }
 
-  const paidRef = ((invoice["sent"] ?? {}) as Record<string, unknown>)["razorpay_ref"];
+  // The gateway that took the money is named: payment_ref (+ payment_gateway,
+  // Cashfree unless it says otherwise); razorpay_ref for invoices made before.
+  const sentBlob = (invoice["sent"] ?? {}) as Record<string, unknown>;
+  const paidRef = sentBlob["payment_ref"] ?? sentBlob["razorpay_ref"];
+  const gatewayName =
+    sentBlob["payment_ref"] !== undefined
+      ? String(sentBlob["payment_gateway"] ?? "Cashfree")
+      : "Razorpay";
   if (typeof paidRef === "string" && paidRef) {
-    text(ctx, `Paid via Razorpay ref ${paidRef}`, MARGIN, y, { size: 8, color: BRAND });
+    text(ctx, `Paid via ${gatewayName} ref ${paidRef}`, MARGIN, y, { size: 8, color: BRAND });
     y -= 11;
   } else if (String(invoice["status"]) === "paid") {
     text(ctx, "Paid — thank you.", MARGIN, y, { size: 8, color: BRAND });
