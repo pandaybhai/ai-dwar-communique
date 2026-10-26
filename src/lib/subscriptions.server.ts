@@ -457,6 +457,7 @@ export async function applySubscriptionEvent(
       entity: subscription,
       payment,
       raw,
+      provider: "razorpay",
     });
   } else if (kind === "halted" || kind === "pending") {
     patch["status"] = kind;
@@ -496,7 +497,7 @@ async function unpauseForPayment(supabase: SupabaseClient, organizationId: strin
  * The mandate charges the plan fee only — usage is never added on to it; it
  * is debited from prepaid credits and only stated on the invoice.
  */
-async function recordPlanCharge(
+export async function recordPlanCharge(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
@@ -504,6 +505,7 @@ async function recordPlanCharge(
     entity: Record<string, unknown>;
     payment: Record<string, unknown> | null;
     raw: Record<string, unknown>;
+    provider: string;
   },
 ): Promise<void> {
   const providerPaymentId = (input.payment?.["id"] as string | null) ?? null;
@@ -542,7 +544,7 @@ async function recordPlanCharge(
     .insert({
       organization_id: input.organizationId,
       billing_account_id: (input.subscription["billing_account_id"] as string | null) ?? null,
-      provider: "razorpay",
+      provider: input.provider,
       provider_payment_id: providerPaymentId,
       purpose: "plan_fee",
       // Same convention as credit purchases: the payment carries the ex-GST
