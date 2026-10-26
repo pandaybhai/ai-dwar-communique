@@ -241,7 +241,7 @@ export async function cancelAutoPay(
 
   const { data: row } = await supabase
     .from("subscriptions")
-    .select("id, provider_subscription_id")
+    .select("id, provider, provider_subscription_id")
     .eq("organization_id", input.organizationId)
     .in("status", ACTIVE_STATES)
     .order("created_at", { ascending: false })
@@ -249,13 +249,24 @@ export async function cancelAutoPay(
     .maybeSingle();
   if (!row) return { error: "There's no auto-pay to cancel." };
 
-  const { razorpayKeys, cancelSubscription, PAYMENTS_NOT_CONFIGURED } = await import(
-    "@/lib/razorpay.server"
-  );
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
-
-  const result = await cancelSubscription(keys, String(row["provider_subscription_id"]), true);
+  // The mandate is cancelled with the provider that holds it.
+  const rowProvider = String(row["provider"] ?? "razorpay");
+  let result: { ok: boolean; error: string | null };
+  if (rowProvider === "cashfree") {
+    const cashfree = await import("@/lib/cashfree.server");
+    const keys = await cashfree.cashfreeKeys(supabase);
+    if (!keys) return { error: "Online payments aren't switched on yet." };
+    // Cashfree cancels immediately (no cancel-at-period-end); the workspace
+    // keeps access until the provider's cancelled event lands.
+    result = await cashfree.cancelSubscription(keys, String(row["provider_subscription_id"]));
+  } else {
+    const { razorpayKeys, cancelSubscription, PAYMENTS_NOT_CONFIGURED } = await import(
+      "@/lib/razorpay.server"
+    );
+    const keys = await razorpayKeys(supabase);
+    if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+    result = await cancelSubscription(keys, String(row["provider_subscription_id"]), true);
+  }
   if (!result.ok) return { error: result.error ?? "We couldn't cancel auto-pay." };
 
   await supabase
