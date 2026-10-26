@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2, withGst } from "@/lib/billing";
+import { APP_PUBLIC_URL } from "@/lib/app-url";
 
 /**
  * Auto-pay for the monthly plan fee.
@@ -99,11 +100,14 @@ export async function setupAutoPay(
   }
   if (existing.short_url) return { url: existing.short_url };
 
-  const { razorpayKeys, createPlan, createSubscription, PAYMENTS_NOT_CONFIGURED } = await import(
-    "@/lib/razorpay.server"
-  );
-  const keys = await razorpayKeys(supabase);
-  if (!keys) return { error: PAYMENTS_NOT_CONFIGURED };
+  const razorpay = await import("@/lib/razorpay.server");
+  const cashfree = await import("@/lib/cashfree.server");
+  // New mandates go to Cashfree only when the workspace's cashfree_billing
+  // flag is on; everything else stays on Razorpay, exactly as before.
+  const provider = await cashfree.platformPaymentProvider(supabase, input.organizationId);
+  const rzpKeys = provider === "razorpay" ? await razorpay.razorpayKeys(supabase) : null;
+  const cfKeys = provider === "cashfree" ? await cashfree.cashfreeKeys(supabase) : null;
+  if (!rzpKeys && !cfKeys) return { error: razorpay.PAYMENTS_NOT_CONFIGURED };
 
   const { data: org } = await supabase
     .from("organizations")
