@@ -302,7 +302,7 @@ export async function startPlanPurchase(
     .single();
   if (payErr || !payment) return { error: "We couldn't start this payment. Please try again." };
 
-  const { link, error } = await createPaymentLink(keys, {
+  const linkInput = {
     amount: total,
     currency: "INR",
     description: `AiDwar ${plan.name} plan — first month (incl. 18% GST)`,
@@ -319,7 +319,13 @@ export async function startPlanPurchase(
       payment_id: payment.id as string,
       plan_key: plan.key,
     },
-  });
+  };
+  const { link, error } = cfKeys
+    ? await cashfree.createPaymentLink(cfKeys, {
+        ...linkInput,
+        notifyUrl: `${APP_PUBLIC_URL}/api/public/cashfree-webhook`,
+      })
+    : await rzpCreateLink(rzpKeys!, linkInput);
   if (!link || error) {
     await supabase
       .from("payments")

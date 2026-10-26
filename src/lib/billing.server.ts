@@ -503,7 +503,7 @@ export async function createCreditPurchase(
     .single();
   if (payErr || !payment) return { error: "We couldn't start this payment. Please try again." };
 
-  const { link, error } = await createPaymentLink(keys, {
+  const linkInput = {
     amount: total,
     currency: pack.currency ?? "INR",
     description: `${pack.name} credits for ${String(((org ?? {}) as Record<string, unknown>)["name"] ?? "your workspace")}`,
@@ -518,7 +518,13 @@ export async function createCreditPurchase(
     callbackUrl: `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
     expireBy: Math.floor(Date.now() / 1000) + 24 * 3600,
     notes: { organization_id: input.organizationId, payment_id: payment.id as string },
-  });
+  };
+  const { link, error } = cfKeys
+    ? await cashfree.createPaymentLink(cfKeys, {
+        ...linkInput,
+        notifyUrl: `${APP_PUBLIC_URL}/api/public/cashfree-webhook`,
+      })
+    : await rzpCreateLink(rzpKeys!, linkInput);
 
   if (!link || error) {
     await supabase
