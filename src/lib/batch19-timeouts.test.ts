@@ -122,7 +122,7 @@ describe("5. outsideFetch", () => {
   });
 
   it("defaults: generous, and every outside target has one", () => {
-    const want: OutsideTarget[] = ["ai", "ai_stream", "embeddings", "transcription", "meta", "meta_media", "razorpay", "google", "shopify", "email"];
+    const want: OutsideTarget[] = ["ai", "ai_stream", "embeddings", "transcription", "meta", "meta_media", "razorpay", "cashfree", "google", "shopify", "email"];
     expect(Object.keys(saved).sort()).toEqual([...want].sort());
     for (const ms of Object.values(saved)) {
       expect(ms).toBeGreaterThanOrEqual(15_000);
