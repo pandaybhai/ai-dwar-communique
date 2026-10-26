@@ -289,7 +289,6 @@ async function createCashfreePaymentLink(
       description: args.description,
       reference: `flow_${args.runId.replace(/[^A-Za-z0-9_-]/g, "")}`,
       customer: { name: args.name, contact: args.phone },
-      callbackUrl: `${APP_PUBLIC_URL}/pay/done`,
       notifyUrl: `${APP_PUBLIC_URL}/api/public/cashfree-flow-webhook/${organizationId}`,
       notes: { aidwar_org: organizationId, aidwar_run: args.runId, aidwar_node: args.nodeId },
       expireBy: expire,
