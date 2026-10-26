@@ -346,6 +346,9 @@ export function cashfreeEventKey(body: AnyRecord): string | null {
   return `${type}:${String(id)}`;
 }
 
+/** Our order ids are payments.id (a uuid); anything else was not made by AiDwar billing. */
+export const OUR_ORDER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** One verified Cashfree event, applied. Safe to replay; a failure that must be retried throws SettleError. */
 export async function handleCashfreeEvent(
   supabase: SupabaseClient,
@@ -355,7 +358,12 @@ export async function handleCashfreeEvent(
   const data = (body["data"] ?? {}) as AnyRecord;
   const order = (data["order"] ?? {}) as AnyRecord;
   const payment = (data["payment"] ?? {}) as AnyRecord;
-  const orderId = typeof order["order_id"] === "string" ? (order["order_id"] as string) : null;
+  // An order made elsewhere on the account (a dashboard payment link) is
+  // recorded with the event and left alone — never looked up against a uuid.
+  const orderId =
+    typeof order["order_id"] === "string" && OUR_ORDER_ID.test(order["order_id"] as string)
+      ? (order["order_id"] as string)
+      : null;
 
   if (type === "PAYMENT_SUCCESS_WEBHOOK") {
     if (!orderId) return;

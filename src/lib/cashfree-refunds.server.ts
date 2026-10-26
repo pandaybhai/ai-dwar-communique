@@ -253,7 +253,8 @@ export async function recordRefundStatus(
 ): Promise<void> {
   const paymentId = typeof refund["order_id"] === "string" ? (refund["order_id"] as string) : null;
   const refundId = typeof refund["refund_id"] === "string" ? (refund["refund_id"] as string) : null;
-  if (!paymentId || !refundId) return;
+  const { OUR_ORDER_ID } = await import("@/lib/cashfree-billing.server");
+  if (!paymentId || !refundId || !OUR_ORDER_ID.test(paymentId)) return;
   const { data, error } = await supabase
     .from("payments")
     .select("id, raw")

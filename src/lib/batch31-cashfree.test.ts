@@ -752,6 +752,21 @@ describe("a failed payment never credits", () => {
     expect(credits(db)).toHaveLength(2);
   });
 
+  it("an order AiDwar didn't make (the sample's order_OFR_2): recorded, answered 200, nothing touched", async () => {
+    const db = world({ payments: [creditPayment()] });
+    const ts = String(Date.now());
+    const raw = sample("payment-success.json");
+    const res = await deliver(raw, {
+      timestamp: ts,
+      signature: cashfreeSignature(raw, ts, CLIENT_SECRET),
+    });
+    expect(res.status).toBe(200);
+    expect(db.rows("webhook_events")[0]).toMatchObject({ error: null });
+    expect(db.rows("webhook_events")[0]!["processed_at"]).toBeTruthy();
+    expect(paymentRow(db)["status"]).toBe("pending");
+    expect(db.rows("wallet_ledger")).toHaveLength(0);
+  });
+
   it("an order Cashfree expired: failed on confirmation, nothing credited", async () => {
     const db = world({ payments: [creditPayment()] });
     const cf = fakeCashfree();
