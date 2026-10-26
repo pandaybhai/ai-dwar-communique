@@ -590,3 +590,104 @@ export async function recordPlanCharge(
   await issueInvoice(supabase, built.invoice_id, { deliver: true });
   await markPaid(supabase, built.invoice_id, (paymentRow?.["id"] as string | null) ?? null, gross);
 }
+
+// ------------------------------------------------------ Cashfree webhook side
+
+/**
+ * Applies a Cashfree SUBSCRIPTION_* event. Safe to replay. The Cashfree
+ * payload is normalised into the same shapes applySubscriptionEvent uses
+ * (ids as strings, amounts in paise, times as Unix seconds), so the charge
+ * recording and invoicing path is shared, not duplicated.
+ */
+export async function applyCashfreeSubscriptionEvent(
+  supabase: SupabaseClient,
+  type: string,
+  data: Record<string, unknown>,
+  raw: Record<string, unknown>,
+): Promise<void> {
+  const sub = (data["subscription"] ?? {}) as Record<string, unknown>;
+  const providerId = String(sub["subscription_id"] ?? sub["cf_subscription_id"] ?? "");
+  if (!providerId) return;
+
+  const { SettleError } = await import("@/lib/billing.server");
+  const must = (what: string, error: { message: string } | null) => {
+    if (error) throw new SettleError(`subscription ${what} failed: ${error.message}`);
+  };
+  const { data: row, error: rowError } = await supabase
+    .from("subscriptions")
+    .select("id, organization_id, plan_version_id, billing_cycle, billing_account_id, raw")
+    .eq("provider_subscription_id", providerId)
+    .maybeSingle();
+  must("read", rowError);
+  if (!row) return;
+
+  const orgId = String(row["organization_id"]);
+  const existingRaw = (row["raw"] ?? {}) as Record<string, unknown>;
+  const patch: Record<string, unknown> = {
+    raw: { ...existingRaw, last_event: type, entity: sub },
+    updated_at: new Date().toISOString(),
+  };
+
+  const subStatus = String(sub["subscription_status"] ?? sub["status"] ?? "").toUpperCase();
+
+  if (type === "SUBSCRIPTION_AUTH_STATUS" && (subStatus === "AUTHORIZED" || subStatus === "ACTIVE")) {
+    patch["status"] = "authenticated";
+    const { error } = await supabase
+      .from("organizations")
+      .update({ plan_status: "active", trial_ends_at: null })
+      .eq("id", orgId);
+    must("plan status", error);
+    await unpauseForPayment(supabase, orgId);
+  } else if (type === "SUBSCRIPTION_STATUS_CHANGED") {
+    if (subStatus === "ACTIVE") {
+      patch["status"] = "active";
+      const { error } = await supabase.from("organizations").update({ plan_status: "active" }).eq("id", orgId);
+      must("plan status", error);
+      await unpauseForPayment(supabase, orgId);
+    } else if (subStatus === "CANCELLED" || subStatus === "EXPIRED" || subStatus === "COMPLETED") {
+      patch["status"] = subStatus === "CANCELLED" ? "cancelled" : "completed";
+      const { error } = await supabase.from("organizations").update({ plan_status: "cancelled" }).eq("id", orgId);
+      must("plan status", error);
+    } else if (subStatus === "PAUSED") {
+      patch["status"] = "paused";
+    } else if (subStatus === "ONHOLD" || subStatus === "PENDING") {
+      patch["status"] = "halted";
+      const { error } = await supabase.from("organizations").update({ plan_status: "past_due" }).eq("id", orgId);
+      must("plan status", error);
+    }
+  } else if (type === "SUBSCRIPTION_PAYMENT_SUCCESS") {
+    patch["status"] = "active";
+    const { error } = await supabase.from("organizations").update({ plan_status: "active" }).eq("id", orgId);
+    must("plan status", error);
+    await unpauseForPayment(supabase, orgId);
+    const pay = (data["payment"] ?? {}) as Record<string, unknown>;
+    const amountRupees = Number(pay["payment_amount"] ?? pay["order_amount"] ?? 0);
+    await recordPlanCharge(supabase, {
+      organizationId: orgId,
+      subscription: row as Record<string, unknown>,
+      entity: sub,
+      payment: {
+        id: String(pay["cf_payment_id"] ?? pay["payment_id"] ?? ""),
+        amount: Math.round(amountRupees * 100),
+      },
+      raw,
+      provider: "cashfree",
+    });
+  } else if (type === "SUBSCRIPTION_PAYMENT_FAILED") {
+    patch["status"] = "halted";
+    const { error } = await supabase.from("organizations").update({ plan_status: "past_due" }).eq("id", orgId);
+    must("plan status", error);
+    const { notify } = await import("@/lib/billing.server");
+    await notify(supabase, {
+      organizationId: orgId,
+      audience: "client",
+      kind: "payment_failed",
+      payload: { reason: "subscription_payment_failed" },
+    });
+  } else {
+    return; // reminders and notifications need no state change
+  }
+
+  const { error: patchError } = await supabase.from("subscriptions").update(patch).eq("id", row["id"] as string);
+  must("update", patchError);
+}
