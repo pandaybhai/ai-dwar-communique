@@ -110,7 +110,8 @@ type PaymentLinkInput = {
   /** Our internal id for the payment — becomes Cashfree's link_id. */
   reference: string;
   customer: { name?: string | null; email?: string | null; contact?: string | null };
-  callbackUrl: string;
+  /** Where the customer lands after paying; omitted for flow payment links. */
+  callbackUrl?: string;
   /** Where Cashfree posts the paid event (link_meta.notify_url). */
   notifyUrl: string;
   notes: Record<string, string>;
@@ -142,7 +143,10 @@ export async function createPaymentLink(
       link_notify: { send_sms: false, send_email: Boolean(input.customer.email) },
       link_auto_reminders: true,
       link_notes: input.notes,
-      link_meta: { return_url: input.callbackUrl, notify_url: input.notifyUrl },
+      link_meta: {
+        notify_url: input.notifyUrl,
+        ...(input.callbackUrl ? { return_url: input.callbackUrl } : {}),
+      },
       ...(input.expireBy
         ? { link_expiry_time: new Date(input.expireBy * 1000).toISOString() }
         : {}),
