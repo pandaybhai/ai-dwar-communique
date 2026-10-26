@@ -12,7 +12,7 @@ import { useOrg } from "@/lib/org-context";
 import { usePermissions } from "@/hooks/use-permissions";
 
 type Conn = { account_label: string | null; status: string; last_error: string | null; public_config: Record<string, unknown>; updated_at: string } | null;
-type Resp = { google_available: boolean; google: Conn; razorpay: Conn; razorpay_webhook_url: string };
+type Resp = { google_available: boolean; google: Conn; razorpay: Conn; razorpay_webhook_url: string; cashfree: Conn; cashfree_webhook_url: string };
 
 /** The merchant's own Google and Razorpay accounts, used by flow steps. */
 export function FlowConnections() {
@@ -24,6 +24,7 @@ export function FlowConnections() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [form, setForm] = useState({ key_id: "", key_secret: "", webhook_secret: "" });
+  const [cfForm, setCfForm] = useState({ client_id: "", client_secret: "", webhook_secret: "", env: "sandbox" });
 
   const load = useCallback(async () => {
     if (!activeOrgId) return;
@@ -119,6 +120,52 @@ export function FlowConnections() {
             </div>
             <Button disabled={busy === "r"} onClick={async () => { if (await post({ action: "razorpay_save", ...form }, "r")) { setForm({ key_id: "", key_secret: "", webhook_secret: "" }); toast.success("Razorpay connected."); void load(); } }}>
               {busy === "r" && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}Save keys
+            </Button>
+            <p className="text-xs text-muted-foreground">Keys are stored encrypted and never shown again.</p>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex gap-3">
+            <IndianRupee className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <h3 className="font-semibold">Cashfree payments</h3>
+              <p className="text-sm text-muted-foreground">Use your own Cashfree account so flow payment links pay you directly. When both are connected, Cashfree is used.</p>
+            </div>
+          </div>
+          {status(data.cashfree)}
+        </div>
+        {data.cashfree ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span>{data.cashfree.account_label} · {String(data.cashfree.public_config["mode"] ?? "")} mode{data.cashfree.last_error ? ` · ${data.cashfree.last_error}` : ""}</span>
+            {manage && <Button size="sm" variant="outline" disabled={busy === "cd"} onClick={async () => { if (await post({ action: "disconnect", provider: "cashfree" }, "cd")) void load(); }}><Unplug className="mr-1 h-4 w-4" /> Remove keys</Button>}
+          </div>
+        ) : manage ? (
+          <div className="mt-4 space-y-3">
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+              <li>In Cashfree → Developers → API Keys, copy your Client ID and Secret.</li>
+              <li>In Cashfree → Developers → Webhooks, add the link below, pick a secret, and enable <b>Payment Link</b> events.</li>
+            </ol>
+            <div className="flex gap-2">
+              <Input readOnly value={data.cashfree_webhook_url} />
+              <Button variant="outline" size="icon" aria-label="Copy webhook link" onClick={() => { void navigator.clipboard.writeText(data.cashfree_webhook_url); toast.success("Copied"); }}><Copy className="h-4 w-4" /></Button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5"><Label>Client ID</Label><Input value={cfForm.client_id} onChange={(e) => setCfForm({ ...cfForm, client_id: e.target.value })} /></div>
+              <div className="space-y-1.5"><Label>Client Secret</Label><Input type="password" value={cfForm.client_secret} onChange={(e) => setCfForm({ ...cfForm, client_secret: e.target.value })} /></div>
+              <div className="space-y-1.5"><Label>Webhook secret</Label><Input type="password" value={cfForm.webhook_secret} onChange={(e) => setCfForm({ ...cfForm, webhook_secret: e.target.value })} /></div>
+              <div className="space-y-1.5">
+                <Label>Key type</Label>
+                <div className="flex gap-2 pt-1.5">
+                  <Button size="sm" variant={cfForm.env === "sandbox" ? "default" : "outline"} onClick={() => setCfForm({ ...cfForm, env: "sandbox" })}>Test</Button>
+                  <Button size="sm" variant={cfForm.env === "production" ? "default" : "outline"} onClick={() => setCfForm({ ...cfForm, env: "production" })}>Live</Button>
+                </div>
+              </div>
+            </div>
+            <Button disabled={busy === "c"} onClick={async () => { if (await post({ action: "cashfree_save", ...cfForm }, "c")) { setCfForm({ client_id: "", client_secret: "", webhook_secret: "", env: "sandbox" }); toast.success("Cashfree connected."); void load(); } }}>
+              {busy === "c" && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}Save keys
             </Button>
             <p className="text-xs text-muted-foreground">Keys are stored encrypted and never shown again.</p>
           </div>
