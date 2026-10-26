@@ -1,4 +1,16 @@
 import { Link } from "@tanstack/react-router";
+import { COMPANY } from "@/lib/company";
+
+/** Every public page's footer links, in this order. */
+export const FOOTER_LINKS = [
+  { to: "/pricing", label: "Pricing" },
+  { to: "/contact", label: "Contact Us" },
+  { to: "/terms", label: "Terms of Service" },
+  { to: "/refunds", label: "Refunds & Cancellations" },
+  { to: "/shipping", label: "Shipping & Delivery" },
+  { to: "/privacy", label: "Privacy Policy" },
+  { to: "/data-deletion", label: "Data Deletion" },
+] as const;
 
 export function SiteFooter() {
   return (
@@ -13,32 +25,31 @@ export function SiteFooter() {
               AI-powered marketing on the official WhatsApp Business Platform.
             </p>
           </div>
-          <div className="flex flex-col gap-3 text-sm sm:items-end">
-            <Link to="/pricing" className="text-muted-foreground hover:text-foreground">
-              Pricing
-            </Link>
-            <Link to="/privacy" className="text-muted-foreground hover:text-foreground">
-              Privacy Policy
-            </Link>
-            <Link to="/terms" className="text-muted-foreground hover:text-foreground">
-              Terms of Service
-            </Link>
-            <Link to="/data-deletion" className="text-muted-foreground hover:text-foreground">
-              Data Deletion
-            </Link>
-
+          <nav
+            aria-label="Footer"
+            className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm sm:flex sm:flex-col sm:items-end"
+          >
+            {FOOTER_LINKS.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                {link.label}
+              </Link>
+            ))}
             <a
-              href="mailto:support@aidwar.in"
+              href={`mailto:${COMPANY.email}`}
               className="text-muted-foreground hover:text-foreground"
             >
-              support@aidwar.in
+              {COMPANY.email}
             </a>
-          </div>
+          </nav>
         </div>
         <p className="mt-10 border-t border-border pt-6 text-xs leading-relaxed text-muted-foreground">
-          AiDwar is a product of Meezoy Ventures Private Limited, Hyderabad, India. WhatsApp is a
-          trademark of Meta Platforms, Inc. AiDwar is an independent platform built on the WhatsApp
-          Business Platform.
+          {COMPANY.brand} is a product of {COMPANY.legalName}, {COMPANY.city}. WhatsApp is a
+          trademark of Meta Platforms, Inc. {COMPANY.brand} is an independent platform built on the
+          WhatsApp Business Platform.
         </p>
       </div>
     </footer>

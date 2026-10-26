@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { getPublicPlans } from "@/lib/public-plans.functions";
+import { getPublicRates } from "@/lib/public-rates.functions";
 import { Check, Loader2, Sparkles } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -8,6 +9,7 @@ import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "@/components/marketing/reveal";
+import { MessageRatesTable } from "@/components/marketing/message-rates";
 
 const TITLE = "Pricing — AiDwar WhatsApp marketing plans";
 const DESCRIPTION =
@@ -24,8 +26,11 @@ export const Route = createFileRoute("/pricing")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  // Plans are server-rendered so search engines and readers see names and prices.
-  loader: () => getPublicPlans(),
+  // Plans and message rates are server-rendered so search engines and readers see them.
+  loader: async () => {
+    const [plans, rates] = await Promise.all([getPublicPlans(), getPublicRates()]);
+    return { ...plans, rates: rates.rates };
+  },
   component: PricingPage,
 });
 
@@ -234,6 +239,14 @@ function PricingPage() {
                 billing page. Turn on auto-pay and the plan fee takes care of itself.
               </p>
             </div>
+            <MessageRatesTable rates={loaded.rates} />
+            <p className="mt-6 text-sm text-muted-foreground">
+              Cancelling a plan or asking for a refund? See{" "}
+              <Link to="/refunds" className="text-primary underline">
+                Refunds &amp; Cancellations
+              </Link>
+              .
+            </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild className="rounded-full">
                 <Link to="/signup">Start free</Link>
