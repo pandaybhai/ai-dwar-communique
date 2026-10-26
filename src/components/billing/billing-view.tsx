@@ -527,8 +527,8 @@ function BuyCreditsDialog({
         <DialogHeader>
           <DialogTitle>Buy credits</DialogTitle>
           <DialogDescription>
-            Credits pay for the messages you send. Pick a pack — you'll pay on Cashfree's secure
-            checkout and come straight back.
+            Credits pay for the messages you send. Pick a pack — you'll pay on a secure checkout
+            page and come straight back.
           </DialogDescription>
         </DialogHeader>
 
