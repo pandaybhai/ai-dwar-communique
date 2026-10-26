@@ -213,6 +213,20 @@ export async function createPaymentLink(
   organizationId: string,
   args: { amountRupees: number; description: string; name: string | null; phone: string; expireHours: number; runId: string; nodeId: string },
 ): Promise<{ url: string; id: string } | { error: string }> {
+  // The workspace's connected provider takes the payment — Cashfree when it
+  // is connected, otherwise Razorpay, exactly as before.
+  const cashfree = await loadSecret(supabase, organizationId, "cashfree");
+  if (cashfree?.secret["client_id"] && cashfree.secret["client_secret"]) {
+    return createCashfreePaymentLink(supabase, organizationId, cashfree.secret, args);
+  }
+  return createRazorpayPaymentLink(supabase, organizationId, args);
+}
+
+async function createRazorpayPaymentLink(
+  supabase: SupabaseClient,
+  organizationId: string,
+  args: { amountRupees: number; description: string; name: string | null; phone: string; expireHours: number; runId: string; nodeId: string },
+): Promise<{ url: string; id: string } | { error: string }> {
   const conn = await loadSecret(supabase, organizationId, "razorpay");
   if (!conn?.secret["key_id"] || !conn.secret["key_secret"]) return { error: "razorpay_not_connected" };
   const amount = Math.round(args.amountRupees * 100);
