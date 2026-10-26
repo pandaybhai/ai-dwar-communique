@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ReplyTimer } from "@/lib/reply-timing";
 import {
   graphFetch,
   graphErrorMessage,
@@ -1003,6 +1004,8 @@ export async function sendCatalogProducts(
       category: string | null;
       inCatalog: boolean;
     }>;
+    /** The webhook's reply timer (Aiden's sends); left out, nothing is timed. */
+    timer?: ReplyTimer;
   },
 ): Promise<{ sent: number; error: string | null }> {
   const eligible = args.items.filter(
@@ -1056,6 +1059,7 @@ export async function sendCatalogProducts(
         ? "Here's the one I'd show you — tap it for the full details."
         : "Here's what I have for you — tap any one to see it in full.",
     items,
+    ...(args.timer ? { timer: args.timer } : {}),
   });
 
   if (!result.ok) return { sent: 0, error: result.error };

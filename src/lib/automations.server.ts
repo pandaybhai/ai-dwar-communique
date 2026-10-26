@@ -115,6 +115,11 @@ async function recordRun(
  * Evaluates the org's active automations for ONE inbound message and sends at
  * most one reply. Must run after applyOptKeywords, and must not run at all when
  * that matched an opt-out / opt-in keyword.
+ *
+ * Batch 29: true when an automation answered this message (sent it, or
+ * another delivery of the same message holds the send claim) — the webhook
+ * reads this instead of counting every outbound message since, which also
+ * counted Aiden's reply to the customer's previous message.
  */
 export async function evaluateAutomations(
   supabase: SupabaseClient,
@@ -132,7 +137,7 @@ export async function evaluateAutomations(
     orgTimezone: string;
     automations: AutomationRow[];
   },
-): Promise<void> {
+): Promise<boolean> {
   const base = {
     organization_id: args.organizationId,
     contact_id: args.contactId,
@@ -145,21 +150,21 @@ export async function evaluateAutomations(
   // Rule 7 — never let an automation reply to something our own system sent.
   if (args.isSystemEcho) {
     log("skipped", { automation_id: null, reason: "system_echo" });
-    return;
+    return false;
   }
   if (args.optKeywordMatched) {
     log("skipped", { automation_id: null, reason: "opt_keyword" });
-    return;
+    return false;
   }
   if (!args.inboundMessageId) {
     log("skipped", { automation_id: null, reason: "missing_inbound_id" });
-    return;
+    return false;
   }
 
   const active = args.automations
     .filter((a) => a.is_active)
     .sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at));
-  if (!active.length) return;
+  if (!active.length) return false;
 
   // Rule 2 — hard opt-out check, independent of rule 1.
   const { data: contact } = await supabase
@@ -181,7 +186,7 @@ export async function evaluateAutomations(
       status: "skipped",
       skip_reason: "contact_opted_out",
     });
-    return;
+    return false;
   }
 
   // Rule 3 — exactly one automation fires: stop at the first match.
@@ -239,7 +244,7 @@ export async function evaluateAutomations(
         status: "skipped",
         skip_reason: skipReason,
       });
-      return;
+      return false;
     }
 
     // Rule 4 — claim this (automation, inbound message) pair BEFORE sending, so
@@ -250,7 +255,8 @@ export async function evaluateAutomations(
       status: "skipped",
       skip_reason: "in_progress",
     });
-    if (!claimed) return;
+    // Another delivery of this message holds the claim and sends it.
+    if (!claimed) return true;
 
     const result = await sendServiceText(supabase, {
       organizationId: args.organizationId,
@@ -279,6 +285,7 @@ export async function evaluateAutomations(
       automation_id: automation.id,
       reason: result.ok ? null : result.error,
     });
+    const replied = result.ok;
     await emitEvent(supabase, result.ok ? "automation.fired" : "automation.skipped", {
       organizationId: args.organizationId,
       entityType: "automation",
@@ -289,10 +296,11 @@ export async function evaluateAutomations(
         ...(result.ok ? {} : { skip_reason: result.error ?? "send_failed" }),
       },
     });
-    return;
+    return replied;
   }
 
   log("skipped", { automation_id: null, reason: "no_match" });
+  return false;
 }
 
 /** Active automations for one org, cached per webhook payload. */

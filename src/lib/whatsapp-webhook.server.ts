@@ -1,3 +1,4 @@
+import type { KnowledgeAhead } from "@/lib/ai-agent.server";
 import { outsideFetch } from "@/lib/outside-call.server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { detectLanguage } from "@/lib/languages";
@@ -37,45 +38,86 @@ export function getServiceClient(): SupabaseClient {
 }
 
 /**
- * How long a second text can arrive and still count as the same question,
- * unless the platform sets platform_settings.ai_burst_wait_ms (Super Admin →
- * AI). Was 5 s; two quick texts may now get two replies — a reply ~4 s
- * sooner matters more (Vinay, 7 Oct).
+ * Batch 29: the burst wait is adaptive. People type in bursts — a
+ * half-sentence, then the whole one. Aiden answers as soon as the customer
+ * has been quiet for `quietMs` since their latest message, and never later
+ * than `capMs` after the first message of the burst. Both are platform
+ * settings (platform_settings.ai_burst_quiet_ms / ai_burst_cap_ms, Super
+ * Admin → AI, migration 20261090); missing columns, a missing row or a failed
+ * read mean these defaults. Before: one fixed window
+ * (platform_settings.ai_burst_wait_ms, waits up to ~4.7 s live), no longer read.
  */
-export const DEFAULT_BURST_WINDOW_MS = 1000;
-/** The setting's allowed range (the database check matches). */
+export const DEFAULT_BURST_QUIET_MS = 1500;
+export const DEFAULT_BURST_CAP_MS = 3000;
+/** The settings' allowed range (the database checks match). */
 export const MAX_BURST_WINDOW_MS = 10_000;
 
-let burstSetting: { value: number; at: number } | null = null;
+export type BurstSettings = { quietMs: number; capMs: number };
+
+let burstSetting: { value: BurstSettings; at: number } | null = null;
+
+const inRange = (raw: unknown): raw is number =>
+  typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= MAX_BURST_WINDOW_MS;
 
 /**
- * The platform's burst window, read at most once a minute per worker. A
- * missing row or a failed read means the default — the setting can never
- * stop a reply.
+ * The platform's burst settings, read at most once a minute per worker. A
+ * missing row, a missing column or a failed read means the defaults — the
+ * setting can never stop a reply. A quiet gap above the cap is cut to it.
  */
-export async function burstWindowMs(supabase: SupabaseClient, now = Date.now()): Promise<number> {
+export async function burstSettings(supabase: SupabaseClient, now = Date.now()): Promise<BurstSettings> {
   if (burstSetting && now - burstSetting.at < 60_000) return burstSetting.value;
-  let value = DEFAULT_BURST_WINDOW_MS;
+  let quietMs = DEFAULT_BURST_QUIET_MS;
+  let capMs = DEFAULT_BURST_CAP_MS;
   try {
-    const { data, error } = await supabase.from("platform_settings").select("ai_burst_wait_ms").eq("id", true).maybeSingle();
-    const raw = error ? null : (data as { ai_burst_wait_ms?: unknown } | null)?.ai_burst_wait_ms;
-    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= MAX_BURST_WINDOW_MS) value = Math.round(raw);
+    const { data, error } = await supabase
+      .from("platform_settings")
+      .select("ai_burst_quiet_ms, ai_burst_cap_ms")
+      .eq("id", true)
+      .maybeSingle();
+    const row = error ? null : (data as { ai_burst_quiet_ms?: unknown; ai_burst_cap_ms?: unknown } | null);
+    if (inRange(row?.ai_burst_quiet_ms)) quietMs = Math.round(row.ai_burst_quiet_ms);
+    if (inRange(row?.ai_burst_cap_ms)) capMs = Math.round(row.ai_burst_cap_ms);
   } catch {
-    // the default
+    // the defaults
   }
+  const value = { quietMs: Math.min(quietMs, capMs), capMs };
   burstSetting = { value, at: now };
   return value;
 }
 
-/** Drop the cached window after an admin save so the change is live at once in this worker. */
+/** Drop the cached settings after an admin save so the change is live at once in this worker. */
 export function resetBurstWindowCache(): void {
   burstSetting = null;
 }
 
+type BurstRow = { id: string; direction: string; body: string | null; created_at: string };
+
 /**
- * People type in bursts — a half-sentence, then the whole one. Wait out the
- * window: the last text in the burst answers for all of them, every earlier
- * delivery stands down, so the customer gets exactly one reply.
+ * The first message of the burst `mine` belongs to: walking back through the
+ * customer's texts while each came less than `quietMs` (+1 s: WhatsApp's
+ * timestamps are whole seconds) after the one before, stopping at a reply.
+ */
+export function burstStartOf(rows: BurstRow[], mine: number, quietMs: number): number {
+  let start = mine;
+  let next = mine;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]!;
+    const at = Date.parse(r.created_at);
+    if (!Number.isFinite(at) || at > next) continue;
+    if (r.direction === "outbound") break;
+    if (!(r.body ?? "").trim()) continue;
+    if (next - at > quietMs + 1000) break;
+    start = Math.min(start, at);
+    next = at;
+  }
+  return start;
+}
+
+/**
+ * Wait out the burst: answer once the customer has been quiet for quietMs
+ * (or once capMs has passed since the burst's first message), from the
+ * newest message's pass. The last text in the burst answers for all of them;
+ * every earlier delivery stands down, so the customer gets exactly one reply.
  */
 export async function coalesceBurst(
   supabase: SupabaseClient,
@@ -85,53 +127,81 @@ export async function coalesceBurst(
     occurredAt: string;
     body: string | null;
     /**
-     * When the message row was written (ms). The window runs from there, so
-     * the guards, flows and automations that already ran count toward it
+     * When the message row was written (ms). The quiet gap runs from there,
+     * so the guards, flows and automations that already ran count toward it
      * instead of being added in front of it.
      */
     storedAt?: number;
     /** Called the moment the wait is over, before the burst is read (the caller's own reads start then). */
     afterWait?: () => void;
-    /** The window (burstWindowMs); left out, the default. */
-    windowMs?: number;
+    /** burstSettings(); left out, the defaults. */
+    settings?: BurstSettings;
+    /** Test clock. */
+    now?: () => number;
   },
-): Promise<{ proceed: boolean; body: string | null }> {
-  const windowMs = args.windowMs ?? DEFAULT_BURST_WINDOW_MS;
+): Promise<{ proceed: boolean; body: string | null; waitedMs: number }> {
+  const now = args.now ?? Date.now;
+  const started = now();
+  const { quietMs, capMs } = args.settings ?? { quietMs: DEFAULT_BURST_QUIET_MS, capMs: DEFAULT_BURST_CAP_MS };
   const text = (args.body ?? "").trim();
   if (!text || !args.messageId) {
     args.afterWait?.();
-    return { proceed: true, body: args.body };
+    return { proceed: true, body: args.body, waitedMs: 0 };
   }
 
-  const elapsed = args.storedAt ? Math.max(0, Date.now() - args.storedAt) : 0;
-  const wait = windowMs - elapsed;
+  const mine = args.storedAt ?? started;
+  const lookBack = new Date(new Date(args.occurredAt).getTime() - capMs - 1000).toISOString();
+  const readBurst = async () => {
+    const { data } = await supabase
+      .from("messages")
+      .select("id, direction, body, created_at")
+      .eq("conversation_id", args.conversationId)
+      .gte("created_at", lookBack)
+      .order("created_at", { ascending: true })
+      .limit(30);
+    return (data ?? []) as BurstRow[];
+  };
+
+  // Where this burst began: read while the quiet gap runs (it never adds to it).
+  // A message alone in its burst waits the quiet gap; one late in a long
+  // burst waits only until the cap since the burst's first message.
+  // Message times are WhatsApp's (whole seconds, sent before delivery); they
+  // are moved onto our clock by this message's own delivery offset, so a
+  // message alone in its burst always waits the full quiet gap.
+  // (Nothing to wait for any more: no read.)
+  const earlier = mine + quietMs > now() ? await readBurst().catch(() => [] as BurstRow[]) : [];
+  const myAt = earlier.find((r) => r.id === args.messageId)?.created_at;
+  const myMeta = myAt ? Date.parse(myAt) : NaN;
+  const firstMeta = Number.isFinite(myMeta)
+    ? burstStartOf(earlier.filter((r) => r.id !== args.messageId), myMeta, quietMs)
+    : NaN;
+  const firstAt = Number.isFinite(firstMeta) ? firstMeta : Date.parse(args.occurredAt);
+  const firstOurs = Number.isFinite(firstMeta) ? mine - (myMeta - firstMeta) : mine;
+  const until = Math.min(mine + quietMs, firstOurs + capMs);
+  const wait = until - now();
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
   args.afterWait?.();
 
-  const windowStart = new Date(
-    new Date(args.occurredAt).getTime() - windowMs,
-  ).toISOString();
-  const { data } = await supabase
-    .from("messages")
-    .select("id, direction, body, created_at")
-    .eq("conversation_id", args.conversationId)
-    .gte("created_at", windowStart)
-    .order("created_at", { ascending: true })
-    .limit(30);
-  const rows = (data ?? []) as Array<{ id: string; direction: string; body: string | null }>;
+  const rows = await readBurst();
+  const waitedMs = Math.max(0, now() - started);
 
-  // Something already replied in this window: leave the usual path to it.
-  if (rows.some((r) => r.direction === "outbound")) return { proceed: true, body: args.body };
+  // Something already replied in this burst: leave the usual path to it.
+  const sinceFirst = rows.filter((r) => {
+    const at = Date.parse(r.created_at);
+    return !Number.isFinite(at) || at >= firstAt - 1000;
+  });
+  if (sinceFirst.some((r) => r.direction === "outbound")) return { proceed: true, body: args.body, waitedMs };
 
-  const inbound = rows.filter((r) => r.direction === "inbound" && (r.body ?? "").trim());
-  const mine = inbound.findIndex((r) => r.id === args.messageId);
-  if (mine >= 0 && mine < inbound.length - 1) return { proceed: false, body: null };
+  const inbound = sinceFirst.filter((r) => r.direction === "inbound" && (r.body ?? "").trim());
+  const index = inbound.findIndex((r) => r.id === args.messageId);
+  // A newer message came in: its pass answers for the whole burst.
+  if (index >= 0 && index < inbound.length - 1) return { proceed: false, body: null, waitedMs };
 
-  const earlier = inbound
-    .slice(0, Math.max(mine, 0))
+  const before = inbound
+    .slice(0, Math.max(index, 0))
     .map((r) => (r.body ?? "").trim())
     .filter((t) => t && !text.toLowerCase().includes(t.toLowerCase()));
-  return { proceed: true, body: [...earlier, text].join("\n") };
+  return { proceed: true, body: [...before, text].join("\n"), waitedMs };
 }
 
 /**
@@ -692,10 +762,13 @@ type WaConnection = Awaited<ReturnType<typeof getWhatsAppConnection>>["connectio
  */
 function stageClock(eventId: string, receivedAt: string | null, sink: MessageTiming[]) {
   const lag = receivedAt ? Math.max(0, Date.now() - Date.parse(receivedAt)) : null;
-  const { timer, result } = replyTimer(lag);
+  const { timer, result, fallbackStart, sinceReceived, note } = replyTimer(lag);
   return {
     timer,
     mark: timer.mark,
+    fallbackStart,
+    sinceReceived,
+    note,
     log(messageId: string, route: string) {
       const timing = result(messageId, route);
       sink.push(timing);
@@ -1224,6 +1297,8 @@ export async function processWebhookPayload(
     prefetch?: InboundPrefetch;
     /** Run by catch-up under a lease (webhook_events.lease_until): closing the event lets it go. */
     leased?: boolean;
+    /** Batch 29: a safety-net pass (not the webhook's own): how and how late it picked the event up. */
+    pickup?: ReplyPickup;
   } = {},
 ): Promise<void> {
   const processingStart = Date.now();
@@ -1239,6 +1314,7 @@ export async function processWebhookPayload(
           account_ms: accountMs,
           prefetched: Boolean(meta.prefetch),
           received_lag_ms: receivedAt ? Math.max(0, processingStart - Date.parse(receivedAt)) : null,
+          ...(meta.pickup ? { pickup: meta.pickup } : {}),
           total_ms: Date.now() - processingStart,
           messages: timings,
         }
@@ -1549,9 +1625,9 @@ export async function processWebhookPayload(
             // Opt-out keywords are read now and used after the message is stored.
             const keywordsRead = loadOptKeywords(supabase, orgId, keywordCache);
             keywordsRead.catch(() => {});
-            // The AI's burst window (a platform setting, cached a minute):
-            // read now so it never adds to the wait.
-            const burstWindow = burstWindowMs(supabase);
+            // The AI's burst settings (platform settings, cached a minute):
+            // read now so they never add to the wait.
+            const burstWindow = burstSettings(supabase);
             const attribution = inboundSource(
               msg,
               parsed.body,
@@ -1566,7 +1642,7 @@ export async function processWebhookPayload(
             const openConversationRead = Promise.resolve(
               supabase
                 .from("conversations")
-                .select("id, unread_count, contact_id, assigned_to, contacts!inner(phone)")
+                .select("id, unread_count, contact_id, assigned_to, needs_human, contacts!inner(phone)")
                 .eq("organization_id", orgId)
                 .eq("contacts.phone", phone)
                 .eq("whatsapp_account_id", accountId)
@@ -1574,7 +1650,13 @@ export async function processWebhookPayload(
                 .maybeSingle(),
             ).then(
               ({ data }) =>
-                data as { id: string; unread_count: number | null; contact_id?: string; assigned_to?: string | null } | null,
+                data as {
+                  id: string;
+                  unread_count: number | null;
+                  contact_id?: string;
+                  assigned_to?: string | null;
+                  needs_human?: boolean | null;
+                } | null,
               () => null,
             );
 
@@ -1626,14 +1708,24 @@ export async function processWebhookPayload(
             // assigned_to rides along (speed): whether a teammate owns the
             // thread decides if a trigger may start a flow in it, and is then
             // not read again.
-            let conversation: { id: string; unread_count: number | null; assigned_to?: string | null } | null =
+            let conversation: {
+              id: string;
+              unread_count: number | null;
+              assigned_to?: string | null;
+              needs_human?: boolean | null;
+            } | null =
               joined && joined.contact_id === contact.id
-                ? { id: joined.id, unread_count: joined.unread_count, assigned_to: joined.assigned_to ?? null }
+                ? {
+                    id: joined.id,
+                    unread_count: joined.unread_count,
+                    assigned_to: joined.assigned_to ?? null,
+                    needs_human: joined.needs_human ?? null,
+                  }
                 : null;
             if (!conversation) {
               const { data: found } = await supabase
                 .from("conversations")
-                .select("id, unread_count, assigned_to")
+                .select("id, unread_count, assigned_to, needs_human")
                 .eq("organization_id", orgId)
                 .eq("contact_id", contact.id)
                 .eq("whatsapp_account_id", accountId)
@@ -1674,6 +1766,8 @@ export async function processWebhookPayload(
             const occurredAt = tsSeconds
               ? new Date(tsSeconds * 1000).toISOString()
               : new Date().toISOString();
+            // No received_at for this pass: time the reply from the message itself.
+            if (tsSeconds) clock.fallbackStart(tsSeconds * 1000);
 
             // The message write goes out first; the reads below share the
             // Worker's six connections with it.
@@ -1783,6 +1877,7 @@ export async function processWebhookPayload(
             // it was answered is answered now, once (claimed); otherwise a
             // duplicate stays a duplicate.
             const inserted = isNew ? stored : await reclaimUnanswered(supabase, String(msg["id"] ?? ""));
+            const reanswered = !isNew && Boolean(inserted?.length);
             answerRowId = (inserted?.[0]?.id as string | undefined) ?? null;
             const storedAt = Date.now();
 
@@ -2090,7 +2185,7 @@ export async function processWebhookPayload(
                 loadAutomations(supabase, orgId, automationCache),
               ]),
             );
-            await evaluateAutomations(supabase, {
+            const automationReplied = await evaluateAutomations(supabase, {
               organizationId: orgId,
               phoneNumberId,
               accessToken,
@@ -2110,16 +2205,25 @@ export async function processWebhookPayload(
             // answered this message. Never on our own echoes or on a duplicate
             // delivery, and never after an automation already replied.
             if (!isSystemEcho && inserted && inserted.length > 0) {
-              // Did an automation (or anything else) already reply? Read now,
-              // while the burst window runs out, not before it.
-              const repliedRead = Promise.resolve(
-                supabase
-                  .from("messages")
-                  .select("id", { count: "exact", head: true })
-                  .eq("conversation_id", conversation.id)
-                  .eq("direction", "outbound")
-                  .gte("created_at", beforeAutomations),
-              ).then(({ count }) => count ?? 0);
+              // Did anything already answer THIS message? An automation says
+              // so itself; a teammate's reply from the Inbox (sent_by) is read
+              // now, while the burst window runs out. Batch 29: this used to
+              // count every outbound message since, so the reply Aiden (or a
+              // flow) was still sending to the customer's PREVIOUS message
+              // made this one "already handled" — nothing ran, and the
+              // customer heard nothing until they wrote again (live: 9
+              // replies at 60–162 s). Those replies answer another message.
+              const repliedRead = automationReplied
+                ? Promise.resolve(1)
+                : Promise.resolve(
+                    supabase
+                      .from("messages")
+                      .select("id", { count: "exact", head: true })
+                      .eq("conversation_id", conversation.id)
+                      .eq("direction", "outbound")
+                      .not("sent_by", "is", null)
+                      .gte("created_at", beforeAutomations),
+                  ).then(({ count }) => count ?? 0);
 
               // Batch 27 (H2): set while Aiden is answering this message, so a
               // throw from that pass hands the chat to a person, not silence.
@@ -2143,7 +2247,7 @@ export async function processWebhookPayload(
                     occurredAt,
                     body: text,
                     storedAt,
-                    windowMs: await burstWindow,
+                    settings: await burstWindow,
                     afterWait: () => {
                       gate = readAgentGate(supabase, conversation.id as string);
                     },
@@ -2156,6 +2260,8 @@ export async function processWebhookPayload(
                 // no transcription and no automatic fallback, at our cost.
                 let personOwns = false;
                 let burst: { proceed: boolean; body: string | null };
+                let burstStarted = Date.now();
+                let knowledgeAhead: Promise<KnowledgeAhead | null> | undefined;
                 if (media.media_url) {
                   // Pictures and voice notes become words first, so a
                   // media-only message is never dropped on the floor — and
@@ -2177,12 +2283,25 @@ export async function processWebhookPayload(
                     agentBody = converted.body;
                     mediaFallback = converted.fallback;
                   }
+                  burstStarted = Date.now();
                   burst = alreadyHandled || optedOut ? { proceed: true, body: agentBody } : await waitBurst(agentBody);
                 } else {
                   // Text: the burst wait and the replied read run together.
                   const waiting = handledBefore || optedOut ? null : waitBurst(agentBody);
                   waiting?.catch(() => {});
                   alreadyHandled = handledBefore || (await repliedRead) > 0;
+                  // Batch 29: nothing else answered — the material match for
+                  // these words starts now, inside the burst wait, not after it.
+                  if (waiting && !alreadyHandled && agentPrepared) {
+                    const { startKnowledgeAhead } = await import("@/lib/ai-agent.server");
+                    // Never for a chat a person owns (the open conversation read carries both).
+                    const personAtStart = Boolean(conversation.assigned_to) || conversation.needs_human === true;
+                    knowledgeAhead = agentPrepared.then((prep) =>
+                      startKnowledgeAhead(supabase, prep, orgId, agentBody, personAtStart),
+                    );
+                    // Awaited before the event closes, used or not (never fire-and-forget).
+                    later(knowledgeAhead.then((k) => k?.match));
+                  }
                   burst = waiting && !alreadyHandled ? await waiting : { proceed: true, body: agentBody };
                 }
 
@@ -2200,6 +2319,7 @@ export async function processWebhookPayload(
                 }
                 agentBody = burst.body;
                 clock.mark("burst");
+                const burstMs = Date.now() - burstStarted;
 
                 route = "ai";
                 agentAnswering = !alreadyHandled && !optedOut;
@@ -2216,14 +2336,26 @@ export async function processWebhookPayload(
                   optedOut,
                   ...(prepared ? { prepared } : {}),
                   ...(gate ? { gate } : {}),
+                  ...(knowledgeAhead ? { knowledgeAhead } : {}),
                   ...(contextMetaId ? { replyToMetaId: contextMetaId } : {}),
                   timer: clock.timer,
                   // A live reply is coming: read receipt + typing dots now.
                   onWillReply: () => later(showTyping(connectionP, phoneNumberId, String(msg["id"] ?? ""))),
                   later,
+                  speed: {
+                    sinceReceived: clock.sinceReceived,
+                    pickup: reanswered ? "reanswer" : (meta.pickup?.via ?? "live"),
+                    burstMs: burstMs,
+                  },
                 });
                 agentAnswering = false;
                 clock.mark("ai_done");
+                // Why Aiden did (or didn't) answer, on the event's timing:
+                // a quick "ai" with nothing sent is never a mystery again.
+                clock.note(
+                  "ai_outcome",
+                  outcome.acted ? `${outcome.mode}:${outcome.status}${"sent" in outcome ? (outcome.sent ? ":sent" : ":not_sent") : ""}` : outcome.reason,
+                );
 
                 // Only a live-replying agent speaks; otherwise the thread just
                 // sits unread in the inbox for a person, as it always has.
@@ -2481,6 +2613,26 @@ async function answerWrite(run: () => PromiseLike<{ data: unknown; error: { code
   }
 }
 
+/**
+ * Batch 29: a customer message picked up by a safety net instead of the
+ * webhook's own pass — catch-up (reprocessUnprocessedEvents) or the re-answer
+ * of a stored, never-answered message (reclaimUnanswered). Every reply is
+ * produced in the webhook's own request; each pickup is logged (scope
+ * "reply_pickup") and kept on webhook_events.timing.pickup so it shows on
+ * live, with why and how late.
+ */
+export type ReplyPickup = {
+  via: "catch_up" | "reanswer";
+  /** catch_up: never_processed | retry_after_failure | pass_died; reanswer: stored_never_answered. */
+  reason: string;
+  /** ms from receiving the message (event received_at / message time) to this pickup. */
+  delay_ms: number | null;
+};
+
+export function logReplyPickup(pickup: ReplyPickup, ids: { event_id?: string | null; message_id?: string | null }): void {
+  console.warn(JSON.stringify({ scope: "reply_pickup", ...pickup, ...ids }));
+}
+
 /** This pass finished routing the message (answered, or deliberately not). */
 export async function markAnswered(supabase: SupabaseClient, rowId: string | null): Promise<void> {
   if (!rowId) return;
@@ -2509,9 +2661,15 @@ export async function reclaimUnanswered(
       .eq("direction", "inbound")
       .is("answered_at", null)
       .lt("answer_claimed_at", cutoff)
-      .select("id"),
-  )) as Array<{ id: string }> | null;
-  return claimed?.length ? claimed : null;
+      .select("id, created_at"),
+  )) as Array<{ id: string; created_at?: string | null }> | null;
+  if (!claimed?.length) return null;
+  const at = claimed[0]!.created_at ? Date.parse(claimed[0]!.created_at) : NaN;
+  logReplyPickup(
+    { via: "reanswer", reason: "stored_never_answered", delay_ms: Number.isFinite(at) ? Math.max(0, Date.now() - at) : null },
+    { message_id: claimed[0]!.id },
+  );
+  return claimed;
 }
 
 /** Retries an event gets before it is recorded as given up. */
@@ -2712,15 +2870,26 @@ export async function reprocessUnprocessedEvents(
     return Boolean(claimed?.length);
   };
 
-  const one = async (event: CatchUpRow) => {
+  const one = async (event: CatchUpRow, onlyStatuses: boolean) => {
+    // Read before the claim rewrites them: why this event is still open.
+    const reason = event.lease_until ? "pass_died" : event.error ? "retry_after_failure" : "never_processed";
     if (!(await claim(event))) return;
     handled += 1;
+    const received = event.received_at ? Date.parse(event.received_at) : NaN;
+    const pickup: ReplyPickup = {
+      via: "catch_up",
+      reason,
+      delay_ms: Number.isFinite(received) ? Math.max(0, Date.now() - received) : null,
+    };
+    // Only a customer message is a reply pickup (status events are thousands a day).
+    if (!onlyStatuses) logReplyPickup(pickup, { event_id: event.id as string });
     await processWebhookPayload(
       supabase,
       event.id as string,
       (event.payload ?? {}) as AnyRecord,
-      null,
-      leases ? { leased: true } : {},
+      // Batch 29: the event's own received_at, so the reply's speed counts the real wait.
+      event.received_at ?? null,
+      { ...(leases ? { leased: true } : {}), ...(onlyStatuses ? {} : { pickup }) },
     );
   };
   const statusOnly = (payload: unknown) =>
@@ -2733,7 +2902,7 @@ export async function reprocessUnprocessedEvents(
   const batch: CatchUpRow[] = [];
   const flush = async () => {
     for (let i = 0; i < batch.length; i += concurrency) {
-      await Promise.all(batch.slice(i, i + concurrency).map(one));
+      await Promise.all(batch.slice(i, i + concurrency).map((e) => one(e, true)));
     }
     batch.length = 0;
   };
@@ -2749,7 +2918,7 @@ export async function reprocessUnprocessedEvents(
       continue;
     }
     await flush();
-    await one(event);
+    await one(event, onlyStatuses);
   }
   await flush();
   return handled;

@@ -180,6 +180,16 @@ export type RunOptions = {
    * starts them itself — in parallel with its prelude.
    */
   lookups?: AnswerLookups;
+  /**
+   * Batch 29: notes about this one message (the product a reply-to points
+   * at, the older part of the chat) — placed at the very end of the system
+   * prompt, after the material, so its long start (the brief and the fixed
+   * rules) is the same from one reply to the next and the provider can
+   * cache it.
+   */
+  contextNotes?: string[];
+  /** Like contextNotes, and also material the guards accept as support (the reply-to product's facts). */
+  supportNotes?: string[];
 };
 
 
@@ -678,6 +688,11 @@ export type RunResult = {
   inputTokens: number | null;
   outputTokens: number | null;
   error?: string;
+  /**
+   * Batch 29: the metadata written on the ai_runs row (runId), so a caller can
+   * add to it (reply_speed, after the sends) without reading it back.
+   */
+  metadata?: Record<string, unknown>;
 };
 
 // ------------------------------------------------------------------- tiers
@@ -1736,6 +1751,34 @@ export type KnowledgeRow = {
   similarity: number;
 };
 
+/**
+ * Batch 29: how much of the business's material one customer reply carries.
+ * The best match always goes (cut to the budget if it alone is longer);
+ * others only while they score within `floor` of the best one and fit the
+ * budget, at most `maxChunks`. Roughly four characters per token.
+ */
+export const REPLY_KNOWLEDGE = { budgetTokens: 1200, maxChunks: 4, floor: 0.15 } as const;
+
+export function selectKnowledge<T extends { text: string; similarity: number }>(
+  rows: T[],
+  limits: { budgetTokens: number; maxChunks: number; floor: number } = REPLY_KNOWLEDGE,
+): T[] {
+  if (!rows.length) return rows;
+  const ranked = [...rows].sort((a, b) => Number(b.similarity) - Number(a.similarity));
+  const budget = limits.budgetTokens * 4;
+  const best = ranked[0]!;
+  const out: T[] = [best.text.length > budget ? { ...best, text: best.text.slice(0, budget) } : best];
+  let used = out[0]!.text.length;
+  for (const row of ranked.slice(1)) {
+    if (out.length >= limits.maxChunks) break;
+    if (Number(row.similarity) < Number(best.similarity) - limits.floor) break;
+    if (used + row.text.length > budget) continue;
+    out.push(row);
+    used += row.text.length;
+  }
+  return out;
+}
+
 /** The question's matches, and a way to look again with the same vector. */
 export type KnowledgeMatch = { rows: KnowledgeRow[]; again: () => Promise<KnowledgeRow[]> };
 
@@ -1795,6 +1838,11 @@ export function startAnswerLookups(
     actorUserId?: string | null;
     knowledge: boolean;
     early: boolean;
+    /**
+     * Batch 29: the material match for this same input, already started
+     * (prepareAgentInbound, during the burst wait) — used instead of a new one.
+     */
+    knowledgeAhead?: Promise<KnowledgeMatch | null> | null;
   },
 ): AnswerLookups {
   const early = args.early
@@ -1814,12 +1862,12 @@ export function startAnswerLookups(
   early?.catch(() => {});
   return {
     knowledge: args.knowledge
-      ? matchKnowledge(supabase, {
+      ? (args.knowledgeAhead ?? matchKnowledge(supabase, {
           organizationId: args.organizationId,
           agentId: args.agentId,
           input: args.input,
           merchantChannel: false,
-        })
+        }))
       : null,
     early,
   };
@@ -1932,6 +1980,11 @@ export async function executeRun(
     if (options.billingExempt) result.billedAmount = 0;
     if (options.dryRun) return result;
 
+    const metadata = {
+      ...(options.metadata ?? {}),
+      ...runMeta,
+      ...(result.toolCalls.length ? { tools: runToolsMeta(result.toolCalls) } : {}),
+    };
     const { data } = await supabase
       .from("ai_runs")
       .insert({
@@ -1962,11 +2015,7 @@ export async function executeRun(
         status: result.status,
         error: result.error ?? null,
         comparison_id: comparisonId,
-        metadata: {
-          ...(options.metadata ?? {}),
-          ...runMeta,
-          ...(result.toolCalls.length ? { tools: runToolsMeta(result.toolCalls) } : {}),
-        },
+        metadata,
 
         prompt_rules_version: options.promptRulesVersion ?? null,
 
@@ -1974,6 +2023,7 @@ export async function executeRun(
       .select("id")
       .maybeSingle();
     result.runId = (data as { id?: string } | null)?.id ?? null;
+    if (result.runId) result.metadata = metadata;
     if (result.runId) {
       // One row per tool invocation, written through a strict database function.
       // A run must never claim tool usage without the matching trace rows.
@@ -2112,6 +2162,14 @@ export async function executeRun(
             .join(" | ") || "no candidates above 0.25",
         );
       }
+      // Batch 29: a customer reply carries only the material that matters —
+      // the best matches, close to the best one's score, within a budget
+      // (live: six ~1,700-character chunks were ~2,600 of ~8,500 tokens).
+      if (task === "agent_reply" && !isMerchantChannel && rows.length) {
+        const matchedCount = rows.length;
+        rows = selectKnowledge(rows);
+        runMeta["knowledge"] = { matched: matchedCount, sent: rows.length, chars: rows.reduce((n, r) => n + r.text.length, 0) };
+      }
       for (const row of rows) {
         sources.push({
           kind: "knowledge",
@@ -2150,26 +2208,14 @@ export async function executeRun(
   timing["retrieval"] = Date.now() - retrievalStarted;
 
   // -------------------------------------------------------------- messages
+  // Batch 29: what stays the same from one reply to the next comes first (the
+  // brief, then the fixed rules), and what belongs to this message last (its
+  // material, then the context notes) — so the provider can cache the long
+  // start of the prompt (OpenAI caches an identical prefix of 1,024+ tokens).
+  // What the guards accept as support: the brief and the reply-to product's
+  // facts (supportNotes) — wherever they sit in the prompt; never the chat summary.
+  const supportText = [options.system ?? "", ...(options.supportNotes ?? [])].filter(Boolean).join("\n\n");
   const systemParts = [options.system ?? ""];
-  if (knowledgeBlock) {
-    // The owner's own chat reads better with a plain-words source line. A
-    // customer never sees where an answer came from: no numbers, no sources.
-    const citation =
-      options.channel === "onboarding"
-        ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
-        : "The items are numbered for you only: never mention an item number, a source, a page title as a source, or brackets in your reply.";
-    // A shopper wants the product page; a policy or blog page linked in every
-    // reply is just noise.
-    const linkRule =
-      "Some items show a URL on the line under their title. If the item you used is a product page " +
-      "(its URL contains /products/), end your answer with that URL on its own last line, copied " +
-      "character for character, and nothing after it. For any other kind of page, do not output a URL at all.";
-    systemParts.push(
-      `Material from this business follows. Prefer it over anything else you know. ${citation} ${linkRule}\n\n` +
-        knowledgeBlock,
-    );
-
-  }
   // The house rule: always be useful, never invent a hard fact. Applies with
   // or without material, so a question with no match still gets an answer.
   if (task === "agent_reply") {
@@ -2188,6 +2234,25 @@ export async function executeRun(
     }
     systemParts.push(ANSWER_POLICY);
   }
+  if (knowledgeBlock) {
+    // The owner's own chat reads better with a plain-words source line. A
+    // customer never sees where an answer came from: no numbers, no sources.
+    const citation =
+      options.channel === "onboarding"
+        ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
+        : "The items are numbered for you only: never mention an item number, a source, a page title as a source, or brackets in your reply.";
+    // A shopper wants the product page; a policy or blog page linked in every
+    // reply is just noise.
+    const linkRule =
+      "Some items show a URL on the line under their title. If the item you used is a product page " +
+      "(its URL contains /products/), end your answer with that URL on its own last line, copied " +
+      "character for character, and nothing after it. For any other kind of page, do not output a URL at all.";
+    systemParts.push(
+      `Material from this business follows. Prefer it over anything else you know. ${citation} ${linkRule}\n\n` +
+        knowledgeBlock,
+    );
+  }
+  systemParts.push(...(options.contextNotes ?? []), ...(options.supportNotes ?? []));
   const system = systemParts.filter(Boolean).join("\n\n");
 
   const principal: ToolPrincipal =
@@ -2622,9 +2687,12 @@ export async function executeRun(
 
   timing["model"] = Date.now() - modelStarted;
   const checksStarted = Date.now();
-  const priced = served
-    ? await priceWithBackup(supabase, brain, { inputTokens, outputTokens }, served, runMeta)
-    : await priceRun(supabase, brain.provider, brain.model_id, inputTokens, outputTokens);
+  // Batch 29: the run's price (a rate-card read) is needed only for the
+  // ai_runs row, so it runs alongside the checks instead of before them.
+  const pricing = served
+    ? priceWithBackup(supabase, brain, { inputTokens, outputTokens }, served, runMeta)
+    : priceRun(supabase, brain.provider, brain.model_id, inputTokens, outputTokens);
+  pricing.catch(() => {});
   if (served) {
     base.provider = served.route.provider;
     base.model = served.model;
@@ -2678,11 +2746,12 @@ export async function executeRun(
     media: sendsProducts ? chosenMedia : pickMediaForAnswer(foundMedia, reported.output),
     inputTokens: inputTokens || null,
     outputTokens: outputTokens || null,
-    costAmount: priced.amount,
-    costCurrency: priced.currency,
-    billedAmount: billedFromCost(priced.amount, markup),
-    billedCurrency: priced.currency,
-    costKnown: priced.source === "rate_card",
+    // Filled in from `pricing` just before the row is written (below).
+    costAmount: null,
+    costCurrency: null,
+    billedAmount: null,
+    billedCurrency: null,
+    costKnown: false,
   };
 
   // -------------------------------------------------- numeric grounding
@@ -2694,9 +2763,9 @@ export async function executeRun(
   if (task === "agent_reply" && result.output && !isVisionRead) {
     // Times, days and durations: the same rule, but the customer's own
     // question is not support for them.
-    const material = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts];
+    const material = [knowledgeBlock, supportText, ...toolResultTexts, ...chosenFacts];
     const unsupported = [
-      ...unsupportedNumbers(result.output, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts]),
+      ...unsupportedNumbers(result.output, [knowledgeBlock, supportText, input, ...toolResultTexts]),
       ...unsupportedTimeFacts(result.output, material),
     ];
     if (unsupported.length > 0) {
@@ -2717,7 +2786,7 @@ export async function executeRun(
     // line: the number's sentence just goes.
     for (const item of chosenMedia) {
       const guessed = [
-        ...unsupportedNumbers(item.caption, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts, ...chosenFacts]),
+        ...unsupportedNumbers(item.caption, [knowledgeBlock, supportText, input, ...toolResultTexts, ...chosenFacts]),
         ...unsupportedTimeFacts(item.caption, material),
       ];
       if (guessed.length === 0) continue;
@@ -2742,7 +2811,7 @@ export async function executeRun(
     const captionClaims = chosenMedia.flatMap((item) => policyClaimSentences(item.caption));
     const candidates = Array.from(new Set([...replyClaims, ...captionClaims]));
     if (candidates.length > 0) {
-      const sourceText = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts].join("\n\n");
+      const sourceText = [knowledgeBlock, supportText, ...toolResultTexts, ...chosenFacts].join("\n\n");
       // Wording first, deterministically: stated as written → supported; a
       // promise word the sources never attach to that policy → not
       // supported, and it goes (the source's own line is kept on the run
@@ -2783,9 +2852,9 @@ export async function executeRun(
           let outcome = "failed";
           if (attempt) {
             const candidate = attempt.join(PRODUCTS_MARK);
-            const support = [knowledgeBlock, options.system ?? "", ...toolResultTexts, ...chosenFacts];
+            const support = [knowledgeBlock, supportText, ...toolResultTexts, ...chosenFacts];
             const guessed = [
-              ...unsupportedNumbers(candidate, [knowledgeBlock, options.system ?? "", input, ...toolResultTexts]),
+              ...unsupportedNumbers(candidate, [knowledgeBlock, supportText, input, ...toolResultTexts]),
               ...unsupportedTimeFacts(candidate, support),
             ];
             const again = policyClaimSentences(candidate);
@@ -2921,6 +2990,12 @@ export async function executeRun(
   }
 
   timing["checks"] = Date.now() - checksStarted;
+  const priced = await pricing;
+  result.costAmount = priced.amount;
+  result.costCurrency = priced.currency;
+  result.billedAmount = billedFromCost(priced.amount, markup);
+  result.billedCurrency = priced.currency;
+  result.costKnown = priced.source === "rate_card";
   return finish(result);
 }
 

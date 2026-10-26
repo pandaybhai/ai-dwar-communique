@@ -1,7 +1,7 @@
 import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isServiceWindowOpen } from "@/lib/service-window";
-import { timed, type ReplyTimer } from "@/lib/reply-timing";
+import { SEND_OK_MARK, timed, type ReplyTimer } from "@/lib/reply-timing";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -52,6 +52,8 @@ async function sendGraph(
     } catch {
       json = {};
     }
+    // Batch 29: the first send WhatsApp accepted (received_to_send_ms).
+    if (res.ok) args.timer?.mark(SEND_OK_MARK);
     return { res, json };
   });
 }

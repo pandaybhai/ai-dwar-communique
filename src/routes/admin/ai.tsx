@@ -59,9 +59,33 @@ type BackupResult = {
   reason: string | null;
   error: string | null;
 };
+type SpeedWindow = { replies: number; p50_ms: number | null; p90_ms: number | null; slowest_ms: number | null; over_slow: number };
+type ReplySpeed = {
+  slow_ms: number;
+  error: string | null;
+  workspaces: Array<{ organization_id: string; name: string | null; last_24h: SpeedWindow; last_7d: SpeedWindow }>;
+  slow: Array<{
+    run_id: string;
+    organization_id: string;
+    name: string | null;
+    conversation_id: string | null;
+    at: string;
+    ms: number;
+    reason: string | null;
+    pickup: string | null;
+  }>;
+};
 type Overview = {
   backup?: BackupStatus;
-  burst_wait?: { ms: number; saved: boolean; default_ms: number };
+  reply_speed?: ReplySpeed;
+  burst_wait?: {
+    quiet_ms: number;
+    cap_ms: number;
+    saved: boolean;
+    column_missing?: boolean;
+    default_quiet_ms: number;
+    default_cap_ms: number;
+  };
   markup: number;
   platform_cap: { amount: number; currency: string; spent: number };
   providers: Provider[];
@@ -173,6 +197,8 @@ function AdminAi() {
       />
 
       {data.backup ? <BackupCard backup={data.backup} onChanged={load} /> : null}
+
+      {data.reply_speed ? <ReplySpeedCard speed={data.reply_speed} /> : null}
 
       {data.burst_wait ? <BurstWaitCard wait={data.burst_wait} onChanged={load} /> : null}
 
@@ -354,10 +380,11 @@ function BurstWaitCard({
   wait,
   onChanged,
 }: {
-  wait: { ms: number; saved: boolean; default_ms: number };
+  wait: NonNullable<Overview["burst_wait"]>;
   onChanged: () => Promise<void>;
 }) {
-  const [seconds, setSeconds] = useState(String(wait.ms / 1000));
+  const [quiet, setQuiet] = useState(String(wait.quiet_ms / 1000));
+  const [cap, setCap] = useState(String(wait.cap_ms / 1000));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -365,7 +392,11 @@ function BurstWaitCard({
     setBusy(true);
     setError(null);
     const result = await callApi<{ ok: boolean }>("/api/admin/ai", {
-      body: { action: "set_burst_wait", ms: Math.round(Number(seconds) * 1000) },
+      body: {
+        action: "set_burst_wait",
+        quiet_ms: Math.round(Number(quiet) * 1000),
+        cap_ms: Math.round(Number(cap) * 1000),
+      },
     });
     setBusy(false);
     if (result.error) {
@@ -383,21 +414,38 @@ function BurstWaitCard({
           <div>
             <h2 className="font-semibold">Wait for a second message</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              How long Aiden waits after a customer's message in case another follows, so both get one answer. Every
-              reply arrives this much later. {wait.saved ? "" : `Using the default (${wait.default_ms / 1000} s).`}
+              Aiden answers once the customer has gone quiet for this long, so two quick texts get one answer — and
+              never waits longer than the limit after their first text.{" "}
+              {wait.saved
+                ? ""
+                : `Using the defaults (${wait.default_quiet_ms / 1000} s quiet, ${wait.default_cap_ms / 1000} s at most)${
+                    wait.column_missing ? " until migration 20261090 is applied" : ""
+                  }.`}
             </p>
           </div>
-          <div className="flex max-w-sm items-end gap-3">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="burst-wait">Seconds (0–10)</Label>
+          <div className="flex max-w-md flex-wrap items-end gap-3">
+            <div className="min-w-[8rem] flex-1 space-y-2">
+              <Label htmlFor="burst-quiet">Quiet for (s)</Label>
               <Input
-                id="burst-wait"
+                id="burst-quiet"
                 type="number"
                 min={0}
                 max={10}
                 step={0.5}
-                value={seconds}
-                onChange={(e) => setSeconds(e.target.value)}
+                value={quiet}
+                onChange={(e) => setQuiet(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[8rem] flex-1 space-y-2">
+              <Label htmlFor="burst-cap">At most (s)</Label>
+              <Input
+                id="burst-cap"
+                type="number"
+                min={0}
+                max={10}
+                step={0.5}
+                value={cap}
+                onChange={(e) => setCap(e.target.value)}
               />
             </div>
             <Button disabled={busy} onClick={() => void save()}>
@@ -405,6 +453,112 @@ function BurstWaitCard({
             </Button>
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Batch 29: the targets the PR states (received → WhatsApp accepted the first message). */
+const SPEED_TARGET = { p50_ms: 5_000, p90_ms: 12_000 };
+
+/** What a slow reply's reason means (ai_runs.metadata.reply_speed.reason). */
+const SLOW_REASONS: Record<string, string> = {
+  catch_up: "Picked up late by the catch-up sweep",
+  reanswer: "Re-answered after its first pass died",
+  waiting: "Waiting before Aiden started (storing, flows, automations)",
+  burst: "Waiting for a second message",
+  prelude: "Aiden's set-up reads",
+  early_search: "Catalogue search",
+  retrieval: "Reading the business's material",
+  model: "The AI model",
+  checks: "Checking the answer",
+  send: "Sending to WhatsApp",
+};
+
+function seconds(ms: number | null): string {
+  return ms === null ? "—" : `${(ms / 1000).toFixed(1)} s`;
+}
+
+function SpeedCells({ w }: { w: SpeedWindow }) {
+  const over = (v: number | null, limit: number) => (v !== null && v > limit ? "text-amber-700 dark:text-amber-300" : "");
+  return (
+    <>
+      <td className={`px-3 py-2 tabular-nums ${over(w.p50_ms, SPEED_TARGET.p50_ms)}`}>{seconds(w.p50_ms)}</td>
+      <td className={`px-3 py-2 tabular-nums ${over(w.p90_ms, SPEED_TARGET.p90_ms)}`}>{seconds(w.p90_ms)}</td>
+      <td className="px-3 py-2 tabular-nums">{seconds(w.slowest_ms)}</td>
+      <td className="px-3 py-2 tabular-nums text-muted-foreground">{w.replies}</td>
+    </>
+  );
+}
+
+/**
+ * Batch 29: how fast Aiden answers — from receiving the customer's message
+ * to WhatsApp accepting the first reply — per workspace, from one SQL
+ * aggregate (reply_speed_stats), and every reply over 30 s with its reason.
+ */
+function ReplySpeedCard({ speed }: { speed: ReplySpeed }) {
+  return (
+    <section className="rounded-xl border border-border/70 bg-card p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <Gauge className="mt-0.5 h-5 w-5 text-primary" />
+        <div className="min-w-0 flex-1 space-y-3">
+          <div>
+            <h2 className="font-semibold">Reply speed</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              From receiving a customer's message to WhatsApp accepting Aiden's first reply. Target: half of replies under{" "}
+              {SPEED_TARGET.p50_ms / 1000} s, nine in ten under {SPEED_TARGET.p90_ms / 1000} s.
+            </p>
+          </div>
+          {speed.error ? (
+            <p role="status" className="rounded-xl bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+              {speed.error}
+            </p>
+          ) : speed.workspaces.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No timed replies in the last 7 days yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[40rem] text-left text-sm">
+                <thead className="text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Workspace</th>
+                    <th className="px-3 py-2 font-semibold">24 h p50</th>
+                    <th className="px-3 py-2 font-semibold">p90</th>
+                    <th className="px-3 py-2 font-semibold">Slowest</th>
+                    <th className="px-3 py-2 font-semibold">Replies</th>
+                    <th className="px-3 py-2 font-semibold">7 d p50</th>
+                    <th className="px-3 py-2 font-semibold">p90</th>
+                    <th className="px-3 py-2 font-semibold">Slowest</th>
+                    <th className="px-3 py-2 font-semibold">Replies</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {speed.workspaces.map((w) => (
+                    <tr key={w.organization_id} className="border-t border-border/60">
+                      <td className="px-3 py-2 font-medium">{w.name ?? w.organization_id.slice(0, 8)}</td>
+                      <SpeedCells w={w.last_24h} />
+                      <SpeedCells w={w.last_7d} />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {!speed.error && speed.slow.length > 0 ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">Replies over {speed.slow_ms / 1000} s · 7 days</h3>
+              <ul className="divide-y divide-border/60 rounded-lg border border-border/60 text-sm">
+                {speed.slow.map((r) => (
+                  <li key={r.run_id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
+                    <span className="tabular-nums font-medium">{seconds(r.ms)}</span>
+                    <span>{SLOW_REASONS[r.reason ?? ""] ?? r.reason ?? "Unknown"}</span>
+                    <span className="text-muted-foreground">{r.name ?? r.organization_id.slice(0, 8)}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{new Date(r.at).toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

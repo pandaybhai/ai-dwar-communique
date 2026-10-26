@@ -31,50 +31,54 @@ afterEach(() => {
 });
 
 // ------------------------------------------------------------------ (1a)
-describe("(1a) the burst wait: a platform setting, 1 s by default", () => {
+describe("(1a) the burst wait: a platform setting (Batch 29: adaptive — 1.5 s quiet, 3 s at most)", () => {
   const settingsDb = (reply: { data: unknown; error: { message: string } | null }) =>
     fakeDb((op) => (op.table === "platform_settings" ? reply : undefined));
 
-  it("no row, a bad value or a failed read: 1 s", async () => {
-    const { burstWindowMs, resetBurstWindowCache } = await import("./whatsapp-webhook.server");
+  it("no row, a missing column, a bad value or a failed read: the defaults", async () => {
+    const { burstSettings, resetBurstWindowCache } = await import("./whatsapp-webhook.server");
     for (const reply of [
       { data: null, error: { message: "timeout" } },
+      { data: null, error: { message: "column platform_settings.ai_burst_quiet_ms does not exist" } },
       { data: null, error: null },
-      { data: { ai_burst_wait_ms: "fast" }, error: null },
-      { data: { ai_burst_wait_ms: 999_999 }, error: null },
+      { data: { ai_burst_quiet_ms: "fast", ai_burst_cap_ms: null }, error: null },
+      { data: { ai_burst_quiet_ms: 999_999, ai_burst_cap_ms: -1 }, error: null },
     ]) {
       resetBurstWindowCache();
-      expect(await burstWindowMs(settingsDb(reply).supabase)).toBe(1000);
+      expect(await burstSettings(settingsDb(reply).supabase)).toEqual({ quietMs: 1500, capMs: 3000 });
     }
   });
 
-  it("the saved value is used, read at most once a minute", async () => {
-    const { burstWindowMs, resetBurstWindowCache } = await import("./whatsapp-webhook.server");
+  it("the saved values are used, read at most once a minute", async () => {
+    const { burstSettings, resetBurstWindowCache } = await import("./whatsapp-webhook.server");
     resetBurstWindowCache();
-    const db = settingsDb({ data: { ai_burst_wait_ms: 2500 }, error: null });
-    expect(await burstWindowMs(db.supabase, 1_000_000)).toBe(2500);
-    expect(await burstWindowMs(db.supabase, 1_030_000)).toBe(2500);
+    const db = settingsDb({ data: { ai_burst_quiet_ms: 1000, ai_burst_cap_ms: 2500 }, error: null });
+    expect(await burstSettings(db.supabase, 1_000_000)).toEqual({ quietMs: 1000, capMs: 2500 });
+    expect(await burstSettings(db.supabase, 1_030_000)).toEqual({ quietMs: 1000, capMs: 2500 });
     expect(db.ops.filter((o) => o.table === "platform_settings")).toHaveLength(1);
-    await burstWindowMs(db.supabase, 1_061_000);
+    await burstSettings(db.supabase, 1_061_000);
     expect(db.ops.filter((o) => o.table === "platform_settings")).toHaveLength(2);
     resetBurstWindowCache();
   });
 
-  it("coalesceBurst waits 1 s by default (was 5 s)", async () => {
+  it("coalesceBurst waits the 1.5 s quiet gap by default for a message alone (was 1 s fixed, 5 s before)", async () => {
     vi.useFakeTimers();
     const { coalesceBurst } = await import("./whatsapp-webhook.server");
     const db = fakeDb((op) => (op.table === "messages" ? { data: [], error: null } : undefined));
+    let waited = -1;
+    const start = Date.now();
     const out = coalesceBurst(db.supabase, {
       conversationId: "cv",
       messageId: "m1",
       occurredAt: new Date().toISOString(),
       body: "rings?",
+      afterWait: () => (waited = Date.now() - start),
     });
-    await vi.advanceTimersByTimeAsync(990);
-    expect(db.ops).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1490);
+    expect(waited).toBe(-1);
     await vi.advanceTimersByTimeAsync(20);
     await out;
-    expect(db.ops).toHaveLength(1);
+    expect(waited).toBe(1500);
   });
 
   it("the migration adds the column (default 1000, 0–10000) and nothing else", () => {
@@ -132,12 +136,15 @@ describe("(1b) where the time goes: Aiden's stages on the webhook timing", () =>
     timer.mark("ai_run");
     now = 9400;
     timer.mark("ai_first_send");
+    now = 9700;
+    timer.mark("send_ok"); // Batch 29: accepted by WhatsApp
     now = 9900;
     timer.mark("ai_first_photo");
     now = 10500;
     timer.mark("ai_done");
     const out = result("wamid.x", "ai");
-    expect(out.received_to_send_ms).toBe(9700);
+    expect(out.received_to_send_ms).toBe(10_000);
+    expect(out.received_to_send_start_ms).toBe(9700);
     expect(out.ms).toMatchObject({
       burst: 1200,
       ai_run: 7800,

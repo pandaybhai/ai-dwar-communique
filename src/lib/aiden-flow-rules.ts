@@ -8,6 +8,8 @@
  * Shared by the engine, the answer and the inbox header.
  */
 
+import { promptSections } from "@/lib/brief-order";
+
 export type AidenFlowRules = {
   flow_id: string | null;
   flow_name: string | null;
@@ -87,7 +89,7 @@ export function flowRulesBlock(rules: AidenFlowRules | null): string {
  */
 export function briefTextWithFlowRules(brief: { text: string; sections: Array<{ key: string; text: string }> }, block: string): string {
   if (!block) return brief.text;
-  return brief.sections
+  return promptSections(brief.sections)
     .flatMap((s) => (s.key === "instructions" ? [s.text, block] : [s.text]))
     .map((t) => t.trim())
     .filter(Boolean)

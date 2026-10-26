@@ -20,10 +20,10 @@ import {
   suggestReply,
   type AnswerReadsAhead,
 } from "@/lib/ai-tasks.server";
-import { isHandOffSignal, startAnswerLookups, type ChosenProduct, type PreludeRead } from "@/lib/ai-run.server";
+import { isHandOffSignal, matchKnowledge, startAnswerLookups, type ChosenProduct, type KnowledgeMatch, type PreludeRead } from "@/lib/ai-run.server";
 import { enabledFlags } from "@/lib/ai-tools.server";
 import { sendServiceText } from "@/lib/service-text.server";
-import type { ReplyTimer } from "@/lib/reply-timing";
+import { replySpeed, SEND_OK_MARK, type ReplyTimer } from "@/lib/reply-timing";
 import { isServiceWindowOpen } from "@/lib/service-window";
 
 export type AgentInboundArgs = {
@@ -43,6 +43,8 @@ export type AgentInboundArgs = {
   later?: (work: Promise<unknown>) => void;
   /** readAgentGate(), started by the webhook the moment the burst wait ended. */
   gate?: Promise<AgentGate>;
+  /** startKnowledgeAhead(), started by the webhook during the burst wait (Batch 29). */
+  knowledgeAhead?: Promise<KnowledgeAhead | null>;
   /** WhatsApp reply-to: the id of our message the customer replied to, if any. */
   replyToMetaId?: string | null;
   /** The webhook's reply timer: Aiden's stages and sends land on webhook_events.timing. */
@@ -54,6 +56,14 @@ export type AgentInboundArgs = {
    * shows the typing dots. Never awaited.
    */
   onWillReply?: () => void;
+  /**
+   * Batch 29: how this reply is timed. sinceReceived = ms since we received
+   * the customer's message (the webhook's clock); pickup = how this pass got
+   * the message ("live", or a safety-net pickup); burstMs = the burst wait.
+   * The first send WhatsApp accepts is written on the run
+   * (ai_runs.metadata.reply_speed.received_to_send_ms).
+   */
+  speed?: { sinceReceived: () => number | null; pickup?: string; burstMs?: number | null };
 };
 
 type AgentGate = {
@@ -100,6 +110,31 @@ export type AgentPrep = {
   /** The answer's earlier-failures and brief reads; only when it will reply. */
   ahead?: AnswerReadsAhead | null;
 };
+
+/** Batch 29: the material match for the customer's words, started during the burst wait. */
+export type KnowledgeAhead = { question: string; match: Promise<KnowledgeMatch | null> };
+
+/**
+ * Starts the material match (read-only; the embedding is never metered to
+ * the workspace) for a message Aiden is about to answer, while the burst wait
+ * runs — never for a chat a person owns, and only when Aiden replies. The
+ * webhook calls it once nothing else answered the message. runAgentOnInbound
+ * uses it only when the question after the burst is these same words.
+ */
+export function startKnowledgeAhead(
+  supabase: SupabaseClient,
+  prep: AgentPrep,
+  organizationId: string,
+  question: string | null,
+  /** The chat was a person's (assigned, or waiting on one) when the webhook read it. */
+  personOwns: boolean,
+): KnowledgeAhead | null {
+  const q = (question ?? "").trim();
+  if (!prep.prelude || personOwns || !q) return null;
+  const match = matchKnowledge(supabase, { organizationId, agentId: prep.agentRow?.id ?? null, input: q, merchantChannel: false });
+  match.catch(() => {});
+  return { question: q, match };
+}
 
 /**
  * The agent's set-up (mode, flags, AI switch) read together, and — when it is
@@ -152,7 +187,7 @@ export const LIVE_FIRST_CALL_TIMEOUT_MS = 20_000;
 
 type HandToPersonArgs = Pick<
   AgentInboundArgs,
-  "organizationId" | "conversationId" | "contactId" | "phoneNumberId" | "accessToken" | "waId" | "later" | "onWillReply"
+  "organizationId" | "conversationId" | "contactId" | "phoneNumberId" | "accessToken" | "waId" | "later" | "onWillReply" | "timer"
 >;
 
 /**
@@ -205,6 +240,8 @@ async function handToPerson(
       conversationId: args.conversationId,
       to: args.waId,
       body: text,
+      // A reply like any other: timed (Batch 29).
+      ...(args.timer ? { timer: args.timer } : {}),
     });
     handoverState = handover.ok ? "sent" : "failed";
     if (!handover.ok) {
@@ -326,10 +363,22 @@ export async function runAgentOnInbound(
     stages[stage] = Date.now() - started;
   };
   // The webhook's timer sees Aiden's stages too; its first send is
-  // "ai_first_send" (a flow's is "send_start").
-  const timer: ReplyTimer | undefined = args.timer
-    ? { mark: (s) => args.timer!.mark(s === "send_start" ? "ai_first_send" : s), span: (n, ms) => args.timer!.span(n, ms) }
-    : undefined;
+  // "ai_first_send" (a flow's is "send_start"). Batch 29: the first send
+  // WhatsApp accepts is also kept for the run's reply_speed.
+  const since = () => args.speed?.sinceReceived() ?? null;
+  const beforeAidenMs = since();
+  let acceptedMs: number | null = null;
+  const timer: ReplyTimer | undefined =
+    args.timer || args.speed
+      ? {
+          mark: (s) => {
+            if (s === SEND_OK_MARK && acceptedMs === null) acceptedMs = since();
+            args.timer?.mark(s === "send_start" ? "ai_first_send" : s);
+          },
+          span: (n, ms) => args.timer?.span(n, ms),
+        }
+      : undefined;
+  const timed = { ...args, ...(timer ? { timer } : {}) };
   const prep = await (args.prepared ?? prepareAgentInbound(supabase, args.organizationId));
   const agentRow = prep.agentRow;
   const mode = agentRow?.mode ?? "off";
@@ -418,6 +467,8 @@ export async function runAgentOnInbound(
   // The gate passed: the business's material for this question and the
   // early catalogue search (the customer's own words) start now, together,
   // alongside the chat, brief and prelude reads — not one after another.
+  // Batch 29: the material match usually started during the burst wait.
+  const ahead = args.knowledgeAhead ? await args.knowledgeAhead.catch(() => null) : null;
   const lookups = prep.prelude
     ? startAnswerLookups(supabase, {
         organizationId: args.organizationId,
@@ -428,6 +479,8 @@ export async function runAgentOnInbound(
         contactId: args.contactId,
         knowledge: true,
         early: true,
+        // Started during the burst wait for these same words (Batch 29).
+        knowledgeAhead: ahead?.question === question ? ahead.match : null,
       })
     : null;
 
@@ -459,7 +512,7 @@ export async function runAgentOnInbound(
   } catch (error) {
     // Batch 27 (H2): the run threw before anything was sent — never silence.
     log("run_failed", { conversation_id: args.conversationId, error: error instanceof Error ? error.message : String(error) });
-    await handToPerson(supabase, args, {
+    await handToPerson(supabase, timed, {
       agentId: agentRow?.id ?? null,
       reason: "ai_error",
       status: "error",
@@ -472,6 +525,33 @@ export async function runAgentOnInbound(
   }
   mark("answer");
   timer?.mark("ai_run");
+  const runDoneMs = since();
+  /**
+   * Batch 29: the reply's speed on its own run row (reply_speed), written
+   * once the first send was accepted. The row's metadata is the run's own
+   * (RunResult.metadata), so this is one write and never a read. Awaited via
+   * later() (before the event closes), never fire-and-forget.
+   */
+  const saveSpeed = async () => {
+    if (!run.runId || !run.metadata || !args.speed) return;
+    const speed = replySpeed({
+      receivedToSendMs: acceptedMs,
+      pickup: args.speed.pickup ?? "live",
+      beforeAidenMs,
+      burstMs: args.speed.burstMs ?? null,
+      runTiming: (run.metadata["timing_ms"] as Record<string, number> | undefined) ?? {},
+      sendMs: acceptedMs !== null && runDoneMs !== null ? Math.max(0, acceptedMs - runDoneMs) : null,
+    });
+    const write = Promise.resolve(
+      supabase
+        .from("ai_runs")
+        .update({ metadata: { ...run.metadata, reply_speed: speed } })
+        .eq("id", run.runId)
+        .eq("organization_id", args.organizationId),
+    ).catch(() => {});
+    if (args.later) args.later(write);
+    else await write;
+  };
   const timing = () =>
     console.log(
       JSON.stringify({
@@ -505,7 +585,7 @@ export async function runAgentOnInbound(
   if (!shouldSend && (run.status === "error" || run.status === "capped")) {
     mark("held_back");
     timing();
-    await handToPerson(supabase, args, {
+    await handToPerson(supabase, timed, {
       agentId: (agentRow as { id?: string } | null)?.id ?? null,
       reason: run.status === "capped" ? "ai_capped" : "ai_error",
       status: run.status,
@@ -514,6 +594,7 @@ export async function runAgentOnInbound(
       runId: run.runId,
       fileGap: true,
     });
+    await saveSpeed();
     return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
   }
 
@@ -543,7 +624,7 @@ export async function runAgentOnInbound(
   if (!shouldSend) {
     // The customer asked for a person (or the merchant's rule says so): say
     // a person is coming, then put the thread in front of one.
-    await handToPerson(supabase, args, {
+    await handToPerson(supabase, timed, {
       agentId: (agentRow as { id?: string } | null)?.id ?? null,
       reason: run.escalationSignal ?? run.status,
       status: run.status,
@@ -556,6 +637,7 @@ export async function runAgentOnInbound(
         timing();
       },
     });
+    await saveSpeed();
     return { acted: true, mode: "replying", runId: run.runId, status: run.status, sent: false };
   }
 
@@ -593,6 +675,7 @@ export async function runAgentOnInbound(
       const { sendCatalogProducts } = await import("@/lib/whatsapp-catalog.server");
       const result = await sendCatalogProducts(supabase, {
         ...sender,
+        ...(timer ? { timer } : {}),
         items: items.map((p) => ({ retailerId: p.retailerId, title: p.title, category: p.category, inCatalog: p.inCatalog })),
       });
       if (result.error) log("catalog_send_failed", { conversation_id: args.conversationId, error: result.error });
@@ -697,6 +780,7 @@ export async function runAgentOnInbound(
     });
   }
   const sent = { ok: anySent, error: anySent ? null : sendError };
+  await saveSpeed();
 
   // The model chose a published form: it goes out after the words, once.
   if (sent.ok && flags.has("wa_forms")) {
