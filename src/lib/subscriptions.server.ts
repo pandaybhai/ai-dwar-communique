@@ -329,7 +329,9 @@ export async function alignSubscriptionToPlan(
 
   const subscriptionId = String(row["provider_subscription_id"]);
   const fail = async (note: string) => {
-    const cancelled = await cancelSubscription(keys, subscriptionId, true);
+    const cancelled = cfKeys
+      ? await cashfree.cancelSubscription(cfKeys, subscriptionId)
+      : await razorpay.cancelSubscription(rzpKeys!, subscriptionId, true);
     if (cancelled.ok) {
       await supabase
         .from("subscriptions")
