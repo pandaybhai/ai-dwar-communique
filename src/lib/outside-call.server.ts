@@ -24,6 +24,7 @@ export const OUTSIDE_CALL_TIMEOUT_MS = {
   meta: 20_000,
   meta_media: 60_000,
   razorpay: 15_000,
+  cashfree: 15_000,
   google: 15_000,
   shopify: 20_000,
   /** One Resend send, or fetching the file it attaches. */

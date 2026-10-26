@@ -12,7 +12,7 @@ import { createHmac, timingSafeEqual } from "crypto";
  * Nothing here is ever returned to the browser or logged.
  */
 
-export type Provider = "google" | "razorpay";
+export type Provider = "google" | "razorpay" | "cashfree";
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email";
 
 export function googleOAuthConfigured(): boolean {
