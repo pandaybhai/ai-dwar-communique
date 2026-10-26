@@ -134,37 +134,84 @@ export async function setupAutoPay(
   const planName = (version["plans"] as unknown as Record<string, unknown>)?.["name"] as string;
   const gross = withGst(Number(base)).total;
 
-  const plan = await createPlan(keys, {
-    period: input.cycle === "annual" ? "yearly" : "monthly",
-    amount: gross,
-    name: `AiDwar ${planName} (${input.cycle})`,
-    description: `AiDwar ${planName} plan fee, inclusive of 18% GST`,
-  });
-  if (!plan.ok) return { error: plan.error ?? "We couldn't set up auto-pay." };
-
   // A trial workspace keeps its remaining trial days: the first charge is on
   // the day the trial ends.
   const startAt = firstChargeAt((org ?? {}) as { plan_status?: string | null; trial_ends_at?: string | null });
-  const subscription = await createSubscription(keys, {
-    planId: String(plan.body["id"]),
-    cycle: input.cycle,
-    organizationId: input.organizationId,
-    ...(startAt ? { startAt } : {}),
-  });
-  if (!subscription.ok) return { error: subscription.error ?? "We couldn't set up auto-pay." };
 
-  const shortUrl = String(subscription.body["short_url"] ?? "");
+  let providerPlanId: string;
+  let providerSubId: string;
+  let shortUrl: string;
+  let rawBody: Record<string, unknown>;
+
+  if (cfKeys) {
+    const plan = await cashfree.createPlan(cfKeys, {
+      period: input.cycle === "annual" ? "yearly" : "monthly",
+      amount: gross,
+      name: `AiDwar ${planName} (${input.cycle})`,
+      description: `AiDwar ${planName} plan fee, inclusive of 18% GST`,
+    });
+    if (!plan.ok) return { error: plan.error ?? "We couldn't set up auto-pay." };
+    providerPlanId = String(plan.body["plan_id"] ?? plan.body["id"] ?? "");
+
+    const { data: billAccount } = ((org?.["billing_account_id"]
+      ? await supabase
+          .from("billing_accounts")
+          .select("name, billing_email, billing_whatsapp")
+          .eq("id", org["billing_account_id"] as string)
+          .maybeSingle()
+      : { data: null }) as { data: Record<string, unknown> | null });
+
+    const subscription = await cashfree.createSubscription(cfKeys, {
+      planId: providerPlanId,
+      cycle: input.cycle,
+      organizationId: input.organizationId,
+      customer: {
+        name: (billAccount?.["name"] as string | null) ?? ((org?.["name"] as string | null) ?? null),
+        email: (billAccount?.["billing_email"] as string | null) ?? null,
+        contact: (billAccount?.["billing_whatsapp"] as string | null) ?? null,
+      },
+      returnUrl: `${APP_PUBLIC_URL}/app/billing`,
+      firstChargeAt: startAt,
+    });
+    if (!subscription.ok) return { error: subscription.error ?? "We couldn't set up auto-pay." };
+    providerSubId = String(
+      subscription.body["subscription_id"] ?? subscription.body["cf_subscription_id"] ?? "",
+    );
+    shortUrl = String(subscription.body["sub_auth_link"] ?? subscription.body["auth_link"] ?? "");
+    rawBody = subscription.body;
+  } else {
+    const plan = await razorpay.createPlan(rzpKeys!, {
+      period: input.cycle === "annual" ? "yearly" : "monthly",
+      amount: gross,
+      name: `AiDwar ${planName} (${input.cycle})`,
+      description: `AiDwar ${planName} plan fee, inclusive of 18% GST`,
+    });
+    if (!plan.ok) return { error: plan.error ?? "We couldn't set up auto-pay." };
+    providerPlanId = String(plan.body["id"]);
+
+    const subscription = await razorpay.createSubscription(rzpKeys!, {
+      planId: providerPlanId,
+      cycle: input.cycle,
+      organizationId: input.organizationId,
+      ...(startAt ? { startAt } : {}),
+    });
+    if (!subscription.ok) return { error: subscription.error ?? "We couldn't set up auto-pay." };
+    providerSubId = String(subscription.body["id"]);
+    shortUrl = String(subscription.body["short_url"] ?? "");
+    rawBody = subscription.body;
+  }
+
   await supabase.from("subscriptions").insert({
     organization_id: input.organizationId,
     billing_account_id: (org?.["billing_account_id"] as string | null) ?? null,
     plan_version_id: planVersionId,
     billing_cycle: input.cycle,
-    provider: "razorpay",
-    provider_subscription_id: String(subscription.body["id"]),
-    provider_plan_id: String(plan.body["id"]),
+    provider: cfKeys ? "cashfree" : "razorpay",
+    provider_subscription_id: providerSubId,
+    provider_plan_id: providerPlanId,
     status: "created",
     mandate_max_amount: round2(gross),
-    raw: { ...subscription.body, short_url: shortUrl, ...(startAt ? { start_at: startAt } : {}) },
+    raw: { ...rawBody, short_url: shortUrl, ...(startAt ? { start_at: startAt } : {}) },
   });
 
   await supabase.from("activity_log").insert({
