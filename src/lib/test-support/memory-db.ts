@@ -32,13 +32,31 @@ function cmp(a: unknown, b: unknown): number {
   return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
 }
 
-/** "a.is.null,b.eq.x" — the PostgREST or() forms the app uses. */
+/** Splits "a,and(b,c.in.(1,2)),d" at its top-level commas only. */
+function splitTopLevel(expr: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < expr.length; i++) {
+    const ch = expr[i];
+    if (ch === "(") depth += 1;
+    else if (ch === ")") depth -= 1;
+    else if (ch === "," && depth === 0) {
+      parts.push(expr.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(expr.slice(start));
+  return parts;
+}
+
+/** "a.is.null,b.eq.x,and(c.eq.y,d.in.(1,2))" — the PostgREST or() forms the app uses. */
 function orFilter(expr: string): Filter {
-  const parts = expr.split(/,(?![^(]*\))/);
+  const parts = splitTopLevel(expr);
   const tests = parts.map((part): Filter => {
     const and = part.match(/^and\((.*)\)$/);
     if (and) {
-      const inner = and[1]!.split(",").map((p) => orFilter(p));
+      const inner = splitTopLevel(and[1]!).map((p) => orFilter(p));
       return (row) => inner.every((t) => t(row));
     }
     const [col, op, ...rest] = part.split(".");
@@ -47,6 +65,7 @@ function orFilter(expr: string): Filter {
       const v = field(row, col!);
       if (op === "is") return value === "null" ? v == null : String(v) === value;
       if (op === "eq") return String(v) === value;
+      if (op === "in") return v != null && value.replace(/^\(|\)$/g, "").split(",").includes(String(v));
       if (op === "gt") return Number(v) > Number(value);
       if (op === "lte") return v != null && cmp(v, value) <= 0;
       if (op === "ilike") return v != null && likeToRe(value.toLowerCase()).test(String(v).toLowerCase());

@@ -46,6 +46,7 @@ import {
   parseSitemap,
   readExcludeRules,
   sameSite,
+  pageInScope,
   type CoverageKey,
   type ExcludeRule,
   type SitemapEntry,
@@ -418,6 +419,15 @@ async function factsPass(
   for (const doc of docs) {
     if ((doc.metadata as Record<string, unknown> | undefined)?.["kind"] === "product") continue;
     if (doc.content.length <= 1500) continue;
+    const metaHash = (doc.metadata as Record<string, unknown> | undefined)?.["page_hash"];
+    const pageHash = typeof metaHash === "string" && metaHash ? metaHash : await hashText(doc.content);
+    // This text was already turned into facts in this workspace (any source,
+    // any address, even one deleted since): its stored answer, never a new run.
+    const prior = await priorFactsRun(supabase, organizationId, pageHash);
+    if (prior !== null) {
+      applyFacts(doc, prior);
+      continue;
+    }
     // Over today's reading AI cap: the page is kept as it was read.
     if (await readingAiCapReached(supabase, organizationId)) break;
     try {
@@ -429,16 +439,11 @@ async function factsPass(
         system:
           "Rewrite this page as 5–15 plain factual sentences about the business, keeping every number, " +
           "price, date, place and product name exactly as written. Skip navigation and legal boilerplate.",
-        metadata: { purpose: "knowledge_facts" },
+        // page_hash on the run is what priorFactsRun finds next time.
+        metadata: { purpose: "knowledge_facts", page_hash: pageHash },
         billingExempt: true,
       });
-      const output = (run.output ?? "").trim();
-      if (output.length > 80) {
-        // The summary leads, but the page text is always kept too: a summary
-        // that drops a price must never be the only thing Aiden can find.
-        doc.metadata = { ...(doc.metadata ?? {}), raw_excerpt: doc.content.slice(0, 2000), summarised: true };
-        doc.content = `${output}\n\n${doc.content}`;
-      }
+      applyFacts(doc, run.output ?? "");
       cost += run.costAmount ?? 0;
       const { meterAiUsage } = await import("@/lib/ai-run.server");
       await meterAiUsage(supabase, organizationId, "knowledge_facts", {
@@ -451,6 +456,44 @@ async function factsPass(
     }
   }
   return cost;
+}
+
+/**
+ * Facts lead the page; the page text is always kept too: a summary that
+ * drops a price must never be the only thing Aiden can find. An answer too
+ * short to be facts leaves the page as it was read.
+ */
+function applyFacts(doc: KnowledgeDocument, facts: string): void {
+  const output = facts.trim();
+  if (output.length <= 80) return;
+  doc.metadata = { ...(doc.metadata ?? {}), raw_excerpt: doc.content.slice(0, 2000), summarised: true };
+  doc.content = `${output}\n\n${doc.content}`;
+}
+
+/**
+ * The answer of this workspace's last successful extract_facts run for this
+ * page text (ai_runs.metadata.page_hash), or null when there is none. Any
+ * successful run counts — also one whose answer was too short to use — so a
+ * text is sent to the model at most once. A failed lookup is "none" (the
+ * daily caps still bound what runs).
+ */
+async function priorFactsRun(supabase: SupabaseClient, organizationId: string, pageHash: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("ai_runs")
+      .select("output")
+      .eq("organization_id", organizationId)
+      .eq("task", "extract_facts")
+      .eq("status", "ok")
+      .eq("metadata->>page_hash", pageHash)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return String((data as { output?: string | null }).output ?? "");
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -831,7 +874,10 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   // "Read changes now" / scheduled refresh: re-read only pages already read.
   const refreshing = config["refresh"] === true;
   // App stores, social profiles, marketplaces, maps: that one page only.
-  const singlePage = config["single_page"] === true;
+  // Batch 28: also by the address itself — a source added before the flag,
+  // or re-queued with its old config, read every app a Play Store page links
+  // to (Meezoy: TikTok, Cupla, Upwards).
+  const singlePage = config["single_page"] === true || listingLabel(String(config["url"] ?? "")) !== null;
   /** Read in runs (full read, refresh, backfill); the day-one read is one pass. */
   const staged = (mode === "full" || refreshing) && !singlePage;
   // How the merchant asked for the site to be found (Add website):
@@ -863,7 +909,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       start = new URL(landed);
       config = { ...config, url: start.toString(), previous_origins: Array.from(new Set([...previous, from])) };
       await supabase.from("knowledge_sources").update({ name: start.hostname, config }).eq("id", sourceId);
-      void logServerActivity(supabase, organizationId, null, "reading_host_changed", {
+      await logServerActivity(supabase, organizationId, null, "reading_host_changed", {
         source_id: sourceId,
         from,
         to: start.origin,
@@ -880,6 +926,10 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const sitemapUrl = discovery === "sitemap" && /\.xml(?:$|\?)/i.test(start.pathname + start.search) ? start.toString() : null;
   if (sitemapUrl) start = new URL(`${origin}/`);
   const homeUrl = normalizeUrl(start.toString(), start.toString(), origin, keepQuery) ?? start.toString();
+  // Batch 28: what this read may reach (pageInScope, site-urls.ts). A day-one
+  // read of a deep link stays on that page / under that path; same host is
+  // not enough on a marketplace.
+  const scope = { home: homeUrl, onePage: singlePage, shallow: mode === "day0" && !refreshing && !sitemapUrl };
 
   const alreadySeen = resuming ? Number(config["pages_done"] ?? 0) : 0;
   const day0Limit = Math.max(Number(reading.day0_page_limit) || 15, 1);
@@ -900,26 +950,28 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       : Math.max(Math.min(pageCeiling - alreadySeen, RUN_PAGE_CAP), 0);
   if (runLimit > 0) runCap = Math.min(runCap, runLimit);
   if (singlePage) runCap = 0;
+  /** Cap notices raised while reading (sync callbacks): awaited before the run ends. */
+  const capLogs: Array<Promise<unknown>> = [];
   // Firecrawl credits are reserved per call against the monthly caps; once a
   // cap is hit the rest of this read uses our own reader, logged once.
   const budget: FirecrawlBudget = {
     supabase,
     organizationId,
     onCapped: () => {
-      void logServerActivity(supabase, organizationId, null, "firecrawl_cap_reached", {
+      capLogs.push(logServerActivity(supabase, organizationId, null, "firecrawl_cap_reached", {
         source_id: sourceId,
         mode,
-      }).catch(() => undefined);
+      }).catch(() => undefined));
     },
   };
   const tavilyBudget: TavilyBudget = {
     supabase,
     organizationId,
     onCapped: () => {
-      void logServerActivity(supabase, organizationId, null, "tavily_cap_reached", {
+      capLogs.push(logServerActivity(supabase, organizationId, null, "tavily_cap_reached", {
         source_id: sourceId,
         mode,
-      }).catch(() => undefined);
+      }).catch(() => undefined));
     },
   };
   // Runs read with our own fetch first; the paid readers (in the Reading
@@ -1106,6 +1158,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
   const consider = (raw: string, base: string, queue: boolean) => {
     const url = normalizeUrl(raw, base, origin, keepQuery);
     if (!url) return;
+    if (!pageInScope(url, scope)) return;
     if (!referrers.has(url)) referrers.set(url, base);
     if (done.has(url) || candidates.has(url) || found.has(url)) return;
     if (excluded(url)) return;
@@ -1403,7 +1456,7 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
       });
       if (!decision.swap) {
         swapBlocked = { at: new Date().toISOString(), reasons: decision.reasons, previous_products: prev.products, new_products: thisRead.products };
-        void logServerActivity(supabase, organizationId, null, "reading_swap_blocked", { source_id: sourceId, ...swapBlocked }).catch(() => undefined);
+        await logServerActivity(supabase, organizationId, null, "reading_swap_blocked", { source_id: sourceId, ...swapBlocked }).catch(() => undefined);
       }
     }
   }
@@ -1509,7 +1562,10 @@ const crawlWebsite: Connector = async ({ supabase, organizationId, sourceId, con
     JSON.stringify({ source: sourceId, seen, saved: savedPages, products: productDrafts.length, more, ms: Date.now() - runStarted }),
   );
   // The read log (admin → Aiden → Workspaces): one row per run.
-  void logServerActivity(supabase, organizationId, null, "reading_run", {
+  // Batch 28: every log write of this run is awaited before it ends (a
+  // floating write died with the worker request).
+  await Promise.all(capLogs);
+  await logServerActivity(supabase, organizationId, null, "reading_run", {
     source_id: sourceId,
     mode: refreshing ? (changedOnly ? "refresh_changed" : "refresh") : mode,
     discovery,
@@ -2178,7 +2234,7 @@ export async function addWebsiteSource(
     const total = Math.max(Number(reading.trial_links_total) || 0, 0);
     const today = priorRows.filter((r) => Date.parse(r.created_at) > dayAgo).length;
     if ((perDay > 0 && today >= perDay) || (total > 0 && priorRows.length >= total)) {
-      void logServerActivity(supabase, organizationId, createdBy, "reading_link_limit_reached", {
+      await logServerActivity(supabase, organizationId, createdBy, "reading_link_limit_reached", {
         today, total: priorRows.length,
       }).catch(() => undefined);
       return { ok: false, sourceId: null, itemCount: 0, limited: true, listing, error: TRIAL_LINK_LIMIT_REPLY };

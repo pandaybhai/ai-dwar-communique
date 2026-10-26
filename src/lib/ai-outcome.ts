@@ -43,6 +43,34 @@ export function handoverReasonText(signal: string | null | undefined): string | 
   return HANDOVER_REASONS[signal] ?? "I stepped back on this one.";
 }
 
+/**
+ * Batch 28: the last staff alert for a chat that waits on a person, as the
+ * hand-off alert recorded it (conversations.handoff_alert_result).
+ */
+export type HandoffAlertResult = {
+  at: string;
+  reminder: boolean;
+  whatsapp: string[];
+  email: string | null;
+  skipped: string | null;
+};
+
+/**
+ * The Inbox banner's sentence for that alert: who was told, or that nobody
+ * could be reached. Staff-facing; null when no alert has been recorded.
+ */
+export function describeAlertResult(result: Partial<HandoffAlertResult> | null | undefined): string | null {
+  if (!result || !result.at) return null;
+  const told: string[] = [];
+  const phones = (result.whatsapp ?? []).filter(Boolean);
+  if (phones.length) told.push(`${phones.join(" and ")} on WhatsApp`);
+  if (result.email) told.push(`${result.email} by email`);
+  if (told.length) return `Your team was told: ${told.join(" and ")}.`;
+  if (result.skipped === "no_staff_contact")
+    return "Nobody on your team was told: no staff WhatsApp number or email is saved under AI employee → Who hears when a chat needs a person.";
+  return "Nobody on your team could be reached — check the WhatsApp numbers and email under AI employee → Who hears when a chat needs a person.";
+}
+
 export function outcomeOf(status: string | null | undefined, signal?: string | null): Outcome {
   switch (status) {
     case "escalated":

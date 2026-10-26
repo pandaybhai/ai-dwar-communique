@@ -72,9 +72,12 @@ describe("item 1 — Assign: Hand to Aiden", () => {
     const t = await engineTranscript(engine, aidenGraph({ user_id: "" }), [], "org-b21-queue");
     expect(t.run.status).toBe("done");
     expect(JSON.stringify(t.turns)).toContain("Never sent");
-    expect(t.writes.filter((w) => w.startsWith("conversation:") && !w.includes("last_message_at"))).toEqual([
-      'conversation:{"needs_human":true,"needs_human_reason":"flow_assign","needs_human_at":"<time>"}',
-    ]);
+    // Batch 28: then the staff alert's own record (it used to be fired and forgotten).
+    const writes = t.writes.filter((w) => w.startsWith("conversation:") && !w.includes("last_message_at"));
+    expect(writes[0]).toBe('conversation:{"needs_human":true,"needs_human_reason":"flow_assign","needs_human_at":"<time>"}');
+    expect(writes).toHaveLength(3);
+    expect(writes[1]!.startsWith('conversation:{"handoff_alert_at":')).toBe(true);
+    expect(writes[2]!.startsWith('conversation:{"handoff_alert_result":')).toBe(true);
   });
 
   describe("handToAiden: clears a flow's hand-off, never a person's", () => {

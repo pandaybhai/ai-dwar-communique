@@ -194,8 +194,12 @@ export async function settleCampaignSpend(
   if (charged.error !== null) return { ok: false, error: charged.error };
 
   // Messages already priced were taken out of the hold as they were charged
-  // (from_hold); only the part never used goes back.
-  const release = round2(Math.max(0, held - charged.amount));
+  // (from_hold); only the part never used goes back. Batch 28: what the
+  // reservation itself still has (wallet_campaign_holds) is the truth when
+  // it can be read — a message priced after the campaign ended took its part
+  // already — else held minus the ledger's charge, as before.
+  const remaining = await holdRemaining(supabase, organizationId, campaignId);
+  const release = round2(Math.max(0, remaining ?? held - charged.amount));
 
   const { data: released, error: releasedError } = await supabase
     .from("wallet_ledger")
@@ -269,7 +273,7 @@ export async function syncCampaignCharged(
  * in the database (campaign_ledger_charge, 20261016_send_at_scale.sql: one
  * row back, indexed).
  */
-async function campaignLedgerCharge(
+export async function campaignLedgerCharge(
   supabase: SupabaseClient,
   organizationId: string,
   campaignId: string,
@@ -279,9 +283,104 @@ async function campaignLedgerCharge(
     p_org: organizationId,
     p_campaign_id: campaignId,
   });
+  // Batch 28 (item 8): 20261016 said the code works without it; it didn't —
+  // a missing function failed every settle. Now it really falls back to
+  // summing the same debit rows here (paged), as before the function.
+  if (error && isMissingFunction(error)) return ledgerChargeByRows(supabase, organizationId, campaignId);
   if (error) return { amount: 0, error: error.message };
   // The function always returns a number.
   const sum = typeof data === "number" || typeof data === "string" ? Number(data) : NaN;
   if (!Number.isFinite(sum)) return { amount: 0, error: "campaign_ledger_charge returned no number" };
   return { amount: round2(Math.abs(sum)), error: null };
+}
+
+/** PostgREST's "no such function" (PGRST202) or Postgres's (42883): a migration not applied yet. */
+export function isMissingFunction(error: { code?: string | null } | null | undefined): boolean {
+  return error?.code === "PGRST202" || error?.code === "42883";
+}
+
+/** campaign_ledger_charge without the function: the same sum over the debit rows, 1,000 at a time. */
+async function ledgerChargeByRows(
+  supabase: SupabaseClient,
+  organizationId: string,
+  campaignId: string,
+): Promise<{ amount: number; error: string | null }> {
+  const { round2 } = await import("@/lib/billing");
+  let sum = 0;
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from("wallet_ledger")
+      .select("amount")
+      .eq("organization_id", organizationId)
+      .eq("entry_type", "debit_message")
+      .eq("metadata->>campaign_id", campaignId)
+      .order("id")
+      .range(from, from + 999);
+    if (error) return { amount: 0, error: error.message };
+    const rows = (data ?? []) as Array<{ amount: number | string | null }>;
+    for (const r of rows) sum += Math.abs(Number(r.amount ?? 0));
+    if (rows.length < 1000) break;
+  }
+  return { amount: round2(sum), error: null };
+}
+
+/**
+ * What this campaign's own reservation still holds in the wallet
+ * (wallet_campaign_holds, 20261065 — written only by wallet_apply). Null
+ * when it can't be read (no row yet, or the table isn't there).
+ */
+async function holdRemaining(supabase: SupabaseClient, organizationId: string, campaignId: string): Promise<number | null> {
+  const { data, error } = await supabase
+    .from("wallet_campaign_holds")
+    .select("remaining")
+    .eq("campaign_id", campaignId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const n = Number((data as { remaining?: number | string | null }).remaining);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Meta prices messages for a while after a campaign completes, and the
+ * webhook only re-reads the campaign's total every few seconds: campaigns
+ * that ended inside the window get their charged_amount brought up to the
+ * ledger (syncCampaignCharged: re-read, raise-only, so never twice).
+ */
+export async function syncRecentCharged(
+  supabase: SupabaseClient,
+  opts: { now?: number; windowMs?: number; limit?: number } = {},
+): Promise<number> {
+  const since = new Date((opts.now ?? Date.now()) - (opts.windowMs ?? 6 * 3_600_000)).toISOString();
+  const { data } = await supabase
+    .from("campaigns")
+    .select("id, organization_id")
+    .in("status", ["completed", "cancelled"])
+    .gte("completed_at", since)
+    .limit(opts.limit ?? 50);
+  let synced = 0;
+  for (const row of (data ?? []) as Array<{ id: string; organization_id: string }>) {
+    const r = await syncCampaignCharged(supabase, row.organization_id, row.id).catch(() => null);
+    if (r?.ok) synced += 1;
+  }
+  return synced;
+}
+
+/**
+ * Batch 28 (item 12): the billing sweep's pass over ended campaigns. The
+ * campaign worker only did this while some campaign was live (it returns
+ * before its bookkeeping when nothing is sending), so a campaign that ended
+ * alone — 1803da67, priced 10 minutes after it completed — kept its hold for
+ * good. Ended campaigns still holding are settled (the ledger and the
+ * reservation's own remainder are the truth: what remains is released,
+ * nothing is charged here), and recently ended ones get charged_amount
+ * raised to their ledger sum.
+ */
+export async function reconcileEndedCampaigns(
+  supabase: SupabaseClient,
+  now: number = Date.now(),
+): Promise<{ settled: number; failed: number; synced: number }> {
+  const holds = await settleEndedHolds(supabase);
+  const synced = await syncRecentCharged(supabase, { now, windowMs: 7 * 24 * 3_600_000 });
+  return { ...holds, synced };
 }

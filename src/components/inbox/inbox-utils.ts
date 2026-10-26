@@ -166,3 +166,35 @@ export function withinWindow(lastCustomerMessageAt: string | null): boolean {
   if (!lastCustomerMessageAt) return false;
   return Date.now() - new Date(lastCustomerMessageAt).getTime() <= DAY_MS;
 }
+
+/** How many messages a thread opens with: the newest ones. */
+export const THREAD_MESSAGE_LIMIT = 500;
+export const THREAD_MESSAGE_COLUMNS =
+  "id, conversation_id, direction, type, body, media_url, media_mime, template_name, status, error_detail, sent_by, detected_language, metadata, created_at";
+
+type ThreadQuery = {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: string): {
+        order(column: string, options: { ascending: boolean }): {
+          limit(n: number): PromiseLike<{ data: unknown[] | null }>;
+        };
+      };
+    };
+  };
+};
+
+/**
+ * Batch 28: a thread's newest messages, oldest first for display. It read
+ * the OLDEST 500 (ascending + limit), so a long chat opened on an old
+ * message and never showed the latest.
+ */
+export async function latestThreadMessages(client: ThreadQuery, conversationId: string): Promise<MessageRow[]> {
+  const { data } = await client
+    .from("messages")
+    .select(THREAD_MESSAGE_COLUMNS)
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(THREAD_MESSAGE_LIMIT);
+  return ((data ?? []) as MessageRow[]).slice().reverse();
+}

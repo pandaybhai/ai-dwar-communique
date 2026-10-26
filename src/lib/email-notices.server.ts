@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { money } from "@/lib/billing";
 import { isEmailAddress, sendEmail, type EmailMessage, type EmailResult } from "@/lib/email.server";
+import {
+  invoiceNoticeSentElsewhere,
+  noticeRetryDue,
+  pendingNoticeFilter,
+  writeNoticeOutcome,
+} from "@/lib/billing-notify.server";
 
 /**
  * Delivery for billing notices queued with channel 'email' (today: the
@@ -9,7 +15,9 @@ import { isEmailAddress, sendEmail, type EmailMessage, type EmailResult } from "
  * The WhatsApp drain (drainBillingNotifications) never reads these rows;
  * this one sends them. Same rules: claim before sending (two drains never
  * send one notice twice), every outcome is written on the row, a failed
- * notice is retried a few times, and the loop never throws.
+ * notice is retried alone with the same backoff and cap (noticeRetryDue), an
+ * invoice already emailed by another row is never emailed again, and the
+ * loop never throws.
  *
  * Without RESEND_API_KEY it does nothing, exactly as before email existed:
  * the rows stay queued. A notice older than 48 hours is never sent (it is
@@ -18,7 +26,6 @@ import { isEmailAddress, sendEmail, type EmailMessage, type EmailResult } from "
  */
 
 export const EMAIL_NOTICE_MAX_AGE_MS = 48 * 3600_000;
-const MAX_ATTEMPTS = 3;
 /** A drain's claim on a notice; older than this, the drain died. */
 const NOTICE_CLAIM_MS = 10 * 60_000;
 /** The invoice link in the email outlives the 10-minute in-app link. */
@@ -45,15 +52,30 @@ export async function drainEmailNotices(
         "id, organization_id, audience, kind, channel, recipient, payload, status, sent_at, created_at",
       )
       .eq("channel", "email")
-      .in("status", ["queued", "failed"])
+      .or(pendingNoticeFilter())
       .order("created_at", { ascending: true })
       .limit(Math.min(Math.max(limit, 1), 50));
 
     for (const row of (rows ?? []) as Record<string, unknown>[]) {
       try {
         const payload = (row["payload"] ?? {}) as Record<string, unknown>;
-        if (row["status"] === "failed" && Number(payload["attempts"] ?? 0) >= MAX_ATTEMPTS)
+        // Out of tries, failed by hand, or still waiting out its backoff.
+        if (!noticeRetryDue(row, now())) continue;
+
+        // This invoice was already emailed by another row: close this one
+        // (Batch 28 — AD/2026-27/00013 was emailed six times). Can't tell →
+        // left as it is for the next drain.
+        const elsewhere = await invoiceNoticeSentElsewhere(supabase, row);
+        if (elsewhere !== "not_sent") {
+          if (elsewhere === "sent")
+            await writeNoticeOutcome(supabase, row["id"] as string, {
+              status: "skipped",
+              error: "already_sent",
+              sent_at: new Date(now()).toISOString(),
+            });
+          counts.skipped += 1;
           continue;
+        }
 
         // Claim it first (compare-and-set on sent_at, which every outcome writes).
         const claimedAt = (row["sent_at"] as string | null) ?? null;
@@ -91,10 +113,7 @@ export async function drainEmailNotices(
               attempts: Number(payload["attempts"] ?? 0) + 1,
             };
           else if (Object.keys(extra).length) patch["payload"] = { ...payload, ...extra };
-          await supabase
-            .from("billing_notifications")
-            .update(patch)
-            .eq("id", row["id"] as string);
+          await writeNoticeOutcome(supabase, row["id"] as string, patch);
         };
 
         const createdAt = Date.parse(String(row["created_at"] ?? ""));

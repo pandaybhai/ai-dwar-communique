@@ -11,7 +11,12 @@ vi.mock("@/lib/campaigns.server", () => ({
   loadSenderContext: async () => null,
   sendCampaignTemplate: async () => ({ messageId: null, error: "not_used" }),
 }));
-vi.mock("@/lib/billing-notify.server", () => ({ resolvePlatformOrg: async () => "platform-org" }));
+// Batch 28: the email drain shares the notice rules (retry/backoff, already
+// sent) with billing-notify, so only the platform org is stubbed.
+vi.mock("@/lib/billing-notify.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./billing-notify.server")>()),
+  resolvePlatformOrg: async () => "platform-org",
+}));
 
 import { OUTSIDE_CALL_TIMEOUT_MS } from "./outside-call.server";
 import {

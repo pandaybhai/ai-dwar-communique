@@ -116,7 +116,7 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
     ).toHaveLength(1);
   });
 
-  it("a recipient step that failed after the message moved is redone on retry (and priced), counted once", async () => {
+  it("a recipient step that failed after the message moved is redone on retry (priced at once, Batch 28), counted once", async () => {
     const { db, campaigns, messageOf } = await sentCampaign();
     const c = campaigns[0]!;
     const r = c.recipients[1]!;
@@ -136,7 +136,8 @@ describe("(1) a delivered message is always billed, also after a failed try", ()
     expect(event["processed_at"]).toBeNull();
     expect(m["status"]).toBe("delivered");
     expect(r["status"]).toBe("sent");
-    expect(m["cost_amount"]).toBeUndefined();
+    // Batch 28 (item 8): the price never waits on the counter — priced now.
+    expect(m["cost_amount"]).toBe(0.86);
 
     failRecipient = false;
     await deliver(db, c.pn, [st], event["id"] as string);

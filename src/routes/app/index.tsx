@@ -18,6 +18,7 @@ import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/e
 import { Button } from "@/components/ui/button";
 import { useOrg } from "@/lib/org-context";
 import { callApi } from "@/lib/whatsapp-client";
+import { money } from "@/lib/billing";
 import type { HomeSummary } from "@/lib/home.server";
 
 const DESCRIPTION = "Today at a glance: conversations, what Aiden answered, who is waiting on you.";
@@ -132,13 +133,8 @@ function Stat({
 }
 
 function HomeBody({ data }: { data: HomeSummary }) {
-  const credits = data.credits
-    ? new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency: data.credits.currency || "INR",
-        maximumFractionDigits: 0,
-      }).format(data.credits.balance)
-    : "—";
+  // Batch 28: two decimals, the same as Billing (₹98.76, not ₹99).
+  const credits = data.credits ? money(data.credits.balance, data.credits.currency || "INR") : "—";
   const planValue =
     data.plan.trial_days_left !== null
       ? `${data.plan.trial_days_left} day${data.plan.trial_days_left === 1 ? "" : "s"}`

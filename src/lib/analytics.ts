@@ -283,6 +283,9 @@ export function localDate(timezone: string, offsetDays = 0): string {
   return parts;
 }
 
+// Midnight that starts today in the workspace's timezone (shared with Home).
+export { localDayStartIso } from "@/lib/local-day";
+
 export function periodForDays(timezone: string, days: number, label: string): Period {
   return {
     from: localDate(timezone, -(days - 1)),

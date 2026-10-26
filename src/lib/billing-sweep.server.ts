@@ -30,6 +30,10 @@ export type SweepCounts = {
   debits_retried: number;
   debits_charged: number;
   debits_failing: number;
+  /** Batch 28: ended campaigns settled / charged totals brought up to the ledger. */
+  campaigns_settled: number;
+  campaigns_settle_failed: number;
+  campaigns_synced: number;
 };
 
 /** activity_log action (and admin notice kind) for uncharged message debits. */
@@ -136,6 +140,9 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     debits_retried: 0,
     debits_charged: 0,
     debits_failing: 0,
+    campaigns_settled: 0,
+    campaigns_settle_failed: 0,
+    campaigns_synced: 0,
   };
 
   // ---- messages already sent whose debit failed: charge them now if we can
@@ -143,6 +150,18 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
   counts.debits_retried = debits.retried;
   counts.debits_charged = debits.charged;
   counts.debits_failing = debits.failing;
+
+  // ---- campaigns that ended still holding credits, or whose charged total
+  // is behind the ledger (Batch 28 item 12). Never fails the sweep.
+  try {
+    const { reconcileEndedCampaigns } = await import("@/lib/campaign-billing.server");
+    const ended = await reconcileEndedCampaigns(supabase);
+    counts.campaigns_settled = ended.settled;
+    counts.campaigns_settle_failed = ended.failed;
+    counts.campaigns_synced = ended.synced;
+  } catch (error) {
+    console.warn(JSON.stringify({ at: "campaign_reconcile_failed", error: error instanceof Error ? error.message : String(error) }));
+  }
 
   const { billingEnabled, notify, createCreditPurchase } = await import("@/lib/billing.server");
   const nowIso = new Date().toISOString();

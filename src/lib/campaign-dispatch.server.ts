@@ -1863,25 +1863,13 @@ async function completeIfDone(
 }
 
 /**
- * Meta prices messages for a while after a campaign completes, and the
- * webhook only re-reads the campaign's total every few seconds. Every five
- * minutes, campaigns completed in the last six hours get their
- * charged_amount brought up to the ledger (syncCampaignCharged: re-read,
- * raise-only).
+ * Every five minutes, campaigns completed in the last six hours get their
+ * charged_amount brought up to the ledger (syncRecentCharged, shared with
+ * the billing sweep's reconcileEndedCampaigns).
  */
 async function sweepCharged(supabase: SupabaseClient, now: () => number): Promise<void> {
   const minute = Math.floor(now() / 60_000);
   if (minute % 5 !== 0) return;
-  const since = new Date(now() - 6 * 3_600_000).toISOString();
-  const { data } = await supabase
-    .from("campaigns")
-    .select("id, organization_id")
-    .in("status", ["completed", "cancelled"])
-    .gte("completed_at", since)
-    .limit(50);
-  if (!data?.length) return;
-  const { syncCampaignCharged } = await import("@/lib/campaign-billing.server");
-  for (const row of data as Array<{ id: string; organization_id: string }>) {
-    await syncCampaignCharged(supabase, row.organization_id, row.id).catch(() => null);
-  }
+  const { syncRecentCharged } = await import("@/lib/campaign-billing.server");
+  await syncRecentCharged(supabase, { now: now() });
 }

@@ -20,6 +20,7 @@ import {
   MESSAGE_CLASS_LABELS,
   enableBlocker,
   flowPromise,
+  flowStepsLabel,
   flowTitle,
   hour12,
   messageClassOf,
@@ -287,8 +288,7 @@ export function FlowsView({
               </div>
 
               <p className="mt-3 text-sm text-muted-foreground">
-                {flowSteps.filter((s) => s.is_enabled).length} of {flowSteps.length} messages
-                switched on
+                {flowStepsLabel(flow.is_enabled, flowSteps.filter((s) => s.is_enabled).length, flowSteps.length)}
               </p>
 
               <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">

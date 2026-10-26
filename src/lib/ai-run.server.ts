@@ -1021,8 +1021,7 @@ export async function platformCapState(
   const s = settings as { ai_monthly_cap_amount: number; ai_cap_currency: string } | null;
   const cap = Number(s?.ai_monthly_cap_amount ?? 0);
   const currency = s?.ai_cap_currency ?? "INR";
-  const { data: spend } = await supabase.rpc("platform_ai_month_spend");
-  const spent = Number(spend ?? 0);
+  const spent = await platformMonthSpend(supabase);
   if (!capIsValid(cap)) {
     return { over: true, warn: true, cap: 0, spent, currency, misconfigured: true };
   }
@@ -1034,6 +1033,20 @@ export async function platformCapState(
     currency,
     misconfigured: false,
   };
+}
+
+/**
+ * This Asia/Kolkata month's billed AI spend across every workspace: the
+ * `billed` of ai_cost_totals (Batch 28 — the same function /admin/ai and the
+ * /admin/billing AI margin read, so the three agree). Until 20261082 is
+ * applied it is platform_ai_month_spend(), the same sum, as before.
+ */
+export async function platformMonthSpend(supabase: SupabaseClient): Promise<number> {
+  const { aiCostTotals, istMonthStartIso } = await import("@/lib/billing-ai-economics.server");
+  const totals = await aiCostTotals(supabase, { fromIso: istMonthStartIso() });
+  if (totals.ok) return totals.totals.billed;
+  const { data: spend } = await supabase.rpc("platform_ai_month_spend");
+  return Number(spend ?? 0);
 }
 
 /** Whether a provider is called on the platform's own key or via the gateway. */

@@ -27,6 +27,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/phone";
 import { DEFAULT_BUSINESS_HOURS, isBusinessOpen, type BusinessHours } from "@/lib/flow-graph";
+import type { HandoffAlertResult } from "@/lib/ai-outcome";
 
 export const MAX_ALERT_PHONES = 2;
 export const REMIND_AFTER_MS = 30 * 60_000;
@@ -296,17 +297,23 @@ export async function sendHandoffAlert(
         return (await sendServiceText(supabase, { ...channel, body: text })).ok;
       });
     const sendTemplate = deps.sendTemplate ?? platformTemplateSender(supabase);
+    // Batch 28: one number's send that throws never stops the others, the
+    // email fallback or the record below (a throw used to skip them all).
     for (const phone of safe) {
-      const channel = (await channelFor(phone)) as NonNullable<Awaited<ReturnType<typeof platformChannelFor>>> | null;
-      if (channel) {
-        // Inside the 24-hour window: free text, as before.
-        if (await sendWhatsApp(channel, body)) outcome.whatsapp.push(phone);
-        continue;
-      }
-      // Outside it (or never messaged the platform number): the approved template.
-      if (await sendTemplate(phone, staffAlertParams({ business, customer, why, reminder: Boolean(args.reminder) }))) {
-        outcome.whatsapp.push(phone);
-        (outcome.templated ??= []).push(phone);
+      try {
+        const channel = (await channelFor(phone)) as NonNullable<Awaited<ReturnType<typeof platformChannelFor>>> | null;
+        if (channel) {
+          // Inside the 24-hour window: free text, as before.
+          if (await sendWhatsApp(channel, body)) outcome.whatsapp.push(phone);
+          continue;
+        }
+        // Outside it (or never messaged the platform number): the approved template.
+        if (await sendTemplate(phone, staffAlertParams({ business, customer, why, reminder: Boolean(args.reminder) }))) {
+          outcome.whatsapp.push(phone);
+          (outcome.templated ??= []).push(phone);
+        }
+      } catch (error) {
+        console.warn("[handoff-alert] whatsapp failed", error instanceof Error ? error.message : String(error));
       }
     }
     if (outcome.whatsapp.length === 0 && settings.email) {
@@ -316,16 +323,27 @@ export async function sendHandoffAlert(
           const { sendEmail } = await import("@/lib/email.server");
           return sendEmail({ to, subject, body: text });
         });
-      const mailed = await send(settings.email, `${customer} is waiting for you`, body);
-      if (mailed === true || (typeof mailed === "object" && mailed.ok)) outcome.email = settings.email;
-      else outcome.email_error = (typeof mailed === "object" && mailed.error) || "email_failed";
+      try {
+        const mailed = await send(settings.email, `${customer} is waiting for you`, body);
+        if (mailed === true || (typeof mailed === "object" && mailed.ok)) outcome.email = settings.email;
+        else outcome.email_error = (typeof mailed === "object" && mailed.error) || "email_failed";
+      } catch (error) {
+        outcome.email_error = error instanceof Error ? error.message : "email_failed";
+      }
     }
     if (outcome.whatsapp.length === 0 && !outcome.email)
       outcome.skipped = safe.length === 0 && !settings.email ? "no_staff_contact" : "not_delivered";
+  } catch (error) {
+    console.warn("[handoff-alert] failed", error instanceof Error ? error.message : String(error));
+    outcome.skipped = "error";
+  }
 
-    // A fresh alert starts its own reminder clock: handoff_reminded_at is
-    // cleared with it, so a second hand-off on the same chat is reminded too
-    // (it used to stay set from the first one, forever).
+  // Always recorded, whatever happened above (Batch 28: an alert that threw
+  // part-way never wrote handoff_alert_at, so no reminder ever followed).
+  // A fresh alert starts its own reminder clock: handoff_reminded_at is
+  // cleared with it, so a second hand-off on the same chat is reminded too
+  // (it used to stay set from the first one, forever).
+  try {
     await supabase
       .from("conversations")
       .update(
@@ -334,12 +352,23 @@ export async function sendHandoffAlert(
           : { handoff_alert_at: new Date().toISOString(), handoff_reminded_at: null },
       )
       .eq("id", args.conversationId);
-    console.log("[handoff-alert]", JSON.stringify({ conversation_id: args.conversationId, reason: args.reason, reminder: Boolean(args.reminder), ...outcome, whatsapp: outcome.whatsapp.length, templated: outcome.templated?.length ?? 0 }));
+    // Who was told, for the Inbox's "Waiting for you" banner — its own write,
+    // so a database without the column (20261080 not applied) still gets the
+    // timestamps above.
+    await supabase
+      .from("conversations")
+      .update({ handoff_alert_result: alertResult(outcome, Boolean(args.reminder)) })
+      .eq("id", args.conversationId);
   } catch (error) {
-    console.warn("[handoff-alert] failed", error instanceof Error ? error.message : String(error));
-    outcome.skipped = "error";
+    console.warn("[handoff-alert] not recorded", error instanceof Error ? error.message : String(error));
   }
+  console.log("[handoff-alert]", JSON.stringify({ conversation_id: args.conversationId, reason: args.reason, reminder: Boolean(args.reminder), ...outcome, whatsapp: outcome.whatsapp.length, templated: outcome.templated?.length ?? 0 }));
   return outcome;
+}
+
+/** What the Inbox banner reads (conversations.handoff_alert_result; worded by describeAlertResult). */
+export function alertResult(outcome: AlertOutcome, reminder: boolean, at: Date = new Date()): HandoffAlertResult {
+  return { at: at.toISOString(), reminder, whatsapp: outcome.whatsapp, email: outcome.email, skipped: outcome.skipped ?? null };
 }
 
 /**

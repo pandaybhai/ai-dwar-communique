@@ -198,19 +198,23 @@ function EmployeePage() {
               <h2 id="mode-heading" className="text-lg font-semibold text-foreground">
                 What I'm doing right now
               </h2>
-              <Badge variant={mode === "off" ? "secondary" : "default"}>
-                {MODES.find((m) => m.key === mode)?.label ?? "Not working"}
+              <Badge variant={mode === "off" || !aiEnabled ? "secondary" : "default"}>
+                {!aiEnabled ? "Switched off" : (MODES.find((m) => m.key === mode)?.label ?? "Not working")}
               </Badge>
             </div>
 
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               {MODES.map((option) => {
-                const activeMode = option.key === mode;
+                const activeMode = aiEnabled ? option.key === mode : option.key === "off";
+                // Batch 28: switched off for the workspace, Draft / Replying
+                // wait until it is turned on (the banner above).
+                const locked = !aiEnabled && option.key !== "off";
                 return (
                   <button
                     key={option.key}
                     type="button"
-                    disabled={!canConfigure}
+                    disabled={!canConfigure || locked}
+                    title={locked ? "Turn me on for this workspace first." : undefined}
                     aria-pressed={activeMode}
                     onClick={() => setMode(option.key)}
                     className={`rounded-xl border p-4 text-left transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
@@ -226,6 +230,9 @@ function EmployeePage() {
               })}
             </div>
 
+            {!aiEnabled ? (
+              <p className="mt-4 text-sm font-medium text-foreground">Turn me on above to choose Draft only or Replying.</p>
+            ) : null}
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
               Off: I do nothing. Draft only: I write replies, you send them. Replying: I reply to
               customers myself, and pass anything I'm unsure about to you.

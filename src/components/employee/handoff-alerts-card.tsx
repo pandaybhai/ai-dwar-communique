@@ -118,8 +118,8 @@ export function HandoffAlertsCard({
         </div>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        WhatsApp only lets the AiDwar number message someone who has written to it in the last 24 hours — ask
-        your staff to say hi to it. Otherwise the alert goes by email.
+        Alerts go from the AiDwar number as an approved WhatsApp message, any time of day — your staff don't
+        need to have messaged it first. The email is used only if WhatsApp can't reach anyone.
       </p>
       {error ? (
         <p role="alert" className="mt-3 text-sm text-destructive">

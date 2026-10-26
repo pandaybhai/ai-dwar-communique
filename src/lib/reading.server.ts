@@ -92,17 +92,114 @@ export async function loadReadingAiDailyCap(supabase: SupabaseClient): Promise<n
   }
 }
 
-/** Workspaces already logged as over the cap today ("org:date"), so the log says it once. */
+/**
+ * Background AI runs per workspace per day when the setting is missing
+ * (Batch 28: extract_facts ran 818 times for 69 page texts on 1 Oct, mostly
+ * on test workspaces — runs whose cost was unknown never reached the ₹ cap).
+ */
+export const BACKGROUND_AI_DAILY_CAP_DEFAULT = 300;
+/**
+ * The AI tasks counted against the background cap (ai_runs.task): turning
+ * pages into facts, summaries (the behaviour suggested after a read among
+ * them) and labels. The cap stops only work no person is waiting on —
+ * the reader's facts pass and the suggested behaviour; a person's own
+ * Inbox request still runs.
+ */
+export const BACKGROUND_AI_TASKS = ["extract_facts", "summarise", "auto_tag"];
+
+/**
+ * Per-workspace daily cap on background AI runs (platform_settings
+ * .background_ai_daily_cap, a count). A missing row, a missing column (the
+ * Batch 28 SQL not applied: PGRST204 / 42703) or a failed read = the
+ * default; 0 = no cap. Read on its own, like reading_ai_daily_cap.
+ */
+export async function loadBackgroundAiDailyCap(supabase: SupabaseClient): Promise<number> {
+  try {
+    const { data, error } = await supabase.from("platform_settings").select("background_ai_daily_cap").eq("id", true).maybeSingle();
+    const raw = (data as { background_ai_daily_cap?: unknown } | null)?.background_ai_daily_cap;
+    const value = raw === null || raw === undefined ? Number.NaN : Number(raw);
+    return error || !Number.isFinite(value) || value < 0 ? BACKGROUND_AI_DAILY_CAP_DEFAULT : Math.floor(value);
+  } catch {
+    return BACKGROUND_AI_DAILY_CAP_DEFAULT;
+  }
+}
+
+/** Today (UTC, the day ai_usage rolls up by) and the moment it began. */
+function utcToday(): { day: string; since: string } {
+  const day = new Date().toISOString().slice(0, 10);
+  return { day, since: `${day}T00:00:00.000Z` };
+}
+
+/** Workspaces already logged as over a cap today ("action:org:date"), so this process asks the log once. */
 const capLogged = new Set<string>();
 
 /**
+ * Say a cap was hit at most once per workspace per day: an activity_log row
+ * of that action already written today (by any worker, before any restart)
+ * means it was said. A failed check still says it, once per process.
+ */
+async function logCapHitOnce(
+  supabase: SupabaseClient,
+  organizationId: string,
+  action: "reading_ai_cap_hit" | "background_ai_cap_hit",
+  details: Record<string, unknown>,
+): Promise<void> {
+  const { day, since } = utcToday();
+  const key = `${action}:${organizationId}:${day}`;
+  if (capLogged.has(key)) return;
+  capLogged.add(key);
+  try {
+    const { data, error } = await supabase
+      .from("activity_log")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("action", action)
+      .gte("created_at", since)
+      .limit(1);
+    if (!error && Array.isArray(data) && data.length > 0) return;
+  } catch {
+    // Unknown: say it (this process says it only once).
+  }
+  console.warn(JSON.stringify({ scope: action, organization_id: organizationId, ...details, day }));
+  const { logServerActivity } = await import("@/lib/whatsapp-api.server");
+  await logServerActivity(supabase, organizationId, null, action, { ...details, day });
+}
+
+/**
+ * True once the workspace's background AI runs today (ai_runs of
+ * BACKGROUND_AI_TASKS, any status) have reached the cap; said once a day.
+ * A failed count never stops the work (the ₹ reading cap still applies).
+ */
+export async function backgroundAiCapReached(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
+  const cap = await loadBackgroundAiDailyCap(supabase);
+  if (cap <= 0) return false;
+  try {
+    const { count, error } = await supabase
+      .from("ai_runs")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .gte("created_at", utcToday().since)
+      .in("task", BACKGROUND_AI_TASKS);
+    if (error) return false;
+    const runs = Number(count ?? 0);
+    if (runs < cap) return false;
+    await logCapHitOnce(supabase, organizationId, "background_ai_cap_hit", { runs, cap });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * True once the workspace's reading AI spend today (ai_usage, same UTC day
- * meterAiUsage writes) has reached the cap; logged the first time.
+ * meterAiUsage writes) has reached the cap, or its background AI runs have
+ * (backgroundAiCapReached); logged once a day.
  */
 export async function readingAiCapReached(supabase: SupabaseClient, organizationId: string): Promise<boolean> {
+  if (await backgroundAiCapReached(supabase, organizationId)) return true;
   const cap = await loadReadingAiDailyCap(supabase);
   if (cap <= 0) return false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = utcToday().day;
   try {
     const { data } = await supabase
       .from("ai_usage")
@@ -112,11 +209,7 @@ export async function readingAiCapReached(supabase: SupabaseClient, organization
       .in("task", READING_AI_TASKS);
     const spent = ((data ?? []) as Array<{ cost_amount: number | null }>).reduce((sum, r) => sum + Number(r.cost_amount ?? 0), 0);
     if (spent < cap) return false;
-    const key = `${organizationId}:${today}`;
-    if (!capLogged.has(key)) {
-      capLogged.add(key);
-      console.warn(JSON.stringify({ scope: "reading_ai_cap_hit", organization_id: organizationId, spent: Math.round(spent * 100) / 100, cap, day: today }));
-    }
+    await logCapHitOnce(supabase, organizationId, "reading_ai_cap_hit", { spent: Math.round(spent * 100) / 100, cap });
     return true;
   } catch {
     return false;

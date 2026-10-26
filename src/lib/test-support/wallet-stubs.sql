@@ -43,6 +43,12 @@ create table if not exists public.ai_runs (
   sources jsonb,
   created_at timestamptz not null default now()
 );
+-- Batch 28: the columns that say whether a run is a customer answer.
+alter table public.ai_runs
+  add column if not exists task text,
+  add column if not exists conversation_id uuid,
+  add column if not exists metadata jsonb default '{}'::jsonb,
+  add column if not exists tier text;
 -- Stand-in: one row per workspace and IST month.
 create table if not exists public.ai_usage_months (
   organization_id uuid not null,
