@@ -427,6 +427,8 @@ type StatusRow = {
   flow_step_id?: string | null;
   scheduled_send_id?: string | null;
   created_at?: string | null;
+  /** Batch 34: metadata.source "api" marks a message the Public API sent. */
+  metadata?: Record<string, unknown> | null;
   /** Embedded with the status update, so it isn't read a second time. */
   conversations?: { contact_id?: string | null; whatsapp_account_id?: string | null } | null;
 };
@@ -532,7 +534,7 @@ async function messageEventDimensions(
 }
 
 const STATUS_ROW_COLUMNS =
-  "id, status, type, template_name, conversation_id, campaign_id, flow_id, flow_step_id, scheduled_send_id, created_at";
+  "id, status, type, template_name, conversation_id, campaign_id, flow_id, flow_step_id, scheduled_send_id, created_at, metadata";
 let statusEmbedBrokenUntil = 0;
 
 /**
@@ -616,10 +618,11 @@ async function retakeStatusSteps(
   metaId: string,
   nextStatus: string,
   recipientId: string | null,
+  at: string,
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from("messages")
-    .select("id, status, cost_amount, campaign_id, flow_id, created_at")
+    .select("id, status, cost_amount, campaign_id, flow_id, created_at, metadata")
     .eq("meta_message_id", metaId)
     .eq("organization_id", organizationId)
     .maybeSingle();
@@ -627,6 +630,10 @@ async function retakeStatusSteps(
   const row = data as (StatusRow & { cost_amount?: number | null }) | null;
   if (!row) return false;
   if ((STATUS_RANK[String(row.status)] ?? -1) < STATUS_RANK[nextStatus]!) return true;
+  // Batch 34: an API message's event again (queued once per message and event),
+  // so a first try that failed to queue it — or a status that arrived out of
+  // order — still reaches the merchant's webhook.
+  const hookError = await queueApiStatusOf(supabase, organizationId, row, nextStatus, at, null);
   const campaignMessage =
     Boolean(row.campaign_id || recipientId) ||
     (!row.flow_id && (!row.created_at || row.created_at < ATTRIBUTION_SINCE));
@@ -637,7 +644,22 @@ async function retakeStatusSteps(
   }
   // Priced either way; the counter alone keeps the event retryable.
   if (counterError) throw new Error(counterError);
+  if (hookError) throw new Error(hookError);
   return true;
+}
+
+/** Batch 34: a status of a message the Public API sent is queued for the merchant's webhook. */
+async function queueApiStatusOf(
+  supabase: SupabaseClient,
+  organizationId: string,
+  row: Pick<StatusRow, "id" | "metadata">,
+  status: string,
+  at: string,
+  errorDetail: string | null,
+): Promise<string | null> {
+  if (row.metadata?.["source"] !== "api") return null;
+  const { queueApiStatus } = await import("@/lib/public-api-webhooks.server");
+  return queueApiStatus(supabase, { organizationId, messageId: row.id, status, at, metadata: row.metadata, errorDetail });
 }
 
 /**
@@ -2499,7 +2521,7 @@ export async function processWebhookPayload(
               // only the steps that are safe to repeat (never the event).
               const known =
                 existing === null && nextStatus !== "failed"
-                  ? await retakeStatusSteps(supabase, orgId, metaId, nextStatus, ours?.recipientId ?? null)
+                  ? await retakeStatusSteps(supabase, orgId, metaId, nextStatus, ours?.recipientId ?? null, at)
                   : Boolean(ours);
               // Batch 27: no row at all for one of our non-campaign messages
               // (Aiden, flows, the inbox) — its row is written a moment after
@@ -2510,6 +2532,13 @@ export async function processWebhookPayload(
                 failures.push(`status ${metaId}: message not written yet`);
               }
               continue;
+            }
+
+            // Batch 34: a message the Public API sent tells the merchant's own
+            // system too (queued here; the minute worker delivers it).
+            {
+              const hookError = await queueApiStatusOf(supabase, orgId, existing, nextStatus, at, nextStatus === "failed" ? detail : null);
+              if (hookError) failures.push(failureNote(`status ${metaId}`, hookError));
             }
 
             // Every per-message event carries the same dimensions as the send.

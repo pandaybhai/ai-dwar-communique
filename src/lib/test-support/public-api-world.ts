@@ -38,6 +38,7 @@ export function publicApiWorld(
   const keyB = generateApiKey();
   const flags = { on: options.flagOn ?? true, billing: options.billing ?? true };
   const rate = { windows: new Map<string, number>(), limits: true };
+  const vault = new Map<string, string>();
   const seed: Record<string, Row[]> = {
     organizations: [
       { id: ORG, name: "Shop A", plan_status: "active" },
@@ -202,6 +203,55 @@ export function publicApiWorld(
       const allowed = !rate.limits || n <= Number(args["p_limit"]);
       return { data: [{ allowed, retry_after: allowed ? 0 : 42 }], error: null };
     },
+    // Vault, as the workspace_connection_* functions use it.
+    workspace_connection_set_secret: (args, mem) => {
+      vault.set(`workspace_conn_${String(args["p_id"])}`, String(args["p_secret"]));
+      const row = mem.rows("workspace_connections").find((r) => r["id"] === args["p_id"]);
+      if (row) row["secret_vault_name"] = `workspace_conn_${String(args["p_id"])}`;
+      return { data: null, error: null };
+    },
+    workspace_connection_secret: (args, mem) => {
+      const row = mem
+        .rows("workspace_connections")
+        .find(
+          (r) => r["organization_id"] === args["p_org"] && r["provider"] === args["p_provider"],
+        );
+      return {
+        data: row
+          ? [
+              {
+                id: row["id"],
+                status: row["status"] ?? "active",
+                public_config: row["public_config"] ?? {},
+                secret: vault.get(String(row["secret_vault_name"])) ?? null,
+              },
+            ]
+          : [],
+        error: null,
+      };
+    },
+    workspace_connection_delete: (args, mem) => {
+      vault.delete(`workspace_conn_${String(args["p_id"])}`);
+      const rows = mem.rows("workspace_connections");
+      const i = rows.findIndex((r) => r["id"] === args["p_id"]);
+      if (i >= 0) rows.splice(i, 1);
+      return { data: null, error: null };
+    },
+    // api_webhook_claim: due, unleased, pending rows, leased for 2 minutes.
+    api_webhook_claim: (args, mem) => {
+      const now = Date.now();
+      const due = mem
+        .rows("api_webhook_deliveries")
+        .filter(
+          (r) =>
+            r["state"] === "pending" &&
+            Date.parse(String(r["next_attempt_at"])) <= now &&
+            (!r["lease_until"] || Date.parse(String(r["lease_until"])) < now),
+        )
+        .slice(0, Number(args["p_limit"] ?? 25));
+      for (const r of due) r["lease_until"] = new Date(now + 120_000).toISOString();
+      return { data: due.map((r) => ({ attempts: 0, ...r })), error: null };
+    },
   });
   // Bearer tokens for the signed-in settings routes are user ids here.
   (db.supabase as unknown as { auth: unknown }).auth = {
@@ -212,7 +262,14 @@ export function publicApiWorld(
   };
   const storage = fakeStorage();
   withStorage(db.supabase, storage);
-  return { db, storage, flags, rate, keys: { a: keyA.key, revoked: keyRevoked.key, b: keyB.key } };
+  return {
+    db,
+    storage,
+    flags,
+    rate,
+    vault,
+    keys: { a: keyA.key, revoked: keyRevoked.key, b: keyB.key },
+  };
 }
 
 /**

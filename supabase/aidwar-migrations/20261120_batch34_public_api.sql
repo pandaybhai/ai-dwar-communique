@@ -22,6 +22,12 @@
 --     public.api_rate_windows + api_rate_take(): the per-key (60/min) and
 --     per-workspace (300/min) counts, shared by every server instance.
 --     Service role only.
+-- (4) the webhook: public.workspace_connections also allows provider
+--     'api_webhook' (one per workspace: the URL in public_config, the signing
+--     secret in Vault through the existing workspace_connection_* functions);
+--     public.api_webhook_deliveries queues one row per (message, event),
+--     delivered by the minute flow-worker tick through api_webhook_claim()
+--     (FOR UPDATE SKIP LOCKED) with backoff for up to 24 h. Service role only.
 
 SET lock_timeout = '5s';
 
@@ -191,5 +197,86 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.api_rate_take(text, integer, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.api_rate_take(text, integer, integer) TO service_role;
+
+-- (4) ------------------------------------------------------- webhooks
+-- The provider check on workspace_connections, where it doesn't name
+-- 'api_webhook' yet, is rebuilt with every provider already stored.
+DO $$
+DECLARE
+  c record;
+  allowed text;
+BEGIN
+  FOR c IN
+    SELECT con.conname, pg_get_constraintdef(con.oid) AS def
+    FROM pg_constraint con
+    JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY (con.conkey)
+    WHERE con.conrelid = 'public.workspace_connections'::regclass
+      AND con.contype = 'c'
+      AND att.attname = 'provider'
+  LOOP
+    IF position('api_webhook' IN c.def) = 0 THEN
+      SELECT string_agg(quote_literal(v), ', ' ORDER BY v) INTO allowed
+      FROM (
+        SELECT DISTINCT provider AS v FROM public.workspace_connections WHERE provider IS NOT NULL
+        UNION SELECT unnest(ARRAY['google', 'razorpay', 'api_webhook'])
+      ) s;
+      EXECUTE format('ALTER TABLE public.workspace_connections DROP CONSTRAINT %I', c.conname);
+      EXECUTE format('ALTER TABLE public.workspace_connections ADD CONSTRAINT %I CHECK (provider IN (%s))', c.conname, allowed);
+    END IF;
+  END LOOP;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.api_webhook_deliveries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  -- Null only for a "Send test event".
+  message_id uuid REFERENCES public.messages(id) ON DELETE CASCADE,
+  event text NOT NULL CHECK (event IN ('message.sent', 'message.delivered', 'message.read', 'message.failed', 'webhook.test')),
+  payload jsonb NOT NULL,
+  occurred_at timestamptz NOT NULL,
+  state text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'delivered', 'failed', 'skipped')),
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  lease_until timestamptz,
+  last_attempt_at timestamptz,
+  last_status integer,
+  last_error text,
+  delivered_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+-- One delivery per message and event: a status Meta sends twice is queued once.
+CREATE UNIQUE INDEX IF NOT EXISTS api_webhook_deliveries_message_event_key
+  ON public.api_webhook_deliveries (message_id, event);
+CREATE INDEX IF NOT EXISTS api_webhook_deliveries_due_idx
+  ON public.api_webhook_deliveries (next_attempt_at) WHERE state = 'pending';
+CREATE INDEX IF NOT EXISTS api_webhook_deliveries_org_idx
+  ON public.api_webhook_deliveries (organization_id, created_at DESC);
+ALTER TABLE public.api_webhook_deliveries ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.api_webhook_deliveries FROM anon, authenticated;
+GRANT ALL ON public.api_webhook_deliveries TO service_role;
+
+-- Due, unleased deliveries for one tick, leased so an overlapping tick
+-- (or a second instance) never sends the same one at the same time.
+CREATE OR REPLACE FUNCTION public.api_webhook_claim(p_limit integer DEFAULT 25, p_lease_seconds integer DEFAULT 120)
+RETURNS SETOF public.api_webhook_deliveries
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE public.api_webhook_deliveries d
+  SET lease_until = now() + make_interval(secs => p_lease_seconds)
+  WHERE d.id IN (
+    SELECT id FROM public.api_webhook_deliveries
+    WHERE state = 'pending'
+      AND next_attempt_at <= now()
+      AND (lease_until IS NULL OR lease_until < now())
+    ORDER BY next_attempt_at
+    LIMIT greatest(p_limit, 0)
+    FOR UPDATE SKIP LOCKED
+  )
+  RETURNING d.*;
+$$;
+REVOKE ALL ON FUNCTION public.api_webhook_claim(integer, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.api_webhook_claim(integer, integer) TO service_role;
 
 RESET lock_timeout;

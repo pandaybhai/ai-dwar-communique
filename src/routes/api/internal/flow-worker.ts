@@ -10,6 +10,11 @@ import { createFileRoute } from "@tanstack/react-router";
  * row can never be retried forever.
  *
  * The tick itself lives in src/lib/flow-worker.server.ts (runFlowWorker).
+ *
+ * Batch 34: the same tick also delivers the Public API's webhook events
+ * (runApiWebhookDeliveries, src/lib/public-api-webhooks.server.ts), side by
+ * side with the flow tick and on its own budget — no new cron job. It never
+ * throws, so the flow tick's answer is unchanged when it has nothing to do.
  */
 
 export const Route = createFileRoute("/api/internal/flow-worker")({
@@ -25,7 +30,13 @@ export const Route = createFileRoute("/api/internal/flow-worker")({
         }
 
         const { runFlowWorker } = await import("@/lib/flow-worker.server");
-        return Response.json(await runFlowWorker());
+        const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+        const { runApiWebhookDeliveries } = await import("@/lib/public-api-webhooks.server");
+        const [flows, apiWebhooks] = await Promise.all([
+          runFlowWorker(),
+          runApiWebhookDeliveries(getServiceClient()),
+        ]);
+        return Response.json({ ...flows, api_webhooks: apiWebhooks });
       },
     },
   },

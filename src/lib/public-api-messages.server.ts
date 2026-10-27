@@ -96,6 +96,24 @@ export async function apiMessageStatus(
   if (error || !data) return notFound;
   const row = data as ApiMessageRow;
   const meta = row.metadata ?? {};
+  // When each status happened: the events queued for the merchant's webhook
+  // (one per status, with Meta's own time). Best effort: a failed read is no times.
+  const times: Record<string, string | null> = {
+    sent_at: null,
+    delivered_at: null,
+    read_at: null,
+    failed_at: null,
+  };
+  const { data: events } = await supabase
+    .from("api_webhook_deliveries")
+    .select("event, occurred_at")
+    .eq("organization_id", caller.organizationId)
+    .eq("message_id", row.id)
+    .limit(10);
+  for (const e of (events ?? []) as Array<{ event: string; occurred_at: string }>) {
+    const key = `${e.event.replace(/^message\./, "")}_at`;
+    if (key in times) times[key] = e.occurred_at;
+  }
   return {
     status: 200,
     body: {
@@ -107,6 +125,7 @@ export async function apiMessageStatus(
       wamid: row.meta_message_id,
       error: publicError(row.status, row.error_detail),
       created_at: row.created_at,
+      ...times,
       updated_at: row.status_updated_at ?? row.created_at,
     },
   };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, KeyRound, Loader2 } from "lucide-react";
+import { Check, Copy, KeyRound, Loader2, Webhook } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +55,7 @@ export function ApiSettingsTab() {
   return (
     <div className="space-y-6">
       <ApiKeysCard />
+      <WebhookCard />
     </div>
   );
 }
@@ -209,3 +210,211 @@ export function ApiKeysCard() {
   );
 }
 
+type Delivery = {
+  id: string;
+  event: string;
+  state: string;
+  attempts: number;
+  last_status: number | null;
+  last_error: string | null;
+  last_attempt_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  next_attempt_at: string | null;
+};
+type WebhookState = {
+  url: string | null;
+  status: string | null;
+  last_delivery: Delivery | null;
+  recent: Delivery[];
+};
+
+function deliveryLine(d: Delivery): string {
+  const code = d.last_status ? `HTTP ${d.last_status}` : (d.last_error ?? "");
+  if (d.state === "delivered")
+    return `Delivered ${when(d.delivered_at)}${code ? ` · ${code}` : ""}`;
+  if (d.state === "failed")
+    return `Failed after ${d.attempts} ${d.attempts === 1 ? "try" : "tries"}${code ? ` · ${code}` : ""}`;
+  if (d.state === "skipped") return "Not sent — no webhook was set";
+  return d.attempts
+    ? `Retrying (${d.attempts} ${d.attempts === 1 ? "try" : "tries"} so far${code ? `, ${code}` : ""}) · next ${when(d.next_attempt_at)}`
+    : "Waiting to be sent";
+}
+
+/** The workspace's one webhook: address, signing secret (shown once), test, last results. */
+export function WebhookCard() {
+  const { active } = useOrg();
+  const orgId = active?.organization.id ?? null;
+  const [state, setState] = useState<WebhookState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [secret, setSecret] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!orgId) return;
+    const r = await callApi<WebhookState>(`/api/developer/webhook?organization_id=${orgId}`, {
+      method: "GET",
+    });
+    if (r.error) setError(r.error);
+    else {
+      setState(r.data);
+      setUrl((u) => u || r.data?.url || "");
+    }
+  }, [orgId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const act = async (action: string, extra: Record<string, unknown> = {}) => {
+    setBusy(action);
+    const r = await callApi<{
+      secret?: string;
+      result?: { ok: boolean; status: number | null; error: string | null };
+    }>("/api/developer/webhook", { body: { organization_id: orgId, action, ...extra } });
+    setBusy(null);
+    if (r.error || !r.data) {
+      toast.error(r.error ?? "Something went wrong.");
+      return;
+    }
+    if (r.data.secret) setSecret(r.data.secret);
+    if (action === "test" && r.data.result) {
+      if (r.data.result.ok) toast.success(`Test event delivered (HTTP ${r.data.result.status}).`);
+      else
+        toast.error(
+          `Test event not delivered: ${r.data.result.status ? `HTTP ${r.data.result.status}` : r.data.result.error}.`,
+        );
+    } else if (action === "save") toast.success("Webhook saved");
+    else if (action === "remove") {
+      toast.success("Webhook removed");
+      setUrl("");
+    }
+    void load();
+  };
+
+  if (error) return <ErrorState message={error} />;
+  if (!state) return <Skeleton className="h-56 w-full rounded-2xl" />;
+
+  return (
+    <section className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">
+      <div className="flex items-start gap-3">
+        <Webhook className="mt-0.5 h-5 w-5 text-primary" aria-hidden="true" />
+        <div>
+          <h2 className="text-base font-semibold text-foreground">Webhook</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            We POST message.sent, message.delivered, message.read and message.failed for every
+            message the API sends, signed with your secret (X-AiDwar-Signature). Failed deliveries
+            are retried for 24 hours.
+          </p>
+        </div>
+      </div>
+
+      {secret ? (
+        <div className="mt-5 rounded-xl border border-primary/40 bg-primary/5 p-4" role="status">
+          <p className="text-sm font-medium text-foreground">
+            Copy your signing secret now — it won't be shown again.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Input
+              readOnly
+              value={secret}
+              className="font-mono text-xs"
+              aria-label="Webhook signing secret"
+            />
+            <CopyButton value={secret} label="Copy signing secret" />
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-2"
+            onClick={() => setSecret(null)}
+          >
+            I've saved it
+          </Button>
+        </div>
+      ) : null}
+
+      <form
+        className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void act("save", { url });
+        }}
+      >
+        <div className="flex-1 space-y-1.5">
+          <Label htmlFor="api-webhook-url">Webhook address (https)</Label>
+          <Input
+            id="api-webhook-url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://your-system.example.com/aidwar"
+          />
+        </div>
+        <Button type="submit" className="rounded-full" disabled={busy === "save" || !url.trim()}>
+          {busy === "save" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Save
+        </Button>
+      </form>
+
+      {state.url ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy === "test"}
+            onClick={() => void act("test")}
+          >
+            {busy === "test" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+            Send test event
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy === "rotate"}
+            onClick={() => {
+              if (window.confirm("Make a new signing secret? The old one stops working at once."))
+                void act("rotate");
+            }}
+          >
+            Rotate secret
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy === "remove"}
+            onClick={() => {
+              if (window.confirm("Remove the webhook? Updates stop being sent."))
+                void act("remove");
+            }}
+          >
+            Remove
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="mt-5">
+        <h3 className="text-sm font-medium text-foreground">Last delivery</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {state.last_delivery
+            ? `${state.last_delivery.event} — ${deliveryLine(state.last_delivery)}`
+            : "Nothing sent yet."}
+        </p>
+        {state.recent.length > 1 ? (
+          <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+            {state.recent.map((d) => (
+              <li key={d.id}>
+                <span className="font-mono">{d.event}</span> · {when(d.created_at)} ·{" "}
+                {deliveryLine(d)}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </section>
+  );
+}

@@ -612,6 +612,25 @@ export async function sendTemplateViaApi(
       : null;
 
     if (outcome.error) {
+      // Meta refused it at once: the merchant's webhook hears message.failed
+      // too, as for a failure Meta reports later.
+      if (messageId) {
+        const { enqueueApiWebhookEvent } = await import("@/lib/public-api-webhooks.server");
+        const { data: failedRow } = await supabase
+          .from("messages")
+          .select("error_detail")
+          .eq("id", messageId)
+          .maybeSingle();
+        await enqueueApiWebhookEvent(supabase, {
+          organizationId: orgId,
+          messageId,
+          event: "message.failed",
+          occurredAt: new Date().toISOString(),
+          metadata,
+          error:
+            (failedRow as { error_detail?: string | null } | null)?.error_detail ?? outcome.error,
+        });
+      }
       const answer: ApiAnswer = {
         status: 502,
         body: {

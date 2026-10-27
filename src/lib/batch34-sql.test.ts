@@ -138,6 +138,75 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
         ),
       ).toThrow(/permission denied/);
     });
+
+    it("(4) workspace_connections takes the api_webhook provider (and still refuses an unknown one)", () => {
+      pg.sql(
+        `insert into public.workspace_connections (organization_id, provider, public_config) values ('${A}', 'api_webhook', '{"url":"https://x.example.com"}')`,
+      );
+      pg.sql(
+        `insert into public.workspace_connections (organization_id, provider) values ('${A}', 'google')`,
+      );
+      expect(() =>
+        pg.sql(
+          `insert into public.workspace_connections (organization_id, provider) values ('${A}', 'other')`,
+        ),
+      ).toThrow(/check/);
+      // One webhook per workspace.
+      expect(() =>
+        pg.sql(
+          `insert into public.workspace_connections (organization_id, provider) values ('${A}', 'api_webhook')`,
+        ),
+      ).toThrow(/duplicate key/);
+    });
+
+    it("(4) deliveries: one per (message, event) — PostgREST's ignore-duplicates upsert writes once; a claim leases, a second claim skips it", () => {
+      pg.sql(`
+        insert into public.conversations (id, organization_id) values ('00000000-0000-0000-0000-0000000c0001', '${A}');
+        insert into public.messages (id, organization_id, conversation_id, direction, type, status, metadata)
+          values ('00000000-0000-0000-0000-00000000d001', '${A}', '00000000-0000-0000-0000-0000000c0001', 'outbound', 'template', 'sent', '{"source":"api"}');
+      `);
+      const upsert = `insert into public.api_webhook_deliveries (organization_id, message_id, event, payload, occurred_at)
+        values ('${A}', '00000000-0000-0000-0000-00000000d001', 'message.sent', '{}', now())
+        on conflict (message_id, event) do nothing`;
+      pg.sql(upsert);
+      pg.sql(upsert);
+      expect(pg.sql("select count(*) from public.api_webhook_deliveries")).toBe("1");
+      // A test event has no message: many are fine.
+      pg.sql(
+        `insert into public.api_webhook_deliveries (organization_id, event, payload, occurred_at) values ('${A}', 'webhook.test', '{}', now()), ('${A}', 'webhook.test', '{}', now())`,
+      );
+      expect(() =>
+        pg.sql(
+          `insert into public.api_webhook_deliveries (organization_id, event, payload, occurred_at) values ('${A}', 'message.bounced', '{}', now())`,
+        ),
+      ).toThrow(/event_check/);
+
+      expect(pg.sql("select count(*) from public.api_webhook_claim(10, 120)")).toBe("3");
+      expect(pg.sql("select count(*) from public.api_webhook_claim(10, 120)")).toBe("0");
+      expect(
+        pg.sql("select count(*) from public.api_webhook_deliveries where lease_until > now()"),
+      ).toBe("3");
+      // Not due yet, or no longer pending: never claimed.
+      pg.sql("update public.api_webhook_deliveries set lease_until = null");
+      pg.sql(
+        "update public.api_webhook_deliveries set next_attempt_at = now() + interval '1 minute' where event = 'message.sent'",
+      );
+      pg.sql(
+        "update public.api_webhook_deliveries set state = 'delivered' where event = 'webhook.test'",
+      );
+      expect(pg.sql("select count(*) from public.api_webhook_claim(10, 120)")).toBe("0");
+      expect(() =>
+        pg.sql(
+          "begin; set local role authenticated; select * from public.api_webhook_claim(1, 1); commit;",
+        ),
+      ).toThrow(/permission denied/);
+
+      // The message (or its workspace) deleted: its deliveries go with it.
+      pg.sql("delete from public.messages where id = '00000000-0000-0000-0000-00000000d001'");
+      expect(
+        pg.sql("select count(*) from public.api_webhook_deliveries where message_id is not null"),
+      ).toBe("0");
+    });
   },
 );
 

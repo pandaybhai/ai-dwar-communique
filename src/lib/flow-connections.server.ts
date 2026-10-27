@@ -13,6 +13,12 @@ import { createHmac, timingSafeEqual } from "crypto";
  */
 
 export type Provider = "google" | "razorpay";
+/**
+ * What workspace_connections stores: the flow accounts, and (Batch 34) the
+ * workspace's Public API webhook — its URL in public_config, its signing
+ * secret in Vault like every other secret here.
+ */
+export type StoredProvider = Provider | "api_webhook";
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email";
 
 export function googleOAuthConfigured(): boolean {
@@ -22,7 +28,7 @@ export function googleOAuthConfigured(): boolean {
 export async function loadSecret(
   supabase: SupabaseClient,
   organizationId: string,
-  provider: Provider,
+  provider: StoredProvider,
 ): Promise<{ id: string; status: string; config: Record<string, unknown>; secret: Record<string, string> } | null> {
   const { data } = await supabase.rpc("workspace_connection_secret", { p_org: organizationId, p_provider: provider });
   const row = ((data ?? []) as Array<{ id: string; status: string; public_config: Record<string, unknown>; secret: string | null }>)[0];
@@ -36,7 +42,7 @@ export async function loadSecret(
 
 export async function saveConnection(
   supabase: SupabaseClient,
-  args: { organizationId: string; provider: Provider; label: string; config: Record<string, unknown>; secret: Record<string, string>; userId: string | null },
+  args: { organizationId: string; provider: StoredProvider; label: string; config: Record<string, unknown>; secret: Record<string, string>; userId: string | null },
 ): Promise<{ error: string | null }> {
   const { data, error } = await supabase
     .from("workspace_connections")
@@ -63,7 +69,7 @@ export async function saveConnection(
   return { error: vErr ? "Couldn't store the keys securely. Please try again." : null };
 }
 
-export async function deleteConnection(supabase: SupabaseClient, organizationId: string, provider: Provider) {
+export async function deleteConnection(supabase: SupabaseClient, organizationId: string, provider: StoredProvider) {
   const { data } = await supabase
     .from("workspace_connections")
     .select("id")

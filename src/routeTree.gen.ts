@@ -80,6 +80,7 @@ import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/pro
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiDeveloperKeysRouteImport } from './routes/api/developer/keys'
+import { Route as ApiDeveloperWebhookRouteImport } from './routes/api/developer/webhook'
 import { Route as ApiFlowsResponsesRouteImport } from './routes/api/flows/responses'
 import { Route as ApiFlowsRunsRouteImport } from './routes/api/flows/runs'
 import { Route as ApiFlowsTriggersRouteImport } from './routes/api/flows/triggers'
@@ -497,6 +498,11 @@ const ApiDeveloperKeysRoute = ApiDeveloperKeysRouteImport.update({
   path: '/api/developer/keys',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDeveloperWebhookRoute = ApiDeveloperWebhookRouteImport.update({
+  id: '/api/developer/webhook',
+  path: '/api/developer/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiFlowsResponsesRoute = ApiFlowsResponsesRouteImport.update({
   id: '/api/flows/responses',
   path: '/api/flows/responses',
@@ -895,6 +901,7 @@ export interface FileRoutesByFullPath {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
+  '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/flows/triggers': typeof ApiFlowsTriggersRoute
@@ -1026,6 +1033,7 @@ export interface FileRoutesByTo {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
+  '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/flows/triggers': typeof ApiFlowsTriggersRoute
@@ -1160,6 +1168,7 @@ export interface FileRoutesById {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
+  '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
   '/api/flows/runs': typeof ApiFlowsRunsRoute
   '/api/flows/triggers': typeof ApiFlowsTriggersRoute
@@ -1295,6 +1304,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/developer/keys'
+    | '/api/developer/webhook'
     | '/api/flows/responses'
     | '/api/flows/runs'
     | '/api/flows/triggers'
@@ -1426,6 +1436,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/developer/keys'
+    | '/api/developer/webhook'
     | '/api/flows/responses'
     | '/api/flows/runs'
     | '/api/flows/triggers'
@@ -1559,6 +1570,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/developer/keys'
+    | '/api/developer/webhook'
     | '/api/flows/responses'
     | '/api/flows/runs'
     | '/api/flows/triggers'
@@ -1671,6 +1683,7 @@ export interface RootRouteChildren {
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiDeveloperKeysRoute: typeof ApiDeveloperKeysRoute
+  ApiDeveloperWebhookRoute: typeof ApiDeveloperWebhookRoute
   ApiFlowsResponsesRoute: typeof ApiFlowsResponsesRoute
   ApiFlowsRunsRoute: typeof ApiFlowsRunsRoute
   ApiFlowsTriggersRoute: typeof ApiFlowsTriggersRoute
@@ -2225,6 +2238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDeveloperKeysRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/developer/webhook': {
+      id: '/api/developer/webhook'
+      path: '/api/developer/webhook'
+      fullPath: '/api/developer/webhook'
+      preLoaderRoute: typeof ApiDeveloperWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/flows/responses': {
       id: '/api/flows/responses'
       path: '/api/flows/responses'
@@ -2776,6 +2796,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiDeveloperKeysRoute: ApiDeveloperKeysRoute,
+  ApiDeveloperWebhookRoute: ApiDeveloperWebhookRoute,
   ApiFlowsResponsesRoute: ApiFlowsResponsesRoute,
   ApiFlowsRunsRoute: ApiFlowsRunsRoute,
   ApiFlowsTriggersRoute: ApiFlowsTriggersRoute,
