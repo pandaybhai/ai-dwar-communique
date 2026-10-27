@@ -198,6 +198,23 @@ export async function readStoredMedia(
   }
 }
 
+/**
+ * An inbound file's bytes for Aiden (a picture to describe, a voice note to
+ * hear): from Meta, as always, and — when Meta no longer gives it (a pass
+ * re-run after the file was saved and the id lapsed) — from our stored copy.
+ * The healthy path makes no extra read.
+ */
+export async function readInboundMedia(
+  supabase: SupabaseClient,
+  args: { mediaId: string; accessToken: string; messageId: string | null; maxBytes?: number },
+): Promise<{ bytes: Uint8Array; mime: string | null } | null> {
+  const { fetchMetaMedia } = await import("@/lib/ai-media.server");
+  const fromMeta = await fetchMetaMedia(args.mediaId, args.accessToken, args.maxBytes);
+  if (fromMeta || !args.messageId) return fromMeta;
+  const { data } = await supabase.from("messages").select("media_url").eq("id", args.messageId).maybeSingle();
+  return readStoredMedia(supabase, (data as { media_url?: string | null } | null)?.media_url, args.maxBytes);
+}
+
 // ------------------------------------------------------------ the sweep
 
 /** Rows the rescue tries per run, and how long it may keep starting downloads. */

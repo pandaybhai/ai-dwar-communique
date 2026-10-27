@@ -10,6 +10,7 @@ import {
   RESCUE_BATCH,
   RETENTION_BATCH,
   purgeQueuedMedia,
+  readInboundMedia,
   runChatMediaSweep,
 } from "./chat-media.server";
 import { inboundPayload, latencyWorld } from "./test-support/latency-world";
@@ -479,5 +480,44 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))("(5) the delete trig
     expect(pg.sql("select public::text || '|' || file_size_limit from storage.buckets where id = 'chat-media'")).toBe("false|26214400");
     expect(pg.sql("select count(*) from pg_policies where schemaname = 'storage'")).toBe("0");
     expect(pg.sql("select count(*) from information_schema.columns where table_name = 'platform_settings' and column_name = 'media_retention_days'")).toBe("1");
+  });
+});
+
+describe("(6) nothing else changes — Aiden still reads the customer's picture / voice note", () => {
+  it("Meta has the file: read from Meta exactly as before, no extra read of the row or storage", async () => {
+    const w = sweepWorld([inbound("a1", ago(60_000), { media_url: "storage:chat-media/org-z/cv-z/a1.jpg" })]);
+    const meta = metaMedia({ "a1-media": { bytes: JPEG } });
+    vi.stubGlobal("fetch", async (url: string | URL) => (await meta.handle(String(url))) ?? new Response("", { status: 500 }));
+    const before = w.db.log.length;
+    const file = await readInboundMedia(w.db.supabase, { mediaId: "a1-media", accessToken: "tok", messageId: "a1" });
+    expect(file?.bytes).toEqual(JPEG);
+    expect(w.db.log.length).toBe(before);
+    expect(w.storage.calls).toEqual([]);
+  });
+
+  it("Meta no longer has it: the stored copy is read instead (a re-run pass after the save)", async () => {
+    const w = sweepWorld([inbound("a2", ago(8 * DAY), { media_url: "storage:chat-media/org-z/cv-z/a2.jpg" })]);
+    w.storage.objects("chat-media").set("org-z/cv-z/a2.jpg", { bytes: JPEG, contentType: "image/jpeg" });
+    vi.stubGlobal("fetch", async (url: string | URL) => (await metaMedia({ "a2-media": "gone" }).handle(String(url))) ?? new Response("", { status: 500 }));
+    const file = await readInboundMedia(w.db.supabase, { mediaId: "a2-media", accessToken: "tok", messageId: "a2" });
+    expect(file).toEqual({ bytes: JPEG, mime: "image/jpeg" });
+  });
+
+  it("neither: null, as a lost file always was (the customer still gets the usual line)", async () => {
+    const w = sweepWorld([inbound("a3", ago(8 * DAY))]);
+    vi.stubGlobal("fetch", async () => new Response("", { status: 404 }));
+    expect(await readInboundMedia(w.db.supabase, { mediaId: "a3-media", accessToken: "tok", messageId: "a3" })).toBeNull();
+  });
+
+  it("customerMediaToText reads through readInboundMedia; outbound media code (product-images, template-media, cards) never mentions chat-media", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
+    const webhook = src("./whatsapp-webhook.server.ts");
+    const fn = webhook.slice(webhook.indexOf("async function customerMediaToText"), webhook.indexOf("type InboundAccount"));
+    expect(fn).toContain("readInboundMedia(");
+    expect(fn).not.toContain("fetchMetaMedia(");
+    for (const f of ["./template-media.server.ts", "./service-text.server.ts", "./customer-cards.server.ts", "./campaign-dispatch.server.ts"]) {
+      expect({ f, mentions: src(f).includes("chat-media") }).toEqual({ f, mentions: false });
+    }
   });
 });

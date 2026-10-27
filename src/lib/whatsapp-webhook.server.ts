@@ -1116,9 +1116,13 @@ async function customerMediaToText(
   const caption = (args.caption ?? "").trim();
 
   try {
-    const { fetchMetaMedia, transcribeAudio, describeImage } = await import("@/lib/ai-media.server");
+    const { transcribeAudio, describeImage } = await import("@/lib/ai-media.server");
+    // Batch 32: Meta first, as always; our stored copy when Meta no longer has it.
+    const { readInboundMedia } = await import("@/lib/chat-media.server");
+    const media = () =>
+      readInboundMedia(supabase, { mediaId, accessToken: args.accessToken, messageId: args.messageId, maxBytes: 8 * 1024 * 1024 });
     if (mime.startsWith("audio/")) {
-      const file = await fetchMetaMedia(mediaId, args.accessToken);
+      const file = await media();
       const heard = file
         ? await transcribeAudio(supabase, args.organizationId, file.bytes, file.mime ?? args.media.media_mime)
         : { text: null };
@@ -1134,7 +1138,7 @@ async function customerMediaToText(
       return { body: heard.text, fallback: null };
     }
     if (mime.startsWith("image/")) {
-      const file = await fetchMetaMedia(mediaId, args.accessToken);
+      const file = await media();
       const seen = file
         ? await describeImage(supabase, args.organizationId, file.bytes, file.mime ?? args.media.media_mime, {
             conversationId: args.conversationId,
