@@ -66,25 +66,33 @@ ON CONFLICT (key) DO UPDATE SET
   analytics = excluded.analytics, activity_actions = excluded.activity_actions,
   data_tables = excluded.data_tables, depends_on = excluded.depends_on, synced_at = now();
 
--- The permission's category is its feature key; a category check that
--- doesn't know it yet is rebuilt with every category already stored.
+-- The permission's category is its feature key. A category check that
+-- doesn't allow it yet is rebuilt with every value it ALREADY allows (the
+-- quoted literals of its own definition), every category stored, every
+-- feature key, and 'public_api' — never narrower than before.
 DO $$
 DECLARE
   def text;
+  current_values text[];
   allowed text;
 BEGIN
   SELECT pg_get_constraintdef(oid) INTO def
   FROM pg_constraint
   WHERE conname = 'permissions_category_check' AND conrelid = 'public.permissions'::regclass;
-  IF def IS NOT NULL AND position('public_api' IN def) = 0 THEN
-    SELECT string_agg(quote_literal(c), ', ' ORDER BY c) INTO allowed
-    FROM (
-      SELECT DISTINCT category AS c FROM public.permissions WHERE category IS NOT NULL
-      UNION SELECT key FROM public.feature_registry
-      UNION SELECT 'public_api'
-    ) s;
-    ALTER TABLE public.permissions DROP CONSTRAINT permissions_category_check;
-    EXECUTE format('ALTER TABLE public.permissions ADD CONSTRAINT permissions_category_check CHECK (category IN (%s))', allowed);
+  IF def IS NOT NULL THEN
+    SELECT coalesce(array_agg(m[1]), '{}') INTO current_values
+    FROM regexp_matches(def, '''([^'']*)''', 'g') AS m;
+    IF NOT ('public_api' = ANY (current_values)) THEN
+      SELECT string_agg(quote_literal(v), ', ' ORDER BY v) INTO allowed
+      FROM (
+        SELECT unnest(current_values) AS v
+        UNION SELECT DISTINCT category FROM public.permissions WHERE category IS NOT NULL
+        UNION SELECT key FROM public.feature_registry
+        UNION SELECT 'public_api'
+      ) s;
+      ALTER TABLE public.permissions DROP CONSTRAINT permissions_category_check;
+      EXECUTE format('ALTER TABLE public.permissions ADD CONSTRAINT permissions_category_check CHECK (category IN (%s))', allowed);
+    END IF;
   END IF;
 END $$;
 
@@ -204,11 +212,14 @@ REVOKE ALL ON FUNCTION public.api_rate_take(text, integer, integer) FROM PUBLIC,
 GRANT EXECUTE ON FUNCTION public.api_rate_take(text, integer, integer) TO service_role;
 
 -- (4) ------------------------------------------------------- webhooks
--- The provider check on workspace_connections, where it doesn't name
--- 'api_webhook' yet, is rebuilt with every provider already stored.
+-- The provider check on workspace_connections, where it doesn't allow
+-- 'api_webhook' yet, is rebuilt with every value it ALREADY allows (the
+-- quoted literals of its own definition: live also allows 'cashfree'),
+-- every provider stored, and 'api_webhook' — never narrower than before.
 DO $$
 DECLARE
   c record;
+  current_values text[];
   allowed text;
 BEGIN
   FOR c IN
@@ -219,11 +230,14 @@ BEGIN
       AND con.contype = 'c'
       AND att.attname = 'provider'
   LOOP
-    IF position('api_webhook' IN c.def) = 0 THEN
+    SELECT coalesce(array_agg(m[1]), '{}') INTO current_values
+    FROM regexp_matches(c.def, '''([^'']*)''', 'g') AS m;
+    IF NOT ('api_webhook' = ANY (current_values)) THEN
       SELECT string_agg(quote_literal(v), ', ' ORDER BY v) INTO allowed
       FROM (
-        SELECT DISTINCT provider AS v FROM public.workspace_connections WHERE provider IS NOT NULL
-        UNION SELECT unnest(ARRAY['google', 'razorpay', 'api_webhook'])
+        SELECT unnest(current_values) AS v
+        UNION SELECT DISTINCT provider FROM public.workspace_connections WHERE provider IS NOT NULL
+        UNION SELECT 'api_webhook'
       ) s;
       EXECUTE format('ALTER TABLE public.workspace_connections DROP CONSTRAINT %I', c.conname);
       EXECUTE format('ALTER TABLE public.workspace_connections ADD CONSTRAINT %I CHECK (provider IN (%s))', c.conname, allowed);

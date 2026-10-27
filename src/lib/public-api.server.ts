@@ -443,3 +443,104 @@ export async function releaseIdempotency(supabase: SupabaseClient, id: string): 
       }),
     );
 }
+
+// ------------------------------------------------------------ upkeep
+
+/** Kept this long: a rate window is read only within its minute, a reservation within 24 h. */
+export const RATE_WINDOW_KEEP_MS = 60 * 60_000;
+export const REQUEST_KEEP_MS = 48 * 60 * 60_000;
+export const DELIVERY_KEEP_MS = 30 * 24 * 60 * 60_000;
+/** Most rows one sweep removes per table. */
+export const CLEANUP_BATCH = 500;
+
+export type ApiCleanupCounts = {
+  api_rate_windows_removed: number;
+  api_requests_removed: number;
+  api_deliveries_removed: number;
+};
+
+/**
+ * The billing sweep's Public API upkeep (Batch 34): rate windows older than
+ * 1 h, idempotency reservations older than 48 h and finished webhook
+ * deliveries older than 30 days are removed — at most CLEANUP_BATCH rows of
+ * each per run (rate windows: at most the oldest hour of them), oldest
+ * first, so a backlog is worked down over runs. Never throws; without the
+ * tables (20261120 not applied) it removes nothing.
+ */
+export async function cleanupApiRecords(
+  supabase: SupabaseClient,
+  now = Date.now(),
+): Promise<ApiCleanupCounts> {
+  const counts: ApiCleanupCounts = {
+    api_rate_windows_removed: 0,
+    api_requests_removed: 0,
+    api_deliveries_removed: 0,
+  };
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const step = async (name: string, work: () => Promise<number>) => {
+    try {
+      return await work();
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          scope: "public_api_cleanup",
+          step: name,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return 0;
+    }
+  };
+
+  // Rate windows have no id (bucket + window_start): one hour of the oldest windows per run.
+  counts.api_rate_windows_removed = await step("rate_windows", async () => {
+    const cutoff = now - RATE_WINDOW_KEEP_MS;
+    const { data, error } = await supabase
+      .from("api_rate_windows")
+      .select("window_start")
+      .lt("window_start", iso(cutoff))
+      .order("window_start", { ascending: true })
+      .limit(1);
+    if (error) throw new Error(error.message);
+    const oldest = ((data ?? []) as Array<{ window_start: string }>)[0]?.window_start;
+    if (!oldest) return 0;
+    const until = Math.min(cutoff, Date.parse(oldest) + RATE_WINDOW_KEEP_MS);
+    const { count, error: deleteError } = await supabase
+      .from("api_rate_windows")
+      .delete({ count: "exact" })
+      .lt("window_start", iso(until + 1));
+    if (deleteError) throw new Error(deleteError.message);
+    return count ?? 0;
+  });
+
+  /** Deletes the given ids of one table; how many. */
+  const removeIds = async (table: string, rows: unknown): Promise<number> => {
+    const ids = ((rows ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (!ids.length) return 0;
+    const { error } = await supabase.from(table).delete().in("id", ids);
+    if (error) throw new Error(error.message);
+    return ids.length;
+  };
+  counts.api_requests_removed = await step("requests", async () => {
+    const { data, error } = await supabase
+      .from("api_requests")
+      .select("id")
+      .lt("created_at", iso(now - REQUEST_KEEP_MS))
+      .order("created_at", { ascending: true })
+      .limit(CLEANUP_BATCH);
+    if (error) throw new Error(error.message);
+    return removeIds("api_requests", data);
+  });
+  counts.api_deliveries_removed = await step("deliveries", async () => {
+    const { data, error } = await supabase
+      .from("api_webhook_deliveries")
+      .select("id")
+      .neq("state", "pending")
+      .lt("created_at", iso(now - DELIVERY_KEEP_MS))
+      .order("created_at", { ascending: true })
+      .limit(CLEANUP_BATCH);
+    if (error) throw new Error(error.message);
+    return removeIds("api_webhook_deliveries", data);
+  });
+  return counts;
+}

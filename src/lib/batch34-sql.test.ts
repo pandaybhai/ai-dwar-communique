@@ -139,6 +139,27 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
       ).toThrow(/permission denied/);
     });
 
+    it("(1)(4) a rebuilt check keeps every value the old one allowed — not only the stored ones — plus the new one", () => {
+      // permissions: 'cards' was allowed with no permission using it.
+      const perm = pg.sql(
+        "select pg_get_constraintdef(oid) from pg_constraint where conname = 'permissions_category_check'",
+      );
+      for (const v of ["inbox", "templates", "billing", "cards", "public_api"])
+        expect(perm).toContain(`'${v}'`);
+      pg.sql("insert into public.permissions (key, category) values ('cards.check', 'cards')");
+      pg.sql("delete from public.permissions where key = 'cards.check'");
+      // workspace_connections: live allows 'cashfree' and has no rows; it stays allowed.
+      const prov = pg.sql(
+        "select pg_get_constraintdef(c.oid) from pg_constraint c where c.conrelid = 'public.workspace_connections'::regclass and c.contype = 'c' and pg_get_constraintdef(c.oid) like '%provider%'",
+      );
+      for (const v of ["google", "razorpay", "cashfree", "api_webhook"])
+        expect(prov).toContain(`'${v}'`);
+      pg.sql(
+        `insert into public.workspace_connections (organization_id, provider) values ('${B}', 'cashfree')`,
+      );
+      pg.sql(`delete from public.workspace_connections where organization_id = '${B}'`);
+    });
+
     it("(4) workspace_connections takes the api_webhook provider (and still refuses an unknown one)", () => {
       pg.sql(
         `insert into public.workspace_connections (organization_id, provider, public_config) values ('${A}', 'api_webhook', '{"url":"https://x.example.com"}')`,

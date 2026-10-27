@@ -13,7 +13,8 @@ create table if not exists public.feature_registry (
 );
 create table if not exists public.permissions (
   key text primary key, name text, description text, category text, min_role text,
-  constraint permissions_category_check check (category in ('inbox', 'templates', 'billing'))
+  -- 'cards' is allowed but no permission uses it: the rebuild must keep it.
+  constraint permissions_category_check check (category in ('inbox', 'templates', 'billing', 'cards'))
 );
 create table if not exists public.role_permissions (role text, permission_key text, primary key (role, permission_key));
 create table if not exists public.plans (id uuid primary key default gen_random_uuid(), key text, name text);
@@ -24,7 +25,8 @@ grant execute on function public.has_permission(uuid, text) to authenticated;
 create table if not exists public.workspace_connections (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
-  provider text not null check (provider in ('google', 'razorpay')),
+  -- As on live (checked 2026-10-27): 'cashfree' allowed, and the table empty.
+  provider text not null check (provider = any (array['google', 'razorpay', 'cashfree'])),
   account_label text,
   public_config jsonb not null default '{}'::jsonb,
   secret_vault_name text,

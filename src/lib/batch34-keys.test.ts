@@ -206,3 +206,69 @@ describe("before 20261120 is applied", () => {
     );
   });
 });
+
+describe("the billing sweep's Public API upkeep (bounded)", () => {
+  it("removes rate windows older than 1 h, reservations older than 48 h and finished deliveries older than 30 days — nothing newer, at most 500 a run", async () => {
+    const { memoryDb } = await import("./test-support/memory-db");
+    const { cleanupApiRecords, CLEANUP_BATCH } = await import("./public-api.server");
+    const now = Date.parse("2026-10-27T12:00:00Z");
+    const ago = (ms: number) => new Date(now - ms).toISOString();
+    const H = 3600_000;
+    const db = memoryDb({
+      api_rate_windows: [
+        { bucket: "key:a", window_start: ago(3 * H) },
+        { bucket: "key:a", window_start: ago(2 * H) },
+        { bucket: "key:a", window_start: ago(H + 60_000) },
+        { bucket: "key:a", window_start: ago(30 * 60_000) },
+      ],
+      api_requests: [
+        ...Array.from({ length: CLEANUP_BATCH + 3 }, (_, i) => ({
+          id: `old-${i}`,
+          created_at: ago(49 * H + i * 1000),
+        })),
+        { id: "fresh", created_at: ago(47 * H) },
+      ],
+      api_webhook_deliveries: [
+        { id: "d-old", state: "delivered", created_at: ago(31 * 24 * H) },
+        { id: "d-pending", state: "pending", created_at: ago(31 * 24 * H) },
+        { id: "d-new", state: "failed", created_at: ago(29 * 24 * H) },
+      ],
+    });
+    const first = await cleanupApiRecords(db.supabase, now);
+    expect(first.api_requests_removed).toBe(CLEANUP_BATCH);
+    expect(first.api_deliveries_removed).toBe(1);
+    // The oldest hour of windows this run (3 h and 2 h old), the rest next run.
+    expect(first.api_rate_windows_removed).toBe(2);
+    const second = await cleanupApiRecords(db.supabase, now);
+    expect(second).toEqual({
+      api_rate_windows_removed: 1,
+      api_requests_removed: 3,
+      api_deliveries_removed: 0,
+    });
+    expect(db.rows("api_rate_windows").map((r) => r["window_start"])).toEqual([ago(30 * 60_000)]);
+    expect(db.rows("api_requests").map((r) => r["id"])).toEqual(["fresh"]);
+    expect(
+      db
+        .rows("api_webhook_deliveries")
+        .map((r) => r["id"])
+        .sort(),
+    ).toEqual(["d-new", "d-pending"]);
+  });
+
+  it("without the tables it removes nothing and never throws", async () => {
+    const { cleanupApiRecords } = await import("./public-api.server");
+    const db = fakeDb(() => ({ data: null, error: { code: "PGRST205", message: "no table" } }));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await cleanupApiRecords(db.supabase)).toEqual({
+      api_rate_windows_removed: 0,
+      api_requests_removed: 0,
+      api_deliveries_removed: 0,
+    });
+  });
+
+  it("runs from the billing sweep", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./billing-sweep.server.ts", import.meta.url), "utf8");
+    expect(src).toContain("cleanupApiRecords(supabase)");
+  });
+});

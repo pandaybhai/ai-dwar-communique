@@ -351,7 +351,6 @@ export async function runApiWebhookDeliveries(
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
-    await housekeeping(supabase);
   } catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
   }
@@ -416,34 +415,6 @@ async function deliverOne(
     .update({ ...base, next_attempt_at: new Date(Math.min(next, giveUpAt)).toISOString() })
     .eq("id", row.id);
   report.retrying += 1;
-}
-
-/** Old counters and answers go; a delivery's record is kept 30 days. */
-async function housekeeping(supabase: SupabaseClient): Promise<void> {
-  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
-  try {
-    await supabase
-      .from("api_rate_windows")
-      .delete()
-      .lt("window_start", ago(60 * 60_000));
-    await supabase
-      .from("api_requests")
-      .delete()
-      .lt("created_at", ago(48 * 60 * 60_000));
-    await supabase
-      .from("api_webhook_deliveries")
-      .delete()
-      .neq("state", "pending")
-      .lt("created_at", ago(30 * 24 * 60 * 60_000));
-  } catch (error) {
-    console.warn(
-      JSON.stringify({
-        scope: "api_webhook",
-        step: "housekeeping",
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
-  }
 }
 
 /**
