@@ -366,49 +366,15 @@ export async function sendTemplateViaApi(
     );
   }
 
-  // A locked or paused workspace spends nothing until a plan is chosen (as the inbox).
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("plan_status")
-    .eq("id", orgId)
-    .maybeSingle();
-  const planStatus = (org as { plan_status?: string | null } | null)?.plan_status ?? null;
-  if (planStatus === "locked" || planStatus === "paused") {
-    return fail(
-      402,
-      "workspace_locked",
-      "This workspace is locked — choose a plan in AiDwar to send again.",
-    );
-  }
-
-  const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
-  const { connection, error: connectionError } = await getWhatsAppConnection(supabase, orgId, null);
-  if (!connection)
-    return fail(
-      400,
-      "no_whatsapp_number",
-      connectionError ?? "Connect a WhatsApp number in AiDwar first.",
-    );
-
-  const resolved = await resolveApiTemplate(supabase, {
-    organizationId: orgId,
-    wabaId: connection.wabaId,
-    name: parsed.templateName,
-    language: parsed.language,
-    paramCount: parsed.bodyParams.length,
-  });
-  if (!resolved.ok) return resolved.answer;
-  const template = resolved.template;
-  const category = String(template.category ?? "utility").toLowerCase();
-
-  // ---- reserve the idempotency key before anything can be sent ----
+  // ---- reserve the idempotency key first: a repeat gets the first answer,
+  // whatever changed since (a template paused, a plan lapsed) ----
   const lib = await import("@/lib/public-api.server");
   let requestId: string | null = null;
   if (parsed.idempotencyKey) {
     const fingerprint = lib.requestFingerprint({
       to: waId,
-      template_name: template.name,
-      language: template.language,
+      template_name: parsed.templateName,
+      language: parsed.language,
       body_params: parsed.bodyParams,
       document_url: parsed.document.url,
       document_sha256: parsed.document.base64
@@ -450,9 +416,53 @@ export async function sendTemplateViaApi(
     if (requestId) await lib.releaseIdempotency(supabase, requestId);
     return answer;
   };
-  // Past this point Meta may have the message: a reserved key stays reserved.
+  // Once the send starts Meta may have the message: from then on a reserved
+  // key stays reserved, whatever happens.
   let sendStarted = false;
   try {
+    // A locked or paused workspace spends nothing until a plan is chosen (as the inbox).
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("plan_status")
+      .eq("id", orgId)
+      .maybeSingle();
+    const planStatus = (org as { plan_status?: string | null } | null)?.plan_status ?? null;
+    if (planStatus === "locked" || planStatus === "paused") {
+      return refuse(
+        fail(
+          402,
+          "workspace_locked",
+          "This workspace is locked — choose a plan in AiDwar to send again.",
+        ),
+      );
+    }
+
+    const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
+    const { connection, error: connectionError } = await getWhatsAppConnection(
+      supabase,
+      orgId,
+      null,
+    );
+    if (!connection)
+      return refuse(
+        fail(
+          400,
+          "no_whatsapp_number",
+          connectionError ?? "Connect a WhatsApp number in AiDwar first.",
+        ),
+      );
+
+    const resolved = await resolveApiTemplate(supabase, {
+      organizationId: orgId,
+      wabaId: connection.wabaId,
+      name: parsed.templateName,
+      language: parsed.language,
+      paramCount: parsed.bodyParams.length,
+    });
+    if (!resolved.ok) return refuse(resolved.answer);
+    const template = resolved.template;
+    const category = String(template.category ?? "utility").toLowerCase();
+
     // ---- the customer: never someone who opted out ----
     const { contactOptedOut } = await import("@/lib/opt-out.server");
     const optOut = await contactOptedOut(supabase, orgId, { phone });

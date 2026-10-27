@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { publicApiWorld } from "./test-support/public-api-world";
+import { fakeDb } from "./test-support/fake-db";
 import {
   API_KEY_PREFIX,
   authenticateApiKey,
@@ -180,5 +181,28 @@ describe("registry", () => {
     expect(roleDefaults("admin")).toContain("public_api.manage");
     expect(roleDefaults("marketer")).not.toContain("public_api.manage");
     expect(roleDefaults("agent")).not.toContain("public_api.manage");
+  });
+});
+
+describe("before 20261120 is applied", () => {
+  it("no api_keys table: a well-formed key gets 503 and nothing else is read; a malformed one 401", async () => {
+    const db = fakeDb((op) =>
+      op.table === "api_keys"
+        ? {
+            data: null,
+            error: { code: "PGRST205", message: "Could not find the table 'public.api_keys'" },
+          }
+        : undefined,
+    );
+    const res = (await authenticateApiKey(
+      db.supabase,
+      apiRequest(generateApiKey().key),
+    )) as Response;
+    expect(res.status).toBe(503);
+    expect(db.ops.map((o) => o.table)).toEqual(["api_keys"]);
+    expect(db.rpcs).toEqual([]);
+    expect(((await authenticateApiKey(db.supabase, apiRequest("nope"))) as Response).status).toBe(
+      401,
+    );
   });
 });

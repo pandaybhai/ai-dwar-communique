@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FakeOp } from "./test-support/fake-db";
+import { fakeDb, type FakeOp } from "./test-support/fake-db";
 import { latencyWorld } from "./test-support/latency-world";
 import { fakeFetch, ORG, publicApiWorld, type FetchRoute } from "./test-support/public-api-world";
 import { processWebhookPayload } from "./whatsapp-webhook.server";
@@ -551,5 +551,24 @@ describe("Settings: address, secret shown once, rotate, test event", () => {
     expect((await post({ action: "remove" })).status).toBe(200);
     expect(h.world!.db.rows("workspace_connections")).toEqual([]);
     expect(h.world!.vault.size).toBe(0);
+  });
+});
+
+describe("before 20261120 is applied", () => {
+  it("the tick's delivery step reports the missing claim function and never throws (the flow tick beside it is untouched)", async () => {
+    const db = fakeDb(
+      () => undefined,
+      (call) =>
+        call.name === "api_webhook_claim"
+          ? { data: null, error: { code: "PGRST202", message: "Could not find the function" } }
+          : undefined,
+    );
+    const report = await runApiWebhookDeliveries(db.supabase);
+    expect(report).toMatchObject({
+      claimed: 0,
+      delivered: 0,
+      error: "Could not find the function",
+    });
+    expect(db.ops).toEqual([]);
   });
 });

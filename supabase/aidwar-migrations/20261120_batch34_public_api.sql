@@ -5,9 +5,14 @@
 --
 -- Applying it changes nothing for anyone who doesn't call the API: the
 -- public_api flag is created OFF, and is on only for a workspace on the Scale
--- or Enterprise plan or with an override row (Super Admin -> Flags). Without
--- this file the API answers 401/503 and sends nothing (no api_keys table: no
--- key can match), and the status webhook skips its enqueue (logged).
+-- or Enterprise plan or with an override row (Super Admin -> Flags).
+--
+-- Before this file is applied (tested in batch34-keys / batch34-webhooks):
+-- every API call answers 401 (a malformed key) or 503 (the api_keys read
+-- fails) and nothing is sent; no message can carry metadata.source "api",
+-- so the status webhook never queues anything; the flow-worker tick's
+-- delivery step reports the missing api_webhook_claim and the flow tick runs
+-- exactly as before. Settings -> API & webhooks stays hidden (flag absent = off).
 --
 -- (1) the public_api flag, its feature_registry row and its one permission
 --     public_api.manage (owner + admin), as scripts/sync-feature-registry.ts

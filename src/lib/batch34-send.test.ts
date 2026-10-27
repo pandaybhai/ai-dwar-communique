@@ -373,6 +373,24 @@ describe("refused before anything is sent", () => {
 });
 
 describe("idempotency", () => {
+  it("a repeat gets the first answer even after the template was paused or the plan lapsed", async () => {
+    const first = await send(good({ idempotency_key: "inv-77" }));
+    expect(first.status).toBe(202);
+    h.world!.db.rows("message_templates").find((t) => t["name"] === "invoice_ready")!["status"] =
+      "PAUSED";
+    h.world!.db.rows("organizations").find((o) => o["id"] === ORG)!["plan_status"] = "locked";
+    const again = await send(good({ idempotency_key: "inv-77" }));
+    expect([again.status, again.body]).toEqual([202, first.body]);
+    expect(sends()).toHaveLength(1);
+  });
+
+  it("a refusal after the reservation (template, plan) frees the key", async () => {
+    expect(
+      (await send(good({ idempotency_key: "inv-78", template_name: "invoice_pending" }))).status,
+    ).toBe(400);
+    expect((await send(good({ idempotency_key: "inv-78" }))).status).toBe(202);
+  });
+
   it("the same idempotency_key twice sends once and answers the same", async () => {
     const first = await send(good({ idempotency_key: "inv-1001" }));
     const again = await send(good({ idempotency_key: "inv-1001" }));
