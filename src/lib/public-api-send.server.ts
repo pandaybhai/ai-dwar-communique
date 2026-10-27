@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import type { ApiCaller } from "@/lib/public-api.server";
+import { MAX_DOCUMENT_MB } from "@/lib/public-api";
 
 /**
  * Batch 34: POST /api/v1/messages/template — one approved template with a
@@ -21,7 +22,7 @@ import type { ApiCaller } from "@/lib/public-api.server";
  * Every refusal happens before anything is sent. Never logs a key or a document.
  */
 
-export const MAX_DOCUMENT_BYTES = 16 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES = MAX_DOCUMENT_MB * 1024 * 1024;
 /** A base64 PDF of 16 MB is ~21.4 MB of JSON. */
 export const MAX_REQUEST_BYTES = 23 * 1024 * 1024;
 export const DOCUMENT_FETCH_TIMEOUT_MS = 15_000;
@@ -145,13 +146,14 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
   };
 }
 
+// Control characters are exactly what a file name must lose.
+// eslint-disable-next-line no-control-regex
+const UNSAFE_FILENAME_CHARS = /[\u0000-\u001f\u007f"<>|*?]/g;
+
 /** A file name the customer sees: no path, no control characters, ending in .pdf. */
 export function cleanFilename(raw: string): string {
   const base = raw.split(/[\\/]/).pop() ?? "";
-  const clean = base
-    .replace(/[\u0000-\u001f\u007f"<>|*?]/g, "")
-    .trim()
-    .slice(0, 120);
+  const clean = base.replace(UNSAFE_FILENAME_CHARS, "").trim().slice(0, 120);
   if (!clean) return "document.pdf";
   return /\.pdf$/i.test(clean) ? clean : `${clean}.pdf`;
 }

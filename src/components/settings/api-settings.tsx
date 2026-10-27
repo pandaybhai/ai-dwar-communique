@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, KeyRound, Loader2, Webhook } from "lucide-react";
+import { BookOpen, Check, Copy, KeyRound, Loader2, Webhook } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
 import { useOrg } from "@/lib/org-context";
+import { aidwar } from "@/integrations/aidwar/client";
+import { DOCS_PATH, apiReadyTemplates, curlExample } from "@/lib/public-api";
 
 type KeyRow = {
   id: string;
@@ -54,6 +56,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 export function ApiSettingsTab() {
   return (
     <div className="space-y-6">
+      <ApiQuickstartCard />
       <ApiKeysCard />
       <WebhookCard />
     </div>
@@ -415,6 +418,125 @@ export function WebhookCard() {
           </ul>
         ) : null}
       </div>
+    </section>
+  );
+}
+
+/** The docs, and a ready curl for one of this workspace's own approved document templates. */
+export function ApiQuickstartCard() {
+  const { active } = useOrg();
+  const orgId = active?.organization.id ?? null;
+  const [templates, setTemplates] = useState<Array<{
+    name: string;
+    language: string;
+    paramCount: number;
+  }> | null>(null);
+  const [picked, setPicked] = useState(0);
+
+  useEffect(() => {
+    if (!orgId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await aidwar
+        .from("message_templates")
+        .select("name, language, status, components")
+        .eq("organization_id", orgId)
+        .eq("status", "APPROVED");
+      if (!cancelled)
+        setTemplates(
+          apiReadyTemplates(
+            (data ?? []) as Array<{
+              name: string;
+              language: string;
+              status: string;
+              components: unknown;
+            }>,
+          ),
+        );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://aidwar.in";
+  const template = templates?.[picked] ?? null;
+  const curl = template
+    ? curlExample({
+        origin,
+        templateName: template.name,
+        language: template.language,
+        paramCount: template.paramCount,
+      })
+    : null;
+
+  return (
+    <section className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">
+      <div className="flex items-start gap-3">
+        <BookOpen className="mt-0.5 h-5 w-5 text-primary" aria-hidden="true" />
+        <div>
+          <h2 className="text-base font-semibold text-foreground">
+            Send invoices from your own software
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your billing software calls AiDwar with the customer's number and the invoice PDF; we
+            send it through your approved template, charge it like any message and show it in your
+            inbox.{" "}
+            <a
+              href={DOCS_PATH}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary hover:underline"
+            >
+              Read the API docs
+            </a>
+            .
+          </p>
+        </div>
+      </div>
+      {templates === null ? (
+        <Skeleton className="mt-5 h-24 w-full rounded-xl" />
+      ) : !template || !curl ? (
+        <p className="mt-5 text-sm text-muted-foreground">
+          No approved template with a document header yet. In Templates, choose Create template →
+          “Invoice or receipt with a PDF”, upload a sample PDF and submit it; once Meta approves it,
+          a ready-to-run example appears here.
+        </p>
+      ) : (
+        <div className="mt-5 space-y-2">
+          {templates.length > 1 ? (
+            <div
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label="Template for the example"
+            >
+              {templates.map((t, i) => (
+                <Button
+                  key={`${t.name}-${t.language}`}
+                  type="button"
+                  size="sm"
+                  variant={i === picked ? "default" : "outline"}
+                  onClick={() => setPicked(i)}
+                >
+                  {t.name} ({t.language})
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          <div className="relative">
+            <pre className="overflow-x-auto rounded-xl border border-border/70 bg-muted/50 p-4 font-mono text-xs leading-relaxed">
+              <code>{curl}</code>
+            </pre>
+            <div className="absolute right-2 top-2">
+              <CopyButton value={curl} label="Copy curl example" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Set AIDWAR_API_KEY to a key from below, replace the number, the link and the values, and
+            run it.
+          </p>
+        </div>
+      )}
     </section>
   );
 }

@@ -235,16 +235,14 @@ function install() {
 
 function setWebhook(url = HOOK) {
   const w = h.world!;
-  w.db
-    .rows("workspace_connections")
-    .push({
-      id: "wc-1",
-      organization_id: ORG,
-      provider: "api_webhook",
-      status: "active",
-      public_config: { url },
-      secret_vault_name: "workspace_conn_wc-1",
-    });
+  w.db.rows("workspace_connections").push({
+    id: "wc-1",
+    organization_id: ORG,
+    provider: "api_webhook",
+    status: "active",
+    public_config: { url },
+    secret_vault_name: "workspace_conn_wc-1",
+  });
   w.vault.set("workspace_conn_wc-1", JSON.stringify({ signing_secret: SECRET }));
 }
 
@@ -253,15 +251,13 @@ async function queueOne(
   createdAgoMs = 0,
 ) {
   const w = h.world!;
-  w.db
-    .rows("messages")
-    .push({
-      id: "m-api",
-      organization_id: ORG,
-      status: "delivered",
-      metadata: API_META,
-      created_at: new Date().toISOString(),
-    });
+  w.db.rows("messages").push({
+    id: "m-api",
+    organization_id: ORG,
+    status: "delivered",
+    metadata: API_META,
+    created_at: new Date().toISOString(),
+  });
   expect(
     await enqueueApiWebhookEvent(w.db.supabase, {
       organizationId: ORG,

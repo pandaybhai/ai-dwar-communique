@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import {
+  API_KEY_PREFIX,
+  IDEMPOTENCY_WINDOW_HOURS,
+  RATE_PER_KEY_PER_MIN,
+  RATE_PER_WORKSPACE_PER_MIN,
+} from "@/lib/public-api";
 
 /**
  * Batch 34: the Public API's keys and its caller check.
@@ -13,7 +19,7 @@ import { createHash, randomBytes, timingSafeEqual } from "crypto";
  * are never logged.
  */
 
-export const API_KEY_PREFIX = "adw_live_";
+export { API_KEY_PREFIX, RATE_PER_KEY_PER_MIN, RATE_PER_WORKSPACE_PER_MIN };
 const KEY_SHAPE = /^adw_live_[A-Za-z0-9_-]{43}$/;
 /** Active keys one workspace may hold at once. */
 export const MAX_ACTIVE_KEYS = 20;
@@ -234,10 +240,6 @@ export async function authenticateApiKey(
 
 // ------------------------------------------------------------ rate limits
 
-/** Calls per minute: one key, and one workspace across all its keys. */
-export const RATE_PER_KEY_PER_MIN = 60;
-export const RATE_PER_WORKSPACE_PER_MIN = 300;
-
 /**
  * One call counted against a fixed one-minute window (api_rate_take, in the
  * database, so every server instance shares the count). Null when allowed,
@@ -295,7 +297,7 @@ export async function takeRateLimit(
 // ------------------------------------------------------------ idempotency
 
 /** A repeat of the same idempotency_key within this long returns the first answer. */
-export const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const IDEMPOTENCY_WINDOW_MS = IDEMPOTENCY_WINDOW_HOURS * 60 * 60 * 1000;
 
 export type IdempotencyClaim =
   | { kind: "new"; id: string }

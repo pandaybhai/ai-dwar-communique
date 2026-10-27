@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHmac, randomBytes } from "crypto";
+import {
+  WEBHOOK_EVENT_NAMES,
+  WEBHOOK_RETRY_HOURS,
+  WEBHOOK_TIMEOUT_SECONDS,
+} from "@/lib/public-api";
 
 /**
  * Batch 34 item 4: the merchant's own webhook hears about every message the
@@ -24,18 +29,13 @@ import { createHmac, randomBytes } from "crypto";
  * document link: https, public on every address, no redirect followed, 10 s.
  */
 
-export const API_WEBHOOK_EVENTS = [
-  "message.sent",
-  "message.delivered",
-  "message.read",
-  "message.failed",
-] as const;
+export const API_WEBHOOK_EVENTS = WEBHOOK_EVENT_NAMES;
 export type ApiWebhookEvent = (typeof API_WEBHOOK_EVENTS)[number] | "webhook.test";
 export const TEST_EVENT = "webhook.test";
 
-export const DELIVERY_TIMEOUT_MS = 10_000;
+export const DELIVERY_TIMEOUT_MS = WEBHOOK_TIMEOUT_SECONDS * 1000;
 /** A delivery is given up this long after its event. */
-export const DELIVERY_GIVE_UP_MS = 24 * 60 * 60 * 1000;
+export const DELIVERY_GIVE_UP_MS = WEBHOOK_RETRY_HOURS * 60 * 60 * 1000;
 /** Wait before attempt n+1 after n failed ones (the last step repeats). */
 export const BACKOFF_MS = [
   60_000, 120_000, 300_000, 600_000, 1_800_000, 3_600_000, 7_200_000, 14_400_000,

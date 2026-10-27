@@ -51,6 +51,7 @@ import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
+import { Route as DevelopersApiRouteImport } from './routes/developers.api'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as PayPaymentIdRouteImport } from './routes/pay.$paymentId'
 import { Route as RTokenRouteImport } from './routes/r.$token'
@@ -351,6 +352,11 @@ const AppTemplatesRoute = AppTemplatesRouteImport.update({
   id: '/templates',
   path: '/templates',
   getParentRoute: () => AppRouteRoute,
+} as any)
+const DevelopersApiRoute = DevelopersApiRouteImport.update({
+  id: '/developers/api',
+  path: '/developers/api',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
@@ -870,6 +876,7 @@ export interface FileRoutesByFullPath {
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
+  '/developers/api': typeof DevelopersApiRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
@@ -1002,6 +1009,7 @@ export interface FileRoutesByTo {
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
+  '/developers/api': typeof DevelopersApiRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
@@ -1137,6 +1145,7 @@ export interface FileRoutesById {
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
+  '/developers/api': typeof DevelopersApiRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
@@ -1273,6 +1282,7 @@ export interface FileRouteTypes {
     | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
+    | '/developers/api'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
@@ -1405,6 +1415,7 @@ export interface FileRouteTypes {
     | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
+    | '/developers/api'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
@@ -1539,6 +1550,7 @@ export interface FileRouteTypes {
     | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
+    | '/developers/api'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
@@ -1654,6 +1666,7 @@ export interface RootRouteChildren {
   ApiEventsRoute: typeof ApiEventsRoute
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
+  DevelopersApiRoute: typeof DevelopersApiRoute
   JoinTokenRoute: typeof JoinTokenRoute
   PayPaymentIdRoute: typeof PayPaymentIdRoute
   RTokenRoute: typeof RTokenRoute
@@ -2034,6 +2047,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/templates'
       preLoaderRoute: typeof AppTemplatesRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/developers/api': {
+      id: '/developers/api'
+      path: '/developers/api'
+      fullPath: '/developers/api'
+      preLoaderRoute: typeof DevelopersApiRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/join/$token': {
       id: '/join/$token'
@@ -2767,6 +2787,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiEventsRoute: ApiEventsRoute,
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
+  DevelopersApiRoute: DevelopersApiRoute,
   JoinTokenRoute: JoinTokenRoute,
   PayPaymentIdRoute: PayPaymentIdRoute,
   RTokenRoute: RTokenRoute,
