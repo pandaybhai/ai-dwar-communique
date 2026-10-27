@@ -1342,6 +1342,40 @@ export const FEATURES: readonly FeatureManifest[] = [
     activity_actions: ["payment_refunded"],
     data_tables: [],
   },
+  {
+    // Batch 34: a merchant's own billing software sends an invoice PDF through
+    // the workspace's approved template (POST /api/v1/messages/template) and
+    // hears back about sent / delivered / read / failed on its own webhook.
+    // A switch, not a page: the keys and the webhook live in Settings → API &
+    // webhooks. On in the Scale and Enterprise plans (20261120_batch34_public_api.sql).
+    key: "public_api",
+    depends_on: ["inbox", "templates"],
+    name: "Public API & webhooks",
+    description:
+      "Send approved WhatsApp templates (an invoice PDF, for one) from your own software with an API key, and get delivery updates on your webhook.",
+    icon: "settings",
+    flag_key: "public_api",
+    flag_default_enabled: false,
+    settings_path: "/app/settings",
+    permissions: [
+      {
+        key: "public_api.manage",
+        name: "Manage API keys and webhooks",
+        description: "Create and revoke API keys and set the webhook that receives message updates.",
+        min_role: "admin",
+      },
+    ],
+    analytics: none,
+    activity_actions: [
+      "api_key_created",
+      "api_key_revoked",
+      "api_webhook_saved",
+      "api_webhook_secret_rotated",
+      "api_webhook_removed",
+      "api_webhook_test_sent",
+    ],
+    data_tables: ["api_keys", "api_requests", "api_webhook_deliveries"],
+  },
 ] as const;
 
 export const ROLE_RANK: Record<OrgRole, number> = { owner: 4, admin: 3, marketer: 2, agent: 1 };

@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 85, column 1037, view 2, function 102, index 149, trigger 67, cron_job 14.
+-- Expected objects: table 86, column 1046, view 2, function 102, index 151, trigger 67, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -35,6 +35,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('table', 'public', 'ai_tool_calls', NULL, NULL, NULL, '20260902_ai_core.sql'),
     ('table', 'public', 'ai_usage', NULL, NULL, NULL, '20260902_ai_core.sql'),
     ('table', 'public', 'analytics_events', NULL, NULL, NULL, '20260819_event_spine_usage_ai.sql'),
+    ('table', 'public', 'api_keys', NULL, NULL, NULL, '20261120_batch34_public_api.sql'),
     ('table', 'public', 'automation_runs', NULL, NULL, NULL, '20260816_automations.sql'),
     ('table', 'public', 'automations', NULL, NULL, NULL, '20260816_automations.sql'),
     ('table', 'public', 'campaign_offer_events', NULL, NULL, NULL, '20260903_campaign_offer_events.sql'),
@@ -289,6 +290,15 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'analytics_events', 'organization_id', NULL, 'uuid', '20260819_event_spine_usage_ai.sql'),
     ('column', 'public', 'analytics_events', 'properties', NULL, 'jsonb', '20260819_event_spine_usage_ai.sql'),
     ('column', 'public', 'analytics_events', 'whatsapp_account_id', NULL, 'uuid', '20260819_event_spine_usage_ai.sql'),
+    ('column', 'public', 'api_keys', 'created_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_keys', 'created_by', NULL, 'uuid', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_keys', 'id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_keys', 'key_hash', NULL, 'text', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_keys', 'last_used_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_keys', 'name', NULL, 'text', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_keys', 'organization_id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_keys', 'prefix', NULL, 'text', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_keys', 'revoked_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'automation_runs', 'automation_id', NULL, 'uuid', '20260816_automations.sql'),
     ('column', 'public', 'automation_runs', 'contact_id', NULL, 'uuid', '20260816_automations.sql'),
     ('column', 'public', 'automation_runs', 'conversation_id', NULL, 'uuid', '20260816_automations.sql'),
@@ -1265,6 +1275,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'analytics_events_org_time_idx', NULL, NULL, 'on public.analytics_events', '20260819_event_spine_usage_ai.sql'),
     ('index', 'public', 'analytics_events_org_type_time_idx', NULL, NULL, 'on public.analytics_events', '20260819_event_spine_usage_ai.sql'),
     ('index', 'public', 'analytics_events_properties_idx', NULL, NULL, 'on public.analytics_events', '20260819_event_spine_usage_ai.sql'),
+    ('index', 'public', 'api_keys_key_hash_key', NULL, NULL, 'unique on public.api_keys', '20261120_batch34_public_api.sql'),
+    ('index', 'public', 'api_keys_org_idx', NULL, NULL, 'on public.api_keys', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'automation_runs_lookup_idx', NULL, NULL, 'on public.automation_runs', '20260816_automations.sql'),
     ('index', 'public', 'automation_runs_message_unique_idx', NULL, NULL, 'unique on public.automation_runs', '20260816_automations.sql'),
     ('index', 'public', 'automations_org_active_idx', NULL, NULL, 'on public.automations', '20260816_automations.sql'),
