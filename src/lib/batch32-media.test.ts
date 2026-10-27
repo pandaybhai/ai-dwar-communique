@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FakeOp } from "./test-support/fake-db";
 import { fakeStorage, withStorage } from "./test-support/fake-storage";
 import { memoryDb, type Row } from "./test-support/memory-db";
-import { MAX_SAVE_ATTEMPTS, RESCUE_BATCH, runChatMediaSweep } from "./chat-media.server";
+import { MAX_SAVE_ATTEMPTS, RESCUE_BATCH, RETENTION_BATCH, runChatMediaSweep } from "./chat-media.server";
 import { inboundPayload, latencyWorld } from "./test-support/latency-world";
 import { processWebhookPayload, resetBurstWindowCache } from "./whatsapp-webhook.server";
 
@@ -251,7 +251,7 @@ describe("(3) rescue + expired", () => {
     ]);
     vi.stubGlobal("fetch", async () => new Response("", { status: 500 }));
     const counts = await runChatMediaSweep(w.db.supabase, { now: NOW });
-    expect(counts).toEqual({ media_saved: 0, media_save_failed: 0, media_too_large: 0, media_expired: 0 });
+    expect(counts).toEqual({ media_saved: 0, media_save_failed: 0, media_too_large: 0, media_expired: 0, media_removed: 0 });
     expect(w.storage.calls).toEqual([]);
   });
 
@@ -296,5 +296,61 @@ describe("(3) rescue + expired", () => {
     const { runBillingSweep } = await import("./billing-sweep.server");
     const counts = await runBillingSweep(w.db.supabase);
     expect(counts.media_saved).toBe(1);
+  });
+});
+
+describe("(4) retention", () => {
+  const kept = (id: string, createdAt: string, extra: Row = {}): Row =>
+    inbound(id, createdAt, { media_url: `storage:chat-media/org-z/cv-z/${id}.jpg`, body: `caption ${id}`, metadata: { meta_media_id: `${id}-media` }, ...extra });
+  const settings = (days: number | null) => ({ platform_settings: [{ id: true, media_retention_days: days }] });
+  const stored = (w: ReturnType<typeof sweepWorld>, ...ids: string[]) =>
+    ids.forEach((id) => w.storage.objects("chat-media").set(`org-z/cv-z/${id}.jpg`, { bytes: JPEG, contentType: "image/jpeg" }));
+
+  it("retention deletion leaves text intact: the old file goes, its message stays with its words; a text message is never touched", async () => {
+    const text: Row = { id: "t-old", organization_id: "org-z", conversation_id: "cv-z", direction: "inbound", type: "text", body: "hello from last year", media_url: null, metadata: null, created_at: ago(400 * DAY) };
+    const w = sweepWorld([kept("p-old", ago(400 * DAY)), kept("p-new", ago(30 * DAY)), text], settings(365));
+    stored(w, "p-old", "p-new");
+
+    const counts = await runChatMediaSweep(w.db.supabase, { now: NOW });
+
+    expect(counts.media_removed).toBe(1);
+    expect(w.storage.objects("chat-media").has("org-z/cv-z/p-old.jpg")).toBe(false);
+    expect(w.storage.objects("chat-media").has("org-z/cv-z/p-new.jpg")).toBe(true);
+    expect(w.row("p-old")).toMatchObject({
+      media_url: null,
+      body: "caption p-old",
+      type: "image",
+      metadata: { meta_media_id: "p-old-media", media_removed_at: new Date(NOW).toISOString() },
+    });
+    expect(w.row("p-new")["media_url"]).toBe("storage:chat-media/org-z/cv-z/p-new.jpg");
+    expect(w.row("t-old")).toEqual(text);
+    expect(w.db.rows("messages")).toHaveLength(3);
+    expect(w.db.log.some((l) => l.table === "messages" && l.kind === "delete")).toBe(false);
+  });
+
+  it("null keeps forever; a missing setting (column not applied) removes nothing", async () => {
+    for (const extra of [settings(null), {}]) {
+      const w = sweepWorld([kept("p-ancient", ago(3000 * DAY))], extra);
+      stored(w, "p-ancient");
+      expect((await runChatMediaSweep(w.db.supabase, { now: NOW })).media_removed).toBe(0);
+      expect(w.storage.calls.filter((c) => c.op === "remove")).toEqual([]);
+      expect(w.row("p-ancient")["media_url"]).toBe("storage:chat-media/org-z/cv-z/p-ancient.jpg");
+    }
+  });
+
+  it("storage refusing the delete leaves every row as it was (no file is said removed while it is still there)", async () => {
+    const w = sweepWorld([kept("p-old", ago(400 * DAY))], settings(365));
+    stored(w, "p-old");
+    w.storage.fail.remove = "storage down";
+    expect((await runChatMediaSweep(w.db.supabase, { now: NOW })).media_removed).toBe(0);
+    expect(w.row("p-old")["media_url"]).toBe("storage:chat-media/org-z/cv-z/p-old.jpg");
+  });
+
+  it("bounded: at most RETENTION_BATCH files a run, oldest first", async () => {
+    const rows = Array.from({ length: RETENTION_BATCH + 3 }, (_, i) => kept(`b${i}`, ago((500 + i) * DAY)));
+    const w = sweepWorld(rows, settings(365));
+    expect((await runChatMediaSweep(w.db.supabase, { now: NOW })).media_removed).toBe(RETENTION_BATCH);
+    const left = w.db.rows("messages").filter((m) => m["media_url"]).map((m) => m["id"]);
+    expect(left).toEqual(["b0", "b1", "b2"]);
   });
 });

@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 84, column 1033, view 2, function 100, index 148, trigger 65, cron_job 14.
+-- Expected objects: table 84, column 1034, view 2, function 100, index 149, trigger 65, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -884,6 +884,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'platform_settings', 'link_reread_days', NULL, 'integer', '20260924100000_reading_link_limits.sql'),
     ('column', 'public', 'platform_settings', 'manual_refresh_cooldown_hours', NULL, 'integer', '20260924080000_reading_settings.sql'),
     ('column', 'public', 'platform_settings', 'map_engine', NULL, 'text', '20260924090000_reader_engines.sql'),
+    ('column', 'public', 'platform_settings', 'media_retention_days', NULL, 'integer', '20261110_batch32_media.sql'),
     ('column', 'public', 'platform_settings', 'on_demand_read', NULL, 'boolean', '20260924080000_reading_settings.sql'),
     ('column', 'public', 'platform_settings', 'plan_page_overrides', NULL, 'jsonb', '20260924080000_reading_settings.sql'),
     ('column', 'public', 'platform_settings', 'price_check_daily', NULL, 'boolean', '20261025_price_check.sql'),
@@ -1330,6 +1331,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'message_templates_org_waba_name_lang_key', NULL, NULL, 'unique on public.message_templates', '20260818_multi_number.sql'),
     ('index', 'public', 'message_templates_waba_idx', NULL, NULL, 'on public.message_templates', '20260818_multi_number.sql'),
     ('index', 'public', 'messages_campaign_idx', NULL, NULL, 'on public.messages', '20260828_revenue_attribution.sql'),
+    ('index', 'public', 'messages_chat_media_created_idx', NULL, NULL, 'on public.messages', '20261110_batch32_media.sql'),
     ('index', 'public', 'messages_flow_idx', NULL, NULL, 'on public.messages', '20260828_revenue_attribution.sql'),
     ('index', 'public', 'messages_inbound_meta_media_idx', NULL, NULL, 'on public.messages', '20261110_batch32_media.sql'),
     ('index', 'public', 'messages_org_conv_created_idx', NULL, NULL, 'on public.messages', '20260813_phase2_whatsapp_data_plane.sql'),

@@ -14,7 +14,8 @@ import type { MediaSweepCounts } from "@/lib/chat-media.server";
  *
  * Batch 32: the run ends with the customer-media upkeep (runChatMediaSweep,
  * chat-media.server.ts): files Meta still has are saved, the ones it no
- * longer has are marked expired. Bounded, never fails the sweep.
+ * longer has are marked expired, and kept files past the retention are
+ * removed (their messages stay). Bounded, never fails the sweep.
  *
  * Every run also retries the message debits the database could not take
  * when the message was priced (Batch 26a): a message that went out is always
@@ -157,6 +158,7 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     media_save_failed: 0,
     media_too_large: 0,
     media_expired: 0,
+    media_removed: 0,
   };
 
   // ---- messages already sent whose debit failed: charge them now if we can

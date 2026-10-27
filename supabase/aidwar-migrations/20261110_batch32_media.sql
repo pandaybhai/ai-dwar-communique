@@ -29,3 +29,29 @@ ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS metadata jsonb;
 CREATE INDEX IF NOT EXISTS messages_inbound_meta_media_idx
   ON public.messages (created_at DESC)
   WHERE direction = 'inbound' AND media_url LIKE 'meta:%';
+
+-- (4) Retention: kept files older than this many days are removed by the
+--     maintenance sweep (runChatMediaSweep in the billing sweep): the object
+--     goes, messages.media_url becomes NULL and metadata.media_removed_at is
+--     set — the message itself (its words, its time) is never deleted. NULL =
+--     keep forever. Until this column exists nothing is removed.
+ALTER TABLE public.platform_settings
+  ADD COLUMN IF NOT EXISTS media_retention_days integer DEFAULT 365;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'platform_settings_media_retention_days_check'
+      AND conrelid = 'public.platform_settings'::regclass
+  ) THEN
+    ALTER TABLE public.platform_settings
+      ADD CONSTRAINT platform_settings_media_retention_days_check
+      CHECK (media_retention_days IS NULL OR media_retention_days > 0);
+  END IF;
+END $$;
+
+-- The retention read: rows whose file we keep, oldest first.
+CREATE INDEX IF NOT EXISTS messages_chat_media_created_idx
+  ON public.messages (created_at)
+  WHERE media_url LIKE 'storage:chat-media/%';

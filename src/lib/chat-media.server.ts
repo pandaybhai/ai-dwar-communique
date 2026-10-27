@@ -208,12 +208,16 @@ export const RESCUE_AFTER_MS = 5 * 60_000;
 /** Meta refusals (or no connected number) before a row stops being retried. */
 export const MAX_SAVE_ATTEMPTS = 10;
 export const EXPIRE_BATCH = 100;
+/** Old files removed per run (retention). */
+export const RETENTION_BATCH = 100;
 
 export type MediaSweepCounts = {
   media_saved: number;
   media_save_failed: number;
   media_too_large: number;
   media_expired: number;
+  /** Batch 32 (4): files past platform_settings.media_retention_days, removed. */
+  media_removed: number;
 };
 
 type PendingRow = {
@@ -239,7 +243,7 @@ export async function runChatMediaSweep(
   options: { now?: number; budgetMs?: number } = {},
 ): Promise<MediaSweepCounts> {
   const now = options.now ?? Date.now();
-  const counts: MediaSweepCounts = { media_saved: 0, media_save_failed: 0, media_too_large: 0, media_expired: 0 };
+  const counts: MediaSweepCounts = { media_saved: 0, media_save_failed: 0, media_too_large: 0, media_expired: 0, media_removed: 0 };
   try {
     await rescuePending(supabase, now, options.budgetMs ?? RESCUE_BUDGET_MS, counts);
   } catch (error) {
@@ -250,7 +254,63 @@ export async function runChatMediaSweep(
   } catch (error) {
     console.warn(JSON.stringify({ scope: "chat_media_sweep", step: "expire", error: error instanceof Error ? error.message : String(error) }));
   }
+  try {
+    const days = await loadMediaRetentionDays(supabase);
+    if (days) counts.media_removed = await removeOldMedia(supabase, now, days);
+  } catch (error) {
+    console.warn(JSON.stringify({ scope: "chat_media_sweep", step: "retention", error: error instanceof Error ? error.message : String(error) }));
+  }
   return counts;
+}
+
+/**
+ * platform_settings.media_retention_days (default 365). Null — and a missing
+ * row, a missing column or a failed read — means keep forever: nothing is
+ * ever removed on a guess.
+ */
+export async function loadMediaRetentionDays(supabase: SupabaseClient): Promise<number | null> {
+  try {
+    const { data, error } = await supabase.from("platform_settings").select("media_retention_days").eq("id", true).maybeSingle();
+    if (error) return null;
+    const days = Number((data as { media_retention_days?: unknown } | null)?.media_retention_days ?? NaN);
+    return Number.isInteger(days) && days > 0 ? days : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Removes kept files older than the retention, oldest first: the objects go
+ * first (one storage call), then each row loses its media_url and gets
+ * metadata.media_removed_at — the message itself (its words, its time) is
+ * never deleted, and the inbox shows "Older file removed".
+ */
+async function removeOldMedia(supabase: SupabaseClient, now: number, days: number): Promise<number> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id, media_url, metadata")
+    .like("media_url", `${STORAGE_PREFIX}%`)
+    .lt("created_at", iso(now - days * 24 * 60 * 60 * 1000))
+    .order("created_at", { ascending: true })
+    .limit(RETENTION_BATCH);
+  if (error) throw new Error(error.message);
+  const rows = ((data ?? []) as Array<{ id: string; media_url: string; metadata: MediaMetadata | null }>).filter((r) =>
+    chatMediaPath(r.media_url),
+  );
+  if (!rows.length) return 0;
+  const { error: removeError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).remove(rows.map((r) => chatMediaPath(r.media_url)!));
+  if (removeError) throw new Error(removeError.message);
+  const removedAt = iso(now);
+  let removed = 0;
+  for (const row of rows) {
+    const { error: writeError } = await supabase
+      .from("messages")
+      .update({ media_url: null, metadata: { ...(row.metadata ?? {}), media_removed_at: removedAt } })
+      .eq("id", row.id)
+      .eq("media_url", row.media_url);
+    if (!writeError) removed += 1;
+  }
+  return removed;
 }
 
 async function rescuePending(supabase: SupabaseClient, now: number, budgetMs: number, counts: MediaSweepCounts): Promise<void> {
