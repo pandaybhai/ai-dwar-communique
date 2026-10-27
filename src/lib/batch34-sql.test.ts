@@ -100,6 +100,44 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
         ),
       ).toBe("0");
     });
+
+    it("(3) api_requests: one reservation per workspace and key — the second identical insert fails", () => {
+      pg.sql(
+        `insert into public.api_requests (organization_id, idempotency_key, request_hash) values ('${A}', 'inv-1', 'h')`,
+      );
+      expect(() =>
+        pg.sql(
+          `insert into public.api_requests (organization_id, idempotency_key, request_hash) values ('${A}', 'inv-1', 'h')`,
+        ),
+      ).toThrow(/api_requests_org_key_key/);
+      // Another workspace's same key is its own.
+      pg.sql(
+        `insert into public.api_requests (organization_id, idempotency_key, request_hash) values ('${B}', 'inv-1', 'h')`,
+      );
+      expect(() =>
+        pg.sql(
+          "begin; set local role authenticated; select count(*) from public.api_requests; commit;",
+        ),
+      ).toThrow(/permission denied/);
+    });
+
+    it("(3) api_rate_take counts every call in the window; over the limit it refuses with seconds to wait", () => {
+      const take = () =>
+        pg.sql("select allowed || '|' || retry_after from public.api_rate_take('key:t', 3, 3600)");
+      expect([take(), take(), take()]).toEqual(["true|0", "true|0", "true|0"]);
+      const [allowed, wait] = take().split("|");
+      expect(allowed).toBe("false");
+      expect(Number(wait)).toBeGreaterThanOrEqual(1);
+      expect(Number(wait)).toBeLessThanOrEqual(3600);
+      expect(pg.sql("select hits from public.api_rate_windows where bucket = 'key:t'")).toBe("4");
+      // Another bucket is counted on its own.
+      expect(pg.sql("select allowed from public.api_rate_take('key:u', 3, 60)")).toBe("t");
+      expect(() =>
+        pg.sql(
+          "begin; set local role authenticated; select public.api_rate_take('x', 1, 60); commit;",
+        ),
+      ).toThrow(/permission denied/);
+    });
   },
 );
 

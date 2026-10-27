@@ -132,6 +132,7 @@ import { Route as ApiPublicRazorpayFlowWebhookOrgIdRouteImport } from './routes/
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
 import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/shopify/webhooks/shop-redact'
+import { Route as ApiV1MessagesTemplateRouteImport } from './routes/api/v1/messages/template'
 import { Route as ApiWhatsappChatMediaMessageIdRouteImport } from './routes/api/whatsapp/chat-media.$messageId'
 import { Route as ApiWhatsappMediaIdRouteImport } from './routes/api/whatsapp/media/$id'
 import { Route as AppFlowsV2IdRouteImport } from './routes/app/flows.v2.$id'
@@ -776,6 +777,11 @@ const ApiShopifyWebhooksShopRedactRoute =
     path: '/api/shopify/webhooks/shop-redact',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1MessagesTemplateRoute = ApiV1MessagesTemplateRouteImport.update({
+  id: '/api/v1/messages/template',
+  path: '/api/v1/messages/template',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWhatsappChatMediaMessageIdRoute =
   ApiWhatsappChatMediaMessageIdRouteImport.update({
     id: '/api/whatsapp/chat-media/$messageId',
@@ -935,6 +941,7 @@ export interface FileRoutesByFullPath {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
@@ -1064,6 +1071,7 @@ export interface FileRoutesByTo {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
@@ -1196,6 +1204,7 @@ export interface FileRoutesById {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
@@ -1329,6 +1338,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/messages/template'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
@@ -1458,6 +1468,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/messages/template'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
@@ -1589,6 +1600,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/messages/template'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
@@ -1693,6 +1705,7 @@ export interface RootRouteChildren {
   ApiShopifyWebhooksCustomersDataRequestRoute: typeof ApiShopifyWebhooksCustomersDataRequestRoute
   ApiShopifyWebhooksCustomersRedactRoute: typeof ApiShopifyWebhooksCustomersRedactRoute
   ApiShopifyWebhooksShopRedactRoute: typeof ApiShopifyWebhooksShopRedactRoute
+  ApiV1MessagesTemplateRoute: typeof ApiV1MessagesTemplateRoute
   ApiWhatsappChatMediaMessageIdRoute: typeof ApiWhatsappChatMediaMessageIdRoute
   ApiWhatsappMediaIdRoute: typeof ApiWhatsappMediaIdRoute
   ApiPublicShopifyWebhooksCustomersDataRequestRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
@@ -2563,6 +2576,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShopifyWebhooksShopRedactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/messages/template': {
+      id: '/api/v1/messages/template'
+      path: '/api/v1/messages/template'
+      fullPath: '/api/v1/messages/template'
+      preLoaderRoute: typeof ApiV1MessagesTemplateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/chat-media/$messageId': {
       id: '/api/whatsapp/chat-media/$messageId'
       path: '/api/whatsapp/chat-media/$messageId'
@@ -2785,6 +2805,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiShopifyWebhooksCustomersRedactRoute:
     ApiShopifyWebhooksCustomersRedactRoute,
   ApiShopifyWebhooksShopRedactRoute: ApiShopifyWebhooksShopRedactRoute,
+  ApiV1MessagesTemplateRoute: ApiV1MessagesTemplateRoute,
   ApiWhatsappChatMediaMessageIdRoute: ApiWhatsappChatMediaMessageIdRoute,
   ApiWhatsappMediaIdRoute: ApiWhatsappMediaIdRoute,
   ApiPublicShopifyWebhooksCustomersDataRequestRoute:

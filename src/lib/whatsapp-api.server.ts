@@ -226,6 +226,37 @@ export function providerErrorCode(body: Record<string, unknown>): string | null 
   return err?.["code"] != null ? String(err["code"]) : null;
 }
 
+/**
+ * Uploads a file to Meta for one number (POST /{phone-number-id}/media) and
+ * returns the media id a send can carry instead of a link (Batch 34: an
+ * invoice PDF that only lives in our private storage). Not the template
+ * review upload (uploadTemplateMedia), which makes a one-time handle.
+ */
+export async function uploadMessageMedia(
+  phoneNumberId: string,
+  accessToken: string,
+  file: { bytes: Uint8Array; mime: string; filename: string },
+): Promise<{ ok: true; id: string } | { ok: false; error: string; detail: string }> {
+  const form = new FormData();
+  form.set("messaging_product", "whatsapp");
+  form.set("type", file.mime);
+  form.set("file", new Blob([file.bytes as BlobPart], { type: file.mime }), file.filename);
+  try {
+    const res = await outsideFetch("meta_media", `https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const id = typeof body["id"] === "string" ? (body["id"] as string) : null;
+    if (!res.ok || !id) return { ok: false, error: graphErrorMessage(body), detail: providerErrorDetail(body) };
+    return { ok: true, id };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: "We couldn't reach WhatsApp to upload the file.", detail: JSON.stringify({ message }) };
+  }
+}
+
 /** Re-exported from the shared helper so every write path agrees. */
 export { normalizePhone, toWaId } from "@/lib/phone";
 

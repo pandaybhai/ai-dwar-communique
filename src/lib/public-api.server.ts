@@ -231,3 +231,213 @@ export async function authenticateApiKey(
   }
   return { keyId: row.id, organizationId: row.organization_id };
 }
+
+// ------------------------------------------------------------ rate limits
+
+/** Calls per minute: one key, and one workspace across all its keys. */
+export const RATE_PER_KEY_PER_MIN = 60;
+export const RATE_PER_WORKSPACE_PER_MIN = 300;
+
+/**
+ * One call counted against a fixed one-minute window (api_rate_take, in the
+ * database, so every server instance shares the count). Null when allowed,
+ * else the 429 (with Retry-After) — or a 503 when the count can't be read:
+ * an unknown count is never treated as "under the limit".
+ */
+export async function takeRateLimit(
+  supabase: SupabaseClient,
+  caller: ApiCaller,
+): Promise<Response | null> {
+  const buckets: Array<[string, number, string]> = [
+    [
+      `key:${caller.keyId}`,
+      RATE_PER_KEY_PER_MIN,
+      `${RATE_PER_KEY_PER_MIN} requests a minute per API key`,
+    ],
+    [
+      `org:${caller.organizationId}`,
+      RATE_PER_WORKSPACE_PER_MIN,
+      `${RATE_PER_WORKSPACE_PER_MIN} requests a minute per workspace`,
+    ],
+  ];
+  for (const [bucket, limit, label] of buckets) {
+    const { data, error } = await supabase.rpc("api_rate_take", {
+      p_bucket: bucket,
+      p_limit: limit,
+      p_window_seconds: 60,
+    });
+    const row = (Array.isArray(data) ? data[0] : data) as {
+      allowed?: boolean;
+      retry_after?: number;
+    } | null;
+    if (error || !row || typeof row.allowed !== "boolean") {
+      return apiError(
+        503,
+        "unavailable",
+        "We couldn't check the rate limit. Please try again in a moment.",
+      );
+    }
+    if (!row.allowed) {
+      const retryAfter = Math.max(1, Math.ceil(Number(row.retry_after ?? 60)));
+      return apiError(
+        429,
+        "rate_limited",
+        `Too many requests: the limit is ${label}. Try again in ${retryAfter} s.`,
+        {
+          "Retry-After": String(retryAfter),
+        },
+      );
+    }
+  }
+  return null;
+}
+
+// ------------------------------------------------------------ idempotency
+
+/** A repeat of the same idempotency_key within this long returns the first answer. */
+export const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export type IdempotencyClaim =
+  | { kind: "new"; id: string }
+  | { kind: "replay"; status: number; body: Record<string, unknown> }
+  | { kind: "in_progress" }
+  | { kind: "mismatch" }
+  | { kind: "error" };
+
+type RequestRow = {
+  id: string;
+  request_hash: string;
+  state: string;
+  http_status: number | null;
+  response: Record<string, unknown> | null;
+  created_at: string;
+};
+
+/** sha256 of the request's own fields, in a fixed order. */
+export function requestFingerprint(fields: Record<string, unknown>): string {
+  const ordered = Object.keys(fields)
+    .sort()
+    .map((k) => [k, fields[k]]);
+  return createHash("sha256").update(JSON.stringify(ordered), "utf8").digest("hex");
+}
+
+/**
+ * Reserves (organization_id, idempotency_key) before anything is sent.
+ * public.api_requests is unique on the pair, so of two identical calls at
+ * the same moment exactly one inserts; the other reads that row and is told
+ * it is in progress (or, once done, gets the same answer). A row older than
+ * 24 h is taken over by one conditional update.
+ */
+export async function claimIdempotency(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    apiKeyId: string;
+    key: string;
+    requestHash: string;
+    now?: number;
+  },
+): Promise<IdempotencyClaim> {
+  const now = input.now ?? Date.now();
+  const read = async (): Promise<RequestRow | null | "error"> => {
+    const { data, error } = await supabase
+      .from("api_requests")
+      .select("id, request_hash, state, http_status, response, created_at")
+      .eq("organization_id", input.organizationId)
+      .eq("idempotency_key", input.key)
+      .maybeSingle();
+    return error ? "error" : ((data as RequestRow | null) ?? null);
+  };
+  const judge = (row: RequestRow): IdempotencyClaim => {
+    if (row.request_hash !== input.requestHash) return { kind: "mismatch" };
+    if (row.state === "done" && row.http_status)
+      return { kind: "replay", status: row.http_status, body: row.response ?? {} };
+    return { kind: "in_progress" };
+  };
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const existing = await read();
+    if (existing === "error") return { kind: "error" };
+    if (existing) {
+      if (now - Date.parse(existing.created_at) < IDEMPOTENCY_WINDOW_MS) return judge(existing);
+      const { data, error } = await supabase
+        .from("api_requests")
+        .update({
+          api_key_id: input.apiKeyId,
+          request_hash: input.requestHash,
+          state: "processing",
+          http_status: null,
+          response: null,
+          message_id: null,
+          created_at: new Date(now).toISOString(),
+        })
+        .eq("id", existing.id)
+        .eq("created_at", existing.created_at)
+        .select("id");
+      if (error) return { kind: "error" };
+      const taken = ((data ?? []) as Array<{ id: string }>)[0];
+      if (taken) return { kind: "new", id: taken.id };
+      continue; // someone else took it over first: read again
+    }
+    const { data, error } = await supabase
+      .from("api_requests")
+      .insert({
+        organization_id: input.organizationId,
+        api_key_id: input.apiKeyId,
+        idempotency_key: input.key,
+        request_hash: input.requestHash,
+        state: "processing",
+      })
+      .select("id")
+      .single();
+    if (!error && data) return { kind: "new", id: (data as { id: string }).id };
+    if ((error as { code?: string } | null)?.code !== "23505") return { kind: "error" };
+    // Lost the race to an identical call: read what it reserved.
+  }
+  const last = await read();
+  return last && last !== "error" ? judge(last) : { kind: "error" };
+}
+
+/** The answer a reserved request gave, kept for its repeats. */
+export async function finishIdempotency(
+  supabase: SupabaseClient,
+  id: string,
+  result: { status: number; body: Record<string, unknown>; messageId: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from("api_requests")
+    .update({
+      state: "done",
+      http_status: result.status,
+      response: result.body,
+      message_id: result.messageId,
+    })
+    .eq("id", id);
+  if (error)
+    console.warn(
+      JSON.stringify({
+        scope: "public_api",
+        step: "idempotency_finish",
+        request_id: id,
+        error: error.message,
+      }),
+    );
+}
+
+/** Nothing was sent: the key may be used again (e.g. after topping up credits). */
+export async function releaseIdempotency(supabase: SupabaseClient, id: string): Promise<void> {
+  const { error } = await supabase
+    .from("api_requests")
+    .delete()
+    .eq("id", id)
+    .eq("state", "processing");
+  if (error)
+    console.warn(
+      JSON.stringify({
+        scope: "public_api",
+        step: "idempotency_release",
+        request_id: id,
+        error: error.message,
+      }),
+    );
+}

@@ -1215,7 +1215,7 @@ function resolveMedia(
   supplied: MediaValue | undefined,
   storedUrl: string | null,
 ): Record<string, string> | null {
-  if (supplied?.id) return { id: supplied.id };
+  if (supplied?.id) return { id: supplied.id, ...(supplied.filename ? { filename: supplied.filename } : {}) };
   if (supplied?.link) {
     return { link: supplied.link, ...(supplied.filename ? { filename: supplied.filename } : {}) };
   }

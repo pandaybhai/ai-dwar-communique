@@ -16,6 +16,12 @@
 -- (2) public.api_keys: one row per key — its sha256 (key_hash), never the key.
 --     Members with public_api.manage may read every column but key_hash and
 --     set revoked_at on their own workspace's keys; creation is server-only.
+-- (3) public.api_requests: one row per (workspace, idempotency_key) — the
+--     reservation taken before a send and the answer it gave, so a repeat
+--     within 24 h gets the same answer and never a second message.
+--     public.api_rate_windows + api_rate_take(): the per-key (60/min) and
+--     per-workspace (300/min) counts, shared by every server instance.
+--     Service role only.
 
 SET lock_timeout = '5s';
 
@@ -129,5 +135,61 @@ CREATE POLICY api_keys_revoke_managers ON public.api_keys
   FOR UPDATE TO authenticated
   USING (public.has_permission(organization_id, 'public_api.manage'))
   WITH CHECK (public.has_permission(organization_id, 'public_api.manage') AND revoked_at IS NOT NULL);
+
+-- (3) ------------------------------------------------------- idempotency
+CREATE TABLE IF NOT EXISTS public.api_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  api_key_id uuid REFERENCES public.api_keys(id) ON DELETE SET NULL,
+  idempotency_key text NOT NULL CHECK (char_length(idempotency_key) BETWEEN 1 AND 255),
+  request_hash text NOT NULL,
+  state text NOT NULL DEFAULT 'processing' CHECK (state IN ('processing', 'done')),
+  http_status integer,
+  response jsonb,
+  message_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS api_requests_org_key_key ON public.api_requests (organization_id, idempotency_key);
+CREATE INDEX IF NOT EXISTS api_requests_created_idx ON public.api_requests (created_at);
+ALTER TABLE public.api_requests ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.api_requests FROM anon, authenticated;
+GRANT ALL ON public.api_requests TO service_role;
+
+-- ------------------------------------------------------------ rate limits
+CREATE TABLE IF NOT EXISTS public.api_rate_windows (
+  bucket text NOT NULL,
+  window_start timestamptz NOT NULL,
+  hits integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (bucket, window_start)
+);
+ALTER TABLE public.api_rate_windows ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.api_rate_windows FROM anon, authenticated;
+GRANT ALL ON public.api_rate_windows TO service_role;
+
+-- One call counted in the current fixed window (one row upsert, so two
+-- instances counting at once both count). retry_after = seconds to the
+-- window's end when over the limit.
+CREATE OR REPLACE FUNCTION public.api_rate_take(p_bucket text, p_limit integer, p_window_seconds integer DEFAULT 60)
+RETURNS TABLE (allowed boolean, retry_after integer)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  w timestamptz := to_timestamp(floor(extract(epoch FROM now()) / p_window_seconds) * p_window_seconds);
+  n integer;
+BEGIN
+  INSERT INTO public.api_rate_windows AS r (bucket, window_start, hits)
+  VALUES (p_bucket, w, 1)
+  ON CONFLICT (bucket, window_start) DO UPDATE SET hits = r.hits + 1
+  RETURNING r.hits INTO n;
+  RETURN QUERY SELECT
+    n <= p_limit,
+    CASE WHEN n <= p_limit THEN 0
+         ELSE greatest(1, ceil(extract(epoch FROM (w + make_interval(secs => p_window_seconds) - now())))::integer) END;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.api_rate_take(text, integer, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.api_rate_take(text, integer, integer) TO service_role;
 
 RESET lock_timeout;

@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 86, column 1046, view 2, function 102, index 151, trigger 67, cron_job 14.
+-- Expected objects: table 88, column 1059, view 2, function 103, index 153, trigger 67, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -36,6 +36,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('table', 'public', 'ai_usage', NULL, NULL, NULL, '20260902_ai_core.sql'),
     ('table', 'public', 'analytics_events', NULL, NULL, NULL, '20260819_event_spine_usage_ai.sql'),
     ('table', 'public', 'api_keys', NULL, NULL, NULL, '20261120_batch34_public_api.sql'),
+    ('table', 'public', 'api_rate_windows', NULL, NULL, NULL, '20261120_batch34_public_api.sql'),
+    ('table', 'public', 'api_requests', NULL, NULL, NULL, '20261120_batch34_public_api.sql'),
     ('table', 'public', 'automation_runs', NULL, NULL, NULL, '20260816_automations.sql'),
     ('table', 'public', 'automations', NULL, NULL, NULL, '20260816_automations.sql'),
     ('table', 'public', 'campaign_offer_events', NULL, NULL, NULL, '20260903_campaign_offer_events.sql'),
@@ -299,6 +301,19 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'api_keys', 'organization_id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_keys', 'prefix', NULL, 'text', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_keys', 'revoked_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_rate_windows', 'bucket', NULL, 'text', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_rate_windows', 'hits', NULL, 'integer', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_rate_windows', 'window_start', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'api_key_id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'created_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'http_status', NULL, 'integer', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'idempotency_key', NULL, 'text', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'message_id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'organization_id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'request_hash', NULL, 'text', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'response', NULL, 'jsonb', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_requests', 'state', NULL, 'text', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'automation_runs', 'automation_id', NULL, 'uuid', '20260816_automations.sql'),
     ('column', 'public', 'automation_runs', 'contact_id', NULL, 'uuid', '20260816_automations.sql'),
     ('column', 'public', 'automation_runs', 'conversation_id', NULL, 'uuid', '20260816_automations.sql'),
@@ -1177,6 +1192,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'analytics_team_performance', NULL, ARRAY['uuid', 'date', 'date', 'uuid'], 'public.analytics_team_performance(uuid, date, date, uuid)', '20260818_multi_number.sql'),
     ('function', 'public', 'analytics_timeseries', NULL, ARRAY['uuid', 'date', 'date', 'uuid'], 'public.analytics_timeseries(uuid, date, date, uuid)', '20260818_multi_number.sql'),
     ('function', 'public', 'analytics_window', NULL, ARRAY['text', 'date', 'date'], 'public.analytics_window(text, date, date)', '20260816_analytics.sql'),
+    ('function', 'public', 'api_rate_take', NULL, ARRAY['text', 'integer', 'integer'], 'public.api_rate_take(text, integer, integer)', '20261120_batch34_public_api.sql'),
     ('function', 'public', 'attribute_order', NULL, ARRAY['uuid'], 'public.attribute_order(uuid)', '20260828_revenue_attribution.sql'),
     ('function', 'public', 'backfill_revenue_attributions', NULL, ARRAY['uuid'], 'public.backfill_revenue_attributions(uuid)', '20260828_revenue_attribution.sql'),
     ('function', 'public', 'billing_debit_ai_run', NULL, ARRAY['uuid'], 'public.billing_debit_ai_run(uuid)', '20261065_batch26a_wallet.sql'),
@@ -1277,6 +1293,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'analytics_events_properties_idx', NULL, NULL, 'on public.analytics_events', '20260819_event_spine_usage_ai.sql'),
     ('index', 'public', 'api_keys_key_hash_key', NULL, NULL, 'unique on public.api_keys', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'api_keys_org_idx', NULL, NULL, 'on public.api_keys', '20261120_batch34_public_api.sql'),
+    ('index', 'public', 'api_requests_created_idx', NULL, NULL, 'on public.api_requests', '20261120_batch34_public_api.sql'),
+    ('index', 'public', 'api_requests_org_key_key', NULL, NULL, 'unique on public.api_requests', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'automation_runs_lookup_idx', NULL, NULL, 'on public.automation_runs', '20260816_automations.sql'),
     ('index', 'public', 'automation_runs_message_unique_idx', NULL, NULL, 'unique on public.automation_runs', '20260816_automations.sql'),
     ('index', 'public', 'automations_org_active_idx', NULL, NULL, 'on public.automations', '20260816_automations.sql'),

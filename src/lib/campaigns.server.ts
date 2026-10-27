@@ -214,6 +214,18 @@ export type SendCampaignContext = {
    * with; ones synced from Meta don't, so the caller must pass one.
    */
   headerMediaUrl?: string | null;
+  /**
+   * Batch 34: a media header sent by Meta media id (the file was uploaded to
+   * Meta first, /{phone-number-id}/media) and the file name the customer
+   * sees. Wins over headerMediaUrl.
+   */
+  headerMediaId?: string | null;
+  headerFileName?: string | null;
+  /**
+   * Batch 34: extra fields for the messages row's metadata (the Public API's
+   * source "api", its key id and idempotency key), on a sent and a failed row alike.
+   */
+  messageMetadata?: Record<string, unknown> | null;
   /** The map pin for a location header. */
   headerLocation?: { latitude: string; longitude: string; name?: string; address?: string } | null;
 
@@ -359,7 +371,11 @@ export async function buildTemplateRequest(args: {
     headerValues: variables,
     buttonTokens,
     couponCodes,
-    ...(context.headerMediaUrl ? { headerMedia: { link: context.headerMediaUrl } } : {}),
+    ...(context.headerMediaId
+      ? { headerMedia: { id: context.headerMediaId, ...(context.headerFileName ? { filename: context.headerFileName } : {}) } }
+      : context.headerMediaUrl
+        ? { headerMedia: { link: context.headerMediaUrl } }
+        : {}),
     ...(context.headerLocation ? { headerLocation: context.headerLocation } : {}),
     ...(cardValues.length ? { cards: cardValues } : {}),
     ...(offerExpirationMs ? { offerExpirationMs } : {}),
@@ -499,6 +515,7 @@ export async function sendCampaignTemplate(
         status_updated_at: nowIso,
         error_detail: detail,
         ...attribution,
+        ...(context.messageMetadata ? { metadata: { ...context.messageMetadata } } : {}),
       })
       .select("id")
       .single();
@@ -596,8 +613,13 @@ export async function sendCampaignTemplate(
       ? { media_url: headerMedia.url, media_mime: headerMedia.kind }
       : {}),
     // The values it was sent with, so the inbox shows "Hi Priya", not "Hi {{1}}".
-    ...(Object.keys(recipient.variables).length
-      ? { metadata: { template_params: recipient.variables } }
+    ...(Object.keys(recipient.variables).length || context.messageMetadata
+      ? {
+          metadata: {
+            ...(context.messageMetadata ?? {}),
+            ...(Object.keys(recipient.variables).length ? { template_params: recipient.variables } : {}),
+          },
+        }
       : {}),
     status: "pending",
     status_updated_at: nowIso,
