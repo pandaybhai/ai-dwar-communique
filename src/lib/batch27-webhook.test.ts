@@ -12,6 +12,18 @@ import {
   reprocessUnprocessedEvents,
 } from "./whatsapp-webhook.server";
 
+// Batch 32 keeps every customer file for the inbox (saveInboundMedia, after
+// the reply). Recorded here instead of run, so "never fetched or read" below
+// still means exactly what M7 guards: Aiden never touches a person's chat.
+const kept = vi.hoisted(() => ({ calls: [] as Array<Record<string, unknown>> }));
+vi.mock("@/lib/chat-media.server", async (orig) => ({
+  ...(await orig<typeof import("./chat-media.server")>()),
+  saveInboundMedia: async (_supabase: unknown, args: Record<string, unknown>) => {
+    kept.calls.push(args);
+    return "saved";
+  },
+}));
+
 /**
  * Batch 27 — a customer is never left in silence (webhook side).
  *
@@ -274,9 +286,12 @@ describe("M7: a chat a person owns is theirs — no transcription, no automatic 
   ] as const) {
     it(`${label}: the picture is never fetched or read, and nothing is sent`, async () => {
       const w = aidenWebhookWorld({ conversation });
+      kept.calls.length = 0;
       await processWebhookPayload(w.supabase, "ev-m7", inboundPayload(IMAGE), new Date().toISOString(), { storeMs: 1 });
       expect(w.urls.some((u) => u.includes("media-27"))).toBe(false);
       expect(texts(w.graphSends)).toEqual([]);
+      // Batch 32: the person who owns the chat still gets the photo kept.
+      expect(kept.calls.map((c) => c["mediaRef"])).toEqual(["meta:media-27"]);
     });
   }
 

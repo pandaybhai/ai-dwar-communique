@@ -198,3 +198,33 @@ export async function latestThreadMessages(client: ThreadQuery, conversationId: 
     .limit(THREAD_MESSAGE_LIMIT);
   return ((data ?? []) as MessageRow[]).slice().reverse();
 }
+
+/**
+ * Where the inbox gets a message's file: a customer's file we keep
+ * ("storage:chat-media/…", Batch 32) or one still only on Meta ("meta:<id>")
+ * comes through our own authenticated routes as a blob — a customer's photo is
+ * never a public link; anything else (our own outbound pictures) is a URL.
+ */
+export function mediaSource(
+  message: Pick<MessageRow, "id" | "media_url">,
+  organizationId: string | null,
+): { kind: "fetch"; path: string } | { kind: "url"; url: string } | null {
+  const raw = message.media_url ?? "";
+  if (!raw) return null;
+  if (raw.startsWith("storage:")) return { kind: "fetch", path: `/api/whatsapp/chat-media/${encodeURIComponent(message.id)}` };
+  if (raw.startsWith("meta:")) {
+    const query = organizationId ? `?organization_id=${organizationId}` : "";
+    return { kind: "fetch", path: `/api/whatsapp/media/${encodeURIComponent(raw.slice(5))}${query}` };
+  }
+  return { kind: "url", url: raw };
+}
+
+/** A file that is no longer there, said instead of a grey box (Batch 32). */
+export function mediaGoneNote(message: Pick<MessageRow, "media_url" | "metadata">): string | null {
+  const meta = message.metadata ?? {};
+  if (meta["media_removed_at"]) return "Older file removed";
+  if (meta["media_expired"] === true && (message.media_url ?? "").startsWith("meta:")) {
+    return "This file expired on WhatsApp before it could be saved.";
+  }
+  return null;
+}

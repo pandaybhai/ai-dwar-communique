@@ -1116,9 +1116,13 @@ async function customerMediaToText(
   const caption = (args.caption ?? "").trim();
 
   try {
-    const { fetchMetaMedia, transcribeAudio, describeImage } = await import("@/lib/ai-media.server");
+    const { transcribeAudio, describeImage } = await import("@/lib/ai-media.server");
+    // Batch 32: Meta first, as always; our stored copy when Meta no longer has it.
+    const { readInboundMedia } = await import("@/lib/chat-media.server");
+    const media = () =>
+      readInboundMedia(supabase, { mediaId, accessToken: args.accessToken, messageId: args.messageId, maxBytes: 8 * 1024 * 1024 });
     if (mime.startsWith("audio/")) {
-      const file = await fetchMetaMedia(mediaId, args.accessToken);
+      const file = await media();
       const heard = file
         ? await transcribeAudio(supabase, args.organizationId, file.bytes, file.mime ?? args.media.media_mime)
         : { text: null };
@@ -1134,7 +1138,7 @@ async function customerMediaToText(
       return { body: heard.text, fallback: null };
     }
     if (mime.startsWith("image/")) {
-      const file = await fetchMetaMedia(mediaId, args.accessToken);
+      const file = await media();
       const seen = file
         ? await describeImage(supabase, args.organizationId, file.bytes, file.mime ?? args.media.media_mime, {
             conversationId: args.conversationId,
@@ -1901,6 +1905,28 @@ export async function processWebhookPayload(
               );
               later(windowReady);
               afterReply.push(() => applyCampaignReply(supabase, orgId, contact.id));
+              // Batch 32: the customer's file is copied into chat-media once
+              // the reply is out (the Meta id expires after 7 days). Awaited
+              // with the rest before the event closes; a failure leaves
+              // "meta:<id>" for the sweep (runChatMediaSweep).
+              if (media.media_url && !isSystemEcho) {
+                const messageId = inserted[0]!.id as string;
+                const conversationId = conversation.id as string;
+                afterReply.push(async () => {
+                  const token = (await connectionP)?.accessToken ?? "";
+                  const { saveInboundMedia } = await import("@/lib/chat-media.server");
+                  const outcome = await saveInboundMedia(supabase, {
+                    messageId,
+                    organizationId: orgId,
+                    conversationId,
+                    mediaRef: media.media_url,
+                    mime: media.media_mime,
+                    filename: media.media_name,
+                    accessToken: token,
+                  });
+                  console.log(JSON.stringify({ scope: "chat_media", via: "webhook", message_id: messageId, outcome }));
+                });
+              }
               deferEmit(supabase, "message.received", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,

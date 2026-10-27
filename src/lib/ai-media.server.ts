@@ -14,27 +14,49 @@ export const TRANSCRIBE_COST = 0.25;
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
-/** Meta media id -> bytes + mime. Null when Meta no longer has the file. */
-export async function fetchMetaMedia(
+/**
+ * One Meta media download, saying why when it gives nothing back: "failed"
+ * (Meta no longer has the file, or refused) or "too_large" (over maxBytes —
+ * told by Meta's own file_size before any byte is fetched when it says one).
+ * Timeouts throw OutsideCallTimeout, as every outside call does.
+ */
+export async function fetchMetaMediaFile(
   mediaId: string,
   accessToken: string,
   maxBytes = 8 * 1024 * 1024,
-): Promise<{ bytes: Uint8Array; mime: string | null } | null> {
+): Promise<
+  | { status: "ok"; bytes: Uint8Array; mime: string | null }
+  | { status: "too_large"; size: number }
+  | { status: "failed" }
+> {
   const { GRAPH_VERSION } = await import("@/lib/whatsapp-api.server");
   const lookup = await outsideFetch("meta", `https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   const body = (await lookup.json().catch(() => ({}))) as Record<string, unknown>;
   const url = body["url"] as string | undefined;
-  if (!lookup.ok || !url) return null;
+  if (!lookup.ok || !url) return { status: "failed" };
+  const declared = Number(body["file_size"] ?? NaN);
+  if (Number.isFinite(declared) && declared > maxBytes) return { status: "too_large", size: declared };
   const file = await outsideFetch("meta_media", url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!file.ok) return null;
+  if (!file.ok) return { status: "failed" };
   const buffer = await file.arrayBuffer();
-  if (buffer.byteLength > maxBytes) return null;
+  if (buffer.byteLength > maxBytes) return { status: "too_large", size: buffer.byteLength };
   return {
+    status: "ok",
     bytes: new Uint8Array(buffer),
     mime: (body["mime_type"] as string | undefined) ?? file.headers.get("content-type"),
   };
+}
+
+/** Meta media id -> bytes + mime. Null when Meta no longer has the file. */
+export async function fetchMetaMedia(
+  mediaId: string,
+  accessToken: string,
+  maxBytes = 8 * 1024 * 1024,
+): Promise<{ bytes: Uint8Array; mime: string | null } | null> {
+  const file = await fetchMetaMediaFile(mediaId, accessToken, maxBytes);
+  return file.status === "ok" ? { bytes: file.bytes, mime: file.mime } : null;
 }
 
 function audioExtension(mime: string | null | undefined): string {

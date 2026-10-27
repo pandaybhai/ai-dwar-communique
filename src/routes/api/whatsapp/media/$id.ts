@@ -4,13 +4,15 @@ import { createFileRoute } from "@tanstack/react-router";
  * Streams one inbound WhatsApp media file back to the workspace that received
  * it. Meta only gives us an opaque media id, which no browser can fetch, so the
  * inbox asks us for the bytes. Authenticated and organization-scoped on
- * purpose: a customer's photo is private to the workspace they wrote to.
+ * purpose: a customer's photo is private to the workspace they wrote to (a
+ * member, or a platform super admin opening that workspace). Batch 32: a file
+ * already kept in chat-media is served by /api/whatsapp/chat-media/$messageId.
  */
 export const Route = createFileRoute("/api/whatsapp/media/$id")({
   server: {
     handlers: {
       GET: async ({ request, params }) => {
-        const { requireOrgMember, isResponse, jsonError, GRAPH_VERSION } = await import(
+        const { requireOrgReadAccess, isResponse, jsonError, GRAPH_VERSION } = await import(
           "@/lib/whatsapp-api.server"
         );
 
@@ -18,7 +20,7 @@ export const Route = createFileRoute("/api/whatsapp/media/$id")({
         if (!mediaId) return jsonError("Media id is required.");
 
         const url = new URL(request.url);
-        const auth = await requireOrgMember(request, url.searchParams.get("organization_id"));
+        const auth = await requireOrgReadAccess(request, url.searchParams.get("organization_id"));
         if (isResponse(auth)) return auth;
         const { supabase, organizationId } = auth;
 
