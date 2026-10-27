@@ -59,6 +59,8 @@ import {
   contactLabel,
   dayLabel,
   initials,
+  mediaGoneNote,
+  mediaSource,
   withinWindow,
   type ConversationRow,
   type MemberRow,
@@ -102,11 +104,7 @@ function mediaKind(message: MessageRow): "image" | "video" | "audio" | "document
   return "document";
 }
 
-/**
- * Shows the file the customer sent. Inbound media lives behind Meta's API as an
- * opaque id, so we fetch it through our own authenticated route and hand the
- * browser a blob — a customer's photo is never a public link.
- */
+/** Shows the file the customer sent (see mediaSource). */
 function MessageMedia({
   message,
   organizationId,
@@ -116,27 +114,27 @@ function MessageMedia({
   organizationId: string | null;
   label: string;
 }) {
-  const raw = message.media_url ?? "";
-  const isMetaRef = raw.startsWith("meta:");
-  const [src, setSrc] = useState<string | null>(isMetaRef ? null : raw);
+  const source = mediaSource(message, organizationId);
+  const fetchPath = source?.kind === "fetch" ? source.path : null;
+  const directUrl = source?.kind === "url" ? source.url : null;
+  const [src, setSrc] = useState<string | null>(directUrl);
   const [failed, setFailed] = useState(false);
+  const gone = mediaGoneNote(message);
 
   useEffect(() => {
-    if (!isMetaRef) {
-      setSrc(raw);
+    setFailed(false);
+    if (!fetchPath || gone) {
+      setSrc(directUrl);
       return;
     }
+    setSrc(null);
     let objectUrl: string | null = null;
     let cancelled = false;
     (async () => {
       const { data } = await aidwar.auth.getSession();
       const token = data.session?.access_token;
       if (!token) return;
-      const query = organizationId ? `?organization_id=${organizationId}` : "";
-      const res = await fetch(
-        `/api/whatsapp/media/${encodeURIComponent(raw.slice(5))}${query}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      const res = await fetch(fetchPath, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) {
         if (!cancelled) setFailed(true);
         return;
@@ -155,7 +153,15 @@ function MessageMedia({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [raw, isMetaRef, organizationId]);
+  }, [fetchPath, directUrl, gone]);
+
+  if (gone) {
+    return (
+      <p className="mb-1.5 rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+        {gone}
+      </p>
+    );
+  }
 
   const kind = mediaKind(message);
 
@@ -301,7 +307,9 @@ export function Bubble({
     (message.template_name ? `Template: ${message.template_name}` : `[${message.type}]`);
   // A picture (a card, a photo) with no words is just the picture: the
   // "[image]" stand-in is ours, the customer never saw it.
-  const mediaOnly = Boolean(message.media_url) && !body && !message.template_name;
+  // A file that was removed or expired still says so (Batch 32).
+  const hasMedia = Boolean(message.media_url) || mediaGoneNote(message) !== null;
+  const mediaOnly = hasMedia && !body && !message.template_name;
   return (
     <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
       <div className="max-w-[80%] sm:max-w-[68%]">
@@ -313,7 +321,7 @@ export function Bubble({
               : "rounded-bl-md border border-border/70 bg-card text-foreground",
           ].join(" ")}
         >
-          {message.media_url ? (
+          {hasMedia ? (
             <MessageMedia message={message} organizationId={organizationId} label={mediaOnly ? mediaLabel(message) : text} />
           ) : null}
           {message.type === "form_reply" && Array.isArray(message.metadata?.["answers"]) ? (

@@ -15,6 +15,34 @@ export function jsonError(message: string, status = 400): Response {
   return Response.json({ error: message }, { status });
 }
 
+/** The signed-in caller from the Authorization bearer token, or the 401 to send back. */
+export async function requireSignedIn(request: Request): Promise<{ supabase: SupabaseClient; userId: string } | Response> {
+  const header = request.headers.get("authorization") ?? "";
+  const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
+  if (!token) return jsonError("Not authenticated.", 401);
+
+  const supabase = getServiceClient();
+  const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+  const user = userData?.user;
+  if (userErr || !user) return jsonError("Not authenticated.", 401);
+  return { supabase, userId: user.id };
+}
+
+async function firstMembership(
+  supabase: SupabaseClient,
+  userId: string,
+  requestedOrgId?: string | null,
+): Promise<{ organization_id: string; role: AuthContext["role"] } | null> {
+  let query = supabase
+    .from("organization_members")
+    .select("organization_id, role")
+    .eq("user_id", userId);
+  if (requestedOrgId) query = query.eq("organization_id", requestedOrgId);
+
+  const { data: memberships } = await query.order("created_at", { ascending: true }).limit(1);
+  return (memberships?.[0] as { organization_id: string; role: AuthContext["role"] } | undefined) ?? null;
+}
+
 /**
  * Resolves the caller from the Authorization bearer token and their membership
  * in the requested organization. The organization is never taken from the body
@@ -24,31 +52,57 @@ export async function requireOrgMember(
   request: Request,
   requestedOrgId?: string | null,
 ): Promise<AuthContext | Response> {
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
-  if (!token) return jsonError("Not authenticated.", 401);
+  const caller = await requireSignedIn(request);
+  if (isResponse(caller)) return caller;
+  const { supabase, userId } = caller;
 
-  const supabase = getServiceClient();
-  const { data: userData, error: userErr } = await supabase.auth.getUser(token);
-  const user = userData?.user;
-  if (userErr || !user) return jsonError("Not authenticated.", 401);
-
-  let query = supabase
-    .from("organization_members")
-    .select("organization_id, role")
-    .eq("user_id", user.id);
-  if (requestedOrgId) query = query.eq("organization_id", requestedOrgId);
-
-  const { data: memberships } = await query.order("created_at", { ascending: true }).limit(1);
-  const membership = memberships?.[0];
+  const membership = await firstMembership(supabase, userId, requestedOrgId);
   if (!membership) return jsonError("You don't have access to this workspace.", 403);
 
   return {
     supabase,
-    userId: user.id,
-    organizationId: membership.organization_id as string,
-    role: membership.role as AuthContext["role"],
+    userId,
+    organizationId: membership.organization_id,
+    role: membership.role,
   };
+}
+
+export type OrgReadAccess = {
+  supabase: SupabaseClient;
+  userId: string;
+  organizationId: string;
+  /** Not a member: a platform super admin opening this workspace. */
+  superAdmin: boolean;
+};
+
+/**
+ * Read access to one workspace's data: a member of it (as requireOrgMember),
+ * or a platform super admin (isSuperAdmin) when the workspace is named —
+ * Batch 32: a super admin opening a workspace inbox sees its customers' files.
+ * Null when neither.
+ */
+export async function orgReadAccess(
+  supabase: SupabaseClient,
+  userId: string,
+  requestedOrgId?: string | null,
+): Promise<OrgReadAccess | null> {
+  const membership = await firstMembership(supabase, userId, requestedOrgId);
+  if (membership) return { supabase, userId, organizationId: membership.organization_id, superAdmin: false };
+  if (requestedOrgId && (await isSuperAdmin(supabase, userId))) {
+    return { supabase, userId, organizationId: requestedOrgId, superAdmin: true };
+  }
+  return null;
+}
+
+/** requireSignedIn + orgReadAccess: the access, or the 401 / 403 to send back. */
+export async function requireOrgReadAccess(
+  request: Request,
+  requestedOrgId?: string | null,
+): Promise<OrgReadAccess | Response> {
+  const caller = await requireSignedIn(request);
+  if (isResponse(caller)) return caller;
+  const access = await orgReadAccess(caller.supabase, caller.userId, requestedOrgId);
+  return access ?? jsonError("You don't have access to this workspace.", 403);
 }
 
 export function isResponse(value: unknown): value is Response {
