@@ -310,6 +310,24 @@ export function emptyDraft(): TemplateDraft {
   };
 }
 
+/**
+ * Batch 34: a starting point for a utility template that carries a PDF (an
+ * invoice, a receipt) — the kind the Public API sends. Only a draft: the
+ * merchant changes every word they like, uploads a sample PDF for Meta's
+ * review and submits it through the usual builder; nothing is sent until
+ * Meta approves it.
+ */
+export function documentTemplateStarter(): TemplateDraft {
+  return {
+    ...emptyDraft(),
+    name: "invoice_document",
+    category: "UTILITY",
+    headerFormat: "DOCUMENT",
+    body: "Hi {{1}}, your invoice {{2}} for {{3}} is attached. Thank you.",
+    bodyExamples: { 1: "Asha", 2: "INV-1001", 3: "2,500.00" },
+  };
+}
+
 export function newButton(type: ButtonKind): DraftButton {
   const base: DraftButton = { type, text: "" };
   switch (type) {
