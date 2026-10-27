@@ -1,6 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FakeOp } from "./test-support/fake-db";
 import { fakeStorage, withStorage } from "./test-support/fake-storage";
+import { memoryDb, type Row } from "./test-support/memory-db";
+import { MAX_SAVE_ATTEMPTS, RESCUE_BATCH, runChatMediaSweep } from "./chat-media.server";
 import { inboundPayload, latencyWorld } from "./test-support/latency-world";
 import { processWebhookPayload, resetBurstWindowCache } from "./whatsapp-webhook.server";
 
@@ -166,5 +168,133 @@ describe("(1) save on arrival", () => {
     await processWebhookPayload(w.supabase, "ev-5", imageMessage("media-5"));
 
     expect(storage.calls).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------- the sweep
+
+const DAY = 24 * 3600_000;
+const NOW = Date.parse("2026-10-28T06:00:00Z");
+const ago = (ms: number) => new Date(NOW - ms).toISOString();
+
+/** A workspace with one connected number and inbound rows as the database holds them. */
+function sweepWorld(messages: Row[], extra: Record<string, Row[]> = {}) {
+  const db = memoryDb({
+    whatsapp_accounts: [
+      { id: "acc-z", organization_id: "org-z", waba_id: "waba-z", phone_number_id: "pn-z", display_phone_number: "91", status: "active", is_default: true },
+    ],
+    whatsapp_credentials: [{ organization_id: "org-z", waba_id: "waba-z", access_token: "tok-z" }],
+    conversations: [{ id: "cv-z", organization_id: "org-z", whatsapp_account_id: "acc-z" }],
+    messages,
+    ...extra,
+  });
+  const storage = fakeStorage();
+  withStorage(db.supabase, storage);
+  const row = (id: string) => db.rows("messages").find((m) => m["id"] === id)!;
+  return { db, storage, row };
+}
+
+const inbound = (id: string, createdAt: string, extra: Row = {}): Row => ({
+  id,
+  organization_id: "org-z",
+  conversation_id: "cv-z",
+  direction: "inbound",
+  type: "image",
+  body: null,
+  media_url: `meta:${id}-media`,
+  media_mime: "image/jpeg",
+  metadata: null,
+  created_at: createdAt,
+  ...extra,
+});
+
+describe("(3) rescue + expired", () => {
+  it("a row still on meta: younger than 7 days is saved by the sweep (Zoori's 26 Oct photo)", async () => {
+    const w = sweepWorld([inbound("zoori-26oct", "2026-10-26T06:00:00Z")]);
+    const meta = metaMedia({ "zoori-26oct-media": { bytes: JPEG } });
+    vi.stubGlobal("fetch", async (url: string | URL) => (await meta.handle(String(url))) ?? new Response("", { status: 500 }));
+
+    const counts = await runChatMediaSweep(w.db.supabase, { now: NOW });
+
+    expect(counts).toMatchObject({ media_saved: 1, media_save_failed: 0, media_expired: 0 });
+    expect(w.row("zoori-26oct")).toMatchObject({
+      media_url: "storage:chat-media/org-z/cv-z/zoori-26oct.jpg",
+      metadata: { meta_media_id: "zoori-26oct-media" },
+    });
+    expect(w.storage.objects("chat-media").get("org-z/cv-z/zoori-26oct.jpg")?.bytes).toEqual(JPEG);
+  });
+
+  it("expired marking: rows older than 7 days get metadata.media_expired, are never downloaded, and keep their meta ref", async () => {
+    const w = sweepWorld([
+      inbound("old-1", ago(9 * DAY), { metadata: { note: "kept" } }),
+      inbound("old-2", ago(7 * DAY + 60_000), { type: "audio", media_mime: "audio/ogg" }),
+      inbound("fresh", ago(2 * DAY)),
+    ]);
+    const meta = metaMedia({ "fresh-media": { bytes: JPEG } });
+    vi.stubGlobal("fetch", async (url: string | URL) => (await meta.handle(String(url))) ?? new Response("", { status: 500 }));
+
+    const counts = await runChatMediaSweep(w.db.supabase, { now: NOW });
+
+    expect(counts.media_expired).toBe(2);
+    expect(w.row("old-1")).toMatchObject({ media_url: "meta:old-1-media", metadata: { note: "kept", media_expired: true } });
+    expect(w.row("old-2")["metadata"]).toEqual({ media_expired: true });
+    expect(meta.downloads).toEqual(["fresh-media"]);
+    // Marked once: the next run finds nothing more to mark.
+    expect((await runChatMediaSweep(w.db.supabase, { now: NOW })).media_expired).toBe(0);
+  });
+
+  it("a row the webhook may still be saving (under 5 minutes) is left to it; outbound and saved rows are never touched", async () => {
+    const w = sweepWorld([
+      inbound("just-now", ago(60_000)),
+      inbound("ours", ago(DAY), { direction: "outbound", media_url: "https://x.supabase.co/storage/v1/object/public/product-images/a.jpg" }),
+      inbound("saved", ago(DAY), { media_url: "storage:chat-media/org-z/cv-z/saved.jpg" }),
+    ]);
+    vi.stubGlobal("fetch", async () => new Response("", { status: 500 }));
+    const counts = await runChatMediaSweep(w.db.supabase, { now: NOW });
+    expect(counts).toEqual({ media_saved: 0, media_save_failed: 0, media_too_large: 0, media_expired: 0 });
+    expect(w.storage.calls).toEqual([]);
+  });
+
+  it("Meta refusing counts an attempt and gives up after MAX_SAVE_ATTEMPTS; a storage failure (no bucket yet) never counts", async () => {
+    const w = sweepWorld([inbound("refused", ago(DAY)), inbound("nobucket", ago(2 * DAY))]);
+    const meta = metaMedia({ "refused-media": "gone", "nobucket-media": { bytes: JPEG } });
+    vi.stubGlobal("fetch", async (url: string | URL) => (await meta.handle(String(url))) ?? new Response("", { status: 500 }));
+    w.storage.fail.upload = "Bucket not found";
+
+    for (let i = 0; i < MAX_SAVE_ATTEMPTS + 2; i++) await runChatMediaSweep(w.db.supabase, { now: NOW });
+
+    expect(w.row("refused")["media_url"]).toBe("meta:refused-media");
+    expect(w.row("refused")["metadata"]).toEqual({ media_save_attempts: MAX_SAVE_ATTEMPTS, media_save_gave_up: true });
+    expect(w.row("nobucket")["media_url"]).toBe("meta:nobucket-media");
+    expect(w.row("nobucket")["metadata"]).toBeNull();
+
+    // The migration is applied: the next run saves it.
+    w.storage.fail.upload = null;
+    expect((await runChatMediaSweep(w.db.supabase, { now: NOW })).media_saved).toBe(1);
+    expect(w.row("nobucket")["media_url"]).toBe("storage:chat-media/org-z/cv-z/nobucket.jpg");
+  });
+
+  it("bounded: at most RESCUE_BATCH rows a run, newest first, and no new download once the time budget is spent", async () => {
+    const rows = Array.from({ length: RESCUE_BATCH + 5 }, (_, i) => inbound(`r${i}`, ago((i + 1) * 3600_000)));
+    const w = sweepWorld(rows);
+    const media = Object.fromEntries(rows.map((r) => [`${r["id"]}-media`, { bytes: JPEG }]));
+    const meta = metaMedia(media);
+    vi.stubGlobal("fetch", async (url: string | URL) => (await meta.handle(String(url))) ?? new Response("", { status: 500 }));
+
+    expect((await runChatMediaSweep(w.db.supabase, { now: NOW })).media_saved).toBe(RESCUE_BATCH);
+    expect(meta.downloads[0]).toBe("r0-media");
+    expect(w.row(`r${RESCUE_BATCH}`)["media_url"]).toMatch(/^meta:/);
+
+    const none = await runChatMediaSweep(w.db.supabase, { now: NOW, budgetMs: -1 });
+    expect(none.media_saved).toBe(0);
+  });
+
+  it("runs inside the billing sweep and its counts come back with the rest", async () => {
+    const w = sweepWorld([inbound("in-sweep", new Date(Date.now() - DAY).toISOString())]);
+    const meta = metaMedia({ "in-sweep-media": { bytes: JPEG } });
+    vi.stubGlobal("fetch", async (url: string | URL) => (await meta.handle(String(url))) ?? new Response("", { status: 500 }));
+    const { runBillingSweep } = await import("./billing-sweep.server");
+    const counts = await runBillingSweep(w.db.supabase);
+    expect(counts.media_saved).toBe(1);
   });
 });

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/billing";
+import type { MediaSweepCounts } from "@/lib/chat-media.server";
 
 /**
  * The nightly money sweep: warn before credits run out, warn the platform
@@ -10,6 +11,10 @@ import { round2 } from "@/lib/billing";
  * messages: low credits is said once per low spell (until credits recover),
  * the float warning at most once a day, and notify() never queues either
  * while an earlier one is still waiting to go out.
+ *
+ * Batch 32: the run ends with the customer-media upkeep (runChatMediaSweep,
+ * chat-media.server.ts): files Meta still has are saved, the ones it no
+ * longer has are marked expired. Bounded, never fails the sweep.
  *
  * Every run also retries the message debits the database could not take
  * when the message was priced (Batch 26a): a message that went out is always
@@ -37,7 +42,7 @@ export type SweepCounts = {
   /** Batch 31: unpaid Cashfree orders checked with GET order / found paid and settled. */
   cashfree_checked: number;
   cashfree_settled: number;
-};
+} & MediaSweepCounts;
 
 /** activity_log action (and admin notice kind) for uncharged message debits. */
 export const DEBIT_ALERT_ACTION = "billing_debit_alert";
@@ -148,6 +153,10 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     campaigns_synced: 0,
     cashfree_checked: 0,
     cashfree_settled: 0,
+    media_saved: 0,
+    media_save_failed: 0,
+    media_too_large: 0,
+    media_expired: 0,
   };
 
   // ---- messages already sent whose debit failed: charge them now if we can
@@ -338,6 +347,16 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     } catch {
       // a reminder failing is never worth losing the rest of the sweep
     }
+  }
+
+  // ---- customer media (Batch 32): last, so the money work never waits on a download
+  try {
+    const { runChatMediaSweep } = await import("@/lib/chat-media.server");
+    const media = await runChatMediaSweep(supabase);
+    Object.assign(counts, media);
+    console.log(JSON.stringify({ scope: "chat_media_sweep", ...media }));
+  } catch (error) {
+    console.warn(JSON.stringify({ at: "chat_media_sweep_failed", error: error instanceof Error ? error.message : String(error) }));
   }
 
   return counts;
