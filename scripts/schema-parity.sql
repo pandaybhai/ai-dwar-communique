@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 84, column 1034, view 2, function 100, index 149, trigger 65, cron_job 14.
+-- Expected objects: table 85, column 1037, view 2, function 102, index 149, trigger 67, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -41,6 +41,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('table', 'public', 'campaign_recipients', NULL, NULL, NULL, '20260814_campaigns.sql'),
     ('table', 'public', 'campaigns', NULL, NULL, NULL, '20260814_campaigns.sql'),
     ('table', 'public', 'catalog_imports', NULL, NULL, NULL, '20260910_catalog.sql'),
+    ('table', 'public', 'chat_media_purge', NULL, NULL, NULL, '20261110_batch32_media.sql'),
     ('table', 'public', 'cod_confirmations', NULL, NULL, NULL, '20260829_cod_confirmation.sql'),
     ('table', 'public', 'contact_imports', NULL, NULL, NULL, '20260814_contacts_tags_imports.sql'),
     ('table', 'public', 'contact_tags', NULL, NULL, NULL, '20260814_contacts_tags_imports.sql'),
@@ -372,6 +373,9 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'catalog_imports', 'rows_warned', NULL, 'integer', '20260912_catalog_price_guards.sql'),
     ('column', 'public', 'catalog_imports', 'status', NULL, 'text', '20260910_catalog.sql'),
     ('column', 'public', 'catalog_imports', 'total_rows', NULL, 'integer', '20260910_catalog.sql'),
+    ('column', 'public', 'chat_media_purge', 'path', NULL, 'text', '20261110_batch32_media.sql'),
+    ('column', 'public', 'chat_media_purge', 'queued_at', NULL, 'timestamp with time zone', '20261110_batch32_media.sql'),
+    ('column', 'public', 'chat_media_purge', 'reason', NULL, 'text', '20261110_batch32_media.sql'),
     ('column', 'public', 'cod_confirmations', 'asked_at', NULL, 'timestamp with time zone', '20260829_cod_confirmation.sql'),
     ('column', 'public', 'cod_confirmations', 'contact_id', NULL, 'uuid', '20260829_cod_confirmation.sql'),
     ('column', 'public', 'cod_confirmations', 'created_at', NULL, 'timestamp with time zone', '20260829_cod_confirmation.sql'),
@@ -1171,6 +1175,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'bump_campaign_counters', NULL, ARRAY['uuid', 'integer', 'integer', 'integer', 'integer', 'integer'], 'public.bump_campaign_counters(uuid, integer, integer, integer, integer, integer)', '20260814_campaigns.sql'),
     ('function', 'public', 'campaign_ledger_charge', NULL, ARRAY['uuid', 'uuid'], 'public.campaign_ledger_charge(uuid, uuid)', '20261016_send_at_scale.sql'),
     ('function', 'public', 'campaign_recipient_status', NULL, ARRAY['uuid', 'uuid', 'text', 'text'], 'public.campaign_recipient_status(uuid, uuid, text, text)', '20261016_send_at_scale.sql'),
+    ('function', 'public', 'chat_media_queue_message_purge', NULL, '{}'::text[], 'public.chat_media_queue_message_purge()', '20261110_batch32_media.sql'),
+    ('function', 'public', 'chat_media_queue_workspace_purge', NULL, '{}'::text[], 'public.chat_media_queue_workspace_purge()', '20261110_batch32_media.sql'),
     ('function', 'public', 'claim_campaign_recipients', NULL, ARRAY['uuid', 'integer'], 'public.claim_campaign_recipients(uuid, integer)', '20260814_campaigns.sql'),
     ('function', 'public', 'claim_flow_runs', NULL, ARRAY['integer'], 'public.claim_flow_runs(integer)', '20261001_flows_v2_engine.sql'),
     ('function', 'public', 'claim_scheduled_sends', NULL, ARRAY['integer'], 'public.claim_scheduled_sends(integer)', '20260825_flows.sql'),
@@ -1431,6 +1437,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('trigger', 'public', 'messages', 'messages_billing_debit', NULL, 'on public.messages', '20261066_live_only_billing.sql'),
     ('trigger', 'public', 'messages', 'messages_meta_consume', NULL, 'on public.messages', '20261066_live_only_billing.sql'),
     ('trigger', 'public', 'messages', 'messages_track_send_health', NULL, 'on public.messages', '20260924_send_health_scope_diff.sql'),
+    ('trigger', 'public', 'messages', 'trg_messages_chat_media_purge', NULL, 'on public.messages', '20261110_batch32_media.sql'),
     ('trigger', 'public', 'orders', 'orders_attribute', NULL, 'on public.orders', '20260828_revenue_attribution.sql'),
     ('trigger', 'public', 'orders', 'update_orders_updated_at', NULL, 'on public.orders', '20260821_shopify_integration.sql'),
     ('trigger', 'public', 'organization_ai_settings', 'organization_ai_settings_markup_guard', NULL, 'on public.organization_ai_settings', '20260903_ai_resale.sql'),
@@ -1444,6 +1451,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('trigger', 'public', 'organizations', 'org_plan_assigned_billing_on', NULL, 'on public.organizations', '20261066_live_only_billing.sql'),
     ('trigger', 'public', 'organizations', 'organizations_seed_ai_defaults', NULL, 'on public.organizations', '20260902_ai_core.sql'),
     ('trigger', 'public', 'organizations', 'seed_flows_after_org_insert', NULL, 'on public.organizations', '20260825_flows.sql'),
+    ('trigger', 'public', 'organizations', 'trg_organizations_chat_media_purge', NULL, 'on public.organizations', '20261110_batch32_media.sql'),
     ('trigger', 'public', 'product_collections', 'product_collections_set_updated_at', NULL, 'on public.product_collections', '20260910_catalog.sql'),
     ('trigger', 'public', 'products', 'products_set_updated_at', NULL, 'on public.products', '20260910_catalog.sql'),
     ('trigger', 'public', 'profiles', 'protect_profile_privileges', NULL, 'on public.profiles', '20261008_security_guards.sql'),

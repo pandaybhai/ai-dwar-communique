@@ -1,8 +1,17 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { pgAvailable, startScratchPg, type ScratchPg } from "./test-support/scratch-pg";
 import type { FakeOp } from "./test-support/fake-db";
 import { fakeStorage, withStorage } from "./test-support/fake-storage";
 import { memoryDb, type Row } from "./test-support/memory-db";
-import { MAX_SAVE_ATTEMPTS, RESCUE_BATCH, RETENTION_BATCH, runChatMediaSweep } from "./chat-media.server";
+import {
+  MAX_SAVE_ATTEMPTS,
+  PURGE_FOLDER_OBJECTS,
+  RESCUE_BATCH,
+  RETENTION_BATCH,
+  purgeQueuedMedia,
+  runChatMediaSweep,
+} from "./chat-media.server";
 import { inboundPayload, latencyWorld } from "./test-support/latency-world";
 import { processWebhookPayload, resetBurstWindowCache } from "./whatsapp-webhook.server";
 
@@ -251,7 +260,7 @@ describe("(3) rescue + expired", () => {
     ]);
     vi.stubGlobal("fetch", async () => new Response("", { status: 500 }));
     const counts = await runChatMediaSweep(w.db.supabase, { now: NOW });
-    expect(counts).toEqual({ media_saved: 0, media_save_failed: 0, media_too_large: 0, media_expired: 0, media_removed: 0 });
+    expect(counts).toEqual({ media_saved: 0, media_save_failed: 0, media_too_large: 0, media_expired: 0, media_removed: 0, media_purged: 0 });
     expect(w.storage.calls).toEqual([]);
   });
 
@@ -352,5 +361,123 @@ describe("(4) retention", () => {
     expect((await runChatMediaSweep(w.db.supabase, { now: NOW })).media_removed).toBe(RETENTION_BATCH);
     const left = w.db.rows("messages").filter((m) => m["media_url"]).map((m) => m["id"]);
     expect(left).toEqual(["b0", "b1", "b2"]);
+  });
+});
+
+describe("(5) deletion — the sweep empties the queue the delete triggers fill", () => {
+  const put = (w: ReturnType<typeof sweepWorld>, ...paths: string[]) =>
+    paths.forEach((p) => w.storage.objects("chat-media").set(p, { bytes: JPEG, contentType: "image/jpeg" }));
+
+  it("workspace delete removes objects: its whole folder goes, another workspace's files stay", async () => {
+    const w = sweepWorld([], { chat_media_purge: [{ path: "org-gone/", reason: "workspace_deleted", queued_at: ago(60_000) }] });
+    put(w, "org-gone/cv1/m1.jpg", "org-gone/cv1/m2.ogg", "org-gone/cv2/m3.pdf", "org-z/cv-z/keep.jpg");
+
+    const counts = await runChatMediaSweep(w.db.supabase, { now: NOW });
+
+    expect(counts.media_purged).toBe(3);
+    expect([...w.storage.objects("chat-media").keys()]).toEqual(["org-z/cv-z/keep.jpg"]);
+    // Still queued until the folder lists empty; the next run closes it.
+    expect(w.db.rows("chat_media_purge")).toHaveLength(1);
+    expect((await runChatMediaSweep(w.db.supabase, { now: NOW })).media_purged).toBe(0);
+    expect(w.db.rows("chat_media_purge")).toEqual([]);
+  });
+
+  it("a deleted contact's (or conversation's) files: each queued path is removed and taken off the queue", async () => {
+    const w = sweepWorld([], {
+      chat_media_purge: [
+        { path: "org-z/cv-old/m1.jpg", reason: "message_deleted", queued_at: ago(120_000) },
+        { path: "org-z/cv-old/m2.ogg", reason: "message_deleted", queued_at: ago(60_000) },
+        { path: "org-z/cv-old/already-gone.jpg", reason: "message_deleted", queued_at: ago(30_000) },
+      ],
+    });
+    put(w, "org-z/cv-old/m1.jpg", "org-z/cv-old/m2.ogg", "org-z/cv-z/keep.jpg");
+
+    expect(await purgeQueuedMedia(w.db.supabase)).toBe(2);
+    expect([...w.storage.objects("chat-media").keys()]).toEqual(["org-z/cv-z/keep.jpg"]);
+    expect(w.db.rows("chat_media_purge")).toEqual([]);
+  });
+
+  it("storage refusing keeps the queue (nothing is forgotten), and a big folder is emptied over several runs", async () => {
+    const w = sweepWorld([], { chat_media_purge: [{ path: "org-big/", reason: "workspace_deleted", queued_at: ago(1) }] });
+    put(w, ...Array.from({ length: PURGE_FOLDER_OBJECTS + 7 }, (_, i) => `org-big/cv${i % 3}/m${i}.jpg`));
+    w.storage.fail.remove = "storage down";
+    await expect(purgeQueuedMedia(w.db.supabase)).rejects.toThrow(/storage down/);
+    expect(w.db.rows("chat_media_purge")).toHaveLength(1);
+
+    w.storage.fail.remove = null;
+    expect(await purgeQueuedMedia(w.db.supabase)).toBe(PURGE_FOLDER_OBJECTS);
+    expect(await purgeQueuedMedia(w.db.supabase)).toBe(7);
+    expect(await purgeQueuedMedia(w.db.supabase)).toBe(0);
+    expect(w.db.rows("chat_media_purge")).toEqual([]);
+    expect(w.storage.objects("chat-media").size).toBe(0);
+  });
+});
+
+const MIGRATION = join(import.meta.dirname, "../../supabase/aidwar-migrations/20261110_batch32_media.sql");
+describe.runIf(pgAvailable() || Boolean(process.env["CI"]))("(5) the delete triggers and the bucket (real Postgres)", () => {
+  let pg: ScratchPg;
+  beforeAll(() => {
+    pg = startScratchPg({
+      schemaFile: join(import.meta.dirname, "test-support/loadtest/schema.sql"),
+      // Twice: the file is idempotent.
+      migrations: [join(import.meta.dirname, "test-support/storage-stubs.sql"), MIGRATION, MIGRATION],
+    });
+  }, 120_000);
+  afterAll(() => pg?.stop());
+
+  const seed = () =>
+    pg.sql(`
+      truncate public.chat_media_purge;
+      delete from public.organizations;
+      truncate public.chat_media_purge;
+      insert into public.organizations (id, name) values
+        ('00000000-0000-0000-0000-0000000000a1', 'A'), ('00000000-0000-0000-0000-0000000000b2', 'B');
+      insert into public.contacts (id, organization_id, phone) values
+        ('00000000-0000-0000-0000-00000000c001', '00000000-0000-0000-0000-0000000000a1', '+911'),
+        ('00000000-0000-0000-0000-00000000c002', '00000000-0000-0000-0000-0000000000a1', '+912'),
+        ('00000000-0000-0000-0000-00000000c003', '00000000-0000-0000-0000-0000000000b2', '+913');
+      insert into public.conversations (id, organization_id, contact_id) values
+        ('00000000-0000-0000-0000-0000000c0001', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-00000000c001'),
+        ('00000000-0000-0000-0000-0000000c0002', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-00000000c002'),
+        ('00000000-0000-0000-0000-0000000c0003', '00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-00000000c003');
+      insert into public.messages (organization_id, conversation_id, direction, type, body, media_url) values
+        ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000c0001', 'inbound', 'image', null, 'storage:chat-media/a1/cv1/p1.jpg'),
+        ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000c0001', 'inbound', 'text', 'hi', null),
+        ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000c0001', 'inbound', 'image', null, 'meta:123'),
+        ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000c0001', 'outbound', 'image', null, 'https://x/product-images/p.jpg'),
+        ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000c0002', 'inbound', 'audio', null, 'storage:chat-media/a1/cv2/v1.ogg'),
+        ('00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-0000000c0003', 'inbound', 'image', null, 'storage:chat-media/b2/cv3/p3.jpg');
+      truncate public.chat_media_purge;
+    `);
+  const queue = () => pg.sql("select path || '|' || reason from public.chat_media_purge order by path").split("\n").filter(Boolean);
+
+  it("deleting a contact queues exactly its kept files (not its text, not a Meta ref, not our outbound picture, not another contact's)", () => {
+    seed();
+    pg.sql("delete from public.contacts where id = '00000000-0000-0000-0000-00000000c001'");
+    expect(queue()).toEqual(["a1/cv1/p1.jpg|message_deleted"]);
+    expect(pg.sql("select count(*) from public.messages")).toBe("2");
+  });
+
+  it("deleting a workspace queues its whole folder (and its kept files); the other workspace is untouched", () => {
+    seed();
+    pg.sql("delete from public.organizations where id = '00000000-0000-0000-0000-0000000000a1'");
+    expect(queue()).toEqual([
+      "00000000-0000-0000-0000-0000000000a1/|workspace_deleted",
+      "a1/cv1/p1.jpg|message_deleted",
+      "a1/cv2/v1.ogg|message_deleted",
+    ]);
+    expect(pg.sql("select media_url from public.messages")).toBe("storage:chat-media/b2/cv3/p3.jpg");
+  });
+
+  it("retention (an update to media_url null) queues nothing; the queue is service-role only; the bucket is private with no storage policy", () => {
+    seed();
+    pg.sql("update public.messages set media_url = null where media_url like 'storage:chat-media/%'");
+    expect(queue()).toEqual([]);
+    expect(pg.sql("select has_table_privilege('authenticated', 'public.chat_media_purge', 'select')")).toBe("f");
+    expect(pg.sql("select has_table_privilege('anon', 'public.chat_media_purge', 'select')")).toBe("f");
+    expect(pg.sql("select has_table_privilege('service_role', 'public.chat_media_purge', 'delete')")).toBe("t");
+    expect(pg.sql("select public::text || '|' || file_size_limit from storage.buckets where id = 'chat-media'")).toBe("false|26214400");
+    expect(pg.sql("select count(*) from pg_policies where schemaname = 'storage'")).toBe("0");
+    expect(pg.sql("select count(*) from information_schema.columns where table_name = 'platform_settings' and column_name = 'media_retention_days'")).toBe("1");
   });
 });

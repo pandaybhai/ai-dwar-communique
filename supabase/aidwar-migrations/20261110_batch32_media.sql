@@ -55,3 +55,69 @@ END $$;
 CREATE INDEX IF NOT EXISTS messages_chat_media_created_idx
   ON public.messages (created_at)
   WHERE media_url LIKE 'storage:chat-media/%';
+
+-- (5) Deletion. Storage objects are not rows our foreign keys cascade to,
+--     and Supabase refuses DELETE on storage.objects from SQL (and a deleted
+--     row would not remove the file anyway): files must go through the
+--     Storage API. So a deletion only QUEUES what to remove, and the
+--     maintenance sweep (purgeQueuedMedia, chat-media.server.ts) removes it:
+--       * a deleted message whose file we keep (a contact deleted from the
+--         Contacts drawer cascades conversations -> messages; a conversation
+--         deleted; a Shopify customers/redact) queues that object's path;
+--       * a deleted workspace (organizations row, however it is deleted —
+--         the deletion_requests flow is completed by hand today) queues its
+--         whole folder '<organization_id>/', listed and emptied by the sweep.
+--     No foreign key on the queue: it must outlive the rows it was made from.
+--     Service role only.
+CREATE TABLE IF NOT EXISTS public.chat_media_purge (
+  path text PRIMARY KEY,
+  reason text NOT NULL,
+  queued_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.chat_media_purge ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.chat_media_purge FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.chat_media_purge TO service_role;
+
+CREATE OR REPLACE FUNCTION public.chat_media_queue_message_purge()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.chat_media_purge (path, reason)
+  VALUES (substr(OLD.media_url, length('storage:chat-media/') + 1), 'message_deleted')
+  ON CONFLICT (path) DO NOTHING;
+  RETURN OLD;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.chat_media_queue_workspace_purge()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.chat_media_purge (path, reason)
+  VALUES (OLD.id::text || '/', 'workspace_deleted')
+  ON CONFLICT (path) DO NOTHING;
+  RETURN OLD;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.chat_media_queue_message_purge() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.chat_media_queue_workspace_purge() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_messages_chat_media_purge ON public.messages;
+CREATE TRIGGER trg_messages_chat_media_purge
+  AFTER DELETE ON public.messages
+  FOR EACH ROW
+  WHEN (OLD.media_url LIKE 'storage:chat-media/%')
+  EXECUTE FUNCTION public.chat_media_queue_message_purge();
+
+DROP TRIGGER IF EXISTS trg_organizations_chat_media_purge ON public.organizations;
+CREATE TRIGGER trg_organizations_chat_media_purge
+  AFTER DELETE ON public.organizations
+  FOR EACH ROW
+  EXECUTE FUNCTION public.chat_media_queue_workspace_purge();

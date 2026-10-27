@@ -210,6 +210,9 @@ export const MAX_SAVE_ATTEMPTS = 10;
 export const EXPIRE_BATCH = 100;
 /** Old files removed per run (retention). */
 export const RETENTION_BATCH = 100;
+/** Queued deletions handled per run, and objects removed from workspace folders per run. */
+export const PURGE_BATCH = 50;
+export const PURGE_FOLDER_OBJECTS = 500;
 
 export type MediaSweepCounts = {
   media_saved: number;
@@ -218,6 +221,8 @@ export type MediaSweepCounts = {
   media_expired: number;
   /** Batch 32 (4): files past platform_settings.media_retention_days, removed. */
   media_removed: number;
+  /** Batch 32 (5): objects of deleted messages / workspaces, removed. */
+  media_purged: number;
 };
 
 type PendingRow = {
@@ -243,7 +248,7 @@ export async function runChatMediaSweep(
   options: { now?: number; budgetMs?: number } = {},
 ): Promise<MediaSweepCounts> {
   const now = options.now ?? Date.now();
-  const counts: MediaSweepCounts = { media_saved: 0, media_save_failed: 0, media_too_large: 0, media_expired: 0, media_removed: 0 };
+  const counts: MediaSweepCounts = { media_saved: 0, media_save_failed: 0, media_too_large: 0, media_expired: 0, media_removed: 0, media_purged: 0 };
   try {
     await rescuePending(supabase, now, options.budgetMs ?? RESCUE_BUDGET_MS, counts);
   } catch (error) {
@@ -260,7 +265,75 @@ export async function runChatMediaSweep(
   } catch (error) {
     console.warn(JSON.stringify({ scope: "chat_media_sweep", step: "retention", error: error instanceof Error ? error.message : String(error) }));
   }
+  try {
+    counts.media_purged = await purgeQueuedMedia(supabase);
+  } catch (error) {
+    console.warn(JSON.stringify({ scope: "chat_media_sweep", step: "purge", error: error instanceof Error ? error.message : String(error) }));
+  }
   return counts;
+}
+
+/**
+ * Removes the files of deleted messages and deleted workspaces, queued on
+ * public.chat_media_purge by the delete triggers (20261110_batch32_media.sql:
+ * a contact or conversation deleted cascades to its messages; a workspace
+ * deleted queues its whole '<organization_id>/' folder). A path is taken off
+ * the queue only once storage confirmed the removal; a folder only once it
+ * lists empty. Bounded per run. Without the table (file not applied) it
+ * reads an error and does nothing.
+ */
+export async function purgeQueuedMedia(supabase: SupabaseClient): Promise<number> {
+  const { data, error } = await supabase
+    .from("chat_media_purge")
+    .select("path")
+    .order("queued_at", { ascending: true })
+    .limit(PURGE_BATCH);
+  if (error) throw new Error(error.message);
+  const queued = ((data ?? []) as Array<{ path: string }>).map((r) => r.path).filter(Boolean);
+  const files = queued.filter((p) => !p.endsWith("/"));
+  const folders = queued.filter((p) => p.endsWith("/"));
+  const bucket = supabase.storage.from(CHAT_MEDIA_BUCKET);
+  let purged = 0;
+
+  if (files.length) {
+    const { data: gone, error: removeError } = await bucket.remove(files);
+    if (removeError) throw new Error(removeError.message);
+    purged += (gone ?? []).length;
+    await supabase.from("chat_media_purge").delete().in("path", files);
+  }
+
+  let budget = PURGE_FOLDER_OBJECTS;
+  for (const folder of folders) {
+    if (budget <= 0) break;
+    const objects = await listFolder(supabase, folder.replace(/\/$/, ""), budget);
+    if (!objects.length) {
+      await supabase.from("chat_media_purge").delete().eq("path", folder);
+      continue;
+    }
+    const { data: gone, error: removeError } = await bucket.remove(objects);
+    if (removeError) throw new Error(removeError.message);
+    purged += (gone ?? []).length;
+    budget -= objects.length;
+  }
+  return purged;
+}
+
+/** Every object under a folder ({org}/{conversation}/{file}), up to max. */
+async function listFolder(supabase: SupabaseClient, folder: string, max: number): Promise<string[]> {
+  const out: string[] = [];
+  const walk = async (prefix: string): Promise<void> => {
+    const { data, error } = await supabase.storage.from(CHAT_MEDIA_BUCKET).list(prefix, { limit: 1000 });
+    if (error) throw new Error(error.message);
+    for (const entry of (data ?? []) as Array<{ name: string; id: string | null }>) {
+      if (out.length >= max) return;
+      const path = `${prefix}/${entry.name}`;
+      // Supabase lists a folder as an entry without an id.
+      if (entry.id === null) await walk(path);
+      else out.push(path);
+    }
+  };
+  await walk(folder);
+  return out;
 }
 
 /**
