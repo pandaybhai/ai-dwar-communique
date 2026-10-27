@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { callApi } from "@/lib/whatsapp-client";
 import {
+  documentTemplateStarter,
   emptyDraft,
   extractVariables,
   HEADER_OPTIONS,
@@ -139,6 +140,24 @@ export function CreateTemplateDialog({
             Marketing templates may only be sent to people who opted in to hear from you.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Start from:</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-full"
+            onClick={() => setDraft(documentTemplateStarter())}
+          >
+            Invoice or receipt with a PDF
+          </Button>
+          {draft.headerFormat === "DOCUMENT" && !draft.headerHandle ? (
+            <span className="text-xs text-muted-foreground">
+              Edit the words, then upload a sample PDF below — Meta reviews it with the template.
+            </span>
+          ) : null}
+        </div>
 
         <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="grid gap-4">

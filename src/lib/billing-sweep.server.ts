@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/billing";
 import type { MediaSweepCounts } from "@/lib/chat-media.server";
+import type { ApiCleanupCounts } from "@/lib/public-api.server";
 
 /**
  * The nightly money sweep: warn before credits run out, warn the platform
@@ -17,6 +18,10 @@ import type { MediaSweepCounts } from "@/lib/chat-media.server";
  * longer has are marked expired, kept files past the retention are removed
  * (their messages stay), and the files of deleted messages and workspaces
  * are removed. Bounded, never fails the sweep.
+ *
+ * Batch 34: and the Public API's upkeep (cleanupApiRecords): rate windows
+ * older than 1 h, idempotency reservations older than 48 h, finished webhook
+ * deliveries older than 30 days — at most 500 rows of each per run.
  *
  * Every run also retries the message debits the database could not take
  * when the message was priced (Batch 26a): a message that went out is always
@@ -44,7 +49,8 @@ export type SweepCounts = {
   /** Batch 31: unpaid Cashfree orders checked with GET order / found paid and settled. */
   cashfree_checked: number;
   cashfree_settled: number;
-} & MediaSweepCounts;
+} & MediaSweepCounts &
+  ApiCleanupCounts;
 
 /** activity_log action (and admin notice kind) for uncharged message debits. */
 export const DEBIT_ALERT_ACTION = "billing_debit_alert";
@@ -161,6 +167,9 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     media_expired: 0,
     media_removed: 0,
     media_purged: 0,
+    api_rate_windows_removed: 0,
+    api_requests_removed: 0,
+    api_deliveries_removed: 0,
   };
 
   // ---- messages already sent whose debit failed: charge them now if we can
@@ -351,6 +360,13 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     } catch {
       // a reminder failing is never worth losing the rest of the sweep
     }
+  }
+
+  // ---- Public API upkeep (Batch 34): old rate windows, idempotency
+  // reservations and finished webhook deliveries; bounded, never throws.
+  {
+    const { cleanupApiRecords } = await import("@/lib/public-api.server");
+    Object.assign(counts, await cleanupApiRecords(supabase));
   }
 
   // ---- customer media (Batch 32): last, so the money work never waits on a download

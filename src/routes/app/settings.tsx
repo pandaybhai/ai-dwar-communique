@@ -29,6 +29,7 @@ import { DeleteWorkspaceCard } from "@/components/settings/delete-workspace-card
 import { IntegrationsTab } from "@/components/integrations/integrations-settings";
 import { FlowConnections } from "@/components/integrations/flow-connections";
 import { SendSettingsTab } from "@/components/settings/send-settings";
+import { ApiSettingsTab } from "@/components/settings/api-settings";
 
 
 export const Route = createFileRoute("/app/settings")({
@@ -84,6 +85,8 @@ function SettingsTabs() {
   const showIntegrations = showShopify || showConnections;
   const { enabled: flowsEnabled } = useFeatureFlag("flows");
   const showSending = flowsEnabled && can("flows.view");
+  const { enabled: publicApiEnabled } = useFeatureFlag("public_api");
+  const showApi = publicApiEnabled && can("public_api.manage");
 
   return (
     <Tabs defaultValue={typeof window !== "undefined" && new URLSearchParams(window.location.search).has("google") && showIntegrations ? "integrations" : "general"} className="max-w-3xl">
@@ -94,6 +97,7 @@ function SettingsTabs() {
         {showIntegrations ? <TabsTrigger value="integrations">Integrations</TabsTrigger> : null}
         {showSending ? <TabsTrigger value="sending">Sending</TabsTrigger> : null}
         <TabsTrigger value="sources">Lead sources</TabsTrigger>
+        {showApi ? <TabsTrigger value="api">API & webhooks</TabsTrigger> : null}
       </TabsList>
       <TabsContent value="general" className="mt-6 space-y-6">
         <GeneralTab />
@@ -123,6 +127,11 @@ function SettingsTabs() {
         <LeadSourcesTab />
         <ComplianceSection />
       </TabsContent>
+      {showApi ? (
+        <TabsContent value="api" className="mt-6">
+          <ApiSettingsTab />
+        </TabsContent>
+      ) : null}
     </Tabs>
   );
 }

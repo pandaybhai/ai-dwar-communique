@@ -310,6 +310,9 @@ export function Bubble({
   // A file that was removed or expired still says so (Batch 32).
   const hasMedia = Boolean(message.media_url) || mediaGoneNote(message) !== null;
   const mediaOnly = hasMedia && !body && !message.template_name;
+  // Batch 34: sent by the merchant's own software through the Public API.
+  const viaApi = message.metadata?.["source"] === "api";
+  const fileName = typeof message.metadata?.["document_filename"] === "string" ? (message.metadata["document_filename"] as string) : null;
   return (
     <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
       <div className="max-w-[80%] sm:max-w-[68%]">
@@ -322,7 +325,7 @@ export function Bubble({
           ].join(" ")}
         >
           {hasMedia ? (
-            <MessageMedia message={message} organizationId={organizationId} label={mediaOnly ? mediaLabel(message) : text} />
+            <MessageMedia message={message} organizationId={organizationId} label={fileName ?? (mediaOnly ? mediaLabel(message) : text)} />
           ) : null}
           {message.type === "form_reply" && Array.isArray(message.metadata?.["answers"]) ? (
             <FormAnswers
@@ -333,6 +336,7 @@ export function Bubble({
             <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
           )}
           <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+            {viaApi ? <span className="rounded-full border border-border/70 px-1.5">Sent via API</span> : null}
             <span>{clockTime(message.created_at)}</span>
             {outbound ? <StatusTicks message={message} /> : null}
           </div>

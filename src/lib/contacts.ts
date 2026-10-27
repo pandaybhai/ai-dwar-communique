@@ -28,6 +28,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   instagram_organic: "Instagram",
   import: "Imported",
   manual: "Added by hand",
+  api: "API",
 };
 
 export const SOURCE_CLASSES: Record<string, string> = {
