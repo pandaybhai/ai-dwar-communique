@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 84, column 1032, view 2, function 100, index 147, trigger 65, cron_job 14.
+-- Expected objects: table 84, column 1033, view 2, function 100, index 148, trigger 65, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -774,6 +774,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'messages', 'media_mime', NULL, 'text', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'messages', 'media_url', NULL, 'text', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'messages', 'meta_message_id', NULL, 'text', '20260813_phase2_whatsapp_data_plane.sql'),
+    ('column', 'public', 'messages', 'metadata', NULL, 'jsonb', '20261110_batch32_media.sql'),
     ('column', 'public', 'messages', 'organization_id', NULL, 'uuid', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'messages', 'pricing_category', NULL, 'text', '20260831_message_cost_receipts.sql'),
     ('column', 'public', 'messages', 'pricing_model', NULL, 'text', '20260831_message_cost_receipts.sql'),
@@ -1330,6 +1331,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'message_templates_waba_idx', NULL, NULL, 'on public.message_templates', '20260818_multi_number.sql'),
     ('index', 'public', 'messages_campaign_idx', NULL, NULL, 'on public.messages', '20260828_revenue_attribution.sql'),
     ('index', 'public', 'messages_flow_idx', NULL, NULL, 'on public.messages', '20260828_revenue_attribution.sql'),
+    ('index', 'public', 'messages_inbound_meta_media_idx', NULL, NULL, 'on public.messages', '20261110_batch32_media.sql'),
     ('index', 'public', 'messages_org_conv_created_idx', NULL, NULL, 'on public.messages', '20260813_phase2_whatsapp_data_plane.sql'),
     ('index', 'public', 'messages_org_created_idx', NULL, NULL, 'on public.messages', '20260816_analytics.sql'),
     ('index', 'public', 'messages_org_direction_status_idx', NULL, NULL, 'on public.messages', '20260816_analytics.sql'),

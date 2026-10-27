@@ -1901,6 +1901,28 @@ export async function processWebhookPayload(
               );
               later(windowReady);
               afterReply.push(() => applyCampaignReply(supabase, orgId, contact.id));
+              // Batch 32: the customer's file is copied into chat-media once
+              // the reply is out (the Meta id expires after 7 days). Awaited
+              // with the rest before the event closes; a failure leaves
+              // "meta:<id>" for the sweep (runChatMediaSweep).
+              if (media.media_url && !isSystemEcho) {
+                const messageId = inserted[0]!.id as string;
+                const conversationId = conversation.id as string;
+                afterReply.push(async () => {
+                  const token = (await connectionP)?.accessToken ?? "";
+                  const { saveInboundMedia } = await import("@/lib/chat-media.server");
+                  const outcome = await saveInboundMedia(supabase, {
+                    messageId,
+                    organizationId: orgId,
+                    conversationId,
+                    mediaRef: media.media_url,
+                    mime: media.media_mime,
+                    filename: media.media_name,
+                    accessToken: token,
+                  });
+                  console.log(JSON.stringify({ scope: "chat_media", via: "webhook", message_id: messageId, outcome }));
+                });
+              }
               deferEmit(supabase, "message.received", {
                 organizationId: orgId,
                 whatsappAccountId: accountId,
