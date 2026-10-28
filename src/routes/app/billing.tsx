@@ -6,6 +6,7 @@ import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useOrg } from "@/lib/org-context";
+import { creditPurchaseBlock } from "@/lib/billing";
 
 const DESCRIPTION =
   "Your credits, what each message costs, payments and invoices — all in one place.";
@@ -32,9 +33,9 @@ function BillingPage() {
   const org = active?.organization;
   const noPlan = Boolean(org) && !org?.plan_version_id;
   const locked = org?.plan_status === "locked";
-  // Top-ups: any workspace with a plan on trial, active, past due or paused.
-  const canTopUp =
-    Boolean(org?.plan_version_id) && ["trial", "active", "past_due", "paused"].includes(org?.plan_status ?? "");
+  // Top-ups (Batch 35): trial — even before a plan is bought — active, past
+  // due and paused may buy credits; only locked and cancelled pick a plan first.
+  const canTopUp = Boolean(org) && !creditPurchaseBlock(org?.plan_status);
 
   return (
     <>

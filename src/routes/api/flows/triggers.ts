@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { isFlowDeleted } from "@/lib/flow-delete";
 import { z } from "zod";
 import { cleanConfig, configError } from "@/lib/flow-trigger-config";
 
@@ -144,15 +145,16 @@ export const Route = createFileRoute("/api/flows/triggers")({
           const myKeyword = mine.filter((t) => t.kind === "keyword" && t.is_enabled);
           if (myKeyword.length) {
             const [{ data: others }, { data: live }] = await Promise.all([
-              db.from("flow_triggers").select("id, flow_id, config, flows(name)").eq("organization_id", org).eq("kind", "keyword").eq("is_enabled", true).neq("flow_id", body.flow_id),
+              db.from("flow_triggers").select("id, flow_id, config, flows(name, config)").eq("organization_id", org).eq("kind", "keyword").eq("is_enabled", true).neq("flow_id", body.flow_id),
               db.from("flow_versions").select("flow_id").eq("organization_id", org).eq("status", "published"),
             ]);
             const liveIds = new Set(((live ?? []) as Array<{ flow_id: string }>).map((v) => v.flow_id));
             for (const t of myKeyword) {
               const kws = new Set(((t.config["keywords"] as string[] | undefined) ?? []).map(norm));
               const pr = Number(t.config["priority"] ?? 0);
-              for (const o of (others ?? []) as unknown as Array<{ id: string; flow_id: string; config: Record<string, unknown>; flows: { name: string } | null }>) {
-                if (!liveIds.has(o.flow_id)) continue;
+              for (const o of (others ?? []) as unknown as Array<{ id: string; flow_id: string; config: Record<string, unknown>; flows: { name: string; config?: Record<string, unknown> | null } | null }>) {
+                // A deleted flow (Batch 35) never matches, so it never conflicts.
+                if (!liveIds.has(o.flow_id) || isFlowDeleted(o.flows)) continue;
                 const shared = ((o.config["keywords"] as string[] | undefined) ?? []).map(norm).find((k) => kws.has(k));
                 if (!shared) continue;
                 conflicts.push({ trigger_id: t.id, keyword: shared, other_flow_id: o.flow_id, other_flow_name: o.flows?.name ?? "Another flow", other_trigger_id: o.id, this_wins: pr > Number(o.config["priority"] ?? 0) });
@@ -228,7 +230,7 @@ export const Route = createFileRoute("/api/flows/triggers")({
             reason === "already_running"
               ? "This contact is already in this flow."
               : reason === "not_published"
-                ? "Publish the flow first."
+                ? "This flow isn't published (or it was deleted)."
                 : "Couldn't start the flow.";
           return jsonError(why, 409);
         }

@@ -73,3 +73,13 @@ export function qualityClass(rating: string | null | undefined): string {
   if (r === "RED") return "border-destructive/25 bg-destructive/10 text-destructive";
   return "border-border bg-muted text-muted-foreground";
 }
+
+/**
+ * Batch 35: what a contact who opted out may still be sent from the inbox —
+ * a utility or authentication template (an order update, a one-time code),
+ * never marketing. A missing or unknown category counts as marketing.
+ */
+export function optedOutMayReceive(category: string | null | undefined): boolean {
+  const c = String(category ?? "").toLowerCase();
+  return c === "utility" || c === "authentication";
+}

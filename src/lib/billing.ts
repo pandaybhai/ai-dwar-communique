@@ -303,3 +303,18 @@ export type CampaignCostEstimate = {
   over_daily_limit: boolean;
   days_needed: number;
 };
+
+/**
+ * Batch 35: whether a workspace may buy credits or ask for a top-up, from its
+ * plan_status. Trial (with or without a plan bought yet), active, past due
+ * and paused may; only a locked or cancelled workspace must pick a plan
+ * first. Returns the reason it can't, or null. One rule for the billing page
+ * and the purchase / top-up routes.
+ */
+export function creditPurchaseBlock(planStatus: string | null | undefined): string | null {
+  const status = String(planStatus ?? "").toLowerCase();
+  if (status === "locked" || status === "cancelled") {
+    return "Pick a plan first — a locked or cancelled workspace can't buy credits.";
+  }
+  return null;
+}

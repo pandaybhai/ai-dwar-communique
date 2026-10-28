@@ -4,7 +4,7 @@ import {
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange, useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles, Zap, Table2, Workflow } from "lucide-react";
+import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles, Zap, Table2, Workflow, Trash2 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +24,7 @@ import { NodeConfig, type Pickers } from "./node-config";
 import { SimulatorPanel } from "./simulator-panel";
 import { TriggersPanel } from "./triggers-panel";
 import { ResponsesPanel } from "./responses-panel";
+import { DeleteFlowDialog } from "@/components/flows/v2/delete-flow-dialog";
 
 type RFNode = Node<RFData>;
 type Snapshot = { nodes: RFNode[]; edges: Edge[] };
@@ -340,6 +341,9 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     onChanged();
   };
 
+  // Batch 35: "Delete flow" — confirm (with the running-conversation count), then back to the list.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
   const unpublish = async () => {
     setBusy(true);
     const { error } = await callApi("/api/flows/v2", { body: { action: "unpublish", organization_id: organizationId, flow_id: flowId } });
@@ -441,6 +445,7 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
             <Button size="icon" variant="ghost" aria-label="Import" title="Import JSON" onClick={() => fileRef.current?.click()}><FileUp className="h-4 w-4" /></Button>
             <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); e.target.value = ""; }} />
             <Button size="icon" variant="ghost" aria-label="Duplicate" title="Duplicate flow" disabled={busy} onClick={() => void duplicate()}><Copy className="h-4 w-4" /></Button>
+            <Button size="icon" variant="ghost" aria-label="Delete flow" title="Delete flow" disabled={busy} onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4" /></Button>
             {aiOn && <Button size="sm" variant="ghost" onClick={() => setGenOpen(true)}><Sparkles className="mr-1 h-4 w-4" /> Generate</Button>}
           </>)}
           <Button size="sm" variant="outline" onClick={() => setSimOpen(true)}><Play className="mr-1 h-4 w-4" /> Test</Button>
@@ -451,6 +456,13 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
           </>)}
         </div>
       </div>
+      <DeleteFlowDialog
+        organizationId={organizationId}
+        flow={{ id: flowId, name }}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onDeleted={() => void navigate({ to: "/app/flows" })}
+      />
       {view === "responses" && (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <ResponsesPanel organizationId={organizationId} flowId={flowId} canExport={Boolean(canExportResponses)} />

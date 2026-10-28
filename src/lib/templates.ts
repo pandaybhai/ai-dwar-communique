@@ -1,3 +1,4 @@
+import { formattingProblems } from "@/lib/wa-format";
 export type TemplateComponent = {
   type: string;
   format?: string;
@@ -476,6 +477,8 @@ export function validateDraft(draft: TemplateDraft): string[] {
   if (bodyVars.some((v) => !draft.bodyExamples[v]?.trim())) {
     errors.push("Meta requires an example value for every variable in the body.");
   }
+  // Batch 35: WhatsApp formatting must be closed and never inside a {{n}}.
+  for (const e of formattingProblems(draft.body)) errors.push(e);
 
   if (draft.headerFormat === "TEXT") {
     if (!draft.headerText.trim()) errors.push("Your text header is empty.");
@@ -484,6 +487,10 @@ export function validateDraft(draft: TemplateDraft): string[] {
     if (headerVars.length > 1) errors.push("A header can hold only one variable.");
     if (headerVars.length === 1 && !draft.headerExample.trim()) {
       errors.push("Give an example value for the header variable.");
+    }
+    // Meta: "Do not use Markdown special characters in this component."
+    if (/[*_~`]/.test(draft.headerText.replace(/\{\{\s*\d+\s*\}\}/g, ""))) {
+      errors.push("A text header can't use * _ ~ ` formatting — Meta doesn't allow it there.");
     }
   }
   if (isMediaHeader(draft.headerFormat) && !draft.headerHandle) {
@@ -522,6 +529,7 @@ export function validateDraft(draft: TemplateDraft): string[] {
       if (vars.some((v) => !card.bodyExamples[v]?.trim())) {
         errors.push(`${label} needs an example value for every variable.`);
       }
+      for (const e of formattingProblems(card.body, `${label}'s text`)) errors.push(e);
       for (const e of validateButtons(card.buttons, "card")) errors.push(`${label}: ${e}`);
 
       if (first && i > 0) {

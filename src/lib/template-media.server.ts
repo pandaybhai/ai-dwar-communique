@@ -33,7 +33,6 @@ export async function uploadTemplateMedia(
     whatsappAccountId?: string | null;
   },
 ): Promise<TemplateMediaResult> {
-  const { GRAPH_VERSION, graphErrorMessage } = await import("@/lib/whatsapp-api.server");
   const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
 
   const { connection, error: connectionError } = await getWhatsAppConnection(
@@ -58,60 +57,24 @@ export async function uploadTemplateMedia(
   const mediaUrl = publicUrl.publicUrl;
 
   // ---- 2. Meta's upload handle, for the template review ----
-  const appId = process.env["META_APP_ID"];
-  if (!appId) {
-    await supabase.storage.from("template-media").remove([path]);
-    return {
-      ok: false,
-      error:
-        "Media headers aren't configured on this workspace yet. Contact support and we'll switch them on.",
-      status: 500,
-    };
-  }
-
-  const sessionRes = await fetch(
-    `https://graph.facebook.com/${GRAPH_VERSION}/${appId}/uploads?` +
-      new URLSearchParams({
-        file_length: String(input.bytes.byteLength),
-        file_type: input.mime,
-        file_name: input.fileName.slice(0, 120),
-      }),
-    { method: "POST", headers: { Authorization: `Bearer ${connection.accessToken}` } },
-  );
-  const sessionBody = (await sessionRes.json().catch(() => ({}))) as Record<string, unknown>;
-  const sessionId = sessionBody["id"] as string | undefined;
-  if (!sessionRes.ok || !sessionId) {
-    await supabase.storage.from("template-media").remove([path]);
-    return {
-      ok: false,
-      error: `Meta wouldn't accept the file: ${graphErrorMessage(sessionBody)}`,
-      status: 400,
-    };
-  }
-
-  const uploadRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${sessionId}`, {
-    method: "POST",
-    headers: {
-      // The resumable upload step authenticates with the same bearer token
-      // that opened the session. Meta's older "OA <token>" scheme is rejected.
-      Authorization: `Bearer ${connection.accessToken}`,
-      file_offset: "0",
-      "content-type": "application/octet-stream",
-    },
-    body: input.bytes as unknown as BodyInit,
+  const upload = await metaResumableUpload(connection.accessToken, {
+    bytes: input.bytes,
+    mime: input.mime,
+    fileName: input.fileName,
   });
-  const uploadBody = (await uploadRes.json().catch(() => ({}))) as Record<string, unknown>;
-  const handle = uploadBody["h"] as string | undefined;
-  if (!uploadRes.ok || !handle) {
-    // Resumable-upload failures come back as { debug_info: { message } },
-    // not the usual { error: { message } } envelope.
-    const debug = uploadBody["debug_info"] as Record<string, unknown> | undefined;
-    const reason =
-      (typeof debug?.["message"] === "string" ? (debug["message"] as string) : null) ??
-      graphErrorMessage(uploadBody);
+  if (!upload.ok) {
     await supabase.storage.from("template-media").remove([path]);
-    return { ok: false, error: `Meta wouldn't accept the file: ${reason}`, status: 400 };
+    if (upload.noAppId) {
+      return {
+        ok: false,
+        error:
+          "Media headers aren't configured on this workspace yet. Contact support and we'll switch them on.",
+        status: 500,
+      };
+    }
+    return { ok: false, error: `Meta wouldn't accept the file: ${upload.reason}`, status: 400 };
   }
+  const handle = upload.handle;
 
   const { data: asset } = await supabase
     .from("template_media_assets")
@@ -139,4 +102,56 @@ export async function uploadTemplateMedia(
     fileName: input.fileName,
     byteSize: input.bytes.byteLength,
   };
+}
+
+/**
+ * Meta's Resumable Upload API: open a session on our app (POST
+ * /{META_APP_ID}/uploads), send the bytes (POST /upload:<id>, file_offset 0)
+ * and get back the file handle ("h"). Shared by template media and, since
+ * Batch 35, the WhatsApp profile photo (profile_picture_handle).
+ */
+export async function metaResumableUpload(
+  accessToken: string,
+  file: { bytes: Uint8Array; mime: string; fileName: string },
+): Promise<{ ok: true; handle: string } | { ok: false; reason: string; noAppId?: boolean }> {
+  const { GRAPH_VERSION, graphErrorMessage } = await import("@/lib/whatsapp-api.server");
+  const appId = process.env["META_APP_ID"];
+  if (!appId) return { ok: false, reason: "META_APP_ID is not set", noAppId: true };
+
+  const sessionRes = await fetch(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${appId}/uploads?` +
+      new URLSearchParams({
+        file_length: String(file.bytes.byteLength),
+        file_type: file.mime,
+        file_name: file.fileName.slice(0, 120),
+      }),
+    { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  const sessionBody = (await sessionRes.json().catch(() => ({}))) as Record<string, unknown>;
+  const sessionId = sessionBody["id"] as string | undefined;
+  if (!sessionRes.ok || !sessionId) return { ok: false, reason: graphErrorMessage(sessionBody) };
+
+  const uploadRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${sessionId}`, {
+    method: "POST",
+    headers: {
+      // The resumable upload step authenticates with the same bearer token
+      // that opened the session. Meta's older "OA <token>" scheme is rejected.
+      Authorization: `Bearer ${accessToken}`,
+      file_offset: "0",
+      "content-type": "application/octet-stream",
+    },
+    body: file.bytes as unknown as BodyInit,
+  });
+  const uploadBody = (await uploadRes.json().catch(() => ({}))) as Record<string, unknown>;
+  const handle = uploadBody["h"] as string | undefined;
+  if (!uploadRes.ok || !handle) {
+    // Resumable-upload failures come back as { debug_info: { message } },
+    // not the usual { error: { message } } envelope.
+    const debug = uploadBody["debug_info"] as Record<string, unknown> | undefined;
+    const reason =
+      (typeof debug?.["message"] === "string" ? (debug["message"] as string) : null) ??
+      graphErrorMessage(uploadBody);
+    return { ok: false, reason };
+  }
+  return { ok: true, handle };
 }

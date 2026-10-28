@@ -10,6 +10,7 @@ import { EmptyState, ErrorState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FlowEditor, type VersionRow } from "@/components/flows/v2/flow-editor";
 import type { FlowGraph } from "@/lib/flow-graph";
+import { isFlowDeleted } from "@/lib/flow-delete";
 
 export const Route = createFileRoute("/app/flows/v2/$id")({
   head: () => ({
@@ -48,21 +49,23 @@ function FlowEditorPage() {
   const load = useCallback(async () => {
     if (!orgId) return;
     const [{ data: flow, error: e1 }, { data: vers }, { data: tpl }] = await Promise.all([
-      aidwar.from("flows").select("name, key, is_enabled").eq("id", id).eq("organization_id", orgId).maybeSingle(),
+      aidwar.from("flows").select("name, key, is_enabled, config").eq("id", id).eq("organization_id", orgId).maybeSingle(),
       aidwar.from("flow_versions").select("id, version, status, published_at, created_at, graph").eq("flow_id", id).order("version", { ascending: false }),
       aidwar.from("message_templates").select("id, name, status").eq("organization_id", orgId).order("name"),
     ]);
     if (e1 || !flow) { setError("We couldn't find this flow."); return; }
+    // Batch 35: a deleted flow isn't opened; it can be restored from the list.
+    if (isFlowDeleted(flow as { config?: Record<string, unknown> | null })) { setError("This flow was deleted. Restore it from “Deleted flows” on the Flows page to open it again."); return; }
     const [{ data: segs }, { data: others }, { data: prods }, { data: agent }, { data: tagRows }] = await Promise.all([
       aidwar.from("segments").select("name").eq("organization_id", orgId).order("name"),
-      aidwar.from("flows").select("id, name").eq("organization_id", orgId).like("key", "v2:%").neq("id", id).order("name"),
+      aidwar.from("flows").select("id, name, config").eq("organization_id", orgId).like("key", "v2:%").neq("id", id).order("name"),
       aidwar.from("products").select("id, external_id, sku, title, source, meta_synced_at").eq("organization_id", orgId).or("source.eq.meta_catalog,meta_synced_at.not.is.null").order("title").limit(300),
       aidwar.from("ai_agents").select("mode").eq("organization_id", orgId).eq("is_default", true).maybeSingle(),
       aidwar.from("tags").select("name").eq("organization_id", orgId).order("name").limit(200),
     ]);
     setExtra({
       segments: ((segs ?? []) as Array<{ name: string }>).map((x) => x.name),
-      flows: (others ?? []) as Array<{ id: string; name: string }>,
+      flows: ((others ?? []) as Array<{ id: string; name: string; config?: Record<string, unknown> | null }>).filter((f) => !isFlowDeleted(f)).map(({ id: fid, name }) => ({ id: fid, name })),
       products: ((prods ?? []) as Array<{ id: string; external_id: string | null; sku: string | null; title: string }>).map((x) => ({ retailer_id: x.external_id ?? x.sku ?? x.id, title: x.title })),
       aiOn: ["draft", "replying"].includes(String((agent as { mode?: string } | null)?.mode ?? "off")),
       tags: ((tagRows ?? []) as Array<{ name: string }>).map((x) => x.name),

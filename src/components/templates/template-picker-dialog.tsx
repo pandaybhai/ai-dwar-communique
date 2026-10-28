@@ -24,6 +24,10 @@ import {
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
 import { toast } from "sonner";
+import { WhatsAppText } from "@/components/whatsapp-text";
+import { callApi } from "@/lib/whatsapp-client";
+import { rateMoney } from "@/lib/billing";
+import { optedOutMayReceive } from "@/lib/opt-out";
 
 export type TemplateSendPayload = {
   template_name: string;
@@ -38,6 +42,8 @@ export function TemplatePickerDialog({
   wabaId,
   sending,
   onSend,
+  conversationId = null,
+  contactOptedOut = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -46,6 +52,10 @@ export function TemplatePickerDialog({
   wabaId?: string | null;
   sending: boolean;
   onSend: (payload: TemplateSendPayload) => Promise<boolean>;
+  /** Batch 35: the conversation it goes to — the picked template's price is shown for it. */
+  conversationId?: string | null;
+  /** Batch 35: the contact opted out — marketing templates can't be picked. */
+  contactOptedOut?: boolean;
 }) {
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +91,24 @@ export function TemplatePickerDialog({
 
 
   const selected = templates.find((t) => t.id === selectedId) ?? null;
+  // Batch 35: an opted-out contact never gets marketing (utility/authentication still go).
+  const blocked = (t: TemplateRow) => contactOptedOut && !optedOutMayReceive(t.category);
+  const [price, setPrice] = useState<{ enabled: boolean; rate: number; currency: string; category: string } | null>(null);
+  const selectedName = selected?.name ?? null;
+  useEffect(() => {
+    setPrice(null);
+    if (!open || !organizationId || !conversationId || !selectedName) return;
+    let cancelled = false;
+    void callApi<{ enabled: boolean; rate: number; currency: string; category: string }>(
+      "/api/whatsapp/template-price",
+      { body: { organization_id: organizationId, conversation_id: conversationId, template_name: selectedName } },
+    ).then(({ data }) => {
+      if (!cancelled) setPrice(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, organizationId, conversationId, selectedName]);
   const body = selected ? templateBodyText(selected.components) : "";
   const footer = selected ? templateFooterText(selected.components) : "";
   const variables = useMemo(() => extractVariables(body), [body]);
@@ -108,6 +136,7 @@ export function TemplatePickerDialog({
     (!needsOfferExpiry || !Number.isNaN(offerExpirationMs));
   const ready =
     Boolean(selected) &&
+    !(selected && blocked(selected)) &&
     variables.every((v) => values[v]?.trim()) &&
     mediaReady &&
     offerReady;
@@ -168,7 +197,8 @@ export function TemplatePickerDialog({
         <DialogHeader>
           <DialogTitle>Send a template</DialogTitle>
           <DialogDescription>
-            Outside the 24-hour window only approved templates can be delivered.
+            Approved templates can go out any time. Outside the 24-hour window they're the only way to reach a
+            customer.
           </DialogDescription>
         </DialogHeader>
 
@@ -192,6 +222,8 @@ export function TemplatePickerDialog({
                 <button
                   key={t.id}
                   type="button"
+                  disabled={blocked(t)}
+                  title={blocked(t) ? "This contact opted out of marketing" : undefined}
                   onClick={() => {
                     setSelectedId(t.id);
                     setValues({});
@@ -199,15 +231,25 @@ export function TemplatePickerDialog({
                     setCardMediaUrls({});
                   }}
                   className={[
-                    "w-full rounded-xl border px-4 py-3 text-left transition-colors duration-150",
+                    "w-full rounded-xl border px-4 py-3 text-left transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60",
                     selectedId === t.id
                       ? "border-primary bg-primary/5"
                       : "border-border/70 bg-card hover:bg-muted/50",
                   ].join(" ")}
                 >
-                  <p className="text-sm font-medium text-foreground">{t.name}</p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                    {templateBodyText(t.components)}
+                  <p className="text-sm font-medium text-foreground">
+                    {t.name}
+                    {t.category ? (
+                      <span className="ml-2 text-[11px] font-normal capitalize text-muted-foreground">
+                        {t.category.toLowerCase()}
+                      </span>
+                    ) : null}
+                  </p>
+                  {blocked(t) ? (
+                    <p className="text-[11px] text-destructive">Opted out — marketing can't be sent to this contact.</p>
+                  ) : null}
+                  <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                    <WhatsAppText text={templateBodyText(t.components)} />
                   </p>
                 </button>
               ))}
@@ -317,7 +359,7 @@ export function TemplatePickerDialog({
                     ) : null}
                     <div className="px-3.5 py-2.5">
                       <p className="whitespace-pre-wrap break-words leading-relaxed">
-                        {renderTemplate(body, values)}
+                        <WhatsAppText text={renderTemplate(body, values)} />
                       </p>
                       {footer ? (
                         <p className="mt-2 text-[11px] text-muted-foreground">{footer}</p>
@@ -330,6 +372,13 @@ export function TemplatePickerDialog({
           </div>
         )}
 
+        {selected && price ? (
+          <p className="text-xs text-muted-foreground" data-testid="template-price">
+            {price.enabled
+              ? `This ${price.category} template costs about ${rateMoney(price.rate, price.currency)}.`
+              : "Billing is off for this workspace, so this isn't charged."}
+          </p>
+        ) : null}
         <DialogFooter>
           <Button variant="outline" className="rounded-full" onClick={() => onOpenChange(false)}>
             Cancel

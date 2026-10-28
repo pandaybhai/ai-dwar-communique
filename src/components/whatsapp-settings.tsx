@@ -50,6 +50,7 @@ import { EmbeddedSignupButton } from "@/components/whatsapp-embedded-signup";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { SendHealthBanner } from "@/components/send-health-banner";
 import { usePermissions } from "@/hooks/use-permissions";
+import { WhatsAppProfileCard } from "@/components/whatsapp-profile-card";
 import { NUMBER_COLUMNS, numberLabel, sortNumbers, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
 import { CatalogCard } from "@/components/whatsapp-catalog-card";
 
@@ -728,6 +729,8 @@ function NumberCard({
         canManage={canManage}
         onReconnected={onChanged}
       />
+
+      <WhatsAppProfileCard orgId={orgId} accountId={account.id} />
 
       {failure ? (
         <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">

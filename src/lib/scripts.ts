@@ -17,7 +17,8 @@ export type ScriptKey =
   | "trial_cap_reply"
   | "on_duty"
   | "handover_default"
-  | "full_read_done";
+  | "full_read_done"
+  | "owner_reply_held";
 
 export const SCRIPTS: Record<
   ScriptKey,
@@ -94,6 +95,13 @@ export const SCRIPTS: Record<
     description: "Sent to the owner when Aiden finishes reading the whole website.",
     vars: ["site", "pages", "products"],
     text: "I've finished reading {site} — {pages} pages and {products} products. Ask me anything your customers would.",
+  },
+  owner_reply_held: {
+    name: "Owner reply held back",
+    description:
+      "A customer is waiting for the team and the owner sends a plain message on the AiDwar number: it is neither saved as a fact nor sent to anyone.",
+    vars: [],
+    text: "A customer is waiting for your team, so I haven't saved that or sent it to anyone. Reply to them from the AiDwar Inbox. To teach me something for every customer, add it under Knowledge.",
   },
 };
 

@@ -17,6 +17,10 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("editor_context"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
   z.object({ action: z.literal("set_number"), organization_id: z.string().uuid(), flow_id: z.string().uuid(), whatsapp_account_id: z.string().uuid().nullable() }),
   z.object({ action: z.literal("test_http"), organization_id: z.string().uuid(), data: z.record(z.string(), z.unknown()) }),
+  // Batch 35: delete (soft) and restore a whole flow.
+  z.object({ action: z.literal("delete_check"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
+  z.object({ action: z.literal("delete_flow"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
+  z.object({ action: z.literal("restore_flow"), organization_id: z.string().uuid(), flow_id: z.string().uuid() }),
 ]);
 
 /**
@@ -70,10 +74,25 @@ export const Route = createFileRoute("/api/flows/v2")({
           return Response.json({ ok: true, result: res });
         }
 
+        if (body.action === "delete_check" || body.action === "delete_flow" || body.action === "restore_flow") {
+          const flows = await import("@/lib/flow-delete.server");
+          const args = { organizationId: org, userId: auth.userId, flowId: body.flow_id };
+          const answer =
+            body.action === "delete_check"
+              ? await flows.flowDeleteCheck(db, org, body.flow_id)
+              : body.action === "delete_flow"
+                ? await flows.deleteFlow(db, args)
+                : await flows.restoreFlow(db, args);
+          if (!answer.ok) return jsonError(answer.error, answer.status);
+          return Response.json({ ok: true, ...answer.data });
+        }
+
+        // A deleted flow (Batch 35) can't be edited, published or pinned until it is restored.
         const ownFlow = async (flowId: string) => {
-          const { data } = await db.from("flows").select("id, name, key").eq("id", flowId).eq("organization_id", org).maybeSingle();
-          const f = data as { id: string; name: string; key: string } | null;
-          return f && f.key.startsWith("v2:") ? f : null;
+          const { data } = await db.from("flows").select("id, name, key, config").eq("id", flowId).eq("organization_id", org).maybeSingle();
+          const f = data as { id: string; name: string; key: string; config?: Record<string, unknown> | null } | null;
+          const { isFlowDeleted } = await import("@/lib/flow-delete");
+          return f && f.key.startsWith("v2:") && !isFlowDeleted(f) ? f : null;
         };
         if (body.action === "editor_context" || body.action === "set_number") {
           const flow = await ownFlow(body.flow_id);

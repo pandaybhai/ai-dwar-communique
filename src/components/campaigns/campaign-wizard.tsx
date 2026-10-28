@@ -39,6 +39,8 @@ import {
   type TemplateRow,
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
+import { CampaignTestSend } from "@/components/campaigns/campaign-test-send";
+import { WhatsAppText } from "@/components/whatsapp-text";
 import { CardAttachmentPicker } from "@/components/cards/card-attachment-picker";
 import { CardPreview } from "@/components/cards/card-preview";
 import type { CardAttachment } from "@/lib/customer-cards";
@@ -146,7 +148,9 @@ function ChatPreview({
           </div>
         ) : null}
         <div className="px-3.5 py-2.5">
-          <p className="whitespace-pre-wrap leading-relaxed">{body || "Your message preview"}</p>
+          <p className="whitespace-pre-wrap leading-relaxed">
+            {body ? <WhatsAppText text={body} /> : "Your message preview"}
+          </p>
           {footer ? <p className="mt-2 text-[11px] opacity-60">{footer}</p> : null}
           <p className="mt-1 text-right text-[10px] opacity-50">now</p>
         </div>
@@ -205,6 +209,8 @@ export function CampaignWizard({
   const [cardCoupons, setCardCoupons] = useState<Record<number, string>>({});
   const [offerDate, setOfferDate] = useState("");
   const [offerTime, setOfferTime] = useState("");
+  // Batch 35: the campaign-to-be its test sends count against (20 at most).
+  const [testRef, setTestRef] = useState("");
 
   // A campaign always sends from one number. Default is the workspace default.
   const { numbers, defaultNumber, multiple } = useWhatsAppNumbers();
@@ -229,6 +235,7 @@ export function CampaignWizard({
     setCardCoupons({});
     setOfferDate("");
     setOfferTime("");
+    if (open) setTestRef(crypto.randomUUID());
   }, [open]);
 
   // A different template means different slots — start its media clean.
@@ -490,6 +497,26 @@ export function CampaignWizard({
   };
 
 
+  /** What this campaign sends with — launch and the test send use the same. */
+  const sendSettings = useMemo(
+    () => ({
+      ...(needsHeaderMedia && headerMedia.url ? { header_media_url: headerMedia.url } : {}),
+      ...(cards.length
+        ? {
+            cards: cards.map((_, i) => ({
+              media_url: cardMedia[i] ?? null,
+              coupon_code: effectiveCardCoupon(i) || null,
+            })),
+          }
+        : {}),
+      ...(needsCoupon && couponCode.trim() ? { coupon_code: couponCode.trim() } : {}),
+      ...(offerExpiresAt ? { offer_expires_at: offerExpiresAt } : {}),
+      ...(card ? { card: { kind: card.kind, vars: card.vars } } : {}),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [needsHeaderMedia, headerMedia.url, cards, cardMedia, cardCoupons, needsCoupon, couponCode, offerExpiresAt, card],
+  );
+
   const launch = async () => {
     setLaunching(true);
     const { data, error } = await callApi<{ campaign_id: string }>("/api/campaigns/launch", {
@@ -501,20 +528,7 @@ export function CampaignWizard({
         variable_mappings: mappings,
         scheduled_at: scheduledAt,
         whatsapp_account_id: accountId || null,
-        send_settings: {
-          ...(needsHeaderMedia && headerMedia.url ? { header_media_url: headerMedia.url } : {}),
-          ...(cards.length
-            ? {
-                cards: cards.map((_, i) => ({
-                  media_url: cardMedia[i] ?? null,
-                  coupon_code: effectiveCardCoupon(i) || null,
-                })),
-              }
-            : {}),
-          ...(needsCoupon && couponCode.trim() ? { coupon_code: couponCode.trim() } : {}),
-          ...(offerExpiresAt ? { offer_expires_at: offerExpiresAt } : {}),
-          ...(card ? { card: { kind: card.kind, vars: card.vars } } : {}),
-        },
+        send_settings: sendSettings,
       },
     });
 
@@ -1177,6 +1191,16 @@ export function CampaignWizard({
                     </p>
                     <CardPreview kind={card.kind} vars={card.vars} className="max-w-[240px]" />
                   </div>
+                ) : null}
+                {testRef && templateName ? (
+                  <CampaignTestSend
+                    organizationId={organizationId}
+                    testRef={testRef}
+                    templateName={templateName}
+                    accountId={accountId}
+                    mappings={mappings}
+                    sendSettings={sendSettings}
+                  />
                 ) : null}
 
               </div>

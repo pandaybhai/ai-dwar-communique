@@ -66,6 +66,7 @@ import {
   type MemberRow,
   type MessageRow,
 } from "./inbox-utils";
+import { WhatsAppText } from "@/components/whatsapp-text";
 
 function StatusTicks({ message }: { message: MessageRow }) {
   if (message.status === "failed") {
@@ -312,6 +313,8 @@ export function Bubble({
   const mediaOnly = hasMedia && !body && !message.template_name;
   // Batch 34: sent by the merchant's own software through the Public API.
   const viaApi = message.metadata?.["source"] === "api";
+  // Batch 35: a campaign test send from the wizard — never part of a campaign.
+  const isTest = message.metadata?.["test"] === true;
   const fileName = typeof message.metadata?.["document_filename"] === "string" ? (message.metadata["document_filename"] as string) : null;
   return (
     <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
@@ -333,10 +336,13 @@ export function Bubble({
               answers={message.metadata?.["answers"] as Array<{ label: string; value: string }>}
             />
           ) : mediaOnly ? null : (
-            <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
+            <p className="whitespace-pre-wrap break-words leading-relaxed">
+              <WhatsAppText text={text} />
+            </p>
           )}
           <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
             {viaApi ? <span className="rounded-full border border-border/70 px-1.5">Sent via API</span> : null}
+            {isTest ? <span className="rounded-full border border-border/70 px-1.5">Test</span> : null}
             <span>{clockTime(message.created_at)}</span>
             {outbound ? <StatusTicks message={message} /> : null}
           </div>
@@ -655,8 +661,8 @@ export function ChatThread({
         <div className="flex items-start gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2.5 text-xs text-destructive">
           <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <p>
-            This contact opted out — only service replies within the 24-hour window are
-            appropriate. Please don’t send marketing or templates.
+            This contact opted out — no marketing. Service replies within the 24-hour window and
+            utility or authentication templates (an order update, a code) are still fine.
           </p>
         </div>
       ) : null}
@@ -837,6 +843,16 @@ export function ChatThread({
             />
             <SendFormButton organizationId={organizationId} conversationId={conversation.id} />
             <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen />
+            {/* Batch 35: an approved template can go any time, not only once the window closes. */}
+            <Button
+              variant="outline"
+              className="h-11 w-11 shrink-0 rounded-full p-0"
+              aria-label="Send a template"
+              title="Send a template"
+              onClick={() => setPickerOpen(true)}
+            >
+              <MessageSquareText className="h-4 w-4" />
+            </Button>
             <Button
               className="h-11 w-11 shrink-0 rounded-full p-0"
               disabled={!draft.trim() || sending}
@@ -874,6 +890,8 @@ export function ChatThread({
         wabaId={wabaId ?? null}
         sending={sending}
         onSend={onSendTemplate}
+        conversationId={conversation.id}
+        contactOptedOut={conversation.contact?.opt_in_status === "opted_out"}
       />
 
       {organizationId ? (

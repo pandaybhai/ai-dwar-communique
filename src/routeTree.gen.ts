@@ -75,6 +75,7 @@ import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
 import { Route as ApiCampaignsEstimateRouteImport } from './routes/api/campaigns/estimate'
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
+import { Route as ApiCampaignsTestSendRouteImport } from './routes/api/campaigns/test-send'
 import { Route as ApiCatalogImageRouteImport } from './routes/api/catalog/image'
 import { Route as ApiCatalogImportRouteImport } from './routes/api/catalog/import'
 import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/products'
@@ -119,9 +120,12 @@ import { Route as ApiWhatsappCatalogRouteImport } from './routes/api/whatsapp/ca
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
 import { Route as ApiWhatsappEsConfigRouteImport } from './routes/api/whatsapp/es-config'
 import { Route as ApiWhatsappEsExchangeRouteImport } from './routes/api/whatsapp/es-exchange'
+import { Route as ApiWhatsappProfileRouteImport } from './routes/api/whatsapp/profile'
+import { Route as ApiWhatsappProfilePhotoRouteImport } from './routes/api/whatsapp/profile-photo'
 import { Route as ApiWhatsappRefreshQualityRouteImport } from './routes/api/whatsapp/refresh-quality'
 import { Route as ApiWhatsappSendMessageRouteImport } from './routes/api/whatsapp/send-message'
 import { Route as ApiWhatsappTemplateMediaRouteImport } from './routes/api/whatsapp/template-media'
+import { Route as ApiWhatsappTemplatePriceRouteImport } from './routes/api/whatsapp/template-price'
 import { Route as ApiWhatsappTemplatesRouteImport } from './routes/api/whatsapp/templates'
 import { Route as ApiWhatsappTokenStatusRouteImport } from './routes/api/whatsapp/token-status'
 import { Route as AppCampaignsIndexRouteImport } from './routes/app/campaigns.index'
@@ -473,6 +477,11 @@ const ApiCampaignsLaunchRoute = ApiCampaignsLaunchRouteImport.update({
   path: '/api/campaigns/launch',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCampaignsTestSendRoute = ApiCampaignsTestSendRouteImport.update({
+  id: '/api/campaigns/test-send',
+  path: '/api/campaigns/test-send',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCatalogImageRoute = ApiCatalogImageRouteImport.update({
   id: '/api/catalog/image',
   path: '/api/catalog/image',
@@ -709,6 +718,16 @@ const ApiWhatsappEsExchangeRoute = ApiWhatsappEsExchangeRouteImport.update({
   path: '/api/whatsapp/es-exchange',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappProfileRoute = ApiWhatsappProfileRouteImport.update({
+  id: '/api/whatsapp/profile',
+  path: '/api/whatsapp/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappProfilePhotoRoute = ApiWhatsappProfilePhotoRouteImport.update({
+  id: '/api/whatsapp/profile-photo',
+  path: '/api/whatsapp/profile-photo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWhatsappRefreshQualityRoute =
   ApiWhatsappRefreshQualityRouteImport.update({
     id: '/api/whatsapp/refresh-quality',
@@ -724,6 +743,12 @@ const ApiWhatsappTemplateMediaRoute =
   ApiWhatsappTemplateMediaRouteImport.update({
     id: '/api/whatsapp/template-media',
     path: '/api/whatsapp/template-media',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiWhatsappTemplatePriceRoute =
+  ApiWhatsappTemplatePriceRouteImport.update({
+    id: '/api/whatsapp/template-price',
+    path: '/api/whatsapp/template-price',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiWhatsappTemplatesRoute = ApiWhatsappTemplatesRouteImport.update({
@@ -902,6 +927,7 @@ export interface FileRoutesByFullPath {
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/estimate': typeof ApiCampaignsEstimateRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/campaigns/test-send': typeof ApiCampaignsTestSendRoute
   '/api/catalog/image': typeof ApiCatalogImageRoute
   '/api/catalog/import': typeof ApiCatalogImportRoute
   '/api/catalog/products': typeof ApiCatalogProductsRoute
@@ -946,9 +972,12 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
+  '/api/whatsapp/profile': typeof ApiWhatsappProfileRoute
+  '/api/whatsapp/profile-photo': typeof ApiWhatsappProfilePhotoRoute
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/template-media': typeof ApiWhatsappTemplateMediaRoute
+  '/api/whatsapp/template-price': typeof ApiWhatsappTemplatePriceRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
@@ -1035,6 +1064,7 @@ export interface FileRoutesByTo {
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/estimate': typeof ApiCampaignsEstimateRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/campaigns/test-send': typeof ApiCampaignsTestSendRoute
   '/api/catalog/image': typeof ApiCatalogImageRoute
   '/api/catalog/import': typeof ApiCatalogImportRoute
   '/api/catalog/products': typeof ApiCatalogProductsRoute
@@ -1079,9 +1109,12 @@ export interface FileRoutesByTo {
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
+  '/api/whatsapp/profile': typeof ApiWhatsappProfileRoute
+  '/api/whatsapp/profile-photo': typeof ApiWhatsappProfilePhotoRoute
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/template-media': typeof ApiWhatsappTemplateMediaRoute
+  '/api/whatsapp/template-price': typeof ApiWhatsappTemplatePriceRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
@@ -1171,6 +1204,7 @@ export interface FileRoutesById {
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/estimate': typeof ApiCampaignsEstimateRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/campaigns/test-send': typeof ApiCampaignsTestSendRoute
   '/api/catalog/image': typeof ApiCatalogImageRoute
   '/api/catalog/import': typeof ApiCatalogImportRoute
   '/api/catalog/products': typeof ApiCatalogProductsRoute
@@ -1215,9 +1249,12 @@ export interface FileRoutesById {
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
+  '/api/whatsapp/profile': typeof ApiWhatsappProfileRoute
+  '/api/whatsapp/profile-photo': typeof ApiWhatsappProfilePhotoRoute
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/template-media': typeof ApiWhatsappTemplateMediaRoute
+  '/api/whatsapp/template-price': typeof ApiWhatsappTemplatePriceRoute
   '/api/whatsapp/templates': typeof ApiWhatsappTemplatesRoute
   '/api/whatsapp/token-status': typeof ApiWhatsappTokenStatusRoute
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
@@ -1308,6 +1345,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/control'
     | '/api/campaigns/estimate'
     | '/api/campaigns/launch'
+    | '/api/campaigns/test-send'
     | '/api/catalog/image'
     | '/api/catalog/import'
     | '/api/catalog/products'
@@ -1352,9 +1390,12 @@ export interface FileRouteTypes {
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
     | '/api/whatsapp/es-exchange'
+    | '/api/whatsapp/profile'
+    | '/api/whatsapp/profile-photo'
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/template-media'
+    | '/api/whatsapp/template-price'
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
@@ -1441,6 +1482,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/control'
     | '/api/campaigns/estimate'
     | '/api/campaigns/launch'
+    | '/api/campaigns/test-send'
     | '/api/catalog/image'
     | '/api/catalog/import'
     | '/api/catalog/products'
@@ -1485,9 +1527,12 @@ export interface FileRouteTypes {
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
     | '/api/whatsapp/es-exchange'
+    | '/api/whatsapp/profile'
+    | '/api/whatsapp/profile-photo'
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/template-media'
+    | '/api/whatsapp/template-price'
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
@@ -1576,6 +1621,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/control'
     | '/api/campaigns/estimate'
     | '/api/campaigns/launch'
+    | '/api/campaigns/test-send'
     | '/api/catalog/image'
     | '/api/catalog/import'
     | '/api/catalog/products'
@@ -1620,9 +1666,12 @@ export interface FileRouteTypes {
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
     | '/api/whatsapp/es-exchange'
+    | '/api/whatsapp/profile'
+    | '/api/whatsapp/profile-photo'
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/template-media'
+    | '/api/whatsapp/template-price'
     | '/api/whatsapp/templates'
     | '/api/whatsapp/token-status'
     | '/app/campaigns/$id'
@@ -1690,6 +1739,7 @@ export interface RootRouteChildren {
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
   ApiCampaignsEstimateRoute: typeof ApiCampaignsEstimateRoute
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
+  ApiCampaignsTestSendRoute: typeof ApiCampaignsTestSendRoute
   ApiCatalogImageRoute: typeof ApiCatalogImageRoute
   ApiCatalogImportRoute: typeof ApiCatalogImportRoute
   ApiCatalogProductsRoute: typeof ApiCatalogProductsRoute
@@ -1734,9 +1784,12 @@ export interface RootRouteChildren {
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
   ApiWhatsappEsConfigRoute: typeof ApiWhatsappEsConfigRoute
   ApiWhatsappEsExchangeRoute: typeof ApiWhatsappEsExchangeRoute
+  ApiWhatsappProfileRoute: typeof ApiWhatsappProfileRoute
+  ApiWhatsappProfilePhotoRoute: typeof ApiWhatsappProfilePhotoRoute
   ApiWhatsappRefreshQualityRoute: typeof ApiWhatsappRefreshQualityRoute
   ApiWhatsappSendMessageRoute: typeof ApiWhatsappSendMessageRoute
   ApiWhatsappTemplateMediaRoute: typeof ApiWhatsappTemplateMediaRoute
+  ApiWhatsappTemplatePriceRoute: typeof ApiWhatsappTemplatePriceRoute
   ApiWhatsappTemplatesRoute: typeof ApiWhatsappTemplatesRoute
   ApiWhatsappTokenStatusRoute: typeof ApiWhatsappTokenStatusRoute
   ApiPublicRazorpayFlowWebhookOrgIdRoute: typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
@@ -2216,6 +2269,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCampaignsLaunchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/campaigns/test-send': {
+      id: '/api/campaigns/test-send'
+      path: '/api/campaigns/test-send'
+      fullPath: '/api/campaigns/test-send'
+      preLoaderRoute: typeof ApiCampaignsTestSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/catalog/image': {
       id: '/api/catalog/image'
       path: '/api/catalog/image'
@@ -2524,6 +2584,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappEsExchangeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/profile': {
+      id: '/api/whatsapp/profile'
+      path: '/api/whatsapp/profile'
+      fullPath: '/api/whatsapp/profile'
+      preLoaderRoute: typeof ApiWhatsappProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/profile-photo': {
+      id: '/api/whatsapp/profile-photo'
+      path: '/api/whatsapp/profile-photo'
+      fullPath: '/api/whatsapp/profile-photo'
+      preLoaderRoute: typeof ApiWhatsappProfilePhotoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/refresh-quality': {
       id: '/api/whatsapp/refresh-quality'
       path: '/api/whatsapp/refresh-quality'
@@ -2543,6 +2617,13 @@ declare module '@tanstack/react-router' {
       path: '/api/whatsapp/template-media'
       fullPath: '/api/whatsapp/template-media'
       preLoaderRoute: typeof ApiWhatsappTemplateMediaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/template-price': {
+      id: '/api/whatsapp/template-price'
+      path: '/api/whatsapp/template-price'
+      fullPath: '/api/whatsapp/template-price'
+      preLoaderRoute: typeof ApiWhatsappTemplatePriceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/whatsapp/templates': {
@@ -2811,6 +2892,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
   ApiCampaignsEstimateRoute: ApiCampaignsEstimateRoute,
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
+  ApiCampaignsTestSendRoute: ApiCampaignsTestSendRoute,
   ApiCatalogImageRoute: ApiCatalogImageRoute,
   ApiCatalogImportRoute: ApiCatalogImportRoute,
   ApiCatalogProductsRoute: ApiCatalogProductsRoute,
@@ -2855,9 +2937,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,
   ApiWhatsappEsConfigRoute: ApiWhatsappEsConfigRoute,
   ApiWhatsappEsExchangeRoute: ApiWhatsappEsExchangeRoute,
+  ApiWhatsappProfileRoute: ApiWhatsappProfileRoute,
+  ApiWhatsappProfilePhotoRoute: ApiWhatsappProfilePhotoRoute,
   ApiWhatsappRefreshQualityRoute: ApiWhatsappRefreshQualityRoute,
   ApiWhatsappSendMessageRoute: ApiWhatsappSendMessageRoute,
   ApiWhatsappTemplateMediaRoute: ApiWhatsappTemplateMediaRoute,
+  ApiWhatsappTemplatePriceRoute: ApiWhatsappTemplatePriceRoute,
   ApiWhatsappTemplatesRoute: ApiWhatsappTemplatesRoute,
   ApiWhatsappTokenStatusRoute: ApiWhatsappTokenStatusRoute,
   ApiPublicRazorpayFlowWebhookOrgIdRoute:

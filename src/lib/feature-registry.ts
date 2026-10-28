@@ -356,7 +356,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       section_label: "Campaigns",
       section_order: 20,
     },
-    activity_actions: ["campaign_created", "campaign_launched", "campaign_controlled"],
+    activity_actions: ["campaign_created", "campaign_launched", "campaign_controlled", "campaign_test_sent"],
     usage_meters: [{ key: "campaign_messages", name: "Campaign messages sent", unit: "messages" }],
     ai_tools: [
       {
@@ -615,6 +615,9 @@ export const FEATURES: readonly FeatureManifest[] = [
       "whatsapp_catalog_products_sent",
       "whatsapp_catalog_order_received",
       "whatsapp_catalog_settings_changed",
+      "whatsapp_profile_updated",
+      "whatsapp_profile_photo_updated",
+      "whatsapp_display_name_requested",
       "whatsapp_scopes_removed",
       "whatsapp_health_needs_attention",
       "firecrawl_cap_reached",
@@ -1313,7 +1316,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       },
     ],
     analytics: { event_types: [], metrics: [], dashboard_section: false },
-    activity_actions: ["flow_run_pause", "flow_run_stop", "flow_run_resume", "flow_v2_created", "flow_v2_published", "flow_v2_unpublished", "flow_v2_restored", "flow_v2_generated", "flow_v2_trigger_added", "flow_v2_manual_start", "flow_v2_http_tested", "flow_v2_number_set", "flow_v2_keyword_priority_set", "flow_connection_added", "flow_connection_removed"],
+    activity_actions: ["flow_run_pause", "flow_run_stop", "flow_run_resume", "flow_v2_created", "flow_v2_published", "flow_v2_unpublished", "flow_v2_restored", "flow_v2_generated", "flow_v2_trigger_added", "flow_v2_manual_start", "flow_v2_http_tested", "flow_v2_number_set", "flow_v2_keyword_priority_set", "flow_connection_added", "flow_connection_removed", "flow_v2_deleted", "flow_v2_undeleted"],
     ai_tools: [],
     data_tables: ["flow_versions", "flow_runs", "flow_run_events", "workspace_connections"],
   },

@@ -108,16 +108,18 @@ describe("(1) answer columns", () => {
 
 describe("(1) status and rows", () => {
   it("maps every run status to finished / waiting / stopped / failed", () => {
-    expect(["done", "running", "waiting", "paused", "cancelled", "expired", "failed"].map(responseStatus)).toEqual([
+    // Batch 35: "ended" (its flow was deleted) is a stopped run.
+    expect(["done", "running", "waiting", "paused", "cancelled", "expired", "ended", "failed"].map(responseStatus)).toEqual([
       "finished",
       "waiting",
       "waiting",
       "waiting",
       "stopped",
       "stopped",
+      "stopped",
       "failed",
     ]);
-    expect(Object.values(RESPONSE_STATUSES).flat().sort()).toEqual(["cancelled", "done", "expired", "failed", "paused", "running", "waiting"]);
+    expect(Object.values(RESPONSE_STATUSES).flat().sort()).toEqual(["cancelled", "done", "ended", "expired", "failed", "paused", "running", "waiting"]);
   });
 
   const cols = answerColumns([LEAD_V2, LEAD_V1]);
@@ -328,7 +330,7 @@ describe("(1)(2)(3) list", () => {
     const db = world();
     await call({ action: "list", summary: false, filters: { status: "stopped", from: "2026-10-01T00:00:00.000Z", to: "2026-10-02T00:00:00.000Z" } });
     const page = runOps()[0]!;
-    expect(db.has(page, "in", "status", ["cancelled", "expired"])).toBe(true);
+    expect(db.has(page, "in", "status", ["cancelled", "expired", "ended"])).toBe(true);
     expect(db.has(page, "gte", "started_at", "2026-10-01T00:00:00.000Z")).toBe(true);
     expect(db.has(page, "lt", "started_at", "2026-10-02T00:00:00.000Z")).toBe(true);
   });

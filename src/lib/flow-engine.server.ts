@@ -20,6 +20,7 @@ import {
 } from "@/lib/flow-graph";
 import { isServiceWindowOpen } from "@/lib/service-window";
 import type { ReplyTimer } from "@/lib/reply-timing";
+import { isFlowDeleted } from "@/lib/flow-delete";
 
 /**
  * Flows v2 engine. Durable: a run's whole state lives in flow_runs; waits are
@@ -160,12 +161,18 @@ export function readPublishedVersion(supabase: SupabaseClient, organizationId: s
   const read = Promise.resolve(
     supabase
       .from("flow_versions")
-      .select("id, graph")
+      .select("id, graph, flows(config)")
       .eq("flow_id", flowId)
       .eq("organization_id", organizationId)
       .eq("status", "published")
       .maybeSingle(),
-  ).then(({ data }) => data as PublishedVersion);
+  ).then(({ data }) => {
+    // Batch 35: a deleted flow has no version to start — every trigger, a
+    // goto and a manual start all stop here. No flow row read = live.
+    const row = data as (NonNullable<PublishedVersion> & { flows?: { config?: Record<string, unknown> | null } | null }) | null;
+    if (row && isFlowDeleted(row.flows)) return null;
+    return row ? { id: row.id, graph: row.graph } : null;
+  });
   read.catch(() => {});
   return read;
 }
@@ -759,7 +766,9 @@ async function advanceInner(
     await supabase
       .from("flow_runs")
       .update({ current_node_id: nodeId, variables: vars, steps, claimed_at: null, ...patch })
-      .eq("id", run.id);
+      .eq("id", run.id)
+      // Batch 35: a run its flow's deletion ended stays ended, even if a step was mid-way.
+      .neq("status", "ended");
   };
   const finish = async (status: "done" | "failed" | "cancelled" | "expired", event: string, detail: Record<string, unknown> = {}) => {
     await save({ status, wake_at: null, waiting_for: null, ended_at: new Date().toISOString(), ...(status === "failed" ? { last_error: String(detail["error"] ?? event) } : {}) });
