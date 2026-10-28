@@ -19,6 +19,7 @@ export const DOCS_PATH = "/developers/api";
 
 export const SEND_PATH = "/api/v1/messages/template";
 export const STATUS_PATH = "/api/v1/messages/{message_id}";
+export const SESSION_PATH = "/api/v1/messages/session";
 
 /** Batch 37: where the API is served (media links in webhook events, the Postman collection). */
 export const API_ORIGIN = "https://aidwar.in";

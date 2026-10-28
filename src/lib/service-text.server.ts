@@ -121,6 +121,8 @@ export async function sendServiceText(
     /** The caller read the 24-hour window in this request; true skips the re-read. */
     windowOpen?: boolean;
     body: string;
+    /** Batch 37 (Public API): show a preview of the first link in the text. */
+    previewUrl?: boolean;
     /** Stored on the message row, e.g. { kind: "stranger_greeting" }. */
     metadata?: Record<string, unknown>;
     /** The teammate who sent it (inbox); left out for automatic messages. */
@@ -138,7 +140,7 @@ export async function sendServiceText(
     messaging_product: "whatsapp",
     to: args.to,
     type: "text",
-    text: { body: args.body },
+    text: { body: args.body, ...(args.previewUrl ? { preview_url: true } : {}) },
   });
   return recordOutbound(supabase, args, res, json, {
     type: "text",
@@ -168,6 +170,8 @@ export async function sendServiceButtons(
     body: string;
     buttons: Array<{ id: string; title: string }>;
     imageUrl?: string | null;
+    /** Batch 37: stored on the message row (the Public API's source "api"). */
+    metadata?: Record<string, unknown>;
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
@@ -204,6 +208,7 @@ export async function sendServiceButtons(
     type: args.imageUrl ? "image" : "text",
     body: recordedBody,
     ...(args.imageUrl ? { media_url: args.imageUrl, media_mime: "image" } : {}),
+    ...(args.metadata ? { metadata: args.metadata } : {}),
   });
 }
 
@@ -300,6 +305,53 @@ export async function sendServiceDocument(
 }
 
 /**
+ * Batch 37 (Public API): one image, video, audio file or document already
+ * uploaded to Meta (uploadMessageMedia), sent by its media id. Same 24-hour
+ * rule and the same row as the senders above; the caller then keeps our own
+ * copy (keepMediaCopy) so the inbox shows the file.
+ */
+export async function sendServiceMedia(
+  supabase: SupabaseClient,
+  args: {
+    organizationId: string;
+    phoneNumberId: string;
+    accessToken: string;
+    conversationId: string;
+    to: string;
+    kind: "image" | "video" | "audio" | "document";
+    mediaId: string;
+    mime: string;
+    /** Not for audio (WhatsApp takes none). */
+    caption?: string | null;
+    /** Documents only: the name the customer sees. */
+    filename?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<ServiceTextResult> {
+  if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
+  if (!(await serviceWindowOpen(supabase, args))) {
+    return { ok: false, messageId: null, error: "service_window_closed" };
+  }
+  const caption = args.kind !== "audio" && args.caption ? args.caption.slice(0, 1024) : null;
+  const { res, json } = await sendGraph(args, {
+    messaging_product: "whatsapp",
+    to: args.to,
+    type: args.kind,
+    [args.kind]: {
+      id: args.mediaId,
+      ...(caption ? { caption } : {}),
+      ...(args.kind === "document" && args.filename ? { filename: args.filename } : {}),
+    },
+  });
+  return recordOutbound(supabase, args, res, json, {
+    type: args.kind,
+    body: caption,
+    media_mime: args.mime,
+    ...(args.metadata ? { metadata: args.metadata } : {}),
+  });
+}
+
+/**
  * Sends one message with a tap-to-choose list — used when the owner has more
  * than one question waiting for an answer, or more than one business. Same
  * 24-hour rule as any other session message.
@@ -319,15 +371,26 @@ export async function sendServiceList(
     body: string;
     buttonText: string;
     rows: Array<{ id: string; title: string; description?: string }>;
+    /**
+     * Batch 37 (Public API): the rows in titled sections, already checked
+     * against WhatsApp's limits. Left out: `rows`, in one "Choose one" section.
+     */
+    sections?: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>;
+    /** Batch 37: stored on the message row (the Public API's source "api"). */
+    metadata?: Record<string, unknown>;
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
 
-  const rows = args.rows.slice(0, 10).map((r) => ({
+  const trim = (r: { id: string; title: string; description?: string }) => ({
     id: r.id,
     title: r.title.slice(0, 24),
     ...(r.description ? { description: r.description.slice(0, 72) } : {}),
-  }));
+  });
+  const sections = args.sections?.length
+    ? args.sections.slice(0, 10).map((sec) => ({ title: sec.title.slice(0, 24), rows: sec.rows.map(trim) }))
+    : [{ title: "Choose one", rows: args.rows.slice(0, 10).map(trim) }];
+  const rows = sections.flatMap((sec) => sec.rows);
   if (rows.length === 0) return { ok: false, messageId: null, error: "no_rows" };
 
   if (!(await serviceWindowOpen(supabase, args))) {
@@ -343,13 +406,14 @@ export async function sendServiceList(
       body: { text: args.body },
       action: {
         button: args.buttonText.slice(0, 20),
-        sections: [{ title: "Choose one", rows }],
+        sections,
       },
     },
   });
   return recordOutbound(supabase, args, res, json, {
     type: "text",
     body: `${args.body} [list: ${rows.map((r) => r.title).join(", ")}]`,
+    ...(args.metadata ? { metadata: args.metadata } : {}),
   });
 }
 
