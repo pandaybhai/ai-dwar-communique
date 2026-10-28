@@ -80,3 +80,9 @@ insert into public.feature_registry (key, name, description, icon, flag_key, act
   ('settings', 'Settings', 'd', 'i', 'settings', array['organization.created']),
   ('flows_v2', 'Chat flows', 'd', 'i', 'flows_v2', array['flow_v2_created', 'flow_v2_restored'])
 on conflict (key) do nothing;
+-- The owner's waiting list (only the columns Batch 35's check touches).
+create table if not exists public.pending_owner_replies (
+  id uuid primary key default gen_random_uuid(),
+  notify text not null default 'silent',
+  source text
+);

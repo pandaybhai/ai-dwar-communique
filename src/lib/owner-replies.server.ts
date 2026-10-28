@@ -1,10 +1,12 @@
 /**
- * When Aiden doesn't know, he asks the owner — and never guesses.
+ * Questions waiting on the owner, and the owner's answers on the AiDwar number.
  *
- * A customer question the material can't answer becomes a row in
- * pending_owner_replies plus a message to the owner on the AiDwar number. The
- * owner's next message is the answer: it goes back to the customer on their
- * own business number and is remembered for good.
+ * Aiden's Unanswered items (recordCustomerGap) are quiet: they are filed for
+ * the dashboard only and never enter the owner's WhatsApp waiting list
+ * (notify 'silent'; the list reads only notify 'ping', and since Batch 35
+ * nothing writes 'ping'). An answer reaches a customer only when the owner
+ * explicitly picked that one waiting item (selected_at) — never because it
+ * happened to be the only one open, and never from an ordinary message.
  *
  * Owners with several businesses get a list to choose from, and every message
  * on the AiDwar number is prefixed with the business it is about.
@@ -53,6 +55,8 @@ export async function loadPendingReplies(
     // Silent gaps live on the Unanswered tab only: never the owner's WhatsApp
     // waiting list, never a "Still waiting on your answer".
     .eq("notify", "ping")
+    // Only a customer's question can be answered to a customer.
+    .eq("source", "customer")
     .order("selected_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(10);
@@ -233,78 +237,6 @@ export async function onboardingChannelFor(
     conversationId: conversation.id as string,
     to: phone.replace(/\D/g, ""),
   };
-}
-
-/**
- * A customer asked something the material doesn't answer. Record it and put
- * the question in front of the owner on the AiDwar number. When their 24-hour
- * window is closed the row is still written — nothing is lost.
- */
-export async function pingOwnerForAnswer(
-  supabase: SupabaseClient,
-  args: {
-    organizationId: string;
-    conversationId: string;
-    contactId: string | null;
-    question: string;
-    aiRunId: string | null;
-  },
-): Promise<{ recorded: boolean; sent: boolean }> {
-  const ownerPhone = await ownerPhoneFor(supabase, args.organizationId);
-  if (!ownerPhone) return { recorded: false, sent: false };
-
-  const { error } = await supabase.from("pending_owner_replies").insert({
-    organization_id: args.organizationId,
-    owner_phone: ownerPhone,
-    conversation_id: args.conversationId,
-    contact_id: args.contactId,
-    question: args.question.slice(0, 1000),
-    ai_run_id: args.aiRunId,
-    source: "customer",
-    // The only value that lets a message reach the owner. Nothing in the
-    // answering path sets it — merchant handover rules do.
-    notify: "ping",
-  });
-  if (error) {
-    console.error("[owner-ping] insert failed", error.message);
-    return { recorded: false, sent: false };
-  }
-
-  const channel = await onboardingChannelFor(supabase, ownerPhone);
-  if (!channel) return { recorded: true, sent: false };
-
-  const [{ data: conversation }, names, orgs] = await Promise.all([
-    supabase
-      .from("conversations")
-      .select("whatsapp_account_id")
-      .eq("id", args.conversationId)
-      .maybeSingle(),
-    orgNames(supabase, [args.organizationId]),
-    ownerOrganizationIds(supabase, ownerPhone),
-  ]);
-
-  let businessNumber = "your business number";
-  const accountId = (conversation as { whatsapp_account_id?: string | null } | null)
-    ?.whatsapp_account_id;
-  if (accountId) {
-    const { data: account } = await supabase
-      .from("whatsapp_accounts")
-      .select("display_phone_number")
-      .eq("id", accountId)
-      .maybeSingle();
-    businessNumber =
-      (account as { display_phone_number?: string | null } | null)?.display_phone_number ||
-      businessNumber;
-  }
-
-  const prefix = prefixFor(orgs.length > 1, names.get(args.organizationId) ?? null);
-  const sent = await sendServiceText(supabase, {
-    ...channel,
-    body:
-      `${prefix}A customer on ${businessNumber} asked: "${args.question.slice(0, 400)}". ` +
-      "Reply here with the answer and I'll send it to them now.",
-  });
-  return { recorded: true, sent: sent.ok };
 }
 
 /**
@@ -514,9 +446,9 @@ export async function handleOwnerAnswer(
     return false;
   }
 
-  const target = pending.length === 1 ? pending[0]! : (pending.find((p) => p.selected_at) ?? null);
-
-  // More than one open and nothing picked: never guess which one this answers.
+  // Batch 35: only an item the owner explicitly picked is answered — even
+  // when it is the only one open, the owner taps it first. Never a guess.
+  const target = pending.find((p) => p.selected_at) ?? null;
   if (!target) {
     const names = await orgNames(
       supabase,
@@ -551,4 +483,34 @@ export async function handleOwnerAnswer(
     delivered ? "Sent. I'll remember that for next time." : await getScript(supabase, "fact_saved"),
   );
   return true;
+}
+
+/**
+ * Batch 35: whether this owner was just told, on the AiDwar number, that a
+ * customer is waiting (a hand-off alert in the last 24 hours on a chat still
+ * with a person). Their next plain message is then probably meant for that
+ * customer, so it is never saved as a business fact for everyone. A failed
+ * read counts as yes — holding a fact back is the safe side.
+ */
+export async function ownerToldOfWaitingCustomer(
+  supabase: SupabaseClient,
+  organizationId: string,
+  ownerPhone: string,
+): Promise<boolean> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, handoff_alert_result")
+    .eq("organization_id", organizationId)
+    .eq("needs_human", true)
+    .gte("handoff_alert_at", since)
+    .limit(20);
+  if (error) return true;
+  const owner = normalizePhone(ownerPhone);
+  return ((data ?? []) as Array<{ handoff_alert_result?: { whatsapp?: unknown } | null }>).some((row) => {
+    const told = row.handoff_alert_result?.whatsapp;
+    // An alert recorded before handoff_alert_result existed: assume the owner was told.
+    if (!Array.isArray(told)) return true;
+    return told.some((p) => normalizePhone(String(p)) === owner);
+  });
 }

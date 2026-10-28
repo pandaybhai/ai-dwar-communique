@@ -183,5 +183,16 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
       );
       expect(pg.sql("select public.purge_deleted_flows()")).toBe("0");
     });
+
+    it("(7) the waiting list's notify takes only 'silent' or 'ping'; the default stays silent", () => {
+      expect(
+        pg.sql(
+          "insert into public.pending_owner_replies (source) values ('customer') returning notify",
+        ),
+      ).toBe("silent");
+      expect(() =>
+        pg.sql("insert into public.pending_owner_replies (notify) values ('loud')"),
+      ).toThrow(/pending_owner_replies_notify_check/);
+    });
   },
 );

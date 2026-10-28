@@ -31,6 +31,12 @@
 --       touched. Called by the daily flow-scan.
 --     Before this file: "Delete flow" answers that the database update is
 --     needed and changes nothing; every other flow path is as before.
+-- (7) pending_owner_replies.notify may only be 'silent' or 'ping' (NOT VALID:
+--     old rows aren't re-checked). The fix itself is in code: nothing writes
+--     'ping' any more, the waiting list reads only 'ping' rows from a
+--     customer, an answer needs the owner's explicit pick, and a plain owner
+--     message right after a "customer is waiting" alert is never saved as a
+--     fact. Before this file: all of that already holds.
 
 SET lock_timeout = '5s';
 
@@ -200,3 +206,21 @@ UPDATE public.feature_registry
        synced_at = now()
  WHERE key = 'flows_v2'
    AND NOT (coalesce(activity_actions, '{}'::text[]) @> array['flow_v2_deleted','flow_v2_undeleted']::text[]);
+
+-- (7) ------------------------------------- the owner's waiting list
+-- Only two values exist: 'silent' (Unanswered, dashboard only — the default)
+-- and 'ping' (the owner's WhatsApp waiting list, which no code writes since
+-- Batch 35). Anything else is refused from now on; existing rows are not
+-- re-checked (NOT VALID), so applying this can never fail on old data.
+DO $$
+BEGIN
+  IF to_regclass('public.pending_owner_replies') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+        WHERE conname = 'pending_owner_replies_notify_check'
+          AND conrelid = 'public.pending_owner_replies'::regclass
+     ) THEN
+    ALTER TABLE public.pending_owner_replies
+      ADD CONSTRAINT pending_owner_replies_notify_check CHECK (notify IN ('silent', 'ping')) NOT VALID;
+  END IF;
+END $$;

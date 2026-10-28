@@ -1038,6 +1038,14 @@ export async function handleMerchantInbound(
   // Runs before the model only for messages that are plainly not questions,
   // and never on an address, a code or a phone number on its own.
   if (!interactiveId && !looksLikeQuestion(body) && !isBareReference(body)) {
+    // Batch 35: just after the owner was told a customer is waiting, a plain
+    // message is probably meant for that customer — never saved as a fact
+    // every customer would hear. It goes nowhere; the Inbox is where to reply.
+    const { ownerToldOfWaitingCustomer } = await import("@/lib/owner-replies.server");
+    if (await ownerToldOfWaitingCustomer(supabase, session.organization_id, args.waId)) {
+      await reply(await getScript(supabase, "owner_reply_held"));
+      return;
+    }
     const { classifyBusinessFact } = await import("@/lib/ai-tasks.server");
     const verdict = await classifyBusinessFact(
       supabase,
