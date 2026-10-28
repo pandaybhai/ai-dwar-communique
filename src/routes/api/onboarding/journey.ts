@@ -14,7 +14,8 @@ export const Route = createFileRoute("/api/onboarding/journey")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { requireOrgMember, requireSignedIn, isResponse, jsonError } = await import("@/lib/whatsapp-api.server");
+        const { requireOrgMember, requireSignedIn, isResponse, jsonError } =
+          await import("@/lib/whatsapp-api.server");
 
         let payload: Record<string, unknown> = {};
         try {
@@ -32,10 +33,15 @@ export const Route = createFileRoute("/api/onboarding/journey")({
           return peek.ok ? Response.json(peek) : jsonError(peek.error, 422);
         }
 
-        const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
+        const auth = await requireOrgMember(
+          request,
+          (payload["organization_id"] as string) ?? null,
+        );
         if (isResponse(auth)) return auth;
         const { hasPermission } = await import("@/lib/permissions.server");
-        const canConfigure = auth.role === "owner" || (await hasPermission(auth.supabase, auth.organizationId, auth.userId, "ai.configure"));
+        const canConfigure =
+          auth.role === "owner" ||
+          (await hasPermission(auth.supabase, auth.organizationId, auth.userId, "ai.configure"));
         const ctx = {
           supabase: auth.supabase,
           organizationId: auth.organizationId,
@@ -63,7 +69,11 @@ export const Route = createFileRoute("/api/onboarding/journey")({
           if (!reply) return jsonError("Unknown action.");
           return Response.json(reply.body, { status: reply.status });
         } catch (error) {
-          console.error("[onboarding-journey]", action, error instanceof Error ? error.message : String(error));
+          console.error(
+            "[onboarding-journey]",
+            action,
+            error instanceof Error ? error.message : String(error),
+          );
           return jsonError("Something went wrong on our side. Please try again.", 500);
         }
       },

@@ -3,7 +3,7 @@ import type { JourneyState, LearnedItem } from "@/lib/onboarding-journey.server"
 import type { SiteBrand } from "@/lib/site-peek";
 
 /** Batch 40: the first-run journey's one API (/api/onboarding/journey). */
-export const journeyApi = <T,>(body: Record<string, unknown>) =>
+export const journeyApi = <T>(body: Record<string, unknown>) =>
   callApi<T>("/api/onboarding/journey", { body });
 
 export type JourneyStateReply = {
@@ -15,7 +15,12 @@ export type JourneyStateReply = {
 
 export type PeekReply = { ok: true; brand: SiteBrand; listing: string | null };
 
-export type TestReply = { answered: boolean; answer: string | null; sources: number; status: string };
+export type TestReply = {
+  answered: boolean;
+  answer: string | null;
+  sources: number;
+  status: string;
+};
 
 export type { JourneyState, LearnedItem, SiteBrand };
 
@@ -35,7 +40,8 @@ export function keepAttribution(attribution: Record<string, string>): void {
 export function takeAttribution(): Record<string, string> {
   try {
     const raw =
-      window.localStorage.getItem(ATTRIBUTION_STORAGE_KEY) ?? window.sessionStorage.getItem(ATTRIBUTION_STORAGE_KEY);
+      window.localStorage.getItem(ATTRIBUTION_STORAGE_KEY) ??
+      window.sessionStorage.getItem(ATTRIBUTION_STORAGE_KEY);
     window.localStorage.removeItem(ATTRIBUTION_STORAGE_KEY);
     window.sessionStorage.removeItem(ATTRIBUTION_STORAGE_KEY);
     if (!raw) return {};

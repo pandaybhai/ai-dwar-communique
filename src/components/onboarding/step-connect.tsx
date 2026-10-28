@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { ArrowRight, Check, LifeBuoy, Loader2, PhoneCall, ShieldCheck, Smartphone } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  LifeBuoy,
+  Loader2,
+  PhoneCall,
+  ShieldCheck,
+  Smartphone,
+} from "lucide-react";
 import { EmbeddedSignupButton, type ConnectedAccount } from "@/components/whatsapp-embedded-signup";
 import { PrimaryAction, StepHeading } from "@/components/onboarding/journey-shell";
 import { Input } from "@/components/ui/input";
@@ -46,7 +54,10 @@ export function StepConnect({
           lead="Meta's own sign-up opens in a small window. It takes about two minutes, and your personal WhatsApp isn't touched."
         />
 
-        <div className="ob-rise mt-8 max-w-xl" style={{ "--ob-delay": "80ms" } as React.CSSProperties}>
+        <div
+          className="ob-rise mt-8 max-w-xl"
+          style={{ "--ob-delay": "80ms" } as React.CSSProperties}
+        >
           {outcome ? <Recovery outcome={outcome} /> : null}
 
           <div className={outcome ? "mt-6" : ""}>
@@ -55,7 +66,11 @@ export function StepConnect({
               quiet
               label="Continue with Facebook"
               onOpened={() => {
-                void journeyApi({ action: "mark", organization_id: organizationId, step: "connect_opened" });
+                void journeyApi({
+                  action: "mark",
+                  organization_id: organizationId,
+                  step: "connect_opened",
+                });
               }}
               onOutcome={setOutcome}
               onConnected={async (account) => {
@@ -92,14 +107,21 @@ export function StepConnect({
         </div>
       </div>
 
-      <aside className="ob-rise space-y-4" style={{ "--ob-delay": "140ms" } as React.CSSProperties} aria-label="Before you start">
+      <aside
+        className="ob-rise space-y-4"
+        style={{ "--ob-delay": "140ms" } as React.CSSProperties}
+        aria-label="Before you start"
+      >
         <div className="rounded-3xl border border-border bg-card p-6 sm:p-7">
           <h2 className="text-base font-semibold">What will happen</h2>
           <ol className="mt-4 space-y-4 text-sm">
             {[
               ["Log in with Facebook", "Any account that manages your business on Meta."],
               ["Choose your business", "Pick it, or create one — a name and a website are enough."],
-              ["Add the number customers will message", "Meta checks it with a code by SMS or call."],
+              [
+                "Add the number customers will message",
+                "Meta checks it with a code by SMS or call.",
+              ],
               ["You're live on WhatsApp", "We switch on incoming messages for you."],
             ].map(([title, hint], i) => (
               <li key={title} className="flex gap-3">
@@ -118,14 +140,23 @@ export function StepConnect({
           <h2 className="text-base font-semibold">What you'll need</h2>
           <ul className="mt-4 space-y-3 text-sm">
             <li className="flex gap-3">
-              <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-primary-strong" aria-hidden="true" />
+              <Smartphone
+                className="mt-0.5 h-4 w-4 shrink-0 text-primary-strong"
+                aria-hidden="true"
+              />
               <span>
                 <span className="font-medium">A number that isn't on the WhatsApp app.</span>{" "}
-                <span className="text-muted-foreground">A new SIM or your office landline works. A number already on WhatsApp has to leave the app first.</span>
+                <span className="text-muted-foreground">
+                  A new SIM or your office landline works. A number already on WhatsApp has to leave
+                  the app first.
+                </span>
               </span>
             </li>
             <li className="flex gap-3">
-              <PhoneCall className="mt-0.5 h-4 w-4 shrink-0 text-primary-strong" aria-hidden="true" />
+              <PhoneCall
+                className="mt-0.5 h-4 w-4 shrink-0 text-primary-strong"
+                aria-hidden="true"
+              />
               <span>
                 <span className="font-medium">That phone nearby</span>{" "}
                 <span className="text-muted-foreground">for Meta's 6-digit code.</span>
@@ -148,7 +179,11 @@ export function StepConnect({
 /** One named outcome, its plain reason, and what to do — never just "something went wrong". */
 export function Recovery({ outcome }: { outcome: EsOutcome }) {
   return (
-    <div role="alert" className="ob-pop rounded-3xl border border-amber-500/40 bg-amber-500/10 p-5 sm:p-6" data-outcome={outcome.kind}>
+    <div
+      role="alert"
+      className="ob-pop rounded-3xl border border-amber-500/40 bg-amber-500/10 p-5 sm:p-6"
+      data-outcome={outcome.kind}
+    >
       <p className="text-base font-semibold text-foreground">{outcome.title}</p>
       <p className="mt-1 text-sm text-foreground/80">{outcome.body}</p>
       {outcome.steps.length ? (
@@ -158,7 +193,9 @@ export function Recovery({ outcome }: { outcome: EsOutcome }) {
           ))}
         </ol>
       ) : null}
-      {outcome.detail ? <p className="mt-3 text-xs text-muted-foreground">Meta said: {outcome.detail}</p> : null}
+      {outcome.detail ? (
+        <p className="mt-3 text-xs text-muted-foreground">Meta said: {outcome.detail}</p>
+      ) : null}
     </div>
   );
 }
@@ -184,7 +221,10 @@ export function CallbackRequest({
 
   if (state === "sent") {
     return (
-      <p role="status" className="ob-pop mt-6 flex items-start gap-3 rounded-2xl bg-accent p-4 text-sm text-accent-foreground">
+      <p
+        role="status"
+        className="ob-pop mt-6 flex items-start gap-3 rounded-2xl bg-accent p-4 text-sm text-accent-foreground"
+      >
         <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         Done — someone from AiDwar will call you shortly (10am–7pm IST). Your progress is saved.
       </p>
@@ -209,7 +249,13 @@ export function CallbackRequest({
             e.preventDefault();
             setState("sending");
             setError(null);
-            const res = await journeyApi({ action: "callback", organization_id: organizationId, phone, where, problem });
+            const res = await journeyApi({
+              action: "callback",
+              organization_id: organizationId,
+              phone,
+              where,
+              problem,
+            });
             if (res.error) {
               setError(res.error);
               setState("idle");
@@ -233,11 +279,17 @@ export function CallbackRequest({
               disabled={state === "sending" || phone.replace(/\D/g, "").length < 10}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-foreground px-5 text-sm font-semibold text-background disabled:opacity-50"
             >
-              {state === "sending" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              {state === "sending" ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : null}
               Call me
             </button>
           </div>
-          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
         </form>
       )}
     </div>
@@ -258,16 +310,40 @@ function Connected({
     <div className="mx-auto flex max-w-xl flex-col items-center pt-6 text-center sm:pt-12">
       <span className="ob-pop ob-ring grid h-24 w-24 place-items-center rounded-full bg-primary-strong text-primary-strong-foreground">
         <svg viewBox="0 0 24 24" className="h-12 w-12" fill="none" aria-hidden="true">
-          <path className="ob-check-path" d="M5 12.5l4.2 4.2L19 7" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path
+            className="ob-check-path"
+            d="M5 12.5l4.2 4.2L19 7"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       </span>
-      <h1 className="ob-rise mt-8 text-balance text-3xl font-bold tracking-tight sm:text-5xl" style={{ "--ob-delay": "200ms" } as React.CSSProperties}>
+      <h1
+        className="ob-rise mt-8 text-balance text-3xl font-bold tracking-tight sm:text-5xl"
+        style={{ "--ob-delay": "200ms" } as React.CSSProperties}
+      >
         {business} is on WhatsApp.
       </h1>
-      <p className="ob-rise mt-4 text-lg text-muted-foreground" style={{ "--ob-delay": "280ms" } as React.CSSProperties} role="status">
-        {number ? <>Customers who message <span className="font-semibold text-foreground">{number}</span> will reach Aiden.</> : "Customers who message your number will reach Aiden."}
+      <p
+        className="ob-rise mt-4 text-lg text-muted-foreground"
+        style={{ "--ob-delay": "280ms" } as React.CSSProperties}
+        role="status"
+      >
+        {number ? (
+          <>
+            Customers who message <span className="font-semibold text-foreground">{number}</span>{" "}
+            will reach Aiden.
+          </>
+        ) : (
+          "Customers who message your number will reach Aiden."
+        )}
       </p>
-      <div className="ob-rise mt-10 w-full sm:w-auto" style={{ "--ob-delay": "360ms" } as React.CSSProperties}>
+      <div
+        className="ob-rise mt-10 w-full sm:w-auto"
+        style={{ "--ob-delay": "360ms" } as React.CSSProperties}
+      >
         <PrimaryAction type="button" onClick={onContinue} autoFocus>
           Meet Aiden <ArrowRight aria-hidden="true" />
         </PrimaryAction>

@@ -9,7 +9,8 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { keepAttribution } from "@/lib/onboarding-client";
 
 const TITLE = "Create your account — AiDwar";
-const DESCRIPTION = "Create an AiDwar account and have an AI employee answering on your WhatsApp in five minutes.";
+const DESCRIPTION =
+  "Create an AiDwar account and have an AI employee answering on your WhatsApp in five minutes.";
 
 /**
  * Where the signup came from. Kept as intent only — the plan is never assigned
@@ -53,7 +54,13 @@ export const Route = createFileRoute("/signup")({
 export function signupPhone(raw: string): string | null {
   const text = raw.trim();
   const digits = text.replace(/\D/g, "");
-  const phone = text.startsWith("+") ? `+${digits}` : digits.length === 10 ? `+91${digits}` : digits ? `+${digits}` : "";
+  const phone = text.startsWith("+")
+    ? `+${digits}`
+    : digits.length === 10
+      ? `+91${digits}`
+      : digits
+        ? `+${digits}`
+        : "";
   return /^\+\d{10,15}$/.test(phone) ? phone : null;
 }
 
@@ -62,7 +69,9 @@ function SignupPage() {
   const search = Route.useSearch();
   const { redirect } = search;
   const goNext = () =>
-    redirect ? navigate({ href: redirect, replace: true }) : navigate({ to: "/app", replace: true });
+    redirect
+      ? navigate({ href: redirect, replace: true })
+      : navigate({ to: "/app", replace: true });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -134,13 +143,23 @@ function SignupPage() {
   if (sentTo) {
     const gmail = /@(gmail|googlemail)\.com$/i.test(sentTo);
     return (
-      <AuthShell title="Check your email" subtitle="One tap and you're in." footer={<Link to="/login" className="font-medium text-primary-strong hover:underline">Back to log in</Link>}>
+      <AuthShell
+        title="Check your email"
+        subtitle="One tap and you're in."
+        footer={
+          <Link to="/login" className="font-medium text-primary-strong hover:underline">
+            Back to log in
+          </Link>
+        }
+      >
         <div className="ob-pop text-center">
           <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-accent text-accent-foreground">
             <MailCheck className="h-8 w-8" aria-hidden="true" />
           </span>
           <p className="mt-5 text-sm text-muted-foreground">
-            We sent a confirmation link to <span className="font-semibold text-foreground">{sentTo}</span>. Open it on this device and you'll land straight in your setup.
+            We sent a confirmation link to{" "}
+            <span className="font-semibold text-foreground">{sentTo}</span>. Open it on this device
+            and you'll land straight in your setup.
           </p>
           {gmail ? (
             <a
@@ -164,7 +183,11 @@ function SignupPage() {
           >
             {resent ? "Sent again — check spam too" : "Didn't get it? Send again"}
           </button>
-          {error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null}
+          {error ? (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
         </div>
       </AuthShell>
     );
@@ -191,10 +214,22 @@ function SignupPage() {
             className="flex h-12 w-full items-center justify-center gap-3 rounded-full border border-border bg-background text-sm font-semibold transition-colors hover:bg-muted"
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-              <path fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.45a5.52 5.52 0 0 1-2.4 3.62v3h3.88c2.27-2.09 3.57-5.17 3.57-8.81z" />
-              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.93-2.9l-3.88-3c-1.07.72-2.45 1.15-4.05 1.15-3.12 0-5.76-2.1-6.7-4.94H1.3v3.1A12 12 0 0 0 12 24z" />
-              <path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6h-4a12 12 0 0 0 0 10.8l4-3.1z" />
-              <path fill="#EA4335" d="M12 4.77c1.76 0 3.34.6 4.58 1.8l3.43-3.43A11.5 11.5 0 0 0 12 0 12 12 0 0 0 1.3 6.6l4 3.1C6.24 6.87 8.88 4.77 12 4.77z" />
+              <path
+                fill="#4285F4"
+                d="M23.5 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.45a5.52 5.52 0 0 1-2.4 3.62v3h3.88c2.27-2.09 3.57-5.17 3.57-8.81z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 24c3.24 0 5.95-1.07 7.93-2.9l-3.88-3c-1.07.72-2.45 1.15-4.05 1.15-3.12 0-5.76-2.1-6.7-4.94H1.3v3.1A12 12 0 0 0 12 24z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6h-4a12 12 0 0 0 0 10.8l4-3.1z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 4.77c1.76 0 3.34.6 4.58 1.8l3.43-3.43A11.5 11.5 0 0 0 12 0 12 12 0 0 0 1.3 6.6l4 3.1C6.24 6.87 8.88 4.77 12 4.77z"
+              />
             </svg>
             Continue with Google
           </button>
@@ -208,7 +243,16 @@ function SignupPage() {
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <div className="space-y-2">
           <Label htmlFor="email">Work email</Label>
-          <Input id="email" name="email" type="email" required autoComplete="email" placeholder="you@yourbusiness.in" className="h-12 rounded-xl text-base" autoFocus />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="you@yourbusiness.in"
+            className="h-12 rounded-xl text-base"
+            autoFocus
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
@@ -228,19 +272,37 @@ function SignupPage() {
               className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
-              {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Eye className="h-4 w-4" aria-hidden="true" />
+              )}
             </button>
           </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="phone">Your WhatsApp number</Label>
-          <Input id="phone" name="phone" type="tel" required autoComplete="tel" inputMode="tel" placeholder="98765 43210" className="h-12 rounded-xl text-base" aria-describedby="phone-hint" />
+          <Input
+            id="phone"
+            name="phone"
+            type="tel"
+            required
+            autoComplete="tel"
+            inputMode="tel"
+            placeholder="98765 43210"
+            className="h-12 rounded-xl text-base"
+            aria-describedby="phone-hint"
+          />
           <p id="phone-hint" className="text-xs text-muted-foreground">
-            Aiden messages you here when a customer needs a person. It isn't the number customers will write to.
+            Aiden messages you here when a customer needs a person. It isn't the number customers
+            will write to.
           </p>
         </div>
         {error ? (
-          <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p
+            role="alert"
+            className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
             {error}
           </p>
         ) : null}
@@ -250,8 +312,14 @@ function SignupPage() {
         </PrimaryAction>
         <p className="text-center text-xs text-muted-foreground">
           By continuing you agree to our{" "}
-          <Link to="/terms" className="underline underline-offset-2 hover:text-foreground">terms</Link> and{" "}
-          <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">privacy policy</Link>.
+          <Link to="/terms" className="underline underline-offset-2 hover:text-foreground">
+            terms
+          </Link>{" "}
+          and{" "}
+          <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">
+            privacy policy
+          </Link>
+          .
         </p>
       </form>
     </AuthShell>

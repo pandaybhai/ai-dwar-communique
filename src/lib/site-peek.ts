@@ -32,7 +32,14 @@ export function normaliseSiteInput(raw: string): string | null {
   }
 }
 
-const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
 
 function decode(text: string): string {
   return text
@@ -72,7 +79,9 @@ function absolute(href: string | null, base: string): string | null {
 
 /** A colour we can safely paint a border or a glow with: #rgb / #rrggbb. */
 export function safeColor(raw: string | null): string | null {
-  const value = String(raw ?? "").trim().toLowerCase();
+  const value = String(raw ?? "")
+    .trim()
+    .toLowerCase();
   const short = value.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/);
   if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
   if (/^#[0-9a-f]{6}$/.test(value)) return value;
@@ -99,7 +108,8 @@ function meaningful(color: string | null): string | null {
 }
 
 function jsonLdLogo(html: string, base: string): string | null {
-  for (const block of html.match(/<script[^>]+application\/ld\+json[^>]*>[\s\S]*?<\/script>/gi) ?? []) {
+  for (const block of html.match(/<script[^>]+application\/ld\+json[^>]*>[\s\S]*?<\/script>/gi) ??
+    []) {
     const body = block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "");
     const m = body.match(/"logo"\s*:\s*(?:"([^"]+)"|\{[^}]*"url"\s*:\s*"([^"]+)")/);
     const found = absolute(m?.[1] ?? m?.[2] ?? null, base);
@@ -116,7 +126,10 @@ function bestIcon(html: string, base: string): string | null {
     const href = absolute(attr(tag, "href"), base);
     if (!href) continue;
     const size = Number((attr(tag, "sizes") ?? "").split("x")[0]) || 0;
-    const score = (rel.includes("apple-touch-icon") ? 1000 : 0) + size + (/\.svg(?:$|\?)/i.test(href) ? 500 : 0);
+    const score =
+      (rel.includes("apple-touch-icon") ? 1000 : 0) +
+      size +
+      (/\.svg(?:$|\?)/i.test(href) ? 500 : 0);
     if (!best || score > best.score) best = { href, score };
   }
   return best?.href ?? null;
@@ -128,10 +141,19 @@ function siteName(html: string, host: string): string | null {
   if (declared) return declared.slice(0, 80);
   const title = decode(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "");
   if (!title) return null;
-  const parts = title.split(/\s+[|–—\-·:]\s+/).map((p) => p.trim()).filter(Boolean);
-  const label = host.replace(/^www\./, "").split(".")[0]?.toLowerCase() ?? "";
+  const parts = title
+    .split(/\s+[|–—\-·:]\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const label =
+    host
+      .replace(/^www\./, "")
+      .split(".")[0]
+      ?.toLowerCase() ?? "";
   const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const matching = parts.find((p) => label && (squash(p).includes(label) || label.includes(squash(p))));
+  const matching = parts.find(
+    (p) => label && (squash(p).includes(label) || label.includes(squash(p))),
+  );
   return (matching ?? parts[0] ?? title).slice(0, 80);
 }
 
@@ -148,7 +170,9 @@ export function parseSiteBrand(html: string, pageUrl: string): SiteBrand {
     host,
     name: siteName(html, host),
     logoUrl: jsonLdLogo(html, pageUrl) ?? bestIcon(html, pageUrl),
-    color: meaningful(safeColor(meta(html, "theme-color") ?? meta(html, "msapplication-tilecolor"))),
+    color: meaningful(
+      safeColor(meta(html, "theme-color") ?? meta(html, "msapplication-tilecolor")),
+    ),
     description: description ? description.slice(0, 200) : null,
   };
 }

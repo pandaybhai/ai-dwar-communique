@@ -111,7 +111,13 @@ export type FunnelRow = { organizationId: string; steps: string[]; startedAt: st
 
 export type FunnelSummary = {
   total: number;
-  steps: Array<{ step: FunnelStep; label: string; reached: number; fromPrevious: number | null; fromStart: number | null }>;
+  steps: Array<{
+    step: FunnelStep;
+    label: string;
+    reached: number;
+    fromPrevious: number | null;
+    fromStart: number | null;
+  }>;
   /** Where each sign-up stopped: its furthest step, counted. */
   stoppedAt: Array<{ step: FunnelStep; label: string; count: number }>;
 };
@@ -136,6 +142,10 @@ export function summariseFunnel(rows: FunnelRow[]): FunnelSummary {
       fromPrevious: i === 0 ? null : pct(reached[i] ?? 0, reached[i - 1] ?? 0),
       fromStart: pct(reached[i] ?? 0, total),
     })),
-    stoppedAt: FUNNEL_STEPS.map((step) => ({ step, label: FUNNEL_LABELS[step], count: stopped.get(step) ?? 0 })),
+    stoppedAt: FUNNEL_STEPS.map((step) => ({
+      step,
+      label: FUNNEL_LABELS[step],
+      count: stopped.get(step) ?? 0,
+    })),
   };
 }

@@ -1,6 +1,12 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Check } from "lucide-react";
-import { JOURNEY_STEPS, STEP_LABELS, stepIndex, type JourneyPosition, type JourneyStep } from "@/lib/onboarding-journey";
+import {
+  JOURNEY_STEPS,
+  STEP_LABELS,
+  stepIndex,
+  type JourneyPosition,
+  type JourneyStep,
+} from "@/lib/onboarding-journey";
 import { cn } from "@/lib/utils";
 
 /**
@@ -76,7 +82,9 @@ export function ProgressRail({
                   isCurrent ? "text-foreground" : "text-muted-foreground",
                 )}
               >
-                {done ? <Check className="h-3.5 w-3.5 text-primary-strong" aria-hidden="true" /> : null}
+                {done ? (
+                  <Check className="h-3.5 w-3.5 text-primary-strong" aria-hidden="true" />
+                ) : null}
                 {STEP_LABELS[key]}
                 {done ? <span className="sr-only"> (done)</span> : null}
               </span>
@@ -119,8 +127,12 @@ export function StepHeading({
   return (
     <div className={cn("ob-rise max-w-2xl", className)}>
       {eyebrow ? <p className="text-sm font-semibold text-primary-strong">{eyebrow}</p> : null}
-      <h1 className="mt-2 text-balance text-3xl font-bold tracking-tight sm:text-5xl sm:leading-[1.08]">{title}</h1>
-      {lead ? <p className="mt-4 text-pretty text-base text-muted-foreground sm:text-lg">{lead}</p> : null}
+      <h1 className="mt-2 text-balance text-3xl font-bold tracking-tight sm:text-5xl sm:leading-[1.08]">
+        {title}
+      </h1>
+      {lead ? (
+        <p className="mt-4 text-pretty text-base text-muted-foreground sm:text-lg">{lead}</p>
+      ) : null}
     </div>
   );
 }

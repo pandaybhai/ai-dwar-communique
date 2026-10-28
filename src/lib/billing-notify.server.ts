@@ -490,8 +490,8 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
     case "ai_provider_alert":
     case "card_usage_alert":
     case "site_change_alert":
-    case "billing_debit_alert":
     case "onboarding_callback":
+    case "billing_debit_alert":
       return [
         String(payload["headline"] ?? "the AI provider is failing"),
         String(payload["detail"] ?? "Aiden replies may be failing"),

@@ -14,7 +14,8 @@ async function superAdmin(request: Request) {
   const { data: userData } = await supabase.auth.getUser(token);
   const user = userData.user;
   if (!user) return jsonError("Not authenticated.", 401);
-  if (!(await isSuperAdmin(supabase, user.id))) return jsonError("Super Admin access required.", 403);
+  if (!(await isSuperAdmin(supabase, user.id)))
+    return jsonError("Super Admin access required.", 403);
   return { supabase, userId: user.id };
 }
 
@@ -24,7 +25,10 @@ export const Route = createFileRoute("/api/admin/onboarding")({
       GET: async ({ request }) => {
         const auth = await superAdmin(request);
         if (auth instanceof Response) return auth;
-        const days = Math.min(Math.max(Number(new URL(request.url).searchParams.get("days")) || 30, 1), 90);
+        const days = Math.min(
+          Math.max(Number(new URL(request.url).searchParams.get("days")) || 30, 1),
+          90,
+        );
         const { loadOnboardingFunnel } = await import("@/lib/admin-onboarding.server");
         return Response.json(await loadOnboardingFunnel(auth.supabase, days));
       },

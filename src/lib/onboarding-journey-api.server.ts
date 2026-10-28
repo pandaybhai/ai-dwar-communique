@@ -22,13 +22,21 @@ export type JourneyAuth = {
 export type JourneyReply = { status: number; body: Record<string, unknown> };
 
 const ok = (body: Record<string, unknown>): JourneyReply => ({ status: 200, body });
-const refuse = (error: string, status = 400, extra: Record<string, unknown> = {}): JourneyReply => ({
+const refuse = (
+  error: string,
+  status = 400,
+  extra: Record<string, unknown> = {},
+): JourneyReply => ({
   status,
   body: { error, ...extra },
 });
 
 /** Marks the browser may record itself (the rest are recorded by the server). */
-const CLIENT_MARKS: ReadonlyArray<JourneyMark | "connect_opened"> = ["connect_opened", "connect_skipped", "dismissed"];
+const CLIENT_MARKS: ReadonlyArray<JourneyMark | "connect_opened"> = [
+  "connect_opened",
+  "connect_skipped",
+  "dismissed",
+];
 
 /** One call-back request per workspace per half hour reaches the team. */
 const CALLBACK_COOLDOWN_MS = 30 * 60 * 1000;
@@ -41,7 +49,12 @@ export async function journeyState(auth: JourneyAuth, withLearned: boolean): Pro
     auth.supabase.from("profiles").select("phone").eq("id", auth.userId).maybeSingle(),
   ]);
   const ownerPhone = (profile.data as { phone?: string | null } | null)?.phone ?? null;
-  return ok({ state, can_configure: auth.canConfigure, owner_phone: ownerPhone, ...(learned ? { learned } : {}) });
+  return ok({
+    state,
+    can_configure: auth.canConfigure,
+    owner_phone: ownerPhone,
+    ...(learned ? { learned } : {}),
+  });
 }
 
 /** Saves the colours and logo the site showed, only where the workspace has none yet. */
@@ -51,11 +64,19 @@ async function keepBrand(
   brand: { logoUrl?: unknown; color?: unknown },
 ): Promise<void> {
   const { safeColor } = await import("@/lib/site-peek");
-  const logo = typeof brand.logoUrl === "string" && /^https:\/\//i.test(brand.logoUrl) ? brand.logoUrl.slice(0, 500) : null;
+  const logo =
+    typeof brand.logoUrl === "string" && /^https:\/\//i.test(brand.logoUrl)
+      ? brand.logoUrl.slice(0, 500)
+      : null;
   const color = safeColor(typeof brand.color === "string" ? brand.color : null);
   if (!logo && !color) return;
-  const { data } = await supabase.from("organizations").select("branding").eq("id", organizationId).maybeSingle();
-  const branding = ((data as { branding?: Record<string, unknown> | null } | null)?.branding ?? {}) as Record<string, unknown>;
+  const { data } = await supabase
+    .from("organizations")
+    .select("branding")
+    .eq("id", organizationId)
+    .maybeSingle();
+  const branding = ((data as { branding?: Record<string, unknown> | null } | null)?.branding ??
+    {}) as Record<string, unknown>;
   const next = { ...branding };
   if (logo && !branding["brand_logo_url"] && !branding["logo_url"]) next["brand_logo_url"] = logo;
   if (color && !branding["brand_primary"]) next["brand_primary"] = color;
@@ -67,7 +88,10 @@ async function keepBrand(
  * Step 1: the workspace exists (create_organization, unchanged); this starts
  * the journey, keeps the brand, and gives Aiden something to read.
  */
-export async function journeyBegin(auth: JourneyAuth, payload: Record<string, unknown>): Promise<JourneyReply> {
+export async function journeyBegin(
+  auth: JourneyAuth,
+  payload: Record<string, unknown>,
+): Promise<JourneyReply> {
   if (!auth.canConfigure) return refuse("Only the workspace owner can set Aiden up.", 403);
   const { supabase, organizationId, userId } = auth;
   const { recordFunnelStep } = await import("@/lib/onboarding-journey.server");
@@ -82,12 +106,21 @@ export async function journeyBegin(auth: JourneyAuth, payload: Record<string, un
   const url = normaliseSiteInput(String(payload["url"] ?? ""));
 
   if (url) {
-    const added = await knowledge.addWebsiteSource(supabase, organizationId, url, userId, { mode: "day0" });
+    const added = await knowledge.addWebsiteSource(supabase, organizationId, url, userId, {
+      mode: "day0",
+    });
     if (added.limited) return refuse(added.error ?? knowledge.TRIAL_LINK_LIMIT_REPLY, 429);
     if (!added.sourceId) return refuse(added.error ?? "We couldn't add that website.");
     const { logServerActivity } = await import("@/lib/whatsapp-api.server");
-    await logServerActivity(supabase, organizationId, userId, "ai_knowledge_added", { type: "website", via: "onboarding" });
-    return ok({ source_id: added.sourceId, queued: added.queued ?? false, reused: added.reused ?? false });
+    await logServerActivity(supabase, organizationId, userId, "ai_knowledge_added", {
+      type: "website",
+      via: "onboarding",
+    });
+    return ok({
+      source_id: added.sourceId,
+      queued: added.queued ?? false,
+      reused: added.reused ?? false,
+    });
   }
   if (about.length >= 12) {
     const saved = await knowledge.saveFact(supabase, organizationId, {
@@ -101,7 +134,10 @@ export async function journeyBegin(auth: JourneyAuth, payload: Record<string, un
   return refuse("Add your website, or tell Aiden in a sentence or two what you sell.");
 }
 
-export async function journeyMark(auth: JourneyAuth, payload: Record<string, unknown>): Promise<JourneyReply> {
+export async function journeyMark(
+  auth: JourneyAuth,
+  payload: Record<string, unknown>,
+): Promise<JourneyReply> {
   const step = String(payload["step"] ?? "") as JourneyMark | "connect_opened";
   if (!CLIENT_MARKS.includes(step)) return refuse("Unknown step.");
   const { recordFunnelStep } = await import("@/lib/onboarding-journey.server");
@@ -116,17 +152,29 @@ export async function journeyMark(auth: JourneyAuth, payload: Record<string, unk
 type TestTurn = { role: "user" | "assistant"; content: string };
 
 /** Meet Aiden: one customer question, answered from the workspace's own material. Sends nothing. */
-export async function journeyTest(auth: JourneyAuth, payload: Record<string, unknown>): Promise<JourneyReply> {
+export async function journeyTest(
+  auth: JourneyAuth,
+  payload: Record<string, unknown>,
+): Promise<JourneyReply> {
   if (!auth.canConfigure) return refuse("Only the workspace owner can test Aiden here.", 403);
-  const question = String(payload["question"] ?? "").trim().slice(0, 500);
+  const question = String(payload["question"] ?? "")
+    .trim()
+    .slice(0, 500);
   if (!question) return refuse("Type a question a customer might ask.");
-  const { testsToday, TESTS_PER_DAY, recordFunnelStep } = await import("@/lib/onboarding-journey.server");
+  const { testsToday, TESTS_PER_DAY, recordFunnelStep } =
+    await import("@/lib/onboarding-journey.server");
   if ((await testsToday(auth.supabase, auth.organizationId)) >= TESTS_PER_DAY) {
-    return refuse("That's a lot of questions for one day — Aiden's ready. Carry on to Go live.", 429);
+    return refuse(
+      "That's a lot of questions for one day — Aiden's ready. Carry on to Go live.",
+      429,
+    );
   }
   const history = (Array.isArray(payload["history"]) ? payload["history"] : [])
     .map((t) => t as Partial<TestTurn>)
-    .filter((t): t is TestTurn => (t.role === "user" || t.role === "assistant") && typeof t.content === "string")
+    .filter(
+      (t): t is TestTurn =>
+        (t.role === "user" || t.role === "assistant") && typeof t.content === "string",
+    )
     .map((t) => ({ role: t.role, content: t.content.slice(0, 1000) }))
     .slice(-10);
 
@@ -159,7 +207,10 @@ export async function journeyTest(auth: JourneyAuth, payload: Record<string, unk
 }
 
 /** Go live: Draft or Replying, through the one mode switch. */
-export async function journeyGoLive(auth: JourneyAuth, payload: Record<string, unknown>): Promise<JourneyReply> {
+export async function journeyGoLive(
+  auth: JourneyAuth,
+  payload: Record<string, unknown>,
+): Promise<JourneyReply> {
   if (!auth.canConfigure) return refuse("Only the workspace owner can switch Aiden on.", 403);
   const mode = String(payload["mode"] ?? "");
   if (mode !== "draft" && mode !== "replying") return refuse("Choose Draft or Replying.");
@@ -192,17 +243,29 @@ export async function journeyGoLive(auth: JourneyAuth, payload: Record<string, u
   if (row && row.status !== "completed" && row.status !== "expired") {
     await auth.supabase
       .from("onboarding_sessions")
-      .update({ status: "completed", step: "done", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({
+        status: "completed",
+        step: "done",
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", row.id);
   }
   return ok({ ok: true, mode: result.mode });
 }
 
 /** "Need help? We'll call you": one notice to the AiDwar team, at most every half hour. */
-export async function journeyCallback(auth: JourneyAuth, payload: Record<string, unknown>): Promise<JourneyReply> {
+export async function journeyCallback(
+  auth: JourneyAuth,
+  payload: Record<string, unknown>,
+): Promise<JourneyReply> {
   const { supabase, organizationId, userId } = auth;
   const { normalizePhone } = await import("@/lib/phone");
-  const { data: profile } = await supabase.from("profiles").select("phone, full_name").eq("id", userId).maybeSingle();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("phone, full_name")
+    .eq("id", userId)
+    .maybeSingle();
   const prof = (profile ?? {}) as { phone?: string | null; full_name?: string | null };
   const phone = normalizePhone(String(payload["phone"] ?? "")) || normalizePhone(prof.phone ?? "");
   if (!phone) return refuse("Add the number we should call.");
@@ -218,8 +281,13 @@ export async function journeyCallback(auth: JourneyAuth, payload: Record<string,
     .limit(1);
   if (((recent ?? []) as unknown[]).length > 0) return ok({ ok: true, already: true });
 
-  const { data: org } = await supabase.from("organizations").select("name").eq("id", organizationId).maybeSingle();
-  const name = String((org as { name?: string | null } | null)?.name ?? "").trim() || "A new workspace";
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name")
+    .eq("id", organizationId)
+    .maybeSingle();
+  const name =
+    String((org as { name?: string | null } | null)?.name ?? "").trim() || "A new workspace";
   const headline = `${name} asked for a call while setting up (${where.replace(/_/g, " ")})`;
   const detail = `call ${phone}${problem ? ` — stuck on: ${problem.replace(/_/g, " ")}` : ""}`;
 
@@ -237,6 +305,11 @@ export async function journeyCallback(auth: JourneyAuth, payload: Record<string,
     payload: { headline, detail, link: "https://aidwar.in/admin/onboarding" },
   });
   const { recordFunnelStep } = await import("@/lib/onboarding-journey.server");
-  await recordFunnelStep(supabase, { organizationId, userId, step: "callback_requested", properties: { where } });
+  await recordFunnelStep(supabase, {
+    organizationId,
+    userId,
+    step: "callback_requested",
+    properties: { where },
+  });
   return ok({ ok: true });
 }

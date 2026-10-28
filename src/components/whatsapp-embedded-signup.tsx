@@ -243,7 +243,7 @@ export function EmbeddedSignupButton({
       if (!quiet) toast.success("WhatsApp connected");
       await onConnected(data?.account ?? null);
     },
-    [orgId, onConnected, fail, mark],
+    [orgId, onConnected, fail, mark, quiet],
   );
 
   async function start() {

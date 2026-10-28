@@ -34,7 +34,9 @@ export async function recordedSteps(
     )
     .limit(100);
   return new Set(
-    ((data ?? []) as Array<{ event_type: string }>).map((r) => r.event_type.replace(/^onboarding\./, "")),
+    ((data ?? []) as Array<{ event_type: string }>).map((r) =>
+      r.event_type.replace(/^onboarding\./, ""),
+    ),
   );
 }
 
@@ -72,7 +74,11 @@ export async function recordFunnelStep(
     });
     return true;
   } catch (error) {
-    console.error("[onboarding-journey] record failed", args.step, error instanceof Error ? error.message : String(error));
+    console.error(
+      "[onboarding-journey] record failed",
+      args.step,
+      error instanceof Error ? error.message : String(error),
+    );
     return false;
   }
 }
@@ -122,7 +128,12 @@ export async function loadJourneyState(
       .eq("organization_id", organizationId)
       .eq("status", "active")
       .limit(1),
-    supabase.from("ai_agents").select("mode").eq("organization_id", organizationId).limit(1).maybeSingle(),
+    supabase
+      .from("ai_agents")
+      .select("mode")
+      .eq("organization_id", organizationId)
+      .limit(1)
+      .maybeSingle(),
     supabase
       .from("ai_runs")
       .select("id")
@@ -133,9 +144,13 @@ export async function loadJourneyState(
       .limit(1),
   ]);
 
-  const orgRow = (org.data ?? {}) as { name?: string | null; branding?: Record<string, unknown> | null };
+  const orgRow = (org.data ?? {}) as {
+    name?: string | null;
+    branding?: Record<string, unknown> | null;
+  };
   const branding = orgRow.branding ?? {};
-  const pick = (key: string) => (typeof branding[key] === "string" ? String(branding[key]).trim() || null : null);
+  const pick = (key: string) =>
+    typeof branding[key] === "string" ? String(branding[key]).trim() || null : null;
 
   const sourceRows = (sources.data ?? []) as Array<{
     id: string;
@@ -147,7 +162,13 @@ export async function loadJourneyState(
     last_error: string | null;
   }>;
   const site = sourceRows.find((s) => s.type === "website" && !s.config?.["deleted_at"]) ?? null;
-  const account = ((accounts.data ?? []) as Array<{ display_phone_number: string | null; verified_name: string | null }>)[0] ?? null;
+  const account =
+    (
+      (accounts.data ?? []) as Array<{
+        display_phone_number: string | null;
+        verified_name: string | null;
+      }>
+    )[0] ?? null;
   const mode = String((agent.data as { mode?: string } | null)?.mode ?? "off");
 
   const facts: JourneyFacts = {
@@ -195,7 +216,11 @@ export type LearnedItem = {
 function priceText(price: number | null, currency: string | null): string | null {
   if (price == null || !Number.isFinite(Number(price))) return null;
   try {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: currency || "INR", maximumFractionDigits: 2 }).format(Number(price));
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: currency || "INR",
+      maximumFractionDigits: 2,
+    }).format(Number(price));
   } catch {
     return `${currency ?? ""} ${price}`.trim();
   }
@@ -225,19 +250,43 @@ export async function learnedSoFar(
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: true })
       .limit(limit),
-    supabase.from("knowledge_sources").select("id, type").eq("organization_id", organizationId).limit(50),
+    supabase
+      .from("knowledge_sources")
+      .select("id, type")
+      .eq("organization_id", organizationId)
+      .limit(50),
   ]);
   const typeOf = new Map(
-    ((sources.data ?? []) as Array<{ id: string; type: string }>).map((s) => [s.id, s.type] as const),
+    ((sources.data ?? []) as Array<{ id: string; type: string }>).map(
+      (s) => [s.id, s.type] as const,
+    ),
   );
   const items: LearnedItem[] = [];
-  for (const p of (products.data ?? []) as Array<{ id: string; title: string | null; price: number | null; currency: string | null }>) {
+  for (const p of (products.data ?? []) as Array<{
+    id: string;
+    title: string | null;
+    price: number | null;
+    currency: string | null;
+  }>) {
     const title = String(p.title ?? "").trim();
-    if (title) items.push({ id: `p:${p.id}`, kind: "product", title: title.slice(0, 90), detail: priceText(p.price, p.currency) });
+    if (title)
+      items.push({
+        id: `p:${p.id}`,
+        kind: "product",
+        title: title.slice(0, 90),
+        detail: priceText(p.price, p.currency),
+      });
   }
   const seen = new Set<string>();
-  for (const d of (docs.data ?? []) as Array<{ id: string; title: string | null; source_id: string | null }>) {
-    const title = String(d.title ?? "").split(/\s+[|–—]\s+/)[0]?.trim() ?? "";
+  for (const d of (docs.data ?? []) as Array<{
+    id: string;
+    title: string | null;
+    source_id: string | null;
+  }>) {
+    const title =
+      String(d.title ?? "")
+        .split(/\s+[|–—]\s+/)[0]
+        ?.trim() ?? "";
     if (!title || seen.has(title.toLowerCase())) continue;
     seen.add(title.toLowerCase());
     const kind = typeOf.get(String(d.source_id ?? "")) === "website" ? "page" : "fact";
@@ -252,7 +301,10 @@ export async function learnedSoFar(
  */
 export const TESTS_PER_DAY = 30;
 
-export async function testsToday(supabase: SupabaseClient, organizationId: string): Promise<number> {
+export async function testsToday(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<number> {
   const { count } = await supabase
     .from("ai_runs")
     .select("id", { count: "exact", head: true })

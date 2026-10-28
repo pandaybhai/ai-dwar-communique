@@ -11,8 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const AGENT_MODES = ["off", "draft", "replying"] as const;
 
 export type SetModeResult =
-  | { ok: true; mode: string }
-  | { ok: false; status: number; body: Record<string, unknown> };
+  { ok: true; mode: string } | { ok: false; status: number; body: Record<string, unknown> };
 
 export async function setAgentMode(
   supabase: SupabaseClient,
@@ -26,9 +25,11 @@ export async function setAgentMode(
     .eq("is_default", true)
     .maybeSingle();
   const agent = agentRow as { id: string } | null;
-  if (!agent) return { ok: false, status: 400, body: { error: "No AI employee in this workspace yet." } };
+  if (!agent)
+    return { ok: false, status: 400, body: { error: "No AI employee in this workspace yet." } };
   const mode = args.mode;
-  if (!(AGENT_MODES as readonly string[]).includes(mode)) return { ok: false, status: 400, body: { error: "Unknown mode." } };
+  if (!(AGENT_MODES as readonly string[]).includes(mode))
+    return { ok: false, status: 400, body: { error: "Unknown mode." } };
 
   if (mode === "replying" && args.skipTest !== true) {
     const { data: tested } = await supabase
@@ -64,7 +65,11 @@ export async function setAgentMode(
         body: { error: message.split("AI_GUARD:")[1]?.trim() || message, billing: true },
       };
     }
-    return { ok: false, status: 400, body: { error: "We couldn't change that. Please try again." } };
+    return {
+      ok: false,
+      status: 400,
+      body: { error: "We couldn't change that. Please try again." },
+    };
   }
   // One switch: ai_enabled follows the mode on every save.
   const { syncAiSwitch } = await import("@/lib/ai-agent.server");

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
-import { EXITED_KEY, journeyApi, readStorage, type JourneyStateReply } from "@/lib/onboarding-client";
+import {
+  EXITED_KEY,
+  journeyApi,
+  readStorage,
+  type JourneyStateReply,
+} from "@/lib/onboarding-client";
 import { JOURNEY_STEPS, STEP_LABELS, stepIndex, type JourneyStep } from "@/lib/onboarding-journey";
 
 /**
@@ -11,19 +16,27 @@ import { JOURNEY_STEPS, STEP_LABELS, stepIndex, type JourneyStep } from "@/lib/o
  * Workspaces that never started the journey (everyone before Batch 40) see
  * nothing; neither do team members, who can't set Aiden up.
  */
-export function JourneyResume({ organizationId, isOwner }: { organizationId: string | null; isOwner: boolean }) {
+export function JourneyResume({
+  organizationId,
+  isOwner,
+}: {
+  organizationId: string | null;
+  isOwner: boolean;
+}) {
   const navigate = useNavigate();
   const [step, setStep] = useState<JourneyStep | null>(null);
 
   useEffect(() => {
     if (!organizationId || !isOwner) return;
     let live = true;
-    void journeyApi<JourneyStateReply>({ action: "state", organization_id: organizationId }).then((res) => {
-      const state = res.data?.state;
-      if (!live || !state?.active || state.step === "done") return;
-      if (readStorage("session", EXITED_KEY(organizationId)) === "1") setStep(state.step);
-      else void navigate({ to: "/app/start", search: { step: state.step }, replace: true });
-    });
+    void journeyApi<JourneyStateReply>({ action: "state", organization_id: organizationId }).then(
+      (res) => {
+        const state = res.data?.state;
+        if (!live || !state?.active || state.step === "done") return;
+        if (readStorage("session", EXITED_KEY(organizationId)) === "1") setStep(state.step);
+        else void navigate({ to: "/app/start", search: { step: state.step }, replace: true });
+      },
+    );
     return () => {
       live = false;
     };
@@ -36,7 +49,9 @@ export function JourneyResume({ organizationId, isOwner }: { organizationId: str
         <p className="text-sm font-semibold">
           Step {stepIndex(step) + 1} of {JOURNEY_STEPS.length}: {STEP_LABELS[step]}
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">Your setup is saved. Pick up exactly where you left off.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Your setup is saved. Pick up exactly where you left off.
+        </p>
       </div>
       <Link
         to="/app/start"

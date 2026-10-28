@@ -45,14 +45,21 @@ async function pagedEvents(
   const out: Array<{ organization_id: string; event_type: string; occurred_at: string }> = [];
   for (let from = 0; from < cap; from += PAGE) {
     const { data } = await build(from, from + PAGE - 1);
-    const rows = (data ?? []) as Array<{ organization_id: string; event_type: string; occurred_at: string }>;
+    const rows = (data ?? []) as Array<{
+      organization_id: string;
+      event_type: string;
+      occurred_at: string;
+    }>;
     out.push(...rows);
     if (rows.length < PAGE) break;
   }
   return out;
 }
 
-export async function loadOnboardingFunnel(supabase: SupabaseClient, days = 30): Promise<FunnelReport> {
+export async function loadOnboardingFunnel(
+  supabase: SupabaseClient,
+  days = 30,
+): Promise<FunnelReport> {
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
 
   const starts = await pagedEvents(supabase, (from, to) =>
@@ -85,12 +92,21 @@ export async function loadOnboardingFunnel(supabase: SupabaseClient, days = 30):
 
   const names = new Map<string, string>();
   for (let i = 0; i < orgIds.length; i += 200) {
-    const { data } = await supabase.from("organizations").select("id, name").in("id", orgIds.slice(i, i + 200));
-    for (const row of (data ?? []) as Array<{ id: string; name: string | null }>) names.set(row.id, row.name ?? "");
+    const { data } = await supabase
+      .from("organizations")
+      .select("id, name")
+      .in("id", orgIds.slice(i, i + 200));
+    for (const row of (data ?? []) as Array<{ id: string; name: string | null }>)
+      names.set(row.id, row.name ?? "");
   }
 
   const byOrg = new Map<string, { steps: Set<string>; startedAt: string; lastAt: string }>();
-  for (const s of starts) byOrg.set(s.organization_id, { steps: new Set(["started"]), startedAt: s.occurred_at, lastAt: s.occurred_at });
+  for (const s of starts)
+    byOrg.set(s.organization_id, {
+      steps: new Set(["started"]),
+      startedAt: s.occurred_at,
+      lastAt: s.occurred_at,
+    });
   for (const e of events) {
     const row = byOrg.get(e.organization_id);
     if (!row) continue;
@@ -132,7 +148,13 @@ export async function loadOnboardingFunnel(supabase: SupabaseClient, days = 30):
   return {
     days,
     since,
-    summary: summariseFunnel(signups.map((s) => ({ organizationId: s.organizationId, steps: s.steps, startedAt: s.startedAt }))),
+    summary: summariseFunnel(
+      signups.map((s) => ({
+        organizationId: s.organizationId,
+        steps: s.steps,
+        startedAt: s.startedAt,
+      })),
+    ),
     signups,
     linkTemplateStatus,
   };

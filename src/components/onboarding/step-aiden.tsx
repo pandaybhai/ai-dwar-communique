@@ -1,9 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, FileText, Loader2, Package, SendHorizontal, Sparkles, StickyNote } from "lucide-react";
-import { CustomerBubble, MessageBubble, PhoneFrame, TypingBubble, previewModel } from "@/components/developers/whatsapp-phone";
+import {
+  ArrowRight,
+  FileText,
+  Loader2,
+  Package,
+  SendHorizontal,
+  Sparkles,
+  StickyNote,
+} from "lucide-react";
+import {
+  CustomerBubble,
+  MessageBubble,
+  PhoneFrame,
+  TypingBubble,
+  previewModel,
+} from "@/components/developers/whatsapp-phone";
 import { AidenHandoff } from "@/components/aiden-handoff";
 import { PrimaryAction, StepHeading } from "@/components/onboarding/journey-shell";
-import { journeyApi, type JourneyStateReply, type LearnedItem, type TestReply } from "@/lib/onboarding-client";
+import {
+  journeyApi,
+  type JourneyStateReply,
+  type LearnedItem,
+  type TestReply,
+} from "@/lib/onboarding-client";
 import { callApi } from "@/lib/whatsapp-client";
 
 type ChatTurn = { id: number; from: "customer" | "aiden" | "note"; text: string };
@@ -49,7 +68,11 @@ export function StepAiden({
     let stopped = false;
     let timer: number | null = null;
     const tick = async () => {
-      const res = await journeyApi<JourneyStateReply>({ action: "state", organization_id: organizationId, learned: true });
+      const res = await journeyApi<JourneyStateReply>({
+        action: "state",
+        organization_id: organizationId,
+        learned: true,
+      });
       if (stopped || !res.data) return;
       const list = res.data.learned ?? [];
       const arriving: Record<string, number> = {};
@@ -96,7 +119,10 @@ export function StepAiden({
   const suggestions = useMemo(() => {
     const out = ["What do you offer?"];
     const first = products[0];
-    if (first) out.push(`How much is ${first.title.length > 40 ? `${first.title.slice(0, 38)}…` : first.title}?`);
+    if (first)
+      out.push(
+        `How much is ${first.title.length > 40 ? `${first.title.slice(0, 38)}…` : first.title}?`,
+      );
     out.push("How can I reach you?");
     return out;
   }, [products]);
@@ -106,22 +132,35 @@ export function StepAiden({
     if (!text || asking) return;
     const history = turns
       .filter((t) => t.from !== "note")
-      .map((t) => ({ role: t.from === "customer" ? ("user" as const) : ("assistant" as const), content: t.text }));
+      .map((t) => ({
+        role: t.from === "customer" ? ("user" as const) : ("assistant" as const),
+        content: t.text,
+      }));
     setTurns((prev) => [...prev, { id: nextId.current++, from: "customer", text }]);
     setDraft("");
     setAsking(true);
-    const res = await journeyApi<TestReply>({ action: "test", organization_id: organizationId, question: text, history });
+    const res = await journeyApi<TestReply>({
+      action: "test",
+      organization_id: organizationId,
+      question: text,
+      history,
+    });
     setAsking(false);
     if (res.data?.answered && res.data.answer) {
       setAnswered(true);
-      setTurns((prev) => [...prev, { id: nextId.current++, from: "aiden", text: res.data!.answer! }]);
+      setTurns((prev) => [
+        ...prev,
+        { id: nextId.current++, from: "aiden", text: res.data!.answer! },
+      ]);
     } else {
       setTurns((prev) => [
         ...prev,
         {
           id: nextId.current++,
           from: "note",
-          text: res.error ?? "Aiden has no answer for that yet. With real customers he asks you, and remembers what you say.",
+          text:
+            res.error ??
+            "Aiden has no answer for that yet. With real customers he asks you, and remembers what you say.",
         },
       ]);
     }
@@ -140,19 +179,36 @@ export function StepAiden({
     <div>
       <StepHeading
         eyebrow="Meet Aiden"
-        title={reading ? <>Aiden is reading {host ?? "your site"} now.</> : <>Aiden knows {business}. Try him.</>}
+        title={
+          reading ? (
+            <>Aiden is reading {host ?? "your site"} now.</>
+          ) : (
+            <>Aiden knows {business}. Try him.</>
+          )
+        }
         lead="Ask what a customer would ask. He answers from what he learned — nothing is sent to anyone."
       />
 
       <div className="mt-8 grid gap-6 lg:mt-10 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-10">
         {/* What he learned */}
-        <section aria-labelledby="ob-learned" className="ob-rise min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6" style={{ "--ob-delay": "80ms" } as React.CSSProperties}>
+        <section
+          aria-labelledby="ob-learned"
+          className="ob-rise min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6"
+          style={{ "--ob-delay": "80ms" } as React.CSSProperties}
+        >
           <div className="flex items-center justify-between gap-3">
             <h2 id="ob-learned" className="text-base font-semibold">
               What Aiden learned{host ? <> from {host.replace(/^www\./, "")}</> : null}
             </h2>
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground" aria-live="polite">
-              {reading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5 text-primary-strong" aria-hidden="true" />}
+            <span
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+              aria-live="polite"
+            >
+              {reading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5 text-primary-strong" aria-hidden="true" />
+              )}
               {items.length} {items.length === 1 ? "thing" : "things"}
               {reading ? " so far" : ""}
             </span>
@@ -161,7 +217,11 @@ export function StepAiden({
             <div className="mt-5 space-y-3" aria-hidden={reading ? "true" : undefined}>
               {reading ? (
                 [0, 1, 2, 3].map((i) => (
-                  <div key={i} className="h-11 animate-pulse rounded-xl bg-muted" style={{ animationDelay: `${i * 120}ms` }} />
+                  <div
+                    key={i}
+                    className="h-11 animate-pulse rounded-xl bg-muted"
+                    style={{ animationDelay: `${i * 120}ms` }}
+                  />
                 ))
               ) : (
                 <p className="text-sm text-muted-foreground">
@@ -175,17 +235,28 @@ export function StepAiden({
             <ul className="mt-5 max-h-[22rem] space-y-2 overflow-y-auto pr-1 lg:max-h-[30rem]">
               {items.map((item) => {
                 const order = fresh[item.id];
-                const Icon = item.kind === "product" ? Package : item.kind === "page" ? FileText : StickyNote;
+                const Icon =
+                  item.kind === "product" ? Package : item.kind === "page" ? FileText : StickyNote;
                 return (
                   <li
                     key={item.id}
                     className={`flex items-center gap-3 rounded-xl border border-border/70 bg-background px-3 py-2.5 ${order !== undefined ? "ob-rise" : ""}`}
-                    style={order !== undefined ? ({ "--ob-delay": `${Math.min(order, 12) * 90}ms` } as React.CSSProperties) : undefined}
+                    style={
+                      order !== undefined
+                        ? ({ "--ob-delay": `${Math.min(order, 12) * 90}ms` } as React.CSSProperties)
+                        : undefined
+                    }
                   >
                     <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <span className="min-w-0 flex-1 truncate text-sm">{item.title}</span>
-                    {item.detail ? <span className="shrink-0 text-sm font-semibold tabular-nums">{item.detail}</span> : null}
-                    <span className="sr-only">{item.kind === "product" ? "product" : item.kind === "page" ? "page" : "note"}</span>
+                    {item.detail ? (
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {item.detail}
+                      </span>
+                    ) : null}
+                    <span className="sr-only">
+                      {item.kind === "product" ? "product" : item.kind === "page" ? "page" : "note"}
+                    </span>
                   </li>
                 );
               })}
@@ -194,7 +265,11 @@ export function StepAiden({
         </section>
 
         {/* The customer's view */}
-        <section aria-label={`Try Aiden as a customer of ${business}`} className="ob-rise flex flex-col items-center" style={{ "--ob-delay": "160ms" } as React.CSSProperties}>
+        <section
+          aria-label={`Try Aiden as a customer of ${business}`}
+          className="ob-rise flex flex-col items-center"
+          style={{ "--ob-delay": "160ms" } as React.CSSProperties}
+        >
           <PhoneFrame
             business={business}
             label={`${business}'s WhatsApp chat, as a customer sees it`}
@@ -239,10 +314,16 @@ export function StepAiden({
                   </div>
                 ) : t.from === "aiden" ? (
                   <div key={t.id} className="ob-rise">
-                    <MessageBubble model={previewModel({ kind: "text", text: t.text })} status={null} />
+                    <MessageBubble
+                      model={previewModel({ kind: "text", text: t.text })}
+                      status={null}
+                    />
                   </div>
                 ) : (
-                  <p key={t.id} className="mx-auto max-w-[90%] rounded-md bg-[#fff5c4] px-3 py-1.5 text-center text-[12.5px] text-[#54471a]">
+                  <p
+                    key={t.id}
+                    className="mx-auto max-w-[90%] rounded-md bg-[#fff5c4] px-3 py-1.5 text-center text-[12.5px] text-[#54471a]"
+                  >
                     {t.text}
                   </p>
                 ),
@@ -251,7 +332,10 @@ export function StepAiden({
               <div ref={end} aria-hidden="true" />
             </>
           </PhoneFrame>
-          <div className="mt-4 flex max-w-[300px] flex-wrap justify-center gap-2" aria-label="Questions to try">
+          <div
+            className="mt-4 flex max-w-[300px] flex-wrap justify-center gap-2"
+            aria-label="Questions to try"
+          >
             {suggestions.map((q) => (
               <button
                 key={q}
@@ -285,7 +369,8 @@ export function StepAiden({
       {handoff && showHandoff ? (
         <div className="ob-rise mt-6 max-w-2xl rounded-3xl border border-border bg-card p-5 sm:p-6">
           <p className="mb-4 text-sm text-muted-foreground">
-            Message Aiden on WhatsApp with this code and he'll talk to you as your employee — send him photos, files or facts and he'll learn them.
+            Message Aiden on WhatsApp with this code and he'll talk to you as your employee — send
+            him photos, files or facts and he'll learn them.
           </p>
           <AidenHandoff code={handoff.code} waLink={handoff.wa_link} compact />
         </div>

@@ -87,11 +87,18 @@ export function InboxTour() {
       <div className="mt-5 flex items-center justify-between gap-3">
         <div className="flex gap-1.5" aria-hidden="true">
           {tips.map((_, i) => (
-            <span key={i} className={`h-1.5 rounded-full transition-all ${i === index ? "w-6 bg-primary-strong" : "w-1.5 bg-border"}`} />
+            <span
+              key={i}
+              className={`h-1.5 rounded-full transition-all ${i === index ? "w-6 bg-primary-strong" : "w-1.5 bg-border"}`}
+            />
           ))}
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={close} className="rounded-full px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+          <button
+            type="button"
+            onClick={close}
+            className="rounded-full px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
             Skip
           </button>
           <button

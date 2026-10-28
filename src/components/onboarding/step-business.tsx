@@ -24,7 +24,12 @@ export function StepBusiness({
   existingUrl: string | null;
   /** The colour as soon as we know it, so the whole screen takes it on. */
   onBrand: (color: string | null) => void;
-  onSubmit: (input: { name: string; url: string | null; about: string | null; brand: SiteBrand | null }) => Promise<string | null>;
+  onSubmit: (input: {
+    name: string;
+    url: string | null;
+    about: string | null;
+    brand: SiteBrand | null;
+  }) => Promise<string | null>;
 }) {
   const [site, setSite] = useState(existingUrl ?? "");
   const [brand, setBrand] = useState<SiteBrand | null>(null);
@@ -96,7 +101,13 @@ export function StepBusiness({
       <div>
         <StepHeading
           eyebrow="Your business"
-          title={brand && !noSite && greeting ? <>Hello, {greeting}.</> : "Let's put Aiden to work for your business."}
+          title={
+            brand && !noSite && greeting ? (
+              <>Hello, {greeting}.</>
+            ) : (
+              "Let's put Aiden to work for your business."
+            )
+          }
           lead={
             noSite
               ? "No website? No problem. Tell Aiden in a few lines what you sell — he'll start from that."
@@ -104,10 +115,15 @@ export function StepBusiness({
           }
         />
 
-        <div className="ob-rise mt-8 max-w-xl space-y-5" style={{ "--ob-delay": "80ms" } as React.CSSProperties}>
+        <div
+          className="ob-rise mt-8 max-w-xl space-y-5"
+          style={{ "--ob-delay": "80ms" } as React.CSSProperties}
+        >
           {noSite ? (
             <div className="space-y-2">
-              <Label htmlFor="ob-about" className="text-base">What do you sell, and to whom?</Label>
+              <Label htmlFor="ob-about" className="text-base">
+                What do you sell, and to whom?
+              </Label>
               <Textarea
                 id="ob-about"
                 value={about}
@@ -120,9 +136,14 @@ export function StepBusiness({
             </div>
           ) : (
             <div className="space-y-2">
-              <Label htmlFor="ob-site" className="text-base">Your business website</Label>
+              <Label htmlFor="ob-site" className="text-base">
+                Your business website
+              </Label>
               <div className="relative">
-                <Globe className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Globe
+                  className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
                 <Input
                   id="ob-site"
                   value={site}
@@ -137,17 +158,25 @@ export function StepBusiness({
                   autoFocus
                 />
                 {peeking ? (
-                  <Loader2 className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-muted-foreground" aria-label="Looking you up" />
+                  <Loader2
+                    className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-muted-foreground"
+                    aria-label="Looking you up"
+                  />
                 ) : null}
               </div>
               <p id="ob-site-note" className="text-sm text-muted-foreground" aria-live="polite">
-                {peekNote ?? (peeking ? "Looking you up…" : "We only read public pages. Nothing is posted anywhere.")}
+                {peekNote ??
+                  (peeking
+                    ? "Looking you up…"
+                    : "We only read public pages. Nothing is posted anywhere.")}
               </p>
             </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="ob-name" className="text-base">Business name</Label>
+            <Label htmlFor="ob-name" className="text-base">
+              Business name
+            </Label>
             <Input
               id="ob-name"
               value={name}
@@ -159,11 +188,16 @@ export function StepBusiness({
               className="h-12 rounded-xl text-base"
               autoComplete="organization"
             />
-            <p className="text-sm text-muted-foreground">Aiden uses this name when he talks to your customers.</p>
+            <p className="text-sm text-muted-foreground">
+              Aiden uses this name when he talks to your customers.
+            </p>
           </div>
 
           {error ? (
-            <p role="alert" className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <p
+              role="alert"
+              className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
               {error}
             </p>
           ) : null}
@@ -192,9 +226,17 @@ export function StepBusiness({
       {/* The business, recognised. */}
       <div className="hidden lg:block" aria-live="polite">
         {brand && !noSite ? (
-          <BrandCard brand={brand} name={name} logoFailed={logoFailed} onLogoError={() => setLogoFailed(true)} />
+          <BrandCard
+            brand={brand}
+            name={name}
+            logoFailed={logoFailed}
+            onLogoError={() => setLogoFailed(true)}
+          />
         ) : (
-          <div className="ob-rise rounded-3xl border border-dashed border-border bg-card/50 p-8 text-muted-foreground" style={{ "--ob-delay": "160ms" } as React.CSSProperties}>
+          <div
+            className="ob-rise rounded-3xl border border-dashed border-border bg-card/50 p-8 text-muted-foreground"
+            style={{ "--ob-delay": "160ms" } as React.CSSProperties}
+          >
             <p className="text-sm font-medium text-foreground">What happens next</p>
             <ol className="mt-4 space-y-3 text-sm">
               <li>1. Aiden reads your site — products, prices, answers.</li>
@@ -208,7 +250,13 @@ export function StepBusiness({
       </div>
       {brand && !noSite ? (
         <div className="lg:hidden" aria-hidden="true">
-          <BrandCard brand={brand} name={name} logoFailed={logoFailed} onLogoError={() => setLogoFailed(true)} compact />
+          <BrandCard
+            brand={brand}
+            name={name}
+            logoFailed={logoFailed}
+            onLogoError={() => setLogoFailed(true)}
+            compact
+          />
         </div>
       ) : null}
     </form>
@@ -231,12 +279,21 @@ function BrandCard({
   const shown = name.trim() || brand.name || nameFromHost(brand.host);
   const initial = shown.charAt(0).toUpperCase() || "A";
   return (
-    <div className={`ob-pop overflow-hidden rounded-3xl border border-border bg-card shadow-[var(--shadow-card)] ${compact ? "" : "max-w-md"}`}>
+    <div
+      className={`ob-pop overflow-hidden rounded-3xl border border-border bg-card shadow-[var(--shadow-card)] ${compact ? "" : "max-w-md"}`}
+    >
       <div className="h-2" style={{ background: "var(--brand)" }} />
       <div className={compact ? "flex items-center gap-4 p-5" : "p-8"}>
-        <div className={`grid shrink-0 place-items-center overflow-hidden rounded-2xl border border-border bg-background ${compact ? "h-14 w-14" : "h-20 w-20"}`}>
+        <div
+          className={`grid shrink-0 place-items-center overflow-hidden rounded-2xl border border-border bg-background ${compact ? "h-14 w-14" : "h-20 w-20"}`}
+        >
           {brand.logoUrl?.startsWith("https://") && !logoFailed ? (
-            <img src={brand.logoUrl} alt="" className="h-full w-full object-contain p-2" onError={onLogoError} />
+            <img
+              src={brand.logoUrl}
+              alt=""
+              className="h-full w-full object-contain p-2"
+              onError={onLogoError}
+            />
           ) : (
             <span className="text-2xl font-bold" style={{ color: "var(--brand)" }}>
               {initial}
@@ -244,14 +301,22 @@ function BrandCard({
           )}
         </div>
         <div className={compact ? "min-w-0" : "mt-6"}>
-          <p className={`font-bold tracking-tight ${compact ? "truncate text-lg" : "text-2xl"}`}>{shown}</p>
-          <p className="mt-1 truncate text-sm text-muted-foreground">{brand.host.replace(/^www\./, "")}</p>
+          <p className={`font-bold tracking-tight ${compact ? "truncate text-lg" : "text-2xl"}`}>
+            {shown}
+          </p>
+          <p className="mt-1 truncate text-sm text-muted-foreground">
+            {brand.host.replace(/^www\./, "")}
+          </p>
           {!compact && brand.description ? (
             <p className="mt-4 line-clamp-3 text-sm text-muted-foreground">{brand.description}</p>
           ) : null}
           {!compact ? (
             <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground">
-              <span className="h-2 w-2 rounded-full" style={{ background: "var(--brand)" }} aria-hidden="true" />
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: "var(--brand)" }}
+                aria-hidden="true"
+              />
               Aiden will start reading this the moment you continue
             </p>
           ) : null}

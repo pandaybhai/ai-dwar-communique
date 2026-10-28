@@ -14,7 +14,10 @@ const PEEK_TIMEOUT_MS = 6000;
 const PEEK_MAX_BYTES = 512 * 1024;
 
 /** The head of a body: what a <head> needs, never the whole page in memory. */
-async function readHead(body: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<string> {
+async function readHead(
+  body: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+): Promise<string> {
   if (!body) return "";
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -35,19 +38,31 @@ async function readHead(body: ReadableStream<Uint8Array> | null, maxBytes: numbe
 }
 
 export type PeekResult =
-  | { ok: true; brand: SiteBrand; listing: string | null }
-  | { ok: false; error: string };
+  { ok: true; brand: SiteBrand; listing: string | null } | { ok: false; error: string };
 
 export async function peekSite(raw: string): Promise<PeekResult> {
   const url = normaliseSiteInput(raw);
-  if (!url) return { ok: false, error: "That doesn't look like a website address — try something like yourshop.in." };
+  if (!url)
+    return {
+      ok: false,
+      error: "That doesn't look like a website address — try something like yourshop.in.",
+    };
   if (urlBlocked(url)) return { ok: false, error: "We can only read public websites." };
   const res = await fetchWithTimeout(url, PEEK_TIMEOUT_MS);
-  if (!res) return { ok: false, error: "We couldn't open that website just now. Check the address, or carry on — Aiden will try again." };
+  if (!res)
+    return {
+      ok: false,
+      error:
+        "We couldn't open that website just now. Check the address, or carry on — Aiden will try again.",
+    };
   const landed = responseUrl(res, url);
   if (!res.ok) {
     await res.body?.cancel().catch(() => undefined);
-    return { ok: false, error: "That website didn't answer properly. Check the address, or carry on — Aiden will try again." };
+    return {
+      ok: false,
+      error:
+        "That website didn't answer properly. Check the address, or carry on — Aiden will try again.",
+    };
   }
   const type = res.headers.get("content-type") ?? "";
   if (type && !/html/i.test(type)) {

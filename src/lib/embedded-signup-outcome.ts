@@ -47,7 +47,8 @@ export type EsSignal = {
 
 const NUMBER_ON_APP =
   /already (?:registered|in use|being used)|registered (?:on|with) whatsapp|on (?:the )?whatsapp (?:business )?app|existing whatsapp account|number is (?:currently )?(?:in use|connected)|migrat/i;
-const VERIFICATION = /business verification|verify (?:your|the) business|(?:isn't|is not|not been|not) verified|unverified|verification (?:is )?(?:required|pending)/i;
+const VERIFICATION =
+  /business verification|verify (?:your|the) business|(?:isn't|is not|not been|not) verified|unverified|verification (?:is )?(?:required|pending)/i;
 const PERMISSION =
   /permission|scope|not authori[sz]ed|access (?:was )?denied|missing (?:the )?(?:whatsapp_business|business_management)|\(#(?:10|200|294)\)/i;
 
@@ -125,7 +126,10 @@ const OUTCOMES: Record<EsOutcomeKind, Omit<EsOutcome, "detail">> = {
     kind: "meta_unreachable",
     title: "We couldn't reach Meta just now",
     body: "Your sign-up may have gone through on Meta's side; nothing was saved here yet.",
-    steps: ["Check your connection.", "Wait a minute and connect again — it picks up the same number."],
+    steps: [
+      "Check your connection.",
+      "Wait a minute and connect again — it picks up the same number.",
+    ],
     retryLabel: "Try again",
   },
   not_configured: {
@@ -139,7 +143,10 @@ const OUTCOMES: Record<EsOutcomeKind, Omit<EsOutcome, "detail">> = {
     kind: "unknown",
     title: "Meta couldn't finish the sign-up",
     body: "Nothing was changed on your number.",
-    steps: ["Try once more.", "If it happens again, let us call you — we'll do it together in five minutes."],
+    steps: [
+      "Try once more.",
+      "If it happens again, let us call you — we'll do it together in five minutes.",
+    ],
     retryLabel: "Try again",
   },
 };
@@ -155,13 +162,21 @@ export function classifyEmbeddedSignup(signal: EsSignal): EsOutcome {
   });
 
   if (signal.sdkFailed) return pick("popup_blocked");
-  if (signal.httpStatus === 409 || /another aidwar workspace/i.test(message)) return pick("number_elsewhere");
+  if (signal.httpStatus === 409 || /another aidwar workspace/i.test(message))
+    return pick("number_elsewhere");
   if (/isn't configured|not configured/i.test(message)) return pick("not_configured");
   if (NUMBER_ON_APP.test(message)) return pick("number_on_app");
   if (VERIFICATION.test(message)) return pick("business_verification");
-  if (PERMISSION.test(message) || signal.code === 10 || signal.code === 200 || signal.code === "10" || signal.code === "200")
+  if (
+    PERMISSION.test(message) ||
+    signal.code === 10 ||
+    signal.code === 200 ||
+    signal.code === "10" ||
+    signal.code === "200"
+  )
     return pick("permission_missing");
-  if (signal.httpStatus === 502 || /couldn't reach meta/i.test(message)) return pick("meta_unreachable");
+  if (signal.httpStatus === 502 || /couldn't reach meta/i.test(message))
+    return pick("meta_unreachable");
 
   if (signal.event === "CANCEL" || (!signal.event && !message && !signal.httpStatus)) {
     const where = stepWords(signal.currentStep);
@@ -171,7 +186,12 @@ export function classifyEmbeddedSignup(signal: EsSignal): EsOutcome {
         body: `You closed it on the ${where} screen. That screen needs a number that isn't on the WhatsApp app — a new SIM or a landline is easiest.`,
       });
     }
-    return pick("cancelled", where ? { body: `You closed it on the ${where} screen. Nothing was changed on your number.` } : {});
+    return pick(
+      "cancelled",
+      where
+        ? { body: `You closed it on the ${where} screen. Nothing was changed on your number.` }
+        : {},
+    );
   }
   return pick("unknown");
 }

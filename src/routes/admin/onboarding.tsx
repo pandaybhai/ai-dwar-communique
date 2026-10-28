@@ -26,7 +26,12 @@ export const Route = createFileRoute("/admin/onboarding")({
 });
 
 function day(value: string): string {
-  return new Date(value).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return new Date(value).toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /** Batch 40: no third-party tracking — this reads our own analytics_events. */
@@ -38,7 +43,9 @@ function AdminOnboarding() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error: err } = await callApi<FunnelReport>("/api/admin/onboarding?days=30", { method: "GET" });
+    const { data, error: err } = await callApi<FunnelReport>("/api/admin/onboarding?days=30", {
+      method: "GET",
+    });
     setLoading(false);
     if (err || !data) setError(err ?? "We couldn't load the funnel.");
     else {
@@ -53,13 +60,20 @@ function AdminOnboarding() {
 
   const submitTemplate = async () => {
     setSubmitting(true);
-    const { data, error: err } = await callApi<{ status: string | null; created: boolean }>("/api/admin/onboarding", {
-      body: { action: "submit_link_template" },
-    });
+    const { data, error: err } = await callApi<{ status: string | null; created: boolean }>(
+      "/api/admin/onboarding",
+      {
+        body: { action: "submit_link_template" },
+      },
+    );
     setSubmitting(false);
     if (err) toast.error(err);
     else {
-      toast.success(data?.created ? "Submitted to Meta for approval." : `Already there (${data?.status ?? "unknown"}).`);
+      toast.success(
+        data?.created
+          ? "Submitted to Meta for approval."
+          : `Already there (${data?.status ?? "unknown"}).`,
+      );
       await load();
     }
   };
@@ -76,11 +90,18 @@ function AdminOnboarding() {
         {report ? (
           <span className="text-sm text-muted-foreground">
             Resume-link nudge template:{" "}
-            <span className="font-medium text-foreground">{report.linkTemplateStatus ?? "not submitted"}</span>
+            <span className="font-medium text-foreground">
+              {report.linkTemplateStatus ?? "not submitted"}
+            </span>
           </span>
         ) : null}
         {report && !report.linkTemplateStatus ? (
-          <Button size="sm" variant="outline" onClick={() => void submitTemplate()} disabled={submitting}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void submitTemplate()}
+            disabled={submitting}
+          >
             <Send className="h-4 w-4" aria-hidden="true" /> Submit it to Meta
           </Button>
         ) : null}
@@ -91,19 +112,35 @@ function AdminOnboarding() {
       ) : error ? (
         <ErrorState message={error} />
       ) : !report || report.summary.total === 0 ? (
-        <EmptyState icon={Filter} title="No sign-ups yet" description="Sign-ups that start the new setup in the last 30 days appear here." />
+        <EmptyState
+          icon={Filter}
+          title="No sign-ups yet"
+          description="Sign-ups that start the new setup in the last 30 days appear here."
+        />
       ) : (
         <div className="space-y-8">
-          <section aria-labelledby="funnel-steps" className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+          <section
+            aria-labelledby="funnel-steps"
+            className="rounded-2xl border border-border bg-card p-5 sm:p-6"
+          >
             <h2 id="funnel-steps" className="text-base font-semibold">
               Step by step · {report.summary.total} sign-up{report.summary.total === 1 ? "" : "s"}
             </h2>
             <ol className="mt-5 space-y-3">
               {report.summary.steps.map((s) => (
-                <li key={s.step} className="grid grid-cols-[9rem_1fr_6rem] items-center gap-3 text-sm sm:grid-cols-[11rem_1fr_9rem]">
+                <li
+                  key={s.step}
+                  className="grid grid-cols-[9rem_1fr_6rem] items-center gap-3 text-sm sm:grid-cols-[11rem_1fr_9rem]"
+                >
                   <span className="font-medium">{s.label}</span>
-                  <span className="relative h-7 overflow-hidden rounded-lg bg-muted" aria-hidden="true">
-                    <span className="absolute inset-y-0 left-0 rounded-lg bg-primary-strong" style={{ width: `${(s.reached / max) * 100}%` }} />
+                  <span
+                    className="relative h-7 overflow-hidden rounded-lg bg-muted"
+                    aria-hidden="true"
+                  >
+                    <span
+                      className="absolute inset-y-0 left-0 rounded-lg bg-primary-strong"
+                      style={{ width: `${(s.reached / max) * 100}%` }}
+                    />
                   </span>
                   <span className="tabular-nums text-muted-foreground">
                     <span className="font-semibold text-foreground">{s.reached}</span>
@@ -114,8 +151,13 @@ function AdminOnboarding() {
             </ol>
           </section>
 
-          <section aria-labelledby="funnel-stopped" className="rounded-2xl border border-border bg-card p-5 sm:p-6">
-            <h2 id="funnel-stopped" className="text-base font-semibold">Where each sign-up stopped</h2>
+          <section
+            aria-labelledby="funnel-stopped"
+            className="rounded-2xl border border-border bg-card p-5 sm:p-6"
+          >
+            <h2 id="funnel-stopped" className="text-base font-semibold">
+              Where each sign-up stopped
+            </h2>
             <ul className="mt-4 flex flex-wrap gap-2">
               {report.summary.stoppedAt.map((s) => (
                 <li key={s.step} className="rounded-full border border-border px-3 py-1.5 text-sm">
@@ -125,8 +167,13 @@ function AdminOnboarding() {
             </ul>
           </section>
 
-          <section aria-labelledby="funnel-signups" className="overflow-x-auto rounded-2xl border border-border bg-card">
-            <h2 id="funnel-signups" className="sr-only">Sign-ups</h2>
+          <section
+            aria-labelledby="funnel-signups"
+            className="overflow-x-auto rounded-2xl border border-border bg-card"
+          >
+            <h2 id="funnel-signups" className="sr-only">
+              Sign-ups
+            </h2>
             <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>

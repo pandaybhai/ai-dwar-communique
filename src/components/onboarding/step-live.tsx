@@ -7,7 +7,13 @@ import { cn } from "@/lib/utils";
 
 type Mode = "draft" | "replying";
 
-const CHOICES: Array<{ mode: Mode; title: string; body: string; badge?: string; icon: typeof Zap }> = [
+const CHOICES: Array<{
+  mode: Mode;
+  title: string;
+  body: string;
+  badge?: string;
+  icon: typeof Zap;
+}> = [
   {
     mode: "draft",
     title: "Draft",
@@ -47,13 +53,21 @@ export function StepLive({
   onConnect: () => void;
 }) {
   const [busy, setBusy] = useState<Mode | null>(null);
-  const [problem, setProblem] = useState<{ text: string; billing?: boolean; needsTest?: boolean } | null>(null);
+  const [problem, setProblem] = useState<{
+    text: string;
+    billing?: boolean;
+    needsTest?: boolean;
+  } | null>(null);
 
   async function choose(mode: Mode) {
     if (busy) return;
     setBusy(mode);
     setProblem(null);
-    const res = await journeyApi<{ ok: boolean; mode: string }>({ action: "go_live", organization_id: organizationId, mode });
+    const res = await journeyApi<{ ok: boolean; mode: string }>({
+      action: "go_live",
+      organization_id: organizationId,
+      mode,
+    });
     setBusy(null);
     if (res.data?.ok) {
       onLive(mode);
@@ -61,10 +75,16 @@ export function StepLive({
     }
     const raw = (res.raw ?? {}) as Record<string, unknown>;
     if (raw["needs_test"]) {
-      setProblem({ text: "Ask Aiden one customer question first, so you've seen how he answers before he replies on his own.", needsTest: true });
+      setProblem({
+        text: "Ask Aiden one customer question first, so you've seen how he answers before he replies on his own.",
+        needsTest: true,
+      });
       return;
     }
-    setProblem({ text: res.error ?? "We couldn't switch Aiden on. Please try again.", billing: raw["billing"] === true });
+    setProblem({
+      text: res.error ?? "We couldn't switch Aiden on. Please try again.",
+      billing: raw["billing"] === true,
+    });
   }
 
   return (
@@ -76,15 +96,26 @@ export function StepLive({
       />
 
       {!connected ? (
-        <p className="ob-rise mt-6 max-w-2xl rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground" style={{ "--ob-delay": "60ms" } as React.CSSProperties}>
+        <p
+          className="ob-rise mt-6 max-w-2xl rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground"
+          style={{ "--ob-delay": "60ms" } as React.CSSProperties}
+        >
           Your WhatsApp number isn't connected yet — Aiden starts the moment it is.{" "}
-          <button type="button" onClick={onConnect} className="font-semibold text-primary-strong underline-offset-4 hover:underline">
+          <button
+            type="button"
+            onClick={onConnect}
+            className="font-semibold text-primary-strong underline-offset-4 hover:underline"
+          >
             Connect it now
           </button>
         </p>
       ) : null}
 
-      <div role="group" aria-label="How Aiden replies" className="mt-8 grid max-w-4xl gap-4 sm:grid-cols-2">
+      <div
+        role="group"
+        aria-label="How Aiden replies"
+        className="mt-8 grid max-w-4xl gap-4 sm:grid-cols-2"
+      >
         {CHOICES.map((choice, i) => {
           const selected = currentMode === choice.mode;
           const Icon = choice.icon;
@@ -103,10 +134,16 @@ export function StepLive({
             >
               <span className="flex w-full items-center justify-between gap-3">
                 <span className="grid h-11 w-11 place-items-center rounded-2xl bg-accent text-accent-foreground">
-                  {busy === choice.mode ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : <Icon className="h-5 w-5" aria-hidden="true" />}
+                  {busy === choice.mode ? (
+                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  )}
                 </span>
                 {choice.badge ? (
-                  <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-accent-foreground">{choice.badge}</span>
+                  <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-accent-foreground">
+                    {choice.badge}
+                  </span>
                 ) : null}
               </span>
               <span className="mt-5 text-2xl font-bold tracking-tight">{choice.title}</span>
@@ -120,15 +157,25 @@ export function StepLive({
       </div>
 
       {problem ? (
-        <div role="alert" className="ob-pop mt-6 max-w-2xl rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+        <div
+          role="alert"
+          className="ob-pop mt-6 max-w-2xl rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+        >
           <p>{problem.text}</p>
           {problem.needsTest ? (
-            <button type="button" onClick={onNeedsTest} className="mt-2 font-semibold text-primary-strong underline-offset-4 hover:underline">
+            <button
+              type="button"
+              onClick={onNeedsTest}
+              className="mt-2 font-semibold text-primary-strong underline-offset-4 hover:underline"
+            >
               Try Aiden now
             </button>
           ) : null}
           {problem.billing ? (
-            <Link to="/app/billing" className="mt-2 inline-block font-semibold text-primary-strong underline-offset-4 hover:underline">
+            <Link
+              to="/app/billing"
+              className="mt-2 inline-block font-semibold text-primary-strong underline-offset-4 hover:underline"
+            >
               Add credits or pick a plan
             </Link>
           ) : null}

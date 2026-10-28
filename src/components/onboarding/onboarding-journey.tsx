@@ -45,7 +45,10 @@ export function OnboardingJourney({
 
   const refresh = useCallback(async () => {
     if (!organizationId) return null;
-    const res = await journeyApi<JourneyStateReply>({ action: "state", organization_id: organizationId });
+    const res = await journeyApi<JourneyStateReply>({
+      action: "state",
+      organization_id: organizationId,
+    });
     if (res.data) {
       setReply(res.data);
       setLoadError(null);
@@ -66,7 +69,8 @@ export function OnboardingJourney({
   const goTo = useCallback(
     (next: JourneyStep) => {
       setStep(next);
-      if (organizationId) void navigate({ to: "/app/start", search: { step: next }, replace: true });
+      if (organizationId)
+        void navigate({ to: "/app/start", search: { step: next }, replace: true });
       if (typeof window !== "undefined") window.scrollTo({ top: 0 });
     },
     [navigate, organizationId],
@@ -77,10 +81,17 @@ export function OnboardingJourney({
   const reached = state ? resumeStep(state.facts) : "business";
   const color = brandColor ?? state?.business.color ?? null;
 
-  async function submitBusiness(input: { name: string; url: string | null; about: string | null; brand: SiteBrand | null }): Promise<string | null> {
+  async function submitBusiness(input: {
+    name: string;
+    url: string | null;
+    about: string | null;
+    brand: SiteBrand | null;
+  }): Promise<string | null> {
     let orgId = organizationId;
     if (!orgId) {
-      const { data: created, error } = await aidwar.rpc("create_organization", { org_name: input.name });
+      const { data: created, error } = await aidwar.rpc("create_organization", {
+        org_name: input.name,
+      });
       if (error || !created) return "We couldn't create your workspace. Please try again.";
       orgId = created as string;
       await logActivity("organization.created", orgId, { name: input.name });
@@ -95,7 +106,9 @@ export function OnboardingJourney({
     if (begun.error) return begun.error;
     // The WhatsApp setup session (and its code) exists from the start, so a
     // nudge can reach the owner and "chat from your phone" works on Meet Aiden.
-    await callApi("/api/onboarding/start", { body: { organization_id: orgId, attribution: takeAttribution() } });
+    await callApi("/api/onboarding/start", {
+      body: { organization_id: orgId, attribution: takeAttribution() },
+    });
 
     if (!organizationId) {
       await navigate({ to: "/app/start", search: { step: "connect" }, replace: true });
@@ -154,7 +167,11 @@ export function OnboardingJourney({
           }}
           onContinue={() => goTo("aiden")}
           onSkip={async () => {
-            await journeyApi({ action: "mark", organization_id: organizationId, step: "connect_skipped" });
+            await journeyApi({
+              action: "mark",
+              organization_id: organizationId,
+              step: "connect_skipped",
+            });
             await refresh();
             goTo("aiden");
           }}

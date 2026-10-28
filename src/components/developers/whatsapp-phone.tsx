@@ -207,7 +207,11 @@ export function CustomerBubble({ text, time = "10:00" }: { text: string; time?: 
 export function TypingBubble({ label = "Typing" }: { label?: string }) {
   return (
     <div className="max-w-[40%]">
-      <div className="wa-bubble wa-typing flex items-center gap-1 px-3 py-2.5" role="status" aria-label={label}>
+      <div
+        className="wa-bubble wa-typing flex items-center gap-1 px-3 py-2.5"
+        role="status"
+        aria-label={label}
+      >
         <span />
         <span />
         <span />
@@ -281,9 +285,13 @@ export function PhoneFrame({
         </div>
         <div
           className={`wa-wall flex flex-1 flex-col gap-2 px-3 py-3 ${live ? "min-h-0 overflow-y-auto" : "justify-end overflow-hidden"}`}
-          {...(live ? { role: "log", "aria-live": "polite" as const, "aria-label": `Chat with ${business}` } : {})}
+          {...(live
+            ? { role: "log", "aria-live": "polite" as const, "aria-label": `Chat with ${business}` }
+            : {})}
         >
-          <div className={`mx-auto mb-1 rounded-md bg-[var(--wa-bubble)] px-2.5 py-1 text-[11.5px] text-[var(--wa-meta)] shadow-sm ${live ? "mt-auto" : ""}`}>
+          <div
+            className={`mx-auto mb-1 rounded-md bg-[var(--wa-bubble)] px-2.5 py-1 text-[11.5px] text-[var(--wa-meta)] shadow-sm ${live ? "mt-auto" : ""}`}
+          >
             Today
           </div>
           {children}
