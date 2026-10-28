@@ -22,6 +22,8 @@ import { Route as EstimateRoute } from "../routes/api/v1/campaigns/estimate";
 import { Route as OneRoute } from "../routes/api/v1/campaigns/$campaignId";
 import { Route as CancelRoute } from "../routes/api/v1/campaigns/$campaignId.cancel";
 import { Route as AppLaunchRoute } from "../routes/api/campaigns/launch";
+import { Route as AppAudienceRoute } from "../routes/api/campaigns/audience";
+import { Route as AppEstimateRoute } from "../routes/api/campaigns/estimate";
 import { queueCampaignCompleted } from "./public-api-campaigns.server";
 
 const rows = (t: string) => h.world!.db.rows(t);
@@ -233,6 +235,80 @@ describe("POST /api/v1/campaigns/estimate", () => {
     });
     expect((res.body["skipped"] as unknown[]).length).toBe(4);
     expect(rows("campaigns")).toHaveLength(0);
+  });
+
+  /** The campaign wizard's own two calls: the audience count, then the estimate for it. */
+  async function wizardEstimate() {
+    rows("permissions").push({ key: "campaigns.send" }, { key: "contacts.view" });
+    rows("role_permissions").push(
+      { role: "admin", permission_key: "campaigns.send" },
+      { role: "admin", permission_key: "contacts.view" },
+    );
+    const app = async (route: unknown, body: Record<string, unknown>) => {
+      const res = await (
+        route as {
+          options: {
+            server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } };
+          };
+        }
+      ).options.server.handlers.POST({
+        request: new Request("https://aidwar.in/api/campaigns/x", {
+          method: "POST",
+          headers: { authorization: "Bearer u-admin", "content-type": "application/json" },
+          body: JSON.stringify({ organization_id: ORG, ...body }),
+        }),
+      });
+      expect(res.status).toBe(200);
+      return (await res.json()) as Record<string, unknown>;
+    };
+    const audience = await app(AppAudienceRoute, {
+      segment_id: null,
+      whatsapp_account_id: "acc-a",
+    });
+    // The wizard sends the template's category, lower-cased.
+    const template = rows("message_templates").find((t) => t["name"] === "festive_offer")!;
+    return app(AppEstimateRoute, {
+      recipients: audience["eligible"],
+      category: String(template["category"]).toLowerCase(),
+      whatsapp_account_id: "acc-a",
+    });
+  }
+
+  it("equals the campaign wizard's estimate for the same audience — and the hold a launch stores", async () => {
+    // A threshold and a short wallet, so needs_approval and can_send are compared too.
+    rows("organization_billing_settings")[0]!["campaign_approval_threshold"] = 0.2;
+    for (const balance of [100, 0.25]) {
+      rows("wallet_balances")[0]!["balance"] = balance;
+      const wizard = await wizardEstimate();
+      const api = await call(EstimateRoute, "POST", "/api/v1/campaigns/estimate", {
+        key: keyA(),
+        body: { template_name: "festive_offer", audience: { all: true }, variables: ["x", "y"] },
+      });
+      expect(api.status).toBe(200);
+      expect(api.body["recipients"]).toBe(wizard["recipients"]);
+      expect(api.body["category"]).toBe(wizard["category"]);
+      expect(api.body["cost"]).toEqual({
+        currency: wizard["currency"],
+        rate: wizard["rate"],
+        estimate: wizard["estimate"],
+        available: wizard["available"],
+        can_send: wizard["can_send"],
+        needs_approval: wizard["needs_approval"],
+      });
+      expect(wizard).toMatchObject({ recipients: 2, estimate: 0.3, needs_approval: true });
+      expect(wizard["can_send"]).toBe(balance === 100);
+    }
+    // A launch from the API stores the same figure as the campaign's estimate (what the worker holds).
+    rows("wallet_balances")[0]!["balance"] = 100;
+    rows("organization_billing_settings")[0]!["campaign_approval_threshold"] = null;
+    const launched = await create({
+      name: "Same audience",
+      template_name: "festive_offer",
+      audience: { all: true },
+      variables: ["x", "y"],
+    });
+    expect(launched.status).toBe(201);
+    expect(rows("campaigns")[0]!["estimated_cost"]).toBe((await wizardEstimate())["estimate"]);
   });
 });
 
