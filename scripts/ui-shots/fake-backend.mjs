@@ -1,0 +1,442 @@
+/**
+ * A fake AiDwar backend for screenshots (Batch 39). Every request the app makes
+ * to the backend host (PostgREST, auth, realtime) and to its own /api/* routes
+ * is answered here from made-up data, inside the browser's request router —
+ * nothing reaches a live database, WhatsApp or Meta.
+ *
+ * The data is fictional: a jewellery shop "Kesar & Co." with a team of three
+ * and as many conversations as a scenario asks for.
+ */
+
+export const BACKEND = "http://fake-backend.test";
+export const STORAGE_KEY = "sb-fake-backend-auth-token";
+
+const ORG = "00000000-0000-4000-8000-0000000000a1";
+const ORG_2 = "00000000-0000-4000-8000-0000000000a2";
+const ME = "00000000-0000-4000-8000-0000000000b1";
+const NEHA = "00000000-0000-4000-8000-0000000000b2";
+const ARJUN = "00000000-0000-4000-8000-0000000000b3";
+const ACCOUNT = "00000000-0000-4000-8000-0000000000c1";
+
+const PERMISSIONS = [
+  "ai.configure", "ai.use", "analytics.view", "automations.manage", "billing.pay", "billing.request",
+  "billing.view", "campaigns.create", "campaigns.send", "campaigns.view", "cards.manage", "cards.view",
+  "catalog.import", "catalog.manage", "catalog.view", "contacts.delete", "contacts.edit", "contacts.export",
+  "contacts.import", "contacts.view", "flows.manage", "flows.view", "inbox.reply", "inbox.view",
+  "inbox.assign", "inbox.close", "integrations.manage", "integrations.view", "public_api.manage",
+  "revenue.view", "segments.manage", "settings.manage", "settings.view", "settings.whatsapp", "team.manage",
+  "templates.manage",
+];
+
+const FLAGS = [
+  "inbox", "contacts", "campaigns", "templates", "automations", "analytics", "compliance", "settings", "team",
+  "ai_features", "shopify", "flows", "revenue_attribution", "billing", "catalogs", "cards", "wa_forms",
+  "flows_v2", "public_api",
+];
+
+export function session() {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    access_token: "fake-access-token",
+    refresh_token: "fake-refresh-token",
+    token_type: "bearer",
+    expires_in: 3600 * 24 * 365,
+    expires_at: now + 3600 * 24 * 365,
+    user: {
+      id: ME,
+      aud: "authenticated",
+      role: "authenticated",
+      email: "riya@kesar.example",
+      app_metadata: { provider: "email" },
+      user_metadata: { full_name: "Riya Kapoor" },
+      created_at: "2026-01-01T00:00:00Z",
+    },
+  };
+}
+
+const FIRST = [
+  "Asha", "Vikram", "Meera", "Rohan", "Kavya", "Arjun", "Ishita", "Sanjay", "Pooja", "Nikhil", "Ananya", "Rahul",
+  "Divya", "Karan", "Sneha", "Aditya", "Priya", "Manish", "Tanvi", "Harsh", "Lakshmi", "Farhan", "Zoya", "Dev",
+];
+const LAST = ["Iyer", "Mehta", "Nair", "Reddy", "Shah", "Gupta", "Khan", "Das", "Joshi", "Menon", "Bose", "Patel"];
+const PREVIEWS = [
+  "Is the rose-gold ring available in size 12?",
+  "Thank you! Received the parcel today 😊",
+  "Can you share the price for the jhumkas?",
+  "What are your store timings on Sunday?",
+  "I want to return the bracelet, it's too small",
+  "Do you do custom engraving?",
+  "Here's my address for delivery",
+  "Please call me back when you can",
+  "Is COD available for Pune?",
+  "Can I exchange it for a different design?",
+];
+
+const ago = (ms) => new Date(Date.now() - ms).toISOString();
+const MIN = 60_000;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
+
+/** n conversations, newest first; the first few are hand-written for the shots. */
+export function makeConversations(n) {
+  const rows = [];
+  const special = [
+    {
+      name: "Asha Iyer", phone: "+919820011223", unread: 2, needs: true, assigned: null, at: 3 * MIN,
+      preview: { body: "Can I get the Meenakari set by Friday? It's for my sister's wedding", type: "text", direction: "inbound" },
+      reason: "asked_for_human", question: "Can I get the Meenakari set by Friday? It's for my sister's wedding",
+    },
+    {
+      name: "Vikram Mehta", phone: "+919811045678", unread: 0, needs: false, assigned: ME, at: 18 * MIN,
+      preview: { body: "Here are two rings under ₹20,000 that match what you asked for.", type: "text", direction: "outbound" },
+    },
+    {
+      name: "Meera Nair", phone: "+919845098765", unread: 1, needs: false, assigned: NEHA, at: 52 * MIN,
+      preview: { body: null, type: "image", direction: "inbound" },
+    },
+    {
+      name: null, phone: "+919900112233", unread: 0, needs: false, assigned: null, at: 3 * HOUR,
+      preview: { body: null, type: "template", direction: "outbound", template_name: "order_shipped" },
+    },
+    {
+      name: "Rohan Reddy", phone: "+919876501234", unread: 0, needs: true, assigned: ARJUN, at: 6 * HOUR,
+      preview: { body: "I want to return the bracelet, it's too small", type: "text", direction: "inbound" },
+      reason: "refund_request",
+    },
+    {
+      name: "Kavya Shah", phone: "+919812398765", unread: 0, needs: false, assigned: null, at: 26 * HOUR, status: "closed",
+      preview: { body: "Thank you! Received the parcel today 😊", type: "text", direction: "inbound" },
+    },
+  ];
+  for (let i = 0; i < n; i += 1) {
+    const s = special[i];
+    const id = `00000000-0000-4000-8000-${String(1000 + i).padStart(12, "0")}`;
+    const first = FIRST[i % FIRST.length];
+    const last = LAST[(i * 7) % LAST.length];
+    const at = s ? s.at : 7 * HOUR + i * 37 * MIN;
+    rows.push({
+      id,
+      status: s?.status ?? (i % 5 === 4 ? "closed" : "open"),
+      assigned_to: s ? s.assigned : [null, ME, NEHA, ARJUN][i % 4],
+      whatsapp_account_id: ACCOUNT,
+      last_message_at: ago(at),
+      last_customer_message_at: ago(i === 3 ? 3 * DAY : at),
+      unread_count: s ? s.unread : i % 6 === 0 ? 1 : 0,
+      needs_human: s ? s.needs : i % 17 === 0,
+      needs_human_reason: s?.reason ?? (i % 17 === 0 ? "asked_for_human" : null),
+      needs_human_question: s?.question ?? null,
+      needs_human_at: s?.needs ? ago(at) : null,
+      handover_state: s?.needs ? "sent" : null,
+      created_at: ago(at + DAY),
+      contact: {
+        id: `00000000-0000-4000-8000-${String(5000 + i).padStart(12, "0")}`,
+        name: s ? s.name : `${first} ${last}`,
+        phone: s ? s.phone : `+9198${String(10000000 + i * 7919).slice(0, 8)}`,
+        opt_in_status: i === 4 ? "opted_out" : "opted_in",
+      },
+      preview: [
+        {
+          ...(s?.preview ?? { body: PREVIEWS[i % PREVIEWS.length], type: "text", direction: i % 3 ? "inbound" : "outbound" }),
+          metadata: null,
+          created_at: ago(at),
+        },
+      ],
+    });
+  }
+  return rows;
+}
+
+const SVG_RING = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5e6d3"/><stop offset="1" stop-color="#e8c9a8"/></linearGradient>
+<linearGradient id="r" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7d58b"/><stop offset=".5" stop-color="#c9973f"/><stop offset="1" stop-color="#f2cf7a"/></linearGradient></defs>
+<rect width="640" height="480" fill="url(#g)"/><ellipse cx="320" cy="270" rx="150" ry="130" fill="none" stroke="url(#r)" stroke-width="30"/>
+<circle cx="320" cy="132" r="34" fill="#e0457b"/><circle cx="310" cy="122" r="9" fill="#fff" opacity=".6"/></svg>`;
+
+/** The open chat: every bubble kind the Inbox draws. */
+export function makeThread(conversationId) {
+  const t0 = 26 * HOUR;
+  const m = (i, over) => ({
+    id: `00000000-0000-4000-8000-${String(9000 + i).padStart(12, "0")}`,
+    conversation_id: conversationId,
+    direction: "inbound",
+    type: "text",
+    body: null,
+    media_url: null,
+    media_mime: null,
+    template_name: null,
+    status: "read",
+    error_detail: null,
+    sent_by: null,
+    detected_language: "en",
+    metadata: null,
+    ...over,
+  });
+  return [
+    m(1, { body: "Hi! I saw your Diwali collection on Instagram ✨", created_at: ago(t0) }),
+    m(2, {
+      direction: "outbound",
+      body: "Hello Asha! Welcome to Kesar & Co. 🙏 What are you looking for today — earrings, rings or a full set?",
+      created_at: ago(t0 - 40_000),
+    }),
+    m(3, { body: "A *Meenakari* necklace set, something under ₹40,000", created_at: ago(t0 - 4 * MIN) }),
+    m(4, {
+      direction: "outbound",
+      type: "image",
+      body: "Meenakari Kundan set — ₹36,500",
+      media_url: `${BACKEND}/media/ring.svg`,
+      media_mime: "image/svg+xml",
+      metadata: { kind: "ai_product" },
+      created_at: ago(t0 - 4 * MIN - 30_000),
+    }),
+    m(5, {
+      direction: "outbound",
+      type: "template",
+      template_name: "order_shipped",
+      metadata: { template_params: { 1: "Asha", 2: "#KC-2041" } },
+      status: "delivered",
+      created_at: ago(5 * HOUR),
+    }),
+    m(6, {
+      type: "document",
+      media_url: "storage:chat-media/fake/invoice.pdf",
+      media_mime: "application/pdf",
+      metadata: { document_filename: "Invoice-KC-2041.pdf" },
+      created_at: ago(4 * HOUR),
+    }),
+    m(7, {
+      type: "form_reply",
+      metadata: {
+        form_name: "Ring size",
+        answers: [
+          { label: "Size", value: "12" },
+          { label: "Metal", value: "Rose gold" },
+        ],
+      },
+      created_at: ago(3 * HOUR),
+    }),
+    m(8, {
+      direction: "outbound",
+      body: "Got it — size 12 in rose gold. I'll check with the workshop and confirm today.",
+      sent_by: ME,
+      created_at: ago(2 * HOUR),
+    }),
+    m(9, {
+      direction: "outbound",
+      body: "Our order cut-off for Friday delivery is 6 pm on Wednesday.",
+      status: "failed",
+      error_detail: "Message failed to send because more than 24 hours have passed since the customer last replied.",
+      created_at: ago(90 * MIN),
+    }),
+    m(10, { body: "Can I get the Meenakari set by Friday? It's for my sister's wedding", created_at: ago(3 * MIN) }),
+  ];
+}
+
+const AI_RUNS = (thread) => [
+  {
+    output: thread[1].body,
+    input_summary: thread[0].body,
+    sources: [{ sourceType: "manual_qa" }],
+    created_at: thread[1].created_at,
+  },
+  {
+    output: "Here's a set you may love:",
+    input_summary: thread[2].body,
+    sources: [],
+    created_at: new Date(new Date(thread[3].created_at).getTime() - 2000).toISOString(),
+  },
+];
+
+function parse(url) {
+  const u = new URL(url);
+  const table = u.pathname.replace(/^\/rest\/v1\//, "");
+  const filters = {};
+  for (const [k, v] of u.searchParams) {
+    if (["select", "order", "limit", "offset", "or", "and"].includes(k)) continue;
+    if (k.includes(".")) continue; // filters on embedded tables
+    const m = /^(eq|neq|in|is|ilike|gte|lte|gt|lt)\.(.*)$/.exec(v);
+    if (m) filters[k] = { op: m[1], value: m[2] };
+  }
+  return { table, filters, params: u.searchParams };
+}
+
+function applyFilters(rows, filters) {
+  return rows.filter((r) =>
+    Object.entries(filters).every(([k, f]) => {
+      if (!(k in r)) return true;
+      const v = r[k];
+      if (f.op === "eq") return String(v) === f.value;
+      if (f.op === "neq") return String(v) !== f.value;
+      if (f.op === "in") return f.value.replace(/[()"]/g, "").split(",").includes(String(v));
+      if (f.op === "is") return f.value === "null" ? v === null : String(v) === f.value;
+      return true;
+    }),
+  );
+}
+
+/**
+ * Builds the request handlers for one scenario.
+ * options.conversations — how many chats (0 = the empty Inbox).
+ */
+export function createBackend(options = {}) {
+  const conversations = makeConversations(options.conversations ?? 40);
+  const threads = new Map();
+  const threadOf = (id) => {
+    if (!threads.has(id)) threads.set(id, id === conversations[0]?.id ? makeThread(id) : makeThread(id).slice(0, 4));
+    return threads.get(id);
+  };
+  const org = (id, name) => ({
+    id, name, slug: name.toLowerCase().replace(/\W+/g, "-"), status: "active", timezone: "Asia/Kolkata",
+    plan_status: "active", plan_version_id: "pv1", trial_ends_at: null,
+  });
+  const profiles = [
+    { id: ME, full_name: "Riya Kapoor", email: "riya@kesar.example", is_super_admin: false },
+    { id: NEHA, full_name: "Neha Joshi", email: "neha@kesar.example", is_super_admin: false },
+    { id: ARJUN, full_name: "Arjun Das", email: "arjun@kesar.example", is_super_admin: false },
+  ];
+
+  const tables = {
+    organization_members: () => [
+      { role: "owner", user_id: ME, created_at: "2026-01-01", organizations: org(ORG, "Kesar & Co.") },
+      { role: "admin", user_id: ME, created_at: "2026-02-01", organizations: org(ORG_2, "Kesar Outlet Store") },
+    ].concat([{ role: "agent", user_id: NEHA }, { role: "agent", user_id: ARJUN }]),
+    profiles: () => profiles,
+    feature_flags: () => FLAGS.map((key) => ({ key, default_enabled: true })),
+    organization_feature_overrides: () => [],
+    whatsapp_accounts: () => [
+      {
+        id: ACCOUNT, organization_id: ORG, display_phone_number: "+91 98200 00000", verified_name: "Kesar & Co.",
+        phone_number_id: "pn1", waba_id: "waba1", is_default: true, status: "connected", quality_rating: "GREEN",
+        label: null, created_at: "2026-01-01",
+      },
+    ],
+    conversations: () => conversations,
+    messages: (q) => {
+      const cid = q.filters.conversation_id?.value;
+      return cid ? threadOf(cid).slice().reverse() : [];
+    },
+    ai_runs: (q) => {
+      const cid = q.filters.conversation_id?.value;
+      return cid ? AI_RUNS(threadOf(cid)) : [];
+    },
+    message_templates: () => [
+      {
+        name: "order_shipped",
+        components: [{ type: "BODY", text: "Hi {{1}}, your order {{2}} has shipped 📦 Track it here: kesar.example/t/2041", example: { body_text: [["Asha", "#KC-2041"]] } }],
+      },
+    ],
+    pending_owner_replies: () => [],
+    automations: () => [],
+    contact_tags: () => [
+      { tag_id: "t1", tags: { id: "t1", name: "VIP" } },
+      { tag_id: "t2", tags: { id: "t2", name: "Wedding season" } },
+    ],
+    tags: () => [],
+    flow_triggers: () => [],
+    flow_runs: () => [],
+    wa_forms: () => [],
+  };
+
+  async function rest(route, request) {
+    const q = parse(request.url());
+    const method = request.method();
+    const make = tables[q.table];
+    let rows = make ? make(q) : [];
+    rows = applyFilters(rows, q.filters);
+    if (q.table === "conversations" && q.filters.id) {
+      // single-row reads (handoff_alert_result, aiden_flow_rules)
+      rows = rows.map((r) => ({ ...r, handoff_alert_result: { at: r.needs_human_at, reminder: false, whatsapp: ["Riya Kapoor"], email: null, skipped: null } }));
+    }
+    const limit = Number(q.params.get("limit") ?? "0");
+    if (limit && method === "GET") rows = rows.slice(0, limit);
+    const headers = {
+      "content-type": "application/json",
+      "content-range": `0-${Math.max(0, rows.length - 1)}/${rows.length}`,
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "content-range",
+    };
+    if (method === "HEAD") return route.fulfill({ status: 200, headers, body: "" });
+    if (method !== "GET") return route.fulfill({ status: 200, headers, body: method === "PATCH" ? "" : "[]" });
+    const single = (request.headers()["accept"] ?? "").includes("vnd.pgrst.object");
+    if (single) {
+      if (rows.length === 0) return route.fulfill({ status: 406, headers, body: JSON.stringify({ code: "PGRST116", message: "no rows" }) });
+      return route.fulfill({ status: 200, headers, body: JSON.stringify(rows[0]) });
+    }
+    return route.fulfill({ status: 200, headers, body: JSON.stringify(rows) });
+  }
+
+  async function backend(route) {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() === "OPTIONS") {
+      return route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-headers": "*",
+          "access-control-allow-methods": "GET,POST,PATCH,DELETE,HEAD,OPTIONS",
+          "access-control-expose-headers": "content-range",
+        },
+      });
+    }
+    if (url.pathname.startsWith("/rest/v1/")) return rest(route, request);
+    if (url.pathname.startsWith("/auth/v1/user")) {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session().user), headers: { "access-control-allow-origin": "*" } });
+    }
+    if (url.pathname.startsWith("/media/")) {
+      return route.fulfill({ status: 200, contentType: "image/svg+xml", body: SVG_RING, headers: { "access-control-allow-origin": "*" } });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: "{}", headers: { "access-control-allow-origin": "*" } });
+  }
+
+  async function api(route) {
+    const request = route.request();
+    const url = new URL(request.url());
+    const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    if (url.pathname === "/api/permissions") return json({ permissions: PERMISSIONS, overrides: {} });
+    if (url.pathname.startsWith("/api/whatsapp/chat-media/")) {
+      return route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%fake\n" });
+    }
+    if (url.pathname === "/api/flows/triggers") return json({ runs: [] });
+    if (url.pathname === "/api/home/summary") {
+      return json({
+        today: { conversations: 48, ai_answers: 41, escalations: 3 },
+        credits: { balance: 2840.5, currency: "INR" },
+        plan: { name: "Growth", status: "active", trial_days_left: null },
+        waiting: [
+          { id: "w1", question: "Can I get the Meenakari set by Friday?", asked_at: ago(3 * MIN), conversation_id: conversations[0]?.id ?? null, contact_name: "Asha Iyer", source: "customer" },
+          { id: "w2", question: "Do you ship to Dubai?", asked_at: ago(2 * HOUR), conversation_id: null, contact_name: "Farhan Khan", source: "customer" },
+        ],
+        learned: [
+          { source_id: "s1", source_name: "kesar.example", source_type: "website", items: 126, latest_at: ago(DAY) },
+          { source_id: "s2", source_name: "Return policy.pdf", source_type: "document", items: 14, latest_at: ago(3 * DAY) },
+        ],
+        generated_at: new Date().toISOString(),
+      });
+    }
+    if (url.pathname === "/api/whatsapp/send-message") {
+      await new Promise((r) => setTimeout(r, 600));
+      return json({ message_id: "fake" });
+    }
+    return json({});
+  }
+
+  /** Phoenix channel replies so realtime subscribes quietly. */
+  function realtime(ws) {
+    ws.onMessage((raw) => {
+      let msg;
+      try {
+        msg = JSON.parse(String(raw));
+      } catch {
+        return;
+      }
+      if (msg.event === "phx_join") {
+        const changes = (msg.payload?.config?.postgres_changes ?? []).map((c, i) => ({ ...c, id: i + 1 }));
+        ws.send(JSON.stringify({ topic: msg.topic, event: "phx_reply", ref: msg.ref, join_ref: msg.join_ref, payload: { status: "ok", response: { postgres_changes: changes } } }));
+      } else if (msg.ref) {
+        ws.send(JSON.stringify({ topic: msg.topic, event: "phx_reply", ref: msg.ref, payload: { status: "ok", response: {} } }));
+      }
+    });
+  }
+
+  return { backend, api, realtime, conversations };
+}
