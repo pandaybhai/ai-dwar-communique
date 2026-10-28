@@ -36,6 +36,7 @@ import { Route as AdminBillingRouteImport } from './routes/admin/billing'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminLeadsRouteImport } from './routes/admin/leads'
+import { Route as AdminOnboardingRouteImport } from './routes/admin/onboarding'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminSendingRouteImport } from './routes/admin/sending'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
@@ -75,6 +76,7 @@ import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAdminCustomersRouteImport } from './routes/api/admin/customers'
 import { Route as ApiAdminLeadsRouteImport } from './routes/api/admin/leads'
+import { Route as ApiAdminOnboardingRouteImport } from './routes/api/admin/onboarding'
 import { Route as ApiAdminSendingRouteImport } from './routes/api/admin/sending'
 import { Route as ApiAdminSuperAdminsRouteImport } from './routes/api/admin/super-admins'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
@@ -330,6 +332,11 @@ const AdminLeadsRoute = AdminLeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminOnboardingRoute = AdminOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminOrganizationsRoute = AdminOrganizationsRouteImport.update({
   id: '/organizations',
   path: '/organizations',
@@ -526,6 +533,11 @@ const ApiAdminCustomersRoute = ApiAdminCustomersRouteImport.update({
 const ApiAdminLeadsRoute = ApiAdminLeadsRouteImport.update({
   id: '/api/admin/leads',
   path: '/api/admin/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminOnboardingRoute = ApiAdminOnboardingRouteImport.update({
+  id: '/api/admin/onboarding',
+  path: '/api/admin/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminSendingRoute = ApiAdminSendingRouteImport.update({
@@ -1190,6 +1202,7 @@ export interface FileRoutesByFullPath {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/leads': typeof AdminLeadsRoute
+  '/admin/onboarding': typeof AdminOnboardingRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
@@ -1230,6 +1243,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
+  '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
   '/api/admin/super-admins': typeof ApiAdminSuperAdminsRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
@@ -1374,6 +1388,7 @@ export interface FileRoutesByTo {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/leads': typeof AdminLeadsRoute
+  '/admin/onboarding': typeof AdminOnboardingRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
@@ -1414,6 +1429,7 @@ export interface FileRoutesByTo {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
+  '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
   '/api/admin/super-admins': typeof ApiAdminSuperAdminsRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
@@ -1562,6 +1578,7 @@ export interface FileRoutesById {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/leads': typeof AdminLeadsRoute
+  '/admin/onboarding': typeof AdminOnboardingRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
@@ -1602,6 +1619,7 @@ export interface FileRoutesById {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
+  '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
   '/api/admin/super-admins': typeof ApiAdminSuperAdminsRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
@@ -1751,6 +1769,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/flags'
     | '/admin/leads'
+    | '/admin/onboarding'
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
@@ -1791,6 +1810,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/leads'
+    | '/api/admin/onboarding'
     | '/api/admin/sending'
     | '/api/admin/super-admins'
     | '/api/ai/employee'
@@ -1935,6 +1955,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/flags'
     | '/admin/leads'
+    | '/admin/onboarding'
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
@@ -1975,6 +1996,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/leads'
+    | '/api/admin/onboarding'
     | '/api/admin/sending'
     | '/api/admin/super-admins'
     | '/api/ai/employee'
@@ -2122,6 +2144,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/flags'
     | '/admin/leads'
+    | '/admin/onboarding'
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
@@ -2162,6 +2185,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/leads'
+    | '/api/admin/onboarding'
     | '/api/admin/sending'
     | '/api/admin/super-admins'
     | '/api/ai/employee'
@@ -2314,6 +2338,7 @@ export interface RootRouteChildren {
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
   ApiAdminLeadsRoute: typeof ApiAdminLeadsRoute
+  ApiAdminOnboardingRoute: typeof ApiAdminOnboardingRoute
   ApiAdminSendingRoute: typeof ApiAdminSendingRoute
   ApiAdminSuperAdminsRoute: typeof ApiAdminSuperAdminsRoute
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
@@ -2610,6 +2635,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLeadsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/onboarding': {
+      id: '/admin/onboarding'
+      path: '/onboarding'
+      fullPath: '/admin/onboarding'
+      preLoaderRoute: typeof AdminOnboardingRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/organizations': {
       id: '/admin/organizations'
       path: '/organizations'
@@ -2881,6 +2913,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/leads'
       fullPath: '/api/admin/leads'
       preLoaderRoute: typeof ApiAdminLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/onboarding': {
+      id: '/api/admin/onboarding'
+      path: '/api/admin/onboarding'
+      fullPath: '/api/admin/onboarding'
+      preLoaderRoute: typeof ApiAdminOnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/sending': {
@@ -3727,6 +3766,7 @@ interface AdminRouteRouteChildren {
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminFlagsRoute: typeof AdminFlagsRoute
   AdminLeadsRoute: typeof AdminLeadsRoute
+  AdminOnboardingRoute: typeof AdminOnboardingRoute
   AdminOrganizationsRoute: typeof AdminOrganizationsRoute
   AdminSendingRoute: typeof AdminSendingRoute
   AdminUsersRoute: typeof AdminUsersRoute
@@ -3741,6 +3781,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminCustomersRoute: AdminCustomersRoute,
   AdminFlagsRoute: AdminFlagsRoute,
   AdminLeadsRoute: AdminLeadsRoute,
+  AdminOnboardingRoute: AdminOnboardingRoute,
   AdminOrganizationsRoute: AdminOrganizationsRoute,
   AdminSendingRoute: AdminSendingRoute,
   AdminUsersRoute: AdminUsersRoute,
@@ -3926,6 +3967,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAdminCustomersRoute: ApiAdminCustomersRoute,
   ApiAdminLeadsRoute: ApiAdminLeadsRoute,
+  ApiAdminOnboardingRoute: ApiAdminOnboardingRoute,
   ApiAdminSendingRoute: ApiAdminSendingRoute,
   ApiAdminSuperAdminsRoute: ApiAdminSuperAdminsRoute,
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,

@@ -11,7 +11,7 @@ import {
   Send,
   Menu,
   ShieldCheck,
-  Users, Sparkles } from "lucide-react";
+  Users, Sparkles, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -21,6 +21,7 @@ import { AiProviderBanner } from "@/components/admin/ai-provider-banner";
 const NAV = [
   { to: "/admin/organizations", label: "Organizations", icon: Building2 },
   { to: "/admin/customers", label: "Customers", icon: Users },
+  { to: "/admin/onboarding", label: "Onboarding funnel", icon: Filter },
   { to: "/admin/leads", label: "Leads & Demos", icon: MessageSquarePlus },
   { to: "/admin/billing", label: "Billing", icon: CreditCard },
   { to: "/admin/sending", label: "Sending now", icon: Send },
