@@ -158,9 +158,26 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           }
         }
 
-        // A template is never sent to someone who opted out, whoever asks.
+        // The template's category (as Meta approved it), read once: it decides
+        // the opt-out rule below and the meter after the send.
+        let templateCategory: string | null = null;
         if (messageType === "template") {
-          const { contactOptedOut } = await import("@/lib/opt-out.server");
+          const { data: tpl } = await supabase
+            .from("message_templates")
+            .select("category")
+            .eq("organization_id", organizationId)
+            .eq("waba_id", connection.wabaId)
+            .eq("name", templateName)
+            .limit(1)
+            .maybeSingle();
+          templateCategory = (tpl as { category?: string | null } | null)?.category ?? null;
+        }
+
+        // Batch 35: someone who opted out never gets a marketing template,
+        // whoever asks. Utility and authentication templates (an order update,
+        // a one-time code) still go; a template we can't place counts as marketing.
+        if (messageType === "template") {
+          const { contactOptedOut, optedOutMayReceive } = await import("@/lib/opt-out.server");
           const optOut = await contactOptedOut(supabase, organizationId, {
             contactId,
             phone: toPhone,
@@ -168,7 +185,12 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
           if (optOut.error) {
             return jsonError("We couldn't confirm this contact's opt-in. Try again.", 503);
           }
-          if (optOut.optedOut) return jsonError("This contact has opted out of messages.", 422);
+          if (optOut.optedOut && !optedOutMayReceive(templateCategory)) {
+            return jsonError(
+              "This contact opted out of marketing, so a marketing template can't be sent. Utility and authentication templates still can.",
+              422,
+            );
+          }
         }
 
         // 24-hour customer service window — enforced server-side.
@@ -318,16 +340,7 @@ export const Route = createFileRoute("/api/whatsapp/send-message")({
         const { emitEvent, recordUsage } = await import("@/lib/events.server");
         const { meterForMessageCategory } = await import("@/lib/events");
         let category = "service";
-        if (messageType === "template") {
-          const { data: tpl } = await supabase
-            .from("message_templates")
-            .select("category")
-            .eq("organization_id", organizationId)
-            .eq("waba_id", connection.wabaId)
-            .eq("name", templateName)
-            .maybeSingle();
-          category = String((tpl as { category?: string } | null)?.category ?? "utility");
-        }
+        if (messageType === "template") category = String(templateCategory ?? "utility");
         const { outboundMessageDimensions } = await import("@/lib/message-events");
         await emitEvent(supabase, "message.sent", {
           organizationId,

@@ -46,3 +46,7 @@ export function importOptInPatch(
   if (!consent || isOptedOut(existingStatus)) return {};
   return { opt_in_status: "opted_in" };
 }
+
+
+// Batch 35: the opt-out rule for templates, shared with the browser (opt-out.ts).
+export { optedOutMayReceive } from "@/lib/opt-out";

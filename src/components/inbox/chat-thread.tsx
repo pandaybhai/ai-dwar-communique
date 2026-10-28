@@ -661,8 +661,8 @@ export function ChatThread({
         <div className="flex items-start gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2.5 text-xs text-destructive">
           <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <p>
-            This contact opted out — only service replies within the 24-hour window are
-            appropriate. Please don’t send marketing or templates.
+            This contact opted out — no marketing. Service replies within the 24-hour window and
+            utility or authentication templates (an order update, a code) are still fine.
           </p>
         </div>
       ) : null}
@@ -843,6 +843,16 @@ export function ChatThread({
             />
             <SendFormButton organizationId={organizationId} conversationId={conversation.id} />
             <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen />
+            {/* Batch 35: an approved template can go any time, not only once the window closes. */}
+            <Button
+              variant="outline"
+              className="h-11 w-11 shrink-0 rounded-full p-0"
+              aria-label="Send a template"
+              title="Send a template"
+              onClick={() => setPickerOpen(true)}
+            >
+              <MessageSquareText className="h-4 w-4" />
+            </Button>
             <Button
               className="h-11 w-11 shrink-0 rounded-full p-0"
               disabled={!draft.trim() || sending}
@@ -880,6 +890,8 @@ export function ChatThread({
         wabaId={wabaId ?? null}
         sending={sending}
         onSend={onSendTemplate}
+        conversationId={conversation.id}
+        contactOptedOut={conversation.contact?.opt_in_status === "opted_out"}
       />
 
       {organizationId ? (
