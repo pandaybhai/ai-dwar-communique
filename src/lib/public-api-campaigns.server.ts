@@ -99,7 +99,8 @@ export type CampaignRequest = {
 
 function valueProblem(value: string, label: string): string | null {
   if (!value) return `${label} is empty.`;
-  if (value.length > MAX_VALUE_CHARS) return `${label} is longer than ${MAX_VALUE_CHARS} characters.`;
+  if (value.length > MAX_VALUE_CHARS)
+    return `${label} is longer than ${MAX_VALUE_CHARS} characters.`;
   // WhatsApp refuses a template value with a new line, a tab or more than four spaces in a row.
   if (/[\n\r\t]| {5,}/.test(value))
     return `${label} can't contain a new line, a tab or more than four spaces in a row.`;
@@ -129,7 +130,10 @@ function parseMapping(raw: unknown, label: string): VariableMapping | string {
   return `${label}: \`source\` must be name, phone, attribute or static.`;
 }
 
-function parseRecipientValues(raw: unknown, label: string): string[] | Record<string, string> | string {
+function parseRecipientValues(
+  raw: unknown,
+  label: string,
+): string[] | Record<string, string> | string {
   if (Array.isArray(raw)) {
     const out: string[] = [];
     for (const [i, v] of raw.entries()) {
@@ -144,7 +148,8 @@ function parseRecipientValues(raw: unknown, label: string): string[] | Record<st
   if (raw && typeof raw === "object") {
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      if (!/^\d{1,2}$/.test(k)) return `${label}: keys are the template's value numbers ("1", "2"…).`;
+      if (!/^\d{1,2}$/.test(k))
+        return `${label}: keys are the template's value numbers ("1", "2"…).`;
       if (typeof v !== "string" && typeof v !== "number") return `${label}["${k}"] must be a text.`;
       const value = String(v).trim();
       const problem = valueProblem(value, `${label}["${k}"]`);
@@ -170,10 +175,13 @@ export function parseCampaignRequest(
   if (name.length > MAX_NAME)
     return fail(400, "invalid_name", `\`name\` is longer than ${MAX_NAME} characters.`);
 
-  const templateName = typeof body["template_name"] === "string" ? body["template_name"].trim() : "";
+  const templateName =
+    typeof body["template_name"] === "string" ? body["template_name"].trim() : "";
   if (!templateName) return fail(400, "invalid_template_name", "`template_name` is required.");
   const language =
-    typeof body["language"] === "string" && body["language"].trim() ? body["language"].trim() : null;
+    typeof body["language"] === "string" && body["language"].trim()
+      ? body["language"].trim()
+      : null;
 
   // ---- the audience: exactly one of segment_id, tag, phones (or all: true) ----
   const a = body["audience"];
@@ -198,12 +206,17 @@ export function parseCampaignRequest(
   let audience: CampaignRequest["audience"];
   if (given[0] === "segment_id") {
     const id = typeof aud["segment_id"] === "string" ? aud["segment_id"].trim() : "";
-    if (!validId(id)) return fail(400, "invalid_audience", "`audience.segment_id` isn't a segment id.");
+    if (!validId(id))
+      return fail(400, "invalid_audience", "`audience.segment_id` isn't a segment id.");
     audience = { kind: "segment", segmentId: id };
   } else if (given[0] === "tag") {
     const tag = typeof aud["tag"] === "string" ? aud["tag"].trim() : "";
     if (!tag || tag.length > MAX_TAG_CHARS)
-      return fail(400, "invalid_audience", `\`audience.tag\` must be a tag name of 1–${MAX_TAG_CHARS} characters.`);
+      return fail(
+        400,
+        "invalid_audience",
+        `\`audience.tag\` must be a tag name of 1–${MAX_TAG_CHARS} characters.`,
+      );
     audience = { kind: "tag", tag };
   } else if (given[0] === "all") {
     if (aud["all"] !== true) return fail(400, "invalid_audience", "`audience.all` must be true.");
@@ -226,9 +239,14 @@ export function parseCampaignRequest(
         continue;
       }
       if (!entry || typeof entry !== "object" || Array.isArray(entry))
-        return fail(400, "invalid_audience", `audience.phones[${i}] must be a number or { phone, variables }.`);
+        return fail(
+          400,
+          "invalid_audience",
+          `audience.phones[${i}] must be a number or { phone, variables }.`,
+        );
       const e = entry as Record<string, unknown>;
-      const phone = typeof e["phone"] === "string" || typeof e["phone"] === "number" ? String(e["phone"]) : "";
+      const phone =
+        typeof e["phone"] === "string" || typeof e["phone"] === "number" ? String(e["phone"]) : "";
       if (!phone) return fail(400, "invalid_audience", `audience.phones[${i}].phone is required.`);
       let values: PhoneEntry["values"] = null;
       if (e["variables"] !== undefined && e["variables"] !== null) {
@@ -254,20 +272,31 @@ export function parseCampaignRequest(
     } else if (typeof rawVars === "object") {
       for (const [k, v] of Object.entries(rawVars as Record<string, unknown>)) {
         if (!/^\d{1,2}$/.test(k))
-          return fail(400, "invalid_variables", '`variables` keys are the template\'s value numbers ("1", "2"…).');
+          return fail(
+            400,
+            "invalid_variables",
+            '`variables` keys are the template\'s value numbers ("1", "2"…).',
+          );
         const m = parseMapping(v, `variables["${k}"]`);
         if (typeof m === "string") return fail(400, "invalid_variables", m);
         variables[String(Number(k))] = m;
       }
     } else {
-      return fail(400, "invalid_variables", "`variables` must be an array or an object keyed by value number.");
+      return fail(
+        400,
+        "invalid_variables",
+        "`variables` must be an array or an object keyed by value number.",
+      );
     }
   }
 
   // ---- what the app's launch also takes: a header file link, a coupon, an offer end ----
   for (const [field, check] of [
     ["header_media_url", (v: unknown) => typeof v === "string" && /^https:\/\//i.test(v.trim())],
-    ["coupon_code", (v: unknown) => typeof v === "string" && v.trim().length >= 1 && v.trim().length <= 15],
+    [
+      "coupon_code",
+      (v: unknown) => typeof v === "string" && v.trim().length >= 1 && v.trim().length <= 15,
+    ],
     ["offer_expires_at", (v: unknown) => typeof v === "string" && !Number.isNaN(Date.parse(v))],
   ] as const) {
     if (body[field] !== undefined && body[field] !== null && !check(body[field])) {
@@ -285,7 +314,11 @@ export function parseCampaignRequest(
   const rawSchedule = body["schedule_at"];
   if (rawSchedule !== undefined && rawSchedule !== null && rawSchedule !== "") {
     if (typeof rawSchedule !== "string" || Number.isNaN(Date.parse(rawSchedule)))
-      return fail(400, "invalid_schedule_at", "`schedule_at` must be an ISO date and time, e.g. 2026-11-01T10:00:00+05:30.");
+      return fail(
+        400,
+        "invalid_schedule_at",
+        "`schedule_at` must be an ISO date and time, e.g. 2026-11-01T10:00:00+05:30.",
+      );
     scheduleAt = new Date(rawSchedule);
     if (scheduleAt.getTime() > Date.now() + 90 * 24 * 60 * 60_000)
       return fail(400, "invalid_schedule_at", "`schedule_at` can be at most 90 days ahead.");
@@ -295,7 +328,11 @@ export function parseCampaignRequest(
   let idempotencyKey: string | null = null;
   if (!options.forEstimate && keyRaw !== undefined && keyRaw !== null && keyRaw !== "") {
     if (typeof keyRaw !== "string" || !/^[A-Za-z0-9_\-.:]{1,255}$/.test(keyRaw))
-      return fail(400, "invalid_idempotency_key", "`idempotency_key` must be 1–255 letters, digits or _ - . :");
+      return fail(
+        400,
+        "invalid_idempotency_key",
+        "`idempotency_key` must be 1–255 letters, digits or _ - . :",
+      );
     idempotencyKey = keyRaw;
   }
 
@@ -335,11 +372,19 @@ async function resolveCampaignTemplate(
   | { ok: false; answer: ApiReply }
 > {
   const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
-  const { connection, error: connectionError } = await getWhatsAppConnection(supabase, organizationId, null);
+  const { connection, error: connectionError } = await getWhatsAppConnection(
+    supabase,
+    organizationId,
+    null,
+  );
   if (!connection)
     return {
       ok: false,
-      answer: fail(400, "no_whatsapp_number", connectionError ?? "Connect a WhatsApp number in AiDwar first."),
+      answer: fail(
+        400,
+        "no_whatsapp_number",
+        connectionError ?? "Connect a WhatsApp number in AiDwar first.",
+      ),
     };
   const { data, error } = await supabase
     .from("message_templates")
@@ -349,7 +394,10 @@ async function resolveCampaignTemplate(
     .eq("name", req.templateName)
     .limit(20);
   if (error)
-    return { ok: false, answer: fail(503, "unavailable", "We couldn't read your templates. Please try again.") };
+    return {
+      ok: false,
+      answer: fail(503, "unavailable", "We couldn't read your templates. Please try again."),
+    };
   const rows = (data ?? []) as Array<TemplateRow & { status: string }>;
   const named = rows.filter((r) => !req.language || r.language === req.language);
   if (!named.length)
@@ -365,7 +413,11 @@ async function resolveCampaignTemplate(
   if (!approved.length)
     return {
       ok: false,
-      answer: fail(400, "template_not_approved", `Template "${req.templateName}" isn't approved by Meta yet (status ${named[0]!.status}).`),
+      answer: fail(
+        400,
+        "template_not_approved",
+        `Template "${req.templateName}" isn't approved by Meta yet (status ${named[0]!.status}).`,
+      ),
     };
   if (approved.length > 1)
     return {
@@ -377,7 +429,8 @@ async function resolveCampaignTemplate(
       ),
     };
   const template = approved[0]!;
-  const { templateVariableSpec, templateBodyText, extractVariables } = await import("@/lib/templates");
+  const { templateVariableSpec, templateBodyText, extractVariables } =
+    await import("@/lib/templates");
   const components = (template.components ?? []) as import("@/lib/templates").TemplateComponent[];
   const spec = templateVariableSpec(components);
   if (spec.urlButtons.length || spec.cards.length || spec.headerMedia?.format === "LOCATION") {
@@ -393,7 +446,11 @@ async function resolveCampaignTemplate(
   if (/\{\{\s*[A-Za-z_][\w]*\s*\}\}/.test(templateBodyText(components)))
     return {
       ok: false,
-      answer: fail(400, "template_unsupported", `Template "${req.templateName}" uses named values; the API fills numbered ones ({{1}}, {{2}}…).`),
+      answer: fail(
+        400,
+        "template_unsupported",
+        `Template "${req.templateName}" uses named values; the API fills numbered ones ({{1}}, {{2}}…).`,
+      ),
     };
   if (spec.headerMedia && !spec.headerMedia.url && !req.sendSettings["header_media_url"])
     return {
@@ -407,7 +464,11 @@ async function resolveCampaignTemplate(
   if (spec.copyCodeButtons.length && !req.sendSettings["coupon_code"])
     return {
       ok: false,
-      answer: fail(400, "coupon_code_required", `Template "${req.templateName}" has a copy-code button: give the code as \`coupon_code\`.`),
+      answer: fail(
+        400,
+        "coupon_code_required",
+        `Template "${req.templateName}" has a copy-code button: give the code as \`coupon_code\`.`,
+      ),
     };
   const variableOrder = Array.from(
     new Set([...extractVariables(templateBodyText(components)), ...spec.header]),
@@ -417,7 +478,10 @@ async function resolveCampaignTemplate(
 
 // ------------------------------------------------------------ the audience
 
-export type Skipped = { phone: string; reason: "invalid_phone" | "duplicate" | "not_a_contact" | "not_opted_in" | "opted_out" };
+export type Skipped = {
+  phone: string;
+  reason: "invalid_phone" | "duplicate" | "not_a_contact" | "not_opted_in" | "opted_out";
+};
 
 const CONTACT_COLUMNS = "id, name, phone, attributes, opt_in_status";
 
@@ -453,14 +517,26 @@ export async function resolveApiAudience(
   organizationId: string,
   audience: CampaignRequest["audience"],
 ): Promise<ResolvedAudience | ApiReply> {
-  const empty = { skipped: [] as Skipped[], values: new Map<string, string[] | Record<string, string>>() };
+  const empty = {
+    skipped: [] as Skipped[],
+    values: new Map<string, string[] | Record<string, string>>(),
+  };
   if (audience.kind === "segment" || audience.kind === "all") {
     const { resolveAudienceContacts, isSegmentNotFound } = await import("@/lib/campaigns.server");
     const segmentId = audience.kind === "segment" ? audience.segmentId : null;
     try {
-      return { ...empty, contacts: await resolveAudienceContacts(supabase, organizationId, segmentId), segmentId };
+      return {
+        ...empty,
+        contacts: await resolveAudienceContacts(supabase, organizationId, segmentId),
+        segmentId,
+      };
     } catch (error) {
-      if (isSegmentNotFound(error)) return fail(404, "segment_not_found", "There is no segment with this id in this workspace.");
+      if (isSegmentNotFound(error))
+        return fail(
+          404,
+          "segment_not_found",
+          "There is no segment with this id in this workspace.",
+        );
       return fail(503, "unavailable", "We couldn't work out this audience. Please try again.");
     }
   }
@@ -470,13 +546,17 @@ export async function resolveApiAudience(
       .from("tags")
       .select("id, name")
       .eq("organization_id", organizationId)
-      .ilike("name", audience.tag.replace(/[\\%_]/g, (c) => `\\${c}`))
+      .ilike(
+        "name",
+        audience.tag.replace(/[\\%_]/g, (c) => `\\${c}`),
+      )
       .limit(5);
     if (error) return fail(503, "unavailable", "We couldn't read your tags. Please try again.");
     const tag = ((tags ?? []) as Array<{ id: string; name: string }>).find(
       (t) => t.name.toLowerCase() === audience.tag.toLowerCase(),
     );
-    if (!tag) return fail(404, "tag_not_found", `There is no tag "${audience.tag}" in this workspace.`);
+    if (!tag)
+      return fail(404, "tag_not_found", `There is no tag "${audience.tag}" in this workspace.`);
     const ids: string[] = [];
     for (let from = 0; from < 50_000; from += 1000) {
       const { data, error: linkError } = await supabase
@@ -486,13 +566,18 @@ export async function resolveApiAudience(
         .eq("tag_id", tag.id)
         .order("contact_id")
         .range(from, from + 999);
-      if (linkError) return fail(503, "unavailable", "We couldn't read this tag's contacts. Please try again.");
+      if (linkError)
+        return fail(503, "unavailable", "We couldn't read this tag's contacts. Please try again.");
       const rows = (data ?? []) as Array<{ contact_id: string }>;
       ids.push(...rows.map((r) => r.contact_id));
       if (rows.length < 1000) break;
     }
     try {
-      return { ...empty, contacts: await contactsByIds(supabase, organizationId, Array.from(new Set(ids))), segmentId: null };
+      return {
+        ...empty,
+        contacts: await contactsByIds(supabase, organizationId, Array.from(new Set(ids))),
+        segmentId: null,
+      };
     } catch {
       return fail(503, "unavailable", "We couldn't read this tag's contacts. Please try again.");
     }
@@ -536,7 +621,10 @@ export async function resolveApiAudience(
       continue;
     }
     if (c.opt_in_status !== "opted_in") {
-      skipped.push({ phone, reason: c.opt_in_status === "opted_out" ? "opted_out" : "not_opted_in" });
+      skipped.push({
+        phone,
+        reason: c.opt_in_status === "opted_out" ? "opted_out" : "not_opted_in",
+      });
       continue;
     }
     contacts.push({ id: c.id, name: c.name, phone: c.phone, attributes: c.attributes });
@@ -585,7 +673,10 @@ export function recipientValueMap(
       return fail(400, "invalid_variables", `The template has no value {{${k}}}.`);
   }
   if (missing.size) {
-    const list = Array.from(missing).sort((a, b) => a - b).map((n) => `{{${n}}}`).join(", ");
+    const list = Array.from(missing)
+      .sort((a, b) => a - b)
+      .map((n) => `{{${n}}}`)
+      .join(", ");
     return fail(
       400,
       "missing_variables",
@@ -677,11 +768,19 @@ export async function createCampaignViaApi(
       return { status: claim.status, body: claim.body, headers: { "Idempotent-Replayed": "true" } };
     if (claim.kind === "in_progress")
       return {
-        ...fail(409, "idempotency_in_progress", "A request with this idempotency_key is still being worked on. Ask again in a few seconds."),
+        ...fail(
+          409,
+          "idempotency_in_progress",
+          "A request with this idempotency_key is still being worked on. Ask again in a few seconds.",
+        ),
         headers: { "Retry-After": "5" },
       };
     if (claim.kind === "mismatch")
-      return fail(409, "idempotency_key_reused", "This idempotency_key was already used for a different request in the last 24 hours.");
+      return fail(
+        409,
+        "idempotency_key_reused",
+        "This idempotency_key was already used for a different request in the last 24 hours.",
+      );
     if (claim.kind === "error")
       return fail(503, "unavailable", "We couldn't reserve the idempotency_key. Please try again.");
     requestId = claim.id;
@@ -695,7 +794,13 @@ export async function createCampaignViaApi(
   try {
     const { workspaceLocked, launchCampaign } = await import("@/lib/campaign-launch.server");
     if (await workspaceLocked(supabase, orgId))
-      return refuse(fail(402, "workspace_locked", "This workspace is locked — choose a plan in AiDwar to send again."));
+      return refuse(
+        fail(
+          402,
+          "workspace_locked",
+          "This workspace is locked — choose a plan in AiDwar to send again.",
+        ),
+      );
     const resolved = await resolveCampaignTemplate(supabase, orgId, req);
     if (!resolved.ok) return refuse(resolved.answer);
     const audience = await resolveApiAudience(supabase, orgId, req.audience);
@@ -743,7 +848,11 @@ export async function createCampaignViaApi(
       },
     };
     if (requestId)
-      await lib.finishIdempotency(supabase, requestId, { status: answer.status, body: answer.body, messageId: null });
+      await lib.finishIdempotency(supabase, requestId, {
+        status: answer.status,
+        body: answer.body,
+        messageId: null,
+      });
     return answer;
   } catch (error) {
     if (requestId && !launchStarted) await lib.releaseIdempotency(supabase, requestId);
@@ -753,7 +862,8 @@ export async function createCampaignViaApi(
 
 // ------------------------------------------------------------ read, list, cancel
 
-const notFound = () => fail(404, "not_found", "There is no campaign with this id in this workspace.");
+const notFound = () =>
+  fail(404, "not_found", "There is no campaign with this id in this workspace.");
 
 async function readCampaign(
   supabase: SupabaseClient,
@@ -814,7 +924,9 @@ export async function listCampaignsViaApi(
     .eq("organization_id", caller.organizationId);
   if (status) query = query.eq("status", status);
   if (cursor)
-    query = query.or(`created_at.lt.${cursor.at},and(created_at.eq.${cursor.at},id.lt.${cursor.id})`);
+    query = query.or(
+      `created_at.lt.${cursor.at},and(created_at.eq.${cursor.at},id.lt.${cursor.id})`,
+    );
   const { data, error } = await query
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
@@ -828,7 +940,9 @@ export async function listCampaignsViaApi(
     body: {
       campaigns: page.map(publicCampaign),
       next_cursor:
-        rows.length > limit && last ? encodeCursor(String(last["created_at"]), String(last["id"])) : null,
+        rows.length > limit && last
+          ? encodeCursor(String(last["created_at"]), String(last["id"]))
+          : null,
     },
   };
 }
@@ -843,7 +957,11 @@ export async function cancelCampaignViaApi(
   const row = await readCampaign(supabase, orgId, campaignId);
   if (!row) return notFound();
   const finished = () =>
-    fail(409, "campaign_finished", "This campaign has already finished sending, so it can't be cancelled.");
+    fail(
+      409,
+      "campaign_finished",
+      "This campaign has already finished sending, so it can't be cancelled.",
+    );
   if (FINISHED_STATUSES.includes(String(row["status"]))) return finished();
   const { cancelCampaign } = await import("@/lib/campaign-launch.server");
   const cancelled = await cancelCampaign(supabase, orgId, String(row["id"]));
@@ -856,13 +974,19 @@ export async function cancelCampaignViaApi(
     api_key_id: caller.keyId,
   });
   const after = await readCampaign(supabase, orgId, String(row["id"]));
-  return { status: 200, body: { campaign: publicCampaign(after ?? { ...row, status: "cancelled" }) } };
+  return {
+    status: 200,
+    body: { campaign: publicCampaign(after ?? { ...row, status: "cancelled" }) },
+  };
 }
 
 // ------------------------------------------------------------ campaign.completed
 
 /** The webhook body for a finished campaign. */
-export function campaignCompletedPayload(row: CampaignRow, occurredAt: string): Record<string, unknown> {
+export function campaignCompletedPayload(
+  row: CampaignRow,
+  occurredAt: string,
+): Record<string, unknown> {
   const c = publicCampaign(row);
   return {
     event: "campaign.completed",
@@ -880,7 +1004,11 @@ export function campaignCompletedPayload(row: CampaignRow, occurredAt: string): 
  * Whether this workspace's webhook hears `event`: a webhook set and active,
  * public_api on, and the event in its plan. A failed read is "no".
  */
-async function webhookWants(supabase: SupabaseClient, organizationId: string, event: string): Promise<boolean> {
+async function webhookWants(
+  supabase: SupabaseClient,
+  organizationId: string,
+  event: string,
+): Promise<boolean> {
   try {
     const { data, error } = await supabase
       .from("workspace_connections")

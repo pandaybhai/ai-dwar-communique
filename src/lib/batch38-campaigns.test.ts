@@ -87,7 +87,11 @@ describe("POST /api/v1/campaigns", () => {
       estimated_cost: 0.3, // 2 × 0.15: the hold the worker takes before the first message
     });
     expect(
-      rows("campaign_recipients").map((r) => [r["contact_id"], r["phone"], r["resolved_variables"]]),
+      rows("campaign_recipients").map((r) => [
+        r["contact_id"],
+        r["phone"],
+        r["resolved_variables"],
+      ]),
     ).toEqual([
       ["c1", "+919800000001", { "1": "Asha", "2": "20%" }],
       ["c2", "+919800000002", { "1": "Ravi", "2": "15%" }],
@@ -95,7 +99,9 @@ describe("POST /api/v1/campaigns", () => {
     expect(rows("campaign_recipients").every((r) => r["organization_id"] === ORG)).toBe(true);
     // Nothing reached Meta: the campaign worker sends, after its wallet hold.
     expect(metaCalls.filter((u) => u.includes("graph.facebook.com"))).toEqual([]);
-    expect(rows("activity_log").find((a) => a["action"] === "campaign_launched")?.["details"]).toMatchObject({
+    expect(
+      rows("activity_log").find((a) => a["action"] === "campaign_launched")?.["details"],
+    ).toMatchObject({
       source: "api",
       api_key_id: "key-a",
       recipient_count: 2,
@@ -110,24 +116,34 @@ describe("POST /api/v1/campaigns", () => {
       variables: { "1": { source: "name" }, "2": "10%" },
     });
     expect(res.status).toBe(201);
-    expect(rows("campaign_recipients").map((r) => [r["contact_id"], r["resolved_variables"]])).toEqual([
-      ["c1", { "1": "Asha", "2": "10%" }],
-    ]);
+    expect(
+      rows("campaign_recipients").map((r) => [r["contact_id"], r["resolved_variables"]]),
+    ).toEqual([["c1", { "1": "Asha", "2": "10%" }]]);
   });
 
   it("a value nobody gives is refused, and nothing is created", async () => {
-    const res = await create(offer({ audience: { phones: ["+919800000001"] }, variables: ["10%"].slice(1) }));
+    const res = await create(
+      offer({ audience: { phones: ["+919800000001"] }, variables: ["10%"].slice(1) }),
+    );
     expect(res.status).toBe(400);
     expect(res.body["code"]).toBe("missing_variables");
     expect(rows("campaigns")).toHaveLength(0);
   });
 
   it("templates a campaign can't fill, unknown tags and segments, and a workspace without credits are refused before anything is created", async () => {
-    expect((await create(offer({ template_name: "shop_link" }))).body["code"]).toBe("template_unsupported");
-    expect((await create(offer({ template_name: "b_invoice" }))).body["code"]).toBe("template_not_found");
+    expect((await create(offer({ template_name: "shop_link" }))).body["code"]).toBe(
+      "template_unsupported",
+    );
+    expect((await create(offer({ template_name: "b_invoice" }))).body["code"]).toBe(
+      "template_not_found",
+    );
     expect((await create(offer({ audience: { tag: "nobody" } }))).status).toBe(404);
-    expect((await create(offer({ audience: { segment_id: "seg-of-b" } }))).body["code"]).toBe("segment_not_found");
-    expect((await create(offer({ audience: { tag: "vip", phones: ["+1"] } }))).body["code"]).toBe("invalid_audience");
+    expect((await create(offer({ audience: { segment_id: "seg-of-b" } }))).body["code"]).toBe(
+      "segment_not_found",
+    );
+    expect((await create(offer({ audience: { tag: "vip", phones: ["+1"] } }))).body["code"]).toBe(
+      "invalid_audience",
+    );
     rows("wallet_balances")[0]!["balance"] = 0;
     const broke = await create(offer());
     expect(broke.status).toBe(402);
@@ -156,9 +172,11 @@ describe("POST /api/v1/campaigns", () => {
   });
 
   it("the app's Launch button still launches exactly as before (the shared launch)", async () => {
-    const res = await (AppLaunchRoute as unknown as {
-      options: { server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } } };
-    }).options.server.handlers.POST({
+    const res = await (
+      AppLaunchRoute as unknown as {
+        options: { server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } } };
+      }
+    ).options.server.handlers.POST({
       request: new Request("https://aidwar.in/api/campaigns/launch", {
         method: "POST",
         headers: { authorization: "Bearer u-admin", "content-type": "application/json" },
@@ -175,9 +193,11 @@ describe("POST /api/v1/campaigns", () => {
     expect(rows("campaigns")).toHaveLength(0);
     rows("role_permissions").push({ role: "admin", permission_key: "campaigns.send" });
     rows("permissions").push({ key: "campaigns.send" });
-    const ok = await (AppLaunchRoute as unknown as {
-      options: { server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } } };
-    }).options.server.handlers.POST({
+    const ok = await (
+      AppLaunchRoute as unknown as {
+        options: { server: { handlers: { POST: (a: { request: Request }) => Promise<Response> } } };
+      }
+    ).options.server.handlers.POST({
       request: new Request("https://aidwar.in/api/campaigns/launch", {
         method: "POST",
         headers: { authorization: "Bearer u-admin", "content-type": "application/json" },
@@ -236,7 +256,10 @@ describe("reading and cancelling", () => {
   it("GET one: its counts; another workspace's campaign is a 404 like one that doesn't exist", async () => {
     seedCampaign({ id: "camp-a", created_at: "2026-10-02T00:00:00Z" });
     seedCampaign({ id: "camp-b", organization_id: OTHER_ORG, created_at: "2026-10-02T00:00:00Z" });
-    const res = await call(OneRoute, "GET", "/api/v1/campaigns/camp-a", { key: keyA(), params: { campaignId: "camp-a" } });
+    const res = await call(OneRoute, "GET", "/api/v1/campaigns/camp-a", {
+      key: keyA(),
+      params: { campaignId: "camp-a" },
+    });
     expect(res.status).toBe(200);
     expect((res.body["campaign"] as Record<string, unknown>)["counts"]).toEqual({
       recipients: 10,
@@ -246,18 +269,39 @@ describe("reading and cancelling", () => {
       failed: 1,
       replied: 2,
     });
-    const theirs = await call(OneRoute, "GET", "/api/v1/campaigns/camp-b", { key: keyA(), params: { campaignId: "camp-b" } });
-    const missing = await call(OneRoute, "GET", "/api/v1/campaigns/nope", { key: keyA(), params: { campaignId: "nope" } });
+    const theirs = await call(OneRoute, "GET", "/api/v1/campaigns/camp-b", {
+      key: keyA(),
+      params: { campaignId: "camp-b" },
+    });
+    const missing = await call(OneRoute, "GET", "/api/v1/campaigns/nope", {
+      key: keyA(),
+      params: { campaignId: "nope" },
+    });
     expect(theirs.status).toBe(404);
     expect(theirs.body).toEqual(missing.body);
     // And B's key never sees A's.
-    expect((await call(OneRoute, "GET", "/api/v1/campaigns/camp-a", { key: keyB(), params: { campaignId: "camp-a" } })).status).toBe(404);
+    expect(
+      (
+        await call(OneRoute, "GET", "/api/v1/campaigns/camp-a", {
+          key: keyB(),
+          params: { campaignId: "camp-a" },
+        })
+      ).status,
+    ).toBe(404);
   });
 
   it("GET list: newest first, a status filter, a cursor that walks every page, only this workspace", async () => {
     for (let i = 1; i <= 5; i += 1)
-      seedCampaign({ id: `camp-${i}`, created_at: `2026-10-0${i}T00:00:00Z`, status: i === 3 ? "completed" : "sending" });
-    seedCampaign({ id: "camp-other", organization_id: OTHER_ORG, created_at: "2026-10-09T00:00:00Z" });
+      seedCampaign({
+        id: `camp-${i}`,
+        created_at: `2026-10-0${i}T00:00:00Z`,
+        status: i === 3 ? "completed" : "sending",
+      });
+    seedCampaign({
+      id: "camp-other",
+      organization_id: OTHER_ORG,
+      created_at: "2026-10-09T00:00:00Z",
+    });
     const ids: string[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < 5; page += 1) {
@@ -268,14 +312,24 @@ describe("reading and cancelling", () => {
         { key: keyA() },
       );
       expect(res.status).toBe(200);
-      ids.push(...(res.body["campaigns"] as Array<{ campaign_id: string }>).map((c) => c.campaign_id));
+      ids.push(
+        ...(res.body["campaigns"] as Array<{ campaign_id: string }>).map((c) => c.campaign_id),
+      );
       cursor = res.body["next_cursor"] as string | null;
       if (!cursor) break;
     }
     expect(ids).toEqual(["camp-5", "camp-4", "camp-3", "camp-2", "camp-1"]);
-    const done = await call(CampaignsRoute, "GET", "/api/v1/campaigns?status=completed", { key: keyA() });
-    expect((done.body["campaigns"] as Array<{ campaign_id: string }>).map((c) => c.campaign_id)).toEqual(["camp-3"]);
-    expect((await call(CampaignsRoute, "GET", "/api/v1/campaigns?cursor=bad", { key: keyA() })).body["code"]).toBe("invalid_cursor");
+    const done = await call(CampaignsRoute, "GET", "/api/v1/campaigns?status=completed", {
+      key: keyA(),
+    });
+    expect(
+      (done.body["campaigns"] as Array<{ campaign_id: string }>).map((c) => c.campaign_id),
+    ).toEqual(["camp-3"]);
+    expect(
+      (await call(CampaignsRoute, "GET", "/api/v1/campaigns?cursor=bad", { key: keyA() })).body[
+        "code"
+      ],
+    ).toBe("invalid_cursor");
   });
 
   it("cancel: a sending campaign is cancelled and its queued recipients skipped; after it finished, refused", async () => {
@@ -338,8 +392,14 @@ describe("campaign.completed", () => {
       failed_count: 0,
       completed_at: "2026-10-20T10:00:00.000Z",
     });
-    await queueCampaignCompleted(h.world!.db.supabase, { organizationId: ORG, campaignId: "camp-a" });
-    await queueCampaignCompleted(h.world!.db.supabase, { organizationId: ORG, campaignId: "camp-a" });
+    await queueCampaignCompleted(h.world!.db.supabase, {
+      organizationId: ORG,
+      campaignId: "camp-a",
+    });
+    await queueCampaignCompleted(h.world!.db.supabase, {
+      organizationId: ORG,
+      campaignId: "camp-a",
+    });
     const queued = rows("api_webhook_deliveries");
     expect(queued).toHaveLength(1);
     expect(queued[0]).toMatchObject({
@@ -360,14 +420,23 @@ describe("campaign.completed", () => {
 
   it("nothing is queued without a webhook, with public_api off, or for another workspace's campaign", async () => {
     rows("campaigns").push({ id: "camp-a", organization_id: ORG, status: "completed" });
-    await queueCampaignCompleted(h.world!.db.supabase, { organizationId: ORG, campaignId: "camp-a" });
+    await queueCampaignCompleted(h.world!.db.supabase, {
+      organizationId: ORG,
+      campaignId: "camp-a",
+    });
     expect(rows("api_webhook_deliveries")).toHaveLength(0);
     setWebhook();
     h.world!.flags.on = false;
-    await queueCampaignCompleted(h.world!.db.supabase, { organizationId: ORG, campaignId: "camp-a" });
+    await queueCampaignCompleted(h.world!.db.supabase, {
+      organizationId: ORG,
+      campaignId: "camp-a",
+    });
     expect(rows("api_webhook_deliveries")).toHaveLength(0);
     h.world!.flags.on = true;
-    await queueCampaignCompleted(h.world!.db.supabase, { organizationId: OTHER_ORG, campaignId: "camp-a" });
+    await queueCampaignCompleted(h.world!.db.supabase, {
+      organizationId: OTHER_ORG,
+      campaignId: "camp-a",
+    });
     expect(rows("api_webhook_deliveries")).toHaveLength(0);
   });
 });

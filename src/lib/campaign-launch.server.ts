@@ -72,9 +72,11 @@ export type CampaignCategory = "marketing" | "utility" | "authentication" | "ser
 
 export function campaignCategory(raw: unknown): CampaignCategory {
   const category = String(raw ?? "marketing").toLowerCase();
-  return (["marketing", "utility", "authentication", "service"].includes(category)
-    ? category
-    : "marketing") as CampaignCategory;
+  return (
+    ["marketing", "utility", "authentication", "service"].includes(category)
+      ? category
+      : "marketing"
+  ) as CampaignCategory;
 }
 
 /** A locked or paused workspace spends nothing until a plan is chosen. */
@@ -103,11 +105,7 @@ export async function launchCampaign(
   const { logServerActivity } = await import("@/lib/whatsapp-api.server");
 
   if (await workspaceLocked(supabase, organizationId)) {
-    return refuse(
-      402,
-      "workspace_locked",
-      "This workspace is locked — choose a plan to continue.",
-    );
+    return refuse(402, "workspace_locked", "This workspace is locked — choose a plan to continue.");
   }
 
   const name = input.name.trim();
@@ -348,8 +346,13 @@ export async function cancelCampaign(
     .not("status", "in", "(completed,cancelled,failed)")
     .select("id");
   if (moveError)
-    return { ok: false, finished: false, error: "We couldn't cancel this campaign. Please try again." };
-  if (!moved?.length) return { ok: false, finished: true, error: "This campaign has already finished." };
+    return {
+      ok: false,
+      finished: false,
+      error: "We couldn't cancel this campaign. Please try again.",
+    };
+  if (!moved?.length)
+    return { ok: false, finished: true, error: "This campaign has already finished." };
 
   // Whatever was reserved and not spent goes back to the wallet.
   const { settleCampaignSpend } = await import("@/lib/campaign-billing.server");

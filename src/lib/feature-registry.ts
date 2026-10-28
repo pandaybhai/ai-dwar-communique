@@ -165,7 +165,13 @@ export const FEATURES: readonly FeatureManifest[] = [
       section_label: "Inbox & team",
       section_order: 40,
     },
-    activity_actions: ["conversation_assigned", "conversation_closed"],
+    // conversation_reopened / contact_tags_changed: the Public API's inbox actions (Batch 38).
+    activity_actions: [
+      "conversation_assigned",
+      "conversation_closed",
+      "conversation_reopened",
+      "contact_tags_changed",
+    ],
     ai_tools: [
       {
         name: "search_conversation_history",

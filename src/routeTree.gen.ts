@@ -142,6 +142,7 @@ import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/s
 import { Route as ApiV1CampaignsIndexRouteImport } from './routes/api/v1/campaigns/index'
 import { Route as ApiV1CampaignsCampaignIdRouteImport } from './routes/api/v1/campaigns/$campaignId'
 import { Route as ApiV1CampaignsEstimateRouteImport } from './routes/api/v1/campaigns/estimate'
+import { Route as ApiV1ConversationsIndexRouteImport } from './routes/api/v1/conversations/index'
 import { Route as ApiV1MessagesMessageIdRouteImport } from './routes/api/v1/messages/$messageId'
 import { Route as ApiV1MessagesTemplateRouteImport } from './routes/api/v1/messages/template'
 import { Route as ApiWhatsappChatMediaMessageIdRouteImport } from './routes/api/whatsapp/chat-media.$messageId'
@@ -151,6 +152,10 @@ import { Route as ApiPublicShopifyWebhooksCustomersDataRequestRouteImport } from
 import { Route as ApiPublicShopifyWebhooksCustomersRedactRouteImport } from './routes/api/public/shopify/webhooks/customers-redact'
 import { Route as ApiPublicShopifyWebhooksShopRedactRouteImport } from './routes/api/public/shopify/webhooks/shop-redact'
 import { Route as ApiV1CampaignsCampaignIdCancelRouteImport } from './routes/api/v1/campaigns/$campaignId.cancel'
+import { Route as ApiV1ConversationsPhoneAssignRouteImport } from './routes/api/v1/conversations/$phone.assign'
+import { Route as ApiV1ConversationsPhoneCloseRouteImport } from './routes/api/v1/conversations/$phone.close'
+import { Route as ApiV1ConversationsPhoneReopenRouteImport } from './routes/api/v1/conversations/$phone.reopen'
+import { Route as ApiV1ConversationsPhoneTagsRouteImport } from './routes/api/v1/conversations/$phone.tags'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -841,6 +846,11 @@ const ApiV1CampaignsEstimateRoute = ApiV1CampaignsEstimateRouteImport.update({
   path: '/api/v1/campaigns/estimate',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1ConversationsIndexRoute = ApiV1ConversationsIndexRouteImport.update({
+  id: '/api/v1/conversations/',
+  path: '/api/v1/conversations/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1MessagesMessageIdRoute = ApiV1MessagesMessageIdRouteImport.update({
   id: '/api/v1/messages/$messageId',
   path: '/api/v1/messages/$messageId',
@@ -890,6 +900,30 @@ const ApiV1CampaignsCampaignIdCancelRoute =
     id: '/cancel',
     path: '/cancel',
     getParentRoute: () => ApiV1CampaignsCampaignIdRoute,
+  } as any)
+const ApiV1ConversationsPhoneAssignRoute =
+  ApiV1ConversationsPhoneAssignRouteImport.update({
+    id: '/api/v1/conversations/$phone/assign',
+    path: '/api/v1/conversations/$phone/assign',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1ConversationsPhoneCloseRoute =
+  ApiV1ConversationsPhoneCloseRouteImport.update({
+    id: '/api/v1/conversations/$phone/close',
+    path: '/api/v1/conversations/$phone/close',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1ConversationsPhoneReopenRoute =
+  ApiV1ConversationsPhoneReopenRouteImport.update({
+    id: '/api/v1/conversations/$phone/reopen',
+    path: '/api/v1/conversations/$phone/reopen',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1ConversationsPhoneTagsRoute =
+  ApiV1ConversationsPhoneTagsRouteImport.update({
+    id: '/api/v1/conversations/$phone/tags',
+    path: '/api/v1/conversations/$phone/tags',
+    getParentRoute: () => rootRouteImport,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -1031,10 +1065,15 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
   '/api/v1/campaigns/': typeof ApiV1CampaignsIndexRoute
+  '/api/v1/conversations/': typeof ApiV1ConversationsIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
   '/api/v1/campaigns/$campaignId/cancel': typeof ApiV1CampaignsCampaignIdCancelRoute
+  '/api/v1/conversations/$phone/assign': typeof ApiV1ConversationsPhoneAssignRoute
+  '/api/v1/conversations/$phone/close': typeof ApiV1ConversationsPhoneCloseRoute
+  '/api/v1/conversations/$phone/reopen': typeof ApiV1ConversationsPhoneReopenRoute
+  '/api/v1/conversations/$phone/tags': typeof ApiV1ConversationsPhoneTagsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1173,10 +1212,15 @@ export interface FileRoutesByTo {
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
   '/api/v1/campaigns': typeof ApiV1CampaignsIndexRoute
+  '/api/v1/conversations': typeof ApiV1ConversationsIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
   '/api/v1/campaigns/$campaignId/cancel': typeof ApiV1CampaignsCampaignIdCancelRoute
+  '/api/v1/conversations/$phone/assign': typeof ApiV1ConversationsPhoneAssignRoute
+  '/api/v1/conversations/$phone/close': typeof ApiV1ConversationsPhoneCloseRoute
+  '/api/v1/conversations/$phone/reopen': typeof ApiV1ConversationsPhoneReopenRoute
+  '/api/v1/conversations/$phone/tags': typeof ApiV1ConversationsPhoneTagsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1318,10 +1362,15 @@ export interface FileRoutesById {
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
   '/api/v1/campaigns/': typeof ApiV1CampaignsIndexRoute
+  '/api/v1/conversations/': typeof ApiV1ConversationsIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
   '/api/v1/campaigns/$campaignId/cancel': typeof ApiV1CampaignsCampaignIdCancelRoute
+  '/api/v1/conversations/$phone/assign': typeof ApiV1ConversationsPhoneAssignRoute
+  '/api/v1/conversations/$phone/close': typeof ApiV1ConversationsPhoneCloseRoute
+  '/api/v1/conversations/$phone/reopen': typeof ApiV1ConversationsPhoneReopenRoute
+  '/api/v1/conversations/$phone/tags': typeof ApiV1ConversationsPhoneTagsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1464,10 +1513,15 @@ export interface FileRouteTypes {
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
     | '/api/v1/campaigns/'
+    | '/api/v1/conversations/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
     | '/api/v1/campaigns/$campaignId/cancel'
+    | '/api/v1/conversations/$phone/assign'
+    | '/api/v1/conversations/$phone/close'
+    | '/api/v1/conversations/$phone/reopen'
+    | '/api/v1/conversations/$phone/tags'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1606,10 +1660,15 @@ export interface FileRouteTypes {
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
     | '/api/v1/campaigns'
+    | '/api/v1/conversations'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
     | '/api/v1/campaigns/$campaignId/cancel'
+    | '/api/v1/conversations/$phone/assign'
+    | '/api/v1/conversations/$phone/close'
+    | '/api/v1/conversations/$phone/reopen'
+    | '/api/v1/conversations/$phone/tags'
   id:
     | '__root__'
     | '/'
@@ -1750,10 +1809,15 @@ export interface FileRouteTypes {
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
     | '/api/v1/campaigns/'
+    | '/api/v1/conversations/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
     | '/api/v1/campaigns/$campaignId/cancel'
+    | '/api/v1/conversations/$phone/assign'
+    | '/api/v1/conversations/$phone/close'
+    | '/api/v1/conversations/$phone/reopen'
+    | '/api/v1/conversations/$phone/tags'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1866,9 +1930,14 @@ export interface RootRouteChildren {
   ApiWhatsappChatMediaMessageIdRoute: typeof ApiWhatsappChatMediaMessageIdRoute
   ApiWhatsappMediaIdRoute: typeof ApiWhatsappMediaIdRoute
   ApiV1CampaignsIndexRoute: typeof ApiV1CampaignsIndexRoute
+  ApiV1ConversationsIndexRoute: typeof ApiV1ConversationsIndexRoute
   ApiPublicShopifyWebhooksCustomersDataRequestRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   ApiPublicShopifyWebhooksCustomersRedactRoute: typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   ApiPublicShopifyWebhooksShopRedactRoute: typeof ApiPublicShopifyWebhooksShopRedactRoute
+  ApiV1ConversationsPhoneAssignRoute: typeof ApiV1ConversationsPhoneAssignRoute
+  ApiV1ConversationsPhoneCloseRoute: typeof ApiV1ConversationsPhoneCloseRoute
+  ApiV1ConversationsPhoneReopenRoute: typeof ApiV1ConversationsPhoneReopenRoute
+  ApiV1ConversationsPhoneTagsRoute: typeof ApiV1ConversationsPhoneTagsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2804,6 +2873,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1CampaignsEstimateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/conversations/': {
+      id: '/api/v1/conversations/'
+      path: '/api/v1/conversations'
+      fullPath: '/api/v1/conversations/'
+      preLoaderRoute: typeof ApiV1ConversationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/messages/$messageId': {
       id: '/api/v1/messages/$messageId'
       path: '/api/v1/messages/$messageId'
@@ -2866,6 +2942,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/v1/campaigns/$campaignId/cancel'
       preLoaderRoute: typeof ApiV1CampaignsCampaignIdCancelRouteImport
       parentRoute: typeof ApiV1CampaignsCampaignIdRoute
+    }
+    '/api/v1/conversations/$phone/assign': {
+      id: '/api/v1/conversations/$phone/assign'
+      path: '/api/v1/conversations/$phone/assign'
+      fullPath: '/api/v1/conversations/$phone/assign'
+      preLoaderRoute: typeof ApiV1ConversationsPhoneAssignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/conversations/$phone/close': {
+      id: '/api/v1/conversations/$phone/close'
+      path: '/api/v1/conversations/$phone/close'
+      fullPath: '/api/v1/conversations/$phone/close'
+      preLoaderRoute: typeof ApiV1ConversationsPhoneCloseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/conversations/$phone/reopen': {
+      id: '/api/v1/conversations/$phone/reopen'
+      path: '/api/v1/conversations/$phone/reopen'
+      fullPath: '/api/v1/conversations/$phone/reopen'
+      preLoaderRoute: typeof ApiV1ConversationsPhoneReopenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/conversations/$phone/tags': {
+      id: '/api/v1/conversations/$phone/tags'
+      path: '/api/v1/conversations/$phone/tags'
+      fullPath: '/api/v1/conversations/$phone/tags'
+      preLoaderRoute: typeof ApiV1ConversationsPhoneTagsRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -3075,12 +3179,17 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappChatMediaMessageIdRoute: ApiWhatsappChatMediaMessageIdRoute,
   ApiWhatsappMediaIdRoute: ApiWhatsappMediaIdRoute,
   ApiV1CampaignsIndexRoute: ApiV1CampaignsIndexRoute,
+  ApiV1ConversationsIndexRoute: ApiV1ConversationsIndexRoute,
   ApiPublicShopifyWebhooksCustomersDataRequestRoute:
     ApiPublicShopifyWebhooksCustomersDataRequestRoute,
   ApiPublicShopifyWebhooksCustomersRedactRoute:
     ApiPublicShopifyWebhooksCustomersRedactRoute,
   ApiPublicShopifyWebhooksShopRedactRoute:
     ApiPublicShopifyWebhooksShopRedactRoute,
+  ApiV1ConversationsPhoneAssignRoute: ApiV1ConversationsPhoneAssignRoute,
+  ApiV1ConversationsPhoneCloseRoute: ApiV1ConversationsPhoneCloseRoute,
+  ApiV1ConversationsPhoneReopenRoute: ApiV1ConversationsPhoneReopenRoute,
+  ApiV1ConversationsPhoneTagsRoute: ApiV1ConversationsPhoneTagsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

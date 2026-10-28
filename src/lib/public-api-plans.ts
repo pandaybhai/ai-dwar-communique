@@ -72,9 +72,21 @@ export const PLAN_AVAILABILITY: Availability[] = [
   // ---- messages
   endpoint("POST", "/api/v1/messages/template", "Messages", "Send an approved template", "v1.0"),
   endpoint("GET", "/api/v1/messages/{message_id}", "Messages", "A sent message's status", "v1.0"),
-  endpoint("POST", "/api/v1/messages/session", "Messages", "Send inside the 24-hour window", "v1.1"),
+  endpoint(
+    "POST",
+    "/api/v1/messages/session",
+    "Messages",
+    "Send inside the 24-hour window",
+    "v1.1",
+  ),
   endpoint("GET", "/api/v1/media/{message_id}", "Messages", "A message's file", "v1.1"),
-  endpoint("GET", "/api/v1/media/{message_id}/download", "Messages", "Download a message's file", "v1.1"),
+  endpoint(
+    "GET",
+    "/api/v1/media/{message_id}/download",
+    "Messages",
+    "Download a message's file",
+    "v1.1",
+  ),
   // ---- contacts, templates, account
   endpoint("GET", "/api/v1/contacts", "Contacts", "List contacts", "v1.1"),
   endpoint("POST", "/api/v1/contacts", "Contacts", "Add or update a contact", "v1.1"),
@@ -88,15 +100,51 @@ export const PLAN_AVAILABILITY: Availability[] = [
   // ---- campaigns (v1.2)
   endpoint("POST", "/api/v1/campaigns", "Campaigns", "Create and launch a campaign", "v1.2"),
   endpoint("GET", "/api/v1/campaigns", "Campaigns", "List campaigns", "v1.2"),
-  endpoint("POST", "/api/v1/campaigns/estimate", "Campaigns", "Recipients and cost, before launching", "v1.2"),
-  endpoint("GET", "/api/v1/campaigns/{campaign_id}", "Campaigns", "One campaign with its counts", "v1.2"),
-  endpoint("POST", "/api/v1/campaigns/{campaign_id}/cancel", "Campaigns", "Cancel before it finishes", "v1.2"),
+  endpoint(
+    "POST",
+    "/api/v1/campaigns/estimate",
+    "Campaigns",
+    "Recipients and cost, before launching",
+    "v1.2",
+  ),
+  endpoint(
+    "GET",
+    "/api/v1/campaigns/{campaign_id}",
+    "Campaigns",
+    "One campaign with its counts",
+    "v1.2",
+  ),
+  endpoint(
+    "POST",
+    "/api/v1/campaigns/{campaign_id}/cancel",
+    "Campaigns",
+    "Cancel before it finishes",
+    "v1.2",
+  ),
   // ---- inbox (v1.2)
   endpoint("GET", "/api/v1/conversations", "Inbox", "List conversations", "v1.2"),
-  endpoint("POST", "/api/v1/conversations/{phone}/assign", "Inbox", "Assign to a team member", "v1.2"),
+  endpoint(
+    "POST",
+    "/api/v1/conversations/{phone}/assign",
+    "Inbox",
+    "Assign to a team member",
+    "v1.2",
+  ),
   endpoint("POST", "/api/v1/conversations/{phone}/close", "Inbox", "Close a conversation", "v1.2"),
-  endpoint("POST", "/api/v1/conversations/{phone}/reopen", "Inbox", "Reopen a conversation", "v1.2"),
-  endpoint("POST", "/api/v1/conversations/{phone}/tags", "Inbox", "Add or remove the customer's tags", "v1.2"),
+  endpoint(
+    "POST",
+    "/api/v1/conversations/{phone}/reopen",
+    "Inbox",
+    "Reopen a conversation",
+    "v1.2",
+  ),
+  endpoint(
+    "POST",
+    "/api/v1/conversations/{phone}/tags",
+    "Inbox",
+    "Add or remove the customer's tags",
+    "v1.2",
+  ),
   // ---- webhook events
   event("message.sent", "Messages", "WhatsApp accepted a message the API sent", "v1.0"),
   event("message.delivered", "Messages", "It reached the customer's phone", "v1.0"),
@@ -106,7 +154,12 @@ export const PLAN_AVAILABILITY: Availability[] = [
   event("contact.created", "Contacts", "A new contact", "v1.1"),
   event("contact.opted_out", "Contacts", "A contact opted out", "v1.1"),
   event("contact.opted_in", "Contacts", "A contact opted in", "v1.1"),
-  event("template.status_changed", "Templates", "Meta approved, paused or rejected a template", "v1.1"),
+  event(
+    "template.status_changed",
+    "Templates",
+    "Meta approved, paused or rejected a template",
+    "v1.1",
+  ),
   event("template.category_changed", "Templates", "Meta changed a template's category", "v1.1"),
   event("campaign.completed", "Campaigns", "A campaign finished sending", "v1.2"),
 ];
@@ -139,7 +192,10 @@ export function endpointFor(
   return matches[0] ?? null;
 }
 
-export function eventFor(name: string, table: Availability[] = PLAN_AVAILABILITY): EventAvailability | null {
+export function eventFor(
+  name: string,
+  table: Availability[] = PLAN_AVAILABILITY,
+): EventAvailability | null {
   return (
     table.find((row): row is EventAvailability => row.kind === "event" && row.name === name) ?? null
   );
