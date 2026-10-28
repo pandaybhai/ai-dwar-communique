@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 90, column 1086, view 2, function 108, index 160, trigger 68, cron_job 14.
+-- Expected objects: table 90, column 1086, view 2, function 109, index 161, trigger 68, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -325,7 +325,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'api_requests', 'state', NULL, 'text', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'attempts', NULL, 'integer', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'created_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
-    ('column', 'public', 'api_webhook_deliveries', 'dedupe_key', NULL, 'text', '20261160_batch38_public_api_v12.sql'),
+    ('column', 'public', 'api_webhook_deliveries', 'dedupe_key', NULL, 'text', '20261150_batch37_public_api_v11.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'delivered_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'event', NULL, 'text', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
@@ -1221,6 +1221,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'analytics_team_performance', NULL, ARRAY['uuid', 'date', 'date', 'uuid'], 'public.analytics_team_performance(uuid, date, date, uuid)', '20260818_multi_number.sql'),
     ('function', 'public', 'analytics_timeseries', NULL, ARRAY['uuid', 'date', 'date', 'uuid'], 'public.analytics_timeseries(uuid, date, date, uuid)', '20260818_multi_number.sql'),
     ('function', 'public', 'analytics_window', NULL, ARRAY['text', 'date', 'date'], 'public.analytics_window(text, date, date)', '20260816_analytics.sql'),
+    ('function', 'public', 'api_list_contacts', NULL, ARRAY['uuid', 'integer', 'timestamp with time zone', 'uuid', 'text', 'text', 'timestamp with time zone'], 'public.api_list_contacts(uuid, integer, timestamp with time zone, uuid, text, text, timestamp with time zone)', '20261150_batch37_public_api_v11.sql'),
     ('function', 'public', 'api_list_conversations', NULL, ARRAY['uuid', 'integer', 'timestamp with time zone', 'uuid', 'text', 'uuid', 'boolean', 'timestamp with time zone'], 'public.api_list_conversations(uuid, integer, timestamp with time zone, uuid, text, uuid, boolean, timestamp with time zone)', '20261160_batch38_public_api_v12.sql'),
     ('function', 'public', 'api_rate_take', NULL, ARRAY['text', 'integer', 'integer'], 'public.api_rate_take(text, integer, integer)', '20261120_batch34_public_api.sql'),
     ('function', 'public', 'api_webhook_claim', NULL, ARRAY['integer', 'integer'], 'public.api_webhook_claim(integer, integer)', '20261120_batch34_public_api.sql'),
@@ -1333,7 +1334,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'api_requests_org_key_key', NULL, NULL, 'unique on public.api_requests', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'api_webhook_deliveries_due_idx', NULL, NULL, 'on public.api_webhook_deliveries', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'api_webhook_deliveries_message_event_key', NULL, NULL, 'unique on public.api_webhook_deliveries', '20261120_batch34_public_api.sql'),
-    ('index', 'public', 'api_webhook_deliveries_org_dedupe_key', NULL, NULL, 'unique on public.api_webhook_deliveries', '20261160_batch38_public_api_v12.sql'),
+    ('index', 'public', 'api_webhook_deliveries_org_dedupe_key', NULL, NULL, 'unique on public.api_webhook_deliveries', '20261150_batch37_public_api_v11.sql'),
     ('index', 'public', 'api_webhook_deliveries_org_idx', NULL, NULL, 'on public.api_webhook_deliveries', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'automation_runs_lookup_idx', NULL, NULL, 'on public.automation_runs', '20260816_automations.sql'),
     ('index', 'public', 'automation_runs_message_unique_idx', NULL, NULL, 'unique on public.automation_runs', '20260816_automations.sql'),
@@ -1357,6 +1358,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'contact_tags_org_idx', NULL, NULL, 'on public.contact_tags', '20260814_contacts_tags_imports.sql'),
     ('index', 'public', 'contact_tags_tag_idx', NULL, NULL, 'on public.contact_tags', '20260814_contacts_tags_imports.sql'),
     ('index', 'public', 'contacts_org_idx', NULL, NULL, 'on public.contacts', '20260813_phase2_whatsapp_data_plane.sql'),
+    ('index', 'public', 'contacts_org_updated_idx', NULL, NULL, 'on public.contacts', '20261150_batch37_public_api_v11.sql'),
     ('index', 'public', 'contacts_org_wa_idx', NULL, NULL, 'on public.contacts', '20260813_phase2_whatsapp_data_plane.sql'),
     ('index', 'public', 'contacts_source_idx', NULL, NULL, 'on public.contacts', '20260814_lead_source_attribution.sql'),
     ('index', 'public', 'conversations_contact_idx', NULL, NULL, 'on public.conversations', '20260813_phase2_whatsapp_data_plane.sql'),

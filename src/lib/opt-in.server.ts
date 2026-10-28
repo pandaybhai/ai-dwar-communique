@@ -13,7 +13,8 @@ import { logServerActivity } from "@/lib/whatsapp-api.server";
  * here retries without the two columns (PostgREST answers PGRST204), so the
  * status still changes exactly as asked and the activity log keeps the record.
  */
-export type OptInSource = "import" | "manual" | "bulk" | "keyword";
+/** "api": the Public API's contacts calls (Batch 37, public-api-contacts.server.ts). */
+export type OptInSource = "import" | "manual" | "bulk" | "keyword" | "api";
 
 export const CONSENT_COLUMNS = ["opt_in_source", "opted_in_at"] as const;
 

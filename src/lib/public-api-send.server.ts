@@ -2,24 +2,36 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import type { ApiCaller } from "@/lib/public-api.server";
 import { MAX_DOCUMENT_MB } from "@/lib/public-api";
+import type { TemplateComponent } from "@/lib/templates";
+import { parseMediaInput, type MediaInput } from "@/lib/public-api-media.server";
 
 /**
- * Batch 34: POST /api/v1/messages/template — one approved template with a
- * DOCUMENT header (an invoice PDF, say) to one customer, from the merchant's
- * own software.
+ * POST /api/v1/messages/template — one approved template to one customer,
+ * from the merchant's own software.
+ *
+ * Batch 34 sent a template with a DOCUMENT header (an invoice PDF). Batch 37
+ * (v1.1) sends any approved template: a header that is none, text (its own
+ * values), an image, a video, a document or a map pin; the body's values; and
+ * the values its buttons take (a link's {{1}}, a quick reply's payload, a
+ * coupon code, a one-time code). Everything is checked against the
+ * template's own stored components before anything is sent. A Batch 34
+ * request ({ document, body_params }) works exactly as it did, byte for byte
+ * — the same Meta request, the same answers, the same idempotency check.
  *
  * Nothing here is a second sender. The message leaves through
  * sendCampaignTemplate (the one-message template sender flows and the
- * platform's own invoices use), with the PDF uploaded to Meta first and sent
+ * platform's own invoices use), with a file uploaded to Meta first and sent
  * by media id; the row it writes is an ordinary messages row (type template)
  * carrying metadata.source "api", so the inbox, analytics and the wallet
  * (priced and debited on delivery by the same database triggers as every
  * send) treat it like any other template. Phone formatting is normalizePhone /
- * toWaId, the opt-out check is contactOptedOut, the template is read through
- * templateVariableSpec / buildTemplatePayloadComponents, the credit check is
- * creditsCover with the workspace's client rate.
+ * toWaId, the opt-out rule is the inbox's (contactOptedOut +
+ * optedOutMayReceive: never a marketing template to someone who opted out),
+ * the template is read through templateVariableSpec /
+ * buildTemplatePayloadComponents, the credit check is creditsCover with the
+ * workspace's client rate, files are read by readMediaFile (SSRF-safe).
  *
- * Every refusal happens before anything is sent. Never logs a key or a document.
+ * Every refusal happens before anything is sent. Never logs a key or a file.
  */
 
 export const MAX_DOCUMENT_BYTES = MAX_DOCUMENT_MB * 1024 * 1024;
@@ -27,6 +39,10 @@ export const MAX_DOCUMENT_BYTES = MAX_DOCUMENT_MB * 1024 * 1024;
 export const MAX_REQUEST_BYTES = 23 * 1024 * 1024;
 export const DOCUMENT_FETCH_TIMEOUT_MS = 15_000;
 const MAX_PARAM_CHARS = 1024;
+const MAX_BUTTON_PARAM_CHARS = 2000;
+const MAX_PAYLOAD_CHARS = 256;
+/** WhatsApp's own limit for a coupon / one-time code. */
+const MAX_CODE_CHARS = 15;
 
 export type ApiAnswer = {
   status: number;
@@ -39,14 +55,68 @@ const fail = (status: number, code: string, error: string): ApiAnswer => ({
   body: { error, code },
 });
 
+export type HeaderInput =
+  | { type: "text"; params: string[] }
+  | { type: "image" | "video" | "document"; media: MediaInput }
+  | {
+      type: "location";
+      latitude: number;
+      longitude: number;
+      name: string | null;
+      address: string | null;
+    };
+
+export type ButtonInput = {
+  index: number;
+  type: "url" | "quick_reply" | "copy_code";
+  value: string;
+};
+
 export type SendRequest = {
   to: string;
   templateName: string;
   language: string | null;
-  document: { url: string | null; base64: string | null; filename: string };
+  /** Batch 34's field: the PDF for a document header. Null when not given. */
+  document: { url: string | null; base64: string | null; filename: string } | null;
+  /** Batch 37: the header, in its general form. */
+  header: HeaderInput | null;
   bodyParams: string[];
+  buttons: ButtonInput[];
+  /** When a limited-time offer's countdown ends (ISO time). */
+  offerExpiresAt: string | null;
   idempotencyKey: string | null;
+  /** Only Batch 34 fields were used: the idempotency fingerprint is Batch 34's. */
+  legacy: boolean;
 };
+
+/** One template value, checked as WhatsApp checks it. Null when fine, else why not. */
+function paramProblem(value: string, label: string): string | null {
+  if (!value) return `${label} is empty.`;
+  if (value.length > MAX_PARAM_CHARS)
+    return `${label} is longer than ${MAX_PARAM_CHARS} characters.`;
+  // WhatsApp refuses a template value with a new line, a tab or more than four spaces in a row.
+  if (/[\n\r\t]| {5,}/.test(value))
+    return `${label} can't contain a new line, a tab or more than four spaces in a row.`;
+  return null;
+}
+
+function parseParams(raw: unknown, field: string, code: string): string[] | ApiAnswer {
+  if (!Array.isArray(raw)) return fail(400, code, `\`${field}\` must be an array of strings.`);
+  const out: string[] = [];
+  for (const [i, p] of raw.entries()) {
+    if (typeof p !== "string" && typeof p !== "number") {
+      return fail(400, code, `${field}[${i}] must be a string.`);
+    }
+    const value = String(p).trim();
+    const problem = paramProblem(value, `${field}[${i}]`);
+    if (problem) return fail(400, code, problem);
+    out.push(value);
+  }
+  return out;
+}
+
+/** Fields Batch 34 didn't have: a request with none of them is a Batch 34 request. */
+const V11_FIELDS = ["header", "buttons", "offer_expires_at"];
 
 /** The request body, checked for shape. Never reads anything else. */
 export function parseSendRequest(raw: unknown, headerKey: string | null): SendRequest | ApiAnswer {
@@ -74,53 +144,162 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
       ? body["language"].trim()
       : null;
 
-  const doc = body["document"];
-  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
-    return fail(
-      400,
-      "invalid_document",
-      "`document` is required: { url } (https) or { base64 }, with a filename.",
-    );
+  // ---- Batch 34's document ----
+  let document: SendRequest["document"] = null;
+  if (body["document"] !== undefined && body["document"] !== null) {
+    const media = parseMediaInput(body["document"], {
+      kind: "document",
+      field: "document",
+      invalid: "invalid_document",
+      required: "`document` is required: { url } (https) or { base64 }, with a filename.",
+    });
+    if ("status" in media) return media;
+    document = {
+      url: media.url,
+      base64: media.base64,
+      filename: cleanFilename(media.filename ?? ""),
+    };
   }
-  const d = doc as Record<string, unknown>;
-  const url = typeof d["url"] === "string" && d["url"].trim() ? d["url"].trim() : null;
-  const base64 = typeof d["base64"] === "string" && d["base64"].trim() ? d["base64"].trim() : null;
-  if ((url ? 1 : 0) + (base64 ? 1 : 0) !== 1) {
-    return fail(
-      400,
-      "invalid_document",
-      "Send the document as exactly one of `document.url` (https) or `document.base64`.",
-    );
-  }
-  if (url && !/^https:\/\//i.test(url))
-    return fail(400, "document_url_not_https", "`document.url` must be an https:// address.");
-  const filename = cleanFilename(typeof d["filename"] === "string" ? d["filename"] : "");
 
-  const rawParams = body["body_params"] ?? [];
-  if (!Array.isArray(rawParams))
-    return fail(400, "invalid_body_params", "`body_params` must be an array of strings.");
-  const bodyParams: string[] = [];
-  for (const [i, p] of rawParams.entries()) {
-    if (typeof p !== "string" && typeof p !== "number") {
-      return fail(400, "invalid_body_params", `body_params[${i}] must be a string.`);
-    }
-    const value = String(p).trim();
-    if (!value) return fail(400, "invalid_body_params", `body_params[${i}] is empty.`);
-    if (value.length > MAX_PARAM_CHARS)
+  // ---- Batch 37's header ----
+  let header: HeaderInput | null = null;
+  const rawHeader = body["header"];
+  if (rawHeader !== undefined && rawHeader !== null) {
+    if (document) {
       return fail(
         400,
-        "invalid_body_params",
-        `body_params[${i}] is longer than ${MAX_PARAM_CHARS} characters.`,
-      );
-    // WhatsApp refuses a template value with a new line, a tab or more than four spaces in a row.
-    if (/[\n\r\t]| {5,}/.test(value)) {
-      return fail(
-        400,
-        "invalid_body_params",
-        `body_params[${i}] can't contain a new line, a tab or more than four spaces in a row.`,
+        "invalid_header",
+        "Send the document either as `document` or as `header`, not both.",
       );
     }
-    bodyParams.push(value);
+    if (typeof rawHeader !== "object" || Array.isArray(rawHeader))
+      return fail(400, "invalid_header", "`header` must be an object with a `type`.");
+    const h = rawHeader as Record<string, unknown>;
+    const type = String(h["type"] ?? "").toLowerCase();
+    if (type === "text") {
+      const params = parseParams(h["params"] ?? [], "header.params", "invalid_header");
+      if ("status" in params) return params;
+      header = { type: "text", params };
+    } else if (type === "image" || type === "video" || type === "document") {
+      const media = parseMediaInput(h, {
+        kind: type,
+        field: "header",
+        invalid: type === "document" ? "invalid_document" : "invalid_header",
+        required: "`header` must be an object.",
+      });
+      if ("status" in media) return media;
+      header = { type, media };
+    } else if (type === "location") {
+      const latitude = Number(h["latitude"]);
+      const longitude = Number(h["longitude"]);
+      if (
+        h["latitude"] === undefined ||
+        h["longitude"] === undefined ||
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        Math.abs(latitude) > 90 ||
+        Math.abs(longitude) > 180
+      ) {
+        return fail(
+          400,
+          "invalid_header",
+          "A location header needs `header.latitude` (-90 to 90) and `header.longitude` (-180 to 180).",
+        );
+      }
+      const text = (k: string) =>
+        typeof h[k] === "string" && (h[k] as string).trim()
+          ? (h[k] as string).trim().slice(0, 1000)
+          : null;
+      header = {
+        type: "location",
+        latitude,
+        longitude,
+        name: text("name"),
+        address: text("address"),
+      };
+    } else {
+      return fail(
+        400,
+        "invalid_header",
+        "`header.type` must be one of: text, image, video, document, location.",
+      );
+    }
+  }
+
+  const bodyParams = parseParams(body["body_params"] ?? [], "body_params", "invalid_body_params");
+  if ("status" in bodyParams) return bodyParams;
+
+  // ---- buttons ----
+  const buttons: ButtonInput[] = [];
+  const rawButtons = body["buttons"] ?? [];
+  if (!Array.isArray(rawButtons))
+    return fail(400, "invalid_buttons", "`buttons` must be an array.");
+  if (rawButtons.length > 10)
+    return fail(400, "invalid_buttons", "A template has at most 10 buttons.");
+  for (const [i, raw] of rawButtons.entries()) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      return fail(400, "invalid_buttons", `buttons[${i}] must be an object.`);
+    const b = raw as Record<string, unknown>;
+    const index = Number(b["index"]);
+    if (!Number.isInteger(index) || index < 0 || index > 9)
+      return fail(
+        400,
+        "invalid_buttons",
+        `buttons[${i}].index must be the button's position, 0 to 9.`,
+      );
+    if (buttons.some((x) => x.index === index))
+      return fail(400, "invalid_buttons", `buttons has index ${index} twice.`);
+    const type = String(b["type"] ?? "").toLowerCase();
+    const field =
+      type === "url"
+        ? "url_param"
+        : type === "quick_reply"
+          ? "payload"
+          : type === "copy_code"
+            ? "code"
+            : null;
+    if (!field)
+      return fail(
+        400,
+        "invalid_buttons",
+        `buttons[${i}].type must be one of: url, quick_reply, copy_code.`,
+      );
+    const value =
+      typeof b[field] === "string" || typeof b[field] === "number" ? String(b[field]).trim() : "";
+    if (!value) return fail(400, "invalid_buttons", `buttons[${i}].${field} is required.`);
+    const max =
+      type === "url"
+        ? MAX_BUTTON_PARAM_CHARS
+        : type === "copy_code"
+          ? MAX_CODE_CHARS
+          : MAX_PAYLOAD_CHARS;
+    if (value.length > max)
+      return fail(
+        400,
+        "invalid_buttons",
+        `buttons[${i}].${field} is longer than ${max} characters.`,
+      );
+    if (/[\n\r\t]/.test(value))
+      return fail(
+        400,
+        "invalid_buttons",
+        `buttons[${i}].${field} can't contain a new line or a tab.`,
+      );
+    buttons.push({ index, type: type as ButtonInput["type"], value });
+  }
+
+  // ---- a limited-time offer's end ----
+  let offerExpiresAt: string | null = null;
+  const rawOffer = body["offer_expires_at"];
+  if (rawOffer !== undefined && rawOffer !== null && rawOffer !== "") {
+    const at = typeof rawOffer === "number" ? rawOffer : Date.parse(String(rawOffer));
+    if (!Number.isFinite(at) || at <= 0)
+      return fail(
+        400,
+        "invalid_offer",
+        "`offer_expires_at` must be a time (ISO 8601, e.g. 2026-11-30T18:29:00Z) or milliseconds since 1970.",
+      );
+    offerExpiresAt = new Date(at).toISOString();
   }
 
   const keyRaw = body["idempotency_key"] ?? headerKey;
@@ -140,9 +319,13 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
     to,
     templateName,
     language,
-    document: { url, base64, filename },
+    document,
+    header,
     bodyParams,
+    buttons,
+    offerExpiresAt,
     idempotencyKey,
+    legacy: Boolean(document) && V11_FIELDS.every((k) => body[k] === undefined || body[k] === null),
   };
 }
 
@@ -162,30 +345,6 @@ export function isPdf(bytes: Uint8Array): boolean {
   return bytes.length >= 5 && String.fromCharCode(...bytes.subarray(0, 5)) === "%PDF-";
 }
 
-/** base64 (optionally a data: URL) -> bytes, refusing anything over the limit before decoding it. */
-export function decodeBase64Document(raw: string): Uint8Array | ApiAnswer {
-  const text = raw.replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
-  if (!text || !/^[A-Za-z0-9+/_-]+={0,2}$/.test(text))
-    return fail(400, "invalid_document", "`document.base64` isn't valid base64.");
-  if (Math.floor((text.length * 3) / 4) > MAX_DOCUMENT_BYTES + 2) {
-    return fail(
-      413,
-      "document_too_large",
-      "The document is larger than 16 MB, the most WhatsApp accepts.",
-    );
-  }
-  const bytes = new Uint8Array(
-    Buffer.from(text, text.includes("-") || text.includes("_") ? "base64url" : "base64"),
-  );
-  if (bytes.byteLength > MAX_DOCUMENT_BYTES)
-    return fail(
-      413,
-      "document_too_large",
-      "The document is larger than 16 MB, the most WhatsApp accepts.",
-    );
-  return bytes;
-}
-
 type TemplateRow = {
   name: string;
   language: string;
@@ -194,11 +353,248 @@ type TemplateRow = {
   components: unknown;
 };
 
+/** What the send needs from a request, once the template has checked it. */
+export type TemplatePlan = {
+  template: TemplateRow;
+  variables: (params: string[]) => Record<string, string>;
+  /** The header's own values ({{1}}… of a text header), else null. */
+  headerValues: Record<string, string> | null;
+  /** The file to read and upload for a media header, else null (none, or the template's own). */
+  headerMedia: MediaInput | null;
+  headerLocation: { latitude: string; longitude: string; name?: string; address?: string } | null;
+  buttonParams: Record<number, string>;
+  quickReplyPayloads: Record<number, string>;
+  couponCode: string | null;
+};
+
+const BUTTON_WORDS: Record<string, string> = {
+  URL: "link",
+  QUICK_REPLY: "quick reply",
+  COPY_CODE: "copy code",
+  OTP: "one-time code",
+  PHONE_NUMBER: "call",
+  FLOW: "form",
+};
+
 /**
- * The workspace's template for this request: it exists on the number's
- * business account, is APPROVED, has a DOCUMENT header, takes exactly the
- * body values given — and nothing else the API doesn't fill (link or code
- * buttons, a carousel, an offer countdown, named values).
+ * The request held against the template's own components: every value the
+ * template takes is given, nothing it doesn't take is. A refusal names the
+ * part and what to send.
+ */
+export function planTemplateSend(
+  template: TemplateRow,
+  request: Pick<SendRequest, "document" | "header" | "bodyParams" | "buttons" | "offerExpiresAt">,
+  helpers: {
+    templateVariableSpec: typeof import("@/lib/templates").templateVariableSpec;
+    templateBodyText: typeof import("@/lib/templates").templateBodyText;
+    templateButtons: typeof import("@/lib/templates").templateButtons;
+    extractVariables: typeof import("@/lib/templates").extractVariables;
+  },
+): { ok: true; plan: TemplatePlan } | { ok: false; answer: ApiAnswer } {
+  const no = (code: string, error: string) => ({
+    ok: false as const,
+    answer: fail(400, code, error),
+  });
+  const name = template.name;
+  const components = (template.components ?? []) as TemplateComponent[];
+  const spec = helpers.templateVariableSpec(components);
+  const headerFormat = spec.headerMedia?.format ?? null;
+
+  // Batch 34's question first, in its own words: a PDF needs a document header.
+  if (request.document && headerFormat !== "DOCUMENT") {
+    return no(
+      "template_not_document",
+      `Template "${name}" has no document header, so it can't carry a PDF.`,
+    );
+  }
+  if (/\{\{\s*[A-Za-z_][\w]*\s*\}\}/.test(helpers.templateBodyText(components))) {
+    return no(
+      "template_unsupported",
+      `Template "${name}" uses named values; the API fills numbered ones ({{1}}, {{2}}…).`,
+    );
+  }
+  if (spec.cards.length) {
+    return no(
+      "template_unsupported",
+      `Template "${name}" is a carousel; the API doesn't send carousel templates yet.`,
+    );
+  }
+  const templateButtons = helpers.templateButtons(components);
+  for (const b of templateButtons) {
+    const t = String(b["type"] ?? "").toUpperCase();
+    if (t === "CATALOG" || t === "MPM" || t === "SPM" || t === "ORDER_DETAILS") {
+      return no(
+        "template_unsupported",
+        `Template "${name}" has a ${t.toLowerCase()} button, which the API doesn't send yet.`,
+      );
+    }
+  }
+
+  // ---- header ----
+  let headerValues: Record<string, string> | null = null;
+  let headerMedia: MediaInput | null = null;
+  let headerLocation: TemplatePlan["headerLocation"] = null;
+  const given = request.header;
+  if (headerFormat === "DOCUMENT") {
+    if (request.document) {
+      headerMedia = {
+        kind: "document",
+        url: request.document.url,
+        base64: request.document.base64,
+        filename: request.document.filename,
+        caption: null,
+        field: "document",
+      };
+    } else if (given?.type === "document") {
+      headerMedia = given.media;
+    } else if (given) {
+      return no(
+        "header_mismatch",
+        `Template "${name}" has a document header; \`header.type\` is "${given.type}".`,
+      );
+    } else {
+      // Never the template's sample file: a document is each customer's own.
+      return no(
+        "invalid_document",
+        "`document` is required: { url } (https) or { base64 }, with a filename.",
+      );
+    }
+  } else if (headerFormat === "IMAGE" || headerFormat === "VIDEO") {
+    const kind = headerFormat === "IMAGE" ? "image" : "video";
+    if (given?.type === kind) headerMedia = given.media;
+    else if (given)
+      return no(
+        "header_mismatch",
+        `Template "${name}" has ${kind === "image" ? "an image" : "a video"} header; \`header.type\` is "${given.type}".`,
+      );
+    else if (!spec.headerMedia?.url)
+      return no(
+        "header_required",
+        `Template "${name}" has ${kind === "image" ? "an image" : "a video"} header: send \`header: { "type": "${kind}", "url": "https://…" }\` (or "base64").`,
+      );
+    // else: the template's own picture / video, as campaigns send it.
+  } else if (headerFormat === "LOCATION") {
+    if (given?.type !== "location")
+      return no(
+        given ? "header_mismatch" : "header_required",
+        `Template "${name}" has a location header: send \`header: { "type": "location", "latitude": …, "longitude": … }\`.`,
+      );
+    headerLocation = {
+      latitude: String(given.latitude),
+      longitude: String(given.longitude),
+      ...(given.name ? { name: given.name } : {}),
+      ...(given.address ? { address: given.address } : {}),
+    };
+  } else if (spec.header.length) {
+    const params = given?.type === "text" ? given.params : null;
+    if (given && !params)
+      return no(
+        "header_mismatch",
+        `Template "${name}" has a text header; \`header.type\` is "${given.type}".`,
+      );
+    if (!params || params.length !== spec.header.length)
+      return no(
+        "param_count_mismatch",
+        `Template "${name}"'s header takes ${spec.header.length} value(s); header.params has ${params?.length ?? 0}.`,
+      );
+    headerValues = Object.fromEntries(spec.header.map((n, i) => [String(n), params[i]!]));
+  } else if (given) {
+    return no(
+      "header_mismatch",
+      given.type === "text"
+        ? `Template "${name}"'s header has no values to fill; leave \`header\` out.`
+        : `Template "${name}" has no ${given.type} header; leave \`header\` out.`,
+    );
+  }
+
+  // ---- body ----
+  if (spec.body.length !== request.bodyParams.length) {
+    return no(
+      "param_count_mismatch",
+      `Template "${name}" takes ${spec.body.length} body value(s); body_params has ${request.bodyParams.length}.`,
+    );
+  }
+
+  // ---- buttons ----
+  const buttonParams: Record<number, string> = {};
+  const quickReplyPayloads: Record<number, string> = {};
+  let couponCode: string | null = null;
+  const givenAt = new Map(request.buttons.map((b) => [b.index, b]));
+  for (const [index, b] of templateButtons.entries()) {
+    const t = String(b["type"] ?? "").toUpperCase();
+    const label = `button ${index} (${BUTTON_WORDS[t] ?? t.toLowerCase()} "${String(b["text"] ?? "")}")`;
+    const mine = givenAt.get(index);
+    givenAt.delete(index);
+    const takesUrl =
+      (t === "URL" && helpers.extractVariables(String(b["url"] ?? "")).length > 0) || t === "OTP";
+    const wants = takesUrl
+      ? "url"
+      : t === "COPY_CODE"
+        ? "copy_code"
+        : t === "QUICK_REPLY"
+          ? "quick_reply"
+          : null;
+    const field = wants === "url" ? "url_param" : wants === "copy_code" ? "code" : "payload";
+    if (!wants) {
+      if (mine)
+        return no(
+          "invalid_buttons",
+          `Template "${name}"'s ${label} takes no value; leave it out of \`buttons\`.`,
+        );
+      continue;
+    }
+    if (mine && mine.type !== wants)
+      return no(
+        "invalid_buttons",
+        `Template "${name}"'s ${label} is a ${wants} button; buttons with index ${index} says "${mine.type}".`,
+      );
+    if (!mine) {
+      if (wants === "quick_reply") continue; // a payload is optional
+      return no(
+        "invalid_buttons",
+        `Template "${name}"'s ${label} needs a value: send \`buttons: [{ "index": ${index}, "type": "${wants}", "${field}": "…" }]\`.`,
+      );
+    }
+    if (t === "OTP" && mine.value.length > MAX_CODE_CHARS)
+      return no(
+        "invalid_buttons",
+        `Template "${name}"'s ${label} takes a code of at most ${MAX_CODE_CHARS} characters; url_param is longer than that.`,
+      );
+    if (wants === "url") buttonParams[index] = mine.value;
+    else if (wants === "copy_code") couponCode = mine.value;
+    else quickReplyPayloads[index] = mine.value;
+  }
+  const extra = [...givenAt.keys()][0];
+  if (extra !== undefined)
+    return no("invalid_buttons", `Template "${name}" has no button ${extra}.`);
+
+  // ---- a limited-time offer ----
+  if (spec.offerExpiration && !request.offerExpiresAt)
+    return no(
+      "invalid_offer",
+      `Template "${name}" counts down to the offer's end: send \`offer_expires_at\`.`,
+    );
+
+  return {
+    ok: true,
+    plan: {
+      template,
+      variables: (params) => Object.fromEntries(spec.body.map((n, i) => [String(n), params[i]!])),
+      headerValues,
+      headerMedia,
+      headerLocation,
+      buttonParams,
+      quickReplyPayloads,
+      couponCode,
+    },
+  };
+}
+
+/**
+ * The workspace's approved template for this request, on the number's
+ * business account (one language, or the one asked for), checked against
+ * the request (planTemplateSend). `request` left out: a Batch 34 request — a
+ * document and `paramCount` body values.
  */
 export async function resolveApiTemplate(
   supabase: SupabaseClient,
@@ -208,12 +604,13 @@ export async function resolveApiTemplate(
     name: string;
     language: string | null;
     paramCount: number;
+    request?: Pick<
+      SendRequest,
+      "document" | "header" | "bodyParams" | "buttons" | "offerExpiresAt"
+    >;
   },
-): Promise<
-  | { ok: true; template: TemplateRow; variables: (params: string[]) => Record<string, string> }
-  | { ok: false; answer: ApiAnswer }
-> {
-  const { templateVariableSpec, templateBodyText } = await import("@/lib/templates");
+): Promise<({ ok: true } & TemplatePlan) | { ok: false; answer: ApiAnswer }> {
+  const templates = await import("@/lib/templates");
   const { data, error } = await supabase
     .from("message_templates")
     .select("name, language, category, status, components")
@@ -261,59 +658,16 @@ export async function resolveApiTemplate(
       ),
     };
   }
-  const template = approved[0]!;
-  const components = (template.components ?? []) as import("@/lib/templates").TemplateComponent[];
-  const spec = templateVariableSpec(components);
-  if (spec.headerMedia?.format !== "DOCUMENT") {
-    return {
-      ok: false,
-      answer: fail(
-        400,
-        "template_not_document",
-        `Template "${input.name}" has no document header, so it can't carry a PDF.`,
-      ),
-    };
-  }
-  if (
-    spec.urlButtons.length ||
-    spec.copyCodeButtons.length ||
-    spec.cards.length ||
-    spec.offerExpiration
-  ) {
-    return {
-      ok: false,
-      answer: fail(
-        400,
-        "template_unsupported",
-        `Template "${input.name}" needs link, code or card values the API doesn't send. Use a template with a document header and body text only.`,
-      ),
-    };
-  }
-  if (/\{\{\s*[A-Za-z_][\w]*\s*\}\}/.test(templateBodyText(components))) {
-    return {
-      ok: false,
-      answer: fail(
-        400,
-        "template_unsupported",
-        `Template "${input.name}" uses named values; the API fills numbered ones ({{1}}, {{2}}…).`,
-      ),
-    };
-  }
-  if (spec.body.length !== input.paramCount) {
-    return {
-      ok: false,
-      answer: fail(
-        400,
-        "param_count_mismatch",
-        `Template "${input.name}" takes ${spec.body.length} body value(s); body_params has ${input.paramCount}.`,
-      ),
-    };
-  }
-  return {
-    ok: true,
-    template,
-    variables: (params) => Object.fromEntries(spec.body.map((n, i) => [String(n), params[i]!])),
+  const request = input.request ?? {
+    document: { url: null, base64: "", filename: "document.pdf" },
+    header: null,
+    bodyParams: Array.from({ length: input.paramCount }, () => "x"),
+    buttons: [],
+    offerExpiresAt: null,
   };
+  const planned = planTemplateSend(approved[0]!, request, templates);
+  if (!planned.ok) return planned;
+  return { ok: true, ...planned.plan };
 }
 
 const RATE_COUNTRY_TTL_MS = 10 * 60_000;
@@ -339,6 +693,51 @@ export async function countryForPhone(supabase: SupabaseClient, digits: string):
 /** Test hook. */
 export function resetDialCodeCache(): void {
   dialCodes = null;
+}
+
+/** The idempotency fingerprint: Batch 34's own for a Batch 34 request, else every field. */
+async function sendFingerprint(parsed: SendRequest, waId: string): Promise<string> {
+  const lib = await import("@/lib/public-api.server");
+  if (parsed.legacy && parsed.document) {
+    return lib.requestFingerprint({
+      to: waId,
+      template_name: parsed.templateName,
+      language: parsed.language,
+      body_params: parsed.bodyParams,
+      document_url: parsed.document.url,
+      document_sha256: parsed.document.base64
+        ? createHash("sha256").update(parsed.document.base64).digest("hex")
+        : null,
+      filename: parsed.document.filename,
+    });
+  }
+  const { mediaFingerprint } = await import("@/lib/public-api-media.server");
+  const header = parsed.header;
+  return lib.requestFingerprint({
+    v: "1.1",
+    to: waId,
+    template_name: parsed.templateName,
+    language: parsed.language,
+    body_params: parsed.bodyParams,
+    document: parsed.document
+      ? {
+          url: parsed.document.url,
+          sha256: parsed.document.base64
+            ? createHash("sha256").update(parsed.document.base64).digest("hex")
+            : null,
+          filename: parsed.document.filename,
+        }
+      : null,
+    header: !header
+      ? null
+      : header.type === "text"
+        ? { type: "text", params: header.params }
+        : header.type === "location"
+          ? header
+          : { type: header.type, media: mediaFingerprint(header.media) },
+    buttons: [...parsed.buttons].sort((a, b) => a.index - b.index),
+    offer_expires_at: parsed.offerExpiresAt,
+  });
 }
 
 /**
@@ -371,45 +770,12 @@ export async function sendTemplateViaApi(
   const lib = await import("@/lib/public-api.server");
   let requestId: string | null = null;
   if (parsed.idempotencyKey) {
-    const fingerprint = lib.requestFingerprint({
-      to: waId,
-      template_name: parsed.templateName,
-      language: parsed.language,
-      body_params: parsed.bodyParams,
-      document_url: parsed.document.url,
-      document_sha256: parsed.document.base64
-        ? createHash("sha256").update(parsed.document.base64).digest("hex")
-        : null,
-      filename: parsed.document.filename,
-    });
-    const claim = await lib.claimIdempotency(supabase, {
-      organizationId: orgId,
-      apiKeyId: caller.keyId,
+    const reserved = await lib.reserveIdempotency(supabase, caller, {
       key: parsed.idempotencyKey,
-      requestHash: fingerprint,
+      requestHash: await sendFingerprint(parsed, waId),
     });
-    if (claim.kind === "replay")
-      return { status: claim.status, body: claim.body, headers: { "Idempotent-Replayed": "true" } };
-    if (claim.kind === "in_progress") {
-      return {
-        ...fail(
-          409,
-          "idempotency_in_progress",
-          "A request with this idempotency_key is still being sent. Ask again in a few seconds.",
-        ),
-        headers: { "Retry-After": "5" },
-      };
-    }
-    if (claim.kind === "mismatch") {
-      return fail(
-        409,
-        "idempotency_key_reused",
-        "This idempotency_key was already used for a different request in the last 24 hours.",
-      );
-    }
-    if (claim.kind === "error")
-      return fail(503, "unavailable", "We couldn't reserve the idempotency_key. Please try again.");
-    requestId = claim.id;
+    if ("status" in reserved) return reserved;
+    requestId = reserved.id;
   }
   // Refused before sending: the key is free again for a corrected retry.
   const refuse = async (answer: ApiAnswer): Promise<ApiAnswer> => {
@@ -458,24 +824,26 @@ export async function sendTemplateViaApi(
       name: parsed.templateName,
       language: parsed.language,
       paramCount: parsed.bodyParams.length,
+      request: parsed,
     });
     if (!resolved.ok) return refuse(resolved.answer);
     const template = resolved.template;
     const category = String(template.category ?? "utility").toLowerCase();
 
-    // ---- the customer: never someone who opted out ----
-    const { contactOptedOut } = await import("@/lib/opt-out.server");
+    // ---- the customer: never a marketing template to someone who opted out
+    // (the inbox's rule, Batch 35: utility and authentication still go) ----
+    const { contactOptedOut, optedOutMayReceive } = await import("@/lib/opt-out.server");
     const optOut = await contactOptedOut(supabase, orgId, { phone });
     if (optOut.error)
       return refuse(
         fail(503, "unavailable", "We couldn't confirm this customer's opt-in. Please try again."),
       );
-    if (optOut.optedOut) {
+    if (optOut.optedOut && !optedOutMayReceive(template.category)) {
       return refuse(
         fail(
           409,
           "contact_opted_out",
-          "This customer has opted out of messages from this business. Nothing was sent.",
+          "This customer has opted out of marketing messages from this business, so a marketing template can't be sent (utility and authentication templates still can). Nothing was sent.",
         ),
       );
     }
@@ -502,69 +870,42 @@ export async function sendTemplateViaApi(
       }
     }
 
-    // ---- the document ----
-    let bytes: Uint8Array;
-    if (parsed.document.url) {
-      const { fetchPublicFile } = await import("@/lib/safe-fetch.server");
-      const file = await fetchPublicFile(parsed.document.url, {
-        maxBytes: MAX_DOCUMENT_BYTES,
-        timeoutMs: DOCUMENT_FETCH_TIMEOUT_MS,
+    // ---- the header's file, then Meta's copy of it, by media id ----
+    let file: import("@/lib/public-api-media.server").MediaFile | null = null;
+    let headerMediaId: string | null = null;
+    if (resolved.headerMedia) {
+      const { readMediaFile } = await import("@/lib/public-api-media.server");
+      const read = await readMediaFile(resolved.headerMedia, {
+        // A template's document header carries a PDF.
+        ...(resolved.headerMedia.kind === "document" ? { only: ["application/pdf"] } : {}),
       });
-      if (!file.ok) {
-        if (file.code === "too_large")
-          return refuse(
-            fail(
-              413,
-              "document_too_large",
-              "The document is larger than 16 MB, the most WhatsApp accepts.",
-            ),
-          );
-        if (file.code === "blocked") {
-          return refuse(
-            fail(
-              400,
-              "document_url_blocked",
-              "`document.url` must be a public https address (no private or internal hosts, also after redirects).",
-            ),
-          );
-        }
-        if (file.code === "timeout")
-          return refuse(
-            fail(400, "document_unreachable", "We couldn't download `document.url` in 15 seconds."),
-          );
+      if ("status" in read) return refuse(read);
+      file = {
+        ...read,
+        // Batch 34: the document's name is the one the request gave, as cleaned then.
+        filename:
+          resolved.headerMedia.kind === "document"
+            ? cleanFilename(resolved.headerMedia.filename ?? "")
+            : read.filename,
+      };
+      const { uploadMessageMedia } = await import("@/lib/whatsapp-api.server");
+      const uploaded = await uploadMessageMedia(connection.phoneNumberId, connection.accessToken, {
+        bytes: file.bytes,
+        mime: file.mime,
+        filename: file.filename,
+      });
+      if (!uploaded.ok) {
         return refuse(
           fail(
-            400,
-            "document_unreachable",
-            `We couldn't download \`document.url\` (${file.detail}).`,
+            502,
+            "whatsapp_upload_failed",
+            `WhatsApp didn't accept the ${resolved.headerMedia.kind}: ${uploaded.error} Nothing was sent.`,
           ),
         );
       }
-      bytes = file.bytes;
-    } else {
-      const decoded = decodeBase64Document(parsed.document.base64!);
-      if (!(decoded instanceof Uint8Array)) return refuse(decoded);
-      bytes = decoded;
+      headerMediaId = uploaded.id;
     }
-    if (!bytes.byteLength) return refuse(fail(400, "document_empty", "The document is empty."));
-    if (!isPdf(bytes)) return refuse(fail(400, "document_not_pdf", "The document must be a PDF."));
-
-    // ---- Meta's copy, by media id ----
-    const { uploadMessageMedia } = await import("@/lib/whatsapp-api.server");
-    const uploaded = await uploadMessageMedia(connection.phoneNumberId, connection.accessToken, {
-      bytes,
-      mime: "application/pdf",
-      filename: parsed.document.filename,
-    });
-    if (!uploaded.ok) {
-      return refuse(
-        fail(
-          502,
-          "whatsapp_upload_failed",
-          `WhatsApp didn't accept the document: ${uploaded.error} Nothing was sent.`,
-        ),
-      );
-    }
+    const isDocument = resolved.headerMedia?.kind === "document";
 
     // ---- the contact (first touch: source "api"; an existing contact keeps its own) ----
     await supabase
@@ -588,7 +929,7 @@ export async function sendTemplateViaApi(
       api_key_id: caller.keyId,
       idempotency_key: parsed.idempotencyKey,
       ...(requestId ? { api_request_id: requestId } : {}),
-      document_filename: parsed.document.filename,
+      ...(isDocument && file ? { document_filename: file.filename } : {}),
       to: phone,
     };
     const { sendCampaignTemplate } = await import("@/lib/campaigns.server");
@@ -607,22 +948,49 @@ export async function sendTemplateViaApi(
         name: template.name,
         language: template.language,
         variableOrder: [],
-        components: (template.components ?? null) as
-          import("@/lib/templates").TemplateComponent[] | null,
+        components: (template.components ?? null) as TemplateComponent[] | null,
       },
       {
         campaignId: null,
         category,
-        headerMediaId: uploaded.id,
-        headerFileName: parsed.document.filename,
+        ...(headerMediaId
+          ? {
+              headerMediaId,
+              ...(isDocument && file ? { headerFileName: file.filename } : {}),
+            }
+          : {}),
+        ...(resolved.headerLocation ? { headerLocation: resolved.headerLocation } : {}),
+        ...(resolved.headerValues ? { headerValues: resolved.headerValues } : {}),
+        ...(Object.keys(resolved.buttonParams).length
+          ? { buttonParams: resolved.buttonParams }
+          : {}),
+        ...(Object.keys(resolved.quickReplyPayloads).length
+          ? { quickReplyPayloads: resolved.quickReplyPayloads }
+          : {}),
+        ...(resolved.couponCode ? { couponCode: resolved.couponCode } : {}),
+        ...(parsed.offerExpiresAt ? { offerExpiresAt: parsed.offerExpiresAt } : {}),
         messageMetadata: metadata,
       },
     );
 
     const messageId = outcome.messageId;
-    const kept = messageId
-      ? await keepDocumentCopy(supabase, { organizationId: orgId, messageId, bytes })
-      : null;
+    let wamid: string | null = null;
+    if (messageId && file) {
+      const { keepMediaCopy } = await import("@/lib/public-api-media.server");
+      ({ wamid } = await keepMediaCopy(supabase, {
+        organizationId: orgId,
+        messageId,
+        bytes: file.bytes,
+        mime: file.mime,
+      }));
+    } else if (messageId) {
+      const { data: sentRow } = await supabase
+        .from("messages")
+        .select("meta_message_id")
+        .eq("id", messageId)
+        .maybeSingle();
+      wamid = (sentRow as { meta_message_id?: string | null } | null)?.meta_message_id ?? null;
+    }
 
     if (outcome.error) {
       // Meta refused it at once: the merchant's webhook hears message.failed
@@ -675,7 +1043,7 @@ export async function sendTemplateViaApi(
       body: {
         message_id: messageId,
         status: "queued",
-        wamid: kept?.wamid ?? null,
+        wamid,
         idempotency_key: parsed.idempotencyKey,
       },
     };
@@ -690,57 +1058,4 @@ export async function sendTemplateViaApi(
     if (requestId && !sendStarted) await lib.releaseIdempotency(supabase, requestId);
     throw error;
   }
-}
-
-/**
- * Our copy of the PDF in the private chat-media bucket (Batch 32), at
- * {org}/{conversation}/{message}.pdf, so the inbox shows the file the
- * customer got (served only through /api/whatsapp/chat-media/$messageId).
- * Never fails the send: the message has already gone. Gives back Meta's id
- * for the message (the wamid) from the same read.
- */
-async function keepDocumentCopy(
-  supabase: SupabaseClient,
-  input: { organizationId: string; messageId: string; bytes: Uint8Array },
-): Promise<{ wamid: string | null }> {
-  let wamid: string | null = null;
-  try {
-    const { CHAT_MEDIA_BUCKET, STORAGE_PREFIX, chatMediaObjectPath } =
-      await import("@/lib/chat-media.server");
-    const { data: row } = await supabase
-      .from("messages")
-      .select("conversation_id, meta_message_id")
-      .eq("id", input.messageId)
-      .maybeSingle();
-    const read = row as { conversation_id?: string | null; meta_message_id?: string | null } | null;
-    wamid = read?.meta_message_id ?? null;
-    const conversationId = read?.conversation_id;
-    if (!conversationId) return { wamid };
-    const path = chatMediaObjectPath({
-      organizationId: input.organizationId,
-      conversationId,
-      messageId: input.messageId,
-      mime: "application/pdf",
-    });
-    const { error } = await supabase.storage
-      .from(CHAT_MEDIA_BUCKET)
-      .upload(path, input.bytes, { contentType: "application/pdf", upsert: true });
-    if (error) throw new Error(error.message);
-    const { error: rowError } = await supabase
-      .from("messages")
-      .update({ media_url: `${STORAGE_PREFIX}${path}`, media_mime: "application/pdf" })
-      .eq("id", input.messageId)
-      .eq("organization_id", input.organizationId);
-    if (rowError) throw new Error(rowError.message);
-  } catch (error) {
-    console.warn(
-      JSON.stringify({
-        scope: "public_api",
-        step: "document_copy",
-        message_id: input.messageId,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
-  }
-  return { wamid };
 }

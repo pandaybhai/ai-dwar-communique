@@ -1019,6 +1019,11 @@ export type TemplatePayloadInput = {
   headerLocation?: { latitude: string; longitude: string; name?: string; address?: string };
   /** Coupon codes for copy-code buttons, keyed by button index. */
   couponCodes?: Record<number, string>;
+  /**
+   * Batch 37: the payload a quick-reply button sends back when tapped, keyed
+   * by button index (optional on Meta's side: a button without one is left out).
+   */
+  quickReplyPayloads?: Record<number, string>;
   /** When the offer countdown runs out, in milliseconds since the epoch. */
   offerExpirationMs?: number;
   /** One entry per carousel card, in card order. */
@@ -1153,6 +1158,16 @@ export function buildTemplatePayloadComponents(
       sub_type: "copy_code",
       index: String(index),
       parameters: [{ type: "coupon_code", coupon_code: code.trim() }],
+    });
+  }
+
+  for (const [index, payload] of Object.entries(input.quickReplyPayloads ?? {})) {
+    if (!payload?.trim()) continue;
+    components.push({
+      type: "button",
+      sub_type: "quick_reply",
+      index: String(index),
+      parameters: [{ type: "payload", payload }],
     });
   }
 

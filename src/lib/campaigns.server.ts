@@ -228,6 +228,19 @@ export type SendCampaignContext = {
   messageMetadata?: Record<string, unknown> | null;
   /** The map pin for a location header. */
   headerLocation?: { latitude: string; longitude: string; name?: string; address?: string } | null;
+  /**
+   * Batch 37 (Public API): the header's own {{1}}… values, when the caller
+   * keeps them apart from the body's. Left out, the header is filled from the
+   * same values as the body, as before.
+   */
+  headerValues?: Record<string, string> | null;
+  /**
+   * Batch 37 (Public API): a link button's {{1}} value given as-is by the
+   * caller, keyed by button index. A button with one is not shortened.
+   */
+  buttonParams?: Record<number, string> | null;
+  /** Batch 37 (Public API): quick-reply payloads, keyed by button index. */
+  quickReplyPayloads?: Record<number, string> | null;
 
   /**
    * Per-card values for a carousel, in card order. A product carousel in a cart
@@ -291,7 +304,13 @@ export async function buildTemplateRequest(args: {
   // Every dynamic link — on the message or on a carousel card — gets its own
   // short link (mintLink), so a click can be attributed to this send and card.
   const buttonTokens: Record<number, string> = {};
-  if (spec.urlButtons.length > 0) {
+  // A value the caller gave for a button (the Public API) is used as it is.
+  const toShorten = spec.urlButtons.filter((b) => {
+    const given = context.buttonParams?.[b.index];
+    if (given?.trim()) buttonTokens[b.index] = given;
+    return !given?.trim();
+  });
+  if (toShorten.length > 0) {
     if (!context.linkTarget) {
       return buildFailure(
         "This message can't be sent: its button links somewhere we don't have a destination for.",
@@ -299,7 +318,7 @@ export async function buildTemplateRequest(args: {
         "missing_link_target",
       );
     }
-    for (const button of spec.urlButtons) {
+    for (const button of toShorten) {
       const { token, error } = await mintLink(context.linkTarget);
       if (!token) {
         return buildFailure(
@@ -368,9 +387,10 @@ export async function buildTemplateRequest(args: {
   const payload = buildTemplatePayloadComponents({
     spec,
     values: variables,
-    headerValues: variables,
+    headerValues: context.headerValues ?? variables,
     buttonTokens,
     couponCodes,
+    ...(context.quickReplyPayloads ? { quickReplyPayloads: context.quickReplyPayloads } : {}),
     ...(context.headerMediaId
       ? { headerMedia: { id: context.headerMediaId, ...(context.headerFileName ? { filename: context.headerFileName } : {}) } }
       : context.headerMediaUrl
@@ -399,6 +419,18 @@ export async function buildTemplateRequest(args: {
     const buttons = buttonsComp?.buttons ?? [];
     for (let i = 0; i < buttons.length; i++) {
       const b = buttons[i]!;
+      // Batch 37: a one-time-code button (authentication templates) carries
+      // the code the caller gave for it (the Public API), as a link parameter.
+      const otpCode = context.buttonParams?.[i];
+      if (String(b.type ?? "").toUpperCase() === "OTP" && otpCode?.trim()) {
+        flowButtonComponents.push({
+          type: "button",
+          sub_type: "url",
+          index: String(i),
+          parameters: [{ type: "text", text: otpCode }],
+        });
+        continue;
+      }
       if (String(b.type ?? "").toUpperCase() !== "FLOW") continue;
       const metaFlowId = b.flow_id != null ? String(b.flow_id) : "";
       if (metaFlowId && !flowFormId) {
