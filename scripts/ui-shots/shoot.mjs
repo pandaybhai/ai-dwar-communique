@@ -3,7 +3,7 @@
  *
  *   VITE_AIDWAR_SUPABASE_URL=http://fake-backend.test VITE_AIDWAR_SUPABASE_ANON_KEY=fake \
  *     npx vite dev --port 5199 --host 127.0.0.1
- *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat]
+ *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41]
  *
  * Uses the Chromium + Playwright installed on the machine (not a project
  * dependency). The dev server must point the app at the fake backend host:
@@ -54,10 +54,46 @@ const SCENARIOS = {
   shortcuts: { path: "/app", conversations: 40, wait: "h1", act: async (page) => page.keyboard.press("Shift+?") },
 };
 
+const firstCampaign = "00000000-0000-4000-8000-000000007000";
+
+/** Batch 41: Home, Campaigns, Templates. */
+const SCENARIOS_B41 = {
+  home: { path: "/app", conversations: 40, wait: "text=Waiting on you" },
+  campaigns: { path: "/app/campaigns", conversations: 40, wait: "text=Diwali preview" },
+  "campaigns-empty": { path: "/app/campaigns", conversations: 40, campaigns: 0, wait: "h1" },
+  "campaign-detail": { path: `/app/campaigns/${firstCampaign}`, conversations: 40, wait: "text=Offer performance" },
+  "campaign-wizard": {
+    path: "/app/campaigns",
+    conversations: 40,
+    wait: "text=Diwali preview",
+    act: async (page) => {
+      await page.getByRole("button", { name: /create campaign/i }).first().click();
+      await page.waitForTimeout(900);
+    },
+  },
+  templates: { path: "/app/templates", conversations: 40, wait: "text=order_shipped" },
+  "templates-empty": { path: "/app/templates", conversations: 40, templates: 0, wait: "h1" },
+  "template-create": {
+    path: "/app/templates",
+    conversations: 40,
+    wait: "text=order_shipped",
+    act: async (page) => {
+      await page.getByRole("button", { name: /create template/i }).first().click();
+      await page.waitForTimeout(900);
+    },
+  },
+};
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41 };
+
 const consoleErrors = [];
 
 async function shoot(browser, name, scenario, viewportName, theme) {
-  const fake = createBackend({ conversations: scenario.conversations });
+  const fake = createBackend({
+    conversations: scenario.conversations,
+    campaigns: scenario.campaigns,
+    templates: scenario.templates,
+  });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
     deviceScaleFactor: viewportName === "mobile" ? 2 : 1,
@@ -106,7 +142,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
 
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch();
-for (const [name, scenario] of Object.entries(SCENARIOS)) {
+for (const [name, scenario] of Object.entries(SETS[args.set ?? "b39"])) {
   if (ONLY && !ONLY.includes(name)) continue;
   for (const vp of Object.keys(VIEWPORTS)) {
     for (const theme of THEMES) await shoot(browser, name, scenario, vp, theme);

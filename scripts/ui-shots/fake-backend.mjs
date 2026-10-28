@@ -246,6 +246,113 @@ const AI_RUNS = (thread) => [
   },
 ];
 
+/** Campaigns in every state the list shows (Batch 41). */
+export function makeCampaigns() {
+  const c = (i, name, status, total, sent, delivered, read, failed, replied, at, extra = {}) => ({
+    id: `00000000-0000-4000-8000-${String(7000 + i).padStart(12, "0")}`,
+    organization_id: ORG,
+    name,
+    template_name: ["diwali_preview", "order_shipped", "back_in_stock", "wedding_edit", "festive_offer"][i % 5],
+    template_language: "en",
+    variable_mappings: null,
+    segment_id: null,
+    status,
+    scheduled_at: status === "scheduled" ? new Date(Date.now() + DAY).toISOString() : null,
+    started_at: sent ? ago(at) : null,
+    completed_at: status === "completed" ? ago(at - HOUR) : null,
+    total_recipients: total,
+    sent_count: sent,
+    delivered_count: delivered,
+    read_count: read,
+    failed_count: failed,
+    replied_count: replied,
+    created_by: ME,
+    created_at: ago(at + HOUR),
+    send_settings: {},
+    estimated_cost: total * 0.86,
+    held_amount: 0,
+    charged_amount: sent * 0.86,
+    returned_amount: 0,
+    pause_reason: null,
+    ...extra,
+  });
+  return [
+    c(0, "Diwali preview — VIP list", "sending", 4210, 2630, 2488, 1712, 31, 96, 40 * MIN, {
+      send_settings: { coupon_code: "DIWALI15", offer_expires_at: new Date(Date.now() + 2 * DAY).toISOString() },
+    }),
+    c(1, "Order shipped — October", "completed", 1180, 1180, 1162, 941, 18, 37, 2 * DAY),
+    c(2, "Back in stock: Meenakari sets", "scheduled", 860, 0, 0, 0, 0, 0, 3 * HOUR),
+    c(3, "Wedding edit lookbook", "awaiting_approval", 5200, 0, 0, 0, 0, 0, 5 * HOUR),
+    c(4, "Festive offer — lapsed buyers", "paused", 2300, 940, 902, 511, 12, 22, DAY, { pause_reason: "insufficient_credits" }),
+    c(5, "Dhanteras reminder", "completed", 3150, 3150, 3097, 2604, 53, 118, 6 * DAY),
+    c(6, "Draft: Karva Chauth gifts", "draft", 0, 0, 0, 0, 0, 0, 7 * DAY),
+    c(7, "Old price list", "cancelled", 640, 120, 118, 77, 0, 3, 12 * DAY),
+    c(8, "Test to staff", "failed", 12, 0, 0, 0, 12, 0, 20 * DAY),
+  ];
+}
+
+const RECIPIENT_STATUS = ["read", "read", "delivered", "sent", "replied", "failed", "queued", "read", "delivered", "sending"];
+export function makeRecipients(campaignId) {
+  return Array.from({ length: 20 }, (_, i) => ({
+    id: `${campaignId.slice(0, 24)}${String(100 + i).padStart(12, "0")}`,
+    contact_id: null,
+    phone: `+9198${String(20000000 + i * 104729).slice(0, 8)}`,
+    resolved_variables: { 1: FIRST[i % FIRST.length] },
+    status: RECIPIENT_STATUS[i % RECIPIENT_STATUS.length],
+    error: RECIPIENT_STATUS[i % RECIPIENT_STATUS.length] === "failed" ? "131026: Message undeliverable — the number isn't on WhatsApp." : null,
+    updated_at: ago(i * 3 * MIN),
+  }));
+}
+
+const tpl = (i, name, category, status, components, extra = {}) => ({
+  id: `00000000-0000-4000-8000-${String(8000 + i).padStart(12, "0")}`,
+  organization_id: ORG,
+  waba_id: "waba1",
+  meta_template_id: `meta-${i}`,
+  name,
+  language: i === 4 ? "hi" : "en",
+  category,
+  status,
+  components,
+  rejection_reason: null,
+  created_at: ago((i + 1) * 2 * DAY),
+  updated_at: ago((i + 1) * DAY),
+  ...extra,
+});
+
+/** A template library with every kind of template the preview draws. */
+export function makeTemplates() {
+  return [
+    tpl(0, "order_shipped", "UTILITY", "APPROVED", [
+      { type: "BODY", text: "Hi {{1}}, your order {{2}} has shipped 📦 Track it here: kesar.example/t/2041", example: { body_text: [["Asha", "#KC-2041"]] } },
+      { type: "FOOTER", text: "Kesar & Co. · Jaipur" },
+      { type: "BUTTONS", buttons: [{ type: "URL", text: "Track order", url: "https://kesar.example/t/{{1}}" }] },
+    ]),
+    tpl(1, "diwali_preview", "MARKETING", "APPROVED", [
+      { type: "HEADER", format: "IMAGE", example: { header_handle: ["x"] } },
+      { type: "BODY", text: "✨ *Diwali preview* for our favourite customers, {{1}}! Our new Meenakari collection is here — 15% off this week only.", example: { body_text: [["Asha"]] } },
+      { type: "FOOTER", text: "Reply STOP to opt out" },
+      { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Show me" }, { type: "QUICK_REPLY", text: "Not now" }] },
+    ]),
+    tpl(2, "back_in_stock", "MARKETING", "PENDING", [
+      { type: "HEADER", format: "TEXT", text: "Back in stock 💍" },
+      { type: "BODY", text: "Good news, {{1}} — the {{2}} you asked about is back. Shall we keep one for you?", example: { body_text: [["Asha", "rose-gold ring"]] } },
+      { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Yes, keep one" }] },
+    ]),
+    tpl(3, "festive_offer", "MARKETING", "REJECTED", [
+      { type: "BODY", text: "FLAT 50% OFF EVERYTHING!!! Click now before it's gone!!!" },
+    ], { rejection_reason: "Promotional content that may be considered spam (excessive capital letters and punctuation)." }),
+    tpl(4, "invoice_hi", "UTILITY", "APPROVED", [
+      { type: "HEADER", format: "DOCUMENT", example: { header_handle: ["x"] } },
+      { type: "BODY", text: "नमस्ते {{1}}, आपका बिल संलग्न है। धन्यवाद!", example: { body_text: [["आशा"]] } },
+    ]),
+    tpl(5, "login_code", "AUTHENTICATION", "APPROVED", [
+      { type: "BODY", text: "*{{1}}* is your verification code. For your security, do not share this code.", example: { body_text: [["482913"]] } },
+      { type: "BUTTONS", buttons: [{ type: "OTP", otp_type: "COPY_CODE", text: "Copy code" }] },
+    ]),
+  ];
+}
+
 function parse(url) {
   const u = new URL(url);
   const table = u.pathname.replace(/^\/rest\/v1\//, "");
@@ -280,6 +387,8 @@ function applyFilters(rows, filters) {
  */
 export function createBackend(options = {}) {
   const conversations = makeConversations(options.conversations ?? 40);
+  const campaigns = options.campaigns === 0 ? [] : makeCampaigns();
+  const templates = options.templates === 0 ? [] : makeTemplates();
   const threads = new Map();
   const threadOf = (id) => {
     if (!threads.has(id)) threads.set(id, id === conversations[0]?.id ? makeThread(id) : makeThread(id).slice(0, 4));
@@ -319,11 +428,14 @@ export function createBackend(options = {}) {
       const cid = q.filters.conversation_id?.value;
       return cid ? AI_RUNS(threadOf(cid)) : [];
     },
-    message_templates: () => [
-      {
-        name: "order_shipped",
-        components: [{ type: "BODY", text: "Hi {{1}}, your order {{2}} has shipped 📦 Track it here: kesar.example/t/2041", example: { body_text: [["Asha", "#KC-2041"]] } }],
-      },
+    message_templates: () => templates,
+    campaigns: () => campaigns,
+    campaign_recipients: (q) => (q.filters.campaign_id ? makeRecipients(q.filters.campaign_id.value) : []),
+    campaign_offer_events: (q) =>
+      Array.from({ length: q.filters.event?.value === "redeemed" ? 41 : 212 }, (_, i) => ({ id: `ev${i}` })),
+    segments: () => [
+      { id: "seg1", name: "VIP customers", description: "Spent ₹50,000+ this year", filters: {}, created_by: ME, created_at: ago(30 * DAY) },
+      { id: "seg2", name: "Wedding season leads", description: "Asked about bridal sets", filters: {}, created_by: ME, created_at: ago(10 * DAY) },
     ],
     pending_owner_replies: () => [],
     automations: () => [],
@@ -357,9 +469,12 @@ export function createBackend(options = {}) {
     }
     const limit = Number(q.params.get("limit") ?? "0");
     if (limit && method === "GET") rows = rows.slice(0, limit);
+    // Campaign recipients: 20 rows drawn, but counted like a real 4,210-recipient send.
+    const total =
+      q.table === "campaign_recipients" ? (method === "HEAD" ? 2580 : 4210) : rows.length;
     const headers = {
       "content-type": "application/json",
-      "content-range": `0-${Math.max(0, rows.length - 1)}/${rows.length}`,
+      "content-range": `0-${Math.max(0, rows.length - 1)}/${total}`,
       "access-control-allow-origin": "*",
       "access-control-expose-headers": "content-range",
     };
@@ -421,6 +536,12 @@ export function createBackend(options = {}) {
         ],
         generated_at: new Date().toISOString(),
       });
+    }
+    if (url.pathname === "/api/campaigns/audience") {
+      return json({ matched: 1240, eligible: 1186, excluded: 54, sample: { name: "Asha Iyer", phone: "+919820011223", attributes: {} } });
+    }
+    if (url.pathname === "/api/campaigns/estimate") {
+      return json({ enabled: true, recipients: 1186, category: "marketing", rate: 0.86, currency: "INR", estimate: 1019.96, available: 2840.5, shortfall: 0, can_send: true, needs_approval: false, approval_threshold: null, daily_limit: 10000, over_daily_limit: false, days_needed: 1 });
     }
     if (url.pathname === "/api/whatsapp/send-message") {
       await new Promise((r) => setTimeout(r, 600));
