@@ -138,6 +138,7 @@ import { Route as ApiPublicRazorpayFlowWebhookOrgIdRouteImport } from './routes/
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
 import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/shopify/webhooks/shop-redact'
+import { Route as ApiV1MediaMessageIdRouteImport } from './routes/api/v1/media/$messageId'
 import { Route as ApiV1MessagesMessageIdRouteImport } from './routes/api/v1/messages/$messageId'
 import { Route as ApiV1MessagesSessionRouteImport } from './routes/api/v1/messages/session'
 import { Route as ApiV1MessagesTemplateRouteImport } from './routes/api/v1/messages/template'
@@ -147,6 +148,7 @@ import { Route as AppFlowsV2IdRouteImport } from './routes/app/flows.v2.$id'
 import { Route as ApiPublicShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/public/shopify/webhooks/customers-data-request'
 import { Route as ApiPublicShopifyWebhooksCustomersRedactRouteImport } from './routes/api/public/shopify/webhooks/customers-redact'
 import { Route as ApiPublicShopifyWebhooksShopRedactRouteImport } from './routes/api/public/shopify/webhooks/shop-redact'
+import { Route as ApiV1MediaMessageIdDownloadRouteImport } from './routes/api/v1/media/$messageId.download'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -816,6 +818,11 @@ const ApiShopifyWebhooksShopRedactRoute =
     path: '/api/shopify/webhooks/shop-redact',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1MediaMessageIdRoute = ApiV1MediaMessageIdRouteImport.update({
+  id: '/api/v1/media/$messageId',
+  path: '/api/v1/media/$messageId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1MessagesMessageIdRoute = ApiV1MessagesMessageIdRouteImport.update({
   id: '/api/v1/messages/$messageId',
   path: '/api/v1/messages/$messageId',
@@ -864,6 +871,12 @@ const ApiPublicShopifyWebhooksShopRedactRoute =
     id: '/api/public/shopify/webhooks/shop-redact',
     path: '/api/public/shopify/webhooks/shop-redact',
     getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1MediaMessageIdDownloadRoute =
+  ApiV1MediaMessageIdDownloadRouteImport.update({
+    id: '/download',
+    path: '/download',
+    getParentRoute: () => ApiV1MediaMessageIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -996,6 +1009,7 @@ export interface FileRoutesByFullPath {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
   '/api/v1/messages/$messageId': typeof ApiV1MessagesMessageIdRoute
   '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
@@ -1005,6 +1019,7 @@ export interface FileRoutesByFullPath {
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1134,6 +1149,7 @@ export interface FileRoutesByTo {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
   '/api/v1/messages/$messageId': typeof ApiV1MessagesMessageIdRoute
   '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
@@ -1143,6 +1159,7 @@ export interface FileRoutesByTo {
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1275,6 +1292,7 @@ export interface FileRoutesById {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
   '/api/v1/messages/$messageId': typeof ApiV1MessagesMessageIdRoute
   '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
@@ -1284,6 +1302,7 @@ export interface FileRoutesById {
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1417,6 +1436,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/media/$messageId'
     | '/api/v1/messages/$messageId'
     | '/api/v1/messages/session'
     | '/api/v1/messages/template'
@@ -1426,6 +1446,7 @@ export interface FileRouteTypes {
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/media/$messageId/download'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1555,6 +1576,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/media/$messageId'
     | '/api/v1/messages/$messageId'
     | '/api/v1/messages/session'
     | '/api/v1/messages/template'
@@ -1564,6 +1586,7 @@ export interface FileRouteTypes {
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/media/$messageId/download'
   id:
     | '__root__'
     | '/'
@@ -1695,6 +1718,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/media/$messageId'
     | '/api/v1/messages/$messageId'
     | '/api/v1/messages/session'
     | '/api/v1/messages/template'
@@ -1704,6 +1728,7 @@ export interface FileRouteTypes {
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/media/$messageId/download'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1808,6 +1833,7 @@ export interface RootRouteChildren {
   ApiShopifyWebhooksCustomersDataRequestRoute: typeof ApiShopifyWebhooksCustomersDataRequestRoute
   ApiShopifyWebhooksCustomersRedactRoute: typeof ApiShopifyWebhooksCustomersRedactRoute
   ApiShopifyWebhooksShopRedactRoute: typeof ApiShopifyWebhooksShopRedactRoute
+  ApiV1MediaMessageIdRoute: typeof ApiV1MediaMessageIdRouteWithChildren
   ApiV1MessagesMessageIdRoute: typeof ApiV1MessagesMessageIdRoute
   ApiV1MessagesSessionRoute: typeof ApiV1MessagesSessionRoute
   ApiV1MessagesTemplateRoute: typeof ApiV1MessagesTemplateRoute
@@ -2723,6 +2749,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShopifyWebhooksShopRedactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/media/$messageId': {
+      id: '/api/v1/media/$messageId'
+      path: '/api/v1/media/$messageId'
+      fullPath: '/api/v1/media/$messageId'
+      preLoaderRoute: typeof ApiV1MediaMessageIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/messages/$messageId': {
       id: '/api/v1/messages/$messageId'
       path: '/api/v1/messages/$messageId'
@@ -2785,6 +2818,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/public/shopify/webhooks/shop-redact'
       preLoaderRoute: typeof ApiPublicShopifyWebhooksShopRedactRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/media/$messageId/download': {
+      id: '/api/v1/media/$messageId/download'
+      path: '/download'
+      fullPath: '/api/v1/media/$messageId/download'
+      preLoaderRoute: typeof ApiV1MediaMessageIdDownloadRouteImport
+      parentRoute: typeof ApiV1MediaMessageIdRoute
     }
   }
 }
@@ -2866,6 +2906,17 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
   AppRouteRouteChildren,
 )
+
+interface ApiV1MediaMessageIdRouteChildren {
+  ApiV1MediaMessageIdDownloadRoute: typeof ApiV1MediaMessageIdDownloadRoute
+}
+
+const ApiV1MediaMessageIdRouteChildren: ApiV1MediaMessageIdRouteChildren = {
+  ApiV1MediaMessageIdDownloadRoute: ApiV1MediaMessageIdDownloadRoute,
+}
+
+const ApiV1MediaMessageIdRouteWithChildren =
+  ApiV1MediaMessageIdRoute._addFileChildren(ApiV1MediaMessageIdRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -2972,6 +3023,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiShopifyWebhooksCustomersRedactRoute:
     ApiShopifyWebhooksCustomersRedactRoute,
   ApiShopifyWebhooksShopRedactRoute: ApiShopifyWebhooksShopRedactRoute,
+  ApiV1MediaMessageIdRoute: ApiV1MediaMessageIdRouteWithChildren,
   ApiV1MessagesMessageIdRoute: ApiV1MessagesMessageIdRoute,
   ApiV1MessagesSessionRoute: ApiV1MessagesSessionRoute,
   ApiV1MessagesTemplateRoute: ApiV1MessagesTemplateRoute,

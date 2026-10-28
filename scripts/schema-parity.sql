@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 89, column 1075, view 2, function 107, index 156, trigger 67, cron_job 14.
+-- Expected objects: table 89, column 1076, view 2, function 107, index 157, trigger 67, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -317,6 +317,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'api_requests', 'state', NULL, 'text', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'attempts', NULL, 'integer', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'created_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_webhook_deliveries', 'dedupe_key', NULL, 'text', '20261150_batch37_public_api_v11.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'delivered_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'event', NULL, 'text', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_webhook_deliveries', 'id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
@@ -1318,6 +1319,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'api_requests_org_key_key', NULL, NULL, 'unique on public.api_requests', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'api_webhook_deliveries_due_idx', NULL, NULL, 'on public.api_webhook_deliveries', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'api_webhook_deliveries_message_event_key', NULL, NULL, 'unique on public.api_webhook_deliveries', '20261120_batch34_public_api.sql'),
+    ('index', 'public', 'api_webhook_deliveries_org_dedupe_key', NULL, NULL, 'unique on public.api_webhook_deliveries', '20261150_batch37_public_api_v11.sql'),
     ('index', 'public', 'api_webhook_deliveries_org_idx', NULL, NULL, 'on public.api_webhook_deliveries', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'automation_runs_lookup_idx', NULL, NULL, 'on public.automation_runs', '20260816_automations.sql'),
     ('index', 'public', 'automation_runs_message_unique_idx', NULL, NULL, 'unique on public.automation_runs', '20260816_automations.sql'),

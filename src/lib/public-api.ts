@@ -63,6 +63,27 @@ export const WEBHOOK_EVENT_NAMES = [
   "message.failed",
 ] as const;
 
+/**
+ * Batch 37: the events a webhook hears beyond its own messages' statuses —
+ * queued for a workspace whose webhook is set and active.
+ */
+export const INBOUND_EVENT_NAMES = [
+  "message.received",
+  "contact.created",
+  "contact.opted_out",
+  "contact.opted_in",
+  "template.status_changed",
+  "template.category_changed",
+] as const;
+export type InboundEventName = (typeof INBOUND_EVENT_NAMES)[number];
+
+/** Every event a webhook can receive, in the order Settings and the docs list them. */
+export const ALL_WEBHOOK_EVENTS = [...WEBHOOK_EVENT_NAMES, ...INBOUND_EVENT_NAMES] as const;
+
+export const MEDIA_PATH = "/api/v1/media/{message_id}";
+/** How long a download link from GET /api/v1/media/{message_id} works. */
+export const MEDIA_LINK_SECONDS = 300;
+
 /** Every error the API answers with: status, codes, when. */
 export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: string }> = [
   {

@@ -1031,6 +1031,14 @@ async function applyOptKeywords(
     },
   });
 
+  // Batch 37: the merchant's webhook hears it (when one is set).
+  const { queueContactOptEvent } = await import("@/lib/public-api-webhooks.server");
+  await queueContactOptEvent(supabase, {
+    organizationId: args.organizationId,
+    contactId: args.contactId,
+    event: optOut ? "contact.opted_out" : "contact.opted_in",
+  });
+
   await supabase.from("activity_log").insert({
     organization_id: args.organizationId,
     action: optOut ? "contact_opted_out" : "contact_opted_in",
@@ -1957,6 +1965,25 @@ export async function processWebhookPayload(
                 occurredAt,
                 properties: { message_type: type, conversation_id: conversation.id },
               });
+              // Batch 37: the merchant's own webhook hears message.received (and
+              // contact.created for a new number) — once, as this message is new;
+              // after the reply, awaited before the event is closed.
+              if (!isSystemEcho && isCustomerNumber) {
+                const apiEvent = {
+                  organizationId: orgId,
+                  contactId: contact.id as string,
+                  messageId: inserted[0]!.id as string,
+                  msg,
+                  phone,
+                  name: profileName,
+                  newContact: contactAge >= 0 && contactAge < 10_000,
+                  contactSource: attribution.source,
+                  occurredAt,
+                };
+                afterReply.push(async () =>
+                  (await import("@/lib/public-api-webhooks.server")).queueInboundApiEvents(supabase, apiEvent),
+                );
+              }
             }
 
             connection = await connectionP;

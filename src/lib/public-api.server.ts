@@ -238,6 +238,13 @@ export async function authenticateApiKey(
   return { keyId: row.id, organizationId: row.organization_id };
 }
 
+/** sha256 of the key a request carries (already checked by authenticateApiKey), else "". */
+export function bearerKeyHash(request: Request): string {
+  const header = request.headers.get("authorization") ?? "";
+  const token = header.replace(/^bearer\s+/i, "").trim();
+  return KEY_SHAPE.test(token) ? hashApiKey(token) : "";
+}
+
 // ------------------------------------------------------------ rate limits
 
 /**
