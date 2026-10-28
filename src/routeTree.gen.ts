@@ -139,6 +139,9 @@ import { Route as ApiPublicRazorpayFlowWebhookOrgIdRouteImport } from './routes/
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
 import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/shopify/webhooks/shop-redact'
+import { Route as ApiV1CampaignsIndexRouteImport } from './routes/api/v1/campaigns/index'
+import { Route as ApiV1CampaignsCampaignIdRouteImport } from './routes/api/v1/campaigns/$campaignId'
+import { Route as ApiV1CampaignsEstimateRouteImport } from './routes/api/v1/campaigns/estimate'
 import { Route as ApiV1MessagesMessageIdRouteImport } from './routes/api/v1/messages/$messageId'
 import { Route as ApiV1MessagesTemplateRouteImport } from './routes/api/v1/messages/template'
 import { Route as ApiWhatsappChatMediaMessageIdRouteImport } from './routes/api/whatsapp/chat-media.$messageId'
@@ -147,6 +150,7 @@ import { Route as AppFlowsV2IdRouteImport } from './routes/app/flows.v2.$id'
 import { Route as ApiPublicShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/public/shopify/webhooks/customers-data-request'
 import { Route as ApiPublicShopifyWebhooksCustomersRedactRouteImport } from './routes/api/public/shopify/webhooks/customers-redact'
 import { Route as ApiPublicShopifyWebhooksShopRedactRouteImport } from './routes/api/public/shopify/webhooks/shop-redact'
+import { Route as ApiV1CampaignsCampaignIdCancelRouteImport } from './routes/api/v1/campaigns/$campaignId.cancel'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -821,6 +825,22 @@ const ApiShopifyWebhooksShopRedactRoute =
     path: '/api/shopify/webhooks/shop-redact',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1CampaignsIndexRoute = ApiV1CampaignsIndexRouteImport.update({
+  id: '/api/v1/campaigns/',
+  path: '/api/v1/campaigns/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1CampaignsCampaignIdRoute =
+  ApiV1CampaignsCampaignIdRouteImport.update({
+    id: '/api/v1/campaigns/$campaignId',
+    path: '/api/v1/campaigns/$campaignId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1CampaignsEstimateRoute = ApiV1CampaignsEstimateRouteImport.update({
+  id: '/api/v1/campaigns/estimate',
+  path: '/api/v1/campaigns/estimate',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1MessagesMessageIdRoute = ApiV1MessagesMessageIdRouteImport.update({
   id: '/api/v1/messages/$messageId',
   path: '/api/v1/messages/$messageId',
@@ -864,6 +884,12 @@ const ApiPublicShopifyWebhooksShopRedactRoute =
     id: '/api/public/shopify/webhooks/shop-redact',
     path: '/api/public/shopify/webhooks/shop-redact',
     getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1CampaignsCampaignIdCancelRoute =
+  ApiV1CampaignsCampaignIdCancelRouteImport.update({
+    id: '/cancel',
+    path: '/cancel',
+    getParentRoute: () => ApiV1CampaignsCampaignIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -997,14 +1023,18 @@ export interface FileRoutesByFullPath {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/campaigns/$campaignId': typeof ApiV1CampaignsCampaignIdRouteWithChildren
+  '/api/v1/campaigns/estimate': typeof ApiV1CampaignsEstimateRoute
   '/api/v1/messages/$messageId': typeof ApiV1MessagesMessageIdRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
+  '/api/v1/campaigns/': typeof ApiV1CampaignsIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/campaigns/$campaignId/cancel': typeof ApiV1CampaignsCampaignIdCancelRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1135,14 +1165,18 @@ export interface FileRoutesByTo {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/campaigns/$campaignId': typeof ApiV1CampaignsCampaignIdRouteWithChildren
+  '/api/v1/campaigns/estimate': typeof ApiV1CampaignsEstimateRoute
   '/api/v1/messages/$messageId': typeof ApiV1MessagesMessageIdRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
+  '/api/v1/campaigns': typeof ApiV1CampaignsIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/campaigns/$campaignId/cancel': typeof ApiV1CampaignsCampaignIdCancelRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1276,14 +1310,18 @@ export interface FileRoutesById {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/campaigns/$campaignId': typeof ApiV1CampaignsCampaignIdRouteWithChildren
+  '/api/v1/campaigns/estimate': typeof ApiV1CampaignsEstimateRoute
   '/api/v1/messages/$messageId': typeof ApiV1MessagesMessageIdRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
+  '/api/v1/campaigns/': typeof ApiV1CampaignsIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/campaigns/$campaignId/cancel': typeof ApiV1CampaignsCampaignIdCancelRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1418,14 +1456,18 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/campaigns/$campaignId'
+    | '/api/v1/campaigns/estimate'
     | '/api/v1/messages/$messageId'
     | '/api/v1/messages/template'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
+    | '/api/v1/campaigns/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/campaigns/$campaignId/cancel'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1556,14 +1598,18 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/campaigns/$campaignId'
+    | '/api/v1/campaigns/estimate'
     | '/api/v1/messages/$messageId'
     | '/api/v1/messages/template'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
+    | '/api/v1/campaigns'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/campaigns/$campaignId/cancel'
   id:
     | '__root__'
     | '/'
@@ -1696,14 +1742,18 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/campaigns/$campaignId'
+    | '/api/v1/campaigns/estimate'
     | '/api/v1/messages/$messageId'
     | '/api/v1/messages/template'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
+    | '/api/v1/campaigns/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/campaigns/$campaignId/cancel'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1809,10 +1859,13 @@ export interface RootRouteChildren {
   ApiShopifyWebhooksCustomersDataRequestRoute: typeof ApiShopifyWebhooksCustomersDataRequestRoute
   ApiShopifyWebhooksCustomersRedactRoute: typeof ApiShopifyWebhooksCustomersRedactRoute
   ApiShopifyWebhooksShopRedactRoute: typeof ApiShopifyWebhooksShopRedactRoute
+  ApiV1CampaignsCampaignIdRoute: typeof ApiV1CampaignsCampaignIdRouteWithChildren
+  ApiV1CampaignsEstimateRoute: typeof ApiV1CampaignsEstimateRoute
   ApiV1MessagesMessageIdRoute: typeof ApiV1MessagesMessageIdRoute
   ApiV1MessagesTemplateRoute: typeof ApiV1MessagesTemplateRoute
   ApiWhatsappChatMediaMessageIdRoute: typeof ApiWhatsappChatMediaMessageIdRoute
   ApiWhatsappMediaIdRoute: typeof ApiWhatsappMediaIdRoute
+  ApiV1CampaignsIndexRoute: typeof ApiV1CampaignsIndexRoute
   ApiPublicShopifyWebhooksCustomersDataRequestRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   ApiPublicShopifyWebhooksCustomersRedactRoute: typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   ApiPublicShopifyWebhooksShopRedactRoute: typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -2730,6 +2783,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShopifyWebhooksShopRedactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/campaigns/': {
+      id: '/api/v1/campaigns/'
+      path: '/api/v1/campaigns'
+      fullPath: '/api/v1/campaigns/'
+      preLoaderRoute: typeof ApiV1CampaignsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/campaigns/$campaignId': {
+      id: '/api/v1/campaigns/$campaignId'
+      path: '/api/v1/campaigns/$campaignId'
+      fullPath: '/api/v1/campaigns/$campaignId'
+      preLoaderRoute: typeof ApiV1CampaignsCampaignIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/campaigns/estimate': {
+      id: '/api/v1/campaigns/estimate'
+      path: '/api/v1/campaigns/estimate'
+      fullPath: '/api/v1/campaigns/estimate'
+      preLoaderRoute: typeof ApiV1CampaignsEstimateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/messages/$messageId': {
       id: '/api/v1/messages/$messageId'
       path: '/api/v1/messages/$messageId'
@@ -2785,6 +2859,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/public/shopify/webhooks/shop-redact'
       preLoaderRoute: typeof ApiPublicShopifyWebhooksShopRedactRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/campaigns/$campaignId/cancel': {
+      id: '/api/v1/campaigns/$campaignId/cancel'
+      path: '/cancel'
+      fullPath: '/api/v1/campaigns/$campaignId/cancel'
+      preLoaderRoute: typeof ApiV1CampaignsCampaignIdCancelRouteImport
+      parentRoute: typeof ApiV1CampaignsCampaignIdRoute
     }
   }
 }
@@ -2866,6 +2947,20 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
   AppRouteRouteChildren,
 )
+
+interface ApiV1CampaignsCampaignIdRouteChildren {
+  ApiV1CampaignsCampaignIdCancelRoute: typeof ApiV1CampaignsCampaignIdCancelRoute
+}
+
+const ApiV1CampaignsCampaignIdRouteChildren: ApiV1CampaignsCampaignIdRouteChildren =
+  {
+    ApiV1CampaignsCampaignIdCancelRoute: ApiV1CampaignsCampaignIdCancelRoute,
+  }
+
+const ApiV1CampaignsCampaignIdRouteWithChildren =
+  ApiV1CampaignsCampaignIdRoute._addFileChildren(
+    ApiV1CampaignsCampaignIdRouteChildren,
+  )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -2973,10 +3068,13 @@ const rootRouteChildren: RootRouteChildren = {
   ApiShopifyWebhooksCustomersRedactRoute:
     ApiShopifyWebhooksCustomersRedactRoute,
   ApiShopifyWebhooksShopRedactRoute: ApiShopifyWebhooksShopRedactRoute,
+  ApiV1CampaignsCampaignIdRoute: ApiV1CampaignsCampaignIdRouteWithChildren,
+  ApiV1CampaignsEstimateRoute: ApiV1CampaignsEstimateRoute,
   ApiV1MessagesMessageIdRoute: ApiV1MessagesMessageIdRoute,
   ApiV1MessagesTemplateRoute: ApiV1MessagesTemplateRoute,
   ApiWhatsappChatMediaMessageIdRoute: ApiWhatsappChatMediaMessageIdRoute,
   ApiWhatsappMediaIdRoute: ApiWhatsappMediaIdRoute,
+  ApiV1CampaignsIndexRoute: ApiV1CampaignsIndexRoute,
   ApiPublicShopifyWebhooksCustomersDataRequestRoute:
     ApiPublicShopifyWebhooksCustomersDataRequestRoute,
   ApiPublicShopifyWebhooksCustomersRedactRoute:

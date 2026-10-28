@@ -4,13 +4,9 @@ export const Route = createFileRoute("/api/campaigns/launch")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { requireOrgMember, isResponse, jsonError, logServerActivity } = await import(
+        const { requireOrgMember, isResponse, jsonError } = await import(
           "@/lib/whatsapp-api.server"
         );
-        const { resolveAudienceContacts, isSegmentNotFound } = await import("@/lib/campaigns.server");
-        const { extractVariables, templateBodyText } = await import("@/lib/templates");
-        const { resolveAllVariables } = await import("@/lib/campaigns");
-        const { normalizePhone } = await import("@/lib/phone");
 
         let payload: Record<string, unknown>;
         try {
@@ -26,230 +22,39 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         const denied = await requirePermission(auth, "campaigns.send", "launch campaigns");
         if (denied) return denied;
 
-        // A locked or paused workspace spends nothing until a plan is chosen.
-        {
-          const { data: orgRow } = await supabase
-            .from("organizations")
-            .select("plan_status")
-            .eq("id", organizationId)
-            .maybeSingle();
-          const planStatus = (orgRow as { plan_status?: string | null } | null)?.plan_status ?? null;
-          if (planStatus === "locked" || planStatus === "paused") {
-            return jsonError("This workspace is locked — choose a plan to continue.", 402);
-          }
-        }
-
-        const name = String(payload["name"] ?? "").trim();
-        const templateName = String(payload["template_name"] ?? "").trim();
-        const segmentId = (payload["segment_id"] as string | null) || null;
-        const scheduledAtRaw = (payload["scheduled_at"] as string | null) || null;
-        const accountIdRaw = (payload["whatsapp_account_id"] as string | null) || null;
-        const mappings = (payload["variable_mappings"] ?? {}) as Record<
-          string,
-          { source: "name" | "phone" | "attribute" | "static"; key?: string; value?: string }
-        >;
-
         // Media the sender chose for this campaign: the header picture/clip/file
         // and one file per carousel card (only https links), coupons and the
         // offer end — the same rules the test send uses (Batch 35).
         const { sanitizeSendSettings } = await import("@/lib/campaigns");
-        const sendSettings = sanitizeSendSettings(payload["send_settings"]);
+        const scheduledAtRaw = (payload["scheduled_at"] as string | null) || null;
 
-        if (!name) return jsonError("Give your campaign a name.");
-        if (!templateName) return jsonError("Pick an approved template.");
-
-        // A campaign sends from exactly one number; its WABA decides which
-        // template library is valid.
-        const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
-        const { connection, error: connectionError } = await getWhatsAppConnection(
-          supabase,
+        // The launch itself is shared with the Public API (Batch 38).
+        const { launchCampaign } = await import("@/lib/campaign-launch.server");
+        const result = await launchCampaign(supabase, {
           organizationId,
-          accountIdRaw,
-        );
-        if (!connection) {
-          return jsonError(connectionError ?? "Connect a number before launching a campaign.");
-        }
-
-        const { data: template } = await supabase
-          .from("message_templates")
-          .select("name, language, components, status")
-          .eq("organization_id", organizationId)
-          .eq("waba_id", connection.wabaId)
-          .eq("name", templateName)
-          .eq("status", "APPROVED")
-          .limit(1)
-          .maybeSingle();
-        if (!template) {
-          return jsonError(
-            "That template isn't approved on the number you picked. Choose another template or another number.",
-          );
-        }
-
-        const variableOrder = extractVariables(
-          templateBodyText(template.components as never),
-        );
-
-        let contacts: Awaited<ReturnType<typeof resolveAudienceContacts>>;
-        try {
-          contacts = await resolveAudienceContacts(supabase, organizationId, segmentId);
-        } catch (error) {
-          if (isSegmentNotFound(error)) return jsonError(error.message, 404);
-          return jsonError("We couldn't work out this audience. Please try again.", 500);
-        }
-        if (contacts.length === 0) {
-          return jsonError(
-            "No opted-in contacts match this audience yet, so there's nobody to send to.",
-          );
-        }
-
-        const scheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : null;
-        const isFuture = Boolean(scheduledAt && scheduledAt.getTime() > Date.now() + 30_000);
-        const nowIso = new Date().toISOString();
-
-        // Money check. Workspaces without billing switched on are untouched:
-        // the estimate comes back disabled and nothing is blocked or held.
-        const { estimateCampaignCost } = await import("@/lib/billing.server");
-        const { data: templateMeta } = await supabase
-          .from("message_templates")
-          .select("category")
-          .eq("organization_id", organizationId)
-          .eq("waba_id", connection.wabaId)
-          .eq("name", templateName)
-          .limit(1)
-          .maybeSingle();
-        const category = String(
-          (templateMeta as { category?: string } | null)?.category ?? "marketing",
-        ).toLowerCase();
-
-        const estimate = await estimateCampaignCost(supabase, {
-          organizationId,
-          recipients: contacts.length,
-          category: (["marketing", "utility", "authentication", "service"].includes(category)
-            ? category
-            : "marketing") as "marketing" | "utility" | "authentication" | "service",
-          whatsappAccountId: connection.accountId,
-          actorId: userId,
+          userId,
+          name: String(payload["name"] ?? ""),
+          templateName: String(payload["template_name"] ?? ""),
+          whatsappAccountId: (payload["whatsapp_account_id"] as string | null) || null,
+          segmentId: (payload["segment_id"] as string | null) || null,
+          mappings: (payload["variable_mappings"] ?? {}) as import("@/lib/campaigns").VariableMappings,
+          sendSettings: sanitizeSendSettings(payload["send_settings"]),
+          scheduledAt: scheduledAtRaw ? new Date(scheduledAtRaw) : null,
         });
-
-        if (estimate.enabled && !estimate.can_send) {
-          return Response.json(
-            {
-              error: `This campaign costs about ${estimate.estimate.toFixed(2)} and you have ${estimate.available.toFixed(2)} in credits. Add credits and try again.`,
-              estimate,
-            },
-            { status: 402 },
-          );
-        }
-
-        const needsApproval = estimate.enabled && estimate.needs_approval;
-        const status = needsApproval ? "awaiting_approval" : isFuture ? "scheduled" : "sending";
-
-        const { data: campaign, error: campaignErr } = await supabase
-          .from("campaigns")
-          .insert({
-            organization_id: organizationId,
-            name,
-            whatsapp_account_id: connection.accountId,
-            template_name: template.name,
-            template_language: template.language,
-            variable_mappings: mappings,
-            send_settings: sendSettings,
-            segment_id: segmentId,
-            status,
-            scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
-            started_at: status === "sending" ? nowIso : null,
-            total_recipients: contacts.length,
-            estimated_cost: estimate.enabled ? estimate.estimate : null,
-            created_by: userId,
-          })
-
-          .select("id, status")
-          .single();
-
-
-
-        if (campaignErr || !campaign) {
-          return jsonError("We couldn't create this campaign. Please try again.", 500);
-        }
-
-        const rows = contacts.map((c) => ({
-          campaign_id: campaign.id as string,
-          organization_id: organizationId,
-          contact_id: c.id,
-          phone: normalizePhone(c.phone),
-          resolved_variables: resolveAllVariables(variableOrder, mappings, c),
-        }));
-
-        for (let i = 0; i < rows.length; i += 500) {
-          const { error: insErr } = await supabase
-            .from("campaign_recipients")
-            .upsert(rows.slice(i, i + 500), { onConflict: "campaign_id,contact_id" });
-          if (insErr) {
-            await supabase
-              .from("campaigns")
-              .update({ status: "failed" })
-              .eq("id", campaign.id as string);
-            return jsonError("We couldn't build the recipient list. Please try again.", 500);
+        if (!result.ok) {
+          if (result.estimate) {
+            return Response.json({ error: result.error, estimate: result.estimate }, { status: result.status });
           }
-        }
-
-        const { emitEvent, recordUsage } = await import("@/lib/events.server");
-        await emitEvent(supabase, "campaign.launched", {
-          organizationId,
-          actorUserId: userId,
-          whatsappAccountId: connection.accountId,
-          entityType: "campaign",
-          entityId: campaign.id as string,
-          properties: {
-            campaign_id: campaign.id as string,
-            template_name: templateName ?? null,
-            segment_id: segmentId ?? null,
-            waba_id: connection.wabaId,
-            recipient_count: rows.length,
-          },
-        });
-        await recordUsage(supabase, "campaign_messages", {
-          organizationId,
-          quantity: rows.length,
-          metadata: {
-            campaign_id: campaign.id as string,
-            whatsapp_account_id: connection.accountId,
-            stage: "queued",
-          },
-        });
-
-        await logServerActivity(supabase, organizationId, userId, "campaign_launched", {
-          name,
-          recipient_count: rows.length,
-          whatsapp_account_id: connection.accountId,
-        });
-
-
-        // Big spend: the campaign waits, and the owner is told it needs a nod.
-        if (needsApproval) {
-          await supabase.from("billing_notifications").insert({
-            organization_id: organizationId,
-            audience: "client",
-            kind: "campaign_approval_needed",
-            channel: "inapp",
-            payload: {
-              campaign_id: campaign.id as string,
-              campaign_name: name,
-              recipients: rows.length,
-              estimated_cost: estimate.estimate,
-              requested_by: userId,
-            },
-          });
+          return jsonError(result.error, result.status);
         }
 
         return Response.json({
-          campaign_id: campaign.id,
-          status: campaign.status,
-          total_recipients: rows.length,
-          needs_approval: needsApproval,
-          estimated_cost: estimate.enabled ? estimate.estimate : null,
+          campaign_id: result.campaignId,
+          status: result.status,
+          total_recipients: result.totalRecipients,
+          needs_approval: result.needsApproval,
+          estimated_cost: result.estimatedCost,
         });
-
       },
     },
   },

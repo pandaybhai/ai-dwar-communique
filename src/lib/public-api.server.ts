@@ -228,6 +228,11 @@ export async function authenticateApiKey(
     );
   }
 
+  // Batch 38: the endpoint must be in the workspace's plan (public-api-plans.ts).
+  const { endpointPlanGate } = await import("@/lib/public-api-plans.server");
+  const notInPlan = await endpointPlanGate(supabase, row.organization_id, request);
+  if (notInPlan) return notInPlan;
+
   const lastUsed = row.last_used_at ? Date.parse(row.last_used_at) : 0;
   if (!lastUsed || Date.now() - lastUsed >= LAST_USED_EVERY_MS) {
     await supabase

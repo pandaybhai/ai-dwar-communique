@@ -1847,6 +1847,9 @@ async function completeIfDone(
       JSON.stringify({ at: "campaign_settle_failed", campaign_id: c.id, error: settled.error }),
     );
   }
+  // Batch 38: the merchant's webhook hears campaign.completed (when one is set). Never throws.
+  const { queueCampaignCompleted } = await import("@/lib/public-api-campaigns.server");
+  await queueCampaignCompleted(supabase, { organizationId: c.orgId, campaignId: c.id });
   return 0;
 }
 

@@ -99,7 +99,8 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
       let single = false;
       let returning = false;
       let limit = Infinity;
-      let order: { col: string; asc: boolean } | null = null;
+      // Several .order() calls sort by each in turn, as PostgREST does.
+      const orders: Array<{ col: string; asc: boolean }> = [];
       const b: Record<string, unknown> = {};
       const add = (f: Filter) => {
         filters.push(f);
@@ -153,7 +154,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
         });
       };
       b["order"] = (col: string, opts?: { ascending?: boolean }) => {
-        order = { col, asc: opts?.ascending !== false };
+        orders.push({ col, asc: opts?.ascending !== false });
         return b;
       };
       b["limit"] = (n: number) => {
@@ -192,9 +193,14 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
         log.push({ table: name, kind, payload });
         if (kind === "select") {
           let out = rows.filter(match);
-          if (order) {
-            const { col, asc } = order;
-            out = [...out].sort((x, y) => (asc ? 1 : -1) * cmp(field(x, col), field(y, col)));
+          if (orders.length) {
+            out = [...out].sort((x, y) => {
+              for (const { col, asc } of orders) {
+                const c = cmp(field(x, col), field(y, col));
+                if (c) return asc ? c : -c;
+              }
+              return 0;
+            });
           }
           const count = out.length;
           out = out.slice(0, limit);
