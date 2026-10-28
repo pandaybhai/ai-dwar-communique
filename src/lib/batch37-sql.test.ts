@@ -33,11 +33,26 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
     beforeAll(() => {
       pg = startScratchPg({
         schemaFile: join(import.meta.dirname, "test-support/loadtest/schema.sql"),
-        migrations: [join(import.meta.dirname, "test-support/public-api-stubs.sql"), B34],
+        migrations: [
+          join(import.meta.dirname, "test-support/public-api-stubs.sql"),
+          join(import.meta.dirname, "test-support/batch37-stubs.sql"),
+          B34,
+        ],
       });
       pg.sql(`
         insert into public.organizations (id, name) values ('${A}', 'A'), ('${B}', 'B');
         insert into public.messages (id, organization_id, direction) values ('${MSG}', '${A}', 'inbound');
+        insert into public.contacts (id, organization_id, phone, opt_in_status, updated_at) values
+          ('00000000-0000-0000-0000-0000000000d1', '${A}', '+911', 'opted_in', '2026-10-01 00:00:01.000001+00'),
+          ('00000000-0000-0000-0000-0000000000d2', '${A}', '+912', 'unknown',  '2026-10-01 00:00:01.000002+00'),
+          ('00000000-0000-0000-0000-0000000000d3', '${A}', '+913', 'opted_out', '2026-10-01 00:00:01.000002+00'),
+          ('00000000-0000-0000-0000-0000000000d4', '${B}', '+914', 'opted_in', '2026-10-01 00:00:00+00');
+        insert into public.tags (id, organization_id, name) values
+          ('00000000-0000-0000-0000-0000000000e1', '${A}', 'VIP'),
+          ('00000000-0000-0000-0000-0000000000e2', '${B}', 'vip');
+        insert into public.contact_tags (contact_id, tag_id, organization_id) values
+          ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-0000000000e1', '${A}'),
+          ('00000000-0000-0000-0000-0000000000d4', '00000000-0000-0000-0000-0000000000e2', '${B}');
       `);
     }, 120_000);
     afterAll(() => pg?.stop());
@@ -100,6 +115,33 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
           "select string_agg(event || ':' || count, ',' order by event) from (select event, count(*) from public.api_webhook_deliveries group by event) s",
         ),
       ).toBe("contact.created:1,contact.opted_out:1,message.received:1,webhook.test:2");
+    });
+
+    it("(4) api_list_contacts: (updated_at, id) pages past a microsecond cursor, filters, tags; only the given workspace; service role only", () => {
+      const page = (args: string) =>
+        pg.sql(
+          `select string_agg(phone || ':' || array_to_string(tags, '+'), ',') from public.api_list_contacts(${args})`,
+        );
+      expect(page(`'${A}', 2`)).toBe("+911:,+912:VIP");
+      // The cursor is the last row's exact updated_at (microseconds) and id.
+      expect(
+        page(`'${A}', 10, '2026-10-01 00:00:01.000002+00', '00000000-0000-0000-0000-0000000000d2'`),
+      ).toBe("+913:");
+      expect(page(`'${A}', 10, null, null, 'vip'`)).toBe("+912:VIP");
+      expect(page(`'${A}', 10, null, null, null, 'opted_out'`)).toBe("+913:");
+      expect(page(`'${A}', 10, null, null, null, null, '2026-10-01 00:00:01.000002+00'`)).toBe(
+        "+912:VIP,+913:",
+      );
+      expect(page(`'${B}', 10`)).toBe("+914:vip");
+      expect(page(`'${A}', 1000`).split(",")).toHaveLength(3);
+      expect(() =>
+        pg.sql(
+          `begin; set local role authenticated; select * from public.api_list_contacts('${A}'); commit;`,
+        ),
+      ).toThrow(/permission denied/);
+      expect(
+        pg.sql("select count(*) from pg_indexes where indexname = 'contacts_org_updated_idx'"),
+      ).toBe("1");
     });
   },
 );

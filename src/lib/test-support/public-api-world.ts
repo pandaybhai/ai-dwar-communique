@@ -36,7 +36,11 @@ export function publicApiWorld(
   const keyA = generateApiKey();
   const keyRevoked = generateApiKey();
   const keyB = generateApiKey();
-  const flags = { on: options.flagOn ?? true, billing: options.billing ?? true };
+  const flags = {
+    on: options.flagOn ?? true,
+    billing: options.billing ?? true,
+    listMissing: false,
+  };
   const rate = { windows: new Map<string, number>(), limits: true };
   const vault = new Map<string, string>();
   const seed: Record<string, Row[]> = {
@@ -236,6 +240,48 @@ export function publicApiWorld(
       const i = rows.findIndex((r) => r["id"] === args["p_id"]);
       if (i >= 0) rows.splice(i, 1);
       return { data: null, error: null };
+    },
+    // Batch 37: api_list_contacts, as 20261150 defines it (scratch-Postgres
+    // tested in batch37-sql): (updated_at, id) order after the cursor, the
+    // filters, tag names. `rpcMissing` stands for the file not applied yet.
+    api_list_contacts: (args, mem) => {
+      if (flags.listMissing)
+        return { data: null, error: { code: "PGRST202", message: "function not found" } };
+      const org = String(args["p_org"]);
+      const tagsOf = (contactId: string) =>
+        mem
+          .rows("contact_tags")
+          .filter((l) => l["contact_id"] === contactId)
+          .map((l) =>
+            mem.rows("tags").find((t) => t["id"] === l["tag_id"] && t["organization_id"] === org),
+          )
+          .filter(Boolean)
+          .map((t) => String(t!["name"]))
+          .sort();
+      const key = (r: Row) => `${String(r["updated_at"] ?? r["created_at"])}|${String(r["id"])}`;
+      const after = args["p_after_updated"]
+        ? `${String(args["p_after_updated"])}|${String(args["p_after_id"])}`
+        : null;
+      const rows = mem
+        .rows("contacts")
+        .filter((c) => c["organization_id"] === org)
+        .filter((c) => !args["p_opt_in"] || c["opt_in_status"] === args["p_opt_in"])
+        .filter(
+          (c) =>
+            !args["p_updated_since"] || String(c["updated_at"]) >= String(args["p_updated_since"]),
+        )
+        .filter((c) => !after || key(c) > after)
+        .filter(
+          (c) =>
+            !args["p_tag"] ||
+            tagsOf(String(c["id"])).some(
+              (t) => t.toLowerCase() === String(args["p_tag"]).toLowerCase(),
+            ),
+        )
+        .sort((a, b) => (key(a) < key(b) ? -1 : 1))
+        .slice(0, Math.min(Math.max(Number(args["p_limit"] ?? 50), 1), 101))
+        .map((c) => ({ ...c, tags: tagsOf(String(c["id"])) }));
+      return { data: rows, error: null };
     },
     // api_webhook_claim: due, unleased, pending rows, leased for 2 minutes.
     api_webhook_claim: (args, mem) => {

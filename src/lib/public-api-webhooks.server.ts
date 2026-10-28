@@ -257,6 +257,50 @@ export async function queueApiEvent(
   }
 }
 
+/** Many events at once (the bulk contacts call): one write. Same dedupe, same never-throws. */
+export async function queueApiEvents(
+  supabase: SupabaseClient,
+  events: Array<{
+    organizationId: string;
+    event: InboundEventName;
+    payload: Record<string, unknown>;
+    occurredAt: string;
+    dedupeKey: string;
+  }>,
+): Promise<string | null> {
+  if (!events.length) return null;
+  try {
+    const next = new Date().toISOString();
+    const { error } = await supabase.from("api_webhook_deliveries").upsert(
+      events.map((e) => ({
+        organization_id: e.organizationId,
+        message_id: null,
+        event: e.event,
+        payload: e.payload,
+        occurred_at: e.occurredAt,
+        state: "pending",
+        next_attempt_at: next,
+        dedupe_key: e.dedupeKey,
+      })),
+      { onConflict: "organization_id,dedupe_key", ignoreDuplicates: true },
+    );
+    if (!error) return null;
+    console.warn(
+      JSON.stringify({
+        scope: "api_webhook",
+        step: "enqueue_many",
+        count: events.length,
+        error: error.message,
+      }),
+    );
+    return `api webhook: ${error.message}`;
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    console.warn(JSON.stringify({ scope: "api_webhook", step: "enqueue_many", error: text }));
+    return `api webhook: ${text}`;
+  }
+}
+
 const WANTED_TTL_MS = 60_000;
 const wantedCache = new Map<string, { at: number; wanted: Promise<boolean> }>();
 

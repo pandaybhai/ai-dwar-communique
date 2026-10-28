@@ -81,6 +81,8 @@ export type InboundEventName = (typeof INBOUND_EVENT_NAMES)[number];
 export const ALL_WEBHOOK_EVENTS = [...WEBHOOK_EVENT_NAMES, ...INBOUND_EVENT_NAMES] as const;
 
 export const MEDIA_PATH = "/api/v1/media/{message_id}";
+/** Contacts one POST /api/v1/contacts/bulk takes. */
+export const MAX_BULK_CONTACTS = 1000;
 /** How long a download link from GET /api/v1/media/{message_id} works. */
 export const MEDIA_LINK_SECONDS = 300;
 
