@@ -19,7 +19,8 @@ export type ResponseStatus = "finished" | "waiting" | "stopped" | "failed";
 export const RESPONSE_STATUSES: Record<ResponseStatus, string[]> = {
   finished: ["done"],
   waiting: ["running", "waiting", "paused"],
-  stopped: ["cancelled", "expired"],
+  // "ended": its flow was deleted (Batch 35).
+  stopped: ["cancelled", "expired", "ended"],
   failed: ["failed"],
 };
 

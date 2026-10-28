@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Table2, Workflow } from "lucide-react";
+import { ArchiveRestore, Plus, Table2, Trash2, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { callApi } from "@/lib/whatsapp-client";
@@ -9,12 +9,14 @@ import { STARTERS } from "@/lib/flow-starters";
 import { relativeTime } from "@/lib/catalog";
 import { responsesLine, type FlowResponseCount } from "@/lib/flow-responses";
 import { flowStatus } from "@/lib/flow-status";
+import { flowDeletedAt, restoreDaysLeft } from "@/lib/flow-delete";
+import { DeleteFlowDialog } from "@/components/flows/v2/delete-flow-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-type Row = { id: string; name: string; is_enabled: boolean; updated_at: string };
+type Row = { id: string; name: string; is_enabled: boolean; updated_at: string; config?: Record<string, unknown> | null };
 
 /**
  * How many runs (Responses rows) each flow has and when the latest started:
@@ -48,11 +50,17 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
   const [error, setError] = useState(false);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Batch 35: deleted flows are hidden, except under the "Deleted flows" filter.
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [deleted, setDeleted] = useState<Row[]>([]);
+  const [deleting, setDeleting] = useState<Row | null>(null);
 
   const load = useCallback(async () => {
-    const { data, error: e } = await aidwar.from("flows").select("id, name, is_enabled, updated_at").eq("organization_id", organizationId).like("key", "v2:%").order("updated_at", { ascending: false });
+    const { data, error: e } = await aidwar.from("flows").select("id, name, is_enabled, updated_at, config").eq("organization_id", organizationId).like("key", "v2:%").order("updated_at", { ascending: false });
     if (e) { setError(true); return; }
-    const list = (data ?? []) as Row[];
+    const all = (data ?? []) as Row[];
+    const list = all.filter((r) => !flowDeletedAt(r));
+    setDeleted(all.filter((r) => flowDeletedAt(r) && restoreDaysLeft(r) > 0));
     setRows(list);
     const ids = list.map((r) => r.id);
     if (ids.length) {
@@ -66,6 +74,15 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
     void loadResponseCounts(organizationId, list.map((r) => r.id)).then(setCounts).catch(() => {});
   }, [organizationId]);
   useEffect(() => { void load(); }, [load]);
+
+  const restore = async (row: Row) => {
+    setBusy(true);
+    const { error: e } = await callApi("/api/flows/v2", { body: { action: "restore_flow", organization_id: organizationId, flow_id: row.id } });
+    setBusy(false);
+    if (e) { toast.error(e); return; }
+    toast.success(`“${row.name}” is back. Publish it again if it was off.`);
+    void load();
+  };
 
   const create = async (key: string) => {
     const s = STARTERS.find((x) => x.key === key)!;
@@ -81,8 +98,37 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
 
   return (
     <div className="space-y-4">
-      {canEdit && <div className="flex justify-end"><Button onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4" /> New chat flow</Button></div>}
-      {rows.length === 0 ? (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {deleted.length > 0 || showDeleted ? (
+          <Button variant="ghost" size="sm" onClick={() => setShowDeleted((v) => !v)}>
+            {showDeleted ? "Back to your flows" : `Deleted flows (${deleted.length})`}
+          </Button>
+        ) : null}
+        {canEdit && !showDeleted && <Button onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4" /> New chat flow</Button>}
+      </div>
+      {showDeleted ? (
+        deleted.length === 0 ? (
+          <EmptyState icon={Trash2} title="No deleted flows" description="Flows you delete stay here for 30 days, then they're gone." />
+        ) : (
+          <ul className="divide-y divide-border rounded-2xl border border-border bg-card" data-testid="deleted-flows">
+            {deleted.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{r.name}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Deleted {relativeTime(flowDeletedAt(r)!)} · {restoreDaysLeft(r)} day{restoreDaysLeft(r) === 1 ? "" : "s"} left to restore
+                  </span>
+                </span>
+                {canEdit ? (
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void restore(r)}>
+                    <ArchiveRestore className="mr-1 h-4 w-4" /> Restore
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )
+      ) : rows.length === 0 ? (
         <EmptyState icon={Workflow} title="No chat flows yet" description="Build menus, questions and hand-offs that run on their own — no AI needed." action={canEdit ? <Button onClick={() => setOpen(true)}>Create your first flow</Button> : undefined} />
       ) : (
         <ul className="divide-y divide-border rounded-2xl border border-border bg-card">
@@ -102,10 +148,22 @@ export function ChatFlowsList({ organizationId }: { organizationId: string }) {
                   <Table2 className="h-3.5 w-3.5" /> Responses
                 </Link>
               ) : null}
+              {canEdit ? (
+                <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label={`Delete ${r.name}`} title="Delete flow" onClick={() => setDeleting(r)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              ) : null}
             </li>
           ))}
         </ul>
       )}
+      <DeleteFlowDialog
+        organizationId={organizationId}
+        flow={deleting}
+        open={Boolean(deleting)}
+        onOpenChange={(v) => { if (!v) setDeleting(null); }}
+        onDeleted={() => { setDeleting(null); void load(); }}
+      />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader><DialogTitle>Start from a template</DialogTitle></DialogHeader>

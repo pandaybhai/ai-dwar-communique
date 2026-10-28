@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InboundExtras } from "@/lib/flow-engine.server";
+import { isFlowDeleted } from "@/lib/flow-delete";
 
 /**
  * Flows v2 triggers. One matcher per kind; every match ends in startRun()
@@ -21,11 +22,16 @@ async function enabledTriggersAll(
 ): Promise<Trigger[]> {
   const { data } = await supabase
     .from("flow_triggers")
-    .select("id, flow_id, kind, config")
+    .select("id, flow_id, kind, config, flows(config)")
     .eq("organization_id", organizationId)
     .eq("kind", kind)
     .eq("is_enabled", true);
-  return (data ?? []) as Trigger[];
+  return liveFlowsOnly((data ?? []) as Trigger[]);
+}
+
+/** Batch 35: a deleted flow's triggers never match (a row without its flow read is live). */
+function liveFlowsOnly<T>(rows: T[]): T[] {
+  return rows.filter((t) => !isFlowDeleted((t as { flows?: { config?: Record<string, unknown> | null } | null }).flows));
 }
 
 type PublishedVersion = Awaited<ReturnType<typeof import("@/lib/flow-engine.server").readPublishedVersion>>;
@@ -120,7 +126,7 @@ export function readInboundTriggers(supabase: SupabaseClient, organizationId: st
   return Promise.resolve(
     supabase
       .from("flow_triggers")
-      .select("id, flow_id, kind, config, flows(whatsapp_account_id)")
+      .select("id, flow_id, kind, config, flows(whatsapp_account_id, config)")
       .eq("organization_id", organizationId)
       .in("kind", ["first_message", "ctwa_ad", "campaign_button", "keyword"])
       .eq("is_enabled", true),
@@ -130,11 +136,11 @@ export function readInboundTriggers(supabase: SupabaseClient, organizationId: st
   );
 }
 
-type InboundTrigger = Trigger & { flows: { whatsapp_account_id: string | null } | null };
+type InboundTrigger = Trigger & { flows: { whatsapp_account_id: string | null; config?: Record<string, unknown> | null } | null };
 
 /** The triggers that may start on this number (see dispatchInboundTriggers). */
 function onThisNumber(rows: unknown[] | null, accountId: string | null | undefined, onlyAccountId: string | null | undefined): InboundTrigger[] {
-  return ((rows ?? []) as unknown as InboundTrigger[]).filter((t) => {
+  return liveFlowsOnly((rows ?? []) as unknown as InboundTrigger[]).filter((t) => {
     const pinned = t.flows?.whatsapp_account_id ?? null;
     if (onlyAccountId) return pinned === onlyAccountId;
     return !pinned || !accountId || pinned === accountId;
@@ -364,12 +370,12 @@ export async function dispatchNoReply(
   const pastDeadline = () => options.deadlineAt != null && Date.now() >= options.deadlineAt;
   const { data: triggers } = await supabase
     .from("flow_triggers")
-    .select("id, organization_id, flow_id, kind, config")
+    .select("id, organization_id, flow_id, kind, config, flows(config)")
     .eq("kind", "no_reply")
     .eq("is_enabled", true)
     .limit(50);
   let started = 0;
-  for (const t of (triggers ?? []) as Array<Trigger & { organization_id: string }>) {
+  for (const t of liveFlowsOnly((triggers ?? []) as Array<Trigger & { organization_id: string }>)) {
     if (pastDeadline()) return { started, deferred: true };
     const days = Math.min(Math.max(Number(t.config["days"] ?? 3), 1), 90);
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();

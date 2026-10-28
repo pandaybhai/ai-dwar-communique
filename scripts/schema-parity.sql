@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 89, column 1074, view 2, function 104, index 156, trigger 67, cron_job 14.
+-- Expected objects: table 89, column 1075, view 2, function 107, index 156, trigger 67, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -612,6 +612,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'flow_runs', 'conversation_id', NULL, 'uuid', '20261001_flows_v2_engine.sql'),
     ('column', 'public', 'flow_runs', 'created_at', NULL, 'timestamp with time zone', '20261001_flows_v2_engine.sql'),
     ('column', 'public', 'flow_runs', 'current_node_id', NULL, 'text', '20261001_flows_v2_engine.sql'),
+    ('column', 'public', 'flow_runs', 'end_reason', NULL, 'text', '20261130_batch35_merchant_asks.sql'),
     ('column', 'public', 'flow_runs', 'ended_at', NULL, 'timestamp with time zone', '20261001_flows_v2_engine.sql'),
     ('column', 'public', 'flow_runs', 'flow_id', NULL, 'uuid', '20261001_flows_v2_engine.sql'),
     ('column', 'public', 'flow_runs', 'id', NULL, 'uuid', '20261001_flows_v2_engine.sql'),
@@ -1233,6 +1234,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'flow_http_secrets_get', NULL, ARRAY['uuid', 'uuid[]', 'text'], 'public.flow_http_secrets_get(uuid, uuid[], text)', '20261007_flows_batch1_safety.sql'),
     ('function', 'public', 'flow_merge_contact_attribute', NULL, ARRAY['uuid', 'uuid', 'text', 'text'], 'public.flow_merge_contact_attribute(uuid, uuid, text, text)', '20261005_flows_v2_review_fixes.sql'),
     ('function', 'public', 'flow_publish_version', NULL, ARRAY['uuid', 'uuid', 'uuid', 'jsonb', 'uuid'], 'public.flow_publish_version(uuid, uuid, uuid, jsonb, uuid)', '20261015_flow_publish_atomic.sql'),
+    ('function', 'public', 'flow_restore_deleted', NULL, ARRAY['uuid', 'uuid', 'interval'], 'public.flow_restore_deleted(uuid, uuid, interval)', '20261130_batch35_merchant_asks.sql'),
+    ('function', 'public', 'flow_soft_delete', NULL, ARRAY['uuid', 'uuid', 'uuid'], 'public.flow_soft_delete(uuid, uuid, uuid)', '20261130_batch35_merchant_asks.sql'),
     ('function', 'public', 'freeze_contact_source', NULL, '{}'::text[], 'public.freeze_contact_source()', '20260814_lead_source_attribution.sql'),
     ('function', 'public', 'guard_last_owner', NULL, '{}'::text[], 'public.guard_last_owner()', '20260816_permissions.sql'),
     ('function', 'public', 'guard_member_permission_grant', NULL, '{}'::text[], 'public.guard_member_permission_grant()', '20260816_permissions.sql'),
@@ -1253,6 +1256,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'platform_set_ai_key', NULL, ARRAY['text', 'text'], 'public.platform_set_ai_key(text, text)', '20260903_ai_resale.sql'),
     ('function', 'public', 'price_message', NULL, ARRAY['uuid'], 'public.price_message(uuid)', '20260831_message_cost_receipts.sql'),
     ('function', 'public', 'protect_profile_privileges', NULL, '{}'::text[], 'public.protect_profile_privileges()', '20261008_security_guards.sql'),
+    ('function', 'public', 'purge_deleted_flows', NULL, ARRAY['interval', 'integer'], 'public.purge_deleted_flows(interval, integer)', '20261130_batch35_merchant_asks.sql'),
     ('function', 'public', 'read_vault_secret', NULL, ARRAY['text'], 'public.read_vault_secret(text)', '20260905_ai_credential_registry.sql'),
     ('function', 'public', 'reader_try_spend', NULL, ARRAY['uuid', 'text', 'integer'], 'public.reader_try_spend(uuid, text, integer)', '20260924090000_reader_engines.sql'),
     ('function', 'public', 'record_ai_tool_calls', NULL, ARRAY['uuid', 'uuid', 'jsonb'], 'public.record_ai_tool_calls(uuid, uuid, jsonb)', '20260904_ai_operations.sql'),

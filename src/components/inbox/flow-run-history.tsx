@@ -8,6 +8,7 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { usePermissions } from "@/hooks/use-permissions";
 import { callApi } from "@/lib/whatsapp-client";
+import { isFlowDeleted } from "@/lib/flow-delete";
 
 type RunRow = {
   id: string;
@@ -60,12 +61,15 @@ export function FlowRunHistory({
     // Flows with a "manual" trigger, published, for the start picker.
     const { data: trigs } = await aidwar
       .from("flow_triggers")
-      .select("flow_id, flows(name)")
+      .select("flow_id, flows(name, config)")
       .eq("organization_id", organizationId)
       .eq("kind", "manual")
       .eq("is_enabled", true);
     setManualFlows(
-      ((trigs ?? []) as unknown as Array<{ flow_id: string; flows: { name: string } | null }>).map((t) => ({
+      ((trigs ?? []) as unknown as Array<{ flow_id: string; flows: { name: string; config?: Record<string, unknown> | null } | null }>)
+        // Batch 35: a deleted flow can't be started.
+        .filter((t) => !isFlowDeleted(t.flows))
+        .map((t) => ({
         id: t.flow_id,
         name: t.flows?.name ?? "Flow",
       })),
