@@ -152,11 +152,11 @@ function ButtonRow({
   const code =
     (type === "COPY_CODE" || type === "OTP") && couponCode ? couponCode : null;
   return (
-    <div className="flex items-center justify-center gap-1.5 border-t border-border/60 py-2 text-[13px] font-medium text-primary">
+    <div className="mt-0.5 flex items-center justify-center gap-1.5 rounded-lg bg-wa-in px-3 py-2 text-[0.8125rem] font-medium text-wa-link shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]">
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       <span className="truncate">{label}</span>
       {code ? (
-        <span className="ml-1 rounded-md bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] tracking-wide">
+        <span className="ml-1 rounded-md bg-black/[0.05] px-1.5 py-0.5 font-mono text-[11px] tracking-wide dark:bg-white/[0.08]">
           {code}
         </span>
       ) : null}
@@ -185,7 +185,7 @@ function MediaBlock({
       <img
         src={mediaUrl}
         alt="Header image as the customer will see it"
-        className={`w-full rounded-xl object-cover ${compact ? "h-24" : "h-40"}`}
+        className={`w-full rounded-md object-cover ${compact ? "h-24" : "h-40"}`}
         loading="lazy"
       />
     );
@@ -195,13 +195,13 @@ function MediaBlock({
       <video
         src={mediaUrl}
         controls
-        className={`w-full rounded-xl bg-black object-cover ${compact ? "h-24" : "h-40"}`}
+        className={`w-full rounded-md bg-black object-cover ${compact ? "h-24" : "h-40"}`}
       />
     );
   }
   return (
     <div
-      className={`flex items-center justify-center gap-2 rounded-xl bg-muted text-xs text-muted-foreground ${
+      className={`flex items-center justify-center gap-2 rounded-md bg-black/[0.06] text-xs text-wa-meta dark:bg-white/[0.06] ${
         compact ? "h-20" : "h-32"
       }`}
     >
@@ -239,8 +239,9 @@ export function TemplatePreview({
 
   return (
     <div className={`max-w-sm ${className}`}>
-      <div className="overflow-hidden rounded-2xl rounded-bl-md border border-border/70 bg-card shadow-sm">
-        <div className="space-y-2 px-3 pb-2 pt-3">
+      {/* Batch 41: the message as it lands on the customer's phone (WhatsApp's own colours). */}
+      <div className="wa-bubble-in wa-tail !px-1 !pb-1 !pt-1">
+        <div className="space-y-1.5 px-1.5 pb-1 pt-0.5">
           {header?.format === "TEXT" && header.text ? (
             <p className="text-sm font-semibold leading-snug">{header.text}</p>
           ) : null}
@@ -248,14 +249,14 @@ export function TemplatePreview({
             <MediaBlock format={header.format} mediaUrl={header.mediaUrl} fileName={header.fileName} />
           ) : null}
           {header?.format === "LOCATION" ? (
-            <div className="flex h-24 items-center justify-center gap-2 rounded-xl bg-muted text-xs text-muted-foreground">
+            <div className="flex h-24 items-center justify-center gap-2 rounded-md bg-black/[0.06] text-xs text-wa-meta dark:bg-white/[0.06]">
               <MapPin className="h-4 w-4" aria-hidden="true" />
               Map pin — the address is set when you send
             </div>
           ) : null}
 
           {offer ? (
-            <div className="flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
+            <div className="flex items-center gap-2 rounded-md bg-black/[0.05] px-3 py-2 text-xs font-medium text-wa-link dark:bg-white/[0.06]">
               <Timer className="h-3.5 w-3.5" aria-hidden="true" />
               <span className="truncate">{offer.text}</span>
               {offer.hasExpiration ? (
@@ -267,28 +268,28 @@ export function TemplatePreview({
           ) : null}
 
 
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+          <p className="whitespace-pre-wrap break-words text-sm leading-[1.35rem]">
             {body ? <WhatsAppText text={body} /> : "Your message preview appears here."}
           </p>
 
-          {footer ? <p className="text-[11px] text-muted-foreground">{footer}</p> : null}
+          {footer ? <p className="text-[0.8125rem] text-wa-meta">{footer}</p> : null}
         </div>
-
-        {buttons.length > 0 ? (
-          <div className="px-3 pb-1">
-            {buttons.map((button, index) => (
-              <ButtonRow key={index} button={button} couponCode={couponCode} />
-            ))}
-          </div>
-        ) : null}
       </div>
+
+      {buttons.length > 0 ? (
+        <div>
+          {buttons.map((button, index) => (
+            <ButtonRow key={index} button={button} couponCode={couponCode} />
+          ))}
+        </div>
+      ) : null}
 
       {cards.length > 0 ? (
         <div className="mt-2 flex snap-x gap-2 overflow-x-auto pb-2" aria-label="Carousel cards">
           {cards.map((card, index) => (
             <div
               key={index}
-              className="w-44 shrink-0 snap-start overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm"
+              className="w-44 shrink-0 snap-start overflow-hidden rounded-lg bg-wa-in text-wa-text shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]"
             >
               <div className="p-2">
                 <MediaBlock format={card.format} mediaUrl={card.mediaUrl} compact />

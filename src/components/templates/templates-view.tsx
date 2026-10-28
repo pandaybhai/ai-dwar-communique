@@ -6,7 +6,6 @@ import { useOrg } from "@/lib/org-context";
 import { callApi } from "@/lib/whatsapp-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -40,10 +39,10 @@ function TemplateSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+        <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
           <Skeleton className="h-4 w-32" />
-          <Skeleton className="mt-3 h-20 w-full rounded-xl" />
-          <Skeleton className="mt-3 h-4 w-24" />
+          <Skeleton className="mt-3 h-28 w-full rounded-lg" />
+          <Skeleton className="mt-3 h-3 w-24" />
         </div>
       ))}
     </div>
@@ -52,25 +51,31 @@ function TemplateSkeleton() {
 
 function TemplateCard({ template, owner }: { template: TemplateRow; owner: string }) {
   const preview = componentsToPreview(template.components);
+  const statusBadge = (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(template.status)}`}
+    >
+      {template.status.toLowerCase()}
+    </span>
+  );
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-1 flex flex-col rounded-2xl border border-border/70 bg-card p-5 shadow-sm transition-shadow duration-200 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
+    <article className="animate-in fade-in slide-in-from-bottom-1 flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs transition-[box-shadow,border-color] duration-150 hover:border-border-strong hover:shadow-md">
+      <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{template.name}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {(template.category ?? "—").toLowerCase()} · {template.language}
+          <h3 className="truncate font-mono text-[0.8125rem] font-semibold text-foreground">{template.name}</h3>
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="capitalize">{(template.category ?? "—").toLowerCase()}</span>
+            <span aria-hidden="true">·</span>
+            <span>{template.language}</span>
           </p>
         </div>
         {template.status === "REJECTED" && template.rejection_reason ? (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge
-                  variant="outline"
-                  className={`shrink-0 rounded-full ${statusBadgeClass(template.status)}`}
-                >
-                  {template.status.toLowerCase()}
-                </Badge>
+                <button type="button" className="rounded-full" aria-label={`Rejected: ${template.rejection_reason}`}>
+                  {statusBadge}
+                </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs break-words">
                 {template.rejection_reason}
@@ -78,29 +83,24 @@ function TemplateCard({ template, owner }: { template: TemplateRow; owner: strin
             </Tooltip>
           </TooltipProvider>
         ) : (
-          <Badge
-            variant="outline"
-            className={`shrink-0 rounded-full ${statusBadgeClass(template.status)}`}
-          >
-            {template.status.toLowerCase()}
-          </Badge>
+          statusBadge
         )}
       </div>
 
-      <div className="mt-4 rounded-2xl bg-muted/40 p-3">
+      <div className="wa-wall mx-3 rounded-lg px-3 py-4">
         <TemplatePreview model={preview} className="max-w-none" />
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+      <div className="mt-auto flex items-center justify-between gap-3 px-4 py-3 text-[0.6875rem] text-muted-foreground">
         <span className="inline-flex min-w-0 items-center gap-1.5">
-          <Phone className="h-3 w-3 shrink-0" />
+          <Phone className="h-3 w-3 shrink-0" aria-hidden="true" />
           <span className="truncate">{owner}</span>
         </span>
         <span className="shrink-0">
           Created {new Date(template.created_at).toLocaleDateString()}
         </span>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -227,17 +227,18 @@ export function TemplatesView() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full flex-col gap-2 sm:max-w-md sm:flex-row">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" aria-hidden="true" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search templates"
-              className="rounded-full pl-9"
+              aria-label="Search templates"
+              className="pl-9"
             />
           </div>
           {multiple ? (
             <Select value={numberFilter} onValueChange={setNumberFilter}>
-              <SelectTrigger className="rounded-full sm:w-56">
+              <SelectTrigger className="sm:w-56" aria-label="Number">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -254,11 +255,10 @@ export function TemplatesView() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            className="rounded-full"
             onClick={() => void sync(numberFilter === "all" ? null : numberFilter)}
             disabled={Boolean(syncing) || !canManage}
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
             {numberFilter === "all" ? "Sync all numbers" : "Sync this number"}
           </Button>
           {canManage && orgId ? (
@@ -271,8 +271,8 @@ export function TemplatesView() {
         </div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-foreground">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <div className="flex items-start gap-2.5 rounded-xl border border-info-border bg-info-soft px-4 py-3 text-xs leading-relaxed text-info-soft-foreground">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
           Templates belong to the business account behind each number, so every number keeps its own
           library. Meta reviews every template — usually within minutes, occasionally a few hours.
@@ -298,8 +298,8 @@ export function TemplatesView() {
             <section key={group.wabaId} className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <Phone className="h-4 w-4 text-primary" />
+                  <h2 className="flex items-center gap-2 type-heading text-foreground">
+                    <Phone className="h-4 w-4 text-primary" aria-hidden="true" />
                     <span className="truncate">{group.label}</span>
                   </h2>
                   <p className="mt-0.5 text-xs text-muted-foreground">
@@ -322,7 +322,7 @@ export function TemplatesView() {
                   </Button>
                 ) : null}
               </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {group.rows.map((t) => (
                   <TemplateCard key={t.id} template={t} owner={group.label} />
                 ))}

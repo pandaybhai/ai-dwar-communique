@@ -169,14 +169,15 @@ export async function fetchAllTemplatePages(
 
 export function statusBadgeClass(status: string): string {
   switch (status.toUpperCase()) {
+    // Batch 41: the design system's status tokens.
     case "APPROVED":
-      return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+      return "border-success-border bg-success-soft text-success-soft-foreground";
     case "REJECTED":
-      return "border-destructive/25 bg-destructive/10 text-destructive";
+      return "border-danger-border bg-danger-soft text-danger-soft-foreground";
     case "PAUSED":
       return "border-border bg-muted text-muted-foreground";
     default:
-      return "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+      return "border-warning-border bg-warning-soft text-warning-soft-foreground";
   }
 }
 

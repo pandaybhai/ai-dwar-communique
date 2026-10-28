@@ -68,7 +68,16 @@ const SCENARIOS_B41 = {
     wait: "text=Diwali preview",
     act: async (page) => {
       await page.getByRole("button", { name: /create campaign/i }).first().click();
+      await page.waitForTimeout(700);
+      // Name → Audience → Message, with the order update template picked.
+      await page.getByLabel("Campaign name").fill("Diwali preview — VIP list");
+      await page.getByRole("button", { name: /continue/i }).click();
       await page.waitForTimeout(900);
+      await page.getByRole("button", { name: /continue/i }).click();
+      await page.waitForTimeout(600);
+      await page.getByRole("combobox").filter({ hasText: /pick a template/i }).click();
+      await page.getByRole("option", { name: /order_shipped/ }).click();
+      await page.waitForTimeout(700);
     },
   },
   templates: { path: "/app/templates", conversations: 40, wait: "text=order_shipped" },

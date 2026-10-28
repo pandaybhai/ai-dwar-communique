@@ -47,7 +47,7 @@ export function ButtonEditor({
       {buttons.map((button, index) => {
         const option = BUTTON_OPTIONS.find((o) => o.value === button.type);
         return (
-          <div key={index} className="grid gap-3 rounded-xl border border-border/70 p-3">
+          <div key={index} className="grid gap-3 rounded-xl border border-border p-3">
             <div className="flex items-center gap-2">
               <p className="text-xs font-medium">{option?.label ?? button.type}</p>
               <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">

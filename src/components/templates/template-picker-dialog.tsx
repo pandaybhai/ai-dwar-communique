@@ -208,7 +208,7 @@ export function TemplatePickerDialog({
             <Skeleton className="h-14 w-full rounded-xl" />
           </div>
         ) : templates.length === 0 ? (
-          <div className="rounded-2xl border border-border/70 bg-muted/30 p-6 text-center">
+          <div className="rounded-xl border border-border bg-subtle p-6 text-center">
             <MessageSquareText className="mx-auto h-7 w-7 text-muted-foreground/60" />
             <p className="mt-3 text-sm font-medium text-foreground">No approved templates yet</p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -234,7 +234,7 @@ export function TemplatePickerDialog({
                     "w-full rounded-xl border px-4 py-3 text-left transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60",
                     selectedId === t.id
                       ? "border-primary bg-primary/5"
-                      : "border-border/70 bg-card hover:bg-muted/50",
+                      : "border-border bg-card hover:bg-subtle",
                   ].join(" ")}
                 >
                   <p className="text-sm font-medium text-foreground">
@@ -348,8 +348,8 @@ export function TemplatePickerDialog({
                   </div>
                 ) : null}
 
-                <div className="rounded-2xl bg-muted/40 p-3">
-                  <div className="overflow-hidden rounded-2xl rounded-br-md bg-primary/12 text-sm shadow-sm">
+                <div className="wa-wall rounded-xl border border-border p-3">
+                  <div className="wa-bubble-in wa-tail overflow-hidden !p-0 text-sm">
                     {effectiveHeaderMedia && headerMediaFormat === "IMAGE" ? (
                       <img
                         src={effectiveHeaderMedia}

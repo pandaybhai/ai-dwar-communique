@@ -31,8 +31,10 @@ export function PersonaReviewBanner({ organizationId }: { organizationId: string
   };
 
   return (
-    <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center">
-      <Sparkles className="h-5 w-5 shrink-0 text-primary" />
+    <div className="mb-6 flex flex-col gap-3 rounded-xl border border-success-border bg-success-soft p-4 shadow-xs sm:flex-row sm:items-center">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card text-primary shadow-xs">
+        <Sparkles className="h-4 w-4" aria-hidden="true" />
+      </span>
       <p className="flex-1 text-sm text-foreground">
         <span className="font-medium">I've drafted how I'll talk to your customers</span> from your website. Have a
         quick look and fix anything that's off.

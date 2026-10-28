@@ -96,32 +96,32 @@ const FALLBACK_SAMPLE: SampleContact = {
 
 function StepDots({ step }: { step: number }) {
   return (
-    <div className="flex items-center gap-2">
-      {STEPS.map((label, i) => (
-        <div key={label} className="flex items-center gap-2">
-          <div
-            className={cn(
-              "flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold transition-all duration-200",
-              i < step
-                ? "bg-primary text-primary-foreground"
-                : i === step
-                  ? "bg-primary/15 text-primary ring-2 ring-primary/30"
-                  : "bg-muted text-muted-foreground",
-            )}
-          >
-            {i < step ? <Check className="h-3.5 w-3.5" /> : i + 1}
-          </div>
-          <span
-            className={cn(
-              "hidden text-xs sm:inline",
-              i === step ? "font-medium text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {label}
-          </span>
-          {i < STEPS.length - 1 && <span className="h-px w-4 bg-border" />}
-        </div>
-      ))}
+    <div>
+      <ol className="flex items-center gap-1.5" aria-label="Steps">
+        {STEPS.map((label, i) => (
+          <li key={label} className="flex min-w-0 flex-1 flex-col gap-1.5" aria-current={i === step ? "step" : undefined}>
+            <span
+              className={cn(
+                "h-1 rounded-full transition-colors duration-300",
+                i <= step ? "bg-primary" : "bg-muted",
+              )}
+              aria-hidden="true"
+            />
+            <span
+              className={cn(
+                "hidden items-center gap-1 truncate text-xs sm:flex",
+                i === step ? "font-medium text-foreground" : i < step ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              {i < step ? <Check className="h-3 w-3 shrink-0" aria-hidden="true" /> : <span className="tabular text-faint">{i + 1}</span>}
+              {label}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-2 text-xs text-muted-foreground sm:hidden">
+        Step {step + 1} of {STEPS.length} · <span className="font-medium text-foreground">{STEPS[step]}</span>
+      </p>
     </div>
   );
 }
@@ -138,21 +138,22 @@ function ChatPreview({
   mediaLabel?: string | undefined;
 }) {
   return (
-    <div className="rounded-2xl bg-[#ECE5DD] p-4 dark:bg-muted">
-      <div className="ml-auto max-w-[85%] overflow-hidden rounded-2xl rounded-tr-sm bg-[#DCF8C6] text-sm text-[#111B21] shadow-sm dark:bg-primary/20 dark:text-foreground">
+    <div className="wa-wall rounded-xl border border-border p-4">
+      {/* As it lands on the customer's phone: the business's message on the left. */}
+      <div className="wa-bubble-in wa-tail max-w-[85%] !p-0">
         {imageUrl ? (
-          <img src={imageUrl} alt="Template header" className="max-h-48 w-full object-cover" />
+          <img src={imageUrl} alt="Template header" className="max-h-48 w-full rounded-t-lg object-cover p-1" />
         ) : mediaLabel ? (
-          <div className="flex h-24 items-center justify-center bg-black/10 text-xs opacity-70 dark:bg-black/20">
+          <div className="m-1 flex h-24 items-center justify-center rounded-md bg-black/[0.06] text-xs text-wa-meta dark:bg-white/[0.06]">
             {mediaLabel}
           </div>
         ) : null}
-        <div className="px-3.5 py-2.5">
-          <p className="whitespace-pre-wrap leading-relaxed">
+        <div className="px-2.5 pb-1.5 pt-1.5">
+          <p className="inline whitespace-pre-wrap">
             {body ? <WhatsAppText text={body} /> : "Your message preview"}
           </p>
-          {footer ? <p className="mt-2 text-[11px] opacity-60">{footer}</p> : null}
-          <p className="mt-1 text-right text-[10px] opacity-50">now</p>
+          {footer ? <p className="mt-1 text-[0.8125rem] text-wa-meta">{footer}</p> : null}
+          <span className="wa-meta">now</span>
         </div>
       </div>
     </div>
@@ -694,13 +695,13 @@ export function CampaignWizard({
                       </div>
                     )}
                     {estimate.can_send && estimate.needs_approval && (
-                      <p className="mt-3 text-sm text-amber-600 dark:text-amber-500">
+                      <p className="mt-3 text-sm text-warning-soft-foreground">
                         This is above your approval limit, so it will wait for an owner to approve
                         it before anything sends.
                       </p>
                     )}
                     {estimate.over_daily_limit && (
-                      <p className="mt-3 text-sm text-amber-600 dark:text-amber-500">
+                      <p className="mt-3 text-sm text-warning-soft-foreground">
                         Your number can message {estimate.daily_limit} people a day right now, so
                         this will spread over about {estimate.days_needed} days.
                       </p>
@@ -904,7 +905,7 @@ export function CampaignWizard({
                           "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
                           offerIssue.level === "error"
                             ? "border-destructive/40 bg-destructive/10 text-destructive"
-                            : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                            : "border-warning-border bg-warning-soft text-warning-soft-foreground",
                         )}
                       >
                         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -919,7 +920,7 @@ export function CampaignWizard({
                     <Label className="text-xs text-muted-foreground">
                       Exactly what the customer sees
                     </Label>
-                    <div className="rounded-2xl bg-[#ECE5DD] p-4 dark:bg-muted">
+                    <div className="wa-wall rounded-xl border border-border p-4">
                       <TemplatePreview model={previewModel} />
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -1075,7 +1076,7 @@ export function CampaignWizard({
                       "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
                       offerIssue.level === "error"
                         ? "border-destructive/40 bg-destructive/10 text-destructive"
-                        : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                        : "border-warning-border bg-warning-soft text-warning-soft-foreground",
                     )}
                   >
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -1163,7 +1164,7 @@ export function CampaignWizard({
                   )}
                 </div>
                 {needsCoupon || needsOfferExpiry ? (
-                  <div className="rounded-2xl bg-[#ECE5DD] p-4 dark:bg-muted">
+                  <div className="wa-wall rounded-xl border border-border p-4">
                     <TemplatePreview model={previewModel} />
                   </div>
                 ) : (

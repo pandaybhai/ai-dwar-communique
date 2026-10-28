@@ -291,7 +291,7 @@ export function makeCampaigns() {
   ];
 }
 
-const RECIPIENT_STATUS = ["read", "read", "delivered", "sent", "replied", "failed", "queued", "read", "delivered", "sending"];
+const RECIPIENT_STATUS = ["read", "read", "delivered", "sent", "read", "failed", "queued", "read", "delivered", "sending"];
 export function makeRecipients(campaignId) {
   return Array.from({ length: 20 }, (_, i) => ({
     id: `${campaignId.slice(0, 24)}${String(100 + i).padStart(12, "0")}`,
@@ -415,7 +415,7 @@ export function createBackend(options = {}) {
     whatsapp_accounts: () => [
       {
         id: ACCOUNT, organization_id: ORG, display_phone_number: "+91 98200 00000", verified_name: "Kesar & Co.",
-        phone_number_id: "pn1", waba_id: "waba1", is_default: true, status: "connected", quality_rating: "GREEN",
+        phone_number_id: "pn1", waba_id: "waba1", is_default: true, status: "active", health: "ok", quality_rating: "GREEN",
         label: null, created_at: "2026-01-01",
       },
     ],

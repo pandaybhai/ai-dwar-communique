@@ -116,13 +116,13 @@ export function AidenSetupCard({
   // Reading wins over the setup card: one message at a time.
   if (readingNow) {
     return (
-      <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-5 sm:p-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="mb-6 rounded-xl border border-success-border bg-success-soft p-5 shadow-xs sm:p-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
         <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-card text-primary shadow-xs">
             <BookOpenCheck className="h-5 w-5" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <h2 className="text-lg font-bold tracking-tight text-foreground">
+            <h2 className="type-heading text-foreground">
               Aiden is reading {readingNow.name} right now
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -140,12 +140,12 @@ export function AidenSetupCard({
 
   if (finished) {
     return (
-      <div className="mb-6 flex items-start gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-5 sm:p-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+      <div className="mb-6 flex items-start gap-3 rounded-xl border border-success-border bg-success-soft p-5 shadow-xs sm:p-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-card text-primary shadow-xs">
           <BookOpenCheck className="h-5 w-5" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-bold tracking-tight text-foreground">
+          <h2 className="type-heading text-foreground">
             Aiden finished reading {finished.name} —{" "}
             {plural(finished.pages_seen ?? finished.item_count ?? 0, "page")}
             {finished.products_found ? ` · ${plural(finished.products_found, "product")}` : ""}.
@@ -171,13 +171,13 @@ export function AidenSetupCard({
   if (!handoff || !sourcesLoaded || hasReadSomething(sources)) return null;
 
   return (
-    <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-5 sm:p-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+    <div className="mb-6 rounded-xl border border-success-border bg-success-soft p-5 shadow-xs sm:p-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-card text-primary shadow-xs">
           <MessageCircle className="h-5 w-5" />
         </span>
         <div>
-          <h2 className="text-lg font-bold tracking-tight text-foreground">
+          <h2 className="type-heading text-foreground">
             Aiden isn't set up yet
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">

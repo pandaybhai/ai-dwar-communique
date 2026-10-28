@@ -54,7 +54,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="grid gap-3 rounded-2xl border border-border/70 p-4">
+    <section className="grid gap-3 rounded-xl border border-border bg-card p-4">
       <div>
         <h3 className="text-sm font-semibold">{title}</h3>
         {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
@@ -234,7 +234,7 @@ export function CreateTemplateDialog({
                       className="mt-1.5"
                     />
                   </div>
-                  <div className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-2">
+                  <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
                     <Label htmlFor="tpl-security" className="text-sm font-normal">
                       Add "don't share this code" warning
                     </Label>
@@ -281,7 +281,7 @@ export function CreateTemplateDialog({
                           className={`rounded-xl border p-3 text-left transition-colors duration-150 ${
                             draft.headerFormat === option.value
                               ? "border-primary bg-primary/5"
-                              : "border-border/70 hover:bg-muted/50"
+                              : "border-border hover:bg-muted/50"
                           }`}
                         >
                           <span className="block text-sm font-medium">{option.label}</span>
@@ -366,7 +366,7 @@ export function CreateTemplateDialog({
                   </div>
 
                   {bodyVariables.length ? (
-                    <div className="grid gap-3 rounded-xl bg-muted/30 p-3 sm:grid-cols-2">
+                    <div className="grid gap-3 rounded-xl bg-subtle p-3 sm:grid-cols-2">
                       {bodyVariables.map((v) => (
                         <div key={v}>
                           <Label htmlFor={`ex-${v}`} className="text-xs">{`{{${v}}}`}</Label>
@@ -443,7 +443,7 @@ export function CreateTemplateDialog({
                   hint="Up to 10 swipeable cards, each with its own picture, text and buttons. Best for showing products."
                 >
                   {draft.cards.map((card, index) => (
-                    <div key={index} className="grid gap-3 rounded-xl border border-border/70 p-3">
+                    <div key={index} className="grid gap-3 rounded-xl border border-border p-3">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium">Card {index + 1}</p>
                         <div className="flex-1" />
@@ -550,23 +550,25 @@ export function CreateTemplateDialog({
           </div>
 
           <aside className="lg:sticky lg:top-0 lg:self-start">
-            <div className="rounded-2xl bg-muted/40 p-4">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">
+            <div className="overflow-hidden rounded-xl border border-border">
+              <p className="border-b border-border bg-card px-4 py-2 text-xs font-medium text-muted-foreground">
                 What your customer sees
               </p>
-              <TemplatePreview model={preview} />
+              <div className="wa-wall px-4 py-5">
+                <TemplatePreview model={preview} />
+              </div>
             </div>
 
             {problems.length > 0 ? (
-              <div className="mt-3 grid gap-1 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+              <div role="status" className="mt-3 grid gap-1 rounded-xl border border-danger-border bg-danger-soft p-3 text-xs text-danger-soft-foreground">
                 {problems.map((p) => (
                   <p key={p}>{p}</p>
                 ))}
               </div>
             ) : null}
 
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-3 text-xs">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-info-border bg-info-soft px-3 py-3 text-xs text-info-soft-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <p>
                 Keep it clear and specific. Templates that read like unsolicited promotion, or that
                 go to people who never opted in, are commonly rejected or paused.

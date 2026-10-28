@@ -63,7 +63,7 @@ export function MediaUploader({
   };
 
   return (
-    <div className="rounded-xl border border-dashed border-border bg-muted/20 p-3">
+    <div className="rounded-xl border border-dashed border-border bg-subtle p-3">
       <input
         ref={inputRef}
         type="file"
