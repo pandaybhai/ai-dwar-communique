@@ -347,7 +347,13 @@ export function createBackend(options = {}) {
     rows = applyFilters(rows, q.filters);
     if (q.table === "conversations" && q.filters.id) {
       // single-row reads (handoff_alert_result, aiden_flow_rules)
-      rows = rows.map((r) => ({ ...r, handoff_alert_result: { at: r.needs_human_at, reminder: false, whatsapp: ["Riya Kapoor"], email: null, skipped: null } }));
+      rows = rows.map((r, i) => ({
+        ...r,
+        aiden_flow_rules:
+          r.id === conversations[0]?.id
+            ? { flow_id: "f1", flow_name: "Wedding orders", run_id: "r1", behaviour: "Warm and quick", rules: "Offer express delivery", set_at: ago(HOUR), expires_at: new Date(Date.now() + DAY).toISOString() }
+            : null,
+        handoff_alert_result: { at: r.needs_human_at, reminder: false, whatsapp: ["Riya Kapoor"], email: null, skipped: null } }));
     }
     const limit = Number(q.params.get("limit") ?? "0");
     if (limit && method === "GET") rows = rows.slice(0, limit);

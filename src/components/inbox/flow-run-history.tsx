@@ -100,7 +100,8 @@ export function FlowRunHistory({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="rounded-full" aria-label="Flow history">
-          <History className="mr-1 h-3.5 w-3.5" /> Flows
+          {/* Batch 39: the word shows when the chat is wide enough (container query). */}
+          <History className="h-3.5 w-3.5 @2xl:mr-1" /> <span className="hidden @2xl:inline">Flows</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96 max-w-[90vw] p-3">

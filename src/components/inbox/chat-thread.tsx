@@ -685,7 +685,7 @@ export function ChatThread({
         <button
           type="button"
           onClick={onToggleDetails}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 pr-2 text-left transition-colors hover:bg-accent/60 @3xl:flex-initial"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 pr-2 text-left transition-colors hover:bg-accent/60 @md:max-w-[15rem] @md:flex-initial"
           aria-label={`${label} — contact details`}
           disabled={!onToggleDetails}
         >
@@ -699,15 +699,13 @@ export function ChatThread({
           </span>
         </button>
 
-        <div className="hidden min-w-0 items-center gap-2 overflow-hidden @3xl:flex @3xl:flex-1">
-          <span className="hidden @4xl:contents">
-            <AidenRulesBadge conversationId={conversation.id} />
-          </span>
+        <div className="hidden min-w-0 flex-1 items-center gap-2 overflow-hidden @md:flex">
+          <AidenRulesBadge conversationId={conversation.id} />
 
           {customerLanguage ? (
             <Badge
               variant="outline"
-              className="hidden shrink-0 rounded-full font-normal @5xl:inline-flex"
+              className="hidden shrink-0 rounded-full font-normal @3xl:inline-flex"
               title="Your AI employee replies in this language"
             >
               <Languages className="mr-1 h-3 w-3" />
@@ -715,7 +713,10 @@ export function ChatThread({
             </Badge>
           ) : null}
 
-          <Badge variant={conversation.status === "closed" ? "muted" : "success"} className="shrink-0 rounded-full capitalize">
+          <Badge
+            variant={conversation.status === "closed" ? "muted" : "success"}
+            className="hidden shrink-0 rounded-full capitalize @2xl:inline-flex"
+          >
             {conversation.status}
           </Badge>
         </div>
@@ -738,8 +739,10 @@ export function ChatThread({
               ) : (
                 <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               )}
-              <span className="hidden min-w-0 truncate @2xl:inline">
-                <SelectValue placeholder="Assign" />
+              <span className="min-w-0">
+                <span className="hidden truncate @2xl:inline">
+                  <SelectValue placeholder="Assign" />
+                </span>
               </span>
             </SelectTrigger>
             <SelectContent align="end">
