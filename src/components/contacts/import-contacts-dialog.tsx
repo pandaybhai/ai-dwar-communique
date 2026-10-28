@@ -26,7 +26,21 @@ import {
 
 type Mapping = Record<string, string>; // column index -> field key ("phone" | "name" | "tags" | "attr:<name>" | "ignore")
 type ErrorRow = { row: number; phone: string; reason: string };
-type Results = { created: number; updated: number; skipped: number; errors: ErrorRow[] };
+type Results = {
+  created: number;
+  updated: number;
+  skipped: number;
+  /** Batch 36: contacts the customer opted out of — never changed by an import. */
+  stayedOptedOut: number;
+  errors: ErrorRow[];
+};
+type ChunkReply = {
+  created: number;
+  updated: number;
+  opted_in?: number;
+  stayed_opted_out?: number;
+  errors: ErrorRow[];
+};
 
 const MAX_ROWS = 10000;
 const CHUNK = 200;
@@ -67,6 +81,14 @@ function FormatTips({ className = "" }: { className?: string }) {
   );
 }
 
+export const IMPORT_CONSENT_LABEL =
+  "These contacts agreed to get WhatsApp messages from us (opted in)";
+export const IMPORT_CONSENT_HELPER = "WhatsApp requires consent. Untick if you're not sure.";
+
+export function stayedOptedOutLine(n: number): string {
+  return `${n.toLocaleString()} ${n === 1 ? "contact" : "contacts"} stayed opted out`;
+}
+
 export function ImportContactsDialog({
   organizationId,
   onImported,
@@ -80,7 +102,8 @@ export function ImportContactsDialog({
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<Mapping>({});
-  const [consent, setConsent] = useState(false);
+  // Batch 36: ticked by default — the merchant unticks when unsure.
+  const [consent, setConsent] = useState(true);
   const [startFlows, setStartFlows] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -99,7 +122,7 @@ export function ImportContactsDialog({
     setHeaders([]);
     setRows([]);
     setMapping({});
-    setConsent(false);
+    setConsent(true);
     setStartFlows(false);
     setProgress(0);
     setResults(null);
@@ -146,7 +169,7 @@ export function ImportContactsDialog({
         organization_id: organizationId,
         filename,
         total_rows: rows.length,
-        consent: true,
+        consent,
       },
     });
     if (start.error || !start.data) {
@@ -206,15 +229,17 @@ export function ImportContactsDialog({
 
     let created = 0;
     let updated = 0;
+    let optedIn = 0;
+    let stayedOptedOut = 0;
     for (let i = 0; i < payloadRows.length; i += CHUNK) {
       const chunk = payloadRows.slice(i, i + CHUNK);
-      const res = await callApi<{ created: number; updated: number; errors: ErrorRow[] }>(
+      const res = await callApi<ChunkReply>(
         "/api/contacts/import",
         {
           body: {
             action: "chunk",
             organization_id: organizationId,
-            consent: true,
+            consent,
             start_flows: startFlows,
             import_id: importId,
             rows: chunk,
@@ -228,12 +253,14 @@ export function ImportContactsDialog({
       } else {
         created += res.data.created;
         updated += res.data.updated;
+        optedIn += res.data.opted_in ?? 0;
+        stayedOptedOut += res.data.stayed_opted_out ?? 0;
         errors.push(...(res.data.errors ?? []));
       }
       setProgress(Math.round(((i + chunk.length) / payloadRows.length) * 100));
     }
 
-    const summary: Results = { created, updated, skipped: errors.length, errors };
+    const summary: Results = { created, updated, skipped: errors.length, stayedOptedOut, errors };
     await callApi("/api/contacts/import", {
       body: {
         action: "finish",
@@ -242,6 +269,8 @@ export function ImportContactsDialog({
         created_count: created,
         updated_count: updated,
         skipped_count: errors.length,
+        opted_in_count: optedIn,
+        stayed_opted_out_count: stayedOptedOut,
         error_report: errors.slice(0, 500),
         status: "completed",
       },
@@ -428,13 +457,17 @@ export function ImportContactsDialog({
                   onCheckedChange={(v) => setConsent(v === true)}
                   className="mt-0.5"
                 />
-                <Label htmlFor="consent" className="text-sm leading-relaxed">
-                  I confirm these contacts have opted in to receive WhatsApp messages from my
-                  business.
-                </Label>
+                <div className="space-y-1">
+                  <Label htmlFor="consent" className="text-sm leading-relaxed">
+                    {IMPORT_CONSENT_LABEL}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">{IMPORT_CONSENT_HELPER}</p>
+                </div>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                This attestation is recorded in your workspace activity log.
+                {consent
+                  ? "They'll be marked opted in. Anyone who replied STOP stays opted out. Your answer is recorded in the workspace activity log."
+                  : "Their opt-in status stays Unknown, so campaigns won't reach them until they opt in."}
               </p>
               <div className="mt-4 flex items-start gap-3">
                 <Checkbox
@@ -453,7 +486,7 @@ export function ImportContactsDialog({
               <Button variant="ghost" className="rounded-full" onClick={() => setStep(2)}>
                 Back
               </Button>
-              <Button className="rounded-full" disabled={!consent} onClick={() => void runImport()}>
+              <Button className="rounded-full" onClick={() => void runImport()}>
                 Start import
               </Button>
             </div>
@@ -487,6 +520,9 @@ export function ImportContactsDialog({
                 </div>
               ))}
             </div>
+            {results.stayedOptedOut > 0 ? (
+              <p className="text-sm text-muted-foreground">{stayedOptedOutLine(results.stayedOptedOut)}</p>
+            ) : null}
             {results.errors.length ? (
               <Button
                 variant="outline"

@@ -82,6 +82,7 @@ import { Route as ApiCatalogImportRouteImport } from './routes/api/catalog/impor
 import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/products'
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
+import { Route as ApiContactsOptInRouteImport } from './routes/api/contacts/opt-in'
 import { Route as ApiDeveloperKeysRouteImport } from './routes/api/developer/keys'
 import { Route as ApiDeveloperWebhookRouteImport } from './routes/api/developer/webhook'
 import { Route as ApiFlowsResponsesRouteImport } from './routes/api/flows/responses'
@@ -524,6 +525,11 @@ const ApiContactsEvaluateSegmentRoute =
 const ApiContactsImportRoute = ApiContactsImportRouteImport.update({
   id: '/api/contacts/import',
   path: '/api/contacts/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiContactsOptInRoute = ApiContactsOptInRouteImport.update({
+  id: '/api/contacts/opt-in',
+  path: '/api/contacts/opt-in',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDeveloperKeysRoute = ApiDeveloperKeysRouteImport.update({
@@ -1009,6 +1015,7 @@ export interface FileRoutesByFullPath {
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/contacts/opt-in': typeof ApiContactsOptInRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
   '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
@@ -1158,6 +1165,7 @@ export interface FileRoutesByTo {
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/contacts/opt-in': typeof ApiContactsOptInRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
   '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
@@ -1310,6 +1318,7 @@ export interface FileRoutesById {
   '/api/catalog/products': typeof ApiCatalogProductsRoute
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
+  '/api/contacts/opt-in': typeof ApiContactsOptInRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
   '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
@@ -1463,6 +1472,7 @@ export interface FileRouteTypes {
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/contacts/opt-in'
     | '/api/developer/keys'
     | '/api/developer/webhook'
     | '/api/flows/responses'
@@ -1612,6 +1622,7 @@ export interface FileRouteTypes {
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/contacts/opt-in'
     | '/api/developer/keys'
     | '/api/developer/webhook'
     | '/api/flows/responses'
@@ -1763,6 +1774,7 @@ export interface FileRouteTypes {
     | '/api/catalog/products'
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
+    | '/api/contacts/opt-in'
     | '/api/developer/keys'
     | '/api/developer/webhook'
     | '/api/flows/responses'
@@ -1893,6 +1905,7 @@ export interface RootRouteChildren {
   ApiCatalogProductsRoute: typeof ApiCatalogProductsRoute
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
+  ApiContactsOptInRoute: typeof ApiContactsOptInRoute
   ApiDeveloperKeysRoute: typeof ApiDeveloperKeysRoute
   ApiDeveloperWebhookRoute: typeof ApiDeveloperWebhookRoute
   ApiFlowsResponsesRoute: typeof ApiFlowsResponsesRoute
@@ -2472,6 +2485,13 @@ declare module '@tanstack/react-router' {
       path: '/api/contacts/import'
       fullPath: '/api/contacts/import'
       preLoaderRoute: typeof ApiContactsImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/contacts/opt-in': {
+      id: '/api/contacts/opt-in'
+      path: '/api/contacts/opt-in'
+      fullPath: '/api/contacts/opt-in'
+      preLoaderRoute: typeof ApiContactsOptInRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/developer/keys': {
@@ -3175,6 +3195,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCatalogProductsRoute: ApiCatalogProductsRoute,
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
+  ApiContactsOptInRoute: ApiContactsOptInRoute,
   ApiDeveloperKeysRoute: ApiDeveloperKeysRoute,
   ApiDeveloperWebhookRoute: ApiDeveloperWebhookRoute,
   ApiFlowsResponsesRoute: ApiFlowsResponsesRoute,

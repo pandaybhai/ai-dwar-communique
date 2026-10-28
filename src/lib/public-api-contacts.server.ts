@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ApiCaller, ApiReply } from "@/lib/public-api.server";
 import { MAX_BULK_CONTACTS, pathValue } from "@/lib/public-api";
+import { isMissingConsentColumn, withoutConsentColumns } from "@/lib/opt-in.server";
 
 /**
  * Batch 37 item 4: the Contacts API — upsert by phone (one, or up to
@@ -14,9 +15,9 @@ import { MAX_BULK_CONTACTS, pathValue } from "@/lib/public-api";
  * from "unknown" to "opted_in", in one conditional update, so a customer's
  * opt-out (even one landing meanwhile) is never flipped; false or left out
  * changes nothing. The consent columns (opt_in_source / opted_in_at) are
- * Batch 36's: written when the database has them, else left out (the same
- * PGRST204 retry as Batch 36's writeWithConsent), with the activity log
- * keeping who/when/how either way.
+ * Batch 36's (opt-in.server.ts): written when the database has them, else
+ * left out by its isMissingConsentColumn / withoutConsentColumns, with the
+ * activity log keeping who/when/how either way.
  *
  * Bulk work is batched (a few round trips for 1,000 rows, never one per row).
  * Never logs a phone, a name or an attribute.
@@ -135,30 +136,13 @@ export function parseTagList(raw: unknown): string[] | string {
 }
 
 type DbError = { code?: string; message?: string } | null | undefined;
-const CONSENT_COLUMNS = ["opt_in_source", "opted_in_at"];
-
-/** The database doesn't have Batch 36's consent columns yet. */
-function missingConsentColumn(error: DbError): boolean {
-  if (!error) return false;
-  const text = `${error.code ?? ""} ${error.message ?? ""}`;
-  return (
-    CONSENT_COLUMNS.some((c) => text.includes(c)) &&
-    (error.code === "PGRST204" || error.code === "42703" || /column/i.test(text))
-  );
-}
-
-function withoutConsent<T extends Record<string, unknown>>(row: T): T {
-  const copy: Record<string, unknown> = { ...row };
-  for (const c of CONSENT_COLUMNS) delete copy[c];
-  return copy as T;
-}
 
 /** A contacts write with the consent columns, and once more without them when the database doesn't know them. */
 async function withConsent<R extends { error: DbError }>(
   run: (strip: boolean) => PromiseLike<R>,
 ): Promise<R> {
   const first = await run(false);
-  return missingConsentColumn(first.error) ? run(true) : first;
+  return isMissingConsentColumn(first.error) ? run(true) : first;
 }
 
 /** Tag names -> ids in the workspace (existing ones matched without regard to case), creating the missing. */
@@ -372,7 +356,7 @@ export async function upsertContacts(
     const { data, error } = await withConsent((strip) =>
       supabase
         .from("contacts")
-        .upsert(strip ? insertRows.map(withoutConsent) : insertRows, {
+        .upsert(strip ? insertRows.map(withoutConsentColumns) : insertRows, {
           onConflict: "organization_id,phone",
           ignoreDuplicates: true,
         })
@@ -437,7 +421,7 @@ export async function upsertContacts(
     const { data, error } = await withConsent((strip) =>
       supabase
         .from("contacts")
-        .update(strip ? withoutConsent(patch) : patch)
+        .update(strip ? withoutConsentColumns(patch) : patch)
         .eq("organization_id", orgId)
         .in("id", ids)
         .eq("opt_in_status", "unknown")
