@@ -657,7 +657,8 @@ async function queueApiStatusOf(
   at: string,
   errorDetail: string | null,
 ): Promise<string | null> {
-  if (row.metadata?.["source"] !== "api") return null;
+  const { isApiSource } = await import("@/lib/public-api-source");
+  if (!isApiSource(row.metadata?.["source"])) return null;
   const { queueApiStatus } = await import("@/lib/public-api-webhooks.server");
   return queueApiStatus(supabase, { organizationId, messageId: row.id, status, at, metadata: row.metadata, errorDetail });
 }
@@ -1437,7 +1438,7 @@ export async function processWebhookPayload(
           // whichever account happened to sort first.
           let lookup = supabase
             .from("whatsapp_accounts")
-            .select("id, organization_id, phone_number_id, quality_rating, status")
+            .select("id, organization_id, phone_number_id, quality_rating, status, messaging_tier")
             .eq("waba_id", wabaId);
           if (displayNumber) lookup = lookup.eq("display_phone_number", displayNumber);
 
@@ -1513,6 +1514,45 @@ export async function processWebhookPayload(
               ...(patch["status"] ? { new_status: patch["status"] } : {}),
             },
           });
+          // Batch 38: the merchant's webhook hears phone_number.quality_changed /
+          // messaging_limit.changed / account.status_changed (when one is set). Never throws.
+          const { queueAccountNoticeEvents } = await import("@/lib/public-api-account-events.server");
+          await queueAccountNoticeEvents(supabase, {
+            organizationId: healthAccount.organization_id as string,
+            accountId: healthAccount.id as string,
+            field,
+            value,
+            entry,
+            phoneNumber: displayNumber || null,
+            previousQuality: (healthAccount.quality_rating as string | null) ?? null,
+            nextQuality,
+            previousLimit: (healthAccount.messaging_tier as string | null) ?? null,
+          });
+          continue;
+        }
+
+        // ---- Batch 38: the account's review decision, for the merchant's webhook only ----
+        if (field === "account_review_update") {
+          const { data: reviewRows } = await supabase
+            .from("whatsapp_accounts")
+            .select("id, organization_id")
+            .eq("waba_id", String(entry["id"] ?? ""))
+            .limit(1);
+          const reviewed = (reviewRows ?? [])[0] as { id: string; organization_id: string } | undefined;
+          if (reviewed) {
+            const { queueAccountNoticeEvents } = await import("@/lib/public-api-account-events.server");
+            await queueAccountNoticeEvents(supabase, {
+              organizationId: reviewed.organization_id,
+              accountId: reviewed.id,
+              field,
+              value,
+              entry,
+              phoneNumber: null,
+              previousQuality: null,
+              nextQuality: null,
+              previousLimit: null,
+            });
+          }
           continue;
         }
 

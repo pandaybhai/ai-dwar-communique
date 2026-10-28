@@ -15,7 +15,7 @@ export const IDEMPOTENCY_WINDOW_HOURS = 24;
 export const WEBHOOK_RETRY_HOURS = 24;
 export const WEBHOOK_TIMEOUT_SECONDS = 10;
 export const SIGNATURE_TOLERANCE_SECONDS = 300;
-export const DOCS_PATH = "/developers/api";
+export const DOCS_PATH = "/developers";
 
 export const SEND_PATH = "/api/v1/messages/template";
 export const STATUS_PATH = "/api/v1/messages/{message_id}";
@@ -77,8 +77,27 @@ export const INBOUND_EVENT_NAMES = [
 ] as const;
 export type InboundEventName = (typeof INBOUND_EVENT_NAMES)[number];
 
+/**
+ * Batch 38 (v1.2): the events about the workspace itself — a campaign that
+ * finished, the number's quality rating, the WhatsApp account's review or
+ * restriction, the number's messaging limit.
+ */
+export const ACCOUNT_EVENT_NAMES = [
+  "campaign.completed",
+  "phone_number.quality_changed",
+  "account.status_changed",
+  "messaging_limit.changed",
+] as const;
+export type AccountEventName = (typeof ACCOUNT_EVENT_NAMES)[number];
+/** Every event the queue takes beyond a message's own status. */
+export type QueuedEventName = InboundEventName | AccountEventName;
+
 /** Every event a webhook can receive, in the order Settings and the docs list them. */
-export const ALL_WEBHOOK_EVENTS = [...WEBHOOK_EVENT_NAMES, ...INBOUND_EVENT_NAMES] as const;
+export const ALL_WEBHOOK_EVENTS = [
+  ...WEBHOOK_EVENT_NAMES,
+  ...INBOUND_EVENT_NAMES,
+  ...ACCOUNT_EVENT_NAMES,
+] as const;
 
 export const MEDIA_PATH = "/api/v1/media/{message_id}";
 /**
@@ -142,6 +161,19 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
       "invalid_filter",
       "invalid_limit",
       "invalid_cursor",
+      "invalid_name",
+      "invalid_audience",
+      "invalid_variables",
+      "missing_variables",
+      "invalid_schedule_at",
+      "header_media_required",
+      "coupon_code_required",
+      "invalid_status",
+      "invalid_assignee",
+      "assignee_not_member",
+      "invalid_updated_since",
+      "invalid_url",
+      "invalid_events",
     ],
     meaning:
       "The request can't be done as it is: fix what the message says and send again. Nothing was sent or changed.",
@@ -159,15 +191,15 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
   },
   {
     status: "403",
-    codes: ["public_api_disabled", "invalid_media_link"],
+    codes: ["public_api_disabled", "invalid_media_link", "endpoint_not_in_plan"],
     meaning:
-      "The Public API isn't switched on for this workspace (it is part of the Scale plan); or a file download link isn't valid for this API key.",
+      "The Public API isn't switched on for this workspace (it is part of the Scale plan); or a file download link isn't valid for this API key; or this endpoint isn't part of your plan (plan_needed says which plan has it).",
   },
   {
     status: "404",
-    codes: ["not_found"],
+    codes: ["not_found", "segment_not_found", "tag_not_found"],
     meaning:
-      "No such message, file, contact or template in your workspace (another workspace's is the same 404).",
+      "No such message, file, contact, template, campaign, conversation, segment, tag or webhook in your workspace (another workspace's is the same 404).",
   },
   {
     status: "409",
@@ -176,9 +208,11 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
       "window_closed",
       "idempotency_key_reused",
       "idempotency_in_progress",
+      "campaign_finished",
+      "webhook_limit_reached",
     ],
     meaning:
-      "The customer opted out of marketing (a marketing template isn't sent); or their 24-hour window is closed (send a template instead); or this idempotency_key was used for a different request, or that request is still being sent. Nothing new was sent.",
+      "The customer opted out of marketing (a marketing template isn't sent); or their 24-hour window is closed (send a template instead); or this idempotency_key was used for a different request, or that request is still being sent; or the campaign has already finished sending (it can't be cancelled); or the workspace already has 5 webhooks. Nothing new was sent or changed.",
   },
   {
     status: "410",

@@ -171,7 +171,12 @@ export async function publicApiEnabled(
 
 // ------------------------------------------------------------ the caller
 
-export type ApiCaller = { keyId: string; organizationId: string };
+export type ApiCaller = {
+  keyId: string;
+  organizationId: string;
+  /** Batch 38: "api_console" for the Try-it console's credential; an API key leaves it out ("api"). */
+  source?: "api_console";
+};
 
 /** The public API's error body: a sentence for people and a code for programs. */
 export function apiError(
@@ -200,6 +205,11 @@ export async function authenticateApiKey(
       "unauthorized",
       "Missing or invalid API key. Send it as: Authorization: Bearer adw_live_…",
     );
+  // Batch 38: the Try-it console's short-lived credential (public-api-console.server.ts).
+  if (token.startsWith("adw_console_")) {
+    const { authenticateConsoleCredential } = await import("@/lib/public-api-console.server");
+    return authenticateConsoleCredential(supabase, token, request);
+  }
   if (!KEY_SHAPE.test(token)) return unauthorized();
 
   const hash = hashApiKey(token);
@@ -227,6 +237,11 @@ export async function authenticateApiKey(
       "The Public API isn't switched on for this workspace. It is part of the Scale plan — contact AiDwar support to turn it on.",
     );
   }
+
+  // Batch 38: the endpoint must be in the workspace's plan (public-api-plans.ts).
+  const { endpointPlanGate } = await import("@/lib/public-api-plans.server");
+  const notInPlan = await endpointPlanGate(supabase, row.organization_id, request);
+  if (notInPlan) return notInPlan;
 
   const lastUsed = row.last_used_at ? Date.parse(row.last_used_at) : 0;
   if (!lastUsed || Date.now() - lastUsed >= LAST_USED_EVERY_MS) {

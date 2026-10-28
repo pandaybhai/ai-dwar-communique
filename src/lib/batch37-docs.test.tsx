@@ -10,7 +10,9 @@ import { describe, expect, it, vi } from "vitest";
  * from the server: every example passes the server's own request checks,
  * every webhook example has exactly the fields the server's builders write,
  * every endpoint has its route, every error code the server answers with is
- * in the table, and Settings lists the events a webhook receives.
+ * in the table, and Settings lists the events a webhook receives. Since
+ * Batch 38 item 9 the docs page is the developer portal (/developers): the
+ * same checks run across its pages.
  */
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -56,24 +58,15 @@ import {
   forgetApiEventsWanted,
 } from "./public-api-webhooks.server";
 import { ORG, publicApiWorld } from "./test-support/public-api-world";
+import { parseCampaignRequest } from "./public-api-campaigns.server";
+import { parseEvents } from "./public-api-webhook-endpoints.server";
+import { htmlText, renderPortal } from "./test-support/portal-render";
 
-const text = (html: string) =>
-  html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ");
+const text = htmlText;
 
+/** The whole portal, as served. */
 async function page(): Promise<string> {
-  const mod = (await import("@/routes/developers.api.tsx")) as {
-    Route: { options: { component: ComponentType & { preload?: () => Promise<void> } } };
-  };
-  await mod.Route.options.component.preload?.();
-  const Page = mod.Route.options.component;
-  return renderToStaticMarkup(<Page />);
+  return [...renderPortal().values()].join("\n");
 }
 
 /** Every key path of a JSON value ("a", "a.b", …), arrays by their first item. */
@@ -148,9 +141,10 @@ describe("the description is the server's", () => {
   it("every endpoint has its route file with that method", async () => {
     const tree = readFileSync(join(LIB, "..", "routeTree.gen.ts"), "utf8");
     for (const e of API_ENDPOINTS) {
+      // {message_id} → $messageId, {campaign_id} → $campaignId, {phone} → $phone.
       const route = e.path.replace(
         /\{(\w+)\}/g,
-        (_, p: string) => `$${p === "message_id" ? "messageId" : p}`,
+        (_, p: string) => `$${p.replace(/_(\w)/g, (_m, c: string) => c.toUpperCase())}`,
       );
       expect(tree, e.id).toContain(`'${route}': typeof`);
       const file = readdirSync(join(ROUTES, "api", "v1"), { recursive: true })
@@ -182,7 +176,22 @@ describe("the description is the server's", () => {
             expect(typeof (await parseContactInput(c)), label).toBe("object");
         else if (e.id === "contact-tags-add")
           expect(Array.isArray(parseTagList((body as { tags: unknown }).tags)), label).toBe(true);
-        else throw new Error(`no check for ${e.id}`);
+        else if (e.id === "campaign-create" || e.id === "campaign-estimate")
+          expect(
+            "status" in parseCampaignRequest(body, { forEstimate: e.id === "campaign-estimate" }),
+            label,
+          ).toBe(false);
+        else if (e.id === "conversation-assign")
+          expect((body as { assignee: unknown }).assignee, label).toMatch(/^[^@\s]+@[^@\s]+$/);
+        else if (e.id === "conversation-tags") {
+          const b = body as { add?: unknown; remove?: unknown };
+          for (const list of [b.add, b.remove])
+            if (list !== undefined) expect(Array.isArray(parseTagList(list)), label).toBe(true);
+        } else if (e.id === "webhook-create" || e.id === "webhook-update") {
+          const b = body as { url?: unknown; events?: unknown };
+          expect(typeof parseEvents(b.events), label).not.toBe("string");
+          if (b.url !== undefined) expect(String(b.url), label).toMatch(/^https:\/\//);
+        } else throw new Error(`no check for ${e.id}`);
       }
     }
   });

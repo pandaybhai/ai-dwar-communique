@@ -30,7 +30,7 @@ import { IntegrationsTab } from "@/components/integrations/integrations-settings
 import { FlowConnections } from "@/components/integrations/flow-connections";
 import { SendSettingsTab } from "@/components/settings/send-settings";
 import { ApiSettingsTab } from "@/components/settings/api-settings";
-
+import { ApiConsoleCard } from "@/components/settings/api-console";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
@@ -75,6 +75,16 @@ function SettingsPage() {
   );
 }
 
+/** The tab the address asks for: ?tab=<name> (the docs link to ?tab=api), or Google's return to Integrations. */
+function initialTab(showIntegrations: boolean): string {
+  if (typeof window === "undefined") return "general";
+  const q = new URLSearchParams(window.location.search);
+  const asked = q.get("tab");
+  const tabs = ["general", "team", "whatsapp", "integrations", "sending", "sources", "api"];
+  if (asked && tabs.includes(asked)) return asked;
+  return q.has("google") && showIntegrations ? "integrations" : "general";
+}
+
 /** Tabs, with integrations appearing only where the feature is switched on. */
 function SettingsTabs() {
   const { enabled: shopifyEnabled } = useFeatureFlag("shopify");
@@ -89,7 +99,7 @@ function SettingsTabs() {
   const showApi = publicApiEnabled && can("public_api.manage");
 
   return (
-    <Tabs defaultValue={typeof window !== "undefined" && new URLSearchParams(window.location.search).has("google") && showIntegrations ? "integrations" : "general"} className="max-w-3xl">
+    <Tabs defaultValue={initialTab(showIntegrations)} className="max-w-3xl">
       <TabsList>
         <TabsTrigger value="general">General</TabsTrigger>
         <TabsTrigger value="team">Team</TabsTrigger>
@@ -128,8 +138,9 @@ function SettingsTabs() {
         <ComplianceSection />
       </TabsContent>
       {showApi ? (
-        <TabsContent value="api" className="mt-6">
+        <TabsContent value="api" className="mt-6 space-y-6">
           <ApiSettingsTab />
+          <ApiConsoleCard />
         </TabsContent>
       ) : null}
     </Tabs>

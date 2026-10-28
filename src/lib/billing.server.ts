@@ -2178,6 +2178,23 @@ export async function estimateCampaignCost(
   },
 ): Promise<CampaignCostEstimate> {
   await requirePerm(supabase, input.organizationId, { userId: input.actorId }, "campaigns.send");
+  return campaignCostEstimate(supabase, input);
+}
+
+/**
+ * The estimate itself, with no member check: for a caller already checked
+ * another way (Batch 38: a Public API key of this workspace). The same
+ * numbers estimateCampaignCost gives.
+ */
+export async function campaignCostEstimate(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    recipients: number;
+    category?: MessageCategory;
+    whatsappAccountId?: string | null;
+  },
+): Promise<CampaignCostEstimate> {
   const category = input.category ?? "marketing";
   const enabled = await billingEnabled(supabase, input.organizationId);
 

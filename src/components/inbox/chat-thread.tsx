@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isApiSource } from "@/lib/public-api-source";
 import {
   AlertCircle,
   Ban,
@@ -312,7 +313,8 @@ export function Bubble({
   const hasMedia = Boolean(message.media_url) || mediaGoneNote(message) !== null;
   const mediaOnly = hasMedia && !body && !message.template_name;
   // Batch 34: sent by the merchant's own software through the Public API.
-  const viaApi = message.metadata?.["source"] === "api";
+  // "api" or "api_console" (the Try-it console, Batch 38).
+  const viaApi = isApiSource(message.metadata?.["source"]);
   // Batch 35: a campaign test send from the wizard — never part of a campaign.
   const isTest = message.metadata?.["test"] === true;
   const fileName = typeof message.metadata?.["document_filename"] === "string" ? (message.metadata["document_filename"] as string) : null;

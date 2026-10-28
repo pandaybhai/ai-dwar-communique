@@ -16,6 +16,9 @@ import { Route as CancellationPolicyRouteImport } from './routes/cancellation-po
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DataDeletionRouteImport } from './routes/data-deletion'
 import { Route as DemoRouteImport } from './routes/demo'
+import { Route as DevelopersRouteImport } from './routes/developers'
+import { Route as LlmsFullDottxtRouteImport } from './routes/llms-full[.]txt'
+import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
@@ -51,8 +54,19 @@ import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
+import { Route as DevelopersIndexRouteImport } from './routes/developers.index'
+import { Route as Developers24HourWindowRouteImport } from './routes/developers.24-hour-window'
 import { Route as DevelopersApiRouteImport } from './routes/developers.api'
 import { Route as DevelopersApiDotpostmanDotjsonRouteImport } from './routes/developers.api[.]postman[.]json'
+import { Route as DevelopersChangelogRouteImport } from './routes/developers.changelog'
+import { Route as DevelopersErrorsRouteImport } from './routes/developers.errors'
+import { Route as DevelopersIdempotencyRouteImport } from './routes/developers.idempotency'
+import { Route as DevelopersLlmsFullDottxtRouteImport } from './routes/developers.llms-full[.]txt'
+import { Route as DevelopersLlmsDottxtRouteImport } from './routes/developers.llms[.]txt'
+import { Route as DevelopersOpenapiDotjsonRouteImport } from './routes/developers.openapi[.]json'
+import { Route as DevelopersPlansRouteImport } from './routes/developers.plans'
+import { Route as DevelopersQuickstartRouteImport } from './routes/developers.quickstart'
+import { Route as DevelopersRateLimitsRouteImport } from './routes/developers.rate-limits'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as PayPaymentIdRouteImport } from './routes/pay.$paymentId'
 import { Route as RTokenRouteImport } from './routes/r.$token'
@@ -83,6 +97,7 @@ import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/pro
 import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/contacts/evaluate-segment'
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiContactsOptInRouteImport } from './routes/api/contacts/opt-in'
+import { Route as ApiDeveloperConsoleRouteImport } from './routes/api/developer/console'
 import { Route as ApiDeveloperKeysRouteImport } from './routes/api/developer/keys'
 import { Route as ApiDeveloperWebhookRouteImport } from './routes/api/developer/webhook'
 import { Route as ApiFlowsResponsesRouteImport } from './routes/api/flows/responses'
@@ -136,28 +151,46 @@ import { Route as AppCatalogIndexRouteImport } from './routes/app/catalog.index'
 import { Route as AppCatalogCollectionsRouteImport } from './routes/app/catalog.collections'
 import { Route as AppFlowsIndexRouteImport } from './routes/app/flows.index'
 import { Route as AppFlowsIdRouteImport } from './routes/app/flows.$id'
+import { Route as DevelopersGuidesSlugRouteImport } from './routes/developers.guides.$slug'
+import { Route as DevelopersReferenceIndexRouteImport } from './routes/developers.reference.index'
+import { Route as DevelopersReferenceEndpointRouteImport } from './routes/developers.reference.$endpoint'
+import { Route as DevelopersWebhooksIndexRouteImport } from './routes/developers.webhooks.index'
+import { Route as DevelopersWebhooksEventRouteImport } from './routes/developers.webhooks.$event'
 import { Route as ApiPublicRazorpayFlowWebhookOrgIdRouteImport } from './routes/api/public/razorpay-flow-webhook/$orgId'
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
 import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/shopify/webhooks/shop-redact'
 import { Route as ApiV1AccountBalanceRouteImport } from './routes/api/v1/account/balance'
+import { Route as ApiV1CampaignsIndexRouteImport } from './routes/api/v1/campaigns/index'
+import { Route as ApiV1CampaignsCampaignIdRouteImport } from './routes/api/v1/campaigns/$campaignId'
+import { Route as ApiV1CampaignsEstimateRouteImport } from './routes/api/v1/campaigns/estimate'
 import { Route as ApiV1ContactsIndexRouteImport } from './routes/api/v1/contacts/index'
 import { Route as ApiV1ContactsPhoneRouteImport } from './routes/api/v1/contacts/$phone'
 import { Route as ApiV1ContactsBulkRouteImport } from './routes/api/v1/contacts/bulk'
+import { Route as ApiV1ConversationsIndexRouteImport } from './routes/api/v1/conversations/index'
 import { Route as ApiV1MediaMessageIdRouteImport } from './routes/api/v1/media/$messageId'
 import { Route as ApiV1MessagesMessageIdRouteImport } from './routes/api/v1/messages/$messageId'
 import { Route as ApiV1MessagesSessionRouteImport } from './routes/api/v1/messages/session'
 import { Route as ApiV1MessagesTemplateRouteImport } from './routes/api/v1/messages/template'
 import { Route as ApiV1TemplatesIndexRouteImport } from './routes/api/v1/templates/index'
 import { Route as ApiV1TemplatesNameRouteImport } from './routes/api/v1/templates/$name'
+import { Route as ApiV1WebhooksIndexRouteImport } from './routes/api/v1/webhooks/index'
+import { Route as ApiV1WebhooksEventsRouteImport } from './routes/api/v1/webhooks/events'
 import { Route as ApiWhatsappChatMediaMessageIdRouteImport } from './routes/api/whatsapp/chat-media.$messageId'
 import { Route as ApiWhatsappMediaIdRouteImport } from './routes/api/whatsapp/media/$id'
 import { Route as AppFlowsV2IdRouteImport } from './routes/app/flows.v2.$id'
 import { Route as ApiPublicShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/public/shopify/webhooks/customers-data-request'
 import { Route as ApiPublicShopifyWebhooksCustomersRedactRouteImport } from './routes/api/public/shopify/webhooks/customers-redact'
 import { Route as ApiPublicShopifyWebhooksShopRedactRouteImport } from './routes/api/public/shopify/webhooks/shop-redact'
+import { Route as ApiV1CampaignsCampaignIdCancelRouteImport } from './routes/api/v1/campaigns/$campaignId.cancel'
 import { Route as ApiV1ContactsPhoneTagsRouteImport } from './routes/api/v1/contacts/$phone.tags'
+import { Route as ApiV1ConversationsPhoneAssignRouteImport } from './routes/api/v1/conversations/$phone.assign'
+import { Route as ApiV1ConversationsPhoneCloseRouteImport } from './routes/api/v1/conversations/$phone.close'
+import { Route as ApiV1ConversationsPhoneReopenRouteImport } from './routes/api/v1/conversations/$phone.reopen'
+import { Route as ApiV1ConversationsPhoneTagsRouteImport } from './routes/api/v1/conversations/$phone.tags'
 import { Route as ApiV1MediaMessageIdDownloadRouteImport } from './routes/api/v1/media/$messageId.download'
+import { Route as ApiV1WebhooksWebhookIdIndexRouteImport } from './routes/api/v1/webhooks/$webhookId/index'
+import { Route as ApiV1WebhooksWebhookIdTestRouteImport } from './routes/api/v1/webhooks/$webhookId/test'
 import { Route as ApiV1ContactsPhoneTagsTagRouteImport } from './routes/api/v1/contacts/$phone.tags.$tag'
 
 const IndexRoute = IndexRouteImport.update({
@@ -193,6 +226,21 @@ const DataDeletionRoute = DataDeletionRouteImport.update({
 const DemoRoute = DemoRouteImport.update({
   id: '/demo',
   path: '/demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevelopersRoute = DevelopersRouteImport.update({
+  id: '/developers',
+  path: '/developers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LlmsFullDottxtRoute = LlmsFullDottxtRouteImport.update({
+  id: '/llms-full.txt',
+  path: '/llms-full.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
+  id: '/llms.txt',
+  path: '/llms.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -370,17 +418,74 @@ const AppTemplatesRoute = AppTemplatesRouteImport.update({
   path: '/templates',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const DevelopersIndexRoute = DevelopersIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const Developers24HourWindowRoute = Developers24HourWindowRouteImport.update({
+  id: '/24-hour-window',
+  path: '/24-hour-window',
+  getParentRoute: () => DevelopersRoute,
+} as any)
 const DevelopersApiRoute = DevelopersApiRouteImport.update({
-  id: '/developers/api',
-  path: '/developers/api',
-  getParentRoute: () => rootRouteImport,
+  id: '/api',
+  path: '/api',
+  getParentRoute: () => DevelopersRoute,
 } as any)
 const DevelopersApiDotpostmanDotjsonRoute =
   DevelopersApiDotpostmanDotjsonRouteImport.update({
-    id: '/developers/api.postman.json',
-    path: '/developers/api.postman.json',
-    getParentRoute: () => rootRouteImport,
+    id: '/api.postman.json',
+    path: '/api.postman.json',
+    getParentRoute: () => DevelopersRoute,
   } as any)
+const DevelopersChangelogRoute = DevelopersChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersErrorsRoute = DevelopersErrorsRouteImport.update({
+  id: '/errors',
+  path: '/errors',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersIdempotencyRoute = DevelopersIdempotencyRouteImport.update({
+  id: '/idempotency',
+  path: '/idempotency',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersLlmsFullDottxtRoute =
+  DevelopersLlmsFullDottxtRouteImport.update({
+    id: '/llms-full.txt',
+    path: '/llms-full.txt',
+    getParentRoute: () => DevelopersRoute,
+  } as any)
+const DevelopersLlmsDottxtRoute = DevelopersLlmsDottxtRouteImport.update({
+  id: '/llms.txt',
+  path: '/llms.txt',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersOpenapiDotjsonRoute =
+  DevelopersOpenapiDotjsonRouteImport.update({
+    id: '/openapi.json',
+    path: '/openapi.json',
+    getParentRoute: () => DevelopersRoute,
+  } as any)
+const DevelopersPlansRoute = DevelopersPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersQuickstartRoute = DevelopersQuickstartRouteImport.update({
+  id: '/quickstart',
+  path: '/quickstart',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersRateLimitsRoute = DevelopersRateLimitsRouteImport.update({
+  id: '/rate-limits',
+  path: '/rate-limits',
+  getParentRoute: () => DevelopersRoute,
+} as any)
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
@@ -530,6 +635,11 @@ const ApiContactsImportRoute = ApiContactsImportRouteImport.update({
 const ApiContactsOptInRoute = ApiContactsOptInRouteImport.update({
   id: '/api/contacts/opt-in',
   path: '/api/contacts/opt-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDeveloperConsoleRoute = ApiDeveloperConsoleRouteImport.update({
+  id: '/api/developer/console',
+  path: '/api/developer/console',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDeveloperKeysRoute = ApiDeveloperKeysRouteImport.update({
@@ -815,6 +925,33 @@ const AppFlowsIdRoute = AppFlowsIdRouteImport.update({
   path: '/flows/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const DevelopersGuidesSlugRoute = DevelopersGuidesSlugRouteImport.update({
+  id: '/guides/$slug',
+  path: '/guides/$slug',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersReferenceIndexRoute =
+  DevelopersReferenceIndexRouteImport.update({
+    id: '/reference/',
+    path: '/reference/',
+    getParentRoute: () => DevelopersRoute,
+  } as any)
+const DevelopersReferenceEndpointRoute =
+  DevelopersReferenceEndpointRouteImport.update({
+    id: '/reference/$endpoint',
+    path: '/reference/$endpoint',
+    getParentRoute: () => DevelopersRoute,
+  } as any)
+const DevelopersWebhooksIndexRoute = DevelopersWebhooksIndexRouteImport.update({
+  id: '/webhooks/',
+  path: '/webhooks/',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersWebhooksEventRoute = DevelopersWebhooksEventRouteImport.update({
+  id: '/webhooks/$event',
+  path: '/webhooks/$event',
+  getParentRoute: () => DevelopersRoute,
+} as any)
 const ApiPublicRazorpayFlowWebhookOrgIdRoute =
   ApiPublicRazorpayFlowWebhookOrgIdRouteImport.update({
     id: '/api/public/razorpay-flow-webhook/$orgId',
@@ -844,6 +981,22 @@ const ApiV1AccountBalanceRoute = ApiV1AccountBalanceRouteImport.update({
   path: '/api/v1/account/balance',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1CampaignsIndexRoute = ApiV1CampaignsIndexRouteImport.update({
+  id: '/api/v1/campaigns/',
+  path: '/api/v1/campaigns/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1CampaignsCampaignIdRoute =
+  ApiV1CampaignsCampaignIdRouteImport.update({
+    id: '/api/v1/campaigns/$campaignId',
+    path: '/api/v1/campaigns/$campaignId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1CampaignsEstimateRoute = ApiV1CampaignsEstimateRouteImport.update({
+  id: '/api/v1/campaigns/estimate',
+  path: '/api/v1/campaigns/estimate',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1ContactsIndexRoute = ApiV1ContactsIndexRouteImport.update({
   id: '/api/v1/contacts/',
   path: '/api/v1/contacts/',
@@ -857,6 +1010,11 @@ const ApiV1ContactsPhoneRoute = ApiV1ContactsPhoneRouteImport.update({
 const ApiV1ContactsBulkRoute = ApiV1ContactsBulkRouteImport.update({
   id: '/api/v1/contacts/bulk',
   path: '/api/v1/contacts/bulk',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1ConversationsIndexRoute = ApiV1ConversationsIndexRouteImport.update({
+  id: '/api/v1/conversations/',
+  path: '/api/v1/conversations/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiV1MediaMessageIdRoute = ApiV1MediaMessageIdRouteImport.update({
@@ -887,6 +1045,16 @@ const ApiV1TemplatesIndexRoute = ApiV1TemplatesIndexRouteImport.update({
 const ApiV1TemplatesNameRoute = ApiV1TemplatesNameRouteImport.update({
   id: '/api/v1/templates/$name',
   path: '/api/v1/templates/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1WebhooksIndexRoute = ApiV1WebhooksIndexRouteImport.update({
+  id: '/api/v1/webhooks/',
+  path: '/api/v1/webhooks/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1WebhooksEventsRoute = ApiV1WebhooksEventsRouteImport.update({
+  id: '/api/v1/webhooks/events',
+  path: '/api/v1/webhooks/events',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiWhatsappChatMediaMessageIdRoute =
@@ -923,16 +1091,58 @@ const ApiPublicShopifyWebhooksShopRedactRoute =
     path: '/api/public/shopify/webhooks/shop-redact',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1CampaignsCampaignIdCancelRoute =
+  ApiV1CampaignsCampaignIdCancelRouteImport.update({
+    id: '/cancel',
+    path: '/cancel',
+    getParentRoute: () => ApiV1CampaignsCampaignIdRoute,
+  } as any)
 const ApiV1ContactsPhoneTagsRoute = ApiV1ContactsPhoneTagsRouteImport.update({
   id: '/tags',
   path: '/tags',
   getParentRoute: () => ApiV1ContactsPhoneRoute,
 } as any)
+const ApiV1ConversationsPhoneAssignRoute =
+  ApiV1ConversationsPhoneAssignRouteImport.update({
+    id: '/api/v1/conversations/$phone/assign',
+    path: '/api/v1/conversations/$phone/assign',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1ConversationsPhoneCloseRoute =
+  ApiV1ConversationsPhoneCloseRouteImport.update({
+    id: '/api/v1/conversations/$phone/close',
+    path: '/api/v1/conversations/$phone/close',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1ConversationsPhoneReopenRoute =
+  ApiV1ConversationsPhoneReopenRouteImport.update({
+    id: '/api/v1/conversations/$phone/reopen',
+    path: '/api/v1/conversations/$phone/reopen',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1ConversationsPhoneTagsRoute =
+  ApiV1ConversationsPhoneTagsRouteImport.update({
+    id: '/api/v1/conversations/$phone/tags',
+    path: '/api/v1/conversations/$phone/tags',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1MediaMessageIdDownloadRoute =
   ApiV1MediaMessageIdDownloadRouteImport.update({
     id: '/download',
     path: '/download',
     getParentRoute: () => ApiV1MediaMessageIdRoute,
+  } as any)
+const ApiV1WebhooksWebhookIdIndexRoute =
+  ApiV1WebhooksWebhookIdIndexRouteImport.update({
+    id: '/api/v1/webhooks/$webhookId/',
+    path: '/api/v1/webhooks/$webhookId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1WebhooksWebhookIdTestRoute =
+  ApiV1WebhooksWebhookIdTestRouteImport.update({
+    id: '/api/v1/webhooks/$webhookId/test',
+    path: '/api/v1/webhooks/$webhookId/test',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1ContactsPhoneTagsTagRoute =
   ApiV1ContactsPhoneTagsTagRouteImport.update({
@@ -949,6 +1159,9 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
+  '/developers': typeof DevelopersRouteWithChildren
+  '/llms-full.txt': typeof LlmsFullDottxtRoute
+  '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
@@ -982,13 +1195,24 @@ export interface FileRoutesByFullPath {
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
+  '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
   '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
+  '/developers/changelog': typeof DevelopersChangelogRoute
+  '/developers/errors': typeof DevelopersErrorsRoute
+  '/developers/idempotency': typeof DevelopersIdempotencyRoute
+  '/developers/llms-full.txt': typeof DevelopersLlmsFullDottxtRoute
+  '/developers/llms.txt': typeof DevelopersLlmsDottxtRoute
+  '/developers/openapi.json': typeof DevelopersOpenapiDotjsonRoute
+  '/developers/plans': typeof DevelopersPlansRoute
+  '/developers/quickstart': typeof DevelopersQuickstartRoute
+  '/developers/rate-limits': typeof DevelopersRateLimitsRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/developers/': typeof DevelopersIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
@@ -1016,6 +1240,7 @@ export interface FileRoutesByFullPath {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/contacts/opt-in': typeof ApiContactsOptInRoute
+  '/api/developer/console': typeof ApiDeveloperConsoleRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
   '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
@@ -1066,14 +1291,21 @@ export interface FileRoutesByFullPath {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
+  '/developers/guides/$slug': typeof DevelopersGuidesSlugRoute
+  '/developers/reference/$endpoint': typeof DevelopersReferenceEndpointRoute
+  '/developers/webhooks/$event': typeof DevelopersWebhooksEventRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/developers/reference/': typeof DevelopersReferenceIndexRoute
+  '/developers/webhooks/': typeof DevelopersWebhooksIndexRoute
   '/api/public/razorpay-flow-webhook/$orgId': typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
   '/api/v1/account/balance': typeof ApiV1AccountBalanceRoute
+  '/api/v1/campaigns/$campaignId': typeof ApiV1CampaignsCampaignIdRouteWithChildren
+  '/api/v1/campaigns/estimate': typeof ApiV1CampaignsEstimateRoute
   '/api/v1/contacts/$phone': typeof ApiV1ContactsPhoneRouteWithChildren
   '/api/v1/contacts/bulk': typeof ApiV1ContactsBulkRoute
   '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
@@ -1081,16 +1313,27 @@ export interface FileRoutesByFullPath {
   '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/v1/templates/$name': typeof ApiV1TemplatesNameRoute
+  '/api/v1/webhooks/events': typeof ApiV1WebhooksEventsRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
+  '/api/v1/campaigns/': typeof ApiV1CampaignsIndexRoute
   '/api/v1/contacts/': typeof ApiV1ContactsIndexRoute
+  '/api/v1/conversations/': typeof ApiV1ConversationsIndexRoute
   '/api/v1/templates/': typeof ApiV1TemplatesIndexRoute
+  '/api/v1/webhooks/': typeof ApiV1WebhooksIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/campaigns/$campaignId/cancel': typeof ApiV1CampaignsCampaignIdCancelRoute
   '/api/v1/contacts/$phone/tags': typeof ApiV1ContactsPhoneTagsRouteWithChildren
+  '/api/v1/conversations/$phone/assign': typeof ApiV1ConversationsPhoneAssignRoute
+  '/api/v1/conversations/$phone/close': typeof ApiV1ConversationsPhoneCloseRoute
+  '/api/v1/conversations/$phone/reopen': typeof ApiV1ConversationsPhoneReopenRoute
+  '/api/v1/conversations/$phone/tags': typeof ApiV1ConversationsPhoneTagsRoute
   '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
+  '/api/v1/webhooks/$webhookId/test': typeof ApiV1WebhooksWebhookIdTestRoute
+  '/api/v1/webhooks/$webhookId/': typeof ApiV1WebhooksWebhookIdIndexRoute
   '/api/v1/contacts/$phone/tags/$tag': typeof ApiV1ContactsPhoneTagsTagRoute
 }
 export interface FileRoutesByTo {
@@ -1099,6 +1342,8 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
+  '/llms-full.txt': typeof LlmsFullDottxtRoute
+  '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
@@ -1132,13 +1377,24 @@ export interface FileRoutesByTo {
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
+  '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
   '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
+  '/developers/changelog': typeof DevelopersChangelogRoute
+  '/developers/errors': typeof DevelopersErrorsRoute
+  '/developers/idempotency': typeof DevelopersIdempotencyRoute
+  '/developers/llms-full.txt': typeof DevelopersLlmsFullDottxtRoute
+  '/developers/llms.txt': typeof DevelopersLlmsDottxtRoute
+  '/developers/openapi.json': typeof DevelopersOpenapiDotjsonRoute
+  '/developers/plans': typeof DevelopersPlansRoute
+  '/developers/quickstart': typeof DevelopersQuickstartRoute
+  '/developers/rate-limits': typeof DevelopersRateLimitsRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/developers': typeof DevelopersIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
@@ -1166,6 +1422,7 @@ export interface FileRoutesByTo {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/contacts/opt-in': typeof ApiContactsOptInRoute
+  '/api/developer/console': typeof ApiDeveloperConsoleRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
   '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
@@ -1216,14 +1473,21 @@ export interface FileRoutesByTo {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
+  '/developers/guides/$slug': typeof DevelopersGuidesSlugRoute
+  '/developers/reference/$endpoint': typeof DevelopersReferenceEndpointRoute
+  '/developers/webhooks/$event': typeof DevelopersWebhooksEventRoute
   '/app/campaigns': typeof AppCampaignsIndexRoute
   '/app/catalog': typeof AppCatalogIndexRoute
   '/app/flows': typeof AppFlowsIndexRoute
+  '/developers/reference': typeof DevelopersReferenceIndexRoute
+  '/developers/webhooks': typeof DevelopersWebhooksIndexRoute
   '/api/public/razorpay-flow-webhook/$orgId': typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
   '/api/v1/account/balance': typeof ApiV1AccountBalanceRoute
+  '/api/v1/campaigns/$campaignId': typeof ApiV1CampaignsCampaignIdRouteWithChildren
+  '/api/v1/campaigns/estimate': typeof ApiV1CampaignsEstimateRoute
   '/api/v1/contacts/$phone': typeof ApiV1ContactsPhoneRouteWithChildren
   '/api/v1/contacts/bulk': typeof ApiV1ContactsBulkRoute
   '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
@@ -1231,16 +1495,27 @@ export interface FileRoutesByTo {
   '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/v1/templates/$name': typeof ApiV1TemplatesNameRoute
+  '/api/v1/webhooks/events': typeof ApiV1WebhooksEventsRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
+  '/api/v1/campaigns': typeof ApiV1CampaignsIndexRoute
   '/api/v1/contacts': typeof ApiV1ContactsIndexRoute
+  '/api/v1/conversations': typeof ApiV1ConversationsIndexRoute
   '/api/v1/templates': typeof ApiV1TemplatesIndexRoute
+  '/api/v1/webhooks': typeof ApiV1WebhooksIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/campaigns/$campaignId/cancel': typeof ApiV1CampaignsCampaignIdCancelRoute
   '/api/v1/contacts/$phone/tags': typeof ApiV1ContactsPhoneTagsRouteWithChildren
+  '/api/v1/conversations/$phone/assign': typeof ApiV1ConversationsPhoneAssignRoute
+  '/api/v1/conversations/$phone/close': typeof ApiV1ConversationsPhoneCloseRoute
+  '/api/v1/conversations/$phone/reopen': typeof ApiV1ConversationsPhoneReopenRoute
+  '/api/v1/conversations/$phone/tags': typeof ApiV1ConversationsPhoneTagsRoute
   '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
+  '/api/v1/webhooks/$webhookId/test': typeof ApiV1WebhooksWebhookIdTestRoute
+  '/api/v1/webhooks/$webhookId': typeof ApiV1WebhooksWebhookIdIndexRoute
   '/api/v1/contacts/$phone/tags/$tag': typeof ApiV1ContactsPhoneTagsTagRoute
 }
 export interface FileRoutesById {
@@ -1252,6 +1527,9 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
+  '/developers': typeof DevelopersRouteWithChildren
+  '/llms-full.txt': typeof LlmsFullDottxtRoute
+  '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
@@ -1285,13 +1563,24 @@ export interface FileRoutesById {
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
+  '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
   '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
+  '/developers/changelog': typeof DevelopersChangelogRoute
+  '/developers/errors': typeof DevelopersErrorsRoute
+  '/developers/idempotency': typeof DevelopersIdempotencyRoute
+  '/developers/llms-full.txt': typeof DevelopersLlmsFullDottxtRoute
+  '/developers/llms.txt': typeof DevelopersLlmsDottxtRoute
+  '/developers/openapi.json': typeof DevelopersOpenapiDotjsonRoute
+  '/developers/plans': typeof DevelopersPlansRoute
+  '/developers/quickstart': typeof DevelopersQuickstartRoute
+  '/developers/rate-limits': typeof DevelopersRateLimitsRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/developers/': typeof DevelopersIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
@@ -1319,6 +1608,7 @@ export interface FileRoutesById {
   '/api/contacts/evaluate-segment': typeof ApiContactsEvaluateSegmentRoute
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/contacts/opt-in': typeof ApiContactsOptInRoute
+  '/api/developer/console': typeof ApiDeveloperConsoleRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
   '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
@@ -1369,14 +1659,21 @@ export interface FileRoutesById {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
+  '/developers/guides/$slug': typeof DevelopersGuidesSlugRoute
+  '/developers/reference/$endpoint': typeof DevelopersReferenceEndpointRoute
+  '/developers/webhooks/$event': typeof DevelopersWebhooksEventRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/developers/reference/': typeof DevelopersReferenceIndexRoute
+  '/developers/webhooks/': typeof DevelopersWebhooksIndexRoute
   '/api/public/razorpay-flow-webhook/$orgId': typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
   '/api/v1/account/balance': typeof ApiV1AccountBalanceRoute
+  '/api/v1/campaigns/$campaignId': typeof ApiV1CampaignsCampaignIdRouteWithChildren
+  '/api/v1/campaigns/estimate': typeof ApiV1CampaignsEstimateRoute
   '/api/v1/contacts/$phone': typeof ApiV1ContactsPhoneRouteWithChildren
   '/api/v1/contacts/bulk': typeof ApiV1ContactsBulkRoute
   '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
@@ -1384,16 +1681,27 @@ export interface FileRoutesById {
   '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/v1/templates/$name': typeof ApiV1TemplatesNameRoute
+  '/api/v1/webhooks/events': typeof ApiV1WebhooksEventsRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
+  '/api/v1/campaigns/': typeof ApiV1CampaignsIndexRoute
   '/api/v1/contacts/': typeof ApiV1ContactsIndexRoute
+  '/api/v1/conversations/': typeof ApiV1ConversationsIndexRoute
   '/api/v1/templates/': typeof ApiV1TemplatesIndexRoute
+  '/api/v1/webhooks/': typeof ApiV1WebhooksIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/campaigns/$campaignId/cancel': typeof ApiV1CampaignsCampaignIdCancelRoute
   '/api/v1/contacts/$phone/tags': typeof ApiV1ContactsPhoneTagsRouteWithChildren
+  '/api/v1/conversations/$phone/assign': typeof ApiV1ConversationsPhoneAssignRoute
+  '/api/v1/conversations/$phone/close': typeof ApiV1ConversationsPhoneCloseRoute
+  '/api/v1/conversations/$phone/reopen': typeof ApiV1ConversationsPhoneReopenRoute
+  '/api/v1/conversations/$phone/tags': typeof ApiV1ConversationsPhoneTagsRoute
   '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
+  '/api/v1/webhooks/$webhookId/test': typeof ApiV1WebhooksWebhookIdTestRoute
+  '/api/v1/webhooks/$webhookId/': typeof ApiV1WebhooksWebhookIdIndexRoute
   '/api/v1/contacts/$phone/tags/$tag': typeof ApiV1ContactsPhoneTagsTagRoute
 }
 export interface FileRouteTypes {
@@ -1406,6 +1714,9 @@ export interface FileRouteTypes {
     | '/contact'
     | '/data-deletion'
     | '/demo'
+    | '/developers'
+    | '/llms-full.txt'
+    | '/llms.txt'
     | '/login'
     | '/pricing'
     | '/privacy'
@@ -1439,13 +1750,24 @@ export interface FileRouteTypes {
     | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
+    | '/developers/24-hour-window'
     | '/developers/api'
     | '/developers/api.postman.json'
+    | '/developers/changelog'
+    | '/developers/errors'
+    | '/developers/idempotency'
+    | '/developers/llms-full.txt'
+    | '/developers/llms.txt'
+    | '/developers/openapi.json'
+    | '/developers/plans'
+    | '/developers/quickstart'
+    | '/developers/rate-limits'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/developers/'
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
@@ -1473,6 +1795,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/contacts/opt-in'
+    | '/api/developer/console'
     | '/api/developer/keys'
     | '/api/developer/webhook'
     | '/api/flows/responses'
@@ -1523,14 +1846,21 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/catalog/collections'
     | '/app/flows/$id'
+    | '/developers/guides/$slug'
+    | '/developers/reference/$endpoint'
+    | '/developers/webhooks/$event'
     | '/app/campaigns/'
     | '/app/catalog/'
     | '/app/flows/'
+    | '/developers/reference/'
+    | '/developers/webhooks/'
     | '/api/public/razorpay-flow-webhook/$orgId'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
     | '/api/v1/account/balance'
+    | '/api/v1/campaigns/$campaignId'
+    | '/api/v1/campaigns/estimate'
     | '/api/v1/contacts/$phone'
     | '/api/v1/contacts/bulk'
     | '/api/v1/media/$messageId'
@@ -1538,16 +1868,27 @@ export interface FileRouteTypes {
     | '/api/v1/messages/session'
     | '/api/v1/messages/template'
     | '/api/v1/templates/$name'
+    | '/api/v1/webhooks/events'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
+    | '/api/v1/campaigns/'
     | '/api/v1/contacts/'
+    | '/api/v1/conversations/'
     | '/api/v1/templates/'
+    | '/api/v1/webhooks/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/campaigns/$campaignId/cancel'
     | '/api/v1/contacts/$phone/tags'
+    | '/api/v1/conversations/$phone/assign'
+    | '/api/v1/conversations/$phone/close'
+    | '/api/v1/conversations/$phone/reopen'
+    | '/api/v1/conversations/$phone/tags'
     | '/api/v1/media/$messageId/download'
+    | '/api/v1/webhooks/$webhookId/test'
+    | '/api/v1/webhooks/$webhookId/'
     | '/api/v1/contacts/$phone/tags/$tag'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1556,6 +1897,8 @@ export interface FileRouteTypes {
     | '/contact'
     | '/data-deletion'
     | '/demo'
+    | '/llms-full.txt'
+    | '/llms.txt'
     | '/login'
     | '/pricing'
     | '/privacy'
@@ -1589,13 +1932,24 @@ export interface FileRouteTypes {
     | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
+    | '/developers/24-hour-window'
     | '/developers/api'
     | '/developers/api.postman.json'
+    | '/developers/changelog'
+    | '/developers/errors'
+    | '/developers/idempotency'
+    | '/developers/llms-full.txt'
+    | '/developers/llms.txt'
+    | '/developers/openapi.json'
+    | '/developers/plans'
+    | '/developers/quickstart'
+    | '/developers/rate-limits'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
     | '/admin'
     | '/app'
+    | '/developers'
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
@@ -1623,6 +1977,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/contacts/opt-in'
+    | '/api/developer/console'
     | '/api/developer/keys'
     | '/api/developer/webhook'
     | '/api/flows/responses'
@@ -1673,14 +2028,21 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/catalog/collections'
     | '/app/flows/$id'
+    | '/developers/guides/$slug'
+    | '/developers/reference/$endpoint'
+    | '/developers/webhooks/$event'
     | '/app/campaigns'
     | '/app/catalog'
     | '/app/flows'
+    | '/developers/reference'
+    | '/developers/webhooks'
     | '/api/public/razorpay-flow-webhook/$orgId'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
     | '/api/v1/account/balance'
+    | '/api/v1/campaigns/$campaignId'
+    | '/api/v1/campaigns/estimate'
     | '/api/v1/contacts/$phone'
     | '/api/v1/contacts/bulk'
     | '/api/v1/media/$messageId'
@@ -1688,16 +2050,27 @@ export interface FileRouteTypes {
     | '/api/v1/messages/session'
     | '/api/v1/messages/template'
     | '/api/v1/templates/$name'
+    | '/api/v1/webhooks/events'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
+    | '/api/v1/campaigns'
     | '/api/v1/contacts'
+    | '/api/v1/conversations'
     | '/api/v1/templates'
+    | '/api/v1/webhooks'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/campaigns/$campaignId/cancel'
     | '/api/v1/contacts/$phone/tags'
+    | '/api/v1/conversations/$phone/assign'
+    | '/api/v1/conversations/$phone/close'
+    | '/api/v1/conversations/$phone/reopen'
+    | '/api/v1/conversations/$phone/tags'
     | '/api/v1/media/$messageId/download'
+    | '/api/v1/webhooks/$webhookId/test'
+    | '/api/v1/webhooks/$webhookId'
     | '/api/v1/contacts/$phone/tags/$tag'
   id:
     | '__root__'
@@ -1708,6 +2081,9 @@ export interface FileRouteTypes {
     | '/contact'
     | '/data-deletion'
     | '/demo'
+    | '/developers'
+    | '/llms-full.txt'
+    | '/llms.txt'
     | '/login'
     | '/pricing'
     | '/privacy'
@@ -1741,13 +2117,24 @@ export interface FileRouteTypes {
     | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
+    | '/developers/24-hour-window'
     | '/developers/api'
     | '/developers/api.postman.json'
+    | '/developers/changelog'
+    | '/developers/errors'
+    | '/developers/idempotency'
+    | '/developers/llms-full.txt'
+    | '/developers/llms.txt'
+    | '/developers/openapi.json'
+    | '/developers/plans'
+    | '/developers/quickstart'
+    | '/developers/rate-limits'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/developers/'
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
@@ -1775,6 +2162,7 @@ export interface FileRouteTypes {
     | '/api/contacts/evaluate-segment'
     | '/api/contacts/import'
     | '/api/contacts/opt-in'
+    | '/api/developer/console'
     | '/api/developer/keys'
     | '/api/developer/webhook'
     | '/api/flows/responses'
@@ -1825,14 +2213,21 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/catalog/collections'
     | '/app/flows/$id'
+    | '/developers/guides/$slug'
+    | '/developers/reference/$endpoint'
+    | '/developers/webhooks/$event'
     | '/app/campaigns/'
     | '/app/catalog/'
     | '/app/flows/'
+    | '/developers/reference/'
+    | '/developers/webhooks/'
     | '/api/public/razorpay-flow-webhook/$orgId'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
     | '/api/v1/account/balance'
+    | '/api/v1/campaigns/$campaignId'
+    | '/api/v1/campaigns/estimate'
     | '/api/v1/contacts/$phone'
     | '/api/v1/contacts/bulk'
     | '/api/v1/media/$messageId'
@@ -1840,16 +2235,27 @@ export interface FileRouteTypes {
     | '/api/v1/messages/session'
     | '/api/v1/messages/template'
     | '/api/v1/templates/$name'
+    | '/api/v1/webhooks/events'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
+    | '/api/v1/campaigns/'
     | '/api/v1/contacts/'
+    | '/api/v1/conversations/'
     | '/api/v1/templates/'
+    | '/api/v1/webhooks/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/campaigns/$campaignId/cancel'
     | '/api/v1/contacts/$phone/tags'
+    | '/api/v1/conversations/$phone/assign'
+    | '/api/v1/conversations/$phone/close'
+    | '/api/v1/conversations/$phone/reopen'
+    | '/api/v1/conversations/$phone/tags'
     | '/api/v1/media/$messageId/download'
+    | '/api/v1/webhooks/$webhookId/test'
+    | '/api/v1/webhooks/$webhookId/'
     | '/api/v1/contacts/$phone/tags/$tag'
   fileRoutesById: FileRoutesById
 }
@@ -1861,6 +2267,9 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   DataDeletionRoute: typeof DataDeletionRoute
   DemoRoute: typeof DemoRoute
+  DevelopersRoute: typeof DevelopersRouteWithChildren
+  LlmsFullDottxtRoute: typeof LlmsFullDottxtRoute
+  LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -1874,8 +2283,6 @@ export interface RootRouteChildren {
   ApiEventsRoute: typeof ApiEventsRoute
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
-  DevelopersApiRoute: typeof DevelopersApiRoute
-  DevelopersApiDotpostmanDotjsonRoute: typeof DevelopersApiDotpostmanDotjsonRoute
   JoinTokenRoute: typeof JoinTokenRoute
   PayPaymentIdRoute: typeof PayPaymentIdRoute
   RTokenRoute: typeof RTokenRoute
@@ -1906,6 +2313,7 @@ export interface RootRouteChildren {
   ApiContactsEvaluateSegmentRoute: typeof ApiContactsEvaluateSegmentRoute
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiContactsOptInRoute: typeof ApiContactsOptInRoute
+  ApiDeveloperConsoleRoute: typeof ApiDeveloperConsoleRoute
   ApiDeveloperKeysRoute: typeof ApiDeveloperKeysRoute
   ApiDeveloperWebhookRoute: typeof ApiDeveloperWebhookRoute
   ApiFlowsResponsesRoute: typeof ApiFlowsResponsesRoute
@@ -1958,6 +2366,8 @@ export interface RootRouteChildren {
   ApiShopifyWebhooksCustomersRedactRoute: typeof ApiShopifyWebhooksCustomersRedactRoute
   ApiShopifyWebhooksShopRedactRoute: typeof ApiShopifyWebhooksShopRedactRoute
   ApiV1AccountBalanceRoute: typeof ApiV1AccountBalanceRoute
+  ApiV1CampaignsCampaignIdRoute: typeof ApiV1CampaignsCampaignIdRouteWithChildren
+  ApiV1CampaignsEstimateRoute: typeof ApiV1CampaignsEstimateRoute
   ApiV1ContactsPhoneRoute: typeof ApiV1ContactsPhoneRouteWithChildren
   ApiV1ContactsBulkRoute: typeof ApiV1ContactsBulkRoute
   ApiV1MediaMessageIdRoute: typeof ApiV1MediaMessageIdRouteWithChildren
@@ -1965,13 +2375,23 @@ export interface RootRouteChildren {
   ApiV1MessagesSessionRoute: typeof ApiV1MessagesSessionRoute
   ApiV1MessagesTemplateRoute: typeof ApiV1MessagesTemplateRoute
   ApiV1TemplatesNameRoute: typeof ApiV1TemplatesNameRoute
+  ApiV1WebhooksEventsRoute: typeof ApiV1WebhooksEventsRoute
   ApiWhatsappChatMediaMessageIdRoute: typeof ApiWhatsappChatMediaMessageIdRoute
   ApiWhatsappMediaIdRoute: typeof ApiWhatsappMediaIdRoute
+  ApiV1CampaignsIndexRoute: typeof ApiV1CampaignsIndexRoute
   ApiV1ContactsIndexRoute: typeof ApiV1ContactsIndexRoute
+  ApiV1ConversationsIndexRoute: typeof ApiV1ConversationsIndexRoute
   ApiV1TemplatesIndexRoute: typeof ApiV1TemplatesIndexRoute
+  ApiV1WebhooksIndexRoute: typeof ApiV1WebhooksIndexRoute
   ApiPublicShopifyWebhooksCustomersDataRequestRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   ApiPublicShopifyWebhooksCustomersRedactRoute: typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   ApiPublicShopifyWebhooksShopRedactRoute: typeof ApiPublicShopifyWebhooksShopRedactRoute
+  ApiV1ConversationsPhoneAssignRoute: typeof ApiV1ConversationsPhoneAssignRoute
+  ApiV1ConversationsPhoneCloseRoute: typeof ApiV1ConversationsPhoneCloseRoute
+  ApiV1ConversationsPhoneReopenRoute: typeof ApiV1ConversationsPhoneReopenRoute
+  ApiV1ConversationsPhoneTagsRoute: typeof ApiV1ConversationsPhoneTagsRoute
+  ApiV1WebhooksWebhookIdTestRoute: typeof ApiV1WebhooksWebhookIdTestRoute
+  ApiV1WebhooksWebhookIdIndexRoute: typeof ApiV1WebhooksWebhookIdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2023,6 +2443,27 @@ declare module '@tanstack/react-router' {
       path: '/demo'
       fullPath: '/demo'
       preLoaderRoute: typeof DemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/developers': {
+      id: '/developers'
+      path: '/developers'
+      fullPath: '/developers'
+      preLoaderRoute: typeof DevelopersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/llms-full.txt': {
+      id: '/llms-full.txt'
+      path: '/llms-full.txt'
+      fullPath: '/llms-full.txt'
+      preLoaderRoute: typeof LlmsFullDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/llms.txt': {
+      id: '/llms.txt'
+      path: '/llms.txt'
+      fullPath: '/llms.txt'
+      preLoaderRoute: typeof LlmsDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -2270,19 +2711,96 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTemplatesRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/developers/': {
+      id: '/developers/'
+      path: '/'
+      fullPath: '/developers/'
+      preLoaderRoute: typeof DevelopersIndexRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/24-hour-window': {
+      id: '/developers/24-hour-window'
+      path: '/24-hour-window'
+      fullPath: '/developers/24-hour-window'
+      preLoaderRoute: typeof Developers24HourWindowRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
     '/developers/api': {
       id: '/developers/api'
-      path: '/developers/api'
+      path: '/api'
       fullPath: '/developers/api'
       preLoaderRoute: typeof DevelopersApiRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof DevelopersRoute
     }
     '/developers/api.postman.json': {
       id: '/developers/api.postman.json'
-      path: '/developers/api.postman.json'
+      path: '/api.postman.json'
       fullPath: '/developers/api.postman.json'
       preLoaderRoute: typeof DevelopersApiDotpostmanDotjsonRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/changelog': {
+      id: '/developers/changelog'
+      path: '/changelog'
+      fullPath: '/developers/changelog'
+      preLoaderRoute: typeof DevelopersChangelogRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/errors': {
+      id: '/developers/errors'
+      path: '/errors'
+      fullPath: '/developers/errors'
+      preLoaderRoute: typeof DevelopersErrorsRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/idempotency': {
+      id: '/developers/idempotency'
+      path: '/idempotency'
+      fullPath: '/developers/idempotency'
+      preLoaderRoute: typeof DevelopersIdempotencyRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/llms-full.txt': {
+      id: '/developers/llms-full.txt'
+      path: '/llms-full.txt'
+      fullPath: '/developers/llms-full.txt'
+      preLoaderRoute: typeof DevelopersLlmsFullDottxtRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/llms.txt': {
+      id: '/developers/llms.txt'
+      path: '/llms.txt'
+      fullPath: '/developers/llms.txt'
+      preLoaderRoute: typeof DevelopersLlmsDottxtRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/openapi.json': {
+      id: '/developers/openapi.json'
+      path: '/openapi.json'
+      fullPath: '/developers/openapi.json'
+      preLoaderRoute: typeof DevelopersOpenapiDotjsonRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/plans': {
+      id: '/developers/plans'
+      path: '/plans'
+      fullPath: '/developers/plans'
+      preLoaderRoute: typeof DevelopersPlansRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/quickstart': {
+      id: '/developers/quickstart'
+      path: '/quickstart'
+      fullPath: '/developers/quickstart'
+      preLoaderRoute: typeof DevelopersQuickstartRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/rate-limits': {
+      id: '/developers/rate-limits'
+      path: '/rate-limits'
+      fullPath: '/developers/rate-limits'
+      preLoaderRoute: typeof DevelopersRateLimitsRouteImport
+      parentRoute: typeof DevelopersRoute
     }
     '/join/$token': {
       id: '/join/$token'
@@ -2492,6 +3010,13 @@ declare module '@tanstack/react-router' {
       path: '/api/contacts/opt-in'
       fullPath: '/api/contacts/opt-in'
       preLoaderRoute: typeof ApiContactsOptInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/developer/console': {
+      id: '/api/developer/console'
+      path: '/api/developer/console'
+      fullPath: '/api/developer/console'
+      preLoaderRoute: typeof ApiDeveloperConsoleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/developer/keys': {
@@ -2865,6 +3390,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFlowsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/developers/guides/$slug': {
+      id: '/developers/guides/$slug'
+      path: '/guides/$slug'
+      fullPath: '/developers/guides/$slug'
+      preLoaderRoute: typeof DevelopersGuidesSlugRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/reference/': {
+      id: '/developers/reference/'
+      path: '/reference'
+      fullPath: '/developers/reference/'
+      preLoaderRoute: typeof DevelopersReferenceIndexRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/reference/$endpoint': {
+      id: '/developers/reference/$endpoint'
+      path: '/reference/$endpoint'
+      fullPath: '/developers/reference/$endpoint'
+      preLoaderRoute: typeof DevelopersReferenceEndpointRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/webhooks/': {
+      id: '/developers/webhooks/'
+      path: '/webhooks'
+      fullPath: '/developers/webhooks/'
+      preLoaderRoute: typeof DevelopersWebhooksIndexRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/webhooks/$event': {
+      id: '/developers/webhooks/$event'
+      path: '/webhooks/$event'
+      fullPath: '/developers/webhooks/$event'
+      preLoaderRoute: typeof DevelopersWebhooksEventRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
     '/api/public/razorpay-flow-webhook/$orgId': {
       id: '/api/public/razorpay-flow-webhook/$orgId'
       path: '/api/public/razorpay-flow-webhook/$orgId'
@@ -2900,6 +3460,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1AccountBalanceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/campaigns/': {
+      id: '/api/v1/campaigns/'
+      path: '/api/v1/campaigns'
+      fullPath: '/api/v1/campaigns/'
+      preLoaderRoute: typeof ApiV1CampaignsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/campaigns/$campaignId': {
+      id: '/api/v1/campaigns/$campaignId'
+      path: '/api/v1/campaigns/$campaignId'
+      fullPath: '/api/v1/campaigns/$campaignId'
+      preLoaderRoute: typeof ApiV1CampaignsCampaignIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/campaigns/estimate': {
+      id: '/api/v1/campaigns/estimate'
+      path: '/api/v1/campaigns/estimate'
+      fullPath: '/api/v1/campaigns/estimate'
+      preLoaderRoute: typeof ApiV1CampaignsEstimateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/contacts/': {
       id: '/api/v1/contacts/'
       path: '/api/v1/contacts'
@@ -2919,6 +3500,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/contacts/bulk'
       fullPath: '/api/v1/contacts/bulk'
       preLoaderRoute: typeof ApiV1ContactsBulkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/conversations/': {
+      id: '/api/v1/conversations/'
+      path: '/api/v1/conversations'
+      fullPath: '/api/v1/conversations/'
+      preLoaderRoute: typeof ApiV1ConversationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/media/$messageId': {
@@ -2963,6 +3551,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1TemplatesNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/webhooks/': {
+      id: '/api/v1/webhooks/'
+      path: '/api/v1/webhooks'
+      fullPath: '/api/v1/webhooks/'
+      preLoaderRoute: typeof ApiV1WebhooksIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/webhooks/events': {
+      id: '/api/v1/webhooks/events'
+      path: '/api/v1/webhooks/events'
+      fullPath: '/api/v1/webhooks/events'
+      preLoaderRoute: typeof ApiV1WebhooksEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/chat-media/$messageId': {
       id: '/api/whatsapp/chat-media/$messageId'
       path: '/api/whatsapp/chat-media/$messageId'
@@ -3005,6 +3607,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicShopifyWebhooksShopRedactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/campaigns/$campaignId/cancel': {
+      id: '/api/v1/campaigns/$campaignId/cancel'
+      path: '/cancel'
+      fullPath: '/api/v1/campaigns/$campaignId/cancel'
+      preLoaderRoute: typeof ApiV1CampaignsCampaignIdCancelRouteImport
+      parentRoute: typeof ApiV1CampaignsCampaignIdRoute
+    }
     '/api/v1/contacts/$phone/tags': {
       id: '/api/v1/contacts/$phone/tags'
       path: '/tags'
@@ -3012,12 +3621,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1ContactsPhoneTagsRouteImport
       parentRoute: typeof ApiV1ContactsPhoneRoute
     }
+    '/api/v1/conversations/$phone/assign': {
+      id: '/api/v1/conversations/$phone/assign'
+      path: '/api/v1/conversations/$phone/assign'
+      fullPath: '/api/v1/conversations/$phone/assign'
+      preLoaderRoute: typeof ApiV1ConversationsPhoneAssignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/conversations/$phone/close': {
+      id: '/api/v1/conversations/$phone/close'
+      path: '/api/v1/conversations/$phone/close'
+      fullPath: '/api/v1/conversations/$phone/close'
+      preLoaderRoute: typeof ApiV1ConversationsPhoneCloseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/conversations/$phone/reopen': {
+      id: '/api/v1/conversations/$phone/reopen'
+      path: '/api/v1/conversations/$phone/reopen'
+      fullPath: '/api/v1/conversations/$phone/reopen'
+      preLoaderRoute: typeof ApiV1ConversationsPhoneReopenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/conversations/$phone/tags': {
+      id: '/api/v1/conversations/$phone/tags'
+      path: '/api/v1/conversations/$phone/tags'
+      fullPath: '/api/v1/conversations/$phone/tags'
+      preLoaderRoute: typeof ApiV1ConversationsPhoneTagsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/media/$messageId/download': {
       id: '/api/v1/media/$messageId/download'
       path: '/download'
       fullPath: '/api/v1/media/$messageId/download'
       preLoaderRoute: typeof ApiV1MediaMessageIdDownloadRouteImport
       parentRoute: typeof ApiV1MediaMessageIdRoute
+    }
+    '/api/v1/webhooks/$webhookId/': {
+      id: '/api/v1/webhooks/$webhookId/'
+      path: '/api/v1/webhooks/$webhookId'
+      fullPath: '/api/v1/webhooks/$webhookId/'
+      preLoaderRoute: typeof ApiV1WebhooksWebhookIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/webhooks/$webhookId/test': {
+      id: '/api/v1/webhooks/$webhookId/test'
+      path: '/api/v1/webhooks/$webhookId/test'
+      fullPath: '/api/v1/webhooks/$webhookId/test'
+      preLoaderRoute: typeof ApiV1WebhooksWebhookIdTestRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/v1/contacts/$phone/tags/$tag': {
       id: '/api/v1/contacts/$phone/tags/$tag'
@@ -3107,6 +3758,66 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
   AppRouteRouteChildren,
 )
 
+interface DevelopersRouteChildren {
+  Developers24HourWindowRoute: typeof Developers24HourWindowRoute
+  DevelopersApiRoute: typeof DevelopersApiRoute
+  DevelopersApiDotpostmanDotjsonRoute: typeof DevelopersApiDotpostmanDotjsonRoute
+  DevelopersChangelogRoute: typeof DevelopersChangelogRoute
+  DevelopersErrorsRoute: typeof DevelopersErrorsRoute
+  DevelopersIdempotencyRoute: typeof DevelopersIdempotencyRoute
+  DevelopersLlmsFullDottxtRoute: typeof DevelopersLlmsFullDottxtRoute
+  DevelopersLlmsDottxtRoute: typeof DevelopersLlmsDottxtRoute
+  DevelopersOpenapiDotjsonRoute: typeof DevelopersOpenapiDotjsonRoute
+  DevelopersPlansRoute: typeof DevelopersPlansRoute
+  DevelopersQuickstartRoute: typeof DevelopersQuickstartRoute
+  DevelopersRateLimitsRoute: typeof DevelopersRateLimitsRoute
+  DevelopersIndexRoute: typeof DevelopersIndexRoute
+  DevelopersGuidesSlugRoute: typeof DevelopersGuidesSlugRoute
+  DevelopersReferenceEndpointRoute: typeof DevelopersReferenceEndpointRoute
+  DevelopersWebhooksEventRoute: typeof DevelopersWebhooksEventRoute
+  DevelopersReferenceIndexRoute: typeof DevelopersReferenceIndexRoute
+  DevelopersWebhooksIndexRoute: typeof DevelopersWebhooksIndexRoute
+}
+
+const DevelopersRouteChildren: DevelopersRouteChildren = {
+  Developers24HourWindowRoute: Developers24HourWindowRoute,
+  DevelopersApiRoute: DevelopersApiRoute,
+  DevelopersApiDotpostmanDotjsonRoute: DevelopersApiDotpostmanDotjsonRoute,
+  DevelopersChangelogRoute: DevelopersChangelogRoute,
+  DevelopersErrorsRoute: DevelopersErrorsRoute,
+  DevelopersIdempotencyRoute: DevelopersIdempotencyRoute,
+  DevelopersLlmsFullDottxtRoute: DevelopersLlmsFullDottxtRoute,
+  DevelopersLlmsDottxtRoute: DevelopersLlmsDottxtRoute,
+  DevelopersOpenapiDotjsonRoute: DevelopersOpenapiDotjsonRoute,
+  DevelopersPlansRoute: DevelopersPlansRoute,
+  DevelopersQuickstartRoute: DevelopersQuickstartRoute,
+  DevelopersRateLimitsRoute: DevelopersRateLimitsRoute,
+  DevelopersIndexRoute: DevelopersIndexRoute,
+  DevelopersGuidesSlugRoute: DevelopersGuidesSlugRoute,
+  DevelopersReferenceEndpointRoute: DevelopersReferenceEndpointRoute,
+  DevelopersWebhooksEventRoute: DevelopersWebhooksEventRoute,
+  DevelopersReferenceIndexRoute: DevelopersReferenceIndexRoute,
+  DevelopersWebhooksIndexRoute: DevelopersWebhooksIndexRoute,
+}
+
+const DevelopersRouteWithChildren = DevelopersRoute._addFileChildren(
+  DevelopersRouteChildren,
+)
+
+interface ApiV1CampaignsCampaignIdRouteChildren {
+  ApiV1CampaignsCampaignIdCancelRoute: typeof ApiV1CampaignsCampaignIdCancelRoute
+}
+
+const ApiV1CampaignsCampaignIdRouteChildren: ApiV1CampaignsCampaignIdRouteChildren =
+  {
+    ApiV1CampaignsCampaignIdCancelRoute: ApiV1CampaignsCampaignIdCancelRoute,
+  }
+
+const ApiV1CampaignsCampaignIdRouteWithChildren =
+  ApiV1CampaignsCampaignIdRoute._addFileChildren(
+    ApiV1CampaignsCampaignIdRouteChildren,
+  )
+
 interface ApiV1ContactsPhoneTagsRouteChildren {
   ApiV1ContactsPhoneTagsTagRoute: typeof ApiV1ContactsPhoneTagsTagRoute
 }
@@ -3151,6 +3862,9 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   DataDeletionRoute: DataDeletionRoute,
   DemoRoute: DemoRoute,
+  DevelopersRoute: DevelopersRouteWithChildren,
+  LlmsFullDottxtRoute: LlmsFullDottxtRoute,
+  LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
@@ -3164,8 +3878,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiEventsRoute: ApiEventsRoute,
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
-  DevelopersApiRoute: DevelopersApiRoute,
-  DevelopersApiDotpostmanDotjsonRoute: DevelopersApiDotpostmanDotjsonRoute,
   JoinTokenRoute: JoinTokenRoute,
   PayPaymentIdRoute: PayPaymentIdRoute,
   RTokenRoute: RTokenRoute,
@@ -3196,6 +3908,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsEvaluateSegmentRoute: ApiContactsEvaluateSegmentRoute,
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiContactsOptInRoute: ApiContactsOptInRoute,
+  ApiDeveloperConsoleRoute: ApiDeveloperConsoleRoute,
   ApiDeveloperKeysRoute: ApiDeveloperKeysRoute,
   ApiDeveloperWebhookRoute: ApiDeveloperWebhookRoute,
   ApiFlowsResponsesRoute: ApiFlowsResponsesRoute,
@@ -3251,6 +3964,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiShopifyWebhooksCustomersRedactRoute,
   ApiShopifyWebhooksShopRedactRoute: ApiShopifyWebhooksShopRedactRoute,
   ApiV1AccountBalanceRoute: ApiV1AccountBalanceRoute,
+  ApiV1CampaignsCampaignIdRoute: ApiV1CampaignsCampaignIdRouteWithChildren,
+  ApiV1CampaignsEstimateRoute: ApiV1CampaignsEstimateRoute,
   ApiV1ContactsPhoneRoute: ApiV1ContactsPhoneRouteWithChildren,
   ApiV1ContactsBulkRoute: ApiV1ContactsBulkRoute,
   ApiV1MediaMessageIdRoute: ApiV1MediaMessageIdRouteWithChildren,
@@ -3258,16 +3973,26 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1MessagesSessionRoute: ApiV1MessagesSessionRoute,
   ApiV1MessagesTemplateRoute: ApiV1MessagesTemplateRoute,
   ApiV1TemplatesNameRoute: ApiV1TemplatesNameRoute,
+  ApiV1WebhooksEventsRoute: ApiV1WebhooksEventsRoute,
   ApiWhatsappChatMediaMessageIdRoute: ApiWhatsappChatMediaMessageIdRoute,
   ApiWhatsappMediaIdRoute: ApiWhatsappMediaIdRoute,
+  ApiV1CampaignsIndexRoute: ApiV1CampaignsIndexRoute,
   ApiV1ContactsIndexRoute: ApiV1ContactsIndexRoute,
+  ApiV1ConversationsIndexRoute: ApiV1ConversationsIndexRoute,
   ApiV1TemplatesIndexRoute: ApiV1TemplatesIndexRoute,
+  ApiV1WebhooksIndexRoute: ApiV1WebhooksIndexRoute,
   ApiPublicShopifyWebhooksCustomersDataRequestRoute:
     ApiPublicShopifyWebhooksCustomersDataRequestRoute,
   ApiPublicShopifyWebhooksCustomersRedactRoute:
     ApiPublicShopifyWebhooksCustomersRedactRoute,
   ApiPublicShopifyWebhooksShopRedactRoute:
     ApiPublicShopifyWebhooksShopRedactRoute,
+  ApiV1ConversationsPhoneAssignRoute: ApiV1ConversationsPhoneAssignRoute,
+  ApiV1ConversationsPhoneCloseRoute: ApiV1ConversationsPhoneCloseRoute,
+  ApiV1ConversationsPhoneReopenRoute: ApiV1ConversationsPhoneReopenRoute,
+  ApiV1ConversationsPhoneTagsRoute: ApiV1ConversationsPhoneTagsRoute,
+  ApiV1WebhooksWebhookIdTestRoute: ApiV1WebhooksWebhookIdTestRoute,
+  ApiV1WebhooksWebhookIdIndexRoute: ApiV1WebhooksWebhookIdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

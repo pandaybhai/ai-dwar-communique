@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ApiCaller } from "@/lib/public-api.server";
+import { API_SOURCES } from "@/lib/public-api-source";
 
 /**
  * Batch 34 item 3: GET /api/v1/messages/{message_id} — what happened to a
@@ -90,7 +91,8 @@ export async function apiMessageStatus(
     )
     .eq("id", messageId)
     .eq("organization_id", caller.organizationId)
-    .eq("metadata->>source", "api")
+    // "api" or "api_console" (the Try-it console, Batch 38).
+    .in("metadata->>source", [...API_SOURCES])
     .maybeSingle();
   // A malformed id is a database error too: answered as not found.
   if (error || !data) return notFound;

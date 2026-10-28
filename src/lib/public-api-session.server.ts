@@ -345,7 +345,8 @@ export async function sendSessionViaApi(
     }
 
     const metadata = {
-      source: "api",
+      // "api_console" for the Try-it console (Batch 38).
+      source: caller.source ?? "api",
       api_key_id: caller.keyId,
       idempotency_key: parsed.idempotencyKey,
       ...(requestId ? { api_request_id: requestId } : {}),
@@ -483,12 +484,12 @@ export async function sendSessionViaApi(
         message_id: messageId,
         message_type: parsed.type,
         billing_category: "service",
-        source: "api",
+        source: caller.source ?? "api",
       },
     });
     await logServerActivity(supabase, orgId, null, "message_sent", {
       message_type: parsed.type,
-      source: "api",
+      source: caller.source ?? "api",
       api_key_id: caller.keyId,
       whatsapp_account_id: connection.accountId,
     });

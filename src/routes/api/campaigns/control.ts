@@ -127,39 +127,10 @@ export const Route = createFileRoute("/api/campaigns/control")({
               () => null,
             );
         } else {
-          // One statement over every queued/sending row; a sender writing the
-          // same rows at that moment can make Postgres pick this one as a
-          // deadlock victim, so it is tried again (Batch 12).
-          for (let attempt = 0; attempt < 3; attempt += 1) {
-            const { error: skipError } = await supabase
-              .from("campaign_recipients")
-              .update({ status: "skipped" })
-              .eq("campaign_id", campaignId)
-              .in("status", ["queued", "sending"]);
-            if (!skipError) break;
-            await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
-          }
-          const { data: moved, error: moveError } = await supabase
-            .from("campaigns")
-            .update({ status: "cancelled", completed_at: new Date().toISOString() })
-            .eq("id", campaignId)
-            .not("status", "in", "(completed,cancelled,failed)")
-            .select("id");
-          if (moveError) return jsonError("We couldn't cancel this campaign. Please try again.", 500);
-          if (!moved?.length) return jsonError("This campaign has already finished.");
-
-          // Whatever was reserved and not spent goes back to the wallet.
-          const { settleCampaignSpend } = await import("@/lib/campaign-billing.server");
-          const settled = await settleCampaignSpend(supabase, organizationId, campaignId);
-          if (!settled.ok) {
-            console.error(
-              JSON.stringify({
-                at: "campaign_settle_failed",
-                campaign_id: campaignId,
-                error: settled.error,
-              }),
-            );
-          }
+          // Shared with the Public API's cancel (Batch 38).
+          const { cancelCampaign } = await import("@/lib/campaign-launch.server");
+          const cancelled = await cancelCampaign(supabase, organizationId, campaignId);
+          if (!cancelled.ok) return jsonError(cancelled.error, cancelled.finished ? 400 : 500);
         }
 
         await logServerActivity(supabase, organizationId, userId, `campaign_${action}d`, {

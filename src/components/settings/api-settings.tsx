@@ -245,26 +245,90 @@ function deliveryLine(d: Delivery): string {
     : "Waiting to be sent";
 }
 
-/** The workspace's one webhook: address, signing secret (shown once), test, last results. */
+type WebhookRow = {
+  webhook_id: string;
+  url: string;
+  events: string[];
+  all_events: boolean;
+  status: "active" | "disabled";
+};
+
+/** Event checkboxes for one webhook: every event, or the ones ticked. */
+function EventPicker({
+  value,
+  onChange,
+  idPrefix,
+}: {
+  value: string[] | null;
+  onChange: (next: string[] | null) => void;
+  idPrefix: string;
+}) {
+  const all = value === null;
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium text-foreground">Events this webhook receives</legend>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={all}
+          onChange={(e) => onChange(e.target.checked ? null : WEBHOOK_EVENTS.map((ev) => ev.name))}
+        />
+        Every event (including new ones)
+      </label>
+      {!all ? (
+        <ul className="grid gap-1.5 sm:grid-cols-2" aria-label="Webhook events">
+          {WEBHOOK_EVENTS.map((ev) => (
+            <li key={ev.name}>
+              <label className="flex items-start gap-2 text-xs" htmlFor={`${idPrefix}-${ev.name}`}>
+                <input
+                  id={`${idPrefix}-${ev.name}`}
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={value.includes(ev.name)}
+                  onChange={(e) =>
+                    onChange(
+                      e.target.checked ? [...value, ev.name] : value.filter((n) => n !== ev.name),
+                    )
+                  }
+                />
+                <span>
+                  <span className="font-mono text-foreground">{ev.name}</span>
+                  <span className="block text-muted-foreground">{ev.when}</span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </fieldset>
+  );
+}
+
+/**
+ * The workspace's webhooks (up to 5; one before the v1.2 database update):
+ * each with its address, its events, its signing secret (shown once), a
+ * test and its last results.
+ */
 export function WebhookCard() {
   const { active } = useOrg();
   const orgId = active?.organization.id ?? null;
-  const [state, setState] = useState<WebhookState | null>(null);
+  const [state, setState] = useState<
+    (WebhookState & { mode?: string; limit?: number; webhooks?: WebhookRow[] }) | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [url, setUrl] = useState("");
+  const [events, setEvents] = useState<string[] | null>(null);
+  const [editing, setEditing] = useState<{ id: string; events: string[] | null } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!orgId) return;
-    const r = await callApi<WebhookState>(`/api/developer/webhook?organization_id=${orgId}`, {
-      method: "GET",
-    });
+    const r = await callApi<
+      WebhookState & { mode?: string; limit?: number; webhooks?: WebhookRow[] }
+    >(`/api/developer/webhook?organization_id=${orgId}`, { method: "GET" });
     if (r.error) setError(r.error);
-    else {
-      setState(r.data);
-      setUrl((u) => u || r.data?.url || "");
-    }
+    else setState(r.data);
   }, [orgId]);
 
   useEffect(() => {
@@ -272,7 +336,8 @@ export function WebhookCard() {
   }, [load]);
 
   const act = async (action: string, extra: Record<string, unknown> = {}) => {
-    setBusy(action);
+    const key = `${action}:${String(extra["webhook_id"] ?? "")}`;
+    setBusy(key);
     const r = await callApi<{
       secret?: string;
       result?: { ok: boolean; status: number | null; error: string | null };
@@ -289,45 +354,45 @@ export function WebhookCard() {
         toast.error(
           `Test event not delivered: ${r.data.result.status ? `HTTP ${r.data.result.status}` : r.data.result.error}.`,
         );
-    } else if (action === "save") toast.success("Webhook saved");
-    else if (action === "remove") {
-      toast.success("Webhook removed");
+    } else if (action === "create" || action === "save") {
+      toast.success("Webhook saved");
       setUrl("");
-    }
+      setEvents(null);
+    } else if (action === "update") {
+      toast.success("Webhook updated");
+      setEditing(null);
+    } else if (action === "remove") toast.success("Webhook removed");
     void load();
   };
 
   if (error) return <ErrorState message={error} />;
   if (!state) return <Skeleton className="h-56 w-full rounded-2xl" />;
 
+  const multi = state.mode === "multi";
+  const webhooks: WebhookRow[] =
+    state.webhooks ??
+    (state.url
+      ? [{ webhook_id: "", url: state.url, events: [], all_events: true, status: "active" }]
+      : []);
+  const limit = state.limit ?? 1;
+  const busyOn = (action: string, id: string) => busy === `${action}:${id}`;
+
   return (
     <section className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm sm:p-8">
       <div className="flex items-start gap-3">
         <Webhook className="mt-0.5 h-5 w-5 text-primary" aria-hidden="true" />
         <div>
-          <h2 className="text-base font-semibold text-foreground">Webhook</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            Webhooks{multi ? ` (${webhooks.length} of ${limit})` : ""}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            We POST each event below to your address as it happens, signed with your secret
-            (X-AiDwar-Signature). Failed deliveries are retried for 24 hours.
+            We POST each event to your address as it happens, signed with that webhook's own secret
+            (X-AiDwar-Signature). Failed deliveries are retried for 24 hours.{" "}
+            <a href={`${DOCS_PATH}/webhooks`} className="text-primary hover:underline">
+              Events and payloads
+            </a>
           </p>
         </div>
-      </div>
-
-      <div className="mt-4 rounded-xl border border-border/70 p-4">
-        <h3 className="text-sm font-medium text-foreground">Events this webhook receives</h3>
-        <ul className="mt-2 space-y-1.5 text-sm text-muted-foreground" aria-label="Webhook events">
-          {WEBHOOK_EVENTS.map((ev) => (
-            <li key={ev.name}>
-              <a
-                href={`${DOCS_PATH}#event-${ev.name}`}
-                className="font-mono text-xs text-foreground hover:underline"
-              >
-                {ev.name}
-              </a>{" "}
-              — {ev.when}
-            </li>
-          ))}
-        </ul>
       </div>
 
       {secret ? (
@@ -356,65 +421,163 @@ export function WebhookCard() {
         </div>
       ) : null}
 
-      <form
-        className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void act("save", { url });
-        }}
-      >
-        <div className="flex-1 space-y-1.5">
-          <Label htmlFor="api-webhook-url">Webhook address (https)</Label>
-          <Input
-            id="api-webhook-url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://your-system.example.com/aidwar"
-          />
-        </div>
-        <Button type="submit" className="rounded-full" disabled={busy === "save" || !url.trim()}>
-          {busy === "save" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Save
-        </Button>
-      </form>
+      {webhooks.length ? (
+        <ul className="mt-5 space-y-3" aria-label="Your webhooks">
+          {webhooks.map((w) => {
+            const id = w.webhook_id;
+            const withId = multi ? { webhook_id: id } : {};
+            return (
+              <li key={id || w.url} className="rounded-xl border border-border/70 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-foreground">
+                    {w.url}
+                  </span>
+                  <Badge variant={w.status === "active" ? "secondary" : "outline"}>
+                    {w.status === "active" ? "Active" : "Disabled"}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {w.all_events ? "Every event" : w.events.join(", ")}
+                </p>
+                {editing?.id === id && multi ? (
+                  <div className="mt-3 space-y-3">
+                    <EventPicker
+                      value={editing.events}
+                      onChange={(next) => setEditing({ id, events: next })}
+                      idPrefix={`edit-${id}`}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={busyOn("update", id) || editing.events?.length === 0}
+                        onClick={() =>
+                          void act("update", { webhook_id: id, events: editing.events ?? "*" })
+                        }
+                      >
+                        Save events
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditing(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busyOn("test", multi ? id : "")}
+                    onClick={() => void act("test", withId)}
+                  >
+                    {busyOn("test", multi ? id : "") ? (
+                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    ) : null}
+                    Send test event
+                  </Button>
+                  {multi ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditing({ id, events: w.all_events ? null : w.events })}
+                      >
+                        Choose events
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busyOn("update", id)}
+                        onClick={() =>
+                          void act("update", {
+                            webhook_id: id,
+                            status: w.status === "active" ? "disabled" : "active",
+                          })
+                        }
+                      >
+                        {w.status === "active" ? "Pause" : "Resume"}
+                      </Button>
+                    </>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busyOn("rotate", multi ? id : "")}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Make a new signing secret? The old one stops working at once.",
+                        )
+                      )
+                        void act("rotate", withId);
+                    }}
+                  >
+                    Rotate secret
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busyOn("remove", multi ? id : "")}
+                    onClick={() => {
+                      if (window.confirm("Remove this webhook? Updates stop being sent to it."))
+                        void act("remove", withId);
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
 
-      {state.url ? (
-        <div className="mt-4 flex flex-wrap gap-2">
+      {webhooks.length < limit ? (
+        <form
+          className="mt-5 space-y-3 rounded-xl border border-dashed border-border p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void act(multi ? "create" : "save", multi ? { url, events: events ?? "*" } : { url });
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="api-webhook-url">
+              {webhooks.length ? "Add another webhook (https)" : "Webhook address (https)"}
+            </Label>
+            <Input
+              id="api-webhook-url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://your-system.example.com/aidwar"
+            />
+          </div>
+          {multi ? <EventPicker value={events} onChange={setEvents} idPrefix="new" /> : null}
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={busy === "test"}
-            onClick={() => void act("test")}
+            type="submit"
+            className="rounded-full"
+            disabled={
+              busy?.startsWith("create") ||
+              busy?.startsWith("save") ||
+              !url.trim() ||
+              events?.length === 0
+            }
           >
-            {busy === "test" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-            Send test event
+            {busy?.startsWith("create") || busy?.startsWith("save") ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            Save
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={busy === "rotate"}
-            onClick={() => {
-              if (window.confirm("Make a new signing secret? The old one stops working at once."))
-                void act("rotate");
-            }}
-          >
-            Rotate secret
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={busy === "remove"}
-            onClick={() => {
-              if (window.confirm("Remove the webhook? Updates stop being sent."))
-                void act("remove");
-            }}
-          >
-            Remove
-          </Button>
-        </div>
+        </form>
       ) : null}
 
       <div className="mt-5">

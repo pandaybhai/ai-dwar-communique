@@ -1,11 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHmac, randomBytes } from "crypto";
+import { isApiSource } from "@/lib/public-api-source";
+import type { Endpoint, Endpoints } from "@/lib/public-api-webhook-endpoints.server";
 import {
   API_ORIGIN,
   MEDIA_PATH,
   WEBHOOK_EVENT_NAMES,
   WEBHOOK_RETRY_HOURS,
+  type AccountEventName,
   type InboundEventName,
+  type QueuedEventName,
   WEBHOOK_TIMEOUT_SECONDS,
 } from "@/lib/public-api";
 
@@ -95,7 +99,7 @@ export function isApiMessage(metadata: unknown): metadata is Record<string, unkn
   return Boolean(
     metadata &&
     typeof metadata === "object" &&
-    (metadata as Record<string, unknown>)["source"] === "api",
+    isApiSource((metadata as Record<string, unknown>)["source"]),
   );
 }
 
@@ -209,7 +213,7 @@ export async function queueApiEvent(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
-    event: InboundEventName;
+    event: QueuedEventName;
     payload: Record<string, unknown>;
     occurredAt: string;
     messageId?: string | null;
@@ -262,7 +266,7 @@ export async function queueApiEvents(
   supabase: SupabaseClient,
   events: Array<{
     organizationId: string;
-    event: InboundEventName;
+    event: QueuedEventName;
     payload: Record<string, unknown>;
     occurredAt: string;
     dedupeKey: string;
@@ -318,13 +322,22 @@ export function apiEventsWanted(
   if (hit && Date.now() - hit.at < WANTED_TTL_MS) return hit.wanted;
   const wanted = (async () => {
     try {
-      const { data, error } = await supabase
-        .from("workspace_connections")
-        .select("id, status")
-        .eq("organization_id", organizationId)
-        .eq("provider", "api_webhook")
-        .maybeSingle();
-      if (error || (data as { status?: string } | null)?.status !== "active") return false;
+      // Batch 38: any of the workspace's webhooks (up to 5) once 20261160 is applied.
+      const { loadEndpoints } = await import("@/lib/public-api-webhook-endpoints.server");
+      const hooks = await loadEndpoints(supabase, organizationId);
+      if (hooks.mode === "error") return false;
+      if (hooks.mode === "multi") {
+        if (!hooks.endpoints.some((e) => e.status === "active")) return false;
+      } else {
+        // Before it: the one Settings webhook, read exactly as Batch 37 read it.
+        const { data, error } = await supabase
+          .from("workspace_connections")
+          .select("id, status")
+          .eq("organization_id", organizationId)
+          .eq("provider", "api_webhook")
+          .maybeSingle();
+        if (error || (data as { status?: string } | null)?.status !== "active") return false;
+      }
       const { publicApiEnabled } = await import("@/lib/public-api.server");
       return await publicApiEnabled(supabase, organizationId);
     } catch {
@@ -617,6 +630,43 @@ export async function queueTemplateApiEvents(
   }
 }
 
+// ------------------------------------------------------------ Batch 38: workspace events
+
+/**
+ * One v1.2 event about the workspace (campaign.completed, the number's
+ * quality, the account's status, the messaging limit) on the queue: only
+ * when the workspace's webhook hears events (apiEventsWanted) and the event
+ * is in its plan (public-api-plans.ts), once per dedupe_key. Never throws; a
+ * failed write is logged and never holds the caller up.
+ */
+export async function queueAccountEvent(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    event: AccountEventName;
+    payload: Record<string, unknown>;
+    occurredAt: string;
+    dedupeKey: string;
+  },
+): Promise<void> {
+  try {
+    if (!(await apiEventsWanted(supabase, input.organizationId))) return;
+    const { eventInPlan } = await import("@/lib/public-api-plans.server");
+    if (!(await eventInPlan(supabase, input.organizationId, input.event))) return;
+    await queueApiEvent(supabase, input);
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        scope: "api_webhook",
+        step: "account_event",
+        organization_id: input.organizationId,
+        event: input.event,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
 // ------------------------------------------------------------ the endpoint
 
 export type WebhookEndpoint = { id: string; url: string; status: string; secret: string };
@@ -750,12 +800,14 @@ export async function runApiWebhookDeliveries(
     }
     const rows = ((data ?? []) as DeliveryRow[]).filter((r) => r && r.id);
     report.claimed = rows.length;
-    const endpoints = new Map<string, Promise<WebhookEndpoint | null>>();
-    const endpointFor = (orgId: string) => {
+    // Batch 38: a workspace's webhooks (up to 5), read once per tick.
+    const { loadEndpoints } = await import("@/lib/public-api-webhook-endpoints.server");
+    const endpoints = new Map<string, Promise<Endpoints>>();
+    const endpointsFor = (orgId: string) => {
       if (!endpoints.has(orgId))
         endpoints.set(
           orgId,
-          loadWebhookEndpoint(supabase, orgId).catch(() => null),
+          loadEndpoints(supabase, orgId).catch((): Endpoints => ({ mode: "error" })),
         );
       return endpoints.get(orgId)!;
     };
@@ -771,7 +823,33 @@ export async function runApiWebhookDeliveries(
           report.released += 1;
           continue;
         }
-        await deliverOne(supabase, row, await endpointFor(row.organization_id), report);
+        const hooks = await endpointsFor(row.organization_id);
+        if (hooks.mode === "error") {
+          // Unreadable this tick: hand it back, untouched, for the next one.
+          await supabase
+            .from("api_webhook_deliveries")
+            .update({ lease_until: null })
+            .eq("id", row.id);
+          report.released += 1;
+        } else if (hooks.mode === "legacy") {
+          // Before 20261160: the one Settings webhook, exactly as before.
+          const one = hooks.endpoints[0];
+          await deliverOne(
+            supabase,
+            row,
+            one
+              ? {
+                  id: one.id,
+                  url: one.url,
+                  status: one.status === "active" ? "active" : one.status,
+                  secret: one.secret,
+                }
+              : null,
+            report,
+          );
+        } else {
+          await deliverToEach(supabase, row, hooks.endpoints, report);
+        }
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
@@ -896,5 +974,182 @@ export async function sendTestEvent(
       ...(result.ok ? { delivered_at: at } : {}),
     })
     .eq("id", row.id);
+  return { ok: true, result };
+}
+
+// ------------------------------------------------------------ Batch 38: several webhooks
+
+type AttemptRow = {
+  endpoint_id: string;
+  state: "pending" | "delivered" | "failed";
+  attempts: number;
+  next_attempt_at: string;
+  last_status: number | null;
+  last_error: string | null;
+};
+
+/**
+ * One delivery to every webhook of the workspace that hears its event, each
+ * with its own secret, attempts and backoff (api_webhook_attempts). The
+ * delivery row sums them up: delivered when every webhook took it, failed
+ * when one gave up after 24 h, else pending until the soonest retry. An
+ * event outside the workspace's plan, or one no webhook hears, is skipped.
+ */
+async function deliverToEach(
+  supabase: SupabaseClient,
+  row: DeliveryRow,
+  endpoints: Endpoint[],
+  report: DeliveryReport,
+): Promise<void> {
+  const now = Date.now();
+  const at = new Date(now).toISOString();
+  const { hears } = await import("@/lib/public-api-webhook-endpoints.server");
+  const { eventInPlan } = await import("@/lib/public-api-plans.server");
+  const inPlan =
+    row.event === TEST_EVENT || (await eventInPlan(supabase, row.organization_id, row.event));
+  const targets = inPlan ? endpoints.filter((e) => hears(e, row.event)) : [];
+  if (!targets.length) {
+    await supabase
+      .from("api_webhook_deliveries")
+      .update({
+        state: "skipped",
+        lease_until: null,
+        last_error: inPlan ? "no_webhook_set" : "not_in_plan",
+        last_attempt_at: at,
+      })
+      .eq("id", row.id);
+    report.skipped += 1;
+    return;
+  }
+  const { data: previous } = await supabase
+    .from("api_webhook_attempts")
+    .select("endpoint_id, state, attempts, next_attempt_at, last_status, last_error")
+    .eq("delivery_id", row.id);
+  const byEndpoint = new Map(((previous ?? []) as AttemptRow[]).map((a) => [a.endpoint_id, a]));
+  const giveUpAt = Date.parse(row.created_at) + DELIVERY_GIVE_UP_MS;
+
+  for (const target of targets) {
+    const before = byEndpoint.get(target.id);
+    if (before && (before.state !== "pending" || Date.parse(before.next_attempt_at) > now))
+      continue;
+    const result = await deliverWebhook(target, {
+      deliveryId: row.id,
+      event: row.event,
+      payload: row.payload,
+      now,
+    });
+    const attempts = Number(before?.attempts ?? 0) + 1;
+    const state: AttemptRow["state"] = result.ok
+      ? "delivered"
+      : row.event === TEST_EVENT || now >= giveUpAt
+        ? "failed"
+        : "pending";
+    const next = new Date(Math.min(now + backoffAfter(attempts), giveUpAt)).toISOString();
+    const attempt: AttemptRow = {
+      endpoint_id: target.id,
+      state,
+      attempts,
+      next_attempt_at: next,
+      last_status: result.status,
+      last_error: result.error,
+    };
+    await supabase.from("api_webhook_attempts").upsert(
+      {
+        delivery_id: row.id,
+        ...attempt,
+        last_attempt_at: at,
+        ...(result.ok ? { delivered_at: at } : {}),
+      },
+      { onConflict: "delivery_id,endpoint_id" },
+    );
+    byEndpoint.set(target.id, attempt);
+  }
+
+  const states = targets.map((t) => byEndpoint.get(t.id)!).filter(Boolean);
+  const pending = states.filter((a) => a.state === "pending");
+  const latest = states[states.length - 1]!;
+  const base = {
+    attempts: Math.max(...states.map((a) => a.attempts)),
+    lease_until: null,
+    last_attempt_at: at,
+    last_status: latest.last_status,
+    last_error: states.find((a) => a.state !== "delivered")?.last_error ?? null,
+  };
+  if (pending.length) {
+    const soonest = Math.min(...pending.map((a) => Date.parse(a.next_attempt_at)));
+    await supabase
+      .from("api_webhook_deliveries")
+      .update({ ...base, next_attempt_at: new Date(soonest).toISOString() })
+      .eq("id", row.id);
+    report.retrying += 1;
+    return;
+  }
+  const allDelivered = states.every((a) => a.state === "delivered");
+  await supabase
+    .from("api_webhook_deliveries")
+    .update({
+      ...base,
+      state: allDelivered ? "delivered" : "failed",
+      ...(allDelivered ? { delivered_at: at } : {}),
+    })
+    .eq("id", row.id);
+  if (allDelivered) report.delivered += 1;
+  else report.failed += 1;
+}
+
+/**
+ * Batch 38: "Send test event" for one of several webhooks (the API's
+ * POST /api/v1/webhooks/{id}/test and Settings): webhook.test to that webhook
+ * now, recorded like any delivery, never retried.
+ */
+export async function sendTestEventTo(
+  supabase: SupabaseClient,
+  organizationId: string,
+  endpoint: Endpoint,
+): Promise<{ ok: true; result: DeliveryResult } | { ok: false; error: string }> {
+  const occurredAt = new Date().toISOString();
+  const payload = webhookBody({
+    event: TEST_EVENT,
+    messageId: null,
+    idempotencyKey: null,
+    to: null,
+    error: null,
+    occurredAt,
+  });
+  const { data, error } = await supabase
+    .from("api_webhook_deliveries")
+    .insert({
+      organization_id: organizationId,
+      message_id: null,
+      event: TEST_EVENT,
+      payload,
+      occurred_at: occurredAt,
+      state: "pending",
+      lease_until: new Date(Date.now() + 120_000).toISOString(),
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: "We couldn't record the test. Please try again." };
+  const deliveryId = (data as { id: string }).id;
+  const result = await deliverWebhook(endpoint, { deliveryId, event: TEST_EVENT, payload });
+  const at = new Date().toISOString();
+  const outcome = {
+    attempts: 1,
+    last_attempt_at: at,
+    last_status: result.status,
+    last_error: result.error,
+    state: result.ok ? "delivered" : "failed",
+    ...(result.ok ? { delivered_at: at } : {}),
+  };
+  await supabase.from("api_webhook_attempts").upsert(
+    { delivery_id: deliveryId, endpoint_id: endpoint.id, next_attempt_at: at, ...outcome },
+    {
+      onConflict: "delivery_id,endpoint_id",
+    },
+  );
+  await supabase
+    .from("api_webhook_deliveries")
+    .update({ ...outcome, lease_until: null })
+    .eq("id", deliveryId);
   return { ok: true, result };
 }
