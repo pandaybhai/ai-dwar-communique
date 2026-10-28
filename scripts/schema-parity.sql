@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 89, column 1075, view 2, function 107, index 156, trigger 67, cron_job 14.
+-- Expected objects: table 89, column 1077, view 2, function 107, index 156, trigger 67, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -448,8 +448,10 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'contacts', 'created_at', NULL, 'timestamp with time zone', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'contacts', 'id', NULL, 'uuid', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'contacts', 'name', NULL, 'text', '20260813_phase2_whatsapp_data_plane.sql'),
+    ('column', 'public', 'contacts', 'opt_in_source', NULL, 'text', '20261140_batch36_opt_in_default.sql'),
     ('column', 'public', 'contacts', 'opt_in_status', NULL, 'text', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'contacts', 'opt_status_account_id', NULL, 'uuid', '20260818_multi_number.sql'),
+    ('column', 'public', 'contacts', 'opted_in_at', NULL, 'timestamp with time zone', '20261140_batch36_opt_in_default.sql'),
     ('column', 'public', 'contacts', 'organization_id', NULL, 'uuid', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'contacts', 'phone', NULL, 'text', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'contacts', 'source', NULL, 'text', '20260814_lead_source_attribution.sql'),

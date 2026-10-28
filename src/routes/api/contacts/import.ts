@@ -19,7 +19,8 @@ export const Route = createFileRoute("/api/contacts/import")({
           "@/lib/whatsapp-api.server"
         );
         const { normalizePhone, toWaId } = await import("@/lib/phone");
-        const { importOptInPatch } = await import("@/lib/opt-out.server");
+        const { importOptInPatch, isOptedOut } = await import("@/lib/opt-out.server");
+        const { optInConsent, writeWithConsent } = await import("@/lib/opt-in.server");
 
         let payload: AnyRecord;
         try {
@@ -38,9 +39,9 @@ export const Route = createFileRoute("/api/contacts/import")({
 
         // ---------------- start ----------------
         if (action === "start") {
-          if (payload["consent"] !== true) {
-            return jsonError("Confirm that these contacts have opted in before importing.");
-          }
+          // Batch 36: the consent box is ticked by default; unticked imports
+          // land as "unknown", exactly as before.
+          const consent = payload["consent"] === true;
           const filename = String(payload["filename"] ?? "contacts.csv").slice(0, 200);
           const totalRows = Number(payload["total_rows"] ?? 0);
           if (totalRows > 10000) return jsonError("Imports are limited to 10,000 rows per file.");
@@ -61,7 +62,8 @@ export const Route = createFileRoute("/api/contacts/import")({
           await logServerActivity(supabase, organizationId, userId, "contacts_import_consent", {
             filename,
             total_rows: totalRows,
-            attestation: "opt_in_confirmed",
+            attestation: consent ? "opt_in_confirmed" : "not_confirmed",
+            opt_in_source: consent ? "import" : null,
           });
           return Response.json({ import_id: data.id });
         }
@@ -77,6 +79,9 @@ export const Route = createFileRoute("/api/contacts/import")({
 
           let created = 0;
           let updated = 0;
+          let optedIn = 0;
+          let stayedOptedOut = 0;
+          const at = new Date();
           const errors: { row: number; phone: string; reason: string }[] = [];
 
           // Resolve/create tags once per chunk.
@@ -136,41 +141,48 @@ export const Route = createFileRoute("/api/contacts/import")({
                 ...((existing?.attributes as Record<string, unknown>) ?? {}),
                 ...attributes,
               };
-              const { error: updErr } = await supabase
-                .from("contacts")
-                .update({
+              const status = (existing?.opt_in_status as string | null) ?? null;
+              // Consent never overrides a customer's own opt-out, and an
+              // existing opt-in keeps its own consent record.
+              const optIn = status === "opted_in" ? {} : importOptInPatch(status, consent);
+              const { error: updErr } = await writeWithConsent(
+                {
                   name: name || (existing?.name as string | null) || null,
                   attributes: merged,
-                  // Consent never overrides a customer's own opt-out.
-                  ...importOptInPatch(existing?.opt_in_status as string | null, consent),
-                })
-                .eq("id", contactId);
+                  ...optIn,
+                  ...(optIn.opt_in_status ? optInConsent("import", at) : {}),
+                },
+                (patch) => supabase.from("contacts").update(patch).eq("id", contactId as string),
+              );
               if (updErr) {
                 errors.push({ row: rowNumber, phone, reason: "Could not update contact" });
                 continue;
               }
               updated += 1;
+              if (optIn.opt_in_status) optedIn += 1;
+              if (isOptedOut(status)) stayedOptedOut += 1;
             } else {
-              const { data: ins, error: insErr } = await supabase
-                .from("contacts")
-                .insert({
+              const { data: ins, error: insErr } = await writeWithConsent(
+                {
                   organization_id: organizationId,
                   phone,
                   wa_id: digits,
                   name: name || null,
                   attributes,
                   opt_in_status: consent ? "opted_in" : "unknown",
+                  ...(consent ? optInConsent("import", at) : {}),
                   source: "import",
                   source_detail: importId ? { import_id: importId } : null,
-                })
-                .select("id")
-                .single();
+                },
+                (row) => supabase.from("contacts").insert(row).select("id").single(),
+              );
               if (insErr || !ins) {
                 errors.push({ row: rowNumber, phone, reason: "Could not create contact" });
                 continue;
               }
-              contactId = ins.id as string;
+              contactId = (ins as { id: string }).id;
               created += 1;
+              if (consent) optedIn += 1;
             }
 
             const rowTags = (raw.tags ?? []).map((t) => t.trim()).filter(Boolean);
@@ -200,7 +212,13 @@ export const Route = createFileRoute("/api/contacts/import")({
             }
           }
 
-          return Response.json({ created, updated, errors });
+          return Response.json({
+            created,
+            updated,
+            opted_in: optedIn,
+            stayed_opted_out: stayedOptedOut,
+            errors,
+          });
         }
 
         // ---------------- finish ----------------
@@ -210,6 +228,8 @@ export const Route = createFileRoute("/api/contacts/import")({
           const created = Number(payload["created_count"] ?? 0);
           const updatedCount = Number(payload["updated_count"] ?? 0);
           const skipped = Number(payload["skipped_count"] ?? 0);
+          const optedInCount = Number(payload["opted_in_count"] ?? 0);
+          const stayedOptedOutCount = Number(payload["stayed_opted_out_count"] ?? 0);
           const errorReport = (payload["error_report"] as unknown[] | undefined) ?? [];
           const status = payload["status"] === "failed" ? "failed" : "completed";
 
@@ -251,6 +271,8 @@ export const Route = createFileRoute("/api/contacts/import")({
             created_count: created,
             updated_count: updatedCount,
             skipped_count: skipped,
+            opted_in_count: optedInCount,
+            stayed_opted_out_count: stayedOptedOutCount,
             status,
           });
 

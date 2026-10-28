@@ -26,6 +26,8 @@ import type { SegmentRow } from "@/lib/segments";
 import { AddContactDialog } from "@/components/contacts/add-contact-dialog";
 import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
 import { ContactDrawer } from "@/components/contacts/contact-drawer";
+import { BulkOptInBar, MarkAllUnknownOptedIn } from "@/components/contacts/bulk-opt-in";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,6 +83,11 @@ export function ContactsView({
   const [selected, setSelected] = useState<ContactRow | null>(null);
   const [exporting, setExporting] = useState(false);
   const [breakdown, setBreakdown] = useState<{ source: string; contacts: number }[] | null>(null);
+  // Batch 36: contacts ticked for "Mark as opted in". A new filter starts over.
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setChecked(new Set());
+  }, [debounced, optInFilter, tagFilter, segmentFilter]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -284,6 +291,12 @@ export function ContactsView({
               {exporting ? "Exporting…" : "Export CSV"}
             </Button>
           ) : null}
+          {canEdit ? (
+            <MarkAllUnknownOptedIn
+              organizationId={organizationId}
+              onDone={() => void load()}
+            />
+          ) : null}
           <PermissionGate allowed={canImport} reason={permissionDeniedReason("Import contacts")}>
             <ImportContactsDialog organizationId={organizationId} onImported={() => void load()} />
           </PermissionGate>
@@ -393,6 +406,15 @@ export function ContactsView({
           }
         />
       ) : (
+        <>
+        {canEdit ? (
+          <BulkOptInBar
+            organizationId={organizationId}
+            selectedIds={Array.from(checked)}
+            onClear={() => setChecked(new Set())}
+            onDone={() => void load()}
+          />
+        ) : null}
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
           {contacts.length === 0 ? (
             <NoResults message="No contacts match these filters." />
@@ -401,6 +423,24 @@ export function ContactsView({
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {canEdit ? (
+                      <TableHead className="w-10">
+                        <Checkbox
+                          aria-label="Select all contacts on this page"
+                          checked={contacts.length > 0 && contacts.every((c) => checked.has(c.id))}
+                          onCheckedChange={(v) =>
+                            setChecked((prev) => {
+                              const next = new Set(prev);
+                              for (const c of contacts) {
+                                if (v === true) next.add(c.id);
+                                else next.delete(c.id);
+                              }
+                              return next;
+                            })
+                          }
+                        />
+                      </TableHead>
+                    ) : null}
                     <TableHead>Name</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Tags</TableHead>
@@ -416,6 +456,22 @@ export function ContactsView({
                       onClick={() => setSelected(c)}
                       className="cursor-pointer transition-colors duration-150"
                     >
+                      {canEdit ? (
+                        <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            aria-label={`Select ${c.name || c.phone}`}
+                            checked={checked.has(c.id)}
+                            onCheckedChange={(v) =>
+                              setChecked((prev) => {
+                                const next = new Set(prev);
+                                if (v === true) next.add(c.id);
+                                else next.delete(c.id);
+                                return next;
+                              })
+                            }
+                          />
+                        </TableCell>
+                      ) : null}
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary">
@@ -475,6 +531,7 @@ export function ContactsView({
           )}
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </div>
+        </>
       )}
 
       <ContactDrawer
