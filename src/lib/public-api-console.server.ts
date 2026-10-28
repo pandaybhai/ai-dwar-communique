@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import type { ApiCaller } from "@/lib/public-api.server";
 import { RATE_PER_KEY_PER_MIN } from "@/lib/public-api";
+import { consoleFieldNames, type ConsoleEndpoint } from "@/lib/public-api-console";
 
 /**
  * Batch 38 item 7: the "Try it" console's credential (Settings → API &
@@ -203,11 +204,7 @@ export async function cleanupConsoleCredentials(
 // ------------------------------------------------------------ the call
 
 /** What the console may call: Part A of Batch 38 — the template send and the status read. */
-export const CONSOLE_ENDPOINTS = {
-  send_template: { method: "POST", path: "/api/v1/messages/template" },
-  message_status: { method: "GET", path: "/api/v1/messages/{message_id}" },
-} as const;
-export type ConsoleEndpoint = keyof typeof CONSOLE_ENDPOINTS;
+export { CONSOLE_ENDPOINTS, type ConsoleEndpoint } from "@/lib/public-api-console";
 
 /** A JSON body as the curl shows it: base64 files shortened, never pasted whole into the page. */
 export function displayBody(body: unknown): unknown {
@@ -233,7 +230,8 @@ export function consoleCurl(input: {
   body: unknown;
 }): string {
   const lines = [
-    `curl -X ${input.method} ${input.origin}${input.path} \\`,
+    // A query string is quoted, so the shell keeps its "&".
+    `curl -X ${input.method} ${input.path.includes("?") ? `"${input.origin}${input.path}"` : `${input.origin}${input.path}`} \\`,
     `  -H "Authorization: Bearer ${MASKED_CREDENTIAL}"${input.body !== undefined ? " \\" : ""}`,
   ];
   if (input.body !== undefined) {
@@ -244,33 +242,41 @@ export function consoleCurl(input: {
 }
 
 /**
- * The console's body for a send: only what the endpoint takes, and never an
- * idempotency key (a console send is one click, and an idempotency record
- * belongs to a real API key).
+ * The console's body for a call: only what the endpoint takes (its spec
+ * fields), and never an idempotency key (a console send is one click, and an
+ * idempotency record belongs to a real API key).
  */
-export function consoleSendBody(raw: unknown): Record<string, unknown> {
+export function consoleBody(endpoint: ConsoleEndpoint, raw: unknown): Record<string, unknown> {
   const body =
     raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const out: Record<string, unknown> = {};
-  for (const k of [
-    "to",
-    "template_name",
-    "language",
-    "document",
-    "body_params",
-    "header",
-    "buttons",
-    "offer_expires_at",
-  ]) {
-    if (body[k] !== undefined) out[k] = body[k];
-  }
+  for (const k of consoleFieldNames(endpoint, "body")) if (body[k] !== undefined) out[k] = body[k];
   return out;
+}
+
+/** The template send's body (consoleBody for send_template). */
+export function consoleSendBody(raw: unknown): Record<string, unknown> {
+  return consoleBody("send_template", raw);
+}
+
+/** A list's filters as a query string ("" or "?a=b"): only the endpoint's own, only non-empty text. */
+export function consoleQuery(endpoint: ConsoleEndpoint, raw: unknown): string {
+  const q =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const params = new URLSearchParams();
+  for (const k of consoleFieldNames(endpoint, "query")) {
+    const v = q[k];
+    if ((typeof v === "string" && v.trim()) || typeof v === "number")
+      params.set(k, String(v).trim());
+  }
+  const s = params.toString();
+  return s ? `?${s}` : "";
 }
 
 /** Calls a route's own handler, as the router does. */
 export async function invokeRoute(
   route: unknown,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PATCH" | "DELETE",
   input: { request: Request; params: Record<string, string> },
 ): Promise<Response> {
   const handlers = (

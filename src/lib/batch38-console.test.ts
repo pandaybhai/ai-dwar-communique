@@ -6,9 +6,19 @@ import { resetDialCodeCache } from "./public-api-send.server";
 import { forgetWorkspacePlans } from "./public-api-plans.server";
 import {
   CONSOLE_TTL_MS,
+  consoleBody,
   consoleCredential,
+  consoleQuery,
   forgetConsoleCredentials,
 } from "./public-api-console.server";
+import {
+  CONSOLE_ENDPOINTS,
+  CONSOLE_ENDPOINT_IDS,
+  consoleEndpointFor,
+  consoleFieldNames,
+  tryItHref,
+} from "./public-api-console";
+import { API_ENDPOINTS } from "./public-api-spec";
 import { authenticateApiKey, listApiKeys } from "./public-api.server";
 
 /**
@@ -264,5 +274,130 @@ describe("the credential", () => {
     });
     expect(over.status).toBe(429);
     expect(over.body["code"]).toBe("rate_limited");
+  });
+});
+
+describe("the other endpoints (session send, contacts, templates, balance)", () => {
+  /** A customer who wrote an hour ago: their 24-hour window is open. */
+  function customerWrote() {
+    rows("conversations").push({
+      id: "conv-c1",
+      organization_id: ORG,
+      contact_id: "c1",
+      whatsapp_account_id: "acc-a",
+      status: "open",
+      last_customer_message_at: new Date(Date.now() - 3600_000).toISOString(),
+    });
+  }
+  const response = (r: { body: Record<string, unknown> }) =>
+    r.body["response"] as { status: number; body: Record<string, unknown> };
+  const request = (r: { body: Record<string, unknown> }) =>
+    r.body["request"] as { method: string; path: string; curl: string };
+
+  it("every console endpoint is a spec endpoint with the same method and path, and the docs' Try it opens it", () => {
+    for (const id of CONSOLE_ENDPOINT_IDS) {
+      const c = CONSOLE_ENDPOINTS[id];
+      const e = API_ENDPOINTS.find((x) => x.id === c.spec);
+      expect(e, id).toBeDefined();
+      expect([e!.method, e!.path], id).toEqual([c.method, c.path]);
+      expect(consoleEndpointFor(c.spec)).toBe(id);
+      expect(tryItHref(c.spec)).toBe(`/app/settings?tab=api&try=${c.spec}#try-it`);
+    }
+    expect(consoleEndpointFor("campaign-create")).toBeNull();
+  });
+
+  it("passes on only the endpoint's own fields and filters, never an idempotency key", () => {
+    expect(consoleFieldNames("send_session", "body")).toEqual(
+      expect.arrayContaining(["to", "type", "text", "image", "document", "buttons", "sections"]),
+    );
+    expect(
+      consoleBody("send_session", {
+        to: "+91",
+        type: "text",
+        text: "Hi",
+        idempotency_key: "k",
+        api_key: "x",
+      }),
+    ).toEqual({ to: "+91", type: "text", text: "Hi" });
+    expect(
+      consoleBody("contact_upsert", {
+        phone: "+91",
+        name: "A",
+        tags: ["vip"],
+        opted_in: true,
+        organization_id: OTHER_ORG,
+      }),
+    ).toEqual({ phone: "+91", name: "A", tags: ["vip"], opted_in: true });
+    expect(
+      consoleQuery("contacts_list", {
+        tag: " vip ",
+        limit: "5",
+        opt_in: "",
+        organization_id: OTHER_ORG,
+      }),
+    ).toBe("?limit=5&tag=vip");
+    expect(consoleQuery("templates_list", {})).toBe("");
+    expect(consoleQuery("account_balance", { country: "IN" })).toBe("?country=IN");
+  });
+
+  it("a free-form message inside the window: sent through the session handler, labelled api_console", async () => {
+    customerWrote();
+    const res = await consoleCall("u-admin", "call", {
+      endpoint: "send_session",
+      body: { to: "+919800000001", type: "text", text: "Hi *Asha*", idempotency_key: "never-used" },
+    });
+    expect(res.status).toBe(200);
+    expect(response(res).status).toBe(202);
+    expect(net.calls.filter((c) => c.url.endsWith("/messages"))).toHaveLength(1);
+    const message = rows("messages").find((m) => m["id"] === response(res).body["message_id"])!;
+    expect(message["metadata"]).toMatchObject({ source: "api_console" });
+    expect(request(res).curl).toContain("POST https://aidwar.in/api/v1/messages/session");
+    expect(request(res).curl).not.toContain("never-used");
+    expect(rows("api_requests")).toHaveLength(0);
+  });
+
+  it("outside the window: 409 window_closed, nothing sent", async () => {
+    const res = await consoleCall("u-admin", "call", {
+      endpoint: "send_session",
+      body: { to: "+919800000001", type: "text", text: "Hi" },
+    });
+    expect([response(res).status, response(res).body["code"]]).toEqual([409, "window_closed"]);
+    expect(net.calls.filter((c) => c.url.endsWith("/messages"))).toHaveLength(0);
+  });
+
+  it("creates a contact, then finds it in the list by its tag — only this workspace's", async () => {
+    const created = await consoleCall("u-admin", "call", {
+      endpoint: "contact_upsert",
+      body: { phone: "+91 98111 22233", name: "Ravi", tags: ["console-test"] },
+    });
+    expect(response(created).status).toBeLessThan(300);
+    expect(rows("contacts").find((c) => c["phone"] === "+919811122233")).toMatchObject({
+      organization_id: ORG,
+      name: "Ravi",
+    });
+    const listed = await consoleCall("u-admin", "call", {
+      endpoint: "contacts_list",
+      query: { tag: "console-test" },
+    });
+    expect(request(listed).path).toBe("/api/v1/contacts?tag=console-test");
+    expect(request(listed).curl).toContain('"https://aidwar.in/api/v1/contacts?tag=console-test"');
+    const data = response(listed).body["data"] as Array<Record<string, unknown>>;
+    expect(data.map((c) => c["phone"])).toEqual(["+919811122233"]);
+  });
+
+  it("lists templates and shows the wallet through their own handlers", async () => {
+    const templates = await consoleCall("u-admin", "call", {
+      endpoint: "templates_list",
+      query: { status: "APPROVED" },
+    });
+    expect(response(templates).status).toBe(200);
+    const names = (response(templates).body["data"] as Array<{ name: string }>).map((t) => t.name);
+    expect(names).toContain("invoice_ready");
+    const balance = await consoleCall("u-admin", "call", {
+      endpoint: "account_balance",
+      query: {},
+    });
+    expect(response(balance).status).toBe(200);
+    expect(request(balance).method).toBe("GET");
   });
 });

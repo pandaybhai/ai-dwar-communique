@@ -9,6 +9,7 @@ import {
 } from "@/lib/developer-portal";
 import { API_ORIGIN } from "@/lib/public-api";
 import { curlFor } from "@/lib/public-api-spec";
+import { consoleEndpointFor, tryItHref } from "@/lib/public-api-console";
 import { BlockView } from "./blocks";
 import { CodePanel, CopyButton } from "./code-panel";
 import { DocLink, Heading, MethodBadge } from "./docs-ui";
@@ -24,11 +25,6 @@ function flatNav(): Array<{ label: string; href: string }> {
   return navigation()
     .filter((g) => g.title !== "Downloads")
     .flatMap((g) => [...g.items, ...(g.groups ?? []).flatMap((x) => x.items)]);
-}
-
-/** The Settings console, ready for this endpoint. */
-export function tryItHref(endpointId: string): string {
-  return `/app/settings?tab=api&try=${encodeURIComponent(endpointId)}#try-it`;
 }
 
 export function DocPage({ page }: { page: Page }) {
@@ -120,13 +116,15 @@ export function DocPage({ page }: { page: Page }) {
                   showText
                   className="border border-[var(--d-border)] bg-[var(--d-surface)] px-3 py-1.5 text-[13px] text-[var(--d-fg)] hover:border-[var(--d-border-strong)]"
                 />
-                <a
-                  href={tryItHref(e.id)}
-                  className="docs-plain inline-flex items-center gap-1.5 rounded-md bg-[var(--d-accent)] px-3 py-1.5 text-[13px] font-semibold text-[var(--primary-foreground)] shadow-sm transition-colors hover:bg-[var(--d-accent-strong)]"
-                >
-                  <FlaskConical className="h-3.5 w-3.5" aria-hidden="true" />
-                  Try it
-                </a>
+                {consoleEndpointFor(e.id) ? (
+                  <a
+                    href={tryItHref(e.id)}
+                    className="docs-plain inline-flex items-center gap-1.5 rounded-md bg-[var(--d-accent)] px-3 py-1.5 text-[13px] font-semibold text-[var(--primary-foreground)] shadow-sm transition-colors hover:bg-[var(--d-accent-strong)]"
+                  >
+                    <FlaskConical className="h-3.5 w-3.5" aria-hidden="true" />
+                    Try it
+                  </a>
+                ) : null}
               </>
             ) : null}
           </div>

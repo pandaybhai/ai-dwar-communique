@@ -72,6 +72,7 @@ import {
 import { OPENAPI_PATH, openApiDocument } from "./public-api-openapi";
 import { signWebhook } from "./public-api-webhooks.server";
 import { docHead } from "@/components/developers/doc-head";
+import { consoleEndpointFor } from "./public-api-console";
 import { htmlText, renderDocPage, renderPortal } from "./test-support/portal-render";
 
 const run = promisify(execFile);
@@ -173,7 +174,10 @@ describe("one description, every page", () => {
       expect(t, e.id).toContain(`${e.response.status}`);
       for (const r of e.responses ?? []) expect(t, `${e.id} ${r.status}`).toContain(`${r.status}`);
       for (const c of e.errors) expect(t, `${e.id} ${c}`).toContain(c);
-      expect(html, e.id).toContain(`href="/app/settings?tab=api&amp;try=${e.id}#try-it"`);
+      // "Try it" opens the Settings console on this endpoint, where the console has it.
+      const tryIt = `href="/app/settings?tab=api&amp;try=${e.id}#try-it"`;
+      if (consoleEndpointFor(e.id)) expect(html, e.id).toContain(tryIt);
+      else expect(html, e.id).not.toContain("try=");
     }
   });
 

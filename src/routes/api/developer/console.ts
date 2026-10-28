@@ -6,9 +6,11 @@ import { createFileRoute } from "@tanstack/react-router";
  *
  * POST { action: "quote", template_name, language?, to }
  *   -> what the send would cost at this customer's rate (nothing sent).
- * POST { action: "call", endpoint: "send_template", body }
+ * POST { action: "call", endpoint: "send_template" | "send_session" | "contact_upsert", body }
  * POST { action: "call", endpoint: "message_status", message_id }
- *   -> a REAL call: the request is handed to the very /api/v1 handler an API
+ * POST { action: "call", endpoint: "contacts_list" | "templates_list" | "account_balance", query }
+ *   -> a REAL call (CONSOLE_ENDPOINTS, public-api-console.ts; the body and
+ *      filters passed on are only the endpoint's own spec fields): the request is handed to the very /api/v1 handler an API
  *      key reaches, carrying the console credential (consoleCredential,
  *      public-api-console.server.ts) — minted here for this workspace and
  *      this member, 10 minutes, never shown and never an API key. Answers
@@ -19,6 +21,20 @@ import { createFileRoute } from "@tanstack/react-router";
 
 /** The largest console request: a 16 MB file in base64 and the rest of the send. */
 const MAX_CONSOLE_BYTES = 23 * 1024 * 1024 + 64 * 1024;
+
+/** The /api/v1 route each console endpoint calls — the same handler an API key reaches. */
+const ROUTE_OF = {
+  send_template: () => import("@/routes/api/v1/messages/template"),
+  send_session: () => import("@/routes/api/v1/messages/session"),
+  message_status: () => import("@/routes/api/v1/messages/$messageId"),
+  contact_upsert: () => import("@/routes/api/v1/contacts/index"),
+  contacts_list: () => import("@/routes/api/v1/contacts/index"),
+  templates_list: () => import("@/routes/api/v1/templates/index"),
+  account_balance: () => import("@/routes/api/v1/account/balance"),
+} satisfies Record<
+  import("@/lib/public-api-console").ConsoleEndpoint,
+  () => Promise<{ Route: unknown }>
+>;
 
 export const Route = createFileRoute("/api/developer/console")({
   server: {
@@ -58,10 +74,9 @@ export const Route = createFileRoute("/api/developer/console")({
         }
 
         if (action !== "call") return jsonError("Unknown action.");
-        const endpoint = String(
-          p["endpoint"] ?? "",
-        ) as import("@/lib/public-api-console.server").ConsoleEndpoint;
-        if (!(endpoint in lib.CONSOLE_ENDPOINTS)) return jsonError("Pick an endpoint to call.");
+        const { isConsoleEndpoint } = await import("@/lib/public-api-console");
+        const endpoint = p["endpoint"];
+        if (!isConsoleEndpoint(endpoint)) return jsonError("Pick an endpoint to call.");
 
         const limited = await lib.takeConsoleRate(supabase, { organizationId, userId });
         if (limited)
@@ -80,36 +95,28 @@ export const Route = createFileRoute("/api/developer/console")({
         const origin = new URL(request.url).origin;
         const spec = lib.CONSOLE_ENDPOINTS[endpoint];
         let path: string = spec.path;
-        let body: Record<string, unknown> | undefined;
-        let res: Response;
+        const params: Record<string, string> = {};
         if (endpoint === "message_status") {
           const { validId } = await import("@/lib/public-api-route.server");
           const messageId = String(p["message_id"] ?? "").trim();
           if (!validId(messageId)) return jsonError("Which message? Give its message_id.");
           path = spec.path.replace("{message_id}", messageId);
-          const { Route: StatusRoute } = await import("@/routes/api/v1/messages/$messageId");
-          res = await lib.invokeRoute(StatusRoute, "GET", {
-            request: new Request(`${origin}${path}`, {
-              method: "GET",
-              headers: { authorization: `Bearer ${credential.token}` },
-            }),
-            params: { messageId },
-          });
-        } else {
-          body = lib.consoleSendBody(p["body"]);
-          const { Route: SendRoute } = await import("@/routes/api/v1/messages/template");
-          res = await lib.invokeRoute(SendRoute, "POST", {
-            request: new Request(`${origin}${path}`, {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${credential.token}`,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify(body),
-            }),
-            params: {},
-          });
+          params["messageId"] = messageId;
         }
+        const body = spec.method === "POST" ? lib.consoleBody(endpoint, p["body"]) : undefined;
+        if (spec.method === "GET") path += lib.consoleQuery(endpoint, p["query"]);
+        const { Route: target } = await ROUTE_OF[endpoint]();
+        const res = await lib.invokeRoute(target, spec.method, {
+          request: new Request(`${origin}${path}`, {
+            method: spec.method,
+            headers: {
+              authorization: `Bearer ${credential.token}`,
+              ...(body ? { "content-type": "application/json" } : {}),
+            },
+            ...(body ? { body: JSON.stringify(body) } : {}),
+          }),
+          params,
+        });
         let answer: unknown = null;
         try {
           answer = await res.json();
