@@ -49,6 +49,7 @@ import { Route as AppAutomationsRouteImport } from './routes/app/automations'
 import { Route as AppBillingRouteImport } from './routes/app/billing'
 import { Route as AppCardsRouteImport } from './routes/app/cards'
 import { Route as AppContactsRouteImport } from './routes/app/contacts'
+import { Route as AppDesignRouteImport } from './routes/app/design'
 import { Route as AppEmployeeRouteImport } from './routes/app/employee'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
@@ -391,6 +392,11 @@ const AppCardsRoute = AppCardsRouteImport.update({
 const AppContactsRoute = AppContactsRouteImport.update({
   id: '/contacts',
   path: '/contacts',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppDesignRoute = AppDesignRouteImport.update({
+  id: '/design',
+  path: '/design',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppEmployeeRoute = AppEmployeeRouteImport.update({
@@ -1190,6 +1196,7 @@ export interface FileRoutesByFullPath {
   '/app/billing': typeof AppBillingRoute
   '/app/cards': typeof AppCardsRoute
   '/app/contacts': typeof AppContactsRoute
+  '/app/design': typeof AppDesignRoute
   '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
@@ -1372,6 +1379,7 @@ export interface FileRoutesByTo {
   '/app/billing': typeof AppBillingRoute
   '/app/cards': typeof AppCardsRoute
   '/app/contacts': typeof AppContactsRoute
+  '/app/design': typeof AppDesignRoute
   '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
@@ -1558,6 +1566,7 @@ export interface FileRoutesById {
   '/app/billing': typeof AppBillingRoute
   '/app/cards': typeof AppCardsRoute
   '/app/contacts': typeof AppContactsRoute
+  '/app/design': typeof AppDesignRoute
   '/app/employee': typeof AppEmployeeRoute
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
@@ -1745,6 +1754,7 @@ export interface FileRouteTypes {
     | '/app/billing'
     | '/app/cards'
     | '/app/contacts'
+    | '/app/design'
     | '/app/employee'
     | '/app/inbox'
     | '/app/receipts'
@@ -1927,6 +1937,7 @@ export interface FileRouteTypes {
     | '/app/billing'
     | '/app/cards'
     | '/app/contacts'
+    | '/app/design'
     | '/app/employee'
     | '/app/inbox'
     | '/app/receipts'
@@ -2112,6 +2123,7 @@ export interface FileRouteTypes {
     | '/app/billing'
     | '/app/cards'
     | '/app/contacts'
+    | '/app/design'
     | '/app/employee'
     | '/app/inbox'
     | '/app/receipts'
@@ -2674,6 +2686,13 @@ declare module '@tanstack/react-router' {
       path: '/contacts'
       fullPath: '/app/contacts'
       preLoaderRoute: typeof AppContactsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/design': {
+      id: '/app/design'
+      path: '/design'
+      fullPath: '/app/design'
+      preLoaderRoute: typeof AppDesignRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/employee': {
@@ -3718,6 +3737,7 @@ interface AppRouteRouteChildren {
   AppBillingRoute: typeof AppBillingRoute
   AppCardsRoute: typeof AppCardsRoute
   AppContactsRoute: typeof AppContactsRoute
+  AppDesignRoute: typeof AppDesignRoute
   AppEmployeeRoute: typeof AppEmployeeRoute
   AppInboxRoute: typeof AppInboxRoute
   AppReceiptsRoute: typeof AppReceiptsRoute
@@ -3739,6 +3759,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppBillingRoute: AppBillingRoute,
   AppCardsRoute: AppCardsRoute,
   AppContactsRoute: AppContactsRoute,
+  AppDesignRoute: AppDesignRoute,
   AppEmployeeRoute: AppEmployeeRoute,
   AppInboxRoute: AppInboxRoute,
   AppReceiptsRoute: AppReceiptsRoute,
