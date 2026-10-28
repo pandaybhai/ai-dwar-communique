@@ -43,10 +43,10 @@ export function withoutConsentColumns<T extends Record<string, unknown>>(patch: 
  * Runs a contacts write with the consent columns, and once more without them
  * when the database doesn't know them yet.
  */
-export async function writeWithConsent<T extends Record<string, unknown>, R extends { error: DbError }>(
-  patch: T,
-  run: (patch: T) => PromiseLike<R>,
-): Promise<R> {
+export async function writeWithConsent<
+  T extends Record<string, unknown>,
+  R extends { error: DbError },
+>(patch: T, run: (patch: T) => PromiseLike<R>): Promise<R> {
   const first = await run(patch);
   if (!isMissingConsentColumn(first.error)) return first;
   return run(withoutConsentColumns(patch));
@@ -184,7 +184,11 @@ export async function setContactOptIn(
       at: args.at,
     });
     if (error) return { status: current, changed: false, error };
-    return { status: result.changed ? "opted_in" : current, changed: result.changed > 0, error: null };
+    return {
+      status: result.changed ? "opted_in" : current,
+      changed: result.changed > 0,
+      error: null,
+    };
   }
 
   // Back to unknown, or an opt-out the merchant records for the customer. The

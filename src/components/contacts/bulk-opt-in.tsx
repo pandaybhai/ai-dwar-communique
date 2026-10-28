@@ -21,7 +21,8 @@ export type BulkOptInResult = {
   already_opted_in: number;
 };
 
-const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many: string) =>
+  `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
 /** "12 marked opted in · 3 stayed opted out · 2 were already opted in". */
 export function bulkOptInSummary(r: BulkOptInResult): string {
@@ -66,7 +67,12 @@ export function BulkOptInBar({
       <span className="text-sm font-medium text-foreground">
         {plural(selectedIds.length, "contact", "contacts")} selected
       </span>
-      <Button size="sm" className="rounded-full" disabled={busy} onClick={() => void markSelected()}>
+      <Button
+        size="sm"
+        className="rounded-full"
+        disabled={busy}
+        onClick={() => void markSelected()}
+      >
         <CheckCheck className="mr-1.5 h-4 w-4" />
         {busy ? "Updating…" : "Mark as opted in"}
       </Button>

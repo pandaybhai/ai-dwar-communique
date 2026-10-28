@@ -24,9 +24,16 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/lib/whatsapp-api.server", async (orig) => ({
   ...(await orig<typeof import("@/lib/whatsapp-api.server")>()),
-  requireOrgMember: async () => ({ supabase: h.db!.supabase, organizationId: "org36", userId: "u36", role: "agent" }),
+  requireOrgMember: async () => ({
+    supabase: h.db!.supabase,
+    organizationId: "org36",
+    userId: "u36",
+    role: "agent",
+  }),
   requirePermission: async (_auth: unknown, key: string) =>
-    h.denied === key ? Response.json({ error: "You don't have permission." }, { status: 403 }) : null,
+    h.denied === key
+      ? Response.json({ error: "You don't have permission." }, { status: 403 })
+      : null,
 }));
 vi.mock("@/lib/events.server", () => {
   const noop = async () => {};
@@ -38,17 +45,29 @@ import { Route as OptInRoute } from "../routes/api/contacts/opt-in";
 import { isMissingConsentColumn } from "./opt-in.server";
 
 type Post = (a: { request: Request }) => Promise<Response>;
-const postOf = (r: unknown) => (r as { options: { server: { handlers: { POST: Post } } } }).options.server.handlers.POST;
+const postOf = (r: unknown) =>
+  (r as { options: { server: { handlers: { POST: Post } } } }).options.server.handlers.POST;
 const call = (route: unknown, body: Record<string, unknown>) =>
   postOf(route)({
-    request: new Request("http://x/api", { method: "POST", body: JSON.stringify({ organization_id: "org36", ...body }) }),
+    request: new Request("http://x/api", {
+      method: "POST",
+      body: JSON.stringify({ organization_id: "org36", ...body }),
+    }),
   });
 
-type Row = { id: string; phone: string; opt_in_status: string; name?: string | null; attributes?: Record<string, unknown> };
+type Row = {
+  id: string;
+  phone: string;
+  opt_in_status: string;
+  name?: string | null;
+  attributes?: Record<string, unknown>;
+};
 
 /** A tiny contacts table behind the fake query builder. */
 function world(rows: Row[], opts: { noConsentColumns?: boolean } = {}) {
-  const contacts = new Map(rows.map((r) => [r.id, { organization_id: "org36", ...r } as Record<string, unknown>]));
+  const contacts = new Map(
+    rows.map((r) => [r.id, { organization_id: "org36", ...r } as Record<string, unknown>]),
+  );
   let seq = 0;
   const filter = (op: FakeOp) =>
     [...contacts.values()].filter((c) =>
@@ -64,12 +83,16 @@ function world(rows: Row[], opts: { noConsentColumns?: boolean } = {}) {
     typeof payload === "object" &&
     ("opt_in_source" in (payload as object) || "opted_in_at" in (payload as object));
   const db = fakeDb((op) => {
-    if (op.table === "contact_imports" && op.kind === "insert") return { data: { id: "imp1" }, error: null };
+    if (op.table === "contact_imports" && op.kind === "insert")
+      return { data: { id: "imp1" }, error: null };
     if (op.table !== "contacts") return undefined;
     if ((op.kind === "update" || op.kind === "insert") && missing(op.payload))
       return {
         data: null,
-        error: { code: "PGRST204", message: "Could not find the 'opt_in_source' column of 'contacts' in the schema cache" },
+        error: {
+          code: "PGRST204",
+          message: "Could not find the 'opt_in_source' column of 'contacts' in the schema cache",
+        },
       };
     if (op.kind === "select") {
       const hit = filter(op);
@@ -90,7 +113,9 @@ function world(rows: Row[], opts: { noConsentColumns?: boolean } = {}) {
   });
   h.db = db;
   const activity = () =>
-    db.ops.filter((o) => o.table.startsWith("activity") && o.kind === "insert").map((o) => o.payload as Record<string, unknown>);
+    db.ops
+      .filter((o) => o.table.startsWith("activity") && o.kind === "insert")
+      .map((o) => o.payload as Record<string, unknown>);
   const byPhone = (phone: string) => [...contacts.values()].find((c) => c["phone"] === phone);
   return { ...db, contacts, activity, byPhone };
 }
@@ -115,7 +140,12 @@ const EXISTING: Row[] = [
 describe("(1) import: ticked by default, opted out always stays opted out", () => {
   it("ticked: new and unknown contacts are opted in with an import consent record", async () => {
     const w = world(EXISTING);
-    const res = await call(ImportRoute, { action: "chunk", consent: true, import_id: "imp1", rows: FILE });
+    const res = await call(ImportRoute, {
+      action: "chunk",
+      consent: true,
+      import_id: "imp1",
+      rows: FILE,
+    });
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toMatchObject({ created: 1, updated: 3, opted_in: 2, stayed_opted_out: 1 });
 
@@ -144,7 +174,12 @@ describe("(1) import: ticked by default, opted out always stays opted out", () =
 
   it("unticked: new contacts land unknown and unknown stays unknown, as before", async () => {
     const w = world(EXISTING);
-    const res = await call(ImportRoute, { action: "chunk", consent: false, import_id: "imp1", rows: FILE });
+    const res = await call(ImportRoute, {
+      action: "chunk",
+      consent: false,
+      import_id: "imp1",
+      rows: FILE,
+    });
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toMatchObject({ created: 1, updated: 3, opted_in: 0, stayed_opted_out: 1 });
     expect(w.byPhone("+919800000001")!["opt_in_status"]).toBe("unknown");
@@ -155,9 +190,19 @@ describe("(1) import: ticked by default, opted out always stays opted out", () =
 
   it("start no longer refuses an unticked import; the answer is logged with the user", async () => {
     const w = world([]);
-    let res = await call(ImportRoute, { action: "start", consent: false, filename: "a.csv", total_rows: 3 });
+    let res = await call(ImportRoute, {
+      action: "start",
+      consent: false,
+      filename: "a.csv",
+      total_rows: 3,
+    });
     expect(res.status).toBe(200);
-    res = await call(ImportRoute, { action: "start", consent: true, filename: "b.csv", total_rows: 3 });
+    res = await call(ImportRoute, {
+      action: "start",
+      consent: true,
+      filename: "b.csv",
+      total_rows: 3,
+    });
     expect(res.status).toBe(200);
     const logs = w.activity().filter((a) => a["action"] === "contacts_import_consent");
     expect(logs.map((l) => (l["details"] as Record<string, unknown>)["attestation"])).toEqual([
@@ -169,9 +214,20 @@ describe("(1) import: ticked by default, opted out always stays opted out", () =
 
   it("before the migration is applied the import still opts in (retry without the consent columns)", async () => {
     const w = world(EXISTING, { noConsentColumns: true });
-    const res = await call(ImportRoute, { action: "chunk", consent: true, import_id: "imp1", rows: FILE });
+    const res = await call(ImportRoute, {
+      action: "chunk",
+      consent: true,
+      import_id: "imp1",
+      rows: FILE,
+    });
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body).toMatchObject({ created: 1, updated: 3, opted_in: 2, stayed_opted_out: 1, errors: [] });
+    expect(body).toMatchObject({
+      created: 1,
+      updated: 3,
+      opted_in: 2,
+      stayed_opted_out: 1,
+      errors: [],
+    });
     expect(w.byPhone("+919800000001")!["opt_in_status"]).toBe("opted_in");
     expect(w.contacts.get("c-unknown")!["opt_in_status"]).toBe("opted_in");
     expect(w.contacts.get("c-out")!["opt_in_status"]).toBe("opted_out");
@@ -181,11 +237,21 @@ describe("(1) import: ticked by default, opted out always stays opted out", () =
 describe("(4) the missing-column answer is recognised, nothing else is", () => {
   it("PGRST204 on a consent column retries; any other error does not", () => {
     expect(
-      isMissingConsentColumn({ code: "PGRST204", message: "Could not find the 'opted_in_at' column of 'contacts' in the schema cache" }),
+      isMissingConsentColumn({
+        code: "PGRST204",
+        message: "Could not find the 'opted_in_at' column of 'contacts' in the schema cache",
+      }),
     ).toBe(true);
-    expect(isMissingConsentColumn({ code: "42703", message: 'column "opt_in_source" of relation "contacts" does not exist' })).toBe(true);
+    expect(
+      isMissingConsentColumn({
+        code: "42703",
+        message: 'column "opt_in_source" of relation "contacts" does not exist',
+      }),
+    ).toBe(true);
     expect(isMissingConsentColumn({ code: "23505", message: "duplicate key value" })).toBe(false);
-    expect(isMissingConsentColumn({ code: "PGRST204", message: "Could not find the 'nickname' column" })).toBe(false);
+    expect(
+      isMissingConsentColumn({ code: "PGRST204", message: "Could not find the 'nickname' column" }),
+    ).toBe(false);
     expect(isMissingConsentColumn(null)).toBe(false);
   });
 });
@@ -193,7 +259,10 @@ describe("(4) the missing-column answer is recognised, nothing else is", () => {
 // ------------------------------------------------------------------ (2)
 describe("(2) Add contact and the drawer", () => {
   it("Add contact's box is ticked by default and opts the new contact in through the server", () => {
-    const src = readFileSync(join(import.meta.dirname, "../components/contacts/add-contact-dialog.tsx"), "utf8");
+    const src = readFileSync(
+      join(import.meta.dirname, "../components/contacts/add-contact-dialog.tsx"),
+      "utf8",
+    );
     expect(src).toContain("const [optedIn, setOptedIn] = useState(true);");
     expect(src).toContain('"/api/contacts/opt-in"');
     expect(src).toContain('status: "opted_in"');
@@ -219,7 +288,11 @@ describe("(2) Add contact and the drawer", () => {
     w.contacts.get("c1")!["opt_in_source"] = "import";
     const res = await call(OptInRoute, { action: "set", contact_id: "c1", status: "unknown" });
     expect(await res.json()).toEqual({ status: "unknown", changed: true });
-    expect(w.contacts.get("c1")).toMatchObject({ opt_in_status: "unknown", opt_in_source: null, opted_in_at: null });
+    expect(w.contacts.get("c1")).toMatchObject({
+      opt_in_status: "unknown",
+      opt_in_source: null,
+      opted_in_at: null,
+    });
     const log = w.activity().find((a) => a["action"] === "optin_changed")!;
     expect(log["details"]).toMatchObject({ from: "opted_in", to: "unknown", source: "manual" });
     expect(log["user_id"]).toBe("u36");
@@ -236,11 +309,14 @@ describe("(2) Add contact and the drawer", () => {
   });
 
   it("the drawer offers no choice for an opted-out contact and shows the consent record", async () => {
-    const { drawerOptInChoices, consentLine } = await import("@/components/contacts/contact-drawer");
+    const { drawerOptInChoices, consentLine } =
+      await import("@/components/contacts/contact-drawer");
     expect(drawerOptInChoices("opted_out")).toEqual([]);
     expect(drawerOptInChoices("unknown")).toContain("opted_in");
     expect(drawerOptInChoices("opted_in")).toContain("unknown");
-    expect(consentLine({ opt_in_source: "import", opted_in_at: "2026-10-28T10:00:00Z" })).toMatch(/^Opted in by an import on /);
+    expect(consentLine({ opt_in_source: "import", opted_in_at: "2026-10-28T10:00:00Z" })).toMatch(
+      /^Opted in by an import on /,
+    );
     expect(consentLine(null)).toBeNull();
   });
 
@@ -275,7 +351,12 @@ describe("(3) bulk: Mark as opted in / Mark all unknown as opted in", () => {
     expect(w.has(upd, "eq", "opt_in_status", "unknown")).toBe(true);
     const log = w.activity().find((a) => a["action"] === "contacts_opted_in")!;
     expect(log["user_id"]).toBe("u36");
-    expect(log["details"]).toMatchObject({ source: "bulk", scope: "selected", changed: 2, skipped_opted_out: 1 });
+    expect(log["details"]).toMatchObject({
+      source: "bulk",
+      scope: "selected",
+      changed: 2,
+      skipped_opted_out: 1,
+    });
   });
 
   it("a STOP landing between the read and the write is counted as skipped, never overwritten", async () => {
@@ -283,7 +364,8 @@ describe("(3) bulk: Mark as opted in / Mark all unknown as opted in", () => {
     const realFrom = w.supabase.from.bind(w.supabase);
     let reads = 0;
     (w.supabase as unknown as { from: (t: string) => unknown }).from = (t: string) => {
-      if (t === "contacts" && (reads += 1) === 2) w.contacts.get("a")!["opt_in_status"] = "opted_out";
+      if (t === "contacts" && (reads += 1) === 2)
+        w.contacts.get("a")!["opt_in_status"] = "opted_out";
       return realFrom(t);
     };
     const res = await call(OptInRoute, { action: "bulk", contact_ids: ["a", "b"] });
@@ -294,7 +376,9 @@ describe("(3) bulk: Mark as opted in / Mark all unknown as opted in", () => {
   it("all unknown: counts first, then changes every unknown contact and nothing else", async () => {
     const w = world(LIST);
     w.ops.length = 0;
-    const counted = fakeDb((op) => (op.table === "contacts" ? { data: null, error: null, count: 2 } : undefined));
+    const counted = fakeDb((op) =>
+      op.table === "contacts" ? { data: null, error: null, count: 2 } : undefined,
+    );
     h.db = counted;
     const c = await call(OptInRoute, { action: "count_unknown" });
     expect(await c.json()).toEqual({ count: 2 });
@@ -304,7 +388,12 @@ describe("(3) bulk: Mark as opted in / Mark all unknown as opted in", () => {
     h.db = w;
     const res = await call(OptInRoute, { action: "all_unknown" });
     expect(await res.json()).toEqual({ changed: 2, skipped_opted_out: 0, already_opted_in: 0 });
-    expect([...w.contacts.values()].map((x) => x["opt_in_status"])).toEqual(["opted_in", "opted_in", "opted_out", "opted_in"]);
+    expect([...w.contacts.values()].map((x) => x["opt_in_status"])).toEqual([
+      "opted_in",
+      "opted_in",
+      "opted_out",
+      "opted_in",
+    ]);
     expect(w.contacts.get("a")!["opt_in_source"]).toBe("bulk");
     expect(w.contacts.get("d")!["opt_in_source"]).toBeUndefined();
     const log = w.activity().find((a) => a["action"] === "contacts_opted_in")!;
@@ -323,7 +412,9 @@ describe("(3) bulk: Mark as opted in / Mark all unknown as opted in", () => {
     expect(bulkOptInSummary({ changed: 12, skipped_opted_out: 3, already_opted_in: 2 })).toBe(
       "12 contacts marked opted in · 3 stayed opted out · 2 already opted in",
     );
-    expect(bulkOptInSummary({ changed: 1, skipped_opted_out: 0, already_opted_in: 0 })).toBe("1 contact marked opted in");
+    expect(bulkOptInSummary({ changed: 1, skipped_opted_out: 0, already_opted_in: 0 })).toBe(
+      "1 contact marked opted in",
+    );
   });
 
   it("refuses an empty or oversized selection", async () => {
@@ -331,5 +422,32 @@ describe("(3) bulk: Mark as opted in / Mark all unknown as opted in", () => {
     expect((await call(OptInRoute, { action: "bulk", contact_ids: [] })).status).toBe(400);
     const many = Array.from({ length: 1001 }, (_, i) => `id-${i}`);
     expect((await call(OptInRoute, { action: "bulk", contact_ids: many })).status).toBe(400);
+  });
+});
+
+// ------------------------------------------------------------------ (5)
+describe("(5) nothing else changes", () => {
+  const read = (f: string) => readFileSync(join(import.meta.dirname, f), "utf8");
+  it("campaigns still reach only opted-in contacts; opt-out keywords, Shopify and flows keep their own writes", () => {
+    expect(read("campaigns.server.ts")).toContain('.eq("opt_in_status", "opted_in")');
+    for (const f of [
+      "whatsapp-webhook.server.ts",
+      "shopify-sync.server.ts",
+      "flow-engine.server.ts",
+      "campaign-dispatch.server.ts",
+    ]) {
+      expect(read(f)).not.toContain("opt-in.server");
+    }
+  });
+  it("the opt-in paths never fire and forget", () => {
+    for (const f of [
+      "opt-in.server.ts",
+      "../routes/api/contacts/opt-in.ts",
+      "../components/contacts/bulk-opt-in.tsx",
+    ]) {
+      expect(read(f)).not.toMatch(
+        /\bvoid (import|callApi|markContactsOptedIn|setContactOptIn|logServerActivity)\(/,
+      );
+    }
   });
 });

@@ -14,9 +14,8 @@ export const Route = createFileRoute("/api/contacts/opt-in")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { requireOrgMember, requirePermission, isResponse, jsonError } = await import(
-          "@/lib/whatsapp-api.server"
-        );
+        const { requireOrgMember, requirePermission, isResponse, jsonError } =
+          await import("@/lib/whatsapp-api.server");
         const { markContactsOptedIn, setContactOptIn } = await import("@/lib/opt-in.server");
 
         let payload: AnyRecord;
@@ -26,7 +25,10 @@ export const Route = createFileRoute("/api/contacts/opt-in")({
           return jsonError("Invalid request.");
         }
 
-        const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
+        const auth = await requireOrgMember(
+          request,
+          (payload["organization_id"] as string) ?? null,
+        );
         if (isResponse(auth)) return auth;
         const denied = await requirePermission(auth, "contacts.edit", "edit contacts");
         if (denied) return denied;
@@ -40,17 +42,25 @@ export const Route = createFileRoute("/api/contacts/opt-in")({
           if (status !== "opted_in" && status !== "unknown" && status !== "opted_out") {
             return jsonError("Unsupported opt-in status.");
           }
-          const res = await setContactOptIn(supabase, { organizationId, userId, contactId, status });
-          if (res.error) return jsonError(res.error, res.status ? 409 : 500);
+          const res = await setContactOptIn(supabase, {
+            organizationId,
+            userId,
+            contactId,
+            status,
+          });
+          if (res.error) return jsonError(res.error, res.status === "opted_out" ? 409 : 500);
           return Response.json({ status: res.status, changed: res.changed });
         }
 
         if (action === "bulk") {
           const ids = Array.isArray(payload["contact_ids"])
-            ? (payload["contact_ids"] as unknown[]).filter((v): v is string => typeof v === "string")
+            ? (payload["contact_ids"] as unknown[]).filter(
+                (v): v is string => typeof v === "string",
+              )
             : [];
           if (!ids.length) return jsonError("Select at least one contact.");
-          if (ids.length > MAX_SELECTED) return jsonError(`Select up to ${MAX_SELECTED} contacts at a time.`);
+          if (ids.length > MAX_SELECTED)
+            return jsonError(`Select up to ${MAX_SELECTED} contacts at a time.`);
           const { result, error } = await markContactsOptedIn(supabase, {
             organizationId,
             userId,

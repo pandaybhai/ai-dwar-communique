@@ -52,17 +52,23 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
                   from public.contacts where phone = '+91360001'`),
       ).toBe("unknown:-:-");
       expect(
-        pg.sql("select pg_get_constraintdef(oid) from pg_constraint where conname = 'contacts_opt_in_status_check'"),
+        pg.sql(
+          "select pg_get_constraintdef(oid) from pg_constraint where conname = 'contacts_opt_in_status_check'",
+        ),
       ).toMatch(/opted_in.*opted_out.*unknown/);
       // any source value is accepted (no CHECK on the new column)
       pg.sql(`update public.contacts set opt_in_status = 'opted_in', opt_in_source = 'keyword', opted_in_at = now()
                where phone = '+91360001'`);
-      expect(pg.sql("select opt_in_source from public.contacts where phone = '+91360001'")).toBe("keyword");
+      expect(pg.sql("select opt_in_source from public.contacts where phone = '+91360001'")).toBe(
+        "keyword",
+      );
     });
 
     it("lists the new activity actions once on the contacts registry row, after the old ones", () => {
       expect(
-        pg.sql("select array_to_string(activity_actions, ',') from public.feature_registry where key = 'contacts'"),
+        pg.sql(
+          "select array_to_string(activity_actions, ',') from public.feature_registry where key = 'contacts'",
+        ),
       ).toBe("contact_created,optin_changed,contacts_opted_in,contacts_import_consent");
     });
   },
