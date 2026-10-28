@@ -145,6 +145,20 @@ export const PLAN_AVAILABILITY: Availability[] = [
     "Add or remove the customer's tags",
     "v1.2",
   ),
+  // ---- webhooks (v1.2)
+  endpoint("GET", "/api/v1/webhooks", "Webhooks", "List your webhooks", "v1.2"),
+  endpoint("POST", "/api/v1/webhooks", "Webhooks", "Add a webhook (up to 5)", "v1.2"),
+  endpoint("GET", "/api/v1/webhooks/events", "Webhooks", "Every event a webhook can hear", "v1.2"),
+  endpoint("GET", "/api/v1/webhooks/{webhook_id}", "Webhooks", "One webhook", "v1.2"),
+  endpoint(
+    "PATCH",
+    "/api/v1/webhooks/{webhook_id}",
+    "Webhooks",
+    "Change a webhook or rotate its secret",
+    "v1.2",
+  ),
+  endpoint("DELETE", "/api/v1/webhooks/{webhook_id}", "Webhooks", "Remove a webhook", "v1.2"),
+  endpoint("POST", "/api/v1/webhooks/{webhook_id}/test", "Webhooks", "Send a test event", "v1.2"),
   // ---- webhook events
   event("message.sent", "Messages", "WhatsApp accepted a message the API sent", "v1.0"),
   event("message.delivered", "Messages", "It reached the customer's phone", "v1.0"),
@@ -162,6 +176,19 @@ export const PLAN_AVAILABILITY: Availability[] = [
   ),
   event("template.category_changed", "Templates", "Meta changed a template's category", "v1.1"),
   event("campaign.completed", "Campaigns", "A campaign finished sending", "v1.2"),
+  event("phone_number.quality_changed", "Account", "Your number's quality rating changed", "v1.2"),
+  event(
+    "account.status_changed",
+    "Account",
+    "Your WhatsApp account was reviewed or restricted",
+    "v1.2",
+  ),
+  event(
+    "messaging_limit.changed",
+    "Account",
+    "Your number's daily messaging limit changed",
+    "v1.2",
+  ),
 ];
 
 /** "/api/v1/campaigns/{campaign_id}" -> a regular expression for one request path. */

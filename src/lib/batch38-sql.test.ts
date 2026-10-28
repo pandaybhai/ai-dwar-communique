@@ -24,6 +24,8 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
           join(dir, "test-support/public-api-stubs.sql"),
           join(dir, "test-support/public-api-plans.sql"),
           join(dir, "../../supabase/aidwar-migrations/20261120_batch34_public_api.sql"),
+          join(dir, "test-support/batch37-stubs.sql"),
+          join(dir, "../../supabase/aidwar-migrations/20261150_batch37_public_api_v11.sql"),
           join(dir, "test-support/batch38-stubs.sql"),
           // Rows that exist before the file is applied.
           join(dir, "test-support/batch38-seed.sql"),
@@ -161,6 +163,111 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
       ).toBe(
         "contact_tags_changed,conversation_assigned,conversation_closed,conversation_reopened",
       );
+    });
+
+    it("(1) the account events are allowed too, and every Batch 37 event still is", () => {
+      const def = pg.sql(
+        "select pg_get_constraintdef(c.oid) from pg_constraint c where c.conrelid = 'public.api_webhook_deliveries'::regclass and c.contype = 'c' and pg_get_constraintdef(c.oid) like '%event%'",
+      );
+      for (const v of [
+        "message.received",
+        "contact.created",
+        "template.status_changed",
+        "phone_number.quality_changed",
+        "account.status_changed",
+        "messaging_limit.changed",
+      ])
+        expect(def).toContain(`'${v}'`);
+    });
+
+    it("(5) the Settings webhook became entry #1: same url, every event, the SAME secret; its row is kept", () => {
+      expect(
+        pg.sql(
+          `select url || '|' || coalesce(array_to_string(events, ','), 'ALL') || '|' || status || '|' || legacy from public.api_webhook_endpoints_for('${A}')`,
+        ),
+      ).toBe("https://legacy.example.com/aidwar|ALL|active|true");
+      expect(pg.sql(`select secret from public.api_webhook_endpoints_for('${A}')`)).toBe(
+        "whsec_legacy_original",
+      );
+      expect(
+        pg.sql("select count(*) from public.workspace_connections where provider = 'api_webhook'"),
+      ).toBe("1");
+      // Applied twice, read again: still one copy.
+      expect(
+        pg.sql(`select count(*) from public.api_webhook_endpoints where organization_id = '${A}'`),
+      ).toBe("1");
+      // The table never holds a secret.
+      expect(
+        pg.sql(
+          "select count(*) from public.api_webhook_endpoints where secret_vault_name like 'api_webhook_endpoint_%'",
+        ),
+      ).toBe("1");
+    });
+
+    it("(5) at most 5 webhooks per workspace; https only; the secret set and removed through Vault", () => {
+      for (let i = 2; i <= 5; i += 1)
+        pg.sql(
+          `insert into public.api_webhook_endpoints (organization_id, url) values ('${A}', 'https://h${i}.example.com')`,
+        );
+      expect(() =>
+        pg.sql(
+          `insert into public.api_webhook_endpoints (organization_id, url) values ('${A}', 'https://h6.example.com')`,
+        ),
+      ).toThrow(/webhook_limit_reached/);
+      expect(() =>
+        pg.sql(
+          `insert into public.api_webhook_endpoints (organization_id, url) values ('${B}', 'http://plain.example.com')`,
+        ),
+      ).toThrow(/check/);
+      const id = pg.sql(
+        `insert into public.api_webhook_endpoints (organization_id, url) values ('${B}', 'https://b.example.com') returning id`,
+      );
+      pg.sql(`select public.api_webhook_endpoint_set_secret('${id}', 'whsec_b')`);
+      expect(pg.sql(`select secret from public.api_webhook_endpoints_for('${B}')`)).toBe("whsec_b");
+      pg.sql(`select public.api_webhook_endpoint_delete('${id}')`);
+      expect(
+        pg.sql(`select count(*) from vault.secrets where name = 'api_webhook_endpoint_${id}'`),
+      ).toBe("0");
+      // Removing entry #1 removes the Settings row it came from, so it isn't copied back.
+      const legacy = pg.sql(
+        `select id from public.api_webhook_endpoints where legacy_connection_id is not null`,
+      );
+      pg.sql(`select public.api_webhook_endpoint_delete('${legacy}')`);
+      expect(
+        pg.sql("select count(*) from public.workspace_connections where provider = 'api_webhook'"),
+      ).toBe("0");
+      expect(
+        pg.sql(`select count(*) from public.api_webhook_endpoints_for('${A}') where legacy`),
+      ).toBe("0");
+      for (const fn of [
+        `public.api_webhook_endpoints_for('${A}')`,
+        `public.api_webhook_adopt_legacy('${A}')`,
+      ])
+        expect(() => pg.sql(`begin; set local role authenticated; select ${fn}; commit;`)).toThrow(
+          /permission denied/,
+        );
+      expect(() =>
+        pg.sql(
+          "begin; set local role authenticated; set local test.allow = 'yes'; select count(*) from public.api_webhook_endpoints; commit;",
+        ),
+      ).toThrow(/permission denied/);
+    });
+
+    it("(5) attempts: one row per (delivery, webhook)", () => {
+      const ep = pg.sql(
+        `select id from public.api_webhook_endpoints where organization_id = '${A}' limit 1`,
+      );
+      const d = pg.sql(
+        `insert into public.api_webhook_deliveries (organization_id, event, payload, occurred_at) values ('${A}', 'webhook.test', '{}', now()) returning id`,
+      );
+      pg.sql(
+        `insert into public.api_webhook_attempts (delivery_id, endpoint_id) values ('${d}', '${ep}')`,
+      );
+      expect(() =>
+        pg.sql(
+          `insert into public.api_webhook_attempts (delivery_id, endpoint_id) values ('${d}', '${ep}')`,
+        ),
+      ).toThrow(/api_webhook_attempts_pkey/);
     });
   },
 );

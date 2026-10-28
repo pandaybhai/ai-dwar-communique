@@ -447,13 +447,7 @@ describe("reading and cancelling", () => {
 
 describe("campaign.completed", () => {
   const setWebhook = () =>
-    rows("workspace_connections").push({
-      id: "wc-a",
-      organization_id: ORG,
-      provider: "api_webhook",
-      status: "active",
-      public_config: { url: "https://hooks.example.com/aidwar" },
-    });
+    h.world!.setLegacyWebhook(ORG, "https://hooks.example.com/aidwar", "whsec_test");
 
   it("is queued once for a workspace whose webhook is set, with the campaign's counts", async () => {
     setWebhook();

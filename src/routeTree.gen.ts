@@ -155,6 +155,8 @@ import { Route as ApiV1MessagesSessionRouteImport } from './routes/api/v1/messag
 import { Route as ApiV1MessagesTemplateRouteImport } from './routes/api/v1/messages/template'
 import { Route as ApiV1TemplatesIndexRouteImport } from './routes/api/v1/templates/index'
 import { Route as ApiV1TemplatesNameRouteImport } from './routes/api/v1/templates/$name'
+import { Route as ApiV1WebhooksIndexRouteImport } from './routes/api/v1/webhooks/index'
+import { Route as ApiV1WebhooksEventsRouteImport } from './routes/api/v1/webhooks/events'
 import { Route as ApiWhatsappChatMediaMessageIdRouteImport } from './routes/api/whatsapp/chat-media.$messageId'
 import { Route as ApiWhatsappMediaIdRouteImport } from './routes/api/whatsapp/media/$id'
 import { Route as AppFlowsV2IdRouteImport } from './routes/app/flows.v2.$id'
@@ -168,6 +170,8 @@ import { Route as ApiV1ConversationsPhoneCloseRouteImport } from './routes/api/v
 import { Route as ApiV1ConversationsPhoneReopenRouteImport } from './routes/api/v1/conversations/$phone.reopen'
 import { Route as ApiV1ConversationsPhoneTagsRouteImport } from './routes/api/v1/conversations/$phone.tags'
 import { Route as ApiV1MediaMessageIdDownloadRouteImport } from './routes/api/v1/media/$messageId.download'
+import { Route as ApiV1WebhooksWebhookIdIndexRouteImport } from './routes/api/v1/webhooks/$webhookId/index'
+import { Route as ApiV1WebhooksWebhookIdTestRouteImport } from './routes/api/v1/webhooks/$webhookId/test'
 import { Route as ApiV1ContactsPhoneTagsTagRouteImport } from './routes/api/v1/contacts/$phone.tags.$tag'
 
 const IndexRoute = IndexRouteImport.update({
@@ -925,6 +929,16 @@ const ApiV1TemplatesNameRoute = ApiV1TemplatesNameRouteImport.update({
   path: '/api/v1/templates/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1WebhooksIndexRoute = ApiV1WebhooksIndexRouteImport.update({
+  id: '/api/v1/webhooks/',
+  path: '/api/v1/webhooks/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1WebhooksEventsRoute = ApiV1WebhooksEventsRouteImport.update({
+  id: '/api/v1/webhooks/events',
+  path: '/api/v1/webhooks/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWhatsappChatMediaMessageIdRoute =
   ApiWhatsappChatMediaMessageIdRouteImport.update({
     id: '/api/whatsapp/chat-media/$messageId',
@@ -999,6 +1013,18 @@ const ApiV1MediaMessageIdDownloadRoute =
     id: '/download',
     path: '/download',
     getParentRoute: () => ApiV1MediaMessageIdRoute,
+  } as any)
+const ApiV1WebhooksWebhookIdIndexRoute =
+  ApiV1WebhooksWebhookIdIndexRouteImport.update({
+    id: '/api/v1/webhooks/$webhookId/',
+    path: '/api/v1/webhooks/$webhookId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1WebhooksWebhookIdTestRoute =
+  ApiV1WebhooksWebhookIdTestRouteImport.update({
+    id: '/api/v1/webhooks/$webhookId/test',
+    path: '/api/v1/webhooks/$webhookId/test',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1ContactsPhoneTagsTagRoute =
   ApiV1ContactsPhoneTagsTagRouteImport.update({
@@ -1150,6 +1176,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/v1/templates/$name': typeof ApiV1TemplatesNameRoute
+  '/api/v1/webhooks/events': typeof ApiV1WebhooksEventsRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
@@ -1157,6 +1184,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/contacts/': typeof ApiV1ContactsIndexRoute
   '/api/v1/conversations/': typeof ApiV1ConversationsIndexRoute
   '/api/v1/templates/': typeof ApiV1TemplatesIndexRoute
+  '/api/v1/webhooks/': typeof ApiV1WebhooksIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -1167,6 +1195,8 @@ export interface FileRoutesByFullPath {
   '/api/v1/conversations/$phone/reopen': typeof ApiV1ConversationsPhoneReopenRoute
   '/api/v1/conversations/$phone/tags': typeof ApiV1ConversationsPhoneTagsRoute
   '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
+  '/api/v1/webhooks/$webhookId/test': typeof ApiV1WebhooksWebhookIdTestRoute
+  '/api/v1/webhooks/$webhookId/': typeof ApiV1WebhooksWebhookIdIndexRoute
   '/api/v1/contacts/$phone/tags/$tag': typeof ApiV1ContactsPhoneTagsTagRoute
 }
 export interface FileRoutesByTo {
@@ -1310,6 +1340,7 @@ export interface FileRoutesByTo {
   '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/v1/templates/$name': typeof ApiV1TemplatesNameRoute
+  '/api/v1/webhooks/events': typeof ApiV1WebhooksEventsRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
@@ -1317,6 +1348,7 @@ export interface FileRoutesByTo {
   '/api/v1/contacts': typeof ApiV1ContactsIndexRoute
   '/api/v1/conversations': typeof ApiV1ConversationsIndexRoute
   '/api/v1/templates': typeof ApiV1TemplatesIndexRoute
+  '/api/v1/webhooks': typeof ApiV1WebhooksIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -1327,6 +1359,8 @@ export interface FileRoutesByTo {
   '/api/v1/conversations/$phone/reopen': typeof ApiV1ConversationsPhoneReopenRoute
   '/api/v1/conversations/$phone/tags': typeof ApiV1ConversationsPhoneTagsRoute
   '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
+  '/api/v1/webhooks/$webhookId/test': typeof ApiV1WebhooksWebhookIdTestRoute
+  '/api/v1/webhooks/$webhookId': typeof ApiV1WebhooksWebhookIdIndexRoute
   '/api/v1/contacts/$phone/tags/$tag': typeof ApiV1ContactsPhoneTagsTagRoute
 }
 export interface FileRoutesById {
@@ -1473,6 +1507,7 @@ export interface FileRoutesById {
   '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
   '/api/v1/templates/$name': typeof ApiV1TemplatesNameRoute
+  '/api/v1/webhooks/events': typeof ApiV1WebhooksEventsRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
@@ -1480,6 +1515,7 @@ export interface FileRoutesById {
   '/api/v1/contacts/': typeof ApiV1ContactsIndexRoute
   '/api/v1/conversations/': typeof ApiV1ConversationsIndexRoute
   '/api/v1/templates/': typeof ApiV1TemplatesIndexRoute
+  '/api/v1/webhooks/': typeof ApiV1WebhooksIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -1490,6 +1526,8 @@ export interface FileRoutesById {
   '/api/v1/conversations/$phone/reopen': typeof ApiV1ConversationsPhoneReopenRoute
   '/api/v1/conversations/$phone/tags': typeof ApiV1ConversationsPhoneTagsRoute
   '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
+  '/api/v1/webhooks/$webhookId/test': typeof ApiV1WebhooksWebhookIdTestRoute
+  '/api/v1/webhooks/$webhookId/': typeof ApiV1WebhooksWebhookIdIndexRoute
   '/api/v1/contacts/$phone/tags/$tag': typeof ApiV1ContactsPhoneTagsTagRoute
 }
 export interface FileRouteTypes {
@@ -1637,6 +1675,7 @@ export interface FileRouteTypes {
     | '/api/v1/messages/session'
     | '/api/v1/messages/template'
     | '/api/v1/templates/$name'
+    | '/api/v1/webhooks/events'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
@@ -1644,6 +1683,7 @@ export interface FileRouteTypes {
     | '/api/v1/contacts/'
     | '/api/v1/conversations/'
     | '/api/v1/templates/'
+    | '/api/v1/webhooks/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
@@ -1654,6 +1694,8 @@ export interface FileRouteTypes {
     | '/api/v1/conversations/$phone/reopen'
     | '/api/v1/conversations/$phone/tags'
     | '/api/v1/media/$messageId/download'
+    | '/api/v1/webhooks/$webhookId/test'
+    | '/api/v1/webhooks/$webhookId/'
     | '/api/v1/contacts/$phone/tags/$tag'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1797,6 +1839,7 @@ export interface FileRouteTypes {
     | '/api/v1/messages/session'
     | '/api/v1/messages/template'
     | '/api/v1/templates/$name'
+    | '/api/v1/webhooks/events'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
@@ -1804,6 +1847,7 @@ export interface FileRouteTypes {
     | '/api/v1/contacts'
     | '/api/v1/conversations'
     | '/api/v1/templates'
+    | '/api/v1/webhooks'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
@@ -1814,6 +1858,8 @@ export interface FileRouteTypes {
     | '/api/v1/conversations/$phone/reopen'
     | '/api/v1/conversations/$phone/tags'
     | '/api/v1/media/$messageId/download'
+    | '/api/v1/webhooks/$webhookId/test'
+    | '/api/v1/webhooks/$webhookId'
     | '/api/v1/contacts/$phone/tags/$tag'
   id:
     | '__root__'
@@ -1959,6 +2005,7 @@ export interface FileRouteTypes {
     | '/api/v1/messages/session'
     | '/api/v1/messages/template'
     | '/api/v1/templates/$name'
+    | '/api/v1/webhooks/events'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
@@ -1966,6 +2013,7 @@ export interface FileRouteTypes {
     | '/api/v1/contacts/'
     | '/api/v1/conversations/'
     | '/api/v1/templates/'
+    | '/api/v1/webhooks/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
@@ -1976,6 +2024,8 @@ export interface FileRouteTypes {
     | '/api/v1/conversations/$phone/reopen'
     | '/api/v1/conversations/$phone/tags'
     | '/api/v1/media/$messageId/download'
+    | '/api/v1/webhooks/$webhookId/test'
+    | '/api/v1/webhooks/$webhookId/'
     | '/api/v1/contacts/$phone/tags/$tag'
   fileRoutesById: FileRoutesById
 }
@@ -2094,12 +2144,14 @@ export interface RootRouteChildren {
   ApiV1MessagesSessionRoute: typeof ApiV1MessagesSessionRoute
   ApiV1MessagesTemplateRoute: typeof ApiV1MessagesTemplateRoute
   ApiV1TemplatesNameRoute: typeof ApiV1TemplatesNameRoute
+  ApiV1WebhooksEventsRoute: typeof ApiV1WebhooksEventsRoute
   ApiWhatsappChatMediaMessageIdRoute: typeof ApiWhatsappChatMediaMessageIdRoute
   ApiWhatsappMediaIdRoute: typeof ApiWhatsappMediaIdRoute
   ApiV1CampaignsIndexRoute: typeof ApiV1CampaignsIndexRoute
   ApiV1ContactsIndexRoute: typeof ApiV1ContactsIndexRoute
   ApiV1ConversationsIndexRoute: typeof ApiV1ConversationsIndexRoute
   ApiV1TemplatesIndexRoute: typeof ApiV1TemplatesIndexRoute
+  ApiV1WebhooksIndexRoute: typeof ApiV1WebhooksIndexRoute
   ApiPublicShopifyWebhooksCustomersDataRequestRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   ApiPublicShopifyWebhooksCustomersRedactRoute: typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   ApiPublicShopifyWebhooksShopRedactRoute: typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -2107,6 +2159,8 @@ export interface RootRouteChildren {
   ApiV1ConversationsPhoneCloseRoute: typeof ApiV1ConversationsPhoneCloseRoute
   ApiV1ConversationsPhoneReopenRoute: typeof ApiV1ConversationsPhoneReopenRoute
   ApiV1ConversationsPhoneTagsRoute: typeof ApiV1ConversationsPhoneTagsRoute
+  ApiV1WebhooksWebhookIdTestRoute: typeof ApiV1WebhooksWebhookIdTestRoute
+  ApiV1WebhooksWebhookIdIndexRoute: typeof ApiV1WebhooksWebhookIdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -3133,6 +3187,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1TemplatesNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/webhooks/': {
+      id: '/api/v1/webhooks/'
+      path: '/api/v1/webhooks'
+      fullPath: '/api/v1/webhooks/'
+      preLoaderRoute: typeof ApiV1WebhooksIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/webhooks/events': {
+      id: '/api/v1/webhooks/events'
+      path: '/api/v1/webhooks/events'
+      fullPath: '/api/v1/webhooks/events'
+      preLoaderRoute: typeof ApiV1WebhooksEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/chat-media/$messageId': {
       id: '/api/whatsapp/chat-media/$messageId'
       path: '/api/whatsapp/chat-media/$messageId'
@@ -3223,6 +3291,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/v1/media/$messageId/download'
       preLoaderRoute: typeof ApiV1MediaMessageIdDownloadRouteImport
       parentRoute: typeof ApiV1MediaMessageIdRoute
+    }
+    '/api/v1/webhooks/$webhookId/': {
+      id: '/api/v1/webhooks/$webhookId/'
+      path: '/api/v1/webhooks/$webhookId'
+      fullPath: '/api/v1/webhooks/$webhookId/'
+      preLoaderRoute: typeof ApiV1WebhooksWebhookIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/webhooks/$webhookId/test': {
+      id: '/api/v1/webhooks/$webhookId/test'
+      path: '/api/v1/webhooks/$webhookId/test'
+      fullPath: '/api/v1/webhooks/$webhookId/test'
+      preLoaderRoute: typeof ApiV1WebhooksWebhookIdTestRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/v1/contacts/$phone/tags/$tag': {
       id: '/api/v1/contacts/$phone/tags/$tag'
@@ -3480,12 +3562,14 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1MessagesSessionRoute: ApiV1MessagesSessionRoute,
   ApiV1MessagesTemplateRoute: ApiV1MessagesTemplateRoute,
   ApiV1TemplatesNameRoute: ApiV1TemplatesNameRoute,
+  ApiV1WebhooksEventsRoute: ApiV1WebhooksEventsRoute,
   ApiWhatsappChatMediaMessageIdRoute: ApiWhatsappChatMediaMessageIdRoute,
   ApiWhatsappMediaIdRoute: ApiWhatsappMediaIdRoute,
   ApiV1CampaignsIndexRoute: ApiV1CampaignsIndexRoute,
   ApiV1ContactsIndexRoute: ApiV1ContactsIndexRoute,
   ApiV1ConversationsIndexRoute: ApiV1ConversationsIndexRoute,
   ApiV1TemplatesIndexRoute: ApiV1TemplatesIndexRoute,
+  ApiV1WebhooksIndexRoute: ApiV1WebhooksIndexRoute,
   ApiPublicShopifyWebhooksCustomersDataRequestRoute:
     ApiPublicShopifyWebhooksCustomersDataRequestRoute,
   ApiPublicShopifyWebhooksCustomersRedactRoute:
@@ -3496,6 +3580,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1ConversationsPhoneCloseRoute: ApiV1ConversationsPhoneCloseRoute,
   ApiV1ConversationsPhoneReopenRoute: ApiV1ConversationsPhoneReopenRoute,
   ApiV1ConversationsPhoneTagsRoute: ApiV1ConversationsPhoneTagsRoute,
+  ApiV1WebhooksWebhookIdTestRoute: ApiV1WebhooksWebhookIdTestRoute,
+  ApiV1WebhooksWebhookIdIndexRoute: ApiV1WebhooksWebhookIdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

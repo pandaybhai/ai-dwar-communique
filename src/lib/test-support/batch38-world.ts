@@ -115,6 +115,89 @@ export function batch38World(options: Parameters<typeof publicApiWorld>[0] = {})
   // Batch 38's functions (20261160), written in JS as the SQL reads; `sql.applied`
   // false answers PGRST202, as a database without the file does.
   const sql = { applied: true };
+
+  // ---- webhooks (item 3): api_webhook_endpoints with their secrets in the world's Vault
+  const vault = w.vault;
+  const adopt = (org: string): string | null => {
+    const c = rows("workspace_connections").find(
+      (r) => r["organization_id"] === org && r["provider"] === "api_webhook",
+    );
+    const url = (c?.["public_config"] as { url?: string } | undefined)?.url;
+    if (!c || !url || !url.startsWith("https://")) return null;
+    const had = rows("api_webhook_endpoints").find((e) => e["legacy_connection_id"] === c["id"]);
+    if (had) return String(had["id"]);
+    const raw = vault.get(String(c["secret_vault_name"] ?? ""));
+    const secret = raw ? (JSON.parse(raw) as { signing_secret?: string }).signing_secret : null;
+    if (!secret) return null;
+    const id = `wh-legacy-${String(c["id"])}`;
+    rows("api_webhook_endpoints").push({
+      id,
+      organization_id: org,
+      url,
+      events: null,
+      status: c["status"] === "active" ? "active" : "disabled",
+      legacy_connection_id: c["id"],
+      created_at: String(c["created_at"] ?? "2026-01-01T00:00:00Z"),
+      updated_at: String(c["created_at"] ?? "2026-01-01T00:00:00Z"),
+      secret_vault_name: `api_webhook_endpoint_${id}`,
+    });
+    vault.set(`api_webhook_endpoint_${id}`, secret);
+    return id;
+  };
+  const WEBHOOK_FUNCTIONS: Record<string, (args: Record<string, unknown>) => unknown> = {
+    api_webhook_adopt_legacy: (a) => adopt(String(a["p_org"])),
+    api_webhook_endpoints_for: (a) => {
+      adopt(String(a["p_org"]));
+      return rows("api_webhook_endpoints")
+        .filter((e) => e["organization_id"] === a["p_org"])
+        .sort((x, y) => String(x["created_at"]).localeCompare(String(y["created_at"])))
+        .map((e) => ({
+          id: e["id"],
+          url: e["url"],
+          events: e["events"] ?? null,
+          status: e["status"],
+          legacy: Boolean(e["legacy_connection_id"]),
+          created_at: e["created_at"],
+          updated_at: e["updated_at"],
+          secret: vault.get(String(e["secret_vault_name"] ?? "")) ?? null,
+        }));
+    },
+    api_webhook_endpoint_set_secret: (a) => {
+      const name = `api_webhook_endpoint_${String(a["p_id"])}`;
+      vault.set(name, String(a["p_secret"]));
+      const row = rows("api_webhook_endpoints").find((e) => e["id"] === a["p_id"]);
+      if (row) row["secret_vault_name"] = name;
+      return null;
+    },
+    api_webhook_endpoint_delete: (a) => {
+      const list = rows("api_webhook_endpoints");
+      const i = list.findIndex((e) => e["id"] === a["p_id"]);
+      if (i < 0) return null;
+      const legacy = list[i]!["legacy_connection_id"];
+      vault.delete(`api_webhook_endpoint_${String(a["p_id"])}`);
+      list.splice(i, 1);
+      if (legacy) {
+        vault.delete(`workspace_conn_${String(legacy)}`);
+        const conns = rows("workspace_connections");
+        const j = conns.findIndex((c) => c["id"] === legacy);
+        if (j >= 0) conns.splice(j, 1);
+      }
+      return null;
+    },
+  };
+  /** The one Settings webhook as Batch 34 saved it (workspace_connections + its Vault secret). */
+  const setLegacyWebhook = (org: string, url: string, secret: string, id = `wc-${org}`) => {
+    rows("workspace_connections").push({
+      id,
+      organization_id: org,
+      provider: "api_webhook",
+      status: "active",
+      public_config: { url },
+      secret_vault_name: `workspace_conn_${id}`,
+      created_at: "2026-10-01T00:00:00Z",
+    });
+    vault.set(`workspace_conn_${id}`, JSON.stringify({ signing_secret: secret }));
+  };
   const rpc = w.db.supabase.rpc.bind(w.db.supabase);
   const changedAt = (r: Record<string, unknown>) =>
     String(r["updated_at"] ?? r["last_message_at"] ?? r["created_at"] ?? "");
@@ -122,6 +205,12 @@ export function batch38World(options: Parameters<typeof publicApiWorld>[0] = {})
     name: string,
     args: Record<string, unknown>,
   ) => {
+    const webhookFn = WEBHOOK_FUNCTIONS[name];
+    if (webhookFn) {
+      if (!sql.applied)
+        return Promise.resolve({ data: null, error: { code: "PGRST202", message: "not found" } });
+      return Promise.resolve({ data: webhookFn(args), error: null });
+    }
     if (name !== "api_list_conversations") return rpc(name as never, args as never);
     if (!sql.applied)
       return Promise.resolve({ data: null, error: { code: "PGRST202", message: "not found" } });
@@ -152,7 +241,7 @@ export function batch38World(options: Parameters<typeof publicApiWorld>[0] = {})
       .map((r) => ({ ...r, changed_at: changedAt(r) }));
     return Promise.resolve({ data: out, error: null });
   };
-  return { ...w, sql };
+  return { ...w, sql, setLegacyWebhook };
 }
 
 /** A route's handler, from its file's Route (as the router calls it). */

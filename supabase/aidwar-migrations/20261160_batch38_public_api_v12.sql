@@ -1,7 +1,7 @@
 -- Batch 38: Public API v1.2. Idempotent. NOT applied: apply by hand to the
 -- Mumbai project (hcsacmqzspnfqoftoifu) after 20261120_batch34_public_api.sql
--- (and, when it is applied, 20261150_batch37_public_api_v11.sql — in either
--- order: whatever they share is written IF NOT EXISTS here and there).
+-- and 20261150_batch37_public_api_v11.sql (applied on live; whatever they
+-- share — dedupe_key and its index — is written IF NOT EXISTS here too).
 --
 -- Only additions: no existing column, default or row changes, and the one
 -- rebuilt CHECK keeps every value it already allows (read from its own
@@ -16,12 +16,16 @@
 -- queued — the campaign completes exactly as before; GET
 -- /api/v1/conversations answers 503 unavailable (its function is missing);
 -- the Try-it console answers "isn't available yet" (its table is missing)
--- and no console credential exists.
+-- and no console credential exists; webhooks work exactly as before — the
+-- one Settings webhook (workspace_connections, provider api_webhook) gets
+-- every event, /api/v1/webhooks answers 503 unavailable; the three account
+-- events are refused by the event CHECK, logged and never queued.
 --
--- (1) api_webhook_deliveries carries campaign.completed: the event CHECK also
---     allows it, and dedupe_key (with a unique index on organization_id +
+-- (1) api_webhook_deliveries carries the v1.2 events: the event CHECK also
+--     allows campaign.completed, phone_number.quality_changed,
+--     account.status_changed and messaging_limit.changed, and dedupe_key (with a unique index on organization_id +
 --     dedupe_key — the same column and index Batch 37 adds) queues it once
---     per campaign.
+--     per campaign (and the account events once per Meta notice).
 -- (2) conversations.updated_at: set by the existing update_updated_at_column()
 --     trigger from now on, NULL on rows nobody has touched since (no
 --     backfill). public.api_list_conversations(): one page of a workspace's
@@ -36,6 +40,21 @@
 --     member who opened the console, expiring 10 minutes after it is made.
 --     Service role only: no member can read one back.
 -- (4) the inbox's feature_registry row lists the two new activity actions.
+-- (5) Webhook management (up to 5 per workspace):
+--     public.api_webhook_endpoints — one row per webhook: its https url, the
+--     events it hears (NULL = every event), active / disabled, its signing
+--     secret in Vault (api_webhook_endpoint_<id>, never in the table). A
+--     trigger refuses a sixth. public.api_webhook_attempts — one row per
+--     (delivery, webhook): each webhook's own attempts, retry time and result.
+--     The existing Settings webhook (workspace_connections, provider
+--     api_webhook) becomes the workspace's first entry with the same url and
+--     the SAME signing secret (copied in Vault), so a merchant's signature
+--     check keeps working; its workspace_connections row is kept as it is.
+--     api_webhook_adopt_legacy() does that copy (here for every workspace,
+--     and again on read for one saved by older code after this file ran);
+--     api_webhook_endpoints_for() reads a workspace's webhooks with their
+--     secrets; api_webhook_endpoint_set_secret() / _delete() write them.
+--     Everything service role only.
 
 SET lock_timeout = '5s';
 
@@ -49,7 +68,7 @@ DO $$
 DECLARE
   c record;
   current_values text[];
-  wanted text[] := array['campaign.completed'];
+  wanted text[] := array['campaign.completed', 'phone_number.quality_changed', 'account.status_changed', 'messaging_limit.changed'];
   allowed text;
 BEGIN
   FOR c IN
@@ -153,5 +172,159 @@ SET activity_actions = (
 )
 WHERE key = 'inbox'
   AND NOT (activity_actions @> array['conversation_reopened', 'contact_tags_changed']::text[]);
+
+-- (5) ------------------------------------------------------- webhook management
+CREATE TABLE IF NOT EXISTS public.api_webhook_endpoints (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  url text NOT NULL CHECK (url ~ '^https://' AND char_length(url) <= 2048),
+  -- NULL: every event (as the one Settings webhook always heard).
+  events text[],
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+  secret_vault_name text,
+  -- The Settings webhook it was copied from (one copy per webhook).
+  legacy_connection_id uuid,
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS api_webhook_endpoints_legacy_key
+  ON public.api_webhook_endpoints (legacy_connection_id);
+CREATE INDEX IF NOT EXISTS api_webhook_endpoints_org_idx
+  ON public.api_webhook_endpoints (organization_id, created_at);
+ALTER TABLE public.api_webhook_endpoints ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.api_webhook_endpoints FROM anon, authenticated;
+GRANT ALL ON public.api_webhook_endpoints TO service_role;
+DROP TRIGGER IF EXISTS api_webhook_endpoints_updated_at ON public.api_webhook_endpoints;
+CREATE TRIGGER api_webhook_endpoints_updated_at BEFORE UPDATE ON public.api_webhook_endpoints
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- At most 5 per workspace (two inserts at once: the advisory lock makes the second wait and count).
+CREATE OR REPLACE FUNCTION public.api_webhook_endpoints_limit() RETURNS trigger
+LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext('api_webhook_endpoints:' || NEW.organization_id::text));
+  IF (SELECT count(*) FROM public.api_webhook_endpoints WHERE organization_id = NEW.organization_id) >= 5 THEN
+    RAISE EXCEPTION 'webhook_limit_reached: a workspace can have 5 webhooks' USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS api_webhook_endpoints_limit ON public.api_webhook_endpoints;
+CREATE TRIGGER api_webhook_endpoints_limit BEFORE INSERT ON public.api_webhook_endpoints
+  FOR EACH ROW EXECUTE FUNCTION public.api_webhook_endpoints_limit();
+
+CREATE TABLE IF NOT EXISTS public.api_webhook_attempts (
+  delivery_id uuid NOT NULL REFERENCES public.api_webhook_deliveries(id) ON DELETE CASCADE,
+  endpoint_id uuid NOT NULL REFERENCES public.api_webhook_endpoints(id) ON DELETE CASCADE,
+  state text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'delivered', 'failed')),
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  last_attempt_at timestamptz,
+  last_status integer,
+  last_error text,
+  delivered_at timestamptz,
+  PRIMARY KEY (delivery_id, endpoint_id)
+);
+CREATE INDEX IF NOT EXISTS api_webhook_attempts_endpoint_idx ON public.api_webhook_attempts (endpoint_id);
+ALTER TABLE public.api_webhook_attempts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.api_webhook_attempts FROM anon, authenticated;
+GRANT ALL ON public.api_webhook_attempts TO service_role;
+
+CREATE OR REPLACE FUNCTION public.api_webhook_endpoint_set_secret(p_id uuid, p_secret text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, vault AS $$
+DECLARE
+  v_name text := 'api_webhook_endpoint_' || p_id::text;
+  v_id uuid;
+BEGIN
+  SELECT id INTO v_id FROM vault.secrets WHERE name = v_name;
+  IF v_id IS NULL THEN
+    PERFORM vault.create_secret(p_secret, v_name, 'API webhook signing secret');
+  ELSE
+    PERFORM vault.update_secret(v_id, p_secret);
+  END IF;
+  UPDATE public.api_webhook_endpoints SET secret_vault_name = v_name WHERE id = p_id;
+END; $$;
+
+-- The Settings webhook of one workspace becomes its first entry, once:
+-- same url, same signing secret (a new Vault entry with the same value).
+CREATE OR REPLACE FUNCTION public.api_webhook_adopt_legacy(p_org uuid)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, vault AS $$
+DECLARE
+  c record;
+  v_secret text;
+  v_id uuid;
+BEGIN
+  SELECT wc.id, wc.status, wc.public_config->>'url' AS url, wc.created_at, wc.connected_by, wc.secret_vault_name
+    INTO c
+  FROM public.workspace_connections wc
+  WHERE wc.organization_id = p_org AND wc.provider = 'api_webhook';
+  IF c.id IS NULL OR c.url IS NULL OR c.url !~ '^https://' THEN RETURN NULL; END IF;
+  SELECT e.id INTO v_id FROM public.api_webhook_endpoints e WHERE e.legacy_connection_id = c.id;
+  IF v_id IS NOT NULL THEN RETURN v_id; END IF;
+  SELECT s.decrypted_secret::jsonb->>'signing_secret' INTO v_secret
+  FROM vault.decrypted_secrets s WHERE s.name = c.secret_vault_name;
+  IF v_secret IS NULL THEN RETURN NULL; END IF;
+  INSERT INTO public.api_webhook_endpoints (organization_id, url, events, status, legacy_connection_id, created_by, created_at)
+  VALUES (p_org, c.url, NULL, CASE WHEN c.status = 'active' THEN 'active' ELSE 'disabled' END, c.id, c.connected_by, c.created_at)
+  ON CONFLICT (legacy_connection_id) DO NOTHING
+  RETURNING id INTO v_id;
+  IF v_id IS NULL THEN
+    SELECT e.id INTO v_id FROM public.api_webhook_endpoints e WHERE e.legacy_connection_id = c.id;
+    RETURN v_id;
+  END IF;
+  PERFORM public.api_webhook_endpoint_set_secret(v_id, v_secret);
+  RETURN v_id;
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.api_webhook_endpoints_for(p_org uuid)
+RETURNS TABLE (
+  id uuid, url text, events text[], status text, legacy boolean,
+  created_at timestamptz, updated_at timestamptz, secret text
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, vault AS $$
+BEGIN
+  PERFORM public.api_webhook_adopt_legacy(p_org);
+  RETURN QUERY
+    SELECT e.id, e.url, e.events, e.status, e.legacy_connection_id IS NOT NULL,
+           e.created_at, e.updated_at, s.decrypted_secret
+    FROM public.api_webhook_endpoints e
+    LEFT JOIN vault.decrypted_secrets s ON s.name = e.secret_vault_name
+    WHERE e.organization_id = p_org
+    ORDER BY e.created_at, e.id;
+END; $$;
+
+-- A webhook removed: its secret, its row, and the Settings webhook it came
+-- from (so it is never copied in again).
+CREATE OR REPLACE FUNCTION public.api_webhook_endpoint_delete(p_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, vault AS $$
+DECLARE
+  v_legacy uuid;
+BEGIN
+  SELECT legacy_connection_id INTO v_legacy FROM public.api_webhook_endpoints WHERE id = p_id;
+  DELETE FROM vault.secrets WHERE name = 'api_webhook_endpoint_' || p_id::text;
+  DELETE FROM public.api_webhook_endpoints WHERE id = p_id;
+  IF v_legacy IS NOT NULL THEN
+    DELETE FROM vault.secrets WHERE name = 'workspace_conn_' || v_legacy::text;
+    DELETE FROM public.workspace_connections WHERE id = v_legacy AND provider = 'api_webhook';
+  END IF;
+END; $$;
+
+REVOKE ALL ON FUNCTION public.api_webhook_endpoint_set_secret(uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.api_webhook_adopt_legacy(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.api_webhook_endpoints_for(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.api_webhook_endpoint_delete(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.api_webhook_endpoint_set_secret(uuid, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.api_webhook_adopt_legacy(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.api_webhook_endpoints_for(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.api_webhook_endpoint_delete(uuid) TO service_role;
+
+-- Every Settings webhook that exists now becomes its workspace's first entry.
+DO $$
+DECLARE o uuid;
+BEGIN
+  FOR o IN SELECT DISTINCT organization_id FROM public.workspace_connections WHERE provider = 'api_webhook' LOOP
+    PERFORM public.api_webhook_adopt_legacy(o);
+  END LOOP;
+END $$;
 
 RESET lock_timeout;
