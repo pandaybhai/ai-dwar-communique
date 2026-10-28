@@ -548,6 +548,75 @@ export async function queueContactOptEvent(
   }
 }
 
+/**
+ * template.status_changed / template.category_changed for the template rows a
+ * Meta notice moved (the template webhook, processWebhookPayload): one event
+ * per row that really changed, keyed by the notice's time, so a notice Meta
+ * repeats queues nothing new. Never throws.
+ */
+export async function queueTemplateApiEvents(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    event: "template.status_changed" | "template.category_changed";
+    /** The rows as they were before the update. */
+    rows: Array<{
+      id: string;
+      name: string;
+      language: string;
+      status: string;
+      category: string | null;
+    }>;
+    next: { status?: string; rejectionReason?: string | null; category?: string };
+    previousCategory: string | null;
+    occurredAt: string;
+  },
+): Promise<void> {
+  try {
+    const moved = input.rows.filter((r) =>
+      input.event === "template.status_changed"
+        ? r.status !== input.next.status
+        : String(r.category ?? "").toUpperCase() !== input.next.category,
+    );
+    if (!moved.length || !(await apiEventsWanted(supabase, input.organizationId))) return;
+    for (const r of moved) {
+      const status = input.next.status ?? r.status;
+      const category = input.next.category ?? (r.category ? r.category.toUpperCase() : null);
+      await queueApiEvent(supabase, {
+        organizationId: input.organizationId,
+        event: input.event,
+        dedupeKey: `${input.event}:${r.id}:${input.event === "template.status_changed" ? status : category}:${Date.parse(input.occurredAt)}`,
+        occurredAt: input.occurredAt,
+        payload: {
+          event: input.event,
+          template: {
+            name: r.name,
+            language: r.language,
+            status,
+            category,
+            ...(input.event === "template.status_changed"
+              ? { previous_status: r.status, rejection_reason: input.next.rejectionReason ?? null }
+              : {
+                  previous_category:
+                    input.previousCategory ?? (r.category ? r.category.toUpperCase() : null),
+                }),
+          },
+          timestamp: input.occurredAt,
+        },
+      });
+    }
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        scope: "api_webhook",
+        step: "template_event",
+        organization_id: input.organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
 // ------------------------------------------------------------ the endpoint
 
 export type WebhookEndpoint = { id: string; url: string; status: string; secret: string };
