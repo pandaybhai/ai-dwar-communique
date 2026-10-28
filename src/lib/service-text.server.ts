@@ -375,7 +375,10 @@ export async function sendServiceList(
      * Batch 37 (Public API): the rows in titled sections, already checked
      * against WhatsApp's limits. Left out: `rows`, in one "Choose one" section.
      */
-    sections?: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>;
+    sections?: Array<{
+      title: string;
+      rows: Array<{ id: string; title: string; description?: string }>;
+    }>;
     /** Batch 37: stored on the message row (the Public API's source "api"). */
     metadata?: Record<string, unknown>;
   },
@@ -388,7 +391,9 @@ export async function sendServiceList(
     ...(r.description ? { description: r.description.slice(0, 72) } : {}),
   });
   const sections = args.sections?.length
-    ? args.sections.slice(0, 10).map((sec) => ({ title: sec.title.slice(0, 24), rows: sec.rows.map(trim) }))
+    ? args.sections
+        .slice(0, 10)
+        .map((sec) => ({ title: sec.title.slice(0, 24), rows: sec.rows.map(trim) }))
     : [{ title: "Choose one", rows: args.rows.slice(0, 10).map(trim) }];
   const rows = sections.flatMap((sec) => sec.rows);
   if (rows.length === 0) return { ok: false, messageId: null, error: "no_rows" };

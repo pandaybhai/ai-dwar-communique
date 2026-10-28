@@ -1541,27 +1541,36 @@ export async function processWebhookPayload(
           type Eq = { eq: (column: string, value: unknown) => Eq };
           type Run = PromiseLike<{ data: unknown; error: unknown }>;
           const matchTemplate = (query: unknown): Run | null => {
-            const scoped = (query as Eq).eq("organization_id", wabaOrgIds[0]!).eq("waba_id", wabaId);
+            const scoped = (query as Eq)
+              .eq("organization_id", wabaOrgIds[0]!)
+              .eq("waba_id", wabaId);
             if (metaTemplateId !== undefined && metaTemplateId !== null)
               return scoped.eq("meta_template_id", String(metaTemplateId)) as unknown as Run;
             if (!templateName) return null;
             const named = scoped.eq("name", templateName);
-            return (templateLanguage ? named.eq("language", templateLanguage) : named) as unknown as Run;
+            return (templateLanguage
+              ? named.eq("language", templateLanguage)
+              : named) as unknown as Run;
           };
           // Batch 37: when Meta's notice happened, so a repeated notice queues nothing new.
-          const noticeAt = Number(entry["time"] ?? 0) ? new Date(Number(entry["time"]) * 1000).toISOString() : new Date().toISOString();
+          const noticeAt = Number(entry["time"] ?? 0)
+            ? new Date(Number(entry["time"]) * 1000).toISOString()
+            : new Date().toISOString();
 
           // Batch 37: Meta moved the template to another category — the stored
           // category follows (it decides the opt-out rule and the price), and
           // the merchant's webhook hears template.category_changed.
           if (String(change["field"] ?? "") === "template_category_update") {
-            const nextCategory = typeof value["new_category"] === "string" ? value["new_category"].toUpperCase() : "";
+            const nextCategory =
+              typeof value["new_category"] === "string" ? value["new_category"].toUpperCase() : "";
             if (!nextCategory) continue; // only a notice of a change still to come
             const before = matchTemplate(
               supabase.from("message_templates").select("id, name, language, status, category"),
             );
             const update = matchTemplate(
-              supabase.from("message_templates").update({ category: nextCategory, updated_at: new Date().toISOString() }),
+              supabase
+                .from("message_templates")
+                .update({ category: nextCategory, updated_at: new Date().toISOString() }),
             );
             if (!before || !update) continue;
             const { data: previous } = await before;
@@ -1572,7 +1581,10 @@ export async function processWebhookPayload(
               event: "template.category_changed",
               rows: (previous ?? []) as never,
               next: { category: nextCategory },
-              previousCategory: typeof value["previous_category"] === "string" ? value["previous_category"].toUpperCase() : null,
+              previousCategory:
+                typeof value["previous_category"] === "string"
+                  ? value["previous_category"].toUpperCase()
+                  : null,
               occurredAt: noticeAt,
             });
             continue;
@@ -1586,15 +1598,17 @@ export async function processWebhookPayload(
 
           const reason = (value["reason"] as string | undefined) ?? null;
           const rejectionReason =
-            nextStatus === "REJECTED" ? (reason && reason !== "NONE" ? reason : "Rejected by review") : null;
+            nextStatus === "REJECTED"
+              ? reason && reason !== "NONE"
+                ? reason
+                : "Rejected by review"
+              : null;
           const update = matchTemplate(
-            supabase
-              .from("message_templates")
-              .update({
-                status: nextStatus,
-                rejection_reason: rejectionReason,
-                updated_at: new Date().toISOString(),
-              }),
+            supabase.from("message_templates").update({
+              status: nextStatus,
+              rejection_reason: rejectionReason,
+              updated_at: new Date().toISOString(),
+            }),
           );
           if (!update) continue;
           // Batch 37: what the rows were, for template.status_changed.
@@ -2031,7 +2045,10 @@ export async function processWebhookPayload(
                   occurredAt,
                 };
                 afterReply.push(async () =>
-                  (await import("@/lib/public-api-webhooks.server")).queueInboundApiEvents(supabase, apiEvent),
+                  (await import("@/lib/public-api-webhooks.server")).queueInboundApiEvents(
+                    supabase,
+                    apiEvent,
+                  ),
                 );
               }
             }

@@ -23,6 +23,7 @@ const h = vi.hoisted(() => ({
 vi.mock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => h.world!.db.supabase }));
 
 import { Route } from "../routes/api/v1/messages/session";
+import { Route as StatusRoute } from "../routes/api/v1/messages/$messageId";
 
 type Post = (a: { request: Request }) => Promise<Response>;
 const POST = (Route as unknown as { options: { server: { handlers: { POST: Post } } } }).options
@@ -252,6 +253,28 @@ describe("outside the window: 409 window_closed, send a template instead", () =>
     }
     expect(net.calls.filter((c) => c.url.startsWith("https://graph.facebook.com/"))).toEqual([]);
     expect(h.world!.db.rows("messages")).toEqual([]);
+  });
+
+  it("the message's status is the key's workspace's only: another workspace's key gets 404", async () => {
+    customerWrote(1);
+    const sent = await send({ to: CUSTOMER, type: "text", text: "Hello" });
+    type Get = (a: { request: Request; params: Record<string, string> }) => Promise<Response>;
+    const GET = (StatusRoute as unknown as { options: { server: { handlers: { GET: Get } } } })
+      .options.server.handlers.GET;
+    const ask = async (key: string) => {
+      const res = await GET({
+        request: new Request(
+          `https://aidwar.in/api/v1/messages/${String(sent.body["message_id"])}`,
+          {
+            headers: { authorization: `Bearer ${key}` },
+          },
+        ),
+        params: { messageId: String(sent.body["message_id"]) },
+      });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    expect((await ask(h.world!.keys.a)).body).toMatchObject({ status: "queued", to: CUSTOMER });
+    expect(await ask(h.world!.keys.b)).toMatchObject({ status: 404, body: { code: "not_found" } });
   });
 
   it("another workspace's key never reaches this workspace's customer or thread", async () => {

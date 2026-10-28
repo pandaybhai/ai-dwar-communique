@@ -325,7 +325,7 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
     buttons,
     offerExpiresAt,
     idempotencyKey,
-    legacy: Boolean(document) && V11_FIELDS.every((k) => body[k] === undefined),
+    legacy: Boolean(document) && V11_FIELDS.every((k) => body[k] === undefined || body[k] === null),
   };
 }
 
