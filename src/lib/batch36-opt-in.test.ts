@@ -251,3 +251,85 @@ describe("(2) Add contact and the drawer", () => {
     expect(res.status).toBe(403);
   });
 });
+
+// ------------------------------------------------------------------ (3)
+describe("(3) bulk: Mark as opted in / Mark all unknown as opted in", () => {
+  const LIST: Row[] = [
+    { id: "a", phone: "+919800000021", opt_in_status: "unknown" },
+    { id: "b", phone: "+919800000022", opt_in_status: "unknown" },
+    { id: "c", phone: "+919800000023", opt_in_status: "opted_out" },
+    { id: "d", phone: "+919800000024", opt_in_status: "opted_in" },
+  ];
+
+  it("selected: changes only unknown, skips opted out, reports the counts", async () => {
+    const w = world(LIST);
+    const res = await call(OptInRoute, { action: "bulk", contact_ids: ["a", "b", "c", "d"] });
+    expect(await res.json()).toEqual({ changed: 2, skipped_opted_out: 1, already_opted_in: 1 });
+    expect(w.contacts.get("a")).toMatchObject({ opt_in_status: "opted_in", opt_in_source: "bulk" });
+    expect(w.contacts.get("b")).toMatchObject({ opt_in_status: "opted_in", opt_in_source: "bulk" });
+    expect(w.contacts.get("c")!["opt_in_status"]).toBe("opted_out");
+    expect(w.contacts.get("c")!["opt_in_source"]).toBeUndefined();
+    expect(w.contacts.get("d")!["opt_in_source"]).toBeUndefined();
+    // the write itself only matches rows still "unknown" (a STOP meanwhile wins)
+    const upd = w.ops.find((o) => o.table === "contacts" && o.kind === "update")!;
+    expect(w.has(upd, "eq", "opt_in_status", "unknown")).toBe(true);
+    const log = w.activity().find((a) => a["action"] === "contacts_opted_in")!;
+    expect(log["user_id"]).toBe("u36");
+    expect(log["details"]).toMatchObject({ source: "bulk", scope: "selected", changed: 2, skipped_opted_out: 1 });
+  });
+
+  it("a STOP landing between the read and the write is counted as skipped, never overwritten", async () => {
+    const w = world(LIST);
+    const realFrom = w.supabase.from.bind(w.supabase);
+    let reads = 0;
+    (w.supabase as unknown as { from: (t: string) => unknown }).from = (t: string) => {
+      if (t === "contacts" && (reads += 1) === 2) w.contacts.get("a")!["opt_in_status"] = "opted_out";
+      return realFrom(t);
+    };
+    const res = await call(OptInRoute, { action: "bulk", contact_ids: ["a", "b"] });
+    expect(await res.json()).toEqual({ changed: 1, skipped_opted_out: 1, already_opted_in: 0 });
+    expect(w.contacts.get("a")!["opt_in_status"]).toBe("opted_out");
+  });
+
+  it("all unknown: counts first, then changes every unknown contact and nothing else", async () => {
+    const w = world(LIST);
+    w.ops.length = 0;
+    const counted = fakeDb((op) => (op.table === "contacts" ? { data: null, error: null, count: 2 } : undefined));
+    h.db = counted;
+    const c = await call(OptInRoute, { action: "count_unknown" });
+    expect(await c.json()).toEqual({ count: 2 });
+    const countOp = counted.ops[0]!;
+    expect(counted.has(countOp, "eq", "opt_in_status", "unknown")).toBe(true);
+
+    h.db = w;
+    const res = await call(OptInRoute, { action: "all_unknown" });
+    expect(await res.json()).toEqual({ changed: 2, skipped_opted_out: 0, already_opted_in: 0 });
+    expect([...w.contacts.values()].map((x) => x["opt_in_status"])).toEqual(["opted_in", "opted_in", "opted_out", "opted_in"]);
+    expect(w.contacts.get("a")!["opt_in_source"]).toBe("bulk");
+    expect(w.contacts.get("d")!["opt_in_source"]).toBeUndefined();
+    const log = w.activity().find((a) => a["action"] === "contacts_opted_in")!;
+    expect(log["details"]).toMatchObject({ source: "bulk", scope: "all_unknown", changed: 2 });
+  });
+
+  it("before the migration: bulk still opts in (retry without the consent columns)", async () => {
+    const w = world(LIST, { noConsentColumns: true });
+    const res = await call(OptInRoute, { action: "bulk", contact_ids: ["a", "c"] });
+    expect(await res.json()).toEqual({ changed: 1, skipped_opted_out: 1, already_opted_in: 0 });
+    expect(w.contacts.get("a")!["opt_in_status"]).toBe("opted_in");
+  });
+
+  it("the result line names what changed and what was skipped", async () => {
+    const { bulkOptInSummary } = await import("@/components/contacts/bulk-opt-in");
+    expect(bulkOptInSummary({ changed: 12, skipped_opted_out: 3, already_opted_in: 2 })).toBe(
+      "12 contacts marked opted in · 3 stayed opted out · 2 already opted in",
+    );
+    expect(bulkOptInSummary({ changed: 1, skipped_opted_out: 0, already_opted_in: 0 })).toBe("1 contact marked opted in");
+  });
+
+  it("refuses an empty or oversized selection", async () => {
+    world(LIST);
+    expect((await call(OptInRoute, { action: "bulk", contact_ids: [] })).status).toBe(400);
+    const many = Array.from({ length: 1001 }, (_, i) => `id-${i}`);
+    expect((await call(OptInRoute, { action: "bulk", contact_ids: many })).status).toBe(400);
+  });
+});
