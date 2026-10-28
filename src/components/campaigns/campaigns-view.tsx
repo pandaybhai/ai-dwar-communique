@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/contacts";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
 import { CampaignWizard } from "@/components/campaigns/campaign-wizard";
+import { useAppCommand } from "@/lib/app-commands";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,10 @@ export function CampaignsView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  // Batch 39: "New campaign" in the command palette opens the same wizard.
+  useAppCommand("new-campaign", () => {
+    if (isAdmin) setWizardOpen(true);
+  });
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const load = useCallback(async () => {

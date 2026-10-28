@@ -268,6 +268,7 @@ function applyFilters(rows, filters) {
       if (f.op === "neq") return String(v) !== f.value;
       if (f.op === "in") return f.value.replace(/[()"]/g, "").split(",").includes(String(v));
       if (f.op === "is") return f.value === "null" ? v === null : String(v) === f.value;
+      if (f.op === "gt") return Number(v) > Number(f.value);
       return true;
     }),
   );
@@ -331,6 +332,8 @@ export function createBackend(options = {}) {
       { tag_id: "t2", tags: { id: "t2", name: "Wedding season" } },
     ],
     tags: () => [],
+    contacts: () =>
+      conversations.slice(0, 6).map((c) => ({ ...c.contact, conversations: [{ id: c.id, last_message_at: c.last_message_at }] })),
     flow_triggers: () => [],
     flow_runs: () => [],
     wa_forms: () => [],

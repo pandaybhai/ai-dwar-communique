@@ -213,7 +213,7 @@ export function DesignSystemPage() {
         actions={<ThemeSwitch theme={theme} onChange={setTheme} />}
       />
 
-      <nav aria-label="Sections" className="sticky top-14 z-10 -mx-1 mb-10 flex gap-1 overflow-x-auto rounded-xl border border-border bg-card/85 p-1 shadow-xs backdrop-blur">
+      <nav aria-label="Sections" className="sticky top-2 z-10 -mx-1 mb-10 flex gap-1 overflow-x-auto rounded-xl border border-border bg-card/85 p-1 shadow-xs backdrop-blur">
         {NAV.map(([id, label]) => (
           <a
             key={id}

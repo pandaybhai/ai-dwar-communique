@@ -41,6 +41,17 @@ const SCENARIOS = {
   "inbox-empty": { path: "/app/inbox", conversations: 0 },
   "inbox-needs-human": { path: `/app/inbox?c=${firstId}`, conversations: 40, wait: "text=Waiting for you.", crop: "[data-shot=needs-human], div.bg-amber-50" },
   design: { path: "/app/design", conversations: 40, fullPage: true },
+  palette: {
+    path: "/app",
+    conversations: 40,
+    wait: "h1",
+    act: async (page) => {
+      await page.keyboard.press("Control+k");
+      await page.keyboard.type("as", { delay: 40 });
+      await page.waitForTimeout(700);
+    },
+  },
+  shortcuts: { path: "/app", conversations: 40, wait: "h1", act: async (page) => page.keyboard.press("Shift+?") },
 };
 
 const consoleErrors = [];
@@ -79,6 +90,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
   page.on("pageerror", (err) => consoleErrors.push(`${name}/${viewportName}/${theme}: ${err.message}`));
   await page.goto(`${BASE}${scenario.path}`, { waitUntil: "networkidle" });
   if (scenario.wait) await page.waitForSelector(scenario.wait, { timeout: 15000 }).catch(() => {});
+  if (scenario.act) await scenario.act(page);
   await page.waitForTimeout(800);
   const file = join(OUT, `${name}-${viewportName}${theme === "dark" ? "-dark" : ""}.png`);
   if (scenario.crop) {

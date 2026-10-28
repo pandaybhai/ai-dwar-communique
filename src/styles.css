@@ -805,3 +805,21 @@ html[data-app].dark .wa-wall {
 .msg-arrive {
   animation: msg-arrive var(--dur-base) var(--ease-out) both;
 }
+
+/* App shell (Batch 39): pages fade in; the phone tab bar steps aside in a chat. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.page-enter {
+  animation: page-enter 220ms var(--ease-out) both;
+}
+html[data-chat-open] .mobile-tabbar {
+  display: none;
+}
