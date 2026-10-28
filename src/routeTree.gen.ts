@@ -16,6 +16,9 @@ import { Route as CancellationPolicyRouteImport } from './routes/cancellation-po
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DataDeletionRouteImport } from './routes/data-deletion'
 import { Route as DemoRouteImport } from './routes/demo'
+import { Route as DevelopersRouteImport } from './routes/developers'
+import { Route as LlmsFullDottxtRouteImport } from './routes/llms-full[.]txt'
+import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
@@ -51,8 +54,19 @@ import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
+import { Route as DevelopersIndexRouteImport } from './routes/developers.index'
+import { Route as Developers24HourWindowRouteImport } from './routes/developers.24-hour-window'
 import { Route as DevelopersApiRouteImport } from './routes/developers.api'
 import { Route as DevelopersApiDotpostmanDotjsonRouteImport } from './routes/developers.api[.]postman[.]json'
+import { Route as DevelopersChangelogRouteImport } from './routes/developers.changelog'
+import { Route as DevelopersErrorsRouteImport } from './routes/developers.errors'
+import { Route as DevelopersIdempotencyRouteImport } from './routes/developers.idempotency'
+import { Route as DevelopersLlmsFullDottxtRouteImport } from './routes/developers.llms-full[.]txt'
+import { Route as DevelopersLlmsDottxtRouteImport } from './routes/developers.llms[.]txt'
+import { Route as DevelopersOpenapiDotjsonRouteImport } from './routes/developers.openapi[.]json'
+import { Route as DevelopersPlansRouteImport } from './routes/developers.plans'
+import { Route as DevelopersQuickstartRouteImport } from './routes/developers.quickstart'
+import { Route as DevelopersRateLimitsRouteImport } from './routes/developers.rate-limits'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as PayPaymentIdRouteImport } from './routes/pay.$paymentId'
 import { Route as RTokenRouteImport } from './routes/r.$token'
@@ -137,6 +151,11 @@ import { Route as AppCatalogIndexRouteImport } from './routes/app/catalog.index'
 import { Route as AppCatalogCollectionsRouteImport } from './routes/app/catalog.collections'
 import { Route as AppFlowsIndexRouteImport } from './routes/app/flows.index'
 import { Route as AppFlowsIdRouteImport } from './routes/app/flows.$id'
+import { Route as DevelopersGuidesSlugRouteImport } from './routes/developers.guides.$slug'
+import { Route as DevelopersReferenceIndexRouteImport } from './routes/developers.reference.index'
+import { Route as DevelopersReferenceEndpointRouteImport } from './routes/developers.reference.$endpoint'
+import { Route as DevelopersWebhooksIndexRouteImport } from './routes/developers.webhooks.index'
+import { Route as DevelopersWebhooksEventRouteImport } from './routes/developers.webhooks.$event'
 import { Route as ApiPublicRazorpayFlowWebhookOrgIdRouteImport } from './routes/api/public/razorpay-flow-webhook/$orgId'
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
@@ -207,6 +226,21 @@ const DataDeletionRoute = DataDeletionRouteImport.update({
 const DemoRoute = DemoRouteImport.update({
   id: '/demo',
   path: '/demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevelopersRoute = DevelopersRouteImport.update({
+  id: '/developers',
+  path: '/developers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LlmsFullDottxtRoute = LlmsFullDottxtRouteImport.update({
+  id: '/llms-full.txt',
+  path: '/llms-full.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
+  id: '/llms.txt',
+  path: '/llms.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -384,17 +418,74 @@ const AppTemplatesRoute = AppTemplatesRouteImport.update({
   path: '/templates',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const DevelopersIndexRoute = DevelopersIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const Developers24HourWindowRoute = Developers24HourWindowRouteImport.update({
+  id: '/24-hour-window',
+  path: '/24-hour-window',
+  getParentRoute: () => DevelopersRoute,
+} as any)
 const DevelopersApiRoute = DevelopersApiRouteImport.update({
-  id: '/developers/api',
-  path: '/developers/api',
-  getParentRoute: () => rootRouteImport,
+  id: '/api',
+  path: '/api',
+  getParentRoute: () => DevelopersRoute,
 } as any)
 const DevelopersApiDotpostmanDotjsonRoute =
   DevelopersApiDotpostmanDotjsonRouteImport.update({
-    id: '/developers/api.postman.json',
-    path: '/developers/api.postman.json',
-    getParentRoute: () => rootRouteImport,
+    id: '/api.postman.json',
+    path: '/api.postman.json',
+    getParentRoute: () => DevelopersRoute,
   } as any)
+const DevelopersChangelogRoute = DevelopersChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersErrorsRoute = DevelopersErrorsRouteImport.update({
+  id: '/errors',
+  path: '/errors',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersIdempotencyRoute = DevelopersIdempotencyRouteImport.update({
+  id: '/idempotency',
+  path: '/idempotency',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersLlmsFullDottxtRoute =
+  DevelopersLlmsFullDottxtRouteImport.update({
+    id: '/llms-full.txt',
+    path: '/llms-full.txt',
+    getParentRoute: () => DevelopersRoute,
+  } as any)
+const DevelopersLlmsDottxtRoute = DevelopersLlmsDottxtRouteImport.update({
+  id: '/llms.txt',
+  path: '/llms.txt',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersOpenapiDotjsonRoute =
+  DevelopersOpenapiDotjsonRouteImport.update({
+    id: '/openapi.json',
+    path: '/openapi.json',
+    getParentRoute: () => DevelopersRoute,
+  } as any)
+const DevelopersPlansRoute = DevelopersPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersQuickstartRoute = DevelopersQuickstartRouteImport.update({
+  id: '/quickstart',
+  path: '/quickstart',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersRateLimitsRoute = DevelopersRateLimitsRouteImport.update({
+  id: '/rate-limits',
+  path: '/rate-limits',
+  getParentRoute: () => DevelopersRoute,
+} as any)
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
@@ -834,6 +925,33 @@ const AppFlowsIdRoute = AppFlowsIdRouteImport.update({
   path: '/flows/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const DevelopersGuidesSlugRoute = DevelopersGuidesSlugRouteImport.update({
+  id: '/guides/$slug',
+  path: '/guides/$slug',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersReferenceIndexRoute =
+  DevelopersReferenceIndexRouteImport.update({
+    id: '/reference/',
+    path: '/reference/',
+    getParentRoute: () => DevelopersRoute,
+  } as any)
+const DevelopersReferenceEndpointRoute =
+  DevelopersReferenceEndpointRouteImport.update({
+    id: '/reference/$endpoint',
+    path: '/reference/$endpoint',
+    getParentRoute: () => DevelopersRoute,
+  } as any)
+const DevelopersWebhooksIndexRoute = DevelopersWebhooksIndexRouteImport.update({
+  id: '/webhooks/',
+  path: '/webhooks/',
+  getParentRoute: () => DevelopersRoute,
+} as any)
+const DevelopersWebhooksEventRoute = DevelopersWebhooksEventRouteImport.update({
+  id: '/webhooks/$event',
+  path: '/webhooks/$event',
+  getParentRoute: () => DevelopersRoute,
+} as any)
 const ApiPublicRazorpayFlowWebhookOrgIdRoute =
   ApiPublicRazorpayFlowWebhookOrgIdRouteImport.update({
     id: '/api/public/razorpay-flow-webhook/$orgId',
@@ -1041,6 +1159,9 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
+  '/developers': typeof DevelopersRouteWithChildren
+  '/llms-full.txt': typeof LlmsFullDottxtRoute
+  '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
@@ -1074,13 +1195,24 @@ export interface FileRoutesByFullPath {
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
+  '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
   '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
+  '/developers/changelog': typeof DevelopersChangelogRoute
+  '/developers/errors': typeof DevelopersErrorsRoute
+  '/developers/idempotency': typeof DevelopersIdempotencyRoute
+  '/developers/llms-full.txt': typeof DevelopersLlmsFullDottxtRoute
+  '/developers/llms.txt': typeof DevelopersLlmsDottxtRoute
+  '/developers/openapi.json': typeof DevelopersOpenapiDotjsonRoute
+  '/developers/plans': typeof DevelopersPlansRoute
+  '/developers/quickstart': typeof DevelopersQuickstartRoute
+  '/developers/rate-limits': typeof DevelopersRateLimitsRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/developers/': typeof DevelopersIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
@@ -1159,9 +1291,14 @@ export interface FileRoutesByFullPath {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
+  '/developers/guides/$slug': typeof DevelopersGuidesSlugRoute
+  '/developers/reference/$endpoint': typeof DevelopersReferenceEndpointRoute
+  '/developers/webhooks/$event': typeof DevelopersWebhooksEventRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/developers/reference/': typeof DevelopersReferenceIndexRoute
+  '/developers/webhooks/': typeof DevelopersWebhooksIndexRoute
   '/api/public/razorpay-flow-webhook/$orgId': typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
@@ -1205,6 +1342,8 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
+  '/llms-full.txt': typeof LlmsFullDottxtRoute
+  '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
@@ -1238,13 +1377,24 @@ export interface FileRoutesByTo {
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
+  '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
   '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
+  '/developers/changelog': typeof DevelopersChangelogRoute
+  '/developers/errors': typeof DevelopersErrorsRoute
+  '/developers/idempotency': typeof DevelopersIdempotencyRoute
+  '/developers/llms-full.txt': typeof DevelopersLlmsFullDottxtRoute
+  '/developers/llms.txt': typeof DevelopersLlmsDottxtRoute
+  '/developers/openapi.json': typeof DevelopersOpenapiDotjsonRoute
+  '/developers/plans': typeof DevelopersPlansRoute
+  '/developers/quickstart': typeof DevelopersQuickstartRoute
+  '/developers/rate-limits': typeof DevelopersRateLimitsRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/developers': typeof DevelopersIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
@@ -1323,9 +1473,14 @@ export interface FileRoutesByTo {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
+  '/developers/guides/$slug': typeof DevelopersGuidesSlugRoute
+  '/developers/reference/$endpoint': typeof DevelopersReferenceEndpointRoute
+  '/developers/webhooks/$event': typeof DevelopersWebhooksEventRoute
   '/app/campaigns': typeof AppCampaignsIndexRoute
   '/app/catalog': typeof AppCatalogIndexRoute
   '/app/flows': typeof AppFlowsIndexRoute
+  '/developers/reference': typeof DevelopersReferenceIndexRoute
+  '/developers/webhooks': typeof DevelopersWebhooksIndexRoute
   '/api/public/razorpay-flow-webhook/$orgId': typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
@@ -1372,6 +1527,9 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
   '/demo': typeof DemoRoute
+  '/developers': typeof DevelopersRouteWithChildren
+  '/llms-full.txt': typeof LlmsFullDottxtRoute
+  '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
@@ -1405,13 +1563,24 @@ export interface FileRoutesById {
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
+  '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
   '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
+  '/developers/changelog': typeof DevelopersChangelogRoute
+  '/developers/errors': typeof DevelopersErrorsRoute
+  '/developers/idempotency': typeof DevelopersIdempotencyRoute
+  '/developers/llms-full.txt': typeof DevelopersLlmsFullDottxtRoute
+  '/developers/llms.txt': typeof DevelopersLlmsDottxtRoute
+  '/developers/openapi.json': typeof DevelopersOpenapiDotjsonRoute
+  '/developers/plans': typeof DevelopersPlansRoute
+  '/developers/quickstart': typeof DevelopersQuickstartRoute
+  '/developers/rate-limits': typeof DevelopersRateLimitsRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/developers/': typeof DevelopersIndexRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
@@ -1490,9 +1659,14 @@ export interface FileRoutesById {
   '/app/campaigns/$id': typeof AppCampaignsIdRoute
   '/app/catalog/collections': typeof AppCatalogCollectionsRoute
   '/app/flows/$id': typeof AppFlowsIdRoute
+  '/developers/guides/$slug': typeof DevelopersGuidesSlugRoute
+  '/developers/reference/$endpoint': typeof DevelopersReferenceEndpointRoute
+  '/developers/webhooks/$event': typeof DevelopersWebhooksEventRoute
   '/app/campaigns/': typeof AppCampaignsIndexRoute
   '/app/catalog/': typeof AppCatalogIndexRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/developers/reference/': typeof DevelopersReferenceIndexRoute
+  '/developers/webhooks/': typeof DevelopersWebhooksIndexRoute
   '/api/public/razorpay-flow-webhook/$orgId': typeof ApiPublicRazorpayFlowWebhookOrgIdRoute
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
@@ -1540,6 +1714,9 @@ export interface FileRouteTypes {
     | '/contact'
     | '/data-deletion'
     | '/demo'
+    | '/developers'
+    | '/llms-full.txt'
+    | '/llms.txt'
     | '/login'
     | '/pricing'
     | '/privacy'
@@ -1573,13 +1750,24 @@ export interface FileRouteTypes {
     | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
+    | '/developers/24-hour-window'
     | '/developers/api'
     | '/developers/api.postman.json'
+    | '/developers/changelog'
+    | '/developers/errors'
+    | '/developers/idempotency'
+    | '/developers/llms-full.txt'
+    | '/developers/llms.txt'
+    | '/developers/openapi.json'
+    | '/developers/plans'
+    | '/developers/quickstart'
+    | '/developers/rate-limits'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/developers/'
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
@@ -1658,9 +1846,14 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/catalog/collections'
     | '/app/flows/$id'
+    | '/developers/guides/$slug'
+    | '/developers/reference/$endpoint'
+    | '/developers/webhooks/$event'
     | '/app/campaigns/'
     | '/app/catalog/'
     | '/app/flows/'
+    | '/developers/reference/'
+    | '/developers/webhooks/'
     | '/api/public/razorpay-flow-webhook/$orgId'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
@@ -1704,6 +1897,8 @@ export interface FileRouteTypes {
     | '/contact'
     | '/data-deletion'
     | '/demo'
+    | '/llms-full.txt'
+    | '/llms.txt'
     | '/login'
     | '/pricing'
     | '/privacy'
@@ -1737,13 +1932,24 @@ export interface FileRouteTypes {
     | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
+    | '/developers/24-hour-window'
     | '/developers/api'
     | '/developers/api.postman.json'
+    | '/developers/changelog'
+    | '/developers/errors'
+    | '/developers/idempotency'
+    | '/developers/llms-full.txt'
+    | '/developers/llms.txt'
+    | '/developers/openapi.json'
+    | '/developers/plans'
+    | '/developers/quickstart'
+    | '/developers/rate-limits'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
     | '/admin'
     | '/app'
+    | '/developers'
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
@@ -1822,9 +2028,14 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/catalog/collections'
     | '/app/flows/$id'
+    | '/developers/guides/$slug'
+    | '/developers/reference/$endpoint'
+    | '/developers/webhooks/$event'
     | '/app/campaigns'
     | '/app/catalog'
     | '/app/flows'
+    | '/developers/reference'
+    | '/developers/webhooks'
     | '/api/public/razorpay-flow-webhook/$orgId'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
@@ -1870,6 +2081,9 @@ export interface FileRouteTypes {
     | '/contact'
     | '/data-deletion'
     | '/demo'
+    | '/developers'
+    | '/llms-full.txt'
+    | '/llms.txt'
     | '/login'
     | '/pricing'
     | '/privacy'
@@ -1903,13 +2117,24 @@ export interface FileRouteTypes {
     | '/app/receipts'
     | '/app/settings'
     | '/app/templates'
+    | '/developers/24-hour-window'
     | '/developers/api'
     | '/developers/api.postman.json'
+    | '/developers/changelog'
+    | '/developers/errors'
+    | '/developers/idempotency'
+    | '/developers/llms-full.txt'
+    | '/developers/llms.txt'
+    | '/developers/openapi.json'
+    | '/developers/plans'
+    | '/developers/quickstart'
+    | '/developers/rate-limits'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
     | '/admin/'
     | '/app/'
+    | '/developers/'
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
@@ -1988,9 +2213,14 @@ export interface FileRouteTypes {
     | '/app/campaigns/$id'
     | '/app/catalog/collections'
     | '/app/flows/$id'
+    | '/developers/guides/$slug'
+    | '/developers/reference/$endpoint'
+    | '/developers/webhooks/$event'
     | '/app/campaigns/'
     | '/app/catalog/'
     | '/app/flows/'
+    | '/developers/reference/'
+    | '/developers/webhooks/'
     | '/api/public/razorpay-flow-webhook/$orgId'
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
@@ -2037,6 +2267,9 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   DataDeletionRoute: typeof DataDeletionRoute
   DemoRoute: typeof DemoRoute
+  DevelopersRoute: typeof DevelopersRouteWithChildren
+  LlmsFullDottxtRoute: typeof LlmsFullDottxtRoute
+  LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -2050,8 +2283,6 @@ export interface RootRouteChildren {
   ApiEventsRoute: typeof ApiEventsRoute
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
-  DevelopersApiRoute: typeof DevelopersApiRoute
-  DevelopersApiDotpostmanDotjsonRoute: typeof DevelopersApiDotpostmanDotjsonRoute
   JoinTokenRoute: typeof JoinTokenRoute
   PayPaymentIdRoute: typeof PayPaymentIdRoute
   RTokenRoute: typeof RTokenRoute
@@ -2212,6 +2443,27 @@ declare module '@tanstack/react-router' {
       path: '/demo'
       fullPath: '/demo'
       preLoaderRoute: typeof DemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/developers': {
+      id: '/developers'
+      path: '/developers'
+      fullPath: '/developers'
+      preLoaderRoute: typeof DevelopersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/llms-full.txt': {
+      id: '/llms-full.txt'
+      path: '/llms-full.txt'
+      fullPath: '/llms-full.txt'
+      preLoaderRoute: typeof LlmsFullDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/llms.txt': {
+      id: '/llms.txt'
+      path: '/llms.txt'
+      fullPath: '/llms.txt'
+      preLoaderRoute: typeof LlmsDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -2459,19 +2711,96 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTemplatesRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/developers/': {
+      id: '/developers/'
+      path: '/'
+      fullPath: '/developers/'
+      preLoaderRoute: typeof DevelopersIndexRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/24-hour-window': {
+      id: '/developers/24-hour-window'
+      path: '/24-hour-window'
+      fullPath: '/developers/24-hour-window'
+      preLoaderRoute: typeof Developers24HourWindowRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
     '/developers/api': {
       id: '/developers/api'
-      path: '/developers/api'
+      path: '/api'
       fullPath: '/developers/api'
       preLoaderRoute: typeof DevelopersApiRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof DevelopersRoute
     }
     '/developers/api.postman.json': {
       id: '/developers/api.postman.json'
-      path: '/developers/api.postman.json'
+      path: '/api.postman.json'
       fullPath: '/developers/api.postman.json'
       preLoaderRoute: typeof DevelopersApiDotpostmanDotjsonRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/changelog': {
+      id: '/developers/changelog'
+      path: '/changelog'
+      fullPath: '/developers/changelog'
+      preLoaderRoute: typeof DevelopersChangelogRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/errors': {
+      id: '/developers/errors'
+      path: '/errors'
+      fullPath: '/developers/errors'
+      preLoaderRoute: typeof DevelopersErrorsRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/idempotency': {
+      id: '/developers/idempotency'
+      path: '/idempotency'
+      fullPath: '/developers/idempotency'
+      preLoaderRoute: typeof DevelopersIdempotencyRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/llms-full.txt': {
+      id: '/developers/llms-full.txt'
+      path: '/llms-full.txt'
+      fullPath: '/developers/llms-full.txt'
+      preLoaderRoute: typeof DevelopersLlmsFullDottxtRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/llms.txt': {
+      id: '/developers/llms.txt'
+      path: '/llms.txt'
+      fullPath: '/developers/llms.txt'
+      preLoaderRoute: typeof DevelopersLlmsDottxtRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/openapi.json': {
+      id: '/developers/openapi.json'
+      path: '/openapi.json'
+      fullPath: '/developers/openapi.json'
+      preLoaderRoute: typeof DevelopersOpenapiDotjsonRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/plans': {
+      id: '/developers/plans'
+      path: '/plans'
+      fullPath: '/developers/plans'
+      preLoaderRoute: typeof DevelopersPlansRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/quickstart': {
+      id: '/developers/quickstart'
+      path: '/quickstart'
+      fullPath: '/developers/quickstart'
+      preLoaderRoute: typeof DevelopersQuickstartRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/rate-limits': {
+      id: '/developers/rate-limits'
+      path: '/rate-limits'
+      fullPath: '/developers/rate-limits'
+      preLoaderRoute: typeof DevelopersRateLimitsRouteImport
+      parentRoute: typeof DevelopersRoute
     }
     '/join/$token': {
       id: '/join/$token'
@@ -3061,6 +3390,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFlowsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/developers/guides/$slug': {
+      id: '/developers/guides/$slug'
+      path: '/guides/$slug'
+      fullPath: '/developers/guides/$slug'
+      preLoaderRoute: typeof DevelopersGuidesSlugRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/reference/': {
+      id: '/developers/reference/'
+      path: '/reference'
+      fullPath: '/developers/reference/'
+      preLoaderRoute: typeof DevelopersReferenceIndexRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/reference/$endpoint': {
+      id: '/developers/reference/$endpoint'
+      path: '/reference/$endpoint'
+      fullPath: '/developers/reference/$endpoint'
+      preLoaderRoute: typeof DevelopersReferenceEndpointRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/webhooks/': {
+      id: '/developers/webhooks/'
+      path: '/webhooks'
+      fullPath: '/developers/webhooks/'
+      preLoaderRoute: typeof DevelopersWebhooksIndexRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
+    '/developers/webhooks/$event': {
+      id: '/developers/webhooks/$event'
+      path: '/webhooks/$event'
+      fullPath: '/developers/webhooks/$event'
+      preLoaderRoute: typeof DevelopersWebhooksEventRouteImport
+      parentRoute: typeof DevelopersRoute
+    }
     '/api/public/razorpay-flow-webhook/$orgId': {
       id: '/api/public/razorpay-flow-webhook/$orgId'
       path: '/api/public/razorpay-flow-webhook/$orgId'
@@ -3394,6 +3758,52 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
   AppRouteRouteChildren,
 )
 
+interface DevelopersRouteChildren {
+  Developers24HourWindowRoute: typeof Developers24HourWindowRoute
+  DevelopersApiRoute: typeof DevelopersApiRoute
+  DevelopersApiDotpostmanDotjsonRoute: typeof DevelopersApiDotpostmanDotjsonRoute
+  DevelopersChangelogRoute: typeof DevelopersChangelogRoute
+  DevelopersErrorsRoute: typeof DevelopersErrorsRoute
+  DevelopersIdempotencyRoute: typeof DevelopersIdempotencyRoute
+  DevelopersLlmsFullDottxtRoute: typeof DevelopersLlmsFullDottxtRoute
+  DevelopersLlmsDottxtRoute: typeof DevelopersLlmsDottxtRoute
+  DevelopersOpenapiDotjsonRoute: typeof DevelopersOpenapiDotjsonRoute
+  DevelopersPlansRoute: typeof DevelopersPlansRoute
+  DevelopersQuickstartRoute: typeof DevelopersQuickstartRoute
+  DevelopersRateLimitsRoute: typeof DevelopersRateLimitsRoute
+  DevelopersIndexRoute: typeof DevelopersIndexRoute
+  DevelopersGuidesSlugRoute: typeof DevelopersGuidesSlugRoute
+  DevelopersReferenceEndpointRoute: typeof DevelopersReferenceEndpointRoute
+  DevelopersWebhooksEventRoute: typeof DevelopersWebhooksEventRoute
+  DevelopersReferenceIndexRoute: typeof DevelopersReferenceIndexRoute
+  DevelopersWebhooksIndexRoute: typeof DevelopersWebhooksIndexRoute
+}
+
+const DevelopersRouteChildren: DevelopersRouteChildren = {
+  Developers24HourWindowRoute: Developers24HourWindowRoute,
+  DevelopersApiRoute: DevelopersApiRoute,
+  DevelopersApiDotpostmanDotjsonRoute: DevelopersApiDotpostmanDotjsonRoute,
+  DevelopersChangelogRoute: DevelopersChangelogRoute,
+  DevelopersErrorsRoute: DevelopersErrorsRoute,
+  DevelopersIdempotencyRoute: DevelopersIdempotencyRoute,
+  DevelopersLlmsFullDottxtRoute: DevelopersLlmsFullDottxtRoute,
+  DevelopersLlmsDottxtRoute: DevelopersLlmsDottxtRoute,
+  DevelopersOpenapiDotjsonRoute: DevelopersOpenapiDotjsonRoute,
+  DevelopersPlansRoute: DevelopersPlansRoute,
+  DevelopersQuickstartRoute: DevelopersQuickstartRoute,
+  DevelopersRateLimitsRoute: DevelopersRateLimitsRoute,
+  DevelopersIndexRoute: DevelopersIndexRoute,
+  DevelopersGuidesSlugRoute: DevelopersGuidesSlugRoute,
+  DevelopersReferenceEndpointRoute: DevelopersReferenceEndpointRoute,
+  DevelopersWebhooksEventRoute: DevelopersWebhooksEventRoute,
+  DevelopersReferenceIndexRoute: DevelopersReferenceIndexRoute,
+  DevelopersWebhooksIndexRoute: DevelopersWebhooksIndexRoute,
+}
+
+const DevelopersRouteWithChildren = DevelopersRoute._addFileChildren(
+  DevelopersRouteChildren,
+)
+
 interface ApiV1CampaignsCampaignIdRouteChildren {
   ApiV1CampaignsCampaignIdCancelRoute: typeof ApiV1CampaignsCampaignIdCancelRoute
 }
@@ -3452,6 +3862,9 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   DataDeletionRoute: DataDeletionRoute,
   DemoRoute: DemoRoute,
+  DevelopersRoute: DevelopersRouteWithChildren,
+  LlmsFullDottxtRoute: LlmsFullDottxtRoute,
+  LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
@@ -3465,8 +3878,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiEventsRoute: ApiEventsRoute,
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
-  DevelopersApiRoute: DevelopersApiRoute,
-  DevelopersApiDotpostmanDotjsonRoute: DevelopersApiDotpostmanDotjsonRoute,
   JoinTokenRoute: JoinTokenRoute,
   PayPaymentIdRoute: PayPaymentIdRoute,
   RTokenRoute: RTokenRoute,

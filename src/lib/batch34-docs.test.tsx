@@ -6,7 +6,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 /**
- * Batch 34 item 6 — /developers/api: the public docs, on the shared footer.
+ * Batch 34 item 6 — the public docs, on the shared footer. Since Batch 38
+ * item 9 they are the developer portal under /developers (/developers/api
+ * redirects there, its #anchors still land): the same facts, checked across
+ * the portal's pages.
  * The examples are the real thing: the curl body passes the server's own
  * request check, the signature-check code accepts our signature and refuses
  * a changed or old one, and the limits are the ones the server enforces.
@@ -47,59 +50,61 @@ import * as server from "./public-api.server";
 import { signWebhook } from "./public-api-webhooks.server";
 import { parseSendRequest } from "./public-api-send.server";
 import { INVOICE_TEMPLATE_COMPONENTS } from "./test-support/public-api-world";
+import { htmlText, renderPortal } from "./test-support/portal-render";
 
-const text = (html: string) =>
-  html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ");
+const text = htmlText;
 
+/** The whole portal, as served. */
 async function page(): Promise<string> {
-  const mod = (await import("@/routes/developers.api.tsx")) as {
-    Route: { options: { component: ComponentType & { preload?: () => Promise<void> } } };
-  };
-  await mod.Route.options.component.preload?.();
-  const Page = mod.Route.options.component;
-  return renderToStaticMarkup(<Page />);
+  return [...renderPortal().values()].join("\n");
 }
 
 describe("/developers/api", () => {
   it("is a real public route with the shared header and footer", async () => {
     const tree = readFileSync(join(import.meta.dirname, "..", "routeTree.gen.ts"), "utf8");
     expect(tree).toContain("'/developers/api': typeof");
-    const src = readFileSync(
+    expect(tree).toContain("'/developers/': typeof");
+    // The old address redirects to the portal; the portal's frame has the shared footer.
+    const old = readFileSync(
       join(import.meta.dirname, "..", "routes", "developers.api.tsx"),
       "utf8",
     );
-    expect(src).toContain("<SiteFooter />");
-    expect(src).not.toMatch(/<footer\b/);
-    const html = await page();
-    expect(html).toContain('href="/pricing"'); // the footer's links
-    expect(html).toContain('href="/privacy"');
-    expect(
-      readFileSync(join(import.meta.dirname, "..", "routes", "sitemap[.]xml.ts"), "utf8"),
-    ).toContain('path: "/developers/api"');
+    expect(old).toMatch(/redirect\(\{\s*to: "\/developers",/);
+    const shell = readFileSync(
+      join(import.meta.dirname, "..", "components", "developers", "docs-shell.tsx"),
+      "utf8",
+    );
+    expect(shell).toContain("<SiteFooter />");
+    expect(shell).not.toMatch(/<footer\b/);
+    const footer = readFileSync(
+      join(import.meta.dirname, "..", "components", "site-footer.tsx"),
+      "utf8",
+    );
+    expect(footer).toContain('to: "/pricing"'); // the footer's links
+    expect(footer).toContain('to: "/privacy"');
+    const sitemap = (await import("../routes/sitemap[.]xml")) as unknown as {
+      Route: { options: { server: { handlers: { GET: () => Promise<Response> } } } };
+    };
+    const xml = await (await sitemap.Route.options.server.handlers.GET()).text();
+    expect(xml).toContain("<loc>https://aidwar.in/developers</loc>");
+    expect(xml).toContain("<loc>https://aidwar.in/developers/quickstart</loc>");
   });
 
   it("covers authentication, the send call (curl + JavaScript), status, errors, idempotency, webhooks, limits and the 24-hour rule", async () => {
     const t = text(await page());
     for (const heading of [
       "Authentication",
-      "Send a document template",
-      "Message status",
+      "Send a template",
+      "A message's status",
       "Errors",
       "Idempotency",
       "Webhooks",
       "Rate limits",
-      "The 24-hour window and pricing",
+      "The 24-hour window",
     ])
       expect(t).toContain(heading);
     expect(t).toContain("Authorization: Bearer adw_live_");
-    expect(t).toContain("curl -X POST https://aidwar.in/api/v1/messages/template");
+    expect(t).toContain('curl -X POST "https://aidwar.in/api/v1/messages/template"');
     expect(t).toContain('readFileSync("INV-1001.pdf").toString("base64")');
     expect(t).toContain("GET https://aidwar.in/api/v1/messages/{message_id}");
     for (const status of ["400", "401", "402", "403", "404", "409", "413", "429", "5xx"])
@@ -198,7 +203,9 @@ describe("Settings → API & webhooks", () => {
     expect(src).toContain("href={DOCS_PATH}");
     expect(src).toContain("curlExample({");
     expect(src).toContain("apiReadyTemplates(");
-    expect(existsSync(join(import.meta.dirname, "..", "routes", "developers.api.tsx"))).toBe(true);
+    expect(existsSync(join(import.meta.dirname, "..", "routes", "developers.index.tsx"))).toBe(
+      true,
+    );
   });
 
   it("apiReadyTemplates: approved, document header, nothing else to fill", () => {

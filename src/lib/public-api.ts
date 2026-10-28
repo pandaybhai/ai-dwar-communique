@@ -15,7 +15,7 @@ export const IDEMPOTENCY_WINDOW_HOURS = 24;
 export const WEBHOOK_RETRY_HOURS = 24;
 export const WEBHOOK_TIMEOUT_SECONDS = 10;
 export const SIGNATURE_TOLERANCE_SECONDS = 300;
-export const DOCS_PATH = "/developers/api";
+export const DOCS_PATH = "/developers";
 
 export const SEND_PATH = "/api/v1/messages/template";
 export const STATUS_PATH = "/api/v1/messages/{message_id}";

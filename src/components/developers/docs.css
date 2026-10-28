@@ -1,0 +1,351 @@
+/*
+ * The developer portal's look (Batch 38 item 9): AiDwar's own emerald and
+ * Plus Jakarta Sans, in a docs layout. Scoped to .docs-root so nothing here
+ * touches the app. Light by default; dark when html[data-docs-theme="dark"]
+ * (set before first paint by the docs layout's head script).
+ */
+
+.docs-root {
+  --d-bg: oklch(0.995 0.002 160);
+  --d-surface: oklch(1 0 0);
+  --d-subtle: oklch(0.975 0.006 165);
+  --d-fg: oklch(0.2 0.02 255);
+  --d-muted: oklch(0.47 0.02 255);
+  --d-faint: oklch(0.62 0.015 255);
+  --d-border: oklch(0.92 0.008 255);
+  --d-border-strong: oklch(0.86 0.01 255);
+  --d-accent: oklch(0.6 0.14 162);
+  --d-accent-strong: oklch(0.5 0.12 162);
+  --d-accent-soft: oklch(0.95 0.04 162);
+  --d-ring: oklch(0.68 0.14 162);
+  --d-shadow: 0 1px 2px oklch(0.2 0.02 255 / 0.04), 0 8px 24px -12px oklch(0.2 0.02 255 / 0.12);
+  --d-shadow-lift:
+    0 2px 4px oklch(0.2 0.02 255 / 0.05), 0 18px 40px -16px oklch(0.2 0.02 255 / 0.22);
+  /* The code panel is dark in both themes, as in the best docs. */
+  --c-bg: oklch(0.2 0.025 255);
+  --c-head: oklch(0.235 0.025 255);
+  --c-border: oklch(0.32 0.025 255);
+  --c-fg: oklch(0.92 0.01 255);
+  --c-muted: oklch(0.66 0.02 255);
+  --c-string: oklch(0.82 0.12 150);
+  --c-number: oklch(0.82 0.12 70);
+  --c-keyword: oklch(0.78 0.12 300);
+  --c-key: oklch(0.8 0.09 220);
+  --c-comment: oklch(0.6 0.02 255);
+  /* The site's own tokens, for the shared components used inside the docs. */
+  --background: var(--d-bg);
+  --foreground: var(--d-fg);
+  --card: var(--d-surface);
+  --primary: oklch(0.6 0.14 162);
+  --primary-foreground: oklch(0.99 0 0);
+  --muted: var(--d-subtle);
+  --muted-foreground: var(--d-muted);
+  --secondary: var(--d-subtle);
+  --secondary-foreground: var(--d-fg);
+  --border: var(--d-border);
+  --ring: var(--d-ring);
+  background: var(--d-bg);
+  color: var(--d-fg);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+html[data-docs-theme="dark"] .docs-root {
+  --d-bg: oklch(0.16 0.018 255);
+  --d-surface: oklch(0.195 0.02 255);
+  --d-subtle: oklch(0.22 0.02 255);
+  --d-fg: oklch(0.95 0.005 255);
+  --d-muted: oklch(0.74 0.015 255);
+  --d-faint: oklch(0.6 0.015 255);
+  --d-border: oklch(0.29 0.02 255);
+  --d-border-strong: oklch(0.36 0.02 255);
+  --d-accent: oklch(0.76 0.14 162);
+  --d-accent-strong: oklch(0.82 0.13 162);
+  --d-accent-soft: oklch(0.3 0.06 162);
+  --d-ring: oklch(0.76 0.14 162);
+  --d-shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 8px 24px -12px oklch(0 0 0 / 0.5);
+  --d-shadow-lift: 0 2px 4px oklch(0 0 0 / 0.35), 0 18px 40px -16px oklch(0 0 0 / 0.6);
+  --c-bg: oklch(0.13 0.018 255);
+  --c-head: oklch(0.17 0.02 255);
+  --c-border: oklch(0.27 0.02 255);
+  --primary: oklch(0.76 0.14 162);
+  --primary-foreground: oklch(0.16 0.02 255);
+  color-scheme: dark;
+}
+
+.docs-root ::selection {
+  background: color-mix(in oklab, var(--d-accent) 28%, transparent);
+}
+
+/* ---- prose ---- */
+.docs-prose {
+  font-size: 16.5px;
+  line-height: 1.7;
+  max-width: 72ch;
+  color: var(--d-fg);
+}
+.docs-prose p {
+  color: color-mix(in oklab, var(--d-fg) 86%, var(--d-bg));
+}
+.docs-prose a:not(.docs-plain) {
+  color: var(--d-accent-strong);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--d-accent) 40%, transparent);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.15s ease;
+}
+.docs-prose a:not(.docs-plain):hover {
+  text-decoration-color: currentColor;
+}
+.docs-prose code.docs-inline {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86em;
+  padding: 0.12em 0.4em;
+  border-radius: 6px;
+  background: var(--d-subtle);
+  border: 1px solid var(--d-border);
+  white-space: nowrap;
+}
+
+.docs-mono {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.docs-anchor {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.docs-heading:hover .docs-anchor,
+.docs-anchor:focus-visible {
+  opacity: 1;
+}
+
+.docs-focus:focus-visible,
+.docs-root a:focus-visible,
+.docs-root button:focus-visible,
+.docs-root input:focus-visible,
+.docs-root select:focus-visible {
+  outline: 2px solid var(--d-ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---- method badges ---- */
+.docs-method {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+.docs-method-GET {
+  color: oklch(0.45 0.12 162);
+  background: oklch(0.95 0.045 162);
+  border-color: oklch(0.88 0.06 162);
+}
+.docs-method-POST {
+  color: oklch(0.45 0.14 250);
+  background: oklch(0.95 0.035 250);
+  border-color: oklch(0.88 0.05 250);
+}
+.docs-method-PATCH {
+  color: oklch(0.47 0.12 70);
+  background: oklch(0.96 0.05 85);
+  border-color: oklch(0.89 0.07 85);
+}
+.docs-method-DELETE {
+  color: oklch(0.5 0.17 25);
+  background: oklch(0.96 0.03 25);
+  border-color: oklch(0.89 0.05 25);
+}
+html[data-docs-theme="dark"] .docs-method-GET {
+  color: oklch(0.82 0.13 162);
+  background: oklch(0.3 0.06 162 / 0.6);
+  border-color: oklch(0.4 0.07 162);
+}
+html[data-docs-theme="dark"] .docs-method-POST {
+  color: oklch(0.82 0.1 250);
+  background: oklch(0.3 0.06 250 / 0.6);
+  border-color: oklch(0.42 0.07 250);
+}
+html[data-docs-theme="dark"] .docs-method-PATCH {
+  color: oklch(0.86 0.12 85);
+  background: oklch(0.32 0.06 85 / 0.6);
+  border-color: oklch(0.44 0.07 85);
+}
+html[data-docs-theme="dark"] .docs-method-DELETE {
+  color: oklch(0.8 0.13 25);
+  background: oklch(0.32 0.07 25 / 0.6);
+  border-color: oklch(0.44 0.08 25);
+}
+
+/* ---- the code panel ---- */
+.docs-code {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  box-shadow: var(--d-shadow);
+  overflow: hidden;
+}
+.docs-code-head {
+  background: var(--c-head);
+  border-bottom: 1px solid var(--c-border);
+}
+.docs-code pre {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.75px;
+  line-height: 1.7;
+  tab-size: 2;
+}
+.docs-tab {
+  color: var(--c-muted);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+.docs-tab:hover {
+  color: var(--c-fg);
+}
+.docs-tab[aria-selected="true"] {
+  color: var(--c-fg);
+  background: oklch(1 0 0 / 0.08);
+}
+.tok-string {
+  color: var(--c-string);
+}
+.tok-number {
+  color: var(--c-number);
+}
+.tok-keyword {
+  color: var(--c-keyword);
+}
+.tok-key {
+  color: var(--c-key);
+}
+.tok-comment {
+  color: var(--c-comment);
+  font-style: italic;
+}
+.tok-punct {
+  color: var(--c-muted);
+}
+.docs-code-fade {
+  animation: docs-fade 0.22s ease both;
+}
+@keyframes docs-fade {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- status pills (errors) ---- */
+.docs-status {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  min-width: 2.6rem;
+  text-align: center;
+  color: var(--d-status-fg, var(--d-muted));
+  background: var(--d-status-bg, var(--d-subtle));
+}
+.docs-status-4 {
+  --d-status-fg: oklch(0.5 0.12 65);
+  --d-status-bg: oklch(0.8 0.12 75 / 0.18);
+}
+.docs-status-5 {
+  --d-status-fg: oklch(0.52 0.17 25);
+  --d-status-bg: oklch(0.7 0.15 25 / 0.14);
+}
+html[data-docs-theme="dark"] .docs-status-4 {
+  --d-status-fg: oklch(0.84 0.12 75);
+}
+html[data-docs-theme="dark"] .docs-status-5 {
+  --d-status-fg: oklch(0.8 0.12 25);
+}
+
+/* ---- the WhatsApp preview's stage ---- */
+.docs-preview-stage {
+  background:
+    radial-gradient(
+        circle at 1px 1px,
+        color-mix(in oklab, var(--d-border-strong) 70%, transparent) 1px,
+        transparent 0
+      )
+      0 0 / 18px 18px,
+    linear-gradient(180deg, var(--d-subtle), var(--d-surface));
+}
+
+/* ---- copy ---- */
+.docs-copy-icon {
+  transition:
+    transform 0.18s cubic-bezier(0.3, 1.4, 0.5, 1),
+    opacity 0.18s ease;
+}
+.docs-copy-done .docs-copy-icon {
+  transform: scale(1.15);
+}
+
+/* ---- cards ---- */
+.docs-card {
+  background: var(--d-surface);
+  border: 1px solid var(--d-border);
+  border-radius: 12px;
+  box-shadow: var(--d-shadow);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+a.docs-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--d-shadow-lift);
+  border-color: color-mix(in oklab, var(--d-accent) 40%, var(--d-border));
+}
+
+/* ---- the 24-hour window diagram ---- */
+.docs-window-open {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--d-accent) 24%, transparent),
+    color-mix(in oklab, var(--d-accent) 10%, transparent)
+  );
+  border: 1px solid color-mix(in oklab, var(--d-accent) 45%, transparent);
+}
+.docs-window-closed {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--d-subtle),
+    var(--d-subtle) 6px,
+    color-mix(in oklab, var(--d-border) 70%, transparent) 6px,
+    color-mix(in oklab, var(--d-border) 70%, transparent) 12px
+  );
+  border: 1px solid var(--d-border-strong);
+}
+
+/* ---- search ---- */
+.docs-overlay {
+  background: oklch(0.15 0.02 255 / 0.45);
+  backdrop-filter: blur(4px);
+  animation: docs-fade 0.15s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docs-root *,
+  .docs-root *::before,
+  .docs-root *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
