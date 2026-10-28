@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHmac, randomBytes } from "crypto";
+import { isApiSource } from "@/lib/public-api-source";
 import {
   WEBHOOK_EVENT_NAMES,
   WEBHOOK_RETRY_HOURS,
@@ -92,7 +93,7 @@ export function isApiMessage(metadata: unknown): metadata is Record<string, unkn
   return Boolean(
     metadata &&
     typeof metadata === "object" &&
-    (metadata as Record<string, unknown>)["source"] === "api",
+    isApiSource((metadata as Record<string, unknown>)["source"]),
   );
 }
 

@@ -118,23 +118,36 @@ export function batch38World(options: Parameters<typeof publicApiWorld>[0] = {})
   const rpc = w.db.supabase.rpc.bind(w.db.supabase);
   const changedAt = (r: Record<string, unknown>) =>
     String(r["updated_at"] ?? r["last_message_at"] ?? r["created_at"] ?? "");
-  (w.db.supabase as unknown as { rpc: unknown }).rpc = (name: string, args: Record<string, unknown>) => {
+  (w.db.supabase as unknown as { rpc: unknown }).rpc = (
+    name: string,
+    args: Record<string, unknown>,
+  ) => {
     if (name !== "api_list_conversations") return rpc(name as never, args as never);
     if (!sql.applied)
       return Promise.resolve({ data: null, error: { code: "PGRST202", message: "not found" } });
-    const after = args["p_after_at"] ? [String(args["p_after_at"]), String(args["p_after_id"] ?? "")] : null;
+    const after = args["p_after_at"]
+      ? [String(args["p_after_at"]), String(args["p_after_id"] ?? "")]
+      : null;
     const out = rows("conversations")
       .filter((r) => r["organization_id"] === args["p_org"])
       .filter((r) => !args["p_status"] || r["status"] === args["p_status"])
       .filter((r) => !args["p_assignee"] || r["assigned_to"] === args["p_assignee"])
       .filter((r) => !args["p_unassigned"] || r["assigned_to"] == null)
-      .filter((r) => !args["p_changed_since"] || Date.parse(changedAt(r)) >= Date.parse(String(args["p_changed_since"])))
+      .filter(
+        (r) =>
+          !args["p_changed_since"] ||
+          Date.parse(changedAt(r)) >= Date.parse(String(args["p_changed_since"])),
+      )
       .filter((r) => {
         if (!after) return true;
         const t = Date.parse(changedAt(r)) - Date.parse(after[0]!);
         return t > 0 || (t === 0 && String(r["id"]) > after[1]!);
       })
-      .sort((x, y) => Date.parse(changedAt(x)) - Date.parse(changedAt(y)) || String(x["id"]).localeCompare(String(y["id"])))
+      .sort(
+        (x, y) =>
+          Date.parse(changedAt(x)) - Date.parse(changedAt(y)) ||
+          String(x["id"]).localeCompare(String(y["id"])),
+      )
       .slice(0, Math.min(Math.max(Number(args["p_limit"] ?? 25), 1), 101))
       .map((r) => ({ ...r, changed_at: changedAt(r) }));
     return Promise.resolve({ data: out, error: null });

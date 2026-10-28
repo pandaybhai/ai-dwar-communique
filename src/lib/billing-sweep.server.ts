@@ -49,6 +49,8 @@ export type SweepCounts = {
   /** Batch 31: unpaid Cashfree orders checked with GET order / found paid and settled. */
   cashfree_checked: number;
   cashfree_settled: number;
+  /** Batch 38: Try-it console credentials expired over a day ago, removed. */
+  api_console_credentials_removed: number;
 } & MediaSweepCounts &
   ApiCleanupCounts;
 
@@ -170,6 +172,7 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     api_rate_windows_removed: 0,
     api_requests_removed: 0,
     api_deliveries_removed: 0,
+    api_console_credentials_removed: 0,
   };
 
   // ---- messages already sent whose debit failed: charge them now if we can
@@ -367,6 +370,8 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
   {
     const { cleanupApiRecords } = await import("@/lib/public-api.server");
     Object.assign(counts, await cleanupApiRecords(supabase));
+    const { cleanupConsoleCredentials } = await import("@/lib/public-api-console.server");
+    counts.api_console_credentials_removed = await cleanupConsoleCredentials(supabase);
   }
 
   // ---- customer media (Batch 32): last, so the money work never waits on a download

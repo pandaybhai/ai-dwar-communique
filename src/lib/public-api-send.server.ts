@@ -583,7 +583,8 @@ export async function sendTemplateViaApi(
 
     // ---- the send: the one-message template sender ----
     const metadata = {
-      source: "api",
+      // "api_console" for the Try-it console (Batch 38): charged and shown like any API send.
+      source: caller.source ?? "api",
       api_key_id: caller.keyId,
       idempotency_key: parsed.idempotencyKey,
       ...(requestId ? { api_request_id: requestId } : {}),
@@ -663,7 +664,7 @@ export async function sendTemplateViaApi(
 
     await logServerActivity(supabase, orgId, null, "message_sent", {
       message_type: "template",
-      source: "api",
+      source: caller.source ?? "api",
       api_key_id: caller.keyId,
       template_name: template.name,
       whatsapp_account_id: connection.accountId,

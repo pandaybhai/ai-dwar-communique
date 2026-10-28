@@ -657,7 +657,8 @@ async function queueApiStatusOf(
   at: string,
   errorDetail: string | null,
 ): Promise<string | null> {
-  if (row.metadata?.["source"] !== "api") return null;
+  const { isApiSource } = await import("@/lib/public-api-source");
+  if (!isApiSource(row.metadata?.["source"])) return null;
   const { queueApiStatus } = await import("@/lib/public-api-webhooks.server");
   return queueApiStatus(supabase, { organizationId, messageId: row.id, status, at, metadata: row.metadata, errorDetail });
 }

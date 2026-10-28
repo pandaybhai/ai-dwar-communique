@@ -30,6 +30,7 @@ import { IntegrationsTab } from "@/components/integrations/integrations-settings
 import { FlowConnections } from "@/components/integrations/flow-connections";
 import { SendSettingsTab } from "@/components/settings/send-settings";
 import { ApiSettingsTab } from "@/components/settings/api-settings";
+import { ApiConsoleCard } from "@/components/settings/api-console";
 
 
 export const Route = createFileRoute("/app/settings")({
@@ -128,8 +129,9 @@ function SettingsTabs() {
         <ComplianceSection />
       </TabsContent>
       {showApi ? (
-        <TabsContent value="api" className="mt-6">
+        <TabsContent value="api" className="mt-6 space-y-6">
           <ApiSettingsTab />
+          <ApiConsoleCard />
         </TabsContent>
       ) : null}
     </Tabs>
