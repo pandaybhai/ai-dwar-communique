@@ -356,7 +356,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       section_label: "Campaigns",
       section_order: 20,
     },
-    activity_actions: ["campaign_created", "campaign_launched", "campaign_controlled"],
+    activity_actions: ["campaign_created", "campaign_launched", "campaign_controlled", "campaign_test_sent"],
     usage_meters: [{ key: "campaign_messages", name: "Campaign messages sent", unit: "messages" }],
     ai_tools: [
       {

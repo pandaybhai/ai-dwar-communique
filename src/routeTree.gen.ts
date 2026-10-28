@@ -75,6 +75,7 @@ import { Route as ApiCampaignsAudienceRouteImport } from './routes/api/campaigns
 import { Route as ApiCampaignsControlRouteImport } from './routes/api/campaigns/control'
 import { Route as ApiCampaignsEstimateRouteImport } from './routes/api/campaigns/estimate'
 import { Route as ApiCampaignsLaunchRouteImport } from './routes/api/campaigns/launch'
+import { Route as ApiCampaignsTestSendRouteImport } from './routes/api/campaigns/test-send'
 import { Route as ApiCatalogImageRouteImport } from './routes/api/catalog/image'
 import { Route as ApiCatalogImportRouteImport } from './routes/api/catalog/import'
 import { Route as ApiCatalogProductsRouteImport } from './routes/api/catalog/products'
@@ -471,6 +472,11 @@ const ApiCampaignsEstimateRoute = ApiCampaignsEstimateRouteImport.update({
 const ApiCampaignsLaunchRoute = ApiCampaignsLaunchRouteImport.update({
   id: '/api/campaigns/launch',
   path: '/api/campaigns/launch',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCampaignsTestSendRoute = ApiCampaignsTestSendRouteImport.update({
+  id: '/api/campaigns/test-send',
+  path: '/api/campaigns/test-send',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCatalogImageRoute = ApiCatalogImageRouteImport.update({
@@ -902,6 +908,7 @@ export interface FileRoutesByFullPath {
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/estimate': typeof ApiCampaignsEstimateRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/campaigns/test-send': typeof ApiCampaignsTestSendRoute
   '/api/catalog/image': typeof ApiCatalogImageRoute
   '/api/catalog/import': typeof ApiCatalogImportRoute
   '/api/catalog/products': typeof ApiCatalogProductsRoute
@@ -1035,6 +1042,7 @@ export interface FileRoutesByTo {
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/estimate': typeof ApiCampaignsEstimateRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/campaigns/test-send': typeof ApiCampaignsTestSendRoute
   '/api/catalog/image': typeof ApiCatalogImageRoute
   '/api/catalog/import': typeof ApiCatalogImportRoute
   '/api/catalog/products': typeof ApiCatalogProductsRoute
@@ -1171,6 +1179,7 @@ export interface FileRoutesById {
   '/api/campaigns/control': typeof ApiCampaignsControlRoute
   '/api/campaigns/estimate': typeof ApiCampaignsEstimateRoute
   '/api/campaigns/launch': typeof ApiCampaignsLaunchRoute
+  '/api/campaigns/test-send': typeof ApiCampaignsTestSendRoute
   '/api/catalog/image': typeof ApiCatalogImageRoute
   '/api/catalog/import': typeof ApiCatalogImportRoute
   '/api/catalog/products': typeof ApiCatalogProductsRoute
@@ -1308,6 +1317,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/control'
     | '/api/campaigns/estimate'
     | '/api/campaigns/launch'
+    | '/api/campaigns/test-send'
     | '/api/catalog/image'
     | '/api/catalog/import'
     | '/api/catalog/products'
@@ -1441,6 +1451,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/control'
     | '/api/campaigns/estimate'
     | '/api/campaigns/launch'
+    | '/api/campaigns/test-send'
     | '/api/catalog/image'
     | '/api/catalog/import'
     | '/api/catalog/products'
@@ -1576,6 +1587,7 @@ export interface FileRouteTypes {
     | '/api/campaigns/control'
     | '/api/campaigns/estimate'
     | '/api/campaigns/launch'
+    | '/api/campaigns/test-send'
     | '/api/catalog/image'
     | '/api/catalog/import'
     | '/api/catalog/products'
@@ -1690,6 +1702,7 @@ export interface RootRouteChildren {
   ApiCampaignsControlRoute: typeof ApiCampaignsControlRoute
   ApiCampaignsEstimateRoute: typeof ApiCampaignsEstimateRoute
   ApiCampaignsLaunchRoute: typeof ApiCampaignsLaunchRoute
+  ApiCampaignsTestSendRoute: typeof ApiCampaignsTestSendRoute
   ApiCatalogImageRoute: typeof ApiCatalogImageRoute
   ApiCatalogImportRoute: typeof ApiCatalogImportRoute
   ApiCatalogProductsRoute: typeof ApiCatalogProductsRoute
@@ -2214,6 +2227,13 @@ declare module '@tanstack/react-router' {
       path: '/api/campaigns/launch'
       fullPath: '/api/campaigns/launch'
       preLoaderRoute: typeof ApiCampaignsLaunchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/campaigns/test-send': {
+      id: '/api/campaigns/test-send'
+      path: '/api/campaigns/test-send'
+      fullPath: '/api/campaigns/test-send'
+      preLoaderRoute: typeof ApiCampaignsTestSendRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/catalog/image': {
@@ -2811,6 +2831,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCampaignsControlRoute: ApiCampaignsControlRoute,
   ApiCampaignsEstimateRoute: ApiCampaignsEstimateRoute,
   ApiCampaignsLaunchRoute: ApiCampaignsLaunchRoute,
+  ApiCampaignsTestSendRoute: ApiCampaignsTestSendRoute,
   ApiCatalogImageRoute: ApiCatalogImageRoute,
   ApiCatalogImportRoute: ApiCatalogImportRoute,
   ApiCatalogProductsRoute: ApiCatalogProductsRoute,

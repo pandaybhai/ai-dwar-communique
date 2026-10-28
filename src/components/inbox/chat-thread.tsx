@@ -312,6 +312,8 @@ export function Bubble({
   const mediaOnly = hasMedia && !body && !message.template_name;
   // Batch 34: sent by the merchant's own software through the Public API.
   const viaApi = message.metadata?.["source"] === "api";
+  // Batch 35: a campaign test send from the wizard — never part of a campaign.
+  const isTest = message.metadata?.["test"] === true;
   const fileName = typeof message.metadata?.["document_filename"] === "string" ? (message.metadata["document_filename"] as string) : null;
   return (
     <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
@@ -337,6 +339,7 @@ export function Bubble({
           )}
           <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
             {viaApi ? <span className="rounded-full border border-border/70 px-1.5">Sent via API</span> : null}
+            {isTest ? <span className="rounded-full border border-border/70 px-1.5">Test</span> : null}
             <span>{clockTime(message.created_at)}</span>
             {outbound ? <StatusTicks message={message} /> : null}
           </div>

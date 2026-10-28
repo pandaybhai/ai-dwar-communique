@@ -50,44 +50,10 @@ export const Route = createFileRoute("/api/campaigns/launch")({
         >;
 
         // Media the sender chose for this campaign: the header picture/clip/file
-        // and one file per carousel card. Only https links are kept.
-        const rawSettings = (payload["send_settings"] ?? {}) as Record<string, unknown>;
-        const httpsOrNull = (v: unknown): string | null => {
-          const s = typeof v === "string" ? v.trim() : "";
-          return s.startsWith("https://") ? s : null;
-        };
-        const sendSettings: Record<string, unknown> = {};
-        const headerMedia = httpsOrNull(rawSettings["header_media_url"]);
-        if (headerMedia) sendSettings["header_media_url"] = headerMedia;
-        const cardsRaw = Array.isArray(rawSettings["cards"]) ? rawSettings["cards"] : [];
-        // Each carousel card keeps its own copy-code coupon; dropping it here
-        // was why launched carousels went out with empty coupon buttons.
-        const cards = cardsRaw.map((c) => {
-          const card = (c as Record<string, unknown> | null) ?? {};
-          const media_url = httpsOrNull(card["media_url"]);
-          const coupon_code =
-            typeof card["coupon_code"] === "string"
-              ? (card["coupon_code"] as string).trim().slice(0, 15)
-              : "";
-          return { media_url, ...(coupon_code ? { coupon_code } : {}) };
-        });
-        if (cards.some((c) => c.media_url || c.coupon_code)) sendSettings["cards"] = cards;
-
-
-        // Offer details: the coupon a copy-code button copies, and when a
-        // limited-time offer's countdown runs out.
-        const coupon =
-          typeof rawSettings["coupon_code"] === "string"
-            ? (rawSettings["coupon_code"] as string).trim().slice(0, 15)
-            : "";
-        if (coupon) sendSettings["coupon_code"] = coupon;
-        const expiresRaw =
-          typeof rawSettings["offer_expires_at"] === "string"
-            ? (rawSettings["offer_expires_at"] as string)
-            : "";
-        if (expiresRaw && !Number.isNaN(new Date(expiresRaw).getTime())) {
-          sendSettings["offer_expires_at"] = new Date(expiresRaw).toISOString();
-        }
+        // and one file per carousel card (only https links), coupons and the
+        // offer end — the same rules the test send uses (Batch 35).
+        const { sanitizeSendSettings } = await import("@/lib/campaigns");
+        const sendSettings = sanitizeSendSettings(payload["send_settings"]);
 
         if (!name) return jsonError("Give your campaign a name.");
         if (!templateName) return jsonError("Pick an approved template.");

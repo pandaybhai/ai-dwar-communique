@@ -887,17 +887,8 @@ async function loadActiveCampaigns(
 
         // Media and offer details chosen when the campaign was created.
         const settings = (row["send_settings"] ?? {}) as Record<string, unknown>;
-        const headerMediaUrl = (settings["header_media_url"] as string | null) ?? null;
-        const settingCards = Array.isArray(settings["cards"])
-          ? (
-              settings["cards"] as Array<{ media_url?: string | null; coupon_code?: string | null }>
-            ).map((c) => ({
-              mediaUrl: c?.media_url ?? null,
-              couponCode: c?.coupon_code ?? null,
-            }))
-          : [];
-        const couponCode = (settings["coupon_code"] as string | null) ?? null;
-        const offerExpiresAt = (settings["offer_expires_at"] as string | null) ?? null;
+        const { sendContextFromSettings } = await import("@/lib/campaigns");
+        const fromSettings = sendContextFromSettings(settings);
 
         // A branded picture card attached at creation time, sent after each
         // template — only when the workspace has cards on.
@@ -932,10 +923,7 @@ async function loadActiveCampaigns(
           context: {
             campaignId,
             category,
-            ...(headerMediaUrl ? { headerMediaUrl } : {}),
-            ...(settingCards.length ? { cards: settingCards } : {}),
-            ...(couponCode ? { couponCode } : {}),
-            ...(offerExpiresAt ? { offerExpiresAt } : {}),
+            ...fromSettings,
           },
           card:
             cardsOn && cardTools && cardCfg?.kind
