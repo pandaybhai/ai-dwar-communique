@@ -110,6 +110,8 @@ export function InboxView() {
   const { numbers } = useWhatsAppNumbers();
   // Batch 39: keyboard row (j/k), the assignee picker (a), the details panel.
   const [highlight, setHighlight] = useState(0);
+  // The keyboard row is outlined only once j/k is used (not on touch or click).
+  const [keyboardNav, setKeyboardNav] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState<boolean>(() => (typeof window === "undefined" ? true : readDetailsOpen()));
   const [detailsSheet, setDetailsSheet] = useState(false);
@@ -509,6 +511,7 @@ export function InboxView() {
       if (key === "j" || key === "k") {
         if (!list.length) return;
         e.preventDefault();
+        setKeyboardNav(true);
         setHighlight(Math.min(list.length - 1, Math.max(0, h + (key === "j" ? 1 : -1))));
       } else if (key === "Enter") {
         const target = list[h];
@@ -634,7 +637,11 @@ export function InboxView() {
         </div>
 
         <div className="shrink-0 border-b border-border px-2">
-          <div role="group" aria-label="Show" className="-mb-px flex gap-0.5 overflow-x-auto px-2 [scrollbar-width:none]">
+          <div
+            role="group"
+            aria-label="Show"
+            className="-mb-px flex gap-0.5 overflow-x-auto px-2 [scrollbar-width:none] max-lg:[mask-image:linear-gradient(to_right,black_88%,transparent)]"
+          >
             {FILTERS.map((f) => {
               const on = filter === f.key;
               return (
@@ -701,8 +708,11 @@ export function InboxView() {
           rows={filtered}
           members={members}
           activeId={activeId}
-          highlightIndex={highlight}
-          onOpen={(id) => void openConversation(id)}
+          highlightIndex={keyboardNav ? highlight : -1}
+          onOpen={(id) => {
+            setKeyboardNav(false);
+            void openConversation(id);
+          }}
           loading={loading}
           totalLoaded={conversations.length}
           viaLabel={viaLabel}
@@ -777,7 +787,7 @@ export function InboxView() {
                 title="Pick a conversation"
                 description="Select a chat on the left to read the full thread and reply with your team."
               />
-              <p className="-mt-6 flex items-center justify-center gap-1.5 pb-6 text-xs text-faint">
+              <p className={cn("-mt-6 items-center justify-center gap-1.5 pb-6 text-xs text-faint", conversations.length ? "flex" : "hidden")}>
                 <Kbd>J</Kbd>
                 <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>/</Kbd> search
               </p>

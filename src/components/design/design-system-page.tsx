@@ -29,11 +29,31 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Kbd } from "@/components/ui/kbd";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -45,7 +65,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,7 +90,24 @@ import { cn } from "@/lib/utils";
 /* ------------------------------------------------------------------ data */
 
 const BRAND = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"];
-const GRAY = ["0", "25", "50", "100", "150", "200", "300", "400", "500", "600", "700", "800", "850", "900", "950", "1000"];
+const GRAY = [
+  "0",
+  "25",
+  "50",
+  "100",
+  "150",
+  "200",
+  "300",
+  "400",
+  "500",
+  "600",
+  "700",
+  "800",
+  "850",
+  "900",
+  "950",
+  "1000",
+];
 
 const SURFACES: Array<[string, string]> = [
   ["background", "Page canvas behind everything."],
@@ -117,7 +161,15 @@ const RADII: Array<[string, string]> = [
   ["rounded-2xl", "18px · large panels, empty states"],
   ["rounded-full", "pills, avatars, chips"],
 ];
-const SHADOWS = ["shadow-2xs", "shadow-xs", "shadow-sm", "shadow-md", "shadow-lg", "shadow-xl", "shadow-2xl"];
+const SHADOWS = [
+  "shadow-2xs",
+  "shadow-xs",
+  "shadow-sm",
+  "shadow-md",
+  "shadow-lg",
+  "shadow-xl",
+  "shadow-2xl",
+];
 const SHADOW_USE: Record<string, string> = {
   "shadow-2xs": "hairline lift",
   "shadow-xs": "buttons, inputs, cards",
@@ -152,17 +204,44 @@ const bubble = (id: string, over: Partial<MessageRow>): MessageRow => ({
 const SAMPLE_BUBBLES: MessageRow[] = [
   bubble("ds-1", { body: "Is the rose-gold ring available in size 12?" }),
   bubble("ds-2", { body: "And do you ship to *Pune*?" }),
-  bubble("ds-3", { direction: "outbound", body: "Yes! Size 12 is in stock and we ship to Pune in 2 days 💍" }),
-  bubble("ds-4", { direction: "outbound", body: "Shall I keep one for you?", status: "delivered", sent_by: "u" }),
-  bubble("ds-5", { direction: "outbound", body: "Our cut-off is 6 pm.", status: "failed", error_detail: "Outside the 24-hour window.", sent_by: "u" }),
+  bubble("ds-3", {
+    direction: "outbound",
+    body: "Yes! Size 12 is in stock and we ship to Pune in 2 days 💍",
+  }),
+  bubble("ds-4", {
+    direction: "outbound",
+    body: "Shall I keep one for you?",
+    status: "delivered",
+    sent_by: "u",
+  }),
+  bubble("ds-5", {
+    direction: "outbound",
+    body: "Our cut-off is 6 pm.",
+    status: "failed",
+    error_detail: "Outside the 24-hour window.",
+    sent_by: "u",
+  }),
   bubble("ds-6", { direction: "outbound", body: "Sending…", status: "pending", sent_by: "u" }),
 ];
 
 /* ------------------------------------------------------------- helpers */
 
-function Section({ id, title, intro, children }: { id: string; title: string; intro: string; children: ReactNode }) {
+function Section({
+  id,
+  title,
+  intro,
+  children,
+}: {
+  id: string;
+  title: string;
+  intro: string;
+  children: ReactNode;
+}) {
   return (
-    <section id={id} className="scroll-mt-24 border-t border-border py-12 first:border-t-0 first:pt-0">
+    <section
+      id={id}
+      className="scroll-mt-24 border-t border-border py-12 first:border-t-0 first:pt-0"
+    >
       <h2 className="type-title text-foreground">{title}</h2>
       <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{intro}</p>
       <div className="mt-8 space-y-8">{children}</div>
@@ -192,15 +271,32 @@ function useTokenValue(name: string, theme: string) {
   return value;
 }
 
-function Swatch({ token, label, note, theme, ring }: { token: string; label?: string; note?: string; theme: string; ring?: boolean }) {
+function Swatch({
+  token,
+  label,
+  note,
+  theme,
+  ring,
+}: {
+  token: string;
+  label?: string;
+  note?: string;
+  theme: string;
+  ring?: boolean;
+}) {
   const value = useTokenValue(token, theme);
   return (
     <div className="min-w-0">
       <div
-        className={cn("h-14 rounded-lg border border-border/60", ring && "ring-1 ring-inset ring-border")}
+        className={cn(
+          "h-14 rounded-lg border border-border/60",
+          ring && "ring-1 ring-inset ring-border",
+        )}
         style={{ background: `var(--${token})` }}
       />
-      <p className="mt-2 truncate font-mono text-xs font-medium text-foreground">{label ?? `--${token}`}</p>
+      <p className="mt-2 truncate font-mono text-xs font-medium text-foreground">
+        {label ?? `--${token}`}
+      </p>
       {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
       <p className="truncate font-mono text-[0.6875rem] text-faint" title={value}>
         {value || "…"}
@@ -239,7 +335,10 @@ export function DesignSystemPage() {
         actions={<ThemeSwitch theme={theme} onChange={setTheme} />}
       />
 
-      <nav aria-label="Sections" className="sticky top-2 z-10 -mx-1 mb-10 flex gap-1 overflow-x-auto rounded-xl border border-border bg-card/85 p-1 shadow-xs backdrop-blur">
+      <nav
+        aria-label="Sections"
+        className="sticky top-2 z-10 -mx-1 mb-10 flex gap-1 overflow-x-auto rounded-xl border border-border bg-card/85 p-1 shadow-xs backdrop-blur"
+      >
         {NAV.map(([id, label]) => (
           <a
             key={id}
@@ -251,18 +350,31 @@ export function DesignSystemPage() {
         ))}
       </nav>
 
-      <Section id="colour" title="Colour" intro="Brand emerald and a cool 16-step gray carry the interface; status colours only ever mean status. Every text pairing here meets WCAG AA (4.5:1) in both themes.">
-        <Sub title="Surfaces" note="bg-background · bg-card · bg-popover · bg-subtle · bg-muted · bg-accent · border-border · border-border-strong · bg-primary">
+      <Section
+        id="colour"
+        title="Colour"
+        intro="Brand emerald and a cool 16-step gray carry the interface; status colours only ever mean status. Every text pairing here meets WCAG AA (4.5:1) in both themes."
+      >
+        <Sub
+          title="Surfaces"
+          note="bg-background · bg-card · bg-popover · bg-subtle · bg-muted · bg-accent · border-border · border-border-strong · bg-primary"
+        >
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {SURFACES.map(([t, note]) => (
               <Swatch key={t} token={t} note={note} theme={theme} ring />
             ))}
           </div>
         </Sub>
-        <Sub title="Text" note="text-foreground · text-muted-foreground · text-faint · text-primary">
+        <Sub
+          title="Text"
+          note="text-foreground · text-muted-foreground · text-faint · text-primary"
+        >
           <div className="grid gap-3 sm:grid-cols-2">
             {TEXT.map(([t, note]) => (
-              <div key={t} className="flex items-baseline gap-3 rounded-lg border border-border bg-card px-4 py-3">
+              <div
+                key={t}
+                className="flex items-baseline gap-3 rounded-lg border border-border bg-card px-4 py-3"
+              >
                 <span className="text-sm font-medium" style={{ color: `var(--${t})` }}>
                   The quick brown fox
                 </span>
@@ -272,16 +384,26 @@ export function DesignSystemPage() {
             ))}
           </div>
         </Sub>
-        <Sub title="Status" note="Each status has a solid (bg-success + text-success-foreground), a soft tint (bg-success-soft + text-success-soft-foreground) and a border (border-success-border). Same for warning, danger, info.">
+        <Sub
+          title="Status"
+          note="Each status has a solid (bg-success + text-success-foreground), a soft tint (bg-success-soft + text-success-soft-foreground) and a border (border-success-border). Same for warning, danger, info."
+        >
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {STATUS.map((s) => (
               <div key={s} className="space-y-2">
-                <div className="flex h-10 items-center rounded-lg px-3 text-sm font-medium" style={{ background: `var(--${s})`, color: `var(--${s}-foreground)` }}>
+                <div
+                  className="flex h-10 items-center rounded-lg px-3 text-sm font-medium"
+                  style={{ background: `var(--${s})`, color: `var(--${s}-foreground)` }}
+                >
                   {s}
                 </div>
                 <div
                   className="flex h-10 items-center rounded-lg border px-3 text-sm font-medium"
-                  style={{ background: `var(--${s}-soft)`, color: `var(--${s}-soft-foreground)`, borderColor: `var(--${s}-border)` }}
+                  style={{
+                    background: `var(--${s}-soft)`,
+                    color: `var(--${s}-soft-foreground)`,
+                    borderColor: `var(--${s}-border)`,
+                  }}
                 >
                   {s} soft
                 </div>
@@ -289,14 +411,20 @@ export function DesignSystemPage() {
             ))}
           </div>
         </Sub>
-        <Sub title="Brand scale" note="bg-brand-50 … bg-brand-950. --primary is brand-700 in light (white text 5.3:1) and a lighter emerald in dark.">
+        <Sub
+          title="Brand scale"
+          note="bg-brand-50 … bg-brand-950. --primary is brand-700 in light (white text 5.3:1) and a lighter emerald in dark."
+        >
           <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-11">
             {BRAND.map((s) => (
               <Swatch key={s} token={`brand-${s}`} label={s} theme={theme} />
             ))}
           </div>
         </Sub>
-        <Sub title="Gray scale" note="bg-gray-0 … bg-gray-1000 (cool, hue 255). Light theme uses 0–300 for surfaces and 600–900 for text; dark mirrors it.">
+        <Sub
+          title="Gray scale"
+          note="bg-gray-0 … bg-gray-1000 (cool, hue 255). Light theme uses 0–300 for surfaces and 600–900 for text; dark mirrors it."
+        >
           <div className="grid grid-cols-4 gap-3 sm:grid-cols-8">
             {GRAY.map((s) => (
               <Swatch key={s} token={`gray-${s}`} label={s} theme={theme} />
@@ -305,10 +433,17 @@ export function DesignSystemPage() {
         </Sub>
       </Section>
 
-      <Section id="type" title="Typography" intro="Plus Jakarta Sans, as on the developer portal. 14px for dense UI, 15px for reading, 16px in phone inputs (so iOS never zooms). Numbers that line up use .tabular.">
+      <Section
+        id="type"
+        title="Typography"
+        intro="Plus Jakarta Sans, as on the developer portal. 14px for dense UI, 15px for reading, 16px in phone inputs (so iOS never zooms). Numbers that line up use .tabular."
+      >
         <div className="divide-y divide-border rounded-xl border border-border bg-card">
           {TYPE.map(([cls, sample, spec]) => (
-            <div key={cls} className="grid gap-2 px-5 py-4 sm:grid-cols-[1fr_16rem] sm:items-center">
+            <div
+              key={cls}
+              className="grid gap-2 px-5 py-4 sm:grid-cols-[1fr_16rem] sm:items-center"
+            >
               <p className={cn(cls, "text-foreground")}>{sample}</p>
               <div className="text-xs">
                 <p className="font-mono font-medium text-foreground">.{cls.split(" ")[0]}</p>
@@ -319,7 +454,11 @@ export function DesignSystemPage() {
         </div>
       </Section>
 
-      <Section id="space" title="Spacing & radii" intro="Everything sits on a 4px grid (Tailwind's spacing: 1 = 4px). Inside a card use 4–6; between cards 4–6; between sections 10–12.">
+      <Section
+        id="space"
+        title="Spacing & radii"
+        intro="Everything sits on a 4px grid (Tailwind's spacing: 1 = 4px). Inside a card use 4–6; between cards 4–6; between sections 10–12."
+      >
         <Sub title="Spacing">
           <div className="space-y-2">
             {SPACE.map((n) => (
@@ -344,7 +483,11 @@ export function DesignSystemPage() {
         </Sub>
       </Section>
 
-      <Section id="elevation" title="Elevation" intro="Layered and subtle: a tight contact shadow plus a soft ambient one. Dark mode leans on borders, with a faint highlight ring on the highest layers.">
+      <Section
+        id="elevation"
+        title="Elevation"
+        intro="Layered and subtle: a tight contact shadow plus a soft ambient one. Dark mode leans on borders, with a faint highlight ring on the highest layers."
+      >
         <div className="grid grid-cols-2 gap-6 rounded-xl bg-subtle p-6 sm:grid-cols-4 lg:grid-cols-7">
           {SHADOWS.map((s) => (
             <div key={s} className="text-center">
@@ -356,21 +499,38 @@ export function DesignSystemPage() {
         </div>
       </Section>
 
-      <Section id="motion" title="Motion & focus" intro="Fast and quiet. Everything animates with transform/opacity; prefers-reduced-motion turns animation and transitions off app-wide.">
+      <Section
+        id="motion"
+        title="Motion & focus"
+        intro="Fast and quiet. Everything animates with transform/opacity; prefers-reduced-motion turns animation and transitions off app-wide."
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           {MOTION.map(([ease, dur, use]) => (
             <MotionDemo key={`${ease}${dur}`} ease={ease} dur={dur} use={use} />
           ))}
         </div>
-        <Sub title="Focus" note="Keyboard focus is always visible: a 2px ring in --ring (focus-visible only, never on click). Inputs show a soft 3px halo and a coloured border.">
+        <Sub
+          title="Focus"
+          note="Keyboard focus is always visible: a 2px ring in --ring (focus-visible only, never on click). Inputs show a soft 3px halo and a coloured border."
+        >
           <div className="flex flex-wrap items-center gap-3">
-            <Button className="ring-2 ring-ring ring-offset-2 ring-offset-background">Focused button</Button>
-            <Input className="w-56 border-ring ring-3 ring-ring/20" defaultValue="Focused input" aria-label="Focused input example" />
+            <Button className="ring-2 ring-ring ring-offset-2 ring-offset-background">
+              Focused button
+            </Button>
+            <Input
+              className="w-56 border-ring ring-3 ring-ring/20"
+              defaultValue="Focused input"
+              aria-label="Focused input example"
+            />
           </div>
         </Sub>
       </Section>
 
-      <Section id="buttons" title="Buttons" intro="One primary per view. Outline for secondary actions, ghost inside dense toolbars, soft for a tinted secondary, destructive only to confirm loss.">
+      <Section
+        id="buttons"
+        title="Buttons"
+        intro="One primary per view. Outline for secondary actions, ghost inside dense toolbars, soft for a tinted secondary, destructive only to confirm loss."
+      >
         <Sub title="Variants">
           <div className="flex flex-wrap items-center gap-3">
             <Button>Primary</Button>
@@ -409,7 +569,11 @@ export function DesignSystemPage() {
         </Sub>
       </Section>
 
-      <Section id="forms" title="Forms" intro="Labels above fields, helper text below in text-xs muted. Invalid fields set aria-invalid and turn danger.">
+      <Section
+        id="forms"
+        title="Forms"
+        intro="Labels above fields, helper text below in text-xs muted. Invalid fields set aria-invalid and turn danger."
+      >
         <div className="grid gap-6 rounded-xl border border-border bg-card p-6 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="ds-name">Business name</Label>
@@ -418,7 +582,12 @@ export function DesignSystemPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="ds-phone">Phone</Label>
-            <Input id="ds-phone" defaultValue="98200" aria-invalid="true" aria-describedby="ds-phone-error" />
+            <Input
+              id="ds-phone"
+              defaultValue="98200"
+              aria-invalid="true"
+              aria-describedby="ds-phone-error"
+            />
             <p id="ds-phone-error" className="text-xs text-danger-soft-foreground">
               Enter a full number with the country code.
             </p>
@@ -465,7 +634,11 @@ export function DesignSystemPage() {
         </div>
       </Section>
 
-      <Section id="status" title="Badges & alerts" intro="Badges label a thing's state; alerts explain a situation and what to do about it.">
+      <Section
+        id="status"
+        title="Badges & alerts"
+        intro="Badges label a thing's state; alerts explain a situation and what to do about it."
+      >
         <Sub title="Badges">
           <div className="flex flex-wrap items-center gap-2">
             <Badge>Default</Badge>
@@ -501,7 +674,9 @@ export function DesignSystemPage() {
             <Alert variant="warning">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Warning</AlertTitle>
-              <AlertDescription>Outside the 24-hour window — send a template instead.</AlertDescription>
+              <AlertDescription>
+                Outside the 24-hour window — send a template instead.
+              </AlertDescription>
             </Alert>
             <Alert variant="destructive" className="sm:col-span-2">
               <AlertTriangle className="h-4 w-4" />
@@ -512,7 +687,11 @@ export function DesignSystemPage() {
         </Sub>
       </Section>
 
-      <Section id="surfaces" title="Cards & tables" intro="Cards group one topic. Tables are dense (14px, 40px rows) with a subtle header.">
+      <Section
+        id="surfaces"
+        title="Cards & tables"
+        intro="Cards group one topic. Tables are dense (14px, 40px rows) with a subtle header."
+      >
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader>
@@ -576,7 +755,11 @@ export function DesignSystemPage() {
         </div>
       </Section>
 
-      <Section id="overlays" title="Overlays" intro="Dialogs for decisions, sheets for side work, menus for choices, popovers for small forms, tooltips for names of icon buttons.">
+      <Section
+        id="overlays"
+        title="Overlays"
+        intro="Dialogs for decisions, sheets for side work, menus for choices, popovers for small forms, tooltips for names of icon buttons."
+      >
         <div className="flex flex-wrap items-center gap-3">
           <Dialog>
             <DialogTrigger asChild>
@@ -585,7 +768,9 @@ export function DesignSystemPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Close this conversation?</DialogTitle>
-                <DialogDescription>It moves to Closed. A new message from the customer opens it again.</DialogDescription>
+                <DialogDescription>
+                  It moves to Closed. A new message from the customer opens it again.
+                </DialogDescription>
               </DialogHeader>
               <DialogFooter className="gap-2">
                 <Button variant="outline">Cancel</Button>
@@ -635,7 +820,10 @@ export function DesignSystemPage() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                Catch me up <Kbd className="ml-1.5 border-transparent bg-background/15 text-background shadow-none">S</Kbd>
+                Catch me up{" "}
+                <Kbd className="ml-1.5 border-transparent bg-background/15 text-background shadow-none">
+                  S
+                </Kbd>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -662,19 +850,28 @@ export function DesignSystemPage() {
         </Tabs>
       </Section>
 
-      <Section id="feedback" title="Feedback" intro="Skeletons while loading (shaped like what's coming), toasts after an action, progress for known lengths, empty states that say what to do next.">
+      <Section
+        id="feedback"
+        title="Feedback"
+        intro="Skeletons while loading (shaped like what's coming), toasts after an action, progress for known lengths, empty states that say what to do next."
+      >
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" onClick={() => toast.success("Conversation assigned.")}>
             Success toast
           </Button>
-          <Button variant="outline" onClick={() => toast.error("We couldn't update the assignment. Please try again.")}>
+          <Button
+            variant="outline"
+            onClick={() => toast.error("We couldn't update the assignment. Please try again.")}
+          >
             Error toast
           </Button>
           <Button
             variant="outline"
             onClick={() => {
               sentRef.current += 1;
-              toast("Template sent.", { description: `Sent ${sentRef.current} time(s) on this page.` });
+              toast("Template sent.", {
+                description: `Sent ${sentRef.current} time(s) on this page.`,
+              });
             }}
           >
             Plain toast
@@ -697,19 +894,30 @@ export function DesignSystemPage() {
               <span className="tabular text-muted-foreground">{progress}%</span>
             </div>
             <Progress value={progress} aria-label="Reading progress" />
-            <Button size="xs" variant="outline" onClick={() => setProgress((p) => (p >= 100 ? 10 : p + 18))}>
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => setProgress((p) => (p >= 100 ? 10 : p + 18))}
+            >
               Advance
             </Button>
           </div>
         </div>
         <div className="grid gap-6 sm:grid-cols-2">
-          <EmptyState icon={Inbox} title="No conversations yet" description="New customer messages will appear here the moment they arrive." action={<Button size="sm">Share your number</Button>} />
+          <EmptyState
+            icon={Inbox}
+            title="No conversations yet"
+            description="New customer messages will appear here the moment they arrive."
+            action={<Button size="sm">Share your number</Button>}
+          />
           <div className="space-y-4">
             <ErrorState message="We couldn't load your conversations. Please refresh." />
             <div className="flex items-center gap-3">
               {["AI", "VM", "MN", "+9"].map((i, n) => (
                 <Avatar key={i} className={cn(n === 0 && "h-8 w-8", n === 2 && "h-12 w-12")}>
-                  <AvatarFallback className={n === 1 ? "bg-primary/10 text-primary" : undefined}>{i}</AvatarFallback>
+                  <AvatarFallback className={n === 1 ? "bg-primary/10 text-primary" : undefined}>
+                    {i}
+                  </AvatarFallback>
                 </Avatar>
               ))}
             </div>
@@ -717,13 +925,20 @@ export function DesignSystemPage() {
         </div>
       </Section>
 
-      <Section id="whatsapp" title="WhatsApp" intro="Inside a chat the customer's world wins: WhatsApp's own wall and bubble colours (bg-wa-wall, bg-wa-in, bg-wa-out, text-wa-meta), in light and dark.">
+      <Section
+        id="whatsapp"
+        title="WhatsApp"
+        intro="Inside a chat the customer's world wins: WhatsApp's own wall and bubble colours (bg-wa-wall, bg-wa-in, bg-wa-out, text-wa-meta), in light and dark."
+      >
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
           {WA.map(([t, note]) => (
             <Swatch key={t} token={t} note={note} theme={theme} ring />
           ))}
         </div>
-        <Sub title="Chat bubbles" note="Inbox's Bubble (components/inbox/chat-thread): tail on the first bubble of a run, time + ticks inside, a sparkle on AI-written replies, a red ring when a send failed. Day labels stick to the top while their day scrolls.">
+        <Sub
+          title="Chat bubbles"
+          note="Inbox's Bubble (components/inbox/chat-thread): tail on the first bubble of a run, time + ticks inside, a sparkle on AI-written replies, a red ring when a send failed. Day labels stick to the top while their day scrolls."
+        >
           <div className="wa-wall rounded-xl border border-border px-2 py-5 sm:px-6">
             <div className="mx-auto flex max-w-xl flex-col">
               <div className="flex justify-center py-2">
@@ -732,13 +947,22 @@ export function DesignSystemPage() {
                 </span>
               </div>
               {SAMPLE_BUBBLES.map((m, i) => (
-                <div key={m.id} className={i === 0 || SAMPLE_BUBBLES[i - 1]!.direction !== m.direction ? "mt-2.5" : "mt-0.5"}>
+                <div
+                  key={m.id}
+                  className={
+                    i === 0 || SAMPLE_BUBBLES[i - 1]!.direction !== m.direction
+                      ? "mt-2.5"
+                      : "mt-0.5"
+                  }
+                >
                   <Bubble
                     message={m}
                     organizationId={null}
                     agentName="Aiden"
                     tail={i === 0 || SAMPLE_BUBBLES[i - 1]!.direction !== m.direction}
-                    aiRun={m.id === "ds-3" ? { question: "", reply: m.body ?? "", taughtOn: null } : null}
+                    aiRun={
+                      m.id === "ds-3" ? { question: "", reply: m.body ?? "", taughtOn: null } : null
+                    }
                   />
                 </div>
               ))}
@@ -750,7 +974,13 @@ export function DesignSystemPage() {
   );
 }
 
-function ThemeSwitch({ theme, onChange }: { theme: ThemeChoice; onChange: (t: ThemeChoice) => void }) {
+function ThemeSwitch({
+  theme,
+  onChange,
+}: {
+  theme: ThemeChoice;
+  onChange: (t: ThemeChoice) => void;
+}) {
   const options: Array<[ThemeChoice, string, typeof Sun]> = [
     ["light", "Light", Sun],
     ["dark", "Dark", Moon],

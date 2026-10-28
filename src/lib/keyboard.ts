@@ -8,7 +8,9 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   if (el.isContentEditable) return true;
   const tag = el.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  return Boolean(el.closest('[role="dialog"], [role="menu"], [role="listbox"], [role="combobox"], [cmdk-root]'));
+  return Boolean(
+    el.closest('[role="dialog"], [role="menu"], [role="listbox"], [role="combobox"], [cmdk-root]'),
+  );
 }
 
 /** A plain key press: no Ctrl / ⌘ / Alt (Shift allowed, for "?"). */
@@ -16,5 +18,7 @@ export function isPlainKey(e: KeyboardEvent): boolean {
   return !e.metaKey && !e.ctrlKey && !e.altKey;
 }
 
-export const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+export const IS_MAC =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 export const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";

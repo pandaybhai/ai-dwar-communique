@@ -113,7 +113,10 @@ function Item({
       </span>
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {hint ? <span className="shrink-0 text-xs text-faint">{hint}</span> : null}
-      <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-faint opacity-0 group-data-[selected=true]:opacity-100" aria-hidden="true" />
+      <CornerDownLeft
+        className="h-3.5 w-3.5 shrink-0 text-faint opacity-0 group-data-[selected=true]:opacity-100"
+        aria-hidden="true"
+      />
     </CommandPrimitive.Item>
   );
 }
@@ -163,8 +166,13 @@ export function CommandPalette({
   };
 
   const groups = groupNav(items, restricted);
-  const showCampaign = !restricted && items.some((i) => i.to === "/app/campaigns") && can("campaigns.create");
-  const showTemplate = !restricted && items.some((i) => i.to === "/app/templates") && can("templates.manage") && isFeatureEnabled("templates");
+  const showCampaign =
+    !restricted && items.some((i) => i.to === "/app/campaigns") && can("campaigns.create");
+  const showTemplate =
+    !restricted &&
+    items.some((i) => i.to === "/app/templates") &&
+    can("templates.manage") &&
+    isFeatureEnabled("templates");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -181,7 +189,9 @@ export function CommandPalette({
               placeholder="Search pages, conversations and actions…"
               className="h-13 w-full bg-transparent text-[0.9375rem] text-foreground outline-none placeholder:text-faint"
             />
-            {loading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-faint" aria-hidden="true" /> : null}
+            {loading ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-faint" aria-hidden="true" />
+            ) : null}
             <Kbd>Esc</Kbd>
           </div>
           <CommandPrimitive.List className="max-h-[min(60vh,26rem)] overflow-y-auto overscroll-contain pb-2">
@@ -195,12 +205,19 @@ export function CommandPalette({
                   <Item
                     key={h.conversationId}
                     value={`conversation ${h.name ?? ""} ${h.phone} ${h.conversationId}`}
-                    icon={<span className="text-[0.625rem] font-semibold">{initials(h.name?.trim() || h.phone)}</span>}
+                    icon={
+                      <span className="text-[0.625rem] font-semibold">
+                        {initials(h.name?.trim() || h.phone)}
+                      </span>
+                    }
                     hint={h.name ? h.phone : undefined}
                     onSelect={() =>
                       run(() => {
                         runAppCommand({ kind: "open-conversation", id: h.conversationId });
-                        void navigate({ to: "/app/inbox", search: { c: h.conversationId } as never });
+                        void navigate({
+                          to: "/app/inbox",
+                          search: { c: h.conversationId } as never,
+                        });
                       })
                     }
                   >
@@ -260,27 +277,57 @@ export function CommandPalette({
             </CommandPrimitive.Group>
 
             <CommandPrimitive.Group heading="Preferences" className={GROUP_HEADING}>
-              <Item value="theme light mode" icon={<Sun />} onSelect={() => run(() => setTheme("light"))}>
+              <Item
+                value="theme light mode"
+                icon={<Sun />}
+                onSelect={() => run(() => setTheme("light"))}
+              >
                 Light theme
               </Item>
-              <Item value="theme dark mode night" icon={<Moon />} onSelect={() => run(() => setTheme("dark"))}>
+              <Item
+                value="theme dark mode night"
+                icon={<Moon />}
+                onSelect={() => run(() => setTheme("dark"))}
+              >
                 Dark theme
               </Item>
-              <Item value="theme system auto" icon={<Monitor />} onSelect={() => run(() => setTheme("system"))}>
+              <Item
+                value="theme system auto"
+                icon={<Monitor />}
+                onSelect={() => run(() => setTheme("system"))}
+              >
                 Match system theme
               </Item>
-              <Item value="toggle collapse sidebar" icon={<PanelLeft />} hint="[" onSelect={() => run(onToggleSidebar)}>
+              <Item
+                value="toggle collapse sidebar"
+                icon={<PanelLeft />}
+                hint="["
+                onSelect={() => run(onToggleSidebar)}
+              >
                 Collapse or expand sidebar
               </Item>
-              <Item value="keyboard shortcuts help" icon={<Keyboard />} hint="?" onSelect={() => run(onShowShortcuts)}>
+              <Item
+                value="keyboard shortcuts help"
+                icon={<Keyboard />}
+                hint="?"
+                onSelect={() => run(onShowShortcuts)}
+              >
                 Keyboard shortcuts
               </Item>
               {!restricted ? (
-                <Item value="account profile settings" icon={<UserRound />} onSelect={() => go("/app/settings")}>
+                <Item
+                  value="account profile settings"
+                  icon={<UserRound />}
+                  onSelect={() => go("/app/settings")}
+                >
                   Account settings
                 </Item>
               ) : null}
-              <Item value="design system tokens components" icon={<Palette />} onSelect={() => go("/app/design")}>
+              <Item
+                value="design system tokens components"
+                icon={<Palette />}
+                onSelect={() => go("/app/design")}
+              >
                 Design system
               </Item>
             </CommandPrimitive.Group>

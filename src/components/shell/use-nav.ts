@@ -54,8 +54,16 @@ export function useNavItems(): { items: NavItem[]; restricted: boolean } {
   const restricted = status === "locked" || status === "paused";
   const items = restricted
     ? [
-        ...NAV.filter((item) => item.to === "/app/inbox" && (!item.perm || permsLoading || can(item.perm))),
-        { to: "/app/billing", label: "Billing", icon: FEATURE_ICONS["credit-card"] ?? Building2, flag: null, perm: null },
+        ...NAV.filter(
+          (item) => item.to === "/app/inbox" && (!item.perm || permsLoading || can(item.perm)),
+        ),
+        {
+          to: "/app/billing",
+          label: "Billing",
+          icon: FEATURE_ICONS["credit-card"] ?? Building2,
+          flag: null,
+          perm: null,
+        },
       ]
     : NAV.filter(
         (item) =>

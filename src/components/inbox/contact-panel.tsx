@@ -33,7 +33,9 @@ function useContactTags(organizationId: string | null, contactId: string | null)
         .eq("organization_id", organizationId)
         .eq("contact_id", contactId);
       if (error) return setTags([]);
-      const names = ((data ?? []) as Array<{ tags: { name: string } | Array<{ name: string }> | null }>)
+      const names = (
+        (data ?? []) as Array<{ tags: { name: string } | Array<{ name: string }> | null }>
+      )
         .map((r) => (Array.isArray(r.tags) ? r.tags[0]?.name : r.tags?.name))
         .filter((n): n is string => Boolean(n));
       setTags(names);
@@ -78,7 +80,8 @@ function ago(iso: string): string {
 
 /** "Open · closes in 5 h" / "Closed" — the 24-hour customer-service window. */
 function windowText(lastCustomerMessageAt: string | null): { open: boolean; text: string } {
-  if (!withinWindow(lastCustomerMessageAt) || !lastCustomerMessageAt) return { open: false, text: "Closed — templates only" };
+  if (!withinWindow(lastCustomerMessageAt) || !lastCustomerMessageAt)
+    return { open: false, text: "Closed — templates only" };
   const left = new Date(lastCustomerMessageAt).getTime() + DAY_MS - Date.now();
   const hours = Math.floor(left / 3_600_000);
   const minutes = Math.max(1, Math.floor((left % 3_600_000) / 60_000));
@@ -116,7 +119,8 @@ export function ContactPanel({
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const m = messages[i];
     if (m && m.direction === "inbound" && m.detected_language) {
-      language = m.detected_language === "hi-Latn" ? "Hinglish" : languageLabel(m.detected_language);
+      language =
+        m.detected_language === "hi-Latn" ? "Hinglish" : languageLabel(m.detected_language);
       break;
     }
   }
@@ -138,15 +142,27 @@ export function ContactPanel({
       <div className="flex h-[60px] shrink-0 items-center justify-between border-b border-border px-5">
         <h2 className="text-sm font-semibold text-foreground">Contact</h2>
         {onClose ? (
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Hide contact details" className="text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClose}
+            aria-label="Hide contact details"
+            className="text-muted-foreground"
+          >
             <X />
           </Button>
         ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col items-center px-5 pb-5 pt-6 text-center">
-          <ContactAvatar seed={conversation.contact?.id ?? conversation.id} label={label} className="h-16 w-16 text-lg" />
-          <p className="mt-3 max-w-full truncate text-base font-semibold text-foreground">{label}</p>
+          <ContactAvatar
+            seed={conversation.contact?.id ?? conversation.id}
+            label={label}
+            className="h-16 w-16 text-lg"
+          />
+          <p className="mt-3 max-w-full truncate text-base font-semibold text-foreground">
+            {label}
+          </p>
           {conversation.contact?.phone ? (
             <button
               type="button"
@@ -155,11 +171,20 @@ export function ContactPanel({
               aria-label={`Copy ${conversation.contact.phone}`}
             >
               <span className="tabular">{conversation.contact.phone}</span>
-              {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />}
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-primary" />
+              ) : (
+                <Copy className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+              )}
             </button>
           ) : null}
           <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-            <Badge variant={optIn === "opted_in" ? "success" : optIn === "opted_out" ? "danger" : "muted"} className="rounded-full">
+            <Badge
+              variant={
+                optIn === "opted_in" ? "success" : optIn === "opted_out" ? "danger" : "muted"
+              }
+              className="rounded-full"
+            >
               {optInText}
             </Badge>
             {conversation.needs_human ? (
@@ -176,11 +201,26 @@ export function ContactPanel({
               <span className="capitalize">{conversation.status}</span>
             </Row>
             <Row label="Assigned to">
-              {assignee ? assignee.full_name || assignee.email || "Team member" : <span className="text-muted-foreground">Unassigned</span>}
+              {assignee ? (
+                assignee.full_name || assignee.email || "Team member"
+              ) : (
+                <span className="text-muted-foreground">Unassigned</span>
+              )}
             </Row>
             <Row label="24-hour window">
-              <span className={cn("inline-flex items-center gap-1.5", win.open ? "text-foreground" : "text-muted-foreground")}>
-                <span className={cn("h-1.5 w-1.5 rounded-full", win.open ? "bg-success" : "bg-border-strong")} aria-hidden="true" />
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5",
+                  win.open ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    win.open ? "bg-success" : "bg-border-strong",
+                  )}
+                  aria-hidden="true"
+                />
                 {win.text}
               </span>
             </Row>
@@ -190,7 +230,10 @@ export function ContactPanel({
             {conversation.needs_human && conversation.needs_human_at ? (
               <Row label="Waiting since">
                 <span className="inline-flex items-center gap-1.5">
-                  <Hourglass className="h-3.5 w-3.5 text-warning-soft-foreground" aria-hidden="true" />
+                  <Hourglass
+                    className="h-3.5 w-3.5 text-warning-soft-foreground"
+                    aria-hidden="true"
+                  />
                   {ago(conversation.needs_human_at)}
                 </span>
               </Row>

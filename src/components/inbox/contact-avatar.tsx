@@ -10,11 +10,22 @@ export function avatarHue(seed: string): number {
 }
 
 /** Initials on a soft colour (Batch 39); the colours live in .avatar-tone. */
-export function ContactAvatar({ seed, label, className }: { seed: string; label: string; className?: string }) {
+export function ContactAvatar({
+  seed,
+  label,
+  className,
+}: {
+  seed: string;
+  label: string;
+  className?: string;
+}) {
   return (
     <span
       aria-hidden="true"
-      className={cn("avatar-tone flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold", className)}
+      className={cn(
+        "avatar-tone flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+        className,
+      )}
       style={{ ["--av-h" as string]: avatarHue(seed) }}
     >
       {initials(label)}

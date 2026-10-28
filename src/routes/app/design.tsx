@@ -8,10 +8,7 @@ import { DesignSystemPage } from "@/components/design/design-system-page";
  */
 export const Route = createFileRoute("/app/design")({
   head: () => ({
-    meta: [
-      { title: "Design system — AiDwar" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Design system — AiDwar" }, { name: "robots", content: "noindex" }],
   }),
   component: DesignSystemPage,
 });

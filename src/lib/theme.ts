@@ -25,7 +25,10 @@ export function readThemeChoice(): ThemeChoice {
 }
 
 function systemDark(): boolean {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches === true;
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-color-scheme: dark)").matches === true
+  );
 }
 
 export function resolveTheme(choice: ThemeChoice): "light" | "dark" {

@@ -7,16 +7,15 @@ import { useEffect, useRef } from "react";
  * right away when it is already on screen.
  */
 export type AppCommand =
-  | { kind: "new-campaign" }
-  | { kind: "new-template" }
-  | { kind: "open-conversation"; id: string };
+  { kind: "new-campaign" } | { kind: "new-template" } | { kind: "open-conversation"; id: string };
 
 const EVENT = "aidwar:app-command";
 let pending: AppCommand | null = null;
 
 export function runAppCommand(command: AppCommand): void {
   pending = command;
-  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(EVENT, { detail: command }));
+  if (typeof window !== "undefined")
+    window.dispatchEvent(new CustomEvent(EVENT, { detail: command }));
 }
 
 /** Runs `handler` for commands of `kind` (once each, newest wins). */

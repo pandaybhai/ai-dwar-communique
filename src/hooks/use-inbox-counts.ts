@@ -31,7 +31,10 @@ export function useInboxCounts(organizationId: string | null): { unread: number;
           .eq("organization_id", organizationId)
           .eq("needs_human", true),
       ]);
-      setCounts({ unread: unread.error ? 0 : (unread.count ?? 0), waiting: waiting.error ? 0 : (waiting.count ?? 0) });
+      setCounts({
+        unread: unread.error ? 0 : (unread.count ?? 0),
+        waiting: waiting.error ? 0 : (waiting.count ?? 0),
+      });
     } catch {
       setCounts({ unread: 0, waiting: 0 });
     }
