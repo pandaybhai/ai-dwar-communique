@@ -238,6 +238,13 @@ export async function authenticateApiKey(
   return { keyId: row.id, organizationId: row.organization_id };
 }
 
+/** sha256 of the key a request carries (already checked by authenticateApiKey), else "". */
+export function bearerKeyHash(request: Request): string {
+  const header = request.headers.get("authorization") ?? "";
+  const token = header.replace(/^bearer\s+/i, "").trim();
+  return KEY_SHAPE.test(token) ? hashApiKey(token) : "";
+}
+
 // ------------------------------------------------------------ rate limits
 
 /**
@@ -400,6 +407,63 @@ export async function claimIdempotency(
   return last && last !== "error" ? judge(last) : { kind: "error" };
 }
 
+/** An answer the API gives: status, JSON body, extra headers. */
+export type ApiReply = {
+  status: number;
+  body: Record<string, unknown>;
+  headers?: Record<string, string>;
+};
+
+/**
+ * Batch 37: claimIdempotency with the API's answers for a key that can't be
+ * used now — the first answer again (Idempotent-Replayed), still in progress
+ * (409, Retry-After), used for a different request (409), or unreadable (503).
+ * Shared by every send so they all answer alike. `{ id }` when reserved.
+ */
+export async function reserveIdempotency(
+  supabase: SupabaseClient,
+  caller: ApiCaller,
+  input: { key: string; requestHash: string },
+): Promise<{ id: string } | ApiReply> {
+  const claim = await claimIdempotency(supabase, {
+    organizationId: caller.organizationId,
+    apiKeyId: caller.keyId,
+    key: input.key,
+    requestHash: input.requestHash,
+  });
+  if (claim.kind === "new") return { id: claim.id };
+  if (claim.kind === "replay")
+    return { status: claim.status, body: claim.body, headers: { "Idempotent-Replayed": "true" } };
+  if (claim.kind === "in_progress") {
+    return {
+      status: 409,
+      body: {
+        error:
+          "A request with this idempotency_key is still being sent. Ask again in a few seconds.",
+        code: "idempotency_in_progress",
+      },
+      headers: { "Retry-After": "5" },
+    };
+  }
+  if (claim.kind === "mismatch") {
+    return {
+      status: 409,
+      body: {
+        error:
+          "This idempotency_key was already used for a different request in the last 24 hours.",
+        code: "idempotency_key_reused",
+      },
+    };
+  }
+  return {
+    status: 503,
+    body: {
+      error: "We couldn't reserve the idempotency_key. Please try again.",
+      code: "unavailable",
+    },
+  };
+}
+
 /** The answer a reserved request gave, kept for its repeats. */
 export async function finishIdempotency(
   supabase: SupabaseClient,
@@ -543,4 +607,73 @@ export async function cleanupApiRecords(
     return removeIds("api_webhook_deliveries", data);
   });
   return counts;
+}
+
+// ------------------------------------------------------------ a route
+
+/**
+ * Batch 37: one Public API route's request, start to end — the key, the
+ * public_api flag and the rate limit checked before the body is read (as the
+ * Batch 34 routes do), the JSON body read up to `maxBytes` when the route
+ * takes one, and an unexpected error answered as 500 internal_error (logged
+ * with the workspace and key id only, never the key or the body).
+ */
+export async function runApiRoute(
+  request: Request,
+  options: { step: string; body?: { maxBytes: number } },
+  handle: (input: {
+    supabase: SupabaseClient;
+    caller: ApiCaller;
+    body: unknown;
+  }) => Promise<ApiReply | Response>,
+): Promise<Response> {
+  const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+  const supabase = getServiceClient();
+  const caller = await authenticateApiKey(supabase, request);
+  if (caller instanceof Response) return caller;
+  const limited = await takeRateLimit(supabase, caller);
+  if (limited) return limited;
+
+  let body: unknown = null;
+  if (options.body) {
+    const max = options.body.maxBytes;
+    const tooLarge = () =>
+      apiError(
+        413,
+        "request_too_large",
+        `The request is larger than the ${Math.round(max / 1024 / 1024)} MB limit.`,
+      );
+    const declared = Number(request.headers.get("content-length") ?? NaN);
+    if (Number.isFinite(declared) && declared > max) return tooLarge();
+    try {
+      const { readBodyCapped } = await import("@/lib/safe-fetch.server");
+      const bytes = await readBodyCapped(request.body, max);
+      body = JSON.parse(new TextDecoder().decode(bytes));
+    } catch (error) {
+      const { BodyTooLargeError } = await import("@/lib/safe-fetch.server");
+      if (error instanceof BodyTooLargeError) return tooLarge();
+      return apiError(400, "invalid_json", "The request body must be JSON.");
+    }
+  }
+
+  try {
+    const answer = await handle({ supabase, caller, body });
+    if (answer instanceof Response) return answer;
+    return Response.json(answer.body, { status: answer.status, headers: answer.headers ?? {} });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        scope: "public_api",
+        step: options.step,
+        organization_id: caller.organizationId,
+        key_id: caller.keyId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    return apiError(
+      500,
+      "internal_error",
+      "Something went wrong on our side. Repeat the call (with the same idempotency_key for a send): a message is never sent twice.",
+    );
+  }
 }

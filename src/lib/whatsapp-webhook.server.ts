@@ -1055,6 +1055,19 @@ async function applyOptKeywords(
     body: optOut ? OPT_OUT_CONFIRMATION : OPT_IN_CONFIRMATION,
   });
   log("confirmation_sent", { action, next_status: nextStatus });
+
+  // Batch 37: the merchant's webhook hears it (when one is set) — after the
+  // customer's confirmation is out, so it never holds that up.
+  try {
+    const { queueContactOptEvent } = await import("@/lib/public-api-webhooks.server");
+    await queueContactOptEvent(supabase, {
+      organizationId: args.organizationId,
+      contactId: args.contactId,
+      event: optOut ? "contact.opted_out" : "contact.opted_in",
+    });
+  } catch {
+    // the merchant's webhook queue never changes what the customer got
+  }
   return true;
 }
 
@@ -1504,8 +1517,11 @@ export async function processWebhookPayload(
         }
 
 
-        // ---- template status updates (routed by WABA id, not phone number) ----
-        if (String(change["field"] ?? "") === "message_template_status_update") {
+        // ---- template status / category updates (routed by WABA id, not phone number) ----
+        if (
+          String(change["field"] ?? "") === "message_template_status_update" ||
+          String(change["field"] ?? "") === "template_category_update"
+        ) {
           const wabaId = String(entry["id"] ?? "");
           // A WABA can hold several numbers, so this is a list, not a single
           // row — but every number on it belongs to one organization.
@@ -1526,6 +1542,59 @@ export async function processWebhookPayload(
           const templateName = value["message_template_name"] as string | undefined;
           const templateLanguage = value["message_template_language"] as string | undefined;
           const metaTemplateId = value["message_template_id"];
+          // The template rows this notice is about, on this WABA only.
+          type Eq = { eq: (column: string, value: unknown) => Eq };
+          type Run = PromiseLike<{ data: unknown; error: unknown }>;
+          const matchTemplate = (query: unknown): Run | null => {
+            const scoped = (query as Eq)
+              .eq("organization_id", wabaOrgIds[0]!)
+              .eq("waba_id", wabaId);
+            if (metaTemplateId !== undefined && metaTemplateId !== null)
+              return scoped.eq("meta_template_id", String(metaTemplateId)) as unknown as Run;
+            if (!templateName) return null;
+            const named = scoped.eq("name", templateName);
+            return (templateLanguage
+              ? named.eq("language", templateLanguage)
+              : named) as unknown as Run;
+          };
+          // Batch 37: when Meta's notice happened, so a repeated notice queues nothing new.
+          const noticeAt = Number(entry["time"] ?? 0)
+            ? new Date(Number(entry["time"]) * 1000).toISOString()
+            : new Date().toISOString();
+
+          // Batch 37: Meta moved the template to another category — the stored
+          // category follows (it decides the opt-out rule and the price), and
+          // the merchant's webhook hears template.category_changed.
+          if (String(change["field"] ?? "") === "template_category_update") {
+            const nextCategory =
+              typeof value["new_category"] === "string" ? value["new_category"].toUpperCase() : "";
+            if (!nextCategory) continue; // only a notice of a change still to come
+            const before = matchTemplate(
+              supabase.from("message_templates").select("id, name, language, status, category"),
+            );
+            const update = matchTemplate(
+              supabase
+                .from("message_templates")
+                .update({ category: nextCategory, updated_at: new Date().toISOString() }),
+            );
+            if (!before || !update) continue;
+            const { data: previous } = await before;
+            await update;
+            const { queueTemplateApiEvents } = await import("@/lib/public-api-webhooks.server");
+            await queueTemplateApiEvents(supabase, {
+              organizationId: wabaOrgIds[0]!,
+              event: "template.category_changed",
+              rows: (previous ?? []) as never,
+              next: { category: nextCategory },
+              previousCategory:
+                typeof value["previous_category"] === "string"
+                  ? value["previous_category"].toUpperCase()
+                  : null,
+              occurredAt: noticeAt,
+            });
+            continue;
+          }
+
           // Batch 27 (M12): DISABLED / DELETED (and the rest Meta sends) stop the
           // template from being sent; REINSTATED makes it sendable again.
           const { metaTemplateStatus } = await import("@/lib/templates");
@@ -1533,27 +1602,35 @@ export async function processWebhookPayload(
           if (!nextStatus) continue;
 
           const reason = (value["reason"] as string | undefined) ?? null;
-          let update = supabase
-            .from("message_templates")
-            .update({
+          const rejectionReason =
+            nextStatus === "REJECTED"
+              ? reason && reason !== "NONE"
+                ? reason
+                : "Rejected by review"
+              : null;
+          const update = matchTemplate(
+            supabase.from("message_templates").update({
               status: nextStatus,
-              rejection_reason:
-                nextStatus === "REJECTED" ? (reason && reason !== "NONE" ? reason : "Rejected by review") : null,
+              rejection_reason: rejectionReason,
               updated_at: new Date().toISOString(),
-            })
-            .eq("organization_id", wabaOrgIds[0]!)
-            // Templates live inside a WABA — never touch the other library.
-            .eq("waba_id", wabaId);
-
-          if (metaTemplateId !== undefined && metaTemplateId !== null) {
-            update = update.eq("meta_template_id", String(metaTemplateId));
-          } else if (templateName) {
-            update = update.eq("name", templateName);
-            if (templateLanguage) update = update.eq("language", templateLanguage);
-          } else {
-            continue;
-          }
+            }),
+          );
+          if (!update) continue;
+          // Batch 37: what the rows were, for template.status_changed.
+          const before = matchTemplate(
+            supabase.from("message_templates").select("id, name, language, status, category"),
+          );
+          const { data: previous } = before ? await before : { data: null };
           await update;
+          const { queueTemplateApiEvents } = await import("@/lib/public-api-webhooks.server");
+          await queueTemplateApiEvents(supabase, {
+            organizationId: wabaOrgIds[0]!,
+            event: "template.status_changed",
+            rows: (previous ?? []) as never,
+            next: { status: nextStatus, rejectionReason },
+            previousCategory: null,
+            occurredAt: noticeAt,
+          });
           if (nextStatus === "APPROVED" || nextStatus === "REJECTED") {
             await emitEvent(supabase, nextStatus === "APPROVED" ? "template.approved" : "template.rejected", {
               organizationId: wabaOrgIds[0]!,
@@ -1957,6 +2034,28 @@ export async function processWebhookPayload(
                 occurredAt,
                 properties: { message_type: type, conversation_id: conversation.id },
               });
+              // Batch 37: the merchant's own webhook hears message.received (and
+              // contact.created for a new number) — once, as this message is new;
+              // after the reply, awaited before the event is closed.
+              if (!isSystemEcho && isCustomerNumber) {
+                const apiEvent = {
+                  organizationId: orgId,
+                  contactId: contact.id as string,
+                  messageId: inserted[0]!.id as string,
+                  msg,
+                  phone,
+                  name: profileName,
+                  newContact: contactAge >= 0 && contactAge < 10_000,
+                  contactSource: attribution.source,
+                  occurredAt,
+                };
+                afterReply.push(async () =>
+                  (await import("@/lib/public-api-webhooks.server")).queueInboundApiEvents(
+                    supabase,
+                    apiEvent,
+                  ),
+                );
+              }
             }
 
             connection = await connectionP;

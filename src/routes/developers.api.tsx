@@ -20,10 +20,19 @@ import {
   javascriptExample,
   statusCurlExample,
 } from "@/lib/public-api";
+import {
+  API_ENDPOINTS,
+  POSTMAN_PATH,
+  WEBHOOK_EVENTS,
+  curlFor,
+  errorRow,
+  nodeFor,
+  type ApiEndpoint,
+} from "@/lib/public-api-spec";
 
 const TITLE = "Public API — AiDwar";
 const DESCRIPTION =
-  "Send invoices and other documents on WhatsApp from your own billing software with the AiDwar Public API: authentication, the send call, errors, idempotency, webhooks and rate limits.";
+  "Send WhatsApp templates and replies, manage contacts and templates, and hear incoming messages from your own software with the AiDwar Public API: authentication, every endpoint with curl and Node examples, errors, idempotency, webhooks, rate limits and a Postman collection.";
 const ORIGIN = "https://aidwar.in";
 const EXAMPLE = {
   origin: ORIGIN,
@@ -69,12 +78,78 @@ const TOC: Array<[string, string]> = [
   ["authentication", "Authentication"],
   ["send", "Send a document template"],
   ["status", "Message status"],
+  ["reference", "API reference (every endpoint)"],
   ["errors", "Errors"],
   ["idempotency", "Idempotency"],
   ["webhooks", "Webhooks"],
+  ["events", "Webhook events"],
   ["limits", "Rate limits"],
   ["window", "The 24-hour window and pricing"],
+  ["postman", "Postman collection"],
 ];
+
+/** One endpoint, from the spec (src/lib/public-api-spec.ts): what it does, examples, answer, errors. */
+function Endpoint({ e }: { e: ApiEndpoint }) {
+  return (
+    <article id={e.id} className="scroll-mt-24 space-y-3 rounded-2xl border border-border/70 p-5">
+      <h4 className="font-semibold text-foreground">{e.title}</h4>
+      <p>
+        <code className="text-foreground">
+          {e.method} {ORIGIN}
+          {e.path}
+        </code>
+      </p>
+      <p>{e.summary}</p>
+      {e.query?.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[28rem] text-left text-sm">
+            <thead className="text-foreground">
+              <tr>
+                <th className="py-1 pr-4 font-medium">Query</th>
+                <th className="py-1 font-medium">Meaning</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/70">
+              {e.query.map((q) => (
+                <tr key={q.name}>
+                  <td className="py-1 pr-4 font-mono">{q.name}</td>
+                  <td className="py-1">{q.description}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <h5 className="text-sm font-semibold text-foreground">curl</h5>
+      <Code label={`${e.title}: curl`}>{curlFor(e)}</Code>
+      <h5 className="text-sm font-semibold text-foreground">Node 18+</h5>
+      <Code label={`${e.title}: Node`}>{nodeFor(e)}</Code>
+      {(e.more ?? []).map((m) => (
+        <div key={m.label} className="space-y-2">
+          <h5 className="text-sm font-semibold text-foreground">Also: {m.label}</h5>
+          <Code label={`${e.title}: ${m.label}`}>{curlFor(e, m.body)}</Code>
+        </div>
+      ))}
+      <h5 className="text-sm font-semibold text-foreground">Answer: {e.response.status}</h5>
+      <Code label={`${e.title}: answer`}>
+        {typeof e.response.body === "string"
+          ? e.response.body
+          : JSON.stringify(e.response.body, null, 2)}
+      </Code>
+      <p className="text-sm">
+        Errors:{" "}
+        {e.errors.map((code, i) => (
+          <span key={code}>
+            {i ? ", " : ""}
+            <code>{code}</code> ({errorRow(code)?.status})
+          </span>
+        ))}
+        , and the ones every call can get (<code>401</code>, <code>403</code>, <code>429</code>,{" "}
+        <code>5xx</code>).
+      </p>
+    </article>
+  );
+}
 
 function ApiDocsPage() {
   return (
@@ -90,6 +165,19 @@ function ApiDocsPage() {
           up in your inbox (marked “Sent via API”), and you hear back when it is sent, delivered,
           read or failed. The API is part of the Scale plan; ask us to switch it on for any other
           plan.
+        </p>
+        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+          Version 1.1 adds any approved template (pictures, videos, text headers, link, quick-reply
+          and coupon buttons), free-form replies inside the 24-hour window, incoming messages on
+          your webhook, contacts, templates and your wallet balance — every endpoint is in the{" "}
+          <a href="#reference" className="text-primary hover:underline">
+            API reference
+          </a>
+          , and all of them are in the{" "}
+          <a href={POSTMAN_PATH} download className="text-primary hover:underline">
+            Postman collection
+          </a>
+          .
         </p>
         <nav
           aria-label="On this page"
@@ -206,7 +294,8 @@ function ApiDocsPage() {
             <p>
               <code>queued</code> means WhatsApp has the message; you hear <code>message.sent</code>
               , <code>message.delivered</code> and <code>message.read</code> on your webhook as they
-              happen. A customer who opted out of your messages is never sent to (<code>409</code>).
+              happen. A customer who opted out never gets a marketing template (<code>409</code>);
+              utility and authentication templates (an invoice, a code) still reach them.
             </p>
           </Section>
 
@@ -221,6 +310,22 @@ function ApiDocsPage() {
               messages your workspace sent through the API.
             </p>
             <Code label="Status example">{statusCurlExample(ORIGIN)}</Code>
+          </Section>
+
+          <Section id="reference" heading="API reference">
+            <p>
+              Every endpoint takes the same <code>Authorization</code> header, counts against the
+              same rate limits and answers errors the same way. A send with an{" "}
+              <code>idempotency_key</code> is never sent twice.
+            </p>
+            {(["Messages", "Media", "Contacts", "Templates", "Account"] as const).map((group) => (
+              <div key={group} className="space-y-4">
+                <h3 className="text-lg font-semibold text-foreground">{group}</h3>
+                {API_ENDPOINTS.filter((e) => e.group === group).map((e) => (
+                  <Endpoint key={e.id} e={e} />
+                ))}
+              </div>
+            ))}
           </Section>
 
           <Section id="errors" heading="Errors">
@@ -267,8 +372,12 @@ function ApiDocsPage() {
           <Section id="webhooks" heading="Webhooks">
             <p>
               Set one https address under <b>Settings → API &amp; webhooks</b>. You get a signing
-              secret once (rotate it there any time). For every message the API sent we POST JSON
-              for{" "}
+              secret once (rotate it there any time). Incoming messages, contacts and templates
+              arrive too (see{" "}
+              <a href="#events" className="text-primary hover:underline">
+                Webhook events
+              </a>
+              ). For every message the API sent we POST JSON for{" "}
               {WEBHOOK_EVENT_NAMES.map((e, i) => (
                 <span key={e}>
                   {i ? ", " : ""}
@@ -295,6 +404,23 @@ function ApiDocsPage() {
             </p>
           </Section>
 
+          <Section id="events" heading="Webhook events">
+            <p>
+              Besides your own messages' statuses, a webhook that is set hears what happens in your
+              WhatsApp: every event below, signed, retried and de-duplicated the same way (
+              <code>X-AiDwar-Event</code> names it).
+            </p>
+            {WEBHOOK_EVENTS.map((ev) => (
+              <div key={ev.name} id={`event-${ev.name}`} className="space-y-2">
+                <h3 className="font-semibold text-foreground">
+                  <code>{ev.name}</code>
+                </h3>
+                <p>{ev.when}</p>
+                <Code label={`${ev.name} body`}>{JSON.stringify(ev.example, null, 2)}</Code>
+              </div>
+            ))}
+          </Section>
+
           <Section id="limits" heading="Rate limits">
             <p>
               {RATE_PER_KEY_PER_MIN} requests a minute per key and {RATE_PER_WORKSPACE_PER_MIN} a
@@ -315,6 +441,22 @@ function ApiDocsPage() {
               . WhatsApp doesn't charge a utility template sent while the customer's 24-hour window
               is open, and neither do we. If the wallet can't cover the message, the call is refused
               with <code>402</code> and nothing is sent.
+            </p>
+            <p>
+              A free-form message (<code>POST /api/v1/messages/session</code>) can only be sent
+              inside the window — within 24 hours of the customer's last message to you — and is
+              charged exactly like a reply from your inbox. Outside it you get{" "}
+              <code>409 window_closed</code>: send a template instead.
+            </p>
+          </Section>
+
+          <Section id="postman" heading="Postman collection">
+            <p>
+              <a href={POSTMAN_PATH} download className="text-primary hover:underline">
+                Download the Postman collection
+              </a>{" "}
+              (every endpoint and example on this page, made from the same description). Import it,
+              then set the collection variable <code>apiKey</code> to your key.
             </p>
           </Section>
         </div>

@@ -52,6 +52,7 @@ import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as DevelopersApiRouteImport } from './routes/developers.api'
+import { Route as DevelopersApiDotpostmanDotjsonRouteImport } from './routes/developers.api[.]postman[.]json'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as PayPaymentIdRouteImport } from './routes/pay.$paymentId'
 import { Route as RTokenRouteImport } from './routes/r.$token'
@@ -139,14 +140,25 @@ import { Route as ApiPublicRazorpayFlowWebhookOrgIdRouteImport } from './routes/
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
 import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/shopify/webhooks/shop-redact'
+import { Route as ApiV1AccountBalanceRouteImport } from './routes/api/v1/account/balance'
+import { Route as ApiV1ContactsIndexRouteImport } from './routes/api/v1/contacts/index'
+import { Route as ApiV1ContactsPhoneRouteImport } from './routes/api/v1/contacts/$phone'
+import { Route as ApiV1ContactsBulkRouteImport } from './routes/api/v1/contacts/bulk'
+import { Route as ApiV1MediaMessageIdRouteImport } from './routes/api/v1/media/$messageId'
 import { Route as ApiV1MessagesMessageIdRouteImport } from './routes/api/v1/messages/$messageId'
+import { Route as ApiV1MessagesSessionRouteImport } from './routes/api/v1/messages/session'
 import { Route as ApiV1MessagesTemplateRouteImport } from './routes/api/v1/messages/template'
+import { Route as ApiV1TemplatesIndexRouteImport } from './routes/api/v1/templates/index'
+import { Route as ApiV1TemplatesNameRouteImport } from './routes/api/v1/templates/$name'
 import { Route as ApiWhatsappChatMediaMessageIdRouteImport } from './routes/api/whatsapp/chat-media.$messageId'
 import { Route as ApiWhatsappMediaIdRouteImport } from './routes/api/whatsapp/media/$id'
 import { Route as AppFlowsV2IdRouteImport } from './routes/app/flows.v2.$id'
 import { Route as ApiPublicShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/public/shopify/webhooks/customers-data-request'
 import { Route as ApiPublicShopifyWebhooksCustomersRedactRouteImport } from './routes/api/public/shopify/webhooks/customers-redact'
 import { Route as ApiPublicShopifyWebhooksShopRedactRouteImport } from './routes/api/public/shopify/webhooks/shop-redact'
+import { Route as ApiV1ContactsPhoneTagsRouteImport } from './routes/api/v1/contacts/$phone.tags'
+import { Route as ApiV1MediaMessageIdDownloadRouteImport } from './routes/api/v1/media/$messageId.download'
+import { Route as ApiV1ContactsPhoneTagsTagRouteImport } from './routes/api/v1/contacts/$phone.tags.$tag'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -363,6 +375,12 @@ const DevelopersApiRoute = DevelopersApiRouteImport.update({
   path: '/developers/api',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DevelopersApiDotpostmanDotjsonRoute =
+  DevelopersApiDotpostmanDotjsonRouteImport.update({
+    id: '/developers/api.postman.json',
+    path: '/developers/api.postman.json',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
@@ -821,14 +839,54 @@ const ApiShopifyWebhooksShopRedactRoute =
     path: '/api/shopify/webhooks/shop-redact',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1AccountBalanceRoute = ApiV1AccountBalanceRouteImport.update({
+  id: '/api/v1/account/balance',
+  path: '/api/v1/account/balance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1ContactsIndexRoute = ApiV1ContactsIndexRouteImport.update({
+  id: '/api/v1/contacts/',
+  path: '/api/v1/contacts/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1ContactsPhoneRoute = ApiV1ContactsPhoneRouteImport.update({
+  id: '/api/v1/contacts/$phone',
+  path: '/api/v1/contacts/$phone',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1ContactsBulkRoute = ApiV1ContactsBulkRouteImport.update({
+  id: '/api/v1/contacts/bulk',
+  path: '/api/v1/contacts/bulk',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1MediaMessageIdRoute = ApiV1MediaMessageIdRouteImport.update({
+  id: '/api/v1/media/$messageId',
+  path: '/api/v1/media/$messageId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1MessagesMessageIdRoute = ApiV1MessagesMessageIdRouteImport.update({
   id: '/api/v1/messages/$messageId',
   path: '/api/v1/messages/$messageId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1MessagesSessionRoute = ApiV1MessagesSessionRouteImport.update({
+  id: '/api/v1/messages/session',
+  path: '/api/v1/messages/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1MessagesTemplateRoute = ApiV1MessagesTemplateRouteImport.update({
   id: '/api/v1/messages/template',
   path: '/api/v1/messages/template',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1TemplatesIndexRoute = ApiV1TemplatesIndexRouteImport.update({
+  id: '/api/v1/templates/',
+  path: '/api/v1/templates/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1TemplatesNameRoute = ApiV1TemplatesNameRouteImport.update({
+  id: '/api/v1/templates/$name',
+  path: '/api/v1/templates/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiWhatsappChatMediaMessageIdRoute =
@@ -864,6 +922,23 @@ const ApiPublicShopifyWebhooksShopRedactRoute =
     id: '/api/public/shopify/webhooks/shop-redact',
     path: '/api/public/shopify/webhooks/shop-redact',
     getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1ContactsPhoneTagsRoute = ApiV1ContactsPhoneTagsRouteImport.update({
+  id: '/tags',
+  path: '/tags',
+  getParentRoute: () => ApiV1ContactsPhoneRoute,
+} as any)
+const ApiV1MediaMessageIdDownloadRoute =
+  ApiV1MediaMessageIdDownloadRouteImport.update({
+    id: '/download',
+    path: '/download',
+    getParentRoute: () => ApiV1MediaMessageIdRoute,
+  } as any)
+const ApiV1ContactsPhoneTagsTagRoute =
+  ApiV1ContactsPhoneTagsTagRouteImport.update({
+    id: '/$tag',
+    path: '/$tag',
+    getParentRoute: () => ApiV1ContactsPhoneTagsRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -908,6 +983,7 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/api': typeof DevelopersApiRoute
+  '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
@@ -997,14 +1073,25 @@ export interface FileRoutesByFullPath {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/account/balance': typeof ApiV1AccountBalanceRoute
+  '/api/v1/contacts/$phone': typeof ApiV1ContactsPhoneRouteWithChildren
+  '/api/v1/contacts/bulk': typeof ApiV1ContactsBulkRoute
+  '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
   '/api/v1/messages/$messageId': typeof ApiV1MessagesMessageIdRoute
+  '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
+  '/api/v1/templates/$name': typeof ApiV1TemplatesNameRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
+  '/api/v1/contacts/': typeof ApiV1ContactsIndexRoute
+  '/api/v1/templates/': typeof ApiV1TemplatesIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/contacts/$phone/tags': typeof ApiV1ContactsPhoneTagsRouteWithChildren
+  '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
+  '/api/v1/contacts/$phone/tags/$tag': typeof ApiV1ContactsPhoneTagsTagRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1046,6 +1133,7 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/api': typeof DevelopersApiRoute
+  '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
@@ -1135,14 +1223,25 @@ export interface FileRoutesByTo {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/account/balance': typeof ApiV1AccountBalanceRoute
+  '/api/v1/contacts/$phone': typeof ApiV1ContactsPhoneRouteWithChildren
+  '/api/v1/contacts/bulk': typeof ApiV1ContactsBulkRoute
+  '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
   '/api/v1/messages/$messageId': typeof ApiV1MessagesMessageIdRoute
+  '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
+  '/api/v1/templates/$name': typeof ApiV1TemplatesNameRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
+  '/api/v1/contacts': typeof ApiV1ContactsIndexRoute
+  '/api/v1/templates': typeof ApiV1TemplatesIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/contacts/$phone/tags': typeof ApiV1ContactsPhoneTagsRouteWithChildren
+  '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
+  '/api/v1/contacts/$phone/tags/$tag': typeof ApiV1ContactsPhoneTagsTagRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1187,6 +1286,7 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/api': typeof DevelopersApiRoute
+  '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
@@ -1276,14 +1376,25 @@ export interface FileRoutesById {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/account/balance': typeof ApiV1AccountBalanceRoute
+  '/api/v1/contacts/$phone': typeof ApiV1ContactsPhoneRouteWithChildren
+  '/api/v1/contacts/bulk': typeof ApiV1ContactsBulkRoute
+  '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
   '/api/v1/messages/$messageId': typeof ApiV1MessagesMessageIdRoute
+  '/api/v1/messages/session': typeof ApiV1MessagesSessionRoute
   '/api/v1/messages/template': typeof ApiV1MessagesTemplateRoute
+  '/api/v1/templates/$name': typeof ApiV1TemplatesNameRoute
   '/api/whatsapp/chat-media/$messageId': typeof ApiWhatsappChatMediaMessageIdRoute
   '/api/whatsapp/media/$id': typeof ApiWhatsappMediaIdRoute
   '/app/flows/v2/$id': typeof AppFlowsV2IdRoute
+  '/api/v1/contacts/': typeof ApiV1ContactsIndexRoute
+  '/api/v1/templates/': typeof ApiV1TemplatesIndexRoute
   '/api/public/shopify/webhooks/customers-data-request': typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   '/api/public/shopify/webhooks/customers-redact': typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   '/api/public/shopify/webhooks/shop-redact': typeof ApiPublicShopifyWebhooksShopRedactRoute
+  '/api/v1/contacts/$phone/tags': typeof ApiV1ContactsPhoneTagsRouteWithChildren
+  '/api/v1/media/$messageId/download': typeof ApiV1MediaMessageIdDownloadRoute
+  '/api/v1/contacts/$phone/tags/$tag': typeof ApiV1ContactsPhoneTagsTagRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1329,6 +1440,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/developers/api'
+    | '/developers/api.postman.json'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
@@ -1418,14 +1530,25 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/account/balance'
+    | '/api/v1/contacts/$phone'
+    | '/api/v1/contacts/bulk'
+    | '/api/v1/media/$messageId'
     | '/api/v1/messages/$messageId'
+    | '/api/v1/messages/session'
     | '/api/v1/messages/template'
+    | '/api/v1/templates/$name'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
+    | '/api/v1/contacts/'
+    | '/api/v1/templates/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/contacts/$phone/tags'
+    | '/api/v1/media/$messageId/download'
+    | '/api/v1/contacts/$phone/tags/$tag'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1467,6 +1590,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/developers/api'
+    | '/developers/api.postman.json'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
@@ -1556,14 +1680,25 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/account/balance'
+    | '/api/v1/contacts/$phone'
+    | '/api/v1/contacts/bulk'
+    | '/api/v1/media/$messageId'
     | '/api/v1/messages/$messageId'
+    | '/api/v1/messages/session'
     | '/api/v1/messages/template'
+    | '/api/v1/templates/$name'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
+    | '/api/v1/contacts'
+    | '/api/v1/templates'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/contacts/$phone/tags'
+    | '/api/v1/media/$messageId/download'
+    | '/api/v1/contacts/$phone/tags/$tag'
   id:
     | '__root__'
     | '/'
@@ -1607,6 +1742,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/developers/api'
+    | '/developers/api.postman.json'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
@@ -1696,14 +1832,25 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/account/balance'
+    | '/api/v1/contacts/$phone'
+    | '/api/v1/contacts/bulk'
+    | '/api/v1/media/$messageId'
     | '/api/v1/messages/$messageId'
+    | '/api/v1/messages/session'
     | '/api/v1/messages/template'
+    | '/api/v1/templates/$name'
     | '/api/whatsapp/chat-media/$messageId'
     | '/api/whatsapp/media/$id'
     | '/app/flows/v2/$id'
+    | '/api/v1/contacts/'
+    | '/api/v1/templates/'
     | '/api/public/shopify/webhooks/customers-data-request'
     | '/api/public/shopify/webhooks/customers-redact'
     | '/api/public/shopify/webhooks/shop-redact'
+    | '/api/v1/contacts/$phone/tags'
+    | '/api/v1/media/$messageId/download'
+    | '/api/v1/contacts/$phone/tags/$tag'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1728,6 +1875,7 @@ export interface RootRouteChildren {
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   DevelopersApiRoute: typeof DevelopersApiRoute
+  DevelopersApiDotpostmanDotjsonRoute: typeof DevelopersApiDotpostmanDotjsonRoute
   JoinTokenRoute: typeof JoinTokenRoute
   PayPaymentIdRoute: typeof PayPaymentIdRoute
   RTokenRoute: typeof RTokenRoute
@@ -1809,10 +1957,18 @@ export interface RootRouteChildren {
   ApiShopifyWebhooksCustomersDataRequestRoute: typeof ApiShopifyWebhooksCustomersDataRequestRoute
   ApiShopifyWebhooksCustomersRedactRoute: typeof ApiShopifyWebhooksCustomersRedactRoute
   ApiShopifyWebhooksShopRedactRoute: typeof ApiShopifyWebhooksShopRedactRoute
+  ApiV1AccountBalanceRoute: typeof ApiV1AccountBalanceRoute
+  ApiV1ContactsPhoneRoute: typeof ApiV1ContactsPhoneRouteWithChildren
+  ApiV1ContactsBulkRoute: typeof ApiV1ContactsBulkRoute
+  ApiV1MediaMessageIdRoute: typeof ApiV1MediaMessageIdRouteWithChildren
   ApiV1MessagesMessageIdRoute: typeof ApiV1MessagesMessageIdRoute
+  ApiV1MessagesSessionRoute: typeof ApiV1MessagesSessionRoute
   ApiV1MessagesTemplateRoute: typeof ApiV1MessagesTemplateRoute
+  ApiV1TemplatesNameRoute: typeof ApiV1TemplatesNameRoute
   ApiWhatsappChatMediaMessageIdRoute: typeof ApiWhatsappChatMediaMessageIdRoute
   ApiWhatsappMediaIdRoute: typeof ApiWhatsappMediaIdRoute
+  ApiV1ContactsIndexRoute: typeof ApiV1ContactsIndexRoute
+  ApiV1TemplatesIndexRoute: typeof ApiV1TemplatesIndexRoute
   ApiPublicShopifyWebhooksCustomersDataRequestRoute: typeof ApiPublicShopifyWebhooksCustomersDataRequestRoute
   ApiPublicShopifyWebhooksCustomersRedactRoute: typeof ApiPublicShopifyWebhooksCustomersRedactRoute
   ApiPublicShopifyWebhooksShopRedactRoute: typeof ApiPublicShopifyWebhooksShopRedactRoute
@@ -2119,6 +2275,13 @@ declare module '@tanstack/react-router' {
       path: '/developers/api'
       fullPath: '/developers/api'
       preLoaderRoute: typeof DevelopersApiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/developers/api.postman.json': {
+      id: '/developers/api.postman.json'
+      path: '/developers/api.postman.json'
+      fullPath: '/developers/api.postman.json'
+      preLoaderRoute: typeof DevelopersApiDotpostmanDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join/$token': {
@@ -2730,6 +2893,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShopifyWebhooksShopRedactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/account/balance': {
+      id: '/api/v1/account/balance'
+      path: '/api/v1/account/balance'
+      fullPath: '/api/v1/account/balance'
+      preLoaderRoute: typeof ApiV1AccountBalanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/contacts/': {
+      id: '/api/v1/contacts/'
+      path: '/api/v1/contacts'
+      fullPath: '/api/v1/contacts/'
+      preLoaderRoute: typeof ApiV1ContactsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/contacts/$phone': {
+      id: '/api/v1/contacts/$phone'
+      path: '/api/v1/contacts/$phone'
+      fullPath: '/api/v1/contacts/$phone'
+      preLoaderRoute: typeof ApiV1ContactsPhoneRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/contacts/bulk': {
+      id: '/api/v1/contacts/bulk'
+      path: '/api/v1/contacts/bulk'
+      fullPath: '/api/v1/contacts/bulk'
+      preLoaderRoute: typeof ApiV1ContactsBulkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/media/$messageId': {
+      id: '/api/v1/media/$messageId'
+      path: '/api/v1/media/$messageId'
+      fullPath: '/api/v1/media/$messageId'
+      preLoaderRoute: typeof ApiV1MediaMessageIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/messages/$messageId': {
       id: '/api/v1/messages/$messageId'
       path: '/api/v1/messages/$messageId'
@@ -2737,11 +2935,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1MessagesMessageIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/messages/session': {
+      id: '/api/v1/messages/session'
+      path: '/api/v1/messages/session'
+      fullPath: '/api/v1/messages/session'
+      preLoaderRoute: typeof ApiV1MessagesSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/messages/template': {
       id: '/api/v1/messages/template'
       path: '/api/v1/messages/template'
       fullPath: '/api/v1/messages/template'
       preLoaderRoute: typeof ApiV1MessagesTemplateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/templates/': {
+      id: '/api/v1/templates/'
+      path: '/api/v1/templates'
+      fullPath: '/api/v1/templates/'
+      preLoaderRoute: typeof ApiV1TemplatesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/templates/$name': {
+      id: '/api/v1/templates/$name'
+      path: '/api/v1/templates/$name'
+      fullPath: '/api/v1/templates/$name'
+      preLoaderRoute: typeof ApiV1TemplatesNameRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/whatsapp/chat-media/$messageId': {
@@ -2785,6 +3004,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/public/shopify/webhooks/shop-redact'
       preLoaderRoute: typeof ApiPublicShopifyWebhooksShopRedactRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/contacts/$phone/tags': {
+      id: '/api/v1/contacts/$phone/tags'
+      path: '/tags'
+      fullPath: '/api/v1/contacts/$phone/tags'
+      preLoaderRoute: typeof ApiV1ContactsPhoneTagsRouteImport
+      parentRoute: typeof ApiV1ContactsPhoneRoute
+    }
+    '/api/v1/media/$messageId/download': {
+      id: '/api/v1/media/$messageId/download'
+      path: '/download'
+      fullPath: '/api/v1/media/$messageId/download'
+      preLoaderRoute: typeof ApiV1MediaMessageIdDownloadRouteImport
+      parentRoute: typeof ApiV1MediaMessageIdRoute
+    }
+    '/api/v1/contacts/$phone/tags/$tag': {
+      id: '/api/v1/contacts/$phone/tags/$tag'
+      path: '/$tag'
+      fullPath: '/api/v1/contacts/$phone/tags/$tag'
+      preLoaderRoute: typeof ApiV1ContactsPhoneTagsTagRouteImport
+      parentRoute: typeof ApiV1ContactsPhoneTagsRoute
     }
   }
 }
@@ -2867,6 +3107,42 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
   AppRouteRouteChildren,
 )
 
+interface ApiV1ContactsPhoneTagsRouteChildren {
+  ApiV1ContactsPhoneTagsTagRoute: typeof ApiV1ContactsPhoneTagsTagRoute
+}
+
+const ApiV1ContactsPhoneTagsRouteChildren: ApiV1ContactsPhoneTagsRouteChildren =
+  {
+    ApiV1ContactsPhoneTagsTagRoute: ApiV1ContactsPhoneTagsTagRoute,
+  }
+
+const ApiV1ContactsPhoneTagsRouteWithChildren =
+  ApiV1ContactsPhoneTagsRoute._addFileChildren(
+    ApiV1ContactsPhoneTagsRouteChildren,
+  )
+
+interface ApiV1ContactsPhoneRouteChildren {
+  ApiV1ContactsPhoneTagsRoute: typeof ApiV1ContactsPhoneTagsRouteWithChildren
+}
+
+const ApiV1ContactsPhoneRouteChildren: ApiV1ContactsPhoneRouteChildren = {
+  ApiV1ContactsPhoneTagsRoute: ApiV1ContactsPhoneTagsRouteWithChildren,
+}
+
+const ApiV1ContactsPhoneRouteWithChildren =
+  ApiV1ContactsPhoneRoute._addFileChildren(ApiV1ContactsPhoneRouteChildren)
+
+interface ApiV1MediaMessageIdRouteChildren {
+  ApiV1MediaMessageIdDownloadRoute: typeof ApiV1MediaMessageIdDownloadRoute
+}
+
+const ApiV1MediaMessageIdRouteChildren: ApiV1MediaMessageIdRouteChildren = {
+  ApiV1MediaMessageIdDownloadRoute: ApiV1MediaMessageIdDownloadRoute,
+}
+
+const ApiV1MediaMessageIdRouteWithChildren =
+  ApiV1MediaMessageIdRoute._addFileChildren(ApiV1MediaMessageIdRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
@@ -2889,6 +3165,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
   DevelopersApiRoute: DevelopersApiRoute,
+  DevelopersApiDotpostmanDotjsonRoute: DevelopersApiDotpostmanDotjsonRoute,
   JoinTokenRoute: JoinTokenRoute,
   PayPaymentIdRoute: PayPaymentIdRoute,
   RTokenRoute: RTokenRoute,
@@ -2973,10 +3250,18 @@ const rootRouteChildren: RootRouteChildren = {
   ApiShopifyWebhooksCustomersRedactRoute:
     ApiShopifyWebhooksCustomersRedactRoute,
   ApiShopifyWebhooksShopRedactRoute: ApiShopifyWebhooksShopRedactRoute,
+  ApiV1AccountBalanceRoute: ApiV1AccountBalanceRoute,
+  ApiV1ContactsPhoneRoute: ApiV1ContactsPhoneRouteWithChildren,
+  ApiV1ContactsBulkRoute: ApiV1ContactsBulkRoute,
+  ApiV1MediaMessageIdRoute: ApiV1MediaMessageIdRouteWithChildren,
   ApiV1MessagesMessageIdRoute: ApiV1MessagesMessageIdRoute,
+  ApiV1MessagesSessionRoute: ApiV1MessagesSessionRoute,
   ApiV1MessagesTemplateRoute: ApiV1MessagesTemplateRoute,
+  ApiV1TemplatesNameRoute: ApiV1TemplatesNameRoute,
   ApiWhatsappChatMediaMessageIdRoute: ApiWhatsappChatMediaMessageIdRoute,
   ApiWhatsappMediaIdRoute: ApiWhatsappMediaIdRoute,
+  ApiV1ContactsIndexRoute: ApiV1ContactsIndexRoute,
+  ApiV1TemplatesIndexRoute: ApiV1TemplatesIndexRoute,
   ApiPublicShopifyWebhooksCustomersDataRequestRoute:
     ApiPublicShopifyWebhooksCustomersDataRequestRoute,
   ApiPublicShopifyWebhooksCustomersRedactRoute:

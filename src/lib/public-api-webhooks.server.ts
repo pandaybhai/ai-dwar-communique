@@ -1,8 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHmac, randomBytes } from "crypto";
 import {
+  API_ORIGIN,
+  MEDIA_PATH,
   WEBHOOK_EVENT_NAMES,
   WEBHOOK_RETRY_HOURS,
+  type InboundEventName,
   WEBHOOK_TIMEOUT_SECONDS,
 } from "@/lib/public-api";
 
@@ -191,6 +194,427 @@ export async function queueApiStatus(
     metadata: input.metadata,
     error: input.errorDetail,
   });
+}
+
+// ------------------------------------------------------------ Batch 37: more events
+
+/**
+ * One event on the queue (api_webhook_deliveries), delivered, signed and
+ * retried exactly like a message status. Deduplicated by (message_id, event)
+ * when it is about one message, else by (organization_id, dedupe_key) — so a
+ * webhook Meta repeats queues nothing new. Returns the error text, else null.
+ * Never throws.
+ */
+export async function queueApiEvent(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    event: InboundEventName;
+    payload: Record<string, unknown>;
+    occurredAt: string;
+    messageId?: string | null;
+    dedupeKey?: string | null;
+  },
+): Promise<string | null> {
+  try {
+    const row = {
+      organization_id: input.organizationId,
+      message_id: input.messageId ?? null,
+      event: input.event,
+      payload: input.payload,
+      occurred_at: input.occurredAt,
+      state: "pending",
+      next_attempt_at: new Date().toISOString(),
+      ...(input.dedupeKey ? { dedupe_key: input.dedupeKey } : {}),
+    };
+    const { error } = await supabase.from("api_webhook_deliveries").upsert(row, {
+      onConflict: input.messageId ? "message_id,event" : "organization_id,dedupe_key",
+      ignoreDuplicates: true,
+    });
+    if (!error) return null;
+    console.warn(
+      JSON.stringify({
+        scope: "api_webhook",
+        step: "enqueue",
+        organization_id: input.organizationId,
+        event: input.event,
+        error: error.message,
+      }),
+    );
+    return `api webhook: ${error.message}`;
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    console.warn(
+      JSON.stringify({
+        scope: "api_webhook",
+        step: "enqueue",
+        organization_id: input.organizationId,
+        event: input.event,
+        error: text,
+      }),
+    );
+    return `api webhook: ${text}`;
+  }
+}
+
+/** Many events at once (the bulk contacts call): one write. Same dedupe, same never-throws. */
+export async function queueApiEvents(
+  supabase: SupabaseClient,
+  events: Array<{
+    organizationId: string;
+    event: InboundEventName;
+    payload: Record<string, unknown>;
+    occurredAt: string;
+    dedupeKey: string;
+  }>,
+): Promise<string | null> {
+  if (!events.length) return null;
+  try {
+    const next = new Date().toISOString();
+    const { error } = await supabase.from("api_webhook_deliveries").upsert(
+      events.map((e) => ({
+        organization_id: e.organizationId,
+        message_id: null,
+        event: e.event,
+        payload: e.payload,
+        occurred_at: e.occurredAt,
+        state: "pending",
+        next_attempt_at: next,
+        dedupe_key: e.dedupeKey,
+      })),
+      { onConflict: "organization_id,dedupe_key", ignoreDuplicates: true },
+    );
+    if (!error) return null;
+    console.warn(
+      JSON.stringify({
+        scope: "api_webhook",
+        step: "enqueue_many",
+        count: events.length,
+        error: error.message,
+      }),
+    );
+    return `api webhook: ${error.message}`;
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    console.warn(JSON.stringify({ scope: "api_webhook", step: "enqueue_many", error: text }));
+    return `api webhook: ${text}`;
+  }
+}
+
+const WANTED_TTL_MS = 60_000;
+const wantedCache = new Map<string, { at: number; wanted: Promise<boolean> }>();
+
+/**
+ * Whether a workspace hears Batch 37's events: its webhook is set and active
+ * and public_api is on. Read at most once a minute per workspace (the
+ * webhook path asks for every inbound message); a failed read is "no" for
+ * that minute — events are never queued for nobody.
+ */
+export function apiEventsWanted(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<boolean> {
+  const hit = wantedCache.get(organizationId);
+  if (hit && Date.now() - hit.at < WANTED_TTL_MS) return hit.wanted;
+  const wanted = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from("workspace_connections")
+        .select("id, status")
+        .eq("organization_id", organizationId)
+        .eq("provider", "api_webhook")
+        .maybeSingle();
+      if (error || (data as { status?: string } | null)?.status !== "active") return false;
+      const { publicApiEnabled } = await import("@/lib/public-api.server");
+      return await publicApiEnabled(supabase, organizationId);
+    } catch {
+      return false;
+    }
+  })();
+  wantedCache.set(organizationId, { at: Date.now(), wanted });
+  return wanted;
+}
+
+/** Test hook; Settings calls it after the webhook is saved or removed. */
+export function forgetApiEventsWanted(organizationId?: string): void {
+  if (organizationId) wantedCache.delete(organizationId);
+  else wantedCache.clear();
+}
+
+type AnyRecord = Record<string, unknown>;
+
+/** The link an event gives for a message's file: GET it with the API key for a short-lived download link. */
+export function mediaLinkFor(messageId: string): string {
+  return `${API_ORIGIN}${MEDIA_PATH.replace("{message_id}", messageId)}`;
+}
+
+/**
+ * message.received, from Meta's own inbound message: what the customer sent
+ * — words, a file (as a link to GET /api/v1/media/{message_id}), the button
+ * or list row they tapped, a map pin — and who sent it.
+ */
+export function inboundMessagePayload(input: {
+  messageId: string;
+  msg: AnyRecord;
+  phone: string;
+  name: string | null;
+  occurredAt: string;
+}): Record<string, unknown> {
+  const msg = input.msg;
+  const metaType = String(msg["type"] ?? "unknown");
+  const part = (k: string) => (msg[k] && typeof msg[k] === "object" ? (msg[k] as AnyRecord) : null);
+  const s = (o: AnyRecord | null, k: string) =>
+    o && (typeof o[k] === "string" || typeof o[k] === "number") ? String(o[k]) : null;
+  let type = metaType;
+  let text: string | null = null;
+  let media: Record<string, unknown> | null = null;
+  let reply: Record<string, unknown> | null = null;
+  let location: Record<string, unknown> | null = null;
+
+  if (metaType === "text") text = s(part("text"), "body");
+  else if (["image", "video", "audio", "document", "sticker"].includes(metaType)) {
+    const m = part(metaType);
+    text = s(m, "caption");
+    media = {
+      url: mediaLinkFor(input.messageId),
+      mime_type: s(m, "mime_type"),
+      filename: s(m, "filename"),
+      caption: s(m, "caption"),
+    };
+  } else if (metaType === "interactive") {
+    const i = part("interactive");
+    const kind = String(i?.["type"] ?? "");
+    const tapped = (i?.[kind] as AnyRecord | undefined) ?? null;
+    if (kind === "button_reply" || kind === "list_reply") {
+      type = kind;
+      reply = {
+        id: s(tapped, "id"),
+        title: s(tapped, "title"),
+        ...(kind === "list_reply" ? { description: s(tapped, "description") } : {}),
+      };
+      text = s(tapped, "title");
+    }
+  } else if (metaType === "button") {
+    // A template's quick-reply button.
+    type = "quick_reply";
+    const b = part("button");
+    reply = { id: s(b, "payload"), title: s(b, "text") };
+    text = s(b, "text");
+  } else if (metaType === "location") {
+    const l = part("location");
+    location = {
+      latitude: l?.["latitude"] ?? null,
+      longitude: l?.["longitude"] ?? null,
+      name: s(l, "name"),
+      address: s(l, "address"),
+    };
+  }
+  const context = part("context");
+  return {
+    event: "message.received",
+    message_id: input.messageId,
+    wamid: typeof msg["id"] === "string" ? msg["id"] : null,
+    from: input.phone,
+    contact: { phone: input.phone, name: input.name },
+    type,
+    text,
+    media,
+    reply,
+    location,
+    context: s(context, "id") ? { wamid: s(context, "id") } : null,
+    timestamp: input.occurredAt,
+  };
+}
+
+/** contact.created / contact.opted_out / contact.opted_in. */
+export function contactEventPayload(input: {
+  event: "contact.created" | "contact.opted_out" | "contact.opted_in";
+  phone: string;
+  name: string | null;
+  optInStatus: string | null;
+  source: string | null;
+  occurredAt: string;
+}): Record<string, unknown> {
+  return {
+    event: input.event,
+    contact: {
+      phone: input.phone,
+      name: input.name,
+      opt_in_status: input.optInStatus,
+      source: input.source,
+    },
+    timestamp: input.occurredAt,
+  };
+}
+
+/**
+ * The webhook pass's hook for one new inbound message (called once, after the
+ * reply, from processWebhookPayload): contact.created when the number is new,
+ * then message.received. Nothing when the workspace's webhook isn't set.
+ * Never throws; a failed write is logged and never holds the message up.
+ */
+export async function queueInboundApiEvents(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    contactId: string;
+    messageId: string;
+    msg: AnyRecord;
+    phone: string;
+    name: string | null;
+    newContact: boolean;
+    contactSource: string | null;
+    occurredAt: string;
+  },
+): Promise<void> {
+  if (!(await apiEventsWanted(supabase, input.organizationId))) return;
+  if (input.newContact) {
+    await queueApiEvent(supabase, {
+      organizationId: input.organizationId,
+      event: "contact.created",
+      dedupeKey: `contact.created:${input.contactId}`,
+      occurredAt: input.occurredAt,
+      payload: contactEventPayload({
+        event: "contact.created",
+        phone: input.phone,
+        name: input.name,
+        optInStatus: null,
+        source: input.contactSource,
+        occurredAt: input.occurredAt,
+      }),
+    });
+  }
+  await queueApiEvent(supabase, {
+    organizationId: input.organizationId,
+    event: "message.received",
+    messageId: input.messageId,
+    occurredAt: input.occurredAt,
+    payload: inboundMessagePayload(input),
+  });
+}
+
+/**
+ * contact.opted_out / contact.opted_in for one contact whose status just
+ * changed (the customer's STOP / START, an API opt-in). Never throws.
+ */
+export async function queueContactOptEvent(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    contactId: string;
+    event: "contact.opted_out" | "contact.opted_in";
+    occurredAt?: string;
+  },
+): Promise<void> {
+  try {
+    if (!(await apiEventsWanted(supabase, input.organizationId))) return;
+    const { data } = await supabase
+      .from("contacts")
+      .select("phone, name, opt_in_status, source")
+      .eq("organization_id", input.organizationId)
+      .eq("id", input.contactId)
+      .maybeSingle();
+    const c = data as {
+      phone?: string;
+      name?: string | null;
+      opt_in_status?: string | null;
+      source?: string | null;
+    } | null;
+    if (!c?.phone) return;
+    const occurredAt = input.occurredAt ?? new Date().toISOString();
+    await queueApiEvent(supabase, {
+      organizationId: input.organizationId,
+      event: input.event,
+      dedupeKey: `${input.event}:${input.contactId}:${Date.parse(occurredAt)}`,
+      occurredAt,
+      payload: contactEventPayload({
+        event: input.event,
+        phone: c.phone,
+        name: c.name ?? null,
+        optInStatus: c.opt_in_status ?? null,
+        source: c.source ?? null,
+        occurredAt,
+      }),
+    });
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        scope: "api_webhook",
+        step: "contact_event",
+        organization_id: input.organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
+/**
+ * template.status_changed / template.category_changed for the template rows a
+ * Meta notice moved (the template webhook, processWebhookPayload): one event
+ * per row that really changed, keyed by the notice's time, so a notice Meta
+ * repeats queues nothing new. Never throws.
+ */
+export async function queueTemplateApiEvents(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    event: "template.status_changed" | "template.category_changed";
+    /** The rows as they were before the update. */
+    rows: Array<{
+      id: string;
+      name: string;
+      language: string;
+      status: string;
+      category: string | null;
+    }>;
+    next: { status?: string; rejectionReason?: string | null; category?: string };
+    previousCategory: string | null;
+    occurredAt: string;
+  },
+): Promise<void> {
+  try {
+    const moved = input.rows.filter((r) =>
+      input.event === "template.status_changed"
+        ? r.status !== input.next.status
+        : String(r.category ?? "").toUpperCase() !== input.next.category,
+    );
+    if (!moved.length || !(await apiEventsWanted(supabase, input.organizationId))) return;
+    for (const r of moved) {
+      const status = input.next.status ?? r.status;
+      const category = input.next.category ?? (r.category ? r.category.toUpperCase() : null);
+      await queueApiEvent(supabase, {
+        organizationId: input.organizationId,
+        event: input.event,
+        dedupeKey: `${input.event}:${r.id}:${input.event === "template.status_changed" ? status : category}:${Date.parse(input.occurredAt)}`,
+        occurredAt: input.occurredAt,
+        payload: {
+          event: input.event,
+          template: {
+            name: r.name,
+            language: r.language,
+            status,
+            category,
+            ...(input.event === "template.status_changed"
+              ? { previous_status: r.status, rejection_reason: input.next.rejectionReason ?? null }
+              : {
+                  previous_category:
+                    input.previousCategory ?? (r.category ? r.category.toUpperCase() : null),
+                }),
+          },
+          timestamp: input.occurredAt,
+        },
+      });
+    }
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        scope: "api_webhook",
+        step: "template_event",
+        organization_id: input.organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
 }
 
 // ------------------------------------------------------------ the endpoint

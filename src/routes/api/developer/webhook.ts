@@ -59,6 +59,7 @@ export const Route = createFileRoute("/api/developer/webhook")({
 
         if (action === "remove") {
           await deleteConnection(supabase, organizationId, "api_webhook");
+          hooks.forgetApiEventsWanted(organizationId);
           await logServerActivity(supabase, organizationId, userId, "api_webhook_removed", {});
           return Response.json({ ok: true });
         }
@@ -87,6 +88,8 @@ export const Route = createFileRoute("/api/developer/webhook")({
             userId,
           });
           if (saved.error) return jsonError(saved.error, 503);
+          // Batch 37: this instance queues the new events at once (others within a minute).
+          hooks.forgetApiEventsWanted(organizationId);
           await logServerActivity(
             supabase,
             organizationId,

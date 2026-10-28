@@ -19,6 +19,42 @@ export const DOCS_PATH = "/developers/api";
 
 export const SEND_PATH = "/api/v1/messages/template";
 export const STATUS_PATH = "/api/v1/messages/{message_id}";
+export const SESSION_PATH = "/api/v1/messages/session";
+
+/** Batch 37: where the API is served (media links in webhook events, the Postman collection). */
+export const API_ORIGIN = "https://aidwar.in";
+
+/**
+ * Batch 37: the files the API sends, per kind — the types WhatsApp takes and
+ * its size limits (image 5 MB; video and audio 16 MB). A document is held to
+ * MAX_DOCUMENT_MB (16 MB, as in Batch 34; WhatsApp itself takes up to 100 MB):
+ * the file passes through our server whole. The type is read from the file's
+ * own first bytes, never from a header or a file name alone.
+ */
+export const MEDIA_LIMITS = {
+  image: { mb: 5, types: ["image/jpeg", "image/png"], label: "JPEG or PNG" },
+  video: { mb: 16, types: ["video/mp4", "video/3gpp"], label: "MP4 or 3GPP" },
+  audio: {
+    mb: 16,
+    types: ["audio/aac", "audio/amr", "audio/mpeg", "audio/mp4", "audio/ogg"],
+    label: "AAC, AMR, MP3, M4A or OGG (Opus)",
+  },
+  document: {
+    mb: MAX_DOCUMENT_MB,
+    types: [
+      "application/pdf",
+      "text/plain",
+      "application/msword",
+      "application/vnd.ms-excel",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ],
+    label: "PDF, TXT, DOC(X), XLS(X) or PPT(X)",
+  },
+} as const;
+export type MediaKind = keyof typeof MEDIA_LIMITS;
 
 export const WEBHOOK_EVENT_NAMES = [
   "message.sent",
@@ -26,6 +62,41 @@ export const WEBHOOK_EVENT_NAMES = [
   "message.read",
   "message.failed",
 ] as const;
+
+/**
+ * Batch 37: the events a webhook hears beyond its own messages' statuses —
+ * queued for a workspace whose webhook is set and active.
+ */
+export const INBOUND_EVENT_NAMES = [
+  "message.received",
+  "contact.created",
+  "contact.opted_out",
+  "contact.opted_in",
+  "template.status_changed",
+  "template.category_changed",
+] as const;
+export type InboundEventName = (typeof INBOUND_EVENT_NAMES)[number];
+
+/** Every event a webhook can receive, in the order Settings and the docs list them. */
+export const ALL_WEBHOOK_EVENTS = [...WEBHOOK_EVENT_NAMES, ...INBOUND_EVENT_NAMES] as const;
+
+export const MEDIA_PATH = "/api/v1/media/{message_id}";
+/**
+ * A path value as given: the router has usually decoded it already; one still
+ * encoded ("%2B91…") is decoded, and a literal "%" (a tag "50%off") is kept.
+ */
+export function pathValue(raw: string): string {
+  try {
+    return /%[0-9A-Fa-f]{2}/.test(raw) ? decodeURIComponent(raw) : raw;
+  } catch {
+    return raw;
+  }
+}
+
+/** Contacts one POST /api/v1/contacts/bulk takes. */
+export const MAX_BULK_CONTACTS = 1000;
+/** How long a download link from GET /api/v1/media/{message_id} works. */
+export const MEDIA_LINK_SECONDS = 300;
 
 /** Every error the API answers with: status, codes, when. */
 export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: string }> = [
@@ -49,10 +120,31 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
       "document_unreachable",
       "document_not_pdf",
       "document_empty",
+      "document_type_unsupported",
       "no_whatsapp_number",
+      "invalid_header",
+      "header_required",
+      "header_mismatch",
+      "invalid_buttons",
+      "invalid_offer",
+      "invalid_media",
+      "media_url_not_https",
+      "media_url_blocked",
+      "media_unreachable",
+      "media_empty",
+      "media_type_unsupported",
+      "invalid_message",
+      "invalid_contact",
+      "invalid_contacts",
+      "too_many_contacts",
+      "duplicate_phone",
+      "invalid_tags",
+      "invalid_filter",
+      "invalid_limit",
+      "invalid_cursor",
     ],
     meaning:
-      "The request can't be sent as it is: fix what the message says and send again. Nothing was sent.",
+      "The request can't be done as it is: fix what the message says and send again. Nothing was sent or changed.",
   },
   {
     status: "401",
@@ -67,24 +159,37 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
   },
   {
     status: "403",
-    codes: ["public_api_disabled"],
-    meaning: "The Public API isn't switched on for this workspace (it is part of the Scale plan).",
+    codes: ["public_api_disabled", "invalid_media_link"],
+    meaning:
+      "The Public API isn't switched on for this workspace (it is part of the Scale plan); or a file download link isn't valid for this API key.",
   },
   {
     status: "404",
     codes: ["not_found"],
-    meaning: "No message with this id was sent by the API in your workspace.",
+    meaning:
+      "No such message, file, contact or template in your workspace (another workspace's is the same 404).",
   },
   {
     status: "409",
-    codes: ["contact_opted_out", "idempotency_key_reused", "idempotency_in_progress"],
+    codes: [
+      "contact_opted_out",
+      "window_closed",
+      "idempotency_key_reused",
+      "idempotency_in_progress",
+    ],
     meaning:
-      "The customer opted out of your messages; or this idempotency_key was used for a different request, or that request is still being sent. Nothing new was sent.",
+      "The customer opted out of marketing (a marketing template isn't sent); or their 24-hour window is closed (send a template instead); or this idempotency_key was used for a different request, or that request is still being sent. Nothing new was sent.",
+  },
+  {
+    status: "410",
+    codes: ["media_link_expired"],
+    meaning:
+      "The file download link has expired: ask GET /api/v1/media/{message_id} for a new one.",
   },
   {
     status: "413",
-    codes: ["document_too_large", "request_too_large"],
-    meaning: `The PDF is over ${MAX_DOCUMENT_MB} MB, the most WhatsApp accepts.`,
+    codes: ["document_too_large", "media_too_large", "request_too_large"],
+    meaning: `The file is over its limit: a document ${MAX_DOCUMENT_MB} MB, a picture ${MEDIA_LIMITS.image.mb} MB, a video or audio file ${MEDIA_LIMITS.video.mb} MB.`,
   },
   {
     status: "429",
@@ -93,7 +198,13 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
   },
   {
     status: "5xx",
-    codes: ["whatsapp_upload_failed", "whatsapp_rejected", "unavailable", "internal_error"],
+    codes: [
+      "whatsapp_upload_failed",
+      "whatsapp_rejected",
+      "media_unavailable",
+      "unavailable",
+      "internal_error",
+    ],
     meaning:
       "502: WhatsApp refused the file or the message (a refused message is in your inbox, marked failed). 503 / 500: try again — with the same idempotency_key it is never sent twice.",
   },
