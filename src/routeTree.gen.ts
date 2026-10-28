@@ -138,6 +138,7 @@ import { Route as ApiPublicRazorpayFlowWebhookOrgIdRouteImport } from './routes/
 import { Route as ApiShopifyWebhooksCustomersDataRequestRouteImport } from './routes/api/shopify/webhooks/customers-data-request'
 import { Route as ApiShopifyWebhooksCustomersRedactRouteImport } from './routes/api/shopify/webhooks/customers-redact'
 import { Route as ApiShopifyWebhooksShopRedactRouteImport } from './routes/api/shopify/webhooks/shop-redact'
+import { Route as ApiV1AccountBalanceRouteImport } from './routes/api/v1/account/balance'
 import { Route as ApiV1ContactsIndexRouteImport } from './routes/api/v1/contacts/index'
 import { Route as ApiV1ContactsPhoneRouteImport } from './routes/api/v1/contacts/$phone'
 import { Route as ApiV1ContactsBulkRouteImport } from './routes/api/v1/contacts/bulk'
@@ -825,6 +826,11 @@ const ApiShopifyWebhooksShopRedactRoute =
     path: '/api/shopify/webhooks/shop-redact',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1AccountBalanceRoute = ApiV1AccountBalanceRouteImport.update({
+  id: '/api/v1/account/balance',
+  path: '/api/v1/account/balance',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1ContactsIndexRoute = ApiV1ContactsIndexRouteImport.update({
   id: '/api/v1/contacts/',
   path: '/api/v1/contacts/',
@@ -1052,6 +1058,7 @@ export interface FileRoutesByFullPath {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/account/balance': typeof ApiV1AccountBalanceRoute
   '/api/v1/contacts/$phone': typeof ApiV1ContactsPhoneRouteWithChildren
   '/api/v1/contacts/bulk': typeof ApiV1ContactsBulkRoute
   '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
@@ -1199,6 +1206,7 @@ export interface FileRoutesByTo {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/account/balance': typeof ApiV1AccountBalanceRoute
   '/api/v1/contacts/$phone': typeof ApiV1ContactsPhoneRouteWithChildren
   '/api/v1/contacts/bulk': typeof ApiV1ContactsBulkRoute
   '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
@@ -1349,6 +1357,7 @@ export interface FileRoutesById {
   '/api/shopify/webhooks/customers-data-request': typeof ApiShopifyWebhooksCustomersDataRequestRoute
   '/api/shopify/webhooks/customers-redact': typeof ApiShopifyWebhooksCustomersRedactRoute
   '/api/shopify/webhooks/shop-redact': typeof ApiShopifyWebhooksShopRedactRoute
+  '/api/v1/account/balance': typeof ApiV1AccountBalanceRoute
   '/api/v1/contacts/$phone': typeof ApiV1ContactsPhoneRouteWithChildren
   '/api/v1/contacts/bulk': typeof ApiV1ContactsBulkRoute
   '/api/v1/media/$messageId': typeof ApiV1MediaMessageIdRouteWithChildren
@@ -1500,6 +1509,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/account/balance'
     | '/api/v1/contacts/$phone'
     | '/api/v1/contacts/bulk'
     | '/api/v1/media/$messageId'
@@ -1647,6 +1657,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/account/balance'
     | '/api/v1/contacts/$phone'
     | '/api/v1/contacts/bulk'
     | '/api/v1/media/$messageId'
@@ -1796,6 +1807,7 @@ export interface FileRouteTypes {
     | '/api/shopify/webhooks/customers-data-request'
     | '/api/shopify/webhooks/customers-redact'
     | '/api/shopify/webhooks/shop-redact'
+    | '/api/v1/account/balance'
     | '/api/v1/contacts/$phone'
     | '/api/v1/contacts/bulk'
     | '/api/v1/media/$messageId'
@@ -1918,6 +1930,7 @@ export interface RootRouteChildren {
   ApiShopifyWebhooksCustomersDataRequestRoute: typeof ApiShopifyWebhooksCustomersDataRequestRoute
   ApiShopifyWebhooksCustomersRedactRoute: typeof ApiShopifyWebhooksCustomersRedactRoute
   ApiShopifyWebhooksShopRedactRoute: typeof ApiShopifyWebhooksShopRedactRoute
+  ApiV1AccountBalanceRoute: typeof ApiV1AccountBalanceRoute
   ApiV1ContactsPhoneRoute: typeof ApiV1ContactsPhoneRouteWithChildren
   ApiV1ContactsBulkRoute: typeof ApiV1ContactsBulkRoute
   ApiV1MediaMessageIdRoute: typeof ApiV1MediaMessageIdRouteWithChildren
@@ -2839,6 +2852,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShopifyWebhooksShopRedactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/account/balance': {
+      id: '/api/v1/account/balance'
+      path: '/api/v1/account/balance'
+      fullPath: '/api/v1/account/balance'
+      preLoaderRoute: typeof ApiV1AccountBalanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/contacts/': {
       id: '/api/v1/contacts/'
       path: '/api/v1/contacts'
@@ -3187,6 +3207,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiShopifyWebhooksCustomersRedactRoute:
     ApiShopifyWebhooksCustomersRedactRoute,
   ApiShopifyWebhooksShopRedactRoute: ApiShopifyWebhooksShopRedactRoute,
+  ApiV1AccountBalanceRoute: ApiV1AccountBalanceRoute,
   ApiV1ContactsPhoneRoute: ApiV1ContactsPhoneRouteWithChildren,
   ApiV1ContactsBulkRoute: ApiV1ContactsBulkRoute,
   ApiV1MediaMessageIdRoute: ApiV1MediaMessageIdRouteWithChildren,
