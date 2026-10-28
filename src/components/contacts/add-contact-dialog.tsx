@@ -5,7 +5,9 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { normalizePhone, toWaId } from "@/lib/phone";
 import { logActivity } from "@/lib/activity";
 import { emitClientEvent, recordClientUsage } from "@/lib/events-capture";
+import { callApi } from "@/lib/whatsapp-client";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,6 +20,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+export const ADD_CONTACT_CONSENT_LABEL =
+  "This contact agreed to get WhatsApp messages from us (opted in)";
+export const ADD_CONTACT_CONSENT_HELPER = "WhatsApp requires consent. Untick if you're not sure.";
+
 export function AddContactDialog({
   organizationId,
   onCreated,
@@ -28,6 +34,8 @@ export function AddContactDialog({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  // Batch 36: ticked by default, like the import.
+  const [optedIn, setOptedIn] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,27 +59,47 @@ export function AddContactDialog({
       setError("This contact already exists in your workspace.");
       return;
     }
-    const { error: insErr } = await aidwar.from("contacts").insert({
-      organization_id: organizationId,
-      phone: normalized,
-      wa_id: digits,
-      name: name.trim() || null,
-      source: "manual",
-    });
-    setSaving(false);
-    if (insErr) {
+    const { data: inserted, error: insErr } = await aidwar
+      .from("contacts")
+      .insert({
+        organization_id: organizationId,
+        phone: normalized,
+        wa_id: digits,
+        name: name.trim() || null,
+        source: "manual",
+      })
+      .select("id")
+      .single();
+    if (insErr || !inserted) {
+      setSaving(false);
       setError("We couldn't save this contact. Please try again.");
       return;
     }
+    // The opt-in (and its consent record) goes through the one server path.
+    let optInFailed = false;
+    if (optedIn) {
+      const res = await callApi("/api/contacts/opt-in", {
+        body: {
+          action: "set",
+          organization_id: organizationId,
+          contact_id: (inserted as { id: string }).id,
+          status: "opted_in",
+        },
+      });
+      optInFailed = Boolean(res.error);
+    }
+    setSaving(false);
     void logActivity("contact_created", organizationId, { source: "manual" });
     emitClientEvent("contact.created", organizationId, {
       entityType: "contact",
       properties: { contact_source: "manual" },
     });
     recordClientUsage("contacts_stored", organizationId, 1, { source: "manual" });
-    toast.success("Contact added.");
+    if (optInFailed) toast.warning("Contact added, but we couldn't mark it opted in. Open it to try again.");
+    else toast.success("Contact added.");
     setName("");
     setPhone("");
+    setOptedIn(true);
     setOpen(false);
     onCreated();
   }
@@ -110,6 +138,20 @@ export function AddContactDialog({
               placeholder="+91 98765 43210"
             />
             <p className="text-xs text-muted-foreground">Include the country code.</p>
+          </div>
+          <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/30 p-3">
+            <Checkbox
+              id="contact-opted-in"
+              checked={optedIn}
+              onCheckedChange={(v) => setOptedIn(v === true)}
+              className="mt-0.5"
+            />
+            <div className="space-y-1">
+              <Label htmlFor="contact-opted-in" className="text-sm leading-relaxed">
+                {ADD_CONTACT_CONSENT_LABEL}
+              </Label>
+              <p className="text-xs text-muted-foreground">{ADD_CONTACT_CONSENT_HELPER}</p>
+            </div>
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>

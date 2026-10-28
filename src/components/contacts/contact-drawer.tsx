@@ -4,7 +4,9 @@ import { MessageSquare, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
+import { callApi } from "@/lib/whatsapp-client";
 import {
+  OPT_IN_CLASSES,
   OPT_IN_LABELS,
   TAG_COLORS,
   contactInitials,
@@ -30,6 +32,25 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type AttrPair = { key: string; value: string };
+type ConsentRecord = { opt_in_source: string | null; opted_in_at: string | null };
+
+const CONSENT_SOURCE_LABELS: Record<string, string> = {
+  import: "an import",
+  manual: "a team member",
+  bulk: "a bulk action",
+  keyword: "the customer's reply",
+};
+
+/** What the merchant can pick in the drawer; an opt-out is never cleared here. */
+export function drawerOptInChoices(current: OptInStatus): OptInStatus[] {
+  return current === "opted_out" ? [] : ["unknown", "opted_in", "opted_out"];
+}
+
+export function consentLine(record: ConsentRecord | null): string | null {
+  if (!record?.opted_in_at) return null;
+  const how = CONSENT_SOURCE_LABELS[record.opt_in_source ?? ""] ?? "a team member";
+  return `Opted in by ${how} on ${formatDate(record.opted_in_at)}.`;
+}
 
 export function ContactDrawer({
   contact,
@@ -55,6 +76,7 @@ export function ContactDrawer({
   const [saving, setSaving] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0] as string);
+  const [consent, setConsent] = useState<ConsentRecord | null>(null);
 
   useEffect(() => {
     if (!contact) return;
@@ -69,6 +91,17 @@ export function ContactDrawer({
     );
     setLoadingConversation(true);
     setConversationId(null);
+    setConsent(null);
+    void (async () => {
+      // Batch 36 consent record. Read on its own so the drawer still works
+      // before 20261140 adds the columns (the read then just fails).
+      const { data, error } = await aidwar
+        .from("contacts")
+        .select("opt_in_source, opted_in_at")
+        .eq("id", contact.id)
+        .maybeSingle();
+      if (!error) setConsent((data as ConsentRecord | null) ?? null);
+    })();
     void (async () => {
       const { data } = await aidwar
         .from("conversations")
@@ -152,20 +185,32 @@ export function ContactDrawer({
     }
     const { error } = await aidwar
       .from("contacts")
-      .update({ name: name.trim() || null, opt_in_status: optIn, attributes })
+      .update({ name: name.trim() || null, attributes })
       .eq("id", contact.id);
-    setSaving(false);
     if (error) {
+      setSaving(false);
       toast.error("We couldn't save these changes.");
       return;
     }
-    if (optIn !== contact.opt_in_status) {
-      void logActivity("optin_changed", organizationId, {
-        contact_id: contact.id,
-        from: contact.opt_in_status,
-        to: optIn,
+    // Batch 36: the opt-in switch goes through the server (consent record +
+    // activity log with the user); an opt-out is never cleared from here.
+    if (optIn !== contact.opt_in_status && contact.opt_in_status !== "opted_out") {
+      const res = await callApi("/api/contacts/opt-in", {
+        body: {
+          action: "set",
+          organization_id: organizationId,
+          contact_id: contact.id,
+          status: optIn,
+        },
       });
+      if (res.error) {
+        setSaving(false);
+        toast.error(res.error);
+        onChanged();
+        return;
+      }
     }
+    setSaving(false);
     toast.success("Contact updated.");
     onChanged();
   }
@@ -214,21 +259,12 @@ export function ContactDrawer({
                 <Input value={contact.phone} readOnly className="bg-muted/60" />
               </div>
 
-              <div className="space-y-2">
-                <Label>Opt-in status</Label>
-                <Select value={optIn} onValueChange={(v) => setOptIn(v as OptInStatus)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(OPT_IN_LABELS) as OptInStatus[]).map((k) => (
-                      <SelectItem key={k} value={k}>
-                        {OPT_IN_LABELS[k]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <OptInField
+                current={contact.opt_in_status}
+                value={optIn}
+                consent={consent}
+                onChange={setOptIn}
+              />
 
               <div className="space-y-2">
                 <Label>Tags</Label>
@@ -394,6 +430,60 @@ export function ContactDrawer({
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+export function OptInField({
+  current,
+  value,
+  consent,
+  onChange,
+}: {
+  current: OptInStatus;
+  value: OptInStatus;
+  consent: ConsentRecord | null;
+  onChange: (v: OptInStatus) => void;
+}) {
+  const choices = drawerOptInChoices(current);
+  const line = current === "opted_in" ? consentLine(consent) : null;
+  return (
+    <div className="space-y-2">
+      <Label>Opt-in status</Label>
+      {choices.length === 0 ? (
+        <>
+          <span
+            className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${OPT_IN_CLASSES[current]}`}
+          >
+            {OPT_IN_LABELS[current]}
+          </span>
+          <p className="text-xs text-muted-foreground">
+            This customer opted out. Only they can opt back in, by replying START.
+          </p>
+        </>
+      ) : (
+        <>
+          <Select value={value} onValueChange={(v) => onChange(v as OptInStatus)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {choices.map((k) => (
+                <SelectItem key={k} value={k}>
+                  {OPT_IN_LABELS[k]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {value === "opted_out" && current !== "opted_out" ? (
+            <p className="text-xs text-muted-foreground">
+              Once saved, only the customer can undo an opt-out, by replying START.
+            </p>
+          ) : line ? (
+            <p className="text-xs text-muted-foreground">{line}</p>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }
 

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fakeDb, type FakeOp } from "./test-support/fake-db";
 
 /**
@@ -32,6 +34,7 @@ vi.mock("@/lib/events.server", () => {
 });
 
 import { Route as ImportRoute } from "../routes/api/contacts/import";
+import { Route as OptInRoute } from "../routes/api/contacts/opt-in";
 import { isMissingConsentColumn } from "./opt-in.server";
 
 type Post = (a: { request: Request }) => Promise<Response>;
@@ -87,7 +90,7 @@ function world(rows: Row[], opts: { noConsentColumns?: boolean } = {}) {
   });
   h.db = db;
   const activity = () =>
-    db.ops.filter((o) => o.table === "activity_log" && o.kind === "insert").map((o) => o.payload as Record<string, unknown>);
+    db.ops.filter((o) => o.table.startsWith("activity") && o.kind === "insert").map((o) => o.payload as Record<string, unknown>);
   const byPhone = (phone: string) => [...contacts.values()].find((c) => c["phone"] === phone);
   return { ...db, contacts, activity, byPhone };
 }
@@ -184,5 +187,67 @@ describe("(4) the missing-column answer is recognised, nothing else is", () => {
     expect(isMissingConsentColumn({ code: "23505", message: "duplicate key value" })).toBe(false);
     expect(isMissingConsentColumn({ code: "PGRST204", message: "Could not find the 'nickname' column" })).toBe(false);
     expect(isMissingConsentColumn(null)).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------------ (2)
+describe("(2) Add contact and the drawer", () => {
+  it("Add contact's box is ticked by default and opts the new contact in through the server", () => {
+    const src = readFileSync(join(import.meta.dirname, "../components/contacts/add-contact-dialog.tsx"), "utf8");
+    expect(src).toContain("const [optedIn, setOptedIn] = useState(true);");
+    expect(src).toContain('"/api/contacts/opt-in"');
+    expect(src).toContain('status: "opted_in"');
+    // The insert itself never writes a status: unticked stays the column default, "unknown".
+    expect(src).not.toMatch(/insert\(\{[^}]*opt_in_status/);
+  });
+
+  it("set opted_in: a new (unknown) contact becomes opted in with source manual and a log entry", async () => {
+    const w = world([{ id: "c-new", phone: "+919800000010", opt_in_status: "unknown" }]);
+    const res = await call(OptInRoute, { action: "set", contact_id: "c-new", status: "opted_in" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: "opted_in", changed: true });
+    const c = w.contacts.get("c-new")!;
+    expect(c).toMatchObject({ opt_in_status: "opted_in", opt_in_source: "manual" });
+    expect(typeof c["opted_in_at"]).toBe("string");
+    const log = w.activity().find((a) => a["action"] === "contacts_opted_in")!;
+    expect(log["user_id"]).toBe("u36");
+    expect(log["details"]).toMatchObject({ source: "manual", changed: 1 });
+  });
+
+  it("the drawer switches opted_in back to unknown (consent record cleared, change logged)", async () => {
+    const w = world([{ id: "c1", phone: "+919800000011", opt_in_status: "opted_in" }]);
+    w.contacts.get("c1")!["opt_in_source"] = "import";
+    const res = await call(OptInRoute, { action: "set", contact_id: "c1", status: "unknown" });
+    expect(await res.json()).toEqual({ status: "unknown", changed: true });
+    expect(w.contacts.get("c1")).toMatchObject({ opt_in_status: "unknown", opt_in_source: null, opted_in_at: null });
+    const log = w.activity().find((a) => a["action"] === "optin_changed")!;
+    expect(log["details"]).toMatchObject({ from: "opted_in", to: "unknown", source: "manual" });
+    expect(log["user_id"]).toBe("u36");
+  });
+
+  it("an opted-out contact can't be switched by the merchant", async () => {
+    const w = world([{ id: "c-out", phone: "+919800000012", opt_in_status: "opted_out" }]);
+    for (const status of ["opted_in", "unknown"]) {
+      const res = await call(OptInRoute, { action: "set", contact_id: "c-out", status });
+      expect(res.status).toBe(409);
+    }
+    expect(w.contacts.get("c-out")!["opt_in_status"]).toBe("opted_out");
+    expect(w.ops.some((o) => o.table === "contacts" && o.kind === "update")).toBe(false);
+  });
+
+  it("the drawer offers no choice for an opted-out contact and shows the consent record", async () => {
+    const { drawerOptInChoices, consentLine } = await import("@/components/contacts/contact-drawer");
+    expect(drawerOptInChoices("opted_out")).toEqual([]);
+    expect(drawerOptInChoices("unknown")).toContain("opted_in");
+    expect(drawerOptInChoices("opted_in")).toContain("unknown");
+    expect(consentLine({ opt_in_source: "import", opted_in_at: "2026-10-28T10:00:00Z" })).toMatch(/^Opted in by an import on /);
+    expect(consentLine(null)).toBeNull();
+  });
+
+  it("needs contacts.edit", async () => {
+    world([{ id: "c1", phone: "+919800000013", opt_in_status: "unknown" }]);
+    h.denied = "contacts.edit";
+    const res = await call(OptInRoute, { action: "set", contact_id: "c1", status: "opted_in" });
+    expect(res.status).toBe(403);
   });
 });
