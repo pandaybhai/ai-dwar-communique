@@ -261,6 +261,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "segment_deleted",
       "lead_source_marker_created",
       "lead_source_marker_deleted",
+      "contacts_opted_in",
+      "contacts_import_consent",
     ],
     settings_path: "/app/settings",
     usage_meters: [{ key: "contacts_stored", name: "Contacts stored", unit: "contacts" }],
