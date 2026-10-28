@@ -9,12 +9,13 @@ export const Route = createFileRoute("/api/v1/templates/$name")({
     handlers: {
       GET: async ({ request, params }) => {
         const { runApiRoute } = await import("@/lib/public-api.server");
+        const { pathValue } = await import("@/lib/public-api");
         const { getTemplate } = await import("@/lib/public-api-templates.server");
         return runApiRoute(request, { step: "template_get" }, ({ supabase, caller }) =>
           getTemplate(
             supabase,
             caller,
-            decodeURIComponent(String(params.name ?? "")),
+            pathValue(String(params.name ?? "")),
             new URL(request.url).searchParams,
           ),
         );

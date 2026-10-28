@@ -81,6 +81,18 @@ export type InboundEventName = (typeof INBOUND_EVENT_NAMES)[number];
 export const ALL_WEBHOOK_EVENTS = [...WEBHOOK_EVENT_NAMES, ...INBOUND_EVENT_NAMES] as const;
 
 export const MEDIA_PATH = "/api/v1/media/{message_id}";
+/**
+ * A path value as given: the router has usually decoded it already; one still
+ * encoded ("%2B91…") is decoded, and a literal "%" (a tag "50%off") is kept.
+ */
+export function pathValue(raw: string): string {
+  try {
+    return /%[0-9A-Fa-f]{2}/.test(raw) ? decodeURIComponent(raw) : raw;
+  } catch {
+    return raw;
+  }
+}
+
 /** Contacts one POST /api/v1/contacts/bulk takes. */
 export const MAX_BULK_CONTACTS = 1000;
 /** How long a download link from GET /api/v1/media/{message_id} works. */
@@ -171,7 +183,8 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
   {
     status: "410",
     codes: ["media_link_expired"],
-    meaning: "The file download link has expired: ask GET /api/v1/media/{message_id} for a new one.",
+    meaning:
+      "The file download link has expired: ask GET /api/v1/media/{message_id} for a new one.",
   },
   {
     status: "413",

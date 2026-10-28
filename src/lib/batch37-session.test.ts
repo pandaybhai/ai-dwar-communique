@@ -136,6 +136,29 @@ describe("inside the 24-hour window", () => {
     ).toBe(true);
   });
 
+  it("a chat closed in the Inbox still has its window (it is WhatsApp's, per number)", async () => {
+    customerWrote(3);
+    h.world!.db.rows("conversations")[0]!["status"] = "closed";
+    const res = await send({ to: CUSTOMER, type: "text", text: "Following up on your order" });
+    expect(res.status).toBe(202);
+    expect(sends()[0]!.url).toBe("https://graph.facebook.com/v25.0/pn-a2/messages");
+  });
+
+  it("a lone list section without a title sends no title", async () => {
+    customerWrote(1);
+    const res = await send({
+      to: CUSTOMER,
+      type: "list",
+      body: "Pick",
+      button: "Go",
+      sections: [{ rows: [{ id: "a", title: "A" }] }],
+    });
+    expect(res.status).toBe(202);
+    expect(
+      (sendBody(sends()[0]!)["interactive"] as { action: { sections: unknown[] } }).action.sections,
+    ).toEqual([{ rows: [{ id: "a", title: "A" }] }]);
+  });
+
   it("reply buttons (at most 3) and a list with sections", async () => {
     customerWrote(1);
     const buttons = await send({

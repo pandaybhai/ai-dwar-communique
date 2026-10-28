@@ -218,8 +218,9 @@ export async function openWindowFor(
     .select("id, whatsapp_account_id, last_customer_message_at")
     .eq("organization_id", organizationId)
     .eq("contact_id", contactId)
-    .neq("status", "closed")
-    .order("last_customer_message_at", { ascending: false })
+    // The window is WhatsApp's, per number: a chat closed in the Inbox still has it.
+    .not("last_customer_message_at", "is", null)
+    .order("last_customer_message_at", { ascending: false, nullsFirst: false })
     .limit(10);
   if (threadError) return "error";
   const latest = ((threads ?? []) as Conversation[])

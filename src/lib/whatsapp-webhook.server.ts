@@ -1031,14 +1031,6 @@ async function applyOptKeywords(
     },
   });
 
-  // Batch 37: the merchant's webhook hears it (when one is set).
-  const { queueContactOptEvent } = await import("@/lib/public-api-webhooks.server");
-  await queueContactOptEvent(supabase, {
-    organizationId: args.organizationId,
-    contactId: args.contactId,
-    event: optOut ? "contact.opted_out" : "contact.opted_in",
-  });
-
   await supabase.from("activity_log").insert({
     organization_id: args.organizationId,
     action: optOut ? "contact_opted_out" : "contact_opted_in",
@@ -1063,6 +1055,19 @@ async function applyOptKeywords(
     body: optOut ? OPT_OUT_CONFIRMATION : OPT_IN_CONFIRMATION,
   });
   log("confirmation_sent", { action, next_status: nextStatus });
+
+  // Batch 37: the merchant's webhook hears it (when one is set) — after the
+  // customer's confirmation is out, so it never holds that up.
+  try {
+    const { queueContactOptEvent } = await import("@/lib/public-api-webhooks.server");
+    await queueContactOptEvent(supabase, {
+      organizationId: args.organizationId,
+      contactId: args.contactId,
+      event: optOut ? "contact.opted_out" : "contact.opted_in",
+    });
+  } catch {
+    // the merchant's webhook queue never changes what the customer got
+  }
   return true;
 }
 

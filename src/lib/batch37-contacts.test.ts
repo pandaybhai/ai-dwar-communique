@@ -340,6 +340,53 @@ describe("GET /api/v1/contacts and /api/v1/contacts/{phone}", () => {
   });
 });
 
+describe("tags (Batch 37 review)", () => {
+  it("a tag change moves updated_at, so a sync with updated_since sees it; a literal % is a 404, not a 500", async () => {
+    await call(ContactsRoute, "POST", "/api/v1/contacts", { body: { phone: "+919866666666" } });
+    const row = contact("+919866666666")!;
+    row["updated_at"] = "2026-10-01T00:00:00.000Z";
+    const added = await call(TagsRoute, "POST", "/api/v1/contacts/919866666666/tags", {
+      params: { phone: "919866666666" },
+      body: { tags: ["50%off"] },
+    });
+    expect(
+      String((added.body["contact"] as Record<string, unknown>)["updated_at"]) >
+        "2026-10-01T00:00:00.000Z",
+    ).toBe(true);
+    const since = await call(
+      ContactsRoute,
+      "GET",
+      `/api/v1/contacts?updated_since=${encodeURIComponent("2026-10-02T00:00:00Z")}`,
+    );
+    expect((since.body["data"] as Array<{ phone: string }>).map((c) => c.phone)).toContain(
+      "+919866666666",
+    );
+    // The same tag again changes nothing; a bulk that only adds tags says "updated" once.
+    row["updated_at"] = "2026-10-01T00:00:00.000Z";
+    await call(TagsRoute, "POST", "/api/v1/contacts/919866666666/tags", {
+      params: { phone: "919866666666" },
+      body: { tags: ["50%off"] },
+    });
+    expect(row["updated_at"]).toBe("2026-10-01T00:00:00.000Z");
+    const bulk = await call(BulkRoute, "POST", "/api/v1/contacts/bulk", {
+      body: {
+        contacts: [
+          { phone: "+919866666666", tags: ["50%off"] },
+          { phone: "+919866666666".replace("66", "67"), tags: [] },
+        ],
+      },
+    });
+    expect((bulk.body["results"] as Array<Record<string, unknown>>)[0]!["status"]).toBe(
+      "unchanged",
+    );
+    const removed = await call(TagRoute, "DELETE", "/api/v1/contacts/919866666666/tags/50%off", {
+      params: { phone: "919866666666", tag: "50%off" },
+    });
+    expect(removed.status).toBe(200);
+    expect(removed.body["contact"]).toMatchObject({ tags: [] });
+  });
+});
+
 describe("tags", () => {
   it("add (new tags made in the workspace), remove one; another workspace's contact is a 404", async () => {
     await call(ContactsRoute, "POST", "/api/v1/contacts", { body: { phone: "+919855555555" } });

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ApiCaller, ApiReply } from "@/lib/public-api.server";
-import { MAX_BULK_CONTACTS } from "@/lib/public-api";
+import { MAX_BULK_CONTACTS, pathValue } from "@/lib/public-api";
 
 /**
  * Batch 37 item 4: the Contacts API — upsert by phone (one, or up to
@@ -257,6 +257,32 @@ async function readByPhones(
   return out;
 }
 
+/**
+ * Moves updated_at for contacts whose tags changed (contact_tags isn't on the
+ * row), so a list sync that keeps its cursor sees the change. Gives back the rows.
+ */
+async function touch(
+  supabase: SupabaseClient,
+  organizationId: string,
+  ids: string[],
+): Promise<ContactRow[]> {
+  const out: ContactRow[] = [];
+  const at = new Date().toISOString();
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data } = await supabase
+      .from("contacts")
+      .update({ updated_at: at })
+      .eq("organization_id", organizationId)
+      .in("id", ids.slice(i, i + CHUNK))
+      .select(CONTACT_COLUMNS);
+    out.push(...((data ?? []) as ContactRow[]));
+  }
+  return out;
+}
+
+const sameTags = (a: string[] | undefined, b: string[] | undefined) =>
+  JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+
 function merged(
   existing: Record<string, unknown> | null,
   given: ContactInput["attributes"],
@@ -427,6 +453,12 @@ export async function upsertContacts(
 
   // ---- tags (added, never removed here) ----
   const allTags = Array.from(new Set(inputs.flatMap((x) => x.input.tags)));
+  const contactIds = inputs
+    .map((x) => existing.get(x.input.phone)?.id)
+    .filter((id): id is string => Boolean(id));
+  const tagsBefore = allTags.length
+    ? await tagsOf(supabase, orgId, contactIds)
+    : new Map<string, string[]>();
   if (allTags.length) {
     const ids = await tagIds(supabase, orgId, allTags, true);
     const links: Array<Record<string, unknown>> = [];
@@ -445,11 +477,22 @@ export async function upsertContacts(
       });
     }
   }
-  const tags = await tagsOf(
-    supabase,
-    orgId,
-    inputs.map((x) => existing.get(x.input.phone)?.id).filter((id): id is string => Boolean(id)),
+  const tags = await tagsOf(supabase, orgId, contactIds);
+  // A contact that only gained a tag changed too: its updated_at moves.
+  const retagged = new Set(
+    allTags.length
+      ? inputs
+          .map((x) => existing.get(x.input.phone))
+          .filter(
+            (r): r is ContactRow =>
+              Boolean(r) &&
+              !created.has(r!.phone) &&
+              !sameTags(tagsBefore.get(r!.id), tags.get(r!.id)),
+          )
+          .map((r) => r.id)
+      : [],
   );
+  for (const r of await touch(supabase, orgId, [...retagged])) existing.set(r.phone, r);
 
   for (const { index, input } of inputs) {
     const row = existing.get(input.phone);
@@ -467,7 +510,7 @@ export async function upsertContacts(
       phone: input.phone,
       status: created.has(input.phone)
         ? "created"
-        : changed.has(input.phone) || input.tags.length
+        : changed.has(input.phone) || retagged.has(row.id)
           ? "updated"
           : "unchanged",
       contact: publicContact(row, tags.get(row.id) ?? []),
@@ -568,7 +611,7 @@ async function contactByPhone(
   rawPhone: string,
 ): Promise<ContactRow | null | "error"> {
   const { normalizePhone, toWaId } = await import("@/lib/phone");
-  const phone = normalizePhone(decodeURIComponent(rawPhone));
+  const phone = normalizePhone(pathValue(rawPhone));
   if (toWaId(phone).length < 8) return null;
   const { data, error } = await supabase
     .from("contacts")
@@ -613,6 +656,7 @@ export async function changeContactTags(
   if (row === "error")
     return fail(503, "unavailable", "We couldn't read the contact. Please try again.");
   if (!row) return notFound();
+  const before = (await tagsOf(supabase, orgId, [row.id])).get(row.id);
   const ids = await tagIds(supabase, orgId, names, action === "add");
   const tagIdList = names
     .map((n) => ids.get(n.toLowerCase()))
@@ -633,7 +677,11 @@ export async function changeContactTags(
     if (error) return fail(503, "unavailable", "We couldn't remove the tags. Please try again.");
   }
   const tags = await tagsOf(supabase, orgId, [row.id]);
-  return { status: 200, body: { contact: publicContact(row, tags.get(row.id) ?? []) } };
+  // Tags changed: the contact's updated_at moves, so a list sync sees it.
+  const current = sameTags(before, tags.get(row.id))
+    ? row
+    : ((await touch(supabase, orgId, [row.id]))[0] ?? row);
+  return { status: 200, body: { contact: publicContact(current, tags.get(row.id) ?? []) } };
 }
 
 // ------------------------------------------------------------ the list

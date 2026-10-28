@@ -391,9 +391,11 @@ export async function sendServiceList(
     ...(r.description ? { description: r.description.slice(0, 72) } : {}),
   });
   const sections = args.sections?.length
-    ? args.sections
-        .slice(0, 10)
-        .map((sec) => ({ title: sec.title.slice(0, 24), rows: sec.rows.map(trim) }))
+    ? args.sections.slice(0, 10).map((sec) => ({
+        // A lone section needs no title (WhatsApp wants none rather than an empty one).
+        ...(sec.title ? { title: sec.title.slice(0, 24) } : {}),
+        rows: sec.rows.map(trim),
+      }))
     : [{ title: "Choose one", rows: args.rows.slice(0, 10).map(trim) }];
   const rows = sections.flatMap((sec) => sec.rows);
   if (rows.length === 0) return { ok: false, messageId: null, error: "no_rows" };

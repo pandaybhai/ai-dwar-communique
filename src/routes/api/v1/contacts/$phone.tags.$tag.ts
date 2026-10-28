@@ -9,10 +9,11 @@ export const Route = createFileRoute("/api/v1/contacts/$phone/tags/$tag")({
     handlers: {
       DELETE: async ({ request, params }) => {
         const { runApiRoute } = await import("@/lib/public-api.server");
+        const { pathValue } = await import("@/lib/public-api");
         const { changeContactTags } = await import("@/lib/public-api-contacts.server");
         return runApiRoute(request, { step: "contact_tags_remove" }, ({ supabase, caller }) =>
           changeContactTags(supabase, caller, String(params.phone ?? ""), "remove", [
-            decodeURIComponent(String(params.tag ?? "")),
+            pathValue(String(params.tag ?? "")),
           ]),
         );
       },
