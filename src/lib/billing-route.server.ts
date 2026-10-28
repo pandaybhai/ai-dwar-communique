@@ -17,28 +17,27 @@ export async function billingGate(
 }
 
 /**
- * Credits only work alongside a live plan. Anything that puts money into the
- * wallet from the customer side goes through here first. Super-admin manual
- * credits from /admin never touch this.
+ * Anything that puts money into the wallet from the customer side goes
+ * through here first. Batch 35: trial (even before a plan is bought), active,
+ * past due and paused workspaces may buy credits; only locked and cancelled
+ * must pick a plan first (creditPurchaseBlock). Super-admin manual credits
+ * from /admin never touch this.
  */
 export async function requireActivePlan(
   supabase: SupabaseClient,
   organizationId: string,
 ): Promise<Response | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("organizations")
-    .select("plan_status, plan_version_id")
+    .select("plan_status")
     .eq("id", organizationId)
     .maybeSingle();
-  const row = data as { plan_status?: string | null; plan_version_id?: string | null } | null;
-  const status = row?.plan_status ?? null;
-  // Trial, active, past due and paused may all top up. Only a workspace with
-  // no plan at all is blocked.
-  if (row?.plan_version_id && ["trial", "active", "past_due", "paused"].includes(status ?? "")) return null;
-  return Response.json(
-    { error: "Pick a plan first — credits need a plan on the workspace." },
-    { status: 409 },
-  );
+  if (error || !data) {
+    return Response.json({ error: "We couldn't read this workspace. Try again." }, { status: 503 });
+  }
+  const { creditPurchaseBlock } = await import("@/lib/billing");
+  const block = creditPurchaseBlock((data as { plan_status?: string | null }).plan_status);
+  return block ? Response.json({ error: block }, { status: 409 }) : null;
 }
 
 export async function billingError(error: unknown): Promise<Response> {
