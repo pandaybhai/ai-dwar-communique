@@ -392,19 +392,30 @@ describe("every code sample is the spec", () => {
   describe("each signature check accepts our signature and refuses a changed body, a wrong secret and an old delivery", () => {
     const secret = "whsec_sampletest";
     const body = JSON.stringify(WEBHOOK_EVENTS[0]!.example);
-    const now = String(Math.floor(Date.now() / 1000));
-    const old = String(Math.floor(Date.now() / 1000) - 3600);
-    /** [body, timestamp, signature, secret] → expected answer. */
-    const cases: Array<[string, string, string, string, boolean]> = [
-      [body, now, signWebhook(secret, now, body), secret, true],
-      [body.replace("message", "massage"), now, signWebhook(secret, now, body), secret, false],
-      [body, now, signWebhook(secret, now, body), "whsec_other", false],
-      [body, old, signWebhook(secret, old, body), secret, false],
-    ];
+    /**
+     * The cases, against the clock of the runtime that checks them: a test
+     * run may move Node's clock (CI's shifted-clock jobs preload it through
+     * NODE_OPTIONS, which reaches a Node child but not Python, PHP or Go).
+     */
+    async function casesFor(
+      clock: [string, string[]],
+    ): Promise<{ file: string; expected: boolean[] }> {
+      const { stdout } = await run(clock[0], clock[1]);
+      const now = String(Number.parseInt(stdout.trim(), 10));
+      const old = String(Number(now) - 3600);
+      /** [body, timestamp, signature, secret] → expected answer. */
+      const cases: Array<[string, string, string, string, boolean]> = [
+        [body, now, signWebhook(secret, now, body), secret, true],
+        [body.replace("message", "massage"), now, signWebhook(secret, now, body), secret, false],
+        [body, now, signWebhook(secret, now, body), "whsec_other", false],
+        [body, old, signWebhook(secret, old, body), secret, false],
+      ];
+      const file = join(dir, `cases-${clock[0].replace(/\W/g, "")}.json`);
+      writeFileSync(file, JSON.stringify(cases));
+      return { file, expected: cases.map((c) => c[4]) };
+    }
     const sample = (lang: string) => VERIFY_SAMPLES.find((s) => s.lang === lang)!.code;
     const dir = mkdtempSync(join(tmpdir(), "aidwar-verify-"));
-    const casesFile = join(dir, "cases.json");
-    writeFileSync(casesFile, JSON.stringify(cases));
     const answers = (out: string) =>
       out
         .trim()
@@ -412,39 +423,50 @@ describe("every code sample is the spec", () => {
         .map((l) => l.trim() === "true");
 
     it("Node.js", async () => {
+      const { file: casesFile, expected } = await casesFor([
+        process.execPath,
+        ["-e", "console.log(Math.floor(Date.now() / 1000))"],
+      ]);
       const file = join(dir, "verify.mjs");
       writeFileSync(
         file,
         `${sample("node")}\nimport { readFileSync } from "node:fs";\nfor (const [b, ts, sig, sec] of JSON.parse(readFileSync(${JSON.stringify(casesFile)}, "utf8"))) console.log(isFromAiDwar(b, { "x-aidwar-timestamp": ts, "x-aidwar-signature": sig }, sec));\n`,
       );
       const { stdout } = await run(process.execPath, [file]);
-      expect(answers(stdout)).toEqual(cases.map((c) => c[4]));
+      expect(answers(stdout)).toEqual(expected);
     });
 
     it("Python", async (ctx) => {
       if (!(await has("python3", ["-c", "1"]))) return ctx.skip();
+      const { file: casesFile, expected } = await casesFor([
+        "python3",
+        ["-c", "import time; print(int(time.time()))"],
+      ]);
       const file = join(dir, "verify.py");
       writeFileSync(
         file,
         `${sample("python")}\n\nimport json\nfor b, ts, sig, sec, _ in json.load(open(${JSON.stringify(casesFile)})):\n    print("true" if is_from_aidwar(b.encode(), {"X-AiDwar-Timestamp": ts, "X-AiDwar-Signature": sig}, sec) else "false")\n`,
       );
       const { stdout } = await run("python3", ["-I", file]);
-      expect(answers(stdout)).toEqual(cases.map((c) => c[4]));
+      expect(answers(stdout)).toEqual(expected);
     });
 
     it("PHP", async (ctx) => {
       if (!(await has("php", ["-v"]))) return ctx.skip();
+      const { file: casesFile, expected } = await casesFor(["php", ["-r", "echo time();"]]);
       const file = join(dir, "verify.php");
       writeFileSync(
         file,
         `${sample("php")}\nforeach (json_decode(file_get_contents(${JSON.stringify(casesFile)}), true) as [$b, $ts, $sig, $sec]) {\n    echo isFromAiDwar($b, ["X-AiDwar-Timestamp" => $ts, "X-AiDwar-Signature" => $sig], $sec) ? "true\\n" : "false\\n";\n}\n`,
       );
       const { stdout } = await run("php", [file]);
-      expect(answers(stdout)).toEqual(cases.map((c) => c[4]));
+      expect(answers(stdout)).toEqual(expected);
     });
 
     it("Go", async (ctx) => {
       if (!(await has("go", ["version"]))) return ctx.skip();
+      // Go reads the machine's clock, as \`date\` does.
+      const { file: casesFile, expected } = await casesFor(["date", ["+%s"]]);
       const pkg = mkdtempSync(join(tmpdir(), "aidwar-go-"));
       writeFileSync(join(pkg, "go.mod"), "module webhooks\n\ngo 1.21\n");
       writeFileSync(join(pkg, "verify.go"), sample("go"));
@@ -485,7 +507,7 @@ func TestCases(t *testing.T) {
             .filter((l) => /^(true|false)$/.test(l.trim()))
             .join("\n"),
         ),
-      ).toEqual(cases.map((c) => c[4]));
+      ).toEqual(expected);
     }, 180_000);
   });
 });
