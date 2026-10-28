@@ -52,6 +52,7 @@ import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as DevelopersApiRouteImport } from './routes/developers.api'
+import { Route as DevelopersApiDotpostmanDotjsonRouteImport } from './routes/developers.api[.]postman[.]json'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as PayPaymentIdRouteImport } from './routes/pay.$paymentId'
 import { Route as RTokenRouteImport } from './routes/r.$token'
@@ -373,6 +374,12 @@ const DevelopersApiRoute = DevelopersApiRouteImport.update({
   path: '/developers/api',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DevelopersApiDotpostmanDotjsonRoute =
+  DevelopersApiDotpostmanDotjsonRouteImport.update({
+    id: '/developers/api.postman.json',
+    path: '/developers/api.postman.json',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
@@ -970,6 +977,7 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/api': typeof DevelopersApiRoute
+  '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
@@ -1118,6 +1126,7 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/api': typeof DevelopersApiRoute
+  '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
@@ -1269,6 +1278,7 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/api': typeof DevelopersApiRoute
+  '/developers/api.postman.json': typeof DevelopersApiDotpostmanDotjsonRoute
   '/join/$token': typeof JoinTokenRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
@@ -1421,6 +1431,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/developers/api'
+    | '/developers/api.postman.json'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
@@ -1569,6 +1580,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/developers/api'
+    | '/developers/api.postman.json'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
@@ -1719,6 +1731,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/templates'
     | '/developers/api'
+    | '/developers/api.postman.json'
     | '/join/$token'
     | '/pay/$paymentId'
     | '/r/$token'
@@ -1850,6 +1863,7 @@ export interface RootRouteChildren {
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   DevelopersApiRoute: typeof DevelopersApiRoute
+  DevelopersApiDotpostmanDotjsonRoute: typeof DevelopersApiDotpostmanDotjsonRoute
   JoinTokenRoute: typeof JoinTokenRoute
   PayPaymentIdRoute: typeof PayPaymentIdRoute
   RTokenRoute: typeof RTokenRoute
@@ -2248,6 +2262,13 @@ declare module '@tanstack/react-router' {
       path: '/developers/api'
       fullPath: '/developers/api'
       preLoaderRoute: typeof DevelopersApiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/developers/api.postman.json': {
+      id: '/developers/api.postman.json'
+      path: '/developers/api.postman.json'
+      fullPath: '/developers/api.postman.json'
+      preLoaderRoute: typeof DevelopersApiDotpostmanDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join/$token': {
@@ -3124,6 +3145,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
   DevelopersApiRoute: DevelopersApiRoute,
+  DevelopersApiDotpostmanDotjsonRoute: DevelopersApiDotpostmanDotjsonRoute,
   JoinTokenRoute: JoinTokenRoute,
   PayPaymentIdRoute: PayPaymentIdRoute,
   RTokenRoute: RTokenRoute,

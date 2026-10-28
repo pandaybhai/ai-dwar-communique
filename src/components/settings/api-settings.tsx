@@ -11,6 +11,7 @@ import { callApi } from "@/lib/whatsapp-client";
 import { useOrg } from "@/lib/org-context";
 import { aidwar } from "@/integrations/aidwar/client";
 import { DOCS_PATH, apiReadyTemplates, curlExample } from "@/lib/public-api";
+import { POSTMAN_PATH, WEBHOOK_EVENTS } from "@/lib/public-api-spec";
 
 type KeyRow = {
   id: string;
@@ -306,11 +307,27 @@ export function WebhookCard() {
         <div>
           <h2 className="text-base font-semibold text-foreground">Webhook</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            We POST message.sent, message.delivered, message.read and message.failed for every
-            message the API sends, signed with your secret (X-AiDwar-Signature). Failed deliveries
-            are retried for 24 hours.
+            We POST each event below to your address as it happens, signed with your secret
+            (X-AiDwar-Signature). Failed deliveries are retried for 24 hours.
           </p>
         </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-border/70 p-4">
+        <h3 className="text-sm font-medium text-foreground">Events this webhook receives</h3>
+        <ul className="mt-2 space-y-1.5 text-sm text-muted-foreground" aria-label="Webhook events">
+          {WEBHOOK_EVENTS.map((ev) => (
+            <li key={ev.name}>
+              <a
+                href={`${DOCS_PATH}#event-${ev.name}`}
+                className="font-mono text-xs text-foreground hover:underline"
+              >
+                {ev.name}
+              </a>{" "}
+              — {ev.when}
+            </li>
+          ))}
+        </ul>
       </div>
 
       {secret ? (
@@ -489,6 +506,10 @@ export function ApiQuickstartCard() {
               className="text-primary hover:underline"
             >
               Read the API docs
+            </a>{" "}
+            (templates, replies, contacts, incoming messages, balance) or{" "}
+            <a href={POSTMAN_PATH} download className="text-primary hover:underline">
+              download the Postman collection
             </a>
             .
           </p>

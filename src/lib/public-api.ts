@@ -121,9 +121,18 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
       "media_unreachable",
       "media_empty",
       "media_type_unsupported",
+      "invalid_message",
+      "invalid_contact",
+      "invalid_contacts",
+      "too_many_contacts",
+      "duplicate_phone",
+      "invalid_tags",
+      "invalid_filter",
+      "invalid_limit",
+      "invalid_cursor",
     ],
     meaning:
-      "The request can't be sent as it is: fix what the message says and send again. Nothing was sent.",
+      "The request can't be done as it is: fix what the message says and send again. Nothing was sent or changed.",
   },
   {
     status: "401",
@@ -138,19 +147,31 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
   },
   {
     status: "403",
-    codes: ["public_api_disabled"],
-    meaning: "The Public API isn't switched on for this workspace (it is part of the Scale plan).",
+    codes: ["public_api_disabled", "invalid_media_link"],
+    meaning:
+      "The Public API isn't switched on for this workspace (it is part of the Scale plan); or a file download link isn't valid for this API key.",
   },
   {
     status: "404",
     codes: ["not_found"],
-    meaning: "No message with this id was sent by the API in your workspace.",
+    meaning:
+      "No such message, file, contact or template in your workspace (another workspace's is the same 404).",
   },
   {
     status: "409",
-    codes: ["contact_opted_out", "idempotency_key_reused", "idempotency_in_progress"],
+    codes: [
+      "contact_opted_out",
+      "window_closed",
+      "idempotency_key_reused",
+      "idempotency_in_progress",
+    ],
     meaning:
-      "The customer opted out of your messages; or this idempotency_key was used for a different request, or that request is still being sent. Nothing new was sent.",
+      "The customer opted out of marketing (a marketing template isn't sent); or their 24-hour window is closed (send a template instead); or this idempotency_key was used for a different request, or that request is still being sent. Nothing new was sent.",
+  },
+  {
+    status: "410",
+    codes: ["media_link_expired"],
+    meaning: "The file download link has expired: ask GET /api/v1/media/{message_id} for a new one.",
   },
   {
     status: "413",
@@ -164,7 +185,13 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
   },
   {
     status: "5xx",
-    codes: ["whatsapp_upload_failed", "whatsapp_rejected", "unavailable", "internal_error"],
+    codes: [
+      "whatsapp_upload_failed",
+      "whatsapp_rejected",
+      "media_unavailable",
+      "unavailable",
+      "internal_error",
+    ],
     meaning:
       "502: WhatsApp refused the file or the message (a refused message is in your inbox, marked failed). 503 / 500: try again — with the same idempotency_key it is never sent twice.",
   },
