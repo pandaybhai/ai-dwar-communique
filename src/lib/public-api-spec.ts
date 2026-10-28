@@ -570,6 +570,54 @@ export const WEBHOOK_EVENTS: WebhookEventSpec[] = [
       timestamp: AT,
     },
   },
+  {
+    name: "campaign.completed",
+    when: "A campaign finished sending to everyone on its list (not when it is cancelled).",
+    example: {
+      event: "campaign.completed",
+      campaign_id: "2c9d4e1a-7b3f-4c2d-9e8a-1f0b6d5c4a39",
+      name: "Diwali offer",
+      status: "completed",
+      template_name: "festive_offer",
+      counts: { recipients: 1200, sent: 1188, delivered: 1150, read: 802, failed: 12, replied: 64 },
+      completed_at: AT,
+      timestamp: AT,
+    },
+  },
+  {
+    name: "phone_number.quality_changed",
+    when: "WhatsApp changed your number's quality rating (GREEN, YELLOW or RED). A falling rating means customers are blocking or reporting your messages.",
+    example: {
+      event: "phone_number.quality_changed",
+      phone_number: "+91 90000 00000",
+      quality: { previous: "GREEN", current: "YELLOW" },
+      whatsapp_event: "FLAGGED",
+      timestamp: AT,
+    },
+  },
+  {
+    name: "account.status_changed",
+    when: "Your WhatsApp Business Account was reviewed, restricted, disabled or restored.",
+    example: {
+      event: "account.status_changed",
+      status: "restricted",
+      whatsapp_event: "ACCOUNT_VIOLATION",
+      reason: "SCAM",
+      restrictions: [{ type: "RESTRICTED_BIZ_INITIATED_MESSAGING", expires_at: "1767225600" }],
+      timestamp: AT,
+    },
+  },
+  {
+    name: "messaging_limit.changed",
+    when: "Your number's daily limit of new conversations changed (for example from 1,000 to 10,000 customers a day).",
+    example: {
+      event: "messaging_limit.changed",
+      phone_number: "+91 90000 00000",
+      limit: { previous: "TIER_1K", current: "TIER_10K" },
+      whatsapp_event: "UPGRADE",
+      timestamp: AT,
+    },
+  },
 ];
 
 // ------------------------------------------------------------ examples

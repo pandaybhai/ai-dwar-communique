@@ -93,7 +93,11 @@ export type AccountEventName = (typeof ACCOUNT_EVENT_NAMES)[number];
 export type QueuedEventName = InboundEventName | AccountEventName;
 
 /** Every event a webhook can receive, in the order Settings and the docs list them. */
-export const ALL_WEBHOOK_EVENTS = [...WEBHOOK_EVENT_NAMES, ...INBOUND_EVENT_NAMES] as const;
+export const ALL_WEBHOOK_EVENTS = [
+  ...WEBHOOK_EVENT_NAMES,
+  ...INBOUND_EVENT_NAMES,
+  ...ACCOUNT_EVENT_NAMES,
+] as const;
 
 export const MEDIA_PATH = "/api/v1/media/{message_id}";
 /**
