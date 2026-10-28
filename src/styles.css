@@ -823,3 +823,22 @@ html[data-app].dark .wa-wall {
 html[data-chat-open] .mobile-tabbar {
   display: none;
 }
+@media (max-width: 1023px) {
+  /* Inside a chat on a phone, the chat's own header is the only header. */
+  html[data-chat-open] .app-topbar {
+    display: none;
+  }
+  html[data-chat-open] #main {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Contact avatars: one soft hue per person (ContactAvatar). Text ≥ 4.5:1. */
+.avatar-tone {
+  background: oklch(0.93 0.045 var(--av-h, 162));
+  color: oklch(0.4 0.1 var(--av-h, 162));
+}
+html[data-app].dark .avatar-tone {
+  background: oklch(0.32 0.06 var(--av-h, 162));
+  color: oklch(0.9 0.06 var(--av-h, 162));
+}

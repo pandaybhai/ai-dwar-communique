@@ -55,6 +55,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
+import { Bubble } from "@/components/inbox/chat-thread";
+import type { MessageRow } from "@/components/inbox/inbox-utils";
 import { useThemeChoice, type ThemeChoice } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -130,6 +132,30 @@ const MOTION: Array<[string, string, string]> = [
   ["ease-out", "--dur-base 180ms", "Menus, tabs, tooltips, new messages."],
   ["ease-in-out", "--dur-slow 280ms", "Sheets, panels, the sidebar collapsing."],
   ["ease-spring", "--dur-base 180ms", "Small delights only (a sent bubble landing)."],
+];
+
+const bubble = (id: string, over: Partial<MessageRow>): MessageRow => ({
+  id,
+  conversation_id: "design",
+  direction: "inbound",
+  type: "text",
+  body: null,
+  media_url: null,
+  media_mime: null,
+  template_name: null,
+  status: "read",
+  error_detail: null,
+  created_at: "2026-10-28T10:41:00Z",
+  ...over,
+});
+
+const SAMPLE_BUBBLES: MessageRow[] = [
+  bubble("ds-1", { body: "Is the rose-gold ring available in size 12?" }),
+  bubble("ds-2", { body: "And do you ship to *Pune*?" }),
+  bubble("ds-3", { direction: "outbound", body: "Yes! Size 12 is in stock and we ship to Pune in 2 days 💍" }),
+  bubble("ds-4", { direction: "outbound", body: "Shall I keep one for you?", status: "delivered", sent_by: "u" }),
+  bubble("ds-5", { direction: "outbound", body: "Our cut-off is 6 pm.", status: "failed", error_detail: "Outside the 24-hour window.", sent_by: "u" }),
+  bubble("ds-6", { direction: "outbound", body: "Sending…", status: "pending", sent_by: "u" }),
 ];
 
 /* ------------------------------------------------------------- helpers */
@@ -697,18 +723,28 @@ export function DesignSystemPage() {
             <Swatch key={t} token={t} note={note} theme={theme} ring />
           ))}
         </div>
-        <div className="wa-wall rounded-xl border border-border p-6">
-          <div className="mx-auto flex max-w-md flex-col gap-1.5">
-            <div className="wa-bubble-in wa-tail max-w-[80%] self-start">
-              Is the rose-gold ring available in size 12?
-              <span className="wa-meta">10:41</span>
-            </div>
-            <div className="wa-bubble-out wa-tail max-w-[80%] self-end">
-              Yes! Size 12 is in stock — shall I keep one for you? 💍
-              <span className="wa-meta">10:42 <Check className="inline h-3.5 w-3.5 text-wa-tick" aria-label="Read" /></span>
+        <Sub title="Chat bubbles" note="Inbox's Bubble (components/inbox/chat-thread): tail on the first bubble of a run, time + ticks inside, a sparkle on AI-written replies, a red ring when a send failed. Day labels stick to the top while their day scrolls.">
+          <div className="wa-wall rounded-xl border border-border px-2 py-5 sm:px-6">
+            <div className="mx-auto flex max-w-xl flex-col">
+              <div className="flex justify-center py-2">
+                <span className="rounded-lg bg-wa-in/95 px-3 py-1 text-[0.6875rem] font-medium uppercase tracking-wide text-wa-meta shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]">
+                  Today
+                </span>
+              </div>
+              {SAMPLE_BUBBLES.map((m, i) => (
+                <div key={m.id} className={i === 0 || SAMPLE_BUBBLES[i - 1]!.direction !== m.direction ? "mt-2.5" : "mt-0.5"}>
+                  <Bubble
+                    message={m}
+                    organizationId={null}
+                    agentName="Aiden"
+                    tail={i === 0 || SAMPLE_BUBBLES[i - 1]!.direction !== m.direction}
+                    aiRun={m.id === "ds-3" ? { question: "", reply: m.body ?? "", taughtOn: null } : null}
+                  />
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        </Sub>
       </Section>
     </div>
   );

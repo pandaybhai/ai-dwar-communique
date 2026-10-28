@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Inbox, MessagesSquare, Search } from "lucide-react";
+import { Inbox, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { useOrg } from "@/lib/org-context";
@@ -8,8 +8,12 @@ import { emitClientEvent } from "@/lib/events-capture";
 import { callApi } from "@/lib/whatsapp-client";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Kbd } from "@/components/ui/kbd";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { inboxChanged } from "@/hooks/use-inbox-counts";
+import { useAppCommand } from "@/lib/app-commands";
+import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -21,14 +25,12 @@ import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
 import { numberLabel } from "@/lib/whatsapp-numbers";
 
 import { ChatThread } from "./chat-thread";
+import { ContactPanel } from "./contact-panel";
+import { ConversationList } from "./conversation-list";
 import {
-  contactLabel,
   fillTemplateText,
   templateBodyOf,
-  initials,
   latestThreadMessages,
-  previewText,
-  relativeTime,
   type ConversationRow,
   type MemberRow,
   type MessageRow,
@@ -43,6 +45,19 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "closed", label: "Closed" },
   { key: "mine", label: "Assigned to me" },
 ];
+
+/** Batch 39: quick filters on top of the tabs (on the loaded list, nothing new is read). */
+type QuickFilter = "unread" | "unassigned";
+
+const DETAILS_KEY = "aidwar.inbox_details";
+
+function readDetailsOpen(): boolean {
+  try {
+    return window.localStorage.getItem(DETAILS_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
 
 type TemplateRow = { name: string; components: Array<Record<string, unknown>> | null };
 
@@ -91,7 +106,14 @@ export function InboxView() {
   const [filter, setFilter] = useState<Filter>("all");
   const [numberFilter, setNumberFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [quick, setQuick] = useState<Set<QuickFilter>>(() => new Set());
   const { numbers } = useWhatsAppNumbers();
+  // Batch 39: keyboard row (j/k), the assignee picker (a), the details panel.
+  const [highlight, setHighlight] = useState(0);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState<boolean>(() => (typeof window === "undefined" ? true : readDetailsOpen()));
+  const [detailsSheet, setDetailsSheet] = useState(false);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -155,6 +177,7 @@ export function InboxView() {
     setError(null);
     setConversations(rows);
     setLoading(false);
+    inboxChanged();
   }, [orgId]);
 
   const loadMembers = useCallback(async () => {
@@ -202,7 +225,16 @@ export function InboxView() {
           if (!row || row.conversation_id !== activeIdRef.current) return;
           setMessages((prev) => {
             const idx = prev.findIndex((m) => m.id === row.id);
-            if (idx === -1) return [...prev, row];
+            if (idx === -1) {
+              // Batch 39: the real row of a message shown while it was sending takes its place.
+              const pending = row.direction === "outbound" ? prev.findIndex((m) => m.id.startsWith("sending-") && m.body === row.body) : -1;
+              if (pending !== -1) {
+                const next = [...prev];
+                next[pending] = row;
+                return next;
+              }
+              return [...prev, row];
+            }
             const next = [...prev];
             next[idx] = { ...next[idx]!, ...row };
             return next;
@@ -259,6 +291,12 @@ export function InboxView() {
     }
   }, [conversations, openConversation]);
 
+  // Batch 39: the command palette's "jump to a chat" (the ?c= link covers a fresh Inbox).
+  useAppCommand("open-conversation", ({ id }) => {
+    if (conversations.some((c) => c.id === id)) void openConversation(id);
+    else wantedIdRef.current = id;
+  });
+
   const numberById = useMemo(
     () => new Map(numbers.map((n) => [n.id, n])),
     [numbers],
@@ -272,12 +310,14 @@ export function InboxView() {
       if (filter === "closed" && c.status !== "closed") return false;
       if (filter === "mine" && c.assigned_to !== userId) return false;
       if (numberFilter !== "all" && c.whatsapp_account_id !== numberFilter) return false;
+      if (quick.has("unread") && !((c.unread_count ?? 0) > 0)) return false;
+      if (quick.has("unassigned") && c.assigned_to) return false;
       if (!q) return true;
       const name = (c.contact?.name ?? "").toLowerCase();
       const phone = (c.contact?.phone ?? "").toLowerCase();
       return name.includes(q) || phone.includes(q);
     });
-  }, [conversations, filter, numberFilter, search, userId]);
+  }, [conversations, filter, numberFilter, search, userId, quick]);
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
 
@@ -285,6 +325,25 @@ export function InboxView() {
   const handleSend = async (text: string): Promise<boolean> => {
     if (!orgId || !activeConversation) return false;
     setSending(true);
+    // Batch 39: the message shows in the chat (with a clock) while it sends.
+    const pendingId = `sending-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: pendingId,
+        conversation_id: activeConversation.id,
+        direction: "outbound",
+        type: "text",
+        body: text,
+        media_url: null,
+        media_mime: null,
+        template_name: null,
+        status: "pending",
+        error_detail: null,
+        sent_by: userId,
+        created_at: new Date().toISOString(),
+      },
+    ]);
     const { error: sendError } = await callApi<{ message_id: string }>(
       "/api/whatsapp/send-message",
       {
@@ -298,6 +357,7 @@ export function InboxView() {
     );
     setSending(false);
     if (sendError) {
+      setMessages((prev) => prev.filter((m) => m.id !== pendingId));
       toast.error(sendError);
       return false;
     }
@@ -409,197 +469,318 @@ export function InboxView() {
     }
   };
 
-  if (error) return <ErrorState message={error} />;
+  // Batch 39: the keyboard row follows the open chat and stays inside the list.
+  useEffect(() => {
+    const i = activeId ? filtered.findIndex((c) => c.id === activeId) : -1;
+    setHighlight((h) => (i !== -1 ? i : Math.min(Math.max(h, 0), Math.max(filtered.length - 1, 0))));
+  }, [activeId, filtered]);
+
+  // On a phone the tab bar steps aside while a chat is open.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (activeId) root.setAttribute("data-chat-open", "");
+    else root.removeAttribute("data-chat-open");
+    return () => root.removeAttribute("data-chat-open");
+  }, [activeId]);
+
+  const toggleDetails = useCallback(() => {
+    if (window.matchMedia("(min-width: 1280px)").matches) {
+      setDetailsOpen((open) => {
+        try {
+          window.localStorage.setItem(DETAILS_KEY, open ? "0" : "1");
+        } catch {
+          // Private mode: lasts for this page.
+        }
+        return !open;
+      });
+    } else {
+      setDetailsSheet((open) => !open);
+    }
+  }, []);
+
+  // j / k / Enter / r / e / a / "/" — never while typing or in a menu.
+  const keyState = useRef({ filtered, highlight, activeConversation });
+  keyState.current = { filtered, highlight, activeConversation };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !isPlainKey(e) || isTypingTarget(e.target)) return;
+      const { filtered: list, highlight: h, activeConversation: conv } = keyState.current;
+      const key = e.key;
+      if (key === "j" || key === "k") {
+        if (!list.length) return;
+        e.preventDefault();
+        setHighlight(Math.min(list.length - 1, Math.max(0, h + (key === "j" ? 1 : -1))));
+      } else if (key === "Enter") {
+        const target = list[h];
+        const el = e.target as HTMLElement | null;
+        if (!target || (el && el.closest("button, a, [role=button]"))) return;
+        e.preventDefault();
+        void openConversation(target.id);
+      } else if (key === "r") {
+        const box = document.getElementById("inbox-composer");
+        if (box) {
+          e.preventDefault();
+          box.focus();
+        }
+      } else if (key === "e") {
+        if (conv && conv.status !== "closed") {
+          e.preventDefault();
+          void handleToggleStatus();
+        }
+      } else if (key === "a") {
+        if (conv) {
+          e.preventDefault();
+          setAssignOpen(true);
+        }
+      } else if (key === "/") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const viaLabel = useCallback(
+    (c: ConversationRow) =>
+      numbers.length > 1 && c.whatsapp_account_id ? numberLabel(numberById.get(c.whatsapp_account_id)) : null,
+    [numbers.length, numberById],
+  );
+
+  if (error) return <div className="p-4 sm:p-6"><ErrorState message={error} /></div>;
+
+  const waitingCount = conversations.filter((c) => c.needs_human).length;
+  const toggleQuick = (q: QuickFilter) =>
+    setQuick((prev) => {
+      const next = new Set(prev);
+      if (next.has(q)) next.delete(q);
+      else next.add(q);
+      return next;
+    });
+  const activeNumberLabel =
+    numbers.length > 1 && activeConversation?.whatsapp_account_id
+      ? numberLabel(numberById.get(activeConversation.whatsapp_account_id))
+      : null;
 
   return (
-    <div className="flex h-[calc(100vh-9rem)] min-h-[520px] overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+    <div className="flex min-h-0 flex-1 overflow-hidden bg-card">
       {/* Conversation list */}
       <aside
-        className={[
-          "flex w-full min-w-0 flex-col border-r border-border/70 lg:w-[22rem] lg:shrink-0",
+        aria-label="Conversations"
+        className={cn(
+          "flex w-full min-w-0 flex-col border-r border-border bg-card lg:w-[22rem] lg:shrink-0 xl:w-[24.5rem]",
           activeId ? "hidden lg:flex" : "flex",
-        ].join(" ")}
+        )}
       >
-        <div className="space-y-3 border-b border-border/70 p-4">
+        <div className="shrink-0 space-y-3 px-4 pb-3 pt-4">
+          <div className="flex items-center gap-2">
+            <h1 className="type-title text-foreground">Inbox</h1>
+            {!loading ? (
+              <span className="tabular rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {filtered.length}
+              </span>
+            ) : null}
+            {numbers.length > 1 ? (
+              <Select value={numberFilter} onValueChange={setNumberFilter}>
+                <SelectTrigger className="ml-auto h-8 w-auto max-w-[11rem] rounded-full text-xs" aria-label="Number">
+                  <SelectValue placeholder="All numbers" />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="all">All numbers</SelectItem>
+                  {numbers.map((n) => (
+                    <SelectItem key={n.id} value={n.id}>
+                      {numberLabel(n)}
+                      {n.is_default ? " · Default" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+          </div>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" aria-hidden="true" />
             <Input
+              ref={searchRef}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  if (search) setSearch("");
+                  else e.currentTarget.blur();
+                }
+                if (e.key === "Enter" && filtered[0]) {
+                  e.preventDefault();
+                  void openConversation(filtered[0].id);
+                  e.currentTarget.blur();
+                }
+              }}
               placeholder="Search name or phone"
-              className="rounded-full pl-9"
+              aria-label="Search name or phone"
+              className="h-9 rounded-lg bg-subtle pl-9 pr-9 shadow-none"
             />
-          </div>
-          {numbers.length > 1 ? (
-            <Select value={numberFilter} onValueChange={setNumberFilter}>
-              <SelectTrigger className="rounded-full">
-                <SelectValue placeholder="All numbers" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All numbers</SelectItem>
-                {numbers.map((n) => (
-                  <SelectItem key={n.id} value={n.id}>
-                    {numberLabel(n)}
-                    {n.is_default ? " · Default" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
-          <div className="flex flex-wrap gap-1.5">
-            {FILTERS.map((f) => (
+            {search ? (
               <button
-                key={f.key}
                 type="button"
-                onClick={() => setFilter(f.key)}
-                className={[
-                  "rounded-full px-3 py-1 text-xs font-medium transition-colors duration-200",
-                  filter === f.key
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/70",
-                ].join(" ")}
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-faint hover:bg-accent hover:text-foreground"
+                aria-label="Clear search"
               >
-                {f.label}
+                <X className="h-3.5 w-3.5" />
               </button>
-            ))}
+            ) : (
+              <Kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2">/</Kbd>
+            )}
           </div>
         </div>
 
-
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="space-y-3 p-4">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <Skeleton className="h-10 w-10 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-3.5 w-32" />
-                    <Skeleton className="h-3 w-44" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="p-6 text-center">
-              <MessagesSquare className="mx-auto h-7 w-7 text-muted-foreground/60" />
-              <p className="mt-3 text-sm font-medium text-foreground">
-                {conversations.length === 0 ? "No conversations yet" : "No matches"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {conversations.length === 0
-                  ? "New customer messages will appear here the moment they arrive."
-                  : "Try a different search or filter."}
-              </p>
-            </div>
-          ) : (
-            <ul>
-              {filtered.map((c) => {
-                const label = contactLabel(c.contact);
-                const assignee = members.find((m) => m.user_id === c.assigned_to);
-                const selected = c.id === activeId;
-                return (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      onClick={() => void openConversation(c.id)}
-                      className={[
-                        "flex w-full items-center gap-3 border-b border-border/50 px-4 py-3 text-left transition-colors duration-200",
-                        selected ? "bg-primary/5" : "hover:bg-muted/50",
-                      ].join(" ")}
-                    >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                        {initials(label)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-foreground">{label}</p>
-                          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-                            {relativeTime(c.last_message_at)}
-                          </span>
-                        </div>
-                        <div className="mt-0.5 flex items-center gap-2">
-                          <p className="truncate text-xs text-muted-foreground">
-                            {previewText(c)}
-                          </p>
-                          {c.needs_human ? (
-                            <Badge
-                              variant="secondary"
-                              className="ml-auto h-5 shrink-0 rounded-full px-2 text-[10px]"
-                            >
-                              Waiting for you
-                            </Badge>
-                          ) : null}
-                          {(c.unread_count ?? 0) > 0 ? (
-                            <Badge className="ml-auto h-5 shrink-0 rounded-full px-2 text-[10px]">
-                              {c.unread_count}
-                            </Badge>
-                          ) : null}
-                        </div>
-                        {numbers.length > 1 && c.whatsapp_account_id ? (
-                          <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
-                            via {numberLabel(numberById.get(c.whatsapp_account_id))}
-                          </p>
-                        ) : null}
-                        {assignee ? (
-                          <div className="mt-1.5 flex items-center gap-1.5">
-                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[8px] font-semibold text-muted-foreground">
-                              {initials(assignee.full_name || assignee.email || "?")}
-                            </span>
-                            <span className="truncate text-[11px] text-muted-foreground">
-                              {assignee.full_name || assignee.email}
-                            </span>
-                          </div>
-                        ) : null}
-
-                      </div>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+        <div className="shrink-0 border-b border-border px-2">
+          <div role="group" aria-label="Show" className="-mb-px flex gap-0.5 overflow-x-auto px-2 [scrollbar-width:none]">
+            {FILTERS.map((f) => {
+              const on = filter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setFilter(f.key)}
+                  className={cn(
+                    "relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-1.5 pb-2.5 pt-1 text-[0.8125rem] font-medium transition-colors",
+                    on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {f.label}
+                  {f.key === "needs_human" && waitingCount > 0 ? (
+                    <span className="tabular rounded-full bg-warning-soft px-1.5 text-[0.6875rem] font-semibold text-warning-soft-foreground">
+                      {waitingCount}
+                    </span>
+                  ) : null}
+                  <span
+                    className={cn(
+                      "absolute inset-x-1 bottom-0 h-0.5 rounded-full bg-primary transition-opacity",
+                      on ? "opacity-100" : "opacity-0",
+                    )}
+                    aria-hidden="true"
+                  />
+                </button>
+              );
+            })}
+          </div>
         </div>
+        <div className="flex shrink-0 items-center gap-1.5 px-4 py-2" role="group" aria-label="Quick filters">
+          {(
+            [
+              ["unread", "Unread"],
+              ["unassigned", "Unassigned"],
+            ] as Array<[QuickFilter, string]>
+          ).map(([key, text]) => {
+            const on = quick.has(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggleQuick(key)}
+                className={cn(
+                  "h-7 rounded-full border px-2.5 text-xs font-medium transition-colors",
+                  on
+                    ? "border-primary/30 bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-border-strong hover:text-foreground",
+                )}
+              >
+                {text}
+              </button>
+            );
+          })}
+          <span className="ml-auto hidden items-center gap-1 text-[0.6875rem] text-faint xl:flex" aria-hidden="true">
+            <Kbd>J</Kbd>
+            <Kbd>K</Kbd> to move
+          </span>
+        </div>
+
+        <ConversationList
+          rows={filtered}
+          members={members}
+          activeId={activeId}
+          highlightIndex={highlight}
+          onOpen={(id) => void openConversation(id)}
+          loading={loading}
+          totalLoaded={conversations.length}
+          viaLabel={viaLabel}
+        />
       </aside>
 
       {/* Thread */}
-      <section className={["min-w-0 flex-1", activeId ? "flex" : "hidden lg:flex"].join(" ")}>
+      <section aria-label="Conversation" className={cn("min-w-0 flex-1", activeId ? "flex" : "hidden lg:flex")}>
         {activeConversation ? (
-          <div className="w-full">
-            <ChatThread
-              conversation={activeConversation}
-              messages={messages}
-              members={members}
-              loading={threadLoading}
-              sending={sending}
-              onSend={handleSend}
-              onSendTemplate={handleSendTemplate}
-              organizationId={orgId}
-              wabaId={
-                activeConversation.whatsapp_account_id
-                  ? (numberById.get(activeConversation.whatsapp_account_id)?.waba_id ?? null)
-                  : null
-              }
+          <div className="flex w-full min-w-0">
+            <div className="min-w-0 flex-1">
+              <ChatThread
+                conversation={activeConversation}
+                messages={messages}
+                members={members}
+                loading={threadLoading}
+                sending={sending}
+                onSend={handleSend}
+                onSendTemplate={handleSendTemplate}
+                organizationId={orgId}
+                wabaId={
+                  activeConversation.whatsapp_account_id
+                    ? (numberById.get(activeConversation.whatsapp_account_id)?.waba_id ?? null)
+                    : null
+                }
 
-              numberLabel={
-                numbers.length > 1 && activeConversation.whatsapp_account_id
-                  ? numberLabel(numberById.get(activeConversation.whatsapp_account_id))
-                  : null
-              }
+                numberLabel={activeNumberLabel}
 
-              onBack={() => setActiveId(null)}
-              onAssign={(id) => void handleAssign(id)}
-              onToggleStatus={() => void handleToggleStatus()}
-              onResolveNeedsHuman={() => void handleResolveNeedsHuman()}
-            />
+                onBack={() => setActiveId(null)}
+                onAssign={(id) => void handleAssign(id)}
+                onToggleStatus={() => void handleToggleStatus()}
+                onResolveNeedsHuman={() => void handleResolveNeedsHuman()}
+                assignOpen={assignOpen}
+                onAssignOpenChange={setAssignOpen}
+                detailsOpen={detailsOpen}
+                onToggleDetails={toggleDetails}
+              />
+            </div>
+            {detailsOpen ? (
+              <aside aria-label="Contact details" className="hidden w-[18.5rem] shrink-0 border-l border-border xl:block">
+                <ContactPanel
+                  conversation={activeConversation}
+                  members={members}
+                  messages={messages}
+                  organizationId={orgId}
+                  numberLabel={activeNumberLabel}
+                  onClose={toggleDetails}
+                />
+              </aside>
+            ) : null}
+            <Sheet open={detailsSheet} onOpenChange={setDetailsSheet}>
+              <SheetContent side="right" className="w-[22rem] max-w-[90vw] p-0 [&>button:last-child]:hidden">
+                <SheetTitle className="sr-only">Contact details</SheetTitle>
+                <SheetDescription className="sr-only">Who this customer is and where the conversation stands.</SheetDescription>
+                <ContactPanel
+                  conversation={activeConversation}
+                  members={members}
+                  messages={messages}
+                  organizationId={orgId}
+                  numberLabel={activeNumberLabel}
+                  onClose={() => setDetailsSheet(false)}
+                />
+              </SheetContent>
+            </Sheet>
           </div>
         ) : (
-          <div className="flex w-full items-center justify-center bg-muted/30 p-8">
-            <div className="max-w-sm">
+          <div className="wa-wall flex w-full items-center justify-center p-8">
+            <div className="max-w-sm rounded-2xl border border-border bg-card/95 shadow-sm backdrop-blur">
               <EmptyState
+                variant="plain"
                 icon={Inbox}
                 title="Pick a conversation"
                 description="Select a chat on the left to read the full thread and reply with your team."
               />
+              <p className="-mt-6 flex items-center justify-center gap-1.5 pb-6 text-xs text-faint">
+                <Kbd>J</Kbd>
+                <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>/</Kbd> search
+              </p>
             </div>
           </div>
         )}

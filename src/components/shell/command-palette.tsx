@@ -194,7 +194,7 @@ export function CommandPalette({
                 {hits.map((h) => (
                   <Item
                     key={h.conversationId}
-                    value={`conversation ${h.name ?? ""} ${h.phone} ${query}`}
+                    value={`conversation ${h.name ?? ""} ${h.phone} ${h.conversationId}`}
                     icon={<span className="text-[0.625rem] font-semibold">{initials(h.name?.trim() || h.phone)}</span>}
                     hint={h.name ? h.phone : undefined}
                     onSelect={() =>

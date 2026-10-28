@@ -56,8 +56,9 @@ export function SendCardButton({
   return (
     <>
       <Button
-        variant="outline"
-        className="h-11 w-11 shrink-0 rounded-full p-0"
+        variant="ghost"
+        size="icon-sm"
+        className="shrink-0 text-muted-foreground hover:text-foreground"
         aria-label="Send card"
         title="Send a picture card"
         onClick={() => setOpen(true)}
