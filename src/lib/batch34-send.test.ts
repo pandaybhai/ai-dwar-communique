@@ -234,7 +234,11 @@ describe("refused before anything is sent", () => {
     nothingSent();
   });
 
-  it("an opted-out customer: 409, nothing uploaded or sent", async () => {
+  it("an opted-out customer: a marketing template is 409, nothing uploaded or sent", async () => {
+    // Batch 37: the inbox's opt-out rule (Batch 35) — never marketing; a
+    // utility invoice still reaches them (batch37-template.test.ts).
+    h.world!.db.rows("message_templates").find((t) => t["name"] === "invoice_ready")!["category"] =
+      "MARKETING";
     const res = await send(good({ to: "919800000009" }));
     expect(res.status).toBe(409);
     expect(res.body["code"]).toBe("contact_opted_out");

@@ -20,6 +20,41 @@ export const DOCS_PATH = "/developers/api";
 export const SEND_PATH = "/api/v1/messages/template";
 export const STATUS_PATH = "/api/v1/messages/{message_id}";
 
+/** Batch 37: where the API is served (media links in webhook events, the Postman collection). */
+export const API_ORIGIN = "https://aidwar.in";
+
+/**
+ * Batch 37: the files the API sends, per kind — the types WhatsApp takes and
+ * its size limits (image 5 MB; video and audio 16 MB). A document is held to
+ * MAX_DOCUMENT_MB (16 MB, as in Batch 34; WhatsApp itself takes up to 100 MB):
+ * the file passes through our server whole. The type is read from the file's
+ * own first bytes, never from a header or a file name alone.
+ */
+export const MEDIA_LIMITS = {
+  image: { mb: 5, types: ["image/jpeg", "image/png"], label: "JPEG or PNG" },
+  video: { mb: 16, types: ["video/mp4", "video/3gpp"], label: "MP4 or 3GPP" },
+  audio: {
+    mb: 16,
+    types: ["audio/aac", "audio/amr", "audio/mpeg", "audio/mp4", "audio/ogg"],
+    label: "AAC, AMR, MP3, M4A or OGG (Opus)",
+  },
+  document: {
+    mb: MAX_DOCUMENT_MB,
+    types: [
+      "application/pdf",
+      "text/plain",
+      "application/msword",
+      "application/vnd.ms-excel",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ],
+    label: "PDF, TXT, DOC(X), XLS(X) or PPT(X)",
+  },
+} as const;
+export type MediaKind = keyof typeof MEDIA_LIMITS;
+
 export const WEBHOOK_EVENT_NAMES = [
   "message.sent",
   "message.delivered",
@@ -49,7 +84,19 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
       "document_unreachable",
       "document_not_pdf",
       "document_empty",
+      "document_type_unsupported",
       "no_whatsapp_number",
+      "invalid_header",
+      "header_required",
+      "header_mismatch",
+      "invalid_buttons",
+      "invalid_offer",
+      "invalid_media",
+      "media_url_not_https",
+      "media_url_blocked",
+      "media_unreachable",
+      "media_empty",
+      "media_type_unsupported",
     ],
     meaning:
       "The request can't be sent as it is: fix what the message says and send again. Nothing was sent.",
@@ -83,8 +130,8 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
   },
   {
     status: "413",
-    codes: ["document_too_large", "request_too_large"],
-    meaning: `The PDF is over ${MAX_DOCUMENT_MB} MB, the most WhatsApp accepts.`,
+    codes: ["document_too_large", "media_too_large", "request_too_large"],
+    meaning: `The file is over its limit: a document ${MAX_DOCUMENT_MB} MB, a picture ${MEDIA_LIMITS.image.mb} MB, a video or audio file ${MEDIA_LIMITS.video.mb} MB.`,
   },
   {
     status: "429",
