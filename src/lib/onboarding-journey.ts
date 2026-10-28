@@ -63,6 +63,8 @@ export type JourneyPosition = JourneyStep | "done";
 /** The first step that isn't done yet. */
 export function resumeStep(facts: JourneyFacts): JourneyPosition {
   if (!facts.hasOrg || !facts.hasMaterial) return "business";
+  // Going live finishes the journey, whatever was skipped on the way.
+  if (facts.wentLive) return "done";
   if (!facts.connected && !facts.connectSkipped) return "connect";
   if (!facts.tested) return "aiden";
   if (!facts.wentLive) return "live";

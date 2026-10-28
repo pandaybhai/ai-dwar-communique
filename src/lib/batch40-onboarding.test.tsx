@@ -361,6 +361,8 @@ describe("resume after reload lands on the same step", () => {
     expect(resumeStep(facts({ connectSkipped: true }))).toBe("aiden");
     expect(resumeStep(facts({ connected: true, tested: true }))).toBe("live");
     expect(resumeStep(facts({ connected: true, tested: true, wentLive: true }))).toBe("done");
+    // Went live in Draft without testing or connecting: finished, never sent back.
+    expect(resumeStep(facts({ wentLive: true }))).toBe("done");
   });
 
   it("the step in the URL is where a reload lands — going back included, skipping ahead never", () => {

@@ -65,6 +65,7 @@ export function StepConnect({
               orgId={organizationId}
               quiet
               label="Continue with Facebook"
+              buttonClassName="h-14 w-full rounded-full bg-primary-strong px-8 text-base font-semibold text-primary-strong-foreground shadow-lg shadow-primary/20 hover:bg-primary-strong/90 sm:w-auto"
               onOpened={() => {
                 void journeyApi({
                   action: "mark",

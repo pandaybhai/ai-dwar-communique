@@ -99,6 +99,7 @@ export function OnboardingJourney({
     const begun = await journeyApi<{ source_id?: string }>({
       action: "begin",
       organization_id: orgId,
+      name: input.name,
       url: input.url,
       about: input.about,
       brand: input.brand ? { logoUrl: input.brand.logoUrl, color: input.brand.color } : {},

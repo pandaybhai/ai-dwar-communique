@@ -100,6 +100,21 @@ export async function journeyBegin(
   const brand = (payload["brand"] ?? {}) as { logoUrl?: unknown; color?: unknown };
   await keepBrand(supabase, organizationId, brand);
 
+  // Back on step 1 with a corrected name: the workspace takes it.
+  const name = String(payload["name"] ?? "")
+    .trim()
+    .slice(0, 120);
+  if (name.length >= 2) {
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", organizationId)
+      .maybeSingle();
+    if ((org as { name?: string | null } | null)?.name !== name) {
+      await supabase.from("organizations").update({ name }).eq("id", organizationId);
+    }
+  }
+
   const knowledge = await import("@/lib/knowledge.server");
   const { normaliseSiteInput } = await import("@/lib/site-peek");
   const about = String(payload["about"] ?? "").trim();

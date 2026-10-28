@@ -121,7 +121,7 @@ export function StepAiden({
     const first = products[0];
     if (first)
       out.push(
-        `How much is ${first.title.length > 40 ? `${first.title.slice(0, 38)}…` : first.title}?`,
+        `How much is ${first.title.length > 26 ? `${first.title.slice(0, 24).trimEnd()}…` : first.title}?`,
       );
     out.push("How can I reach you?");
     return out;
@@ -193,7 +193,7 @@ export function StepAiden({
         {/* What he learned */}
         <section
           aria-labelledby="ob-learned"
-          className="ob-rise min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6"
+          className="ob-rise min-w-0 self-start rounded-3xl border border-border bg-card p-5 sm:p-6"
           style={{ "--ob-delay": "80ms" } as React.CSSProperties}
         >
           <div className="flex items-center justify-between gap-3">
@@ -232,7 +232,7 @@ export function StepAiden({
               )}
             </div>
           ) : (
-            <ul className="mt-5 max-h-[22rem] space-y-2 overflow-y-auto pr-1 lg:max-h-[30rem]">
+            <ul className="mt-5 max-h-56 space-y-2 overflow-y-auto pr-1 lg:max-h-[30rem]">
               {items.map((item) => {
                 const order = fresh[item.id];
                 const Icon =

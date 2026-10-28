@@ -214,7 +214,7 @@ export function StepBusiness({
                 setNoSite((v) => !v);
                 setError(null);
               }}
-              className="inline-flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              className="inline-flex items-center gap-2 text-left text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
               <PenLine className="h-4 w-4" aria-hidden="true" />
               {noSite ? "I have a website after all" : "No website? Describe your business instead"}

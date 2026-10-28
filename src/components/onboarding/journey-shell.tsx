@@ -88,6 +88,11 @@ export function ProgressRail({
                 {STEP_LABELS[key]}
                 {done ? <span className="sr-only"> (done)</span> : null}
               </span>
+              {/* On a phone the labels are hidden; screen readers still hear each step. */}
+              <span className="sr-only sm:hidden">
+                {STEP_LABELS[key]}
+                {done ? " (done)" : ""}
+              </span>
             </>
           );
           return (
@@ -102,7 +107,7 @@ export function ProgressRail({
                   {label}
                 </button>
               ) : (
-                <div aria-label={isCurrent ? undefined : STEP_LABELS[key]}>{label}</div>
+                <div>{label}</div>
               )}
             </li>
           );
@@ -147,9 +152,11 @@ export function PrimaryAction({
     <button
       {...props}
       className={cn(
-        "inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary-strong px-8 text-base font-semibold text-primary-strong-foreground shadow-lg shadow-primary/20 transition-[transform,box-shadow,opacity] duration-200 hover:shadow-xl hover:shadow-primary/25 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto [&_svg]:size-5",
+        "inline-flex h-14 w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-primary-strong px-8 text-base font-semibold text-primary-strong-foreground shadow-lg shadow-primary/20 transition-[transform,box-shadow,opacity] duration-200 hover:shadow-xl hover:shadow-primary/25 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto [&_svg]:size-5",
         className,
       )}
-    />
+    >
+      {children}
+    </button>
   );
 }

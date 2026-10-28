@@ -104,6 +104,7 @@ export function EmbeddedSignupButton({
   onOpened,
   label,
   quiet = false,
+  buttonClassName,
 }: {
   orgId: string;
   onConnected: (account: ConnectedAccount | null) => Promise<void>;
@@ -114,6 +115,8 @@ export function EmbeddedSignupButton({
   label?: string;
   /** The caller draws the outcome and the reassurance itself. */
   quiet?: boolean;
+  /** Batch 40: the caller's own button look (the journey's primary action). */
+  buttonClassName?: string;
 }) {
   const [config, setConfig] = useState<EsConfig | null>(null);
   const [working, setWorking] = useState(false);
@@ -298,7 +301,10 @@ export function EmbeddedSignupButton({
     <div className="space-y-4">
       <Button
         size="lg"
-        className="h-14 w-full rounded-2xl bg-gradient-to-r from-primary to-teal-500 text-base font-semibold shadow-lg shadow-primary/20 transition-all duration-200 hover:shadow-xl hover:shadow-primary/25 active:scale-[0.99] sm:w-auto sm:px-8"
+        className={
+          buttonClassName ??
+          "h-14 w-full rounded-2xl bg-gradient-to-r from-primary to-teal-500 text-base font-semibold shadow-lg shadow-primary/20 transition-all duration-200 hover:shadow-xl hover:shadow-primary/25 active:scale-[0.99] sm:w-auto sm:px-8"
+        }
         onClick={() => void start()}
         disabled={!config || working}
       >

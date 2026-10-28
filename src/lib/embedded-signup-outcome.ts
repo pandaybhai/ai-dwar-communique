@@ -65,7 +65,7 @@ const OUTCOMES: Record<EsOutcomeKind, Omit<EsOutcome, "detail">> = {
     body: "Nothing was changed on your number. Start again whenever you're ready — it takes about two minutes.",
     steps: [
       "Keep the Facebook window open until it says you're all set.",
-      "If it asked for something you didn't have to hand, check “What you'll need” above first.",
+      "If it asked for something you didn't have to hand, check “What you'll need” on this page first.",
     ],
     retryLabel: "Start again",
   },

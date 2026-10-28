@@ -74,8 +74,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="lg:hidden">
-                <Menu className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open the admin menu">
+                <Menu className="h-5 w-5" aria-hidden="true" />
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-72 p-6">
@@ -85,9 +85,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </Sheet>
 
           <span className="text-xl font-bold tracking-tight text-foreground">
-            Ai<span className="text-primary">Dwar</span>
+            Ai<span className="text-primary-strong">Dwar</span>
           </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary-strong">
             <ShieldCheck className="h-3.5 w-3.5" /> Super Admin
           </span>
 
