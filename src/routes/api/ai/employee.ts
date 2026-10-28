@@ -342,53 +342,16 @@ export const Route = createFileRoute("/api/ai/employee")({
           }
 
           if (action === "set_mode") {
-            const agent = await agentRow();
-            if (!agent) return jsonError("No AI employee in this workspace yet.");
-            const mode = String(payload["mode"] ?? "off");
-            if (!["off", "draft", "replying"].includes(mode)) return jsonError("Unknown mode.");
-
-            if (mode === "replying" && payload["skip_test"] !== true) {
-              const { data: tested } = await supabase
-                .from("ai_runs")
-                .select("id")
-                .eq("organization_id", org)
-                .eq("task", "agent_reply")
-                .is("conversation_id", null)
-                .gte("created_at", new Date(Date.now() - 7 * 864e5).toISOString())
-                .limit(1);
-              if (!tested || tested.length === 0) {
-                return Response.json(
-                  {
-                    needs_test: true,
-                    message:
-                      "You haven't tested this yet. Want to see how it would have answered your last 20 customer questions first?",
-                  },
-                  { status: 409 },
-                );
-              }
-            }
-
-            const { error: modeError } = await supabase
-              .from("ai_agents")
-              .update({ mode })
-              .eq("id", agent.id);
-            if (modeError) {
-              // The database refuses to switch Aiden on without a plan or
-              // credits, and says why. Pass its words straight through.
-              const message = String(modeError.message ?? "");
-              if (message.includes("AI_GUARD:")) {
-                return Response.json(
-                  { error: message.split("AI_GUARD:")[1]?.trim() || message, billing: true },
-                  { status: 402 },
-                );
-              }
-              return jsonError("We couldn't change that. Please try again.");
-            }
-            // One switch: ai_enabled follows the mode on every save.
-            const { syncAiSwitch } = await import("@/lib/ai-agent.server");
-            await syncAiSwitch(supabase, org, mode);
-            await logServerActivity(supabase, org, auth.userId, "ai_mode_changed", { mode });
-            return Response.json({ ok: true, mode });
+            // Batch 40: the same switch the first-run journey's Go live uses.
+            const { setAgentMode } = await import("@/lib/agent-mode.server");
+            const result = await setAgentMode(supabase, {
+              organizationId: org,
+              userId: auth.userId,
+              mode: String(payload["mode"] ?? "off"),
+              skipTest: payload["skip_test"] === true,
+            });
+            if (result.ok) return Response.json({ ok: true, mode: result.mode });
+            return Response.json(result.body, { status: result.status });
           }
 
           // Batch 16: who is told when a chat is handed to a person.

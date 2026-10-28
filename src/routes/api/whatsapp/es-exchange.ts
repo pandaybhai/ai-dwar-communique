@@ -26,7 +26,9 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
 
         /** Errors carry the stage that failed so the UI can point at it. */
         const stepError = (message: string, step: string, status = 400) =>
-          Response.json({ error: message, step }, { status });
+          // Batch 40: the status rides in the body too, so the connect
+          // screen can name the outcome (409 = number on another workspace).
+          Response.json({ error: message, step, http_status: status }, { status });
 
         let payload: Record<string, unknown>;
         try {
@@ -300,6 +302,17 @@ export const Route = createFileRoute("/api/whatsapp/es-exchange")({
           );
         }
 
+
+        // Batch 40: the funnel's connected step (once per workspace; never throws).
+        {
+          const { recordFunnelStep } = await import("@/lib/onboarding-journey.server");
+          await recordFunnelStep(supabase, {
+            organizationId,
+            userId,
+            step: "connected",
+            properties: { method: "embedded_signup", registered },
+          });
+        }
 
         return Response.json({
           account: saved,

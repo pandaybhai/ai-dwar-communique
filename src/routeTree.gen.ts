@@ -123,6 +123,7 @@ import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/int
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
+import { Route as ApiOnboardingJourneyRouteImport } from './routes/api/onboarding/journey'
 import { Route as ApiOnboardingStartRouteImport } from './routes/api/onboarding/start'
 import { Route as ApiPublicCashfreePayRouteImport } from './routes/api/public/cashfree-pay'
 import { Route as ApiPublicCashfreeWebhookRouteImport } from './routes/api/public/cashfree-webhook'
@@ -777,6 +778,11 @@ const ApiInternalVersionRoute = ApiInternalVersionRouteImport.update({
   path: '/api/internal/version',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOnboardingJourneyRoute = ApiOnboardingJourneyRouteImport.update({
+  id: '/api/onboarding/journey',
+  path: '/api/onboarding/journey',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOnboardingStartRoute = ApiOnboardingStartRouteImport.update({
   id: '/api/onboarding/start',
   path: '/api/onboarding/start',
@@ -1266,6 +1272,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/onboarding/journey': typeof ApiOnboardingJourneyRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
@@ -1448,6 +1455,7 @@ export interface FileRoutesByTo {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/onboarding/journey': typeof ApiOnboardingJourneyRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
@@ -1634,6 +1642,7 @@ export interface FileRoutesById {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/onboarding/journey': typeof ApiOnboardingJourneyRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
@@ -1821,6 +1830,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/onboarding/journey'
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
@@ -2003,6 +2013,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/onboarding/journey'
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
@@ -2188,6 +2199,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/onboarding/journey'
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
@@ -2339,6 +2351,7 @@ export interface RootRouteChildren {
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
+  ApiOnboardingJourneyRoute: typeof ApiOnboardingJourneyRoute
   ApiOnboardingStartRoute: typeof ApiOnboardingStartRoute
   ApiPublicCashfreePayRoute: typeof ApiPublicCashfreePayRoute
   ApiPublicCashfreeWebhookRoute: typeof ApiPublicCashfreeWebhookRoute
@@ -3194,6 +3207,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalVersionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/onboarding/journey': {
+      id: '/api/onboarding/journey'
+      path: '/api/onboarding/journey'
+      fullPath: '/api/onboarding/journey'
+      preLoaderRoute: typeof ApiOnboardingJourneyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/onboarding/start': {
       id: '/api/onboarding/start'
       path: '/api/onboarding/start'
@@ -3934,6 +3954,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
+  ApiOnboardingJourneyRoute: ApiOnboardingJourneyRoute,
   ApiOnboardingStartRoute: ApiOnboardingStartRoute,
   ApiPublicCashfreePayRoute: ApiPublicCashfreePayRoute,
   ApiPublicCashfreeWebhookRoute: ApiPublicCashfreeWebhookRoute,

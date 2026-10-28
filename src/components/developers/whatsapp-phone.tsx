@@ -188,18 +188,55 @@ export function MessageBubble({
   );
 }
 
+/** A message the customer typed: right-hand, WhatsApp's own green (Batch 40). */
+export function CustomerBubble({ text, time = "10:00" }: { text: string; time?: string }) {
+  return (
+    <div className="ml-auto max-w-[82%]">
+      <div className="wa-bubble-out px-2.5 pb-1 pt-1.5">
+        <p className="whitespace-pre-wrap break-words text-[14.2px] leading-[1.36]">{text}</p>
+        <div className="flex items-center justify-end gap-1 text-[11px] text-[var(--wa-meta)]">
+          <span>{time}</span>
+          <Ticks status="read" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The business is typing (Batch 40). */
+export function TypingBubble({ label = "Typing" }: { label?: string }) {
+  return (
+    <div className="max-w-[40%]">
+      <div className="wa-bubble wa-typing flex items-center gap-1 px-3 py-2.5" role="status" aria-label={label}>
+        <span />
+        <span />
+        <span />
+      </div>
+    </div>
+  );
+}
+
 /** A phone with the business's chat; `children` is the chat's content. */
 export function PhoneFrame({
   business = "AiDwar Store",
   children,
   label = "The message on the customer's WhatsApp",
   compact = false,
+  composer,
+  avatar,
+  live = false,
 }: {
   business?: string;
   children: ReactNode;
   label?: string;
   /** As tall as the message needs, not a whole phone screen. */
   compact?: boolean;
+  /** Batch 40: a real message box in place of the drawn one. */
+  composer?: ReactNode;
+  /** Batch 40: the business's own picture in the chat header. */
+  avatar?: ReactNode;
+  /** Batch 40: a chat that grows — scrolls, and is announced as it changes. */
+  live?: boolean;
 }) {
   return (
     <figure
@@ -214,9 +251,11 @@ export function PhoneFrame({
         </div>
         <div className="flex items-center gap-2 bg-[var(--wa-head)] px-2.5 pb-2.5 pt-1 text-white">
           <ChevronLeft className="h-5 w-5 opacity-90" aria-hidden="true" />
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-white/90 text-[13px] font-bold text-[#008069]">
-            A
-          </span>
+          {avatar ?? (
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-white/90 text-[13px] font-bold text-[#008069]">
+              A
+            </span>
+          )}
           <span className="min-w-0 leading-tight">
             <span className="flex items-center gap-1 text-[14.5px] font-semibold">
               {business}
@@ -240,23 +279,28 @@ export function PhoneFrame({
             <span className="block text-[11.5px]">Business account</span>
           </span>
         </div>
-        <div className="wa-wall flex flex-1 flex-col justify-end gap-2 overflow-hidden px-3 py-3">
-          <div className="mx-auto mb-1 rounded-md bg-[var(--wa-bubble)] px-2.5 py-1 text-[11.5px] text-[var(--wa-meta)] shadow-sm">
+        <div
+          className={`wa-wall flex flex-1 flex-col gap-2 px-3 py-3 ${live ? "min-h-0 overflow-y-auto" : "justify-end overflow-hidden"}`}
+          {...(live ? { role: "log", "aria-live": "polite" as const, "aria-label": `Chat with ${business}` } : {})}
+        >
+          <div className={`mx-auto mb-1 rounded-md bg-[var(--wa-bubble)] px-2.5 py-1 text-[11.5px] text-[var(--wa-meta)] shadow-sm ${live ? "mt-auto" : ""}`}>
             Today
           </div>
           {children}
         </div>
-        <div
-          className="flex items-center gap-2 bg-[var(--wa-wall)] px-2 pb-4 pt-1"
-          aria-hidden="true"
-        >
-          <div className="h-9 flex-1 rounded-full bg-[var(--wa-bubble)] px-4 text-[13px] leading-9 text-[var(--wa-meta)]">
-            Message
+        {composer ?? (
+          <div
+            className="flex items-center gap-2 bg-[var(--wa-wall)] px-2 pb-4 pt-1"
+            aria-hidden="true"
+          >
+            <div className="h-9 flex-1 rounded-full bg-[var(--wa-bubble)] px-4 text-[13px] leading-9 text-[var(--wa-meta)]">
+              Message
+            </div>
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-[#00a884] text-white">
+              🎤
+            </div>
           </div>
-          <div className="grid h-9 w-9 place-items-center rounded-full bg-[#00a884] text-white">
-            🎤
-          </div>
-        </div>
+        )}
       </div>
     </figure>
   );

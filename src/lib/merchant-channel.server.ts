@@ -55,6 +55,13 @@ export type OnboardingSession = {
   expires_at?: string | null;
 };
 
+/**
+ * Batch 40: where "connect your number" points — the journey's own connect
+ * step (which survives a login), not Settings, which after a login wall used
+ * to land on Home.
+ */
+export const CONNECT_LINK = "https://aidwar.in/app/start?step=connect";
+
 /** Codes that matched no open setup, per sender, before we stop looking codes up. */
 export const WRONG_CODE_LIMIT = 5;
 const WRONG_CODE_WINDOW_MS = 60 * 60 * 1000;
@@ -987,7 +994,7 @@ export async function handleMerchantInbound(
   // The "connect" button, tapped or typed.
   if (interactiveId === "connect" || /^connect my whatsapp$/i.test(body)) {
     await reply(
-      "Open Settings → WhatsApp in your dashboard and tap Connect — takes a minute. I'll message you here the moment it's live.\n\nhttps://aidwar.in/app/settings\n\n" +
+      `Open this and tap Connect — takes a minute. I'll message you here the moment it's live.\n\n${CONNECT_LINK}\n\n` +
         "Use a number that isn't on your phone's WhatsApp — a fresh SIM works. Once a number joins the WhatsApp API it leaves the normal app. Your own number stays yours; that's where you and I talk.",
     );
     return;
@@ -1138,14 +1145,24 @@ export async function handleMerchantInbound(
       .limit(1)
       .maybeSingle();
 
-    const ledger = credit as { id: string; created_at?: string } | null;
-    if (ledger) {
-      await patchSession(supabase, session.id, {
-        status: "tested",
-        step: "await_connect",
-        first_sourced_run_id: run.runId,
-      });
+    // Batch 40: a grounded answer is what earns the connect step. It used to
+    // also need a starter_credits row, which the welcome trigger never writes
+    // for a workspace that already has any ledger row — that owner stayed at
+    // "ready" for ever. The credits card is still shown only when they exist.
+    await patchSession(supabase, session.id, {
+      status: "tested",
+      step: "await_connect",
+      first_sourced_run_id: run.runId,
+    });
 
+    const ledger = credit as { id: string; created_at?: string } | null;
+    if (!ledger) {
+      await replyButtons(
+        `That answer came from your website, not a script.\n\nReady to put me on your number? It takes about two minutes:\n${CONNECT_LINK}`,
+        [{ id: "connect", title: "Connect my WhatsApp" }],
+        null,
+      );
+    } else {
       const grantedAt = ledger.created_at ? new Date(ledger.created_at) : new Date();
       const creditsCard = await renderCard(supabase, "credits", {
         sessionId: session.id,
@@ -1216,21 +1233,35 @@ export async function handleNumberConnected(
   supabase: SupabaseClient,
   args: { organizationId: string; accountId: string; displayNumber: string | null },
 ): Promise<void> {
+  // Batch 40: the newest session of this workspace, whatever its status. It
+  // used to be only "tested"/"connected" — and those expire after a quiet
+  // week, which is exactly while the owner is off on the web connecting — so
+  // a connection made from any other status (or on day 8) was never recorded.
   const { data: sessionRow } = await supabase
     .from("onboarding_sessions")
     .select(SESSION_COLUMNS)
     .eq("organization_id", args.organizationId)
-    .in("status", ["tested", "connected"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   const session = sessionRow as OnboardingSession | null;
-  if (!session || !session.wa_id) return;
+  if (!session) return;
+
+  // A finished setup stays finished; only the number is remembered.
+  if (session.status === "completed") {
+    await patchSession(supabase, session.id, { connected_account_id: args.accountId });
+    return;
+  }
 
   await patchSession(supabase, session.id, {
     connected_account_id: args.accountId,
     status: "connected",
   });
+
+  // The closing sequence (switch-on, on-duty card) is still only for an owner
+  // who reached the connect step in the WhatsApp chat, as before. Anyone else
+  // chooses Draft or Replying on the web's Go live step.
+  if (!session.wa_id || !["tested", "connected"].includes(session.status)) return;
 
   // The onboarding number this owner has been talking to.
   const { data: setting } = await supabase
