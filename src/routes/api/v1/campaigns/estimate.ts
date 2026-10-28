@@ -8,10 +8,10 @@ export const Route = createFileRoute("/api/v1/campaigns/estimate")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { runV1Route } = await import("@/lib/public-api-route.server");
+        const { runApiRoute } = await import("@/lib/public-api.server");
         const { MAX_CAMPAIGN_REQUEST_BYTES, estimateCampaignViaApi } =
           await import("@/lib/public-api-campaigns.server");
-        return runV1Route(
+        return runApiRoute(
           request,
           { step: "campaign_estimate", body: { maxBytes: MAX_CAMPAIGN_REQUEST_BYTES } },
           ({ supabase, caller, body }) => estimateCampaignViaApi(supabase, caller, body),

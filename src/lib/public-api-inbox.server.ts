@@ -35,8 +35,6 @@ import {
 export const MAX_INBOX_REQUEST_BYTES = 64 * 1024;
 export const DEFAULT_LIST = 25;
 export const MAX_LIST = 100;
-const MAX_TAGS = 20;
-const MAX_TAG_CHARS = 64;
 const STATUSES = ["open", "closed", "pending"];
 
 /** Read with the columns every database has (conversations.updated_at comes with 20261160). */
@@ -334,25 +332,13 @@ export async function setConversationStatus(
   };
 }
 
-function parseTagNames(raw: unknown, field: string): string[] | string {
-  if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw)) return `\`${field}\` must be an array of tag names.`;
-  if (raw.length > MAX_TAGS) return `\`${field}\` holds at most ${MAX_TAGS} names.`;
-  const out: string[] = [];
-  for (const t of raw) {
-    const name = typeof t === "string" ? t.trim() : "";
-    if (!name || name.length > MAX_TAG_CHARS)
-      return `Each tag must be a name of 1–${MAX_TAG_CHARS} characters.`;
-    if (!out.some((o) => o.toLowerCase() === name.toLowerCase())) out.push(name);
-  }
-  return out;
-}
-
 /**
  * POST /api/v1/conversations/{phone}/tags — { add: [...], remove: [...] } on
- * the customer's tags (the inbox's "Labels": tags + contact_tags). A tag
- * that doesn't exist yet is created on add; removing one the customer
- * doesn't have is fine. Names match without regard to case.
+ * the customer's tags (the inbox's "Labels"), through the Contacts API's own
+ * changeContactTags (Batch 37): the same checks, the same tags / contact_tags
+ * writes, the same updated_at bump a contacts sync sees. A tag that doesn't
+ * exist yet is created on add; removing one the customer doesn't have is
+ * fine. Names match without regard to case.
  */
 export async function changeConversationTags(
   supabase: SupabaseClient,
@@ -363,72 +349,40 @@ export async function changeConversationTags(
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     return fail(400, "invalid_tags", 'Send { "add": [...], "remove": [...] }.');
   const body = raw as Record<string, unknown>;
-  const add = parseTagNames(body["add"], "add");
-  if (typeof add === "string") return fail(400, "invalid_tags", add);
-  const remove = parseTagNames(body["remove"], "remove");
-  if (typeof remove === "string") return fail(400, "invalid_tags", remove);
+  const add = body["add"] ?? [];
+  const remove = body["remove"] ?? [];
+  if (!Array.isArray(add) || !Array.isArray(remove))
+    return fail(400, "invalid_tags", "`add` and `remove` must be arrays of tag names.");
   if (!add.length && !remove.length)
     return fail(400, "invalid_tags", "Name at least one tag to `add` or `remove`.");
   const found = await conversationForPhone(supabase, caller.organizationId, phone);
   if (!found) return notFound();
-  const orgId = caller.organizationId;
-  const contactId = found.contact.id;
 
-  const { data: existing, error: tagError } = await supabase
-    .from("tags")
-    .select("id, name")
-    .eq("organization_id", orgId)
-    .limit(5000);
-  if (tagError) return fail(503, "unavailable", "We couldn't read your tags. Please try again.");
-  const byName = new Map(
-    ((existing ?? []) as Array<{ id: string; name: string }>).map((t) => [
-      t.name.toLowerCase(),
-      t.id,
-    ]),
-  );
-  for (const name of add) {
-    let tagId = byName.get(name.toLowerCase()) ?? null;
-    if (!tagId) {
-      const { data: created, error } = await supabase
-        .from("tags")
-        .insert({ organization_id: orgId, name })
-        .select("id")
-        .single();
-      if (error || !created)
-        return fail(503, "unavailable", "We couldn't create the tag. Please try again.");
-      tagId = (created as { id: string }).id;
-      byName.set(name.toLowerCase(), tagId);
-    }
-    const { error } = await supabase
-      .from("contact_tags")
-      .upsert(
-        { contact_id: contactId, tag_id: tagId, organization_id: orgId },
-        { onConflict: "contact_id,tag_id" },
-      );
-    if (error) return fail(503, "unavailable", "We couldn't tag this customer. Please try again.");
-  }
-  const removeIds = remove
-    .map((n) => byName.get(n.toLowerCase()))
-    .filter((id): id is string => Boolean(id));
-  if (removeIds.length) {
-    const { error } = await supabase
-      .from("contact_tags")
-      .delete()
-      .eq("organization_id", orgId)
-      .eq("contact_id", contactId)
-      .in("tag_id", removeIds);
-    if (error)
-      return fail(503, "unavailable", "We couldn't untag this customer. Please try again.");
+  const { changeContactTags } = await import("@/lib/public-api-contacts.server");
+  for (const [action, tags] of [
+    ["add", add],
+    ["remove", remove],
+  ] as const) {
+    if (!tags.length) continue;
+    const changed = await changeContactTags(supabase, caller, found.contact.phone, action, tags);
+    if (changed.status !== 200) return changed;
   }
   await log(supabase, caller, "contact_tags_changed", {
     conversation_id: found.row["id"],
-    contact_id: contactId,
+    contact_id: found.contact.id,
     added: add,
     removed: remove,
   });
   return {
     status: 200,
-    body: { conversation: await shown(supabase, orgId, String(found.row["id"]), found.contact) },
+    body: {
+      conversation: await shown(
+        supabase,
+        caller.organizationId,
+        String(found.row["id"]),
+        found.contact,
+      ),
+    },
   };
 }
 

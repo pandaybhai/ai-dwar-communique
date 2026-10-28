@@ -1001,70 +1001,26 @@ export function campaignCompletedPayload(
 }
 
 /**
- * Whether this workspace's webhook hears `event`: a webhook set and active,
- * public_api on, and the event in its plan. A failed read is "no".
- */
-async function webhookWants(
-  supabase: SupabaseClient,
-  organizationId: string,
-  event: string,
-): Promise<boolean> {
-  try {
-    const { data, error } = await supabase
-      .from("workspace_connections")
-      .select("id, status")
-      .eq("organization_id", organizationId)
-      .eq("provider", "api_webhook")
-      .maybeSingle();
-    if (error || (data as { status?: string } | null)?.status !== "active") return false;
-    const { publicApiEnabled } = await import("@/lib/public-api.server");
-    if (!(await publicApiEnabled(supabase, organizationId))) return false;
-    const { eventInPlan } = await import("@/lib/public-api-plans.server");
-    return await eventInPlan(supabase, organizationId, event);
-  } catch {
-    return false;
-  }
-}
-
-/**
  * The campaign worker's hook (completeIfDone, after the run that flipped the
  * campaign to completed): campaign.completed on the merchant's webhook queue,
- * once per campaign (dedupe_key). Never throws; a failed write is logged and
- * never holds the worker up. Before 20261160 is applied the event CHECK
- * refuses it and nothing is queued.
+ * once per campaign (dedupe_key), through queueAccountEvent. Never throws.
+ * Before 20261160 is applied the event CHECK refuses it and nothing is queued.
  */
 export async function queueCampaignCompleted(
   supabase: SupabaseClient,
   input: { organizationId: string; campaignId: string },
 ): Promise<void> {
-  try {
-    if (!(await webhookWants(supabase, input.organizationId, "campaign.completed"))) return;
-    const row = await readCampaign(supabase, input.organizationId, input.campaignId);
-    if (!row) return;
-    const occurredAt = String(row["completed_at"] ?? new Date().toISOString());
-    const { error } = await supabase.from("api_webhook_deliveries").upsert(
-      {
-        organization_id: input.organizationId,
-        message_id: null,
-        event: "campaign.completed",
-        payload: campaignCompletedPayload(row, occurredAt),
-        occurred_at: occurredAt,
-        state: "pending",
-        next_attempt_at: new Date().toISOString(),
-        dedupe_key: `campaign.completed:${input.campaignId}`,
-      },
-      { onConflict: "organization_id,dedupe_key", ignoreDuplicates: true },
-    );
-    if (error) throw new Error(error.message);
-  } catch (error) {
-    console.warn(
-      JSON.stringify({
-        scope: "api_webhook",
-        step: "campaign_completed",
-        organization_id: input.organizationId,
-        campaign_id: input.campaignId,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
-  }
+  const row = await readCampaign(supabase, input.organizationId, input.campaignId).catch(
+    () => null,
+  );
+  if (!row) return;
+  const occurredAt = String(row["completed_at"] ?? new Date().toISOString());
+  const { queueAccountEvent } = await import("@/lib/public-api-webhooks.server");
+  await queueAccountEvent(supabase, {
+    organizationId: input.organizationId,
+    event: "campaign.completed",
+    payload: campaignCompletedPayload(row, occurredAt),
+    occurredAt,
+    dedupeKey: `campaign.completed:${input.campaignId}`,
+  });
 }

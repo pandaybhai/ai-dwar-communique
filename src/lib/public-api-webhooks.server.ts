@@ -6,7 +6,9 @@ import {
   MEDIA_PATH,
   WEBHOOK_EVENT_NAMES,
   WEBHOOK_RETRY_HOURS,
+  type AccountEventName,
   type InboundEventName,
+  type QueuedEventName,
   WEBHOOK_TIMEOUT_SECONDS,
 } from "@/lib/public-api";
 
@@ -210,7 +212,7 @@ export async function queueApiEvent(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
-    event: InboundEventName;
+    event: QueuedEventName;
     payload: Record<string, unknown>;
     occurredAt: string;
     messageId?: string | null;
@@ -263,7 +265,7 @@ export async function queueApiEvents(
   supabase: SupabaseClient,
   events: Array<{
     organizationId: string;
-    event: InboundEventName;
+    event: QueuedEventName;
     payload: Record<string, unknown>;
     occurredAt: string;
     dedupeKey: string;
@@ -612,6 +614,43 @@ export async function queueTemplateApiEvents(
         scope: "api_webhook",
         step: "template_event",
         organization_id: input.organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
+// ------------------------------------------------------------ Batch 38: workspace events
+
+/**
+ * One v1.2 event about the workspace (campaign.completed, the number's
+ * quality, the account's status, the messaging limit) on the queue: only
+ * when the workspace's webhook hears events (apiEventsWanted) and the event
+ * is in its plan (public-api-plans.ts), once per dedupe_key. Never throws; a
+ * failed write is logged and never holds the caller up.
+ */
+export async function queueAccountEvent(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    event: AccountEventName;
+    payload: Record<string, unknown>;
+    occurredAt: string;
+    dedupeKey: string;
+  },
+): Promise<void> {
+  try {
+    if (!(await apiEventsWanted(supabase, input.organizationId))) return;
+    const { eventInPlan } = await import("@/lib/public-api-plans.server");
+    if (!(await eventInPlan(supabase, input.organizationId, input.event))) return;
+    await queueApiEvent(supabase, input);
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        scope: "api_webhook",
+        step: "account_event",
+        organization_id: input.organizationId,
+        event: input.event,
         error: error instanceof Error ? error.message : String(error),
       }),
     );

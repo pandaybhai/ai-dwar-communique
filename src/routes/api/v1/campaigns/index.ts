@@ -9,10 +9,10 @@ export const Route = createFileRoute("/api/v1/campaigns/")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { runV1Route } = await import("@/lib/public-api-route.server");
+        const { runApiRoute } = await import("@/lib/public-api.server");
         const { MAX_CAMPAIGN_REQUEST_BYTES, createCampaignViaApi } =
           await import("@/lib/public-api-campaigns.server");
-        return runV1Route(
+        return runApiRoute(
           request,
           { step: "campaign_create", body: { maxBytes: MAX_CAMPAIGN_REQUEST_BYTES } },
           ({ supabase, caller, body }) =>
@@ -22,9 +22,9 @@ export const Route = createFileRoute("/api/v1/campaigns/")({
         );
       },
       GET: async ({ request }) => {
-        const { runV1Route } = await import("@/lib/public-api-route.server");
+        const { runApiRoute } = await import("@/lib/public-api.server");
         const { listCampaignsViaApi } = await import("@/lib/public-api-campaigns.server");
-        return runV1Route(request, { step: "campaign_list" }, ({ supabase, caller }) =>
+        return runApiRoute(request, { step: "campaign_list" }, ({ supabase, caller }) =>
           listCampaignsViaApi(supabase, caller, new URL(request.url).searchParams),
         );
       },

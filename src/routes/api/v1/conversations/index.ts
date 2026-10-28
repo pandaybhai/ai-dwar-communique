@@ -8,9 +8,9 @@ export const Route = createFileRoute("/api/v1/conversations/")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const { runV1Route } = await import("@/lib/public-api-route.server");
+        const { runApiRoute } = await import("@/lib/public-api.server");
         const { listConversations } = await import("@/lib/public-api-inbox.server");
-        return runV1Route(request, { step: "conversation_list" }, ({ supabase, caller }) =>
+        return runApiRoute(request, { step: "conversation_list" }, ({ supabase, caller }) =>
           listConversations(supabase, caller, new URL(request.url).searchParams),
         );
       },

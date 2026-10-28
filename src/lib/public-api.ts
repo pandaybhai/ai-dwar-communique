@@ -77,6 +77,21 @@ export const INBOUND_EVENT_NAMES = [
 ] as const;
 export type InboundEventName = (typeof INBOUND_EVENT_NAMES)[number];
 
+/**
+ * Batch 38 (v1.2): the events about the workspace itself — a campaign that
+ * finished, the number's quality rating, the WhatsApp account's review or
+ * restriction, the number's messaging limit.
+ */
+export const ACCOUNT_EVENT_NAMES = [
+  "campaign.completed",
+  "phone_number.quality_changed",
+  "account.status_changed",
+  "messaging_limit.changed",
+] as const;
+export type AccountEventName = (typeof ACCOUNT_EVENT_NAMES)[number];
+/** Every event the queue takes beyond a message's own status. */
+export type QueuedEventName = InboundEventName | AccountEventName;
+
 /** Every event a webhook can receive, in the order Settings and the docs list them. */
 export const ALL_WEBHOOK_EVENTS = [...WEBHOOK_EVENT_NAMES, ...INBOUND_EVENT_NAMES] as const;
 

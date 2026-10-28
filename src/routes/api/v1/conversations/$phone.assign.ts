@@ -5,10 +5,10 @@ export const Route = createFileRoute("/api/v1/conversations/$phone/assign")({
   server: {
     handlers: {
       POST: async ({ request, params }) => {
-        const { runV1Route } = await import("@/lib/public-api-route.server");
+        const { runApiRoute } = await import("@/lib/public-api.server");
         const { MAX_INBOX_REQUEST_BYTES, assignConversation } =
           await import("@/lib/public-api-inbox.server");
-        return runV1Route(
+        return runApiRoute(
           request,
           { step: "conversation_assign", body: { maxBytes: MAX_INBOX_REQUEST_BYTES } },
           ({ supabase, caller, body }) =>

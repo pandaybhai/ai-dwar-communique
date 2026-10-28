@@ -25,6 +25,7 @@ import { Route as AppLaunchRoute } from "../routes/api/campaigns/launch";
 import { Route as AppAudienceRoute } from "../routes/api/campaigns/audience";
 import { Route as AppEstimateRoute } from "../routes/api/campaigns/estimate";
 import { queueCampaignCompleted } from "./public-api-campaigns.server";
+import { forgetApiEventsWanted } from "./public-api-webhooks.server";
 
 const rows = (t: string) => h.world!.db.rows(t);
 const keyA = () => h.world!.keys.a;
@@ -53,6 +54,7 @@ const metaCalls: string[] = [];
 beforeEach(() => {
   h.world = batch38World();
   forgetWorkspacePlans();
+  forgetApiEventsWanted();
   metaCalls.length = 0;
   vi.stubGlobal("fetch", async (input: string | URL | Request) => {
     metaCalls.push(String(input instanceof Request ? input.url : input));
@@ -502,6 +504,7 @@ describe("campaign.completed", () => {
     });
     expect(rows("api_webhook_deliveries")).toHaveLength(0);
     setWebhook();
+    forgetApiEventsWanted();
     h.world!.flags.on = false;
     await queueCampaignCompleted(h.world!.db.supabase, {
       organizationId: ORG,
@@ -509,6 +512,7 @@ describe("campaign.completed", () => {
     });
     expect(rows("api_webhook_deliveries")).toHaveLength(0);
     h.world!.flags.on = true;
+    forgetApiEventsWanted();
     await queueCampaignCompleted(h.world!.db.supabase, {
       organizationId: OTHER_ORG,
       campaignId: "camp-a",
