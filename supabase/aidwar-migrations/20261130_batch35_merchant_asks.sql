@@ -12,10 +12,20 @@ SET lock_timeout = '5s';
 
 -- (1) ------------------------------------------------- campaign test send
 UPDATE public.feature_registry
-   SET activity_actions = (
-         SELECT array_agg(DISTINCT a ORDER BY a)
-           FROM unnest(coalesce(activity_actions, '{}'::text[]) || array['campaign_test_sent']::text[]) AS a
-       ),
+   SET activity_actions = coalesce(activity_actions, '{}'::text[]) || array['campaign_test_sent']::text[],
        synced_at = now()
  WHERE key = 'campaigns'
    AND NOT ('campaign_test_sent' = ANY (coalesce(activity_actions, '{}'::text[])));
+
+-- (3) ------------------------------------------------- WhatsApp profile
+-- Settings → WhatsApp → profile reads and writes Meta's
+-- whatsapp_business_profile directly; nothing is stored. Its three activity
+-- actions are listed on the settings feature_registry row.
+UPDATE public.feature_registry
+   SET activity_actions = coalesce(activity_actions, '{}'::text[]) || ARRAY(
+         SELECT a FROM unnest(array['whatsapp_profile_updated','whatsapp_profile_photo_updated','whatsapp_display_name_requested']::text[]) AS a
+          WHERE NOT (a = ANY (coalesce(activity_actions, '{}'::text[])))
+       ),
+       synced_at = now()
+ WHERE key = 'settings'
+   AND NOT (coalesce(activity_actions, '{}'::text[]) @> array['whatsapp_profile_updated','whatsapp_profile_photo_updated','whatsapp_display_name_requested']::text[]);

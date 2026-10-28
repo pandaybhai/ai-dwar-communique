@@ -120,6 +120,8 @@ import { Route as ApiWhatsappCatalogRouteImport } from './routes/api/whatsapp/ca
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
 import { Route as ApiWhatsappEsConfigRouteImport } from './routes/api/whatsapp/es-config'
 import { Route as ApiWhatsappEsExchangeRouteImport } from './routes/api/whatsapp/es-exchange'
+import { Route as ApiWhatsappProfileRouteImport } from './routes/api/whatsapp/profile'
+import { Route as ApiWhatsappProfilePhotoRouteImport } from './routes/api/whatsapp/profile-photo'
 import { Route as ApiWhatsappRefreshQualityRouteImport } from './routes/api/whatsapp/refresh-quality'
 import { Route as ApiWhatsappSendMessageRouteImport } from './routes/api/whatsapp/send-message'
 import { Route as ApiWhatsappTemplateMediaRouteImport } from './routes/api/whatsapp/template-media'
@@ -715,6 +717,16 @@ const ApiWhatsappEsExchangeRoute = ApiWhatsappEsExchangeRouteImport.update({
   path: '/api/whatsapp/es-exchange',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappProfileRoute = ApiWhatsappProfileRouteImport.update({
+  id: '/api/whatsapp/profile',
+  path: '/api/whatsapp/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWhatsappProfilePhotoRoute = ApiWhatsappProfilePhotoRouteImport.update({
+  id: '/api/whatsapp/profile-photo',
+  path: '/api/whatsapp/profile-photo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWhatsappRefreshQualityRoute =
   ApiWhatsappRefreshQualityRouteImport.update({
     id: '/api/whatsapp/refresh-quality',
@@ -953,6 +965,8 @@ export interface FileRoutesByFullPath {
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
+  '/api/whatsapp/profile': typeof ApiWhatsappProfileRoute
+  '/api/whatsapp/profile-photo': typeof ApiWhatsappProfilePhotoRoute
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/template-media': typeof ApiWhatsappTemplateMediaRoute
@@ -1087,6 +1101,8 @@ export interface FileRoutesByTo {
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
+  '/api/whatsapp/profile': typeof ApiWhatsappProfileRoute
+  '/api/whatsapp/profile-photo': typeof ApiWhatsappProfilePhotoRoute
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/template-media': typeof ApiWhatsappTemplateMediaRoute
@@ -1224,6 +1240,8 @@ export interface FileRoutesById {
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
   '/api/whatsapp/es-config': typeof ApiWhatsappEsConfigRoute
   '/api/whatsapp/es-exchange': typeof ApiWhatsappEsExchangeRoute
+  '/api/whatsapp/profile': typeof ApiWhatsappProfileRoute
+  '/api/whatsapp/profile-photo': typeof ApiWhatsappProfilePhotoRoute
   '/api/whatsapp/refresh-quality': typeof ApiWhatsappRefreshQualityRoute
   '/api/whatsapp/send-message': typeof ApiWhatsappSendMessageRoute
   '/api/whatsapp/template-media': typeof ApiWhatsappTemplateMediaRoute
@@ -1362,6 +1380,8 @@ export interface FileRouteTypes {
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
     | '/api/whatsapp/es-exchange'
+    | '/api/whatsapp/profile'
+    | '/api/whatsapp/profile-photo'
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/template-media'
@@ -1496,6 +1516,8 @@ export interface FileRouteTypes {
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
     | '/api/whatsapp/es-exchange'
+    | '/api/whatsapp/profile'
+    | '/api/whatsapp/profile-photo'
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/template-media'
@@ -1632,6 +1654,8 @@ export interface FileRouteTypes {
     | '/api/whatsapp/connect'
     | '/api/whatsapp/es-config'
     | '/api/whatsapp/es-exchange'
+    | '/api/whatsapp/profile'
+    | '/api/whatsapp/profile-photo'
     | '/api/whatsapp/refresh-quality'
     | '/api/whatsapp/send-message'
     | '/api/whatsapp/template-media'
@@ -1747,6 +1771,8 @@ export interface RootRouteChildren {
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
   ApiWhatsappEsConfigRoute: typeof ApiWhatsappEsConfigRoute
   ApiWhatsappEsExchangeRoute: typeof ApiWhatsappEsExchangeRoute
+  ApiWhatsappProfileRoute: typeof ApiWhatsappProfileRoute
+  ApiWhatsappProfilePhotoRoute: typeof ApiWhatsappProfilePhotoRoute
   ApiWhatsappRefreshQualityRoute: typeof ApiWhatsappRefreshQualityRoute
   ApiWhatsappSendMessageRoute: typeof ApiWhatsappSendMessageRoute
   ApiWhatsappTemplateMediaRoute: typeof ApiWhatsappTemplateMediaRoute
@@ -2544,6 +2570,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWhatsappEsExchangeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/profile': {
+      id: '/api/whatsapp/profile'
+      path: '/api/whatsapp/profile'
+      fullPath: '/api/whatsapp/profile'
+      preLoaderRoute: typeof ApiWhatsappProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/whatsapp/profile-photo': {
+      id: '/api/whatsapp/profile-photo'
+      path: '/api/whatsapp/profile-photo'
+      fullPath: '/api/whatsapp/profile-photo'
+      preLoaderRoute: typeof ApiWhatsappProfilePhotoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/refresh-quality': {
       id: '/api/whatsapp/refresh-quality'
       path: '/api/whatsapp/refresh-quality'
@@ -2876,6 +2916,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,
   ApiWhatsappEsConfigRoute: ApiWhatsappEsConfigRoute,
   ApiWhatsappEsExchangeRoute: ApiWhatsappEsExchangeRoute,
+  ApiWhatsappProfileRoute: ApiWhatsappProfileRoute,
+  ApiWhatsappProfilePhotoRoute: ApiWhatsappProfilePhotoRoute,
   ApiWhatsappRefreshQualityRoute: ApiWhatsappRefreshQualityRoute,
   ApiWhatsappSendMessageRoute: ApiWhatsappSendMessageRoute,
   ApiWhatsappTemplateMediaRoute: ApiWhatsappTemplateMediaRoute,
