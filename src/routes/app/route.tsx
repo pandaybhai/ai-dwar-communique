@@ -2,7 +2,7 @@ import { createFileRoute, Navigate, Outlet, redirect, useRouterState } from "@ta
 import { aidwar } from "@/integrations/aidwar/client";
 import { OrgProvider, useOrg } from "@/lib/org-context";
 import { AppShell } from "@/components/app-shell";
-import { OrgOnboarding } from "@/components/org-onboarding";
+import { OnboardingJourney } from "@/components/onboarding/onboarding-journey";
 import { ErrorState, PageSkeleton } from "@/components/empty-state";
 
 /** /login's ?redirect= for a page under /app; Home needs none. */
@@ -55,11 +55,9 @@ function AppGate() {
   }
 
   if (!active) {
-    return (
-      <div className="min-h-screen bg-muted/30 px-5 py-10 sm:px-8">
-        <OrgOnboarding onCreated={reload} />
-      </div>
-    );
+    // Batch 40: a new sign-up starts the first-run journey; step 1 creates
+    // the workspace (create_organization, as before).
+    return <OnboardingJourney organizationId={null} requested={null} onWorkspaceCreated={reload} />;
   }
 
   // A locked or paused workspace keeps two pages: the inbox (read-only, so no
@@ -72,6 +70,9 @@ function AppGate() {
   ) {
     return <Navigate to="/app/billing" replace />;
   }
+
+  // The journey is full screen: no sidebar, nothing else to look at.
+  if (pathname === "/app/start" || pathname.startsWith("/app/start/")) return <Outlet />;
 
   return (
     <AppShell>

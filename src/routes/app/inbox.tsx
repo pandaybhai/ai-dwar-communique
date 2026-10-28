@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { InboxView } from "@/components/inbox/inbox-view";
+import { InboxTour } from "@/components/onboarding/inbox-tour";
 
 export const Route = createFileRoute("/app/inbox")({
   head: () => ({
@@ -51,6 +52,7 @@ function InboxPage() {
           One shared place for your whole team to reply, assign and close conversations.
         </p>
       </div>
+      <InboxTour />
       <InboxView />
     </div>
   );

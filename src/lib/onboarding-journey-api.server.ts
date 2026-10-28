@@ -35,11 +35,13 @@ const CALLBACK_COOLDOWN_MS = 30 * 60 * 1000;
 
 export async function journeyState(auth: JourneyAuth, withLearned: boolean): Promise<JourneyReply> {
   const { loadJourneyState, learnedSoFar } = await import("@/lib/onboarding-journey.server");
-  const [state, learned] = await Promise.all([
+  const [state, learned, profile] = await Promise.all([
     loadJourneyState(auth.supabase, auth.organizationId),
     withLearned ? learnedSoFar(auth.supabase, auth.organizationId) : Promise.resolve(null),
+    auth.supabase.from("profiles").select("phone").eq("id", auth.userId).maybeSingle(),
   ]);
-  return ok({ state, ...(learned ? { learned } : {}) });
+  const ownerPhone = (profile.data as { phone?: string | null } | null)?.phone ?? null;
+  return ok({ state, can_configure: auth.canConfigure, owner_phone: ownerPhone, ...(learned ? { learned } : {}) });
 }
 
 /** Saves the colours and logo the site showed, only where the workspace has none yet. */

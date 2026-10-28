@@ -34,6 +34,8 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-strong-foreground: var(--primary-strong-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -71,6 +73,9 @@
   --popover-foreground: oklch(0.129 0.042 264.695);
   --primary: oklch(0.696 0.149 162.48);
   --primary-foreground: oklch(0.995 0 0);
+  /* Batch 40: the primary at a depth that passes 4.5:1 — filled buttons and small accent text. */
+  --primary-strong: oklch(0.47 0.11 162);
+  --primary-strong-foreground: oklch(0.995 0 0);
   --secondary: oklch(0.972 0.008 160);
   --secondary-foreground: oklch(0.21 0.02 250);
   --muted: oklch(0.972 0.005 250);
@@ -107,6 +112,8 @@
   --popover-foreground: oklch(0.984 0.003 247.858);
   --primary: oklch(0.929 0.013 255.508);
   --primary-foreground: oklch(0.208 0.042 265.755);
+  --primary-strong: oklch(0.8 0.13 162);
+  --primary-strong-foreground: oklch(0.18 0.03 255);
   --secondary: oklch(0.279 0.041 260.031);
   --secondary-foreground: oklch(0.984 0.003 247.858);
   --muted: oklch(0.279 0.041 260.031);

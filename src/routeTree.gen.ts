@@ -53,6 +53,7 @@ import { Route as AppEmployeeRouteImport } from './routes/app/employee'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
+import { Route as AppStartRouteImport } from './routes/app/start'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as DevelopersIndexRouteImport } from './routes/developers.index'
 import { Route as Developers24HourWindowRouteImport } from './routes/developers.24-hour-window'
@@ -412,6 +413,11 @@ const AppReceiptsRoute = AppReceiptsRouteImport.update({
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppStartRoute = AppStartRouteImport.update({
+  id: '/start',
+  path: '/start',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppTemplatesRoute = AppTemplatesRouteImport.update({
@@ -1200,6 +1206,7 @@ export interface FileRoutesByFullPath {
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/start': typeof AppStartRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
@@ -1383,6 +1390,7 @@ export interface FileRoutesByTo {
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/start': typeof AppStartRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
@@ -1570,6 +1578,7 @@ export interface FileRoutesById {
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/start': typeof AppStartRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
@@ -1758,6 +1767,7 @@ export interface FileRouteTypes {
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
+    | '/app/start'
     | '/app/templates'
     | '/developers/24-hour-window'
     | '/developers/api'
@@ -1941,6 +1951,7 @@ export interface FileRouteTypes {
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
+    | '/app/start'
     | '/app/templates'
     | '/developers/24-hour-window'
     | '/developers/api'
@@ -2127,6 +2138,7 @@ export interface FileRouteTypes {
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
+    | '/app/start'
     | '/app/templates'
     | '/developers/24-hour-window'
     | '/developers/api'
@@ -2715,6 +2727,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/app/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/start': {
+      id: '/app/start'
+      path: '/start'
+      fullPath: '/app/start'
+      preLoaderRoute: typeof AppStartRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/templates': {
@@ -3742,6 +3761,7 @@ interface AppRouteRouteChildren {
   AppInboxRoute: typeof AppInboxRoute
   AppReceiptsRoute: typeof AppReceiptsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppStartRoute: typeof AppStartRoute
   AppTemplatesRoute: typeof AppTemplatesRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCampaignsIdRoute: typeof AppCampaignsIdRoute
@@ -3763,6 +3783,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppInboxRoute: AppInboxRoute,
   AppReceiptsRoute: AppReceiptsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppStartRoute: AppStartRoute,
   AppTemplatesRoute: AppTemplatesRoute,
   AppIndexRoute: AppIndexRoute,
   AppCampaignsIdRoute: AppCampaignsIdRoute,
@@ -4018,6 +4039,7 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
 
 import type { getRouter } from './router.tsx'
 import type { startInstance } from './start.ts'

@@ -13,11 +13,11 @@ export function AuthShell({
   footer: ReactNode;
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-muted/40 px-5 py-14">
+    <main className="ob-stage flex min-h-[100dvh] items-center justify-center px-4 py-12 sm:px-5 sm:py-14">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <Link to="/" className="text-2xl font-bold tracking-tight text-foreground">
-            Ai<span className="text-primary">Dwar</span>
+            Ai<span className="text-primary-strong">Dwar</span>
           </Link>
         </div>
         <div className="rounded-2xl border border-border/70 bg-card p-7 shadow-lg shadow-primary/5 sm:p-8">
