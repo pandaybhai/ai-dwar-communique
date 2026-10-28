@@ -24,6 +24,7 @@ import {
   templateHeader,
   templateOffer,
 } from "@/lib/templates";
+import { WhatsAppText } from "@/components/whatsapp-text";
 
 /**
  * What a customer will actually see. One preview component, used by the
@@ -267,7 +268,7 @@ export function TemplatePreview({
 
 
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-            {body || "Your message preview appears here."}
+            {body ? <WhatsAppText text={body} /> : "Your message preview appears here."}
           </p>
 
           {footer ? <p className="text-[11px] text-muted-foreground">{footer}</p> : null}
@@ -292,7 +293,7 @@ export function TemplatePreview({
               <div className="p-2">
                 <MediaBlock format={card.format} mediaUrl={card.mediaUrl} compact />
                 <p className="mt-2 line-clamp-4 whitespace-pre-wrap break-words text-xs leading-relaxed">
-                  {card.body || `Card ${index + 1}`}
+                  {card.body ? <WhatsAppText text={card.body} /> : `Card ${index + 1}`}
                 </p>
               </div>
               {card.buttons.length > 0 ? (

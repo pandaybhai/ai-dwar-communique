@@ -66,6 +66,7 @@ import {
   type MemberRow,
   type MessageRow,
 } from "./inbox-utils";
+import { WhatsAppText } from "@/components/whatsapp-text";
 
 function StatusTicks({ message }: { message: MessageRow }) {
   if (message.status === "failed") {
@@ -335,7 +336,9 @@ export function Bubble({
               answers={message.metadata?.["answers"] as Array<{ label: string; value: string }>}
             />
           ) : mediaOnly ? null : (
-            <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>
+            <p className="whitespace-pre-wrap break-words leading-relaxed">
+              <WhatsAppText text={text} />
+            </p>
           )}
           <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
             {viaApi ? <span className="rounded-full border border-border/70 px-1.5">Sent via API</span> : null}

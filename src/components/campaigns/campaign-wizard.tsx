@@ -40,6 +40,7 @@ import {
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
 import { CampaignTestSend } from "@/components/campaigns/campaign-test-send";
+import { WhatsAppText } from "@/components/whatsapp-text";
 import { CardAttachmentPicker } from "@/components/cards/card-attachment-picker";
 import { CardPreview } from "@/components/cards/card-preview";
 import type { CardAttachment } from "@/lib/customer-cards";
@@ -147,7 +148,9 @@ function ChatPreview({
           </div>
         ) : null}
         <div className="px-3.5 py-2.5">
-          <p className="whitespace-pre-wrap leading-relaxed">{body || "Your message preview"}</p>
+          <p className="whitespace-pre-wrap leading-relaxed">
+            {body ? <WhatsAppText text={body} /> : "Your message preview"}
+          </p>
           {footer ? <p className="mt-2 text-[11px] opacity-60">{footer}</p> : null}
           <p className="mt-1 text-right text-[10px] opacity-50">now</p>
         </div>

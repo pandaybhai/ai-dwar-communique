@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Info, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ import {
 import { ButtonEditor } from "@/components/templates/button-editor";
 import { MediaUploader } from "@/components/templates/media-uploader";
 import { draftToPreview, TemplatePreview } from "@/components/templates/template-preview";
+import { FormatToolbar, useWhatsAppFormatting } from "@/components/templates/format-toolbar";
 
 function Section({
   title,
@@ -77,6 +78,9 @@ export function CreateTemplateDialog({
   const [submitting, setSubmitting] = useState(false);
 
   const set = (patch: Partial<TemplateDraft>) => setDraft((d) => ({ ...d, ...patch }));
+  // Batch 35: WhatsApp formatting on the body (toolbar + Ctrl/⌘+B, Ctrl/⌘+I).
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const bodyFormat = useWhatsAppFormatting(bodyRef, draft.body, (body) => set({ body }));
   const setCard = (index: number, patch: Partial<DraftCard>) =>
     setDraft((d) => ({
       ...d,
@@ -338,17 +342,23 @@ export function CreateTemplateDialog({
 
                 <Section title="Message">
                   <div>
-                    <Label htmlFor="tpl-body">Body</Label>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Label htmlFor="tpl-body">Body</Label>
+                      <FormatToolbar onApply={bodyFormat.apply} label="Body text style" />
+                    </div>
                     <Textarea
                       id="tpl-body"
+                      ref={bodyRef}
                       value={draft.body}
+                      onKeyDown={bodyFormat.onKeyDown}
                       onChange={(e) => set({ body: e.target.value })}
                       rows={5}
                       placeholder={"Hi {{1}}, your order {{2}} is on its way!"}
                       className="mt-1.5 resize-none rounded-xl"
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Use {"{{1}}"}, {"{{2}}"} for personalisation — each one needs an example.
+                      Use {"{{1}}"}, {"{{2}}"} for personalisation — each one needs an example. Select text
+                      and use the buttons for *bold*, _italic_, ~strikethrough~ and lists, as WhatsApp shows them.
                     </p>
                   </div>
 

@@ -24,6 +24,7 @@ import {
 } from "@/lib/templates";
 import { MediaUploader } from "@/components/templates/media-uploader";
 import { toast } from "sonner";
+import { WhatsAppText } from "@/components/whatsapp-text";
 
 export type TemplateSendPayload = {
   template_name: string;
@@ -206,8 +207,8 @@ export function TemplatePickerDialog({
                   ].join(" ")}
                 >
                   <p className="text-sm font-medium text-foreground">{t.name}</p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                    {templateBodyText(t.components)}
+                  <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                    <WhatsAppText text={templateBodyText(t.components)} />
                   </p>
                 </button>
               ))}
@@ -317,7 +318,7 @@ export function TemplatePickerDialog({
                     ) : null}
                     <div className="px-3.5 py-2.5">
                       <p className="whitespace-pre-wrap break-words leading-relaxed">
-                        {renderTemplate(body, values)}
+                        <WhatsAppText text={renderTemplate(body, values)} />
                       </p>
                       {footer ? (
                         <p className="mt-2 text-[11px] text-muted-foreground">{footer}</p>
