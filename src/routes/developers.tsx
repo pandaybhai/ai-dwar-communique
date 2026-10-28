@@ -1,6 +1,7 @@
 import { Outlet, createFileRoute } from "@tanstack/react-router";
 import docsCss from "@/components/developers/docs.css?url";
-import { DocsShell, THEME_SCRIPT } from "@/components/developers/docs-shell";
+import { DocsShell } from "@/components/developers/docs-shell";
+import { THEME_SCRIPT } from "@/components/developers/theme-script";
 
 /**
  * The developer portal (Batch 38 item 9): every page under /developers, in

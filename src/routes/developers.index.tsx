@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { getPublicRates } from "@/lib/public-rates.functions";
-import { LEGACY_ANCHORS, pageById } from "@/lib/developer-portal";
-import { docHead } from "@/components/developers/doc-head";
+import { LEGACY_ANCHORS } from "@/lib/developer-portal";
+import { docHeadFor } from "@/components/developers/doc-route";
 import { OverviewPage } from "@/components/developers/overview-page";
 
 /**
@@ -12,13 +12,16 @@ import { OverviewPage } from "@/components/developers/overview-page";
  * is sent on to its new page.
  */
 export const Route = createFileRoute("/developers/")({
-  loader: async () => (await getPublicRates()).rates,
-  head: () => docHead(pageById("overview")),
+  loader: async () => {
+    const [{ rates }, head] = await Promise.all([getPublicRates(), docHeadFor("/developers")]);
+    return { rates, head };
+  },
+  head: ({ loaderData }) => loaderData?.head ?? {},
   component: Overview,
 });
 
 function Overview() {
-  const rates = Route.useLoaderData();
+  const { rates } = Route.useLoaderData();
   const navigate = useNavigate();
   useEffect(() => {
     const anchor = decodeURIComponent(window.location.hash.replace(/^#/, ""));

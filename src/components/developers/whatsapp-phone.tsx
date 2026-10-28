@@ -100,7 +100,7 @@ function Header({ model }: { model: PreviewModel }) {
   if (h.format === "DOCUMENT")
     return (
       <div className="mb-1 flex items-center gap-2.5 rounded-md bg-[var(--wa-doc)] p-2.5">
-        <span className="grid h-9 w-8 place-items-center rounded bg-[#e85d4f] text-[9px] font-bold text-white">
+        <span className="grid h-9 w-8 place-items-center rounded bg-[#c8372b] text-[9px] font-bold text-white">
           PDF
         </span>
         <span className="min-w-0">
@@ -207,7 +207,7 @@ export function PhoneFrame({
       aria-label={label}
     >
       <div className="wa-screen">
-        <div className="flex items-center justify-between bg-[var(--wa-head)] px-6 pb-1 pt-3 text-[11px] font-semibold text-white/90">
+        <div className="flex items-center justify-between bg-[var(--wa-head)] px-6 pb-1 pt-3 text-[11px] font-semibold text-white">
           <span>10:00</span>
           <span className="h-4 w-16 rounded-full bg-black/60" aria-hidden="true" />
           <span aria-hidden="true">●●● 5G</span>
@@ -237,7 +237,7 @@ export function PhoneFrame({
                 />
               </svg>
             </span>
-            <span className="block text-[11.5px] opacity-80">Business account</span>
+            <span className="block text-[11.5px]">Business account</span>
           </span>
         </div>
         <div className="wa-wall flex flex-1 flex-col justify-end gap-2 overflow-hidden px-3 py-3">

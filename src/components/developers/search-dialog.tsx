@@ -52,7 +52,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
         className="w-full max-w-xl overflow-hidden rounded-2xl border border-[var(--d-border)] bg-[var(--d-surface)] shadow-[var(--d-shadow-lift)]"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 border-b border-[var(--d-border)] px-4">
+        <div className="flex items-center gap-3 border-b border-[var(--d-border)] px-4 focus-within:border-[var(--d-accent)]">
           <Search className="h-4 w-4 text-[var(--d-faint)]" aria-hidden="true" />
           <input
             ref={input}
@@ -72,7 +72,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             aria-label="Search"
             aria-controls="docs-search-results"
             aria-activedescendant={results[cursor] ? `docs-result-${cursor}` : undefined}
-            className="h-14 flex-1 bg-transparent text-[16px] text-[var(--d-fg)] outline-none placeholder:text-[var(--d-faint)]"
+            className="docs-search-input h-14 flex-1 bg-transparent text-[16px] text-[var(--d-fg)] outline-none placeholder:text-[var(--d-faint)]"
           />
           <kbd className="rounded-md border border-[var(--d-border)] px-1.5 py-0.5 text-[11px] text-[var(--d-muted)]">
             Esc

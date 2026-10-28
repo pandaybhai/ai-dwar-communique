@@ -225,7 +225,8 @@
   --wa-wall: #efeae2;
   --wa-bubble: #ffffff;
   --wa-text: #111b21;
-  --wa-meta: #667781;
+  /* WhatsApp's own grey, a shade darker so small text keeps 4.5:1. */
+  --wa-meta: #5b6a73;
   --wa-link: #027eb5;
   --wa-head: #008069;
   --wa-tick-read: #53bdeb;

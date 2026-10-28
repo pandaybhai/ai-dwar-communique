@@ -20,6 +20,8 @@ import {
   type Block,
 } from "@/lib/developer-portal";
 import { CodePanel } from "./code-panel";
+
+const GENERIC_400 = whatToDo("400", "");
 import { DocLink, Heading, InlineText, MethodBadge } from "./docs-ui";
 import { WhatsAppPhone } from "./whatsapp-phone";
 
@@ -153,9 +155,12 @@ function ErrorsTable({ endpointId, status }: { endpointId?: string; status?: str
               <p className="text-[var(--d-fg)]">
                 <InlineText text={errorMeaning(c)} />
               </p>
-              <p className="mt-0.5 text-[var(--d-muted)]">
-                <InlineText text={whatToDo(st, c)} />
-              </p>
+              {/* On the Errors page each status says its common "what to do" once, above its list. */}
+              {status && st === "400" && whatToDo(st, c) === GENERIC_400 ? null : (
+                <p className="mt-0.5 text-[var(--d-muted)]">
+                  <InlineText text={whatToDo(st, c)} />
+                </p>
+              )}
             </div>
           </li>
         );

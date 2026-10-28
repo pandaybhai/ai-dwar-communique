@@ -5,17 +5,13 @@ import { DOCS_ROOT, navigation, type NavItem } from "@/lib/developer-portal";
 import { SiteFooter } from "@/components/site-footer";
 import { DocLink, MethodBadge } from "./docs-ui";
 import { SearchDialog } from "./search-dialog";
+import { THEME_KEY } from "./theme-script";
 
 /**
  * The developer portal's frame (Batch 38 item 9): a top bar (search,
  * light/dark, Get your API key), the sidebar (a menu on small screens) and
  * the page. Ctrl/Cmd+K or / opens search.
  */
-
-const THEME_KEY = "aidwar-docs-theme";
-
-/** Runs before first paint (the layout's head), so a dark-mode reader never sees a flash of light. */
-export const THEME_SCRIPT = `try{var t=localStorage.getItem("${THEME_KEY}");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.docsTheme=t}catch(e){}`;
 
 function useTheme(): [string, () => void] {
   const [theme, setTheme] = useState("light");
@@ -62,6 +58,7 @@ function NavLink({
       ) : null}
       <span
         className={`min-w-0 truncate ${item.label.includes(".") && !item.method ? "docs-mono text-[13px]" : ""}`}
+        title={item.label}
         onClick={onNavigate}
       >
         {item.label}
@@ -201,7 +198,7 @@ export function DocsShell({ children }: { children: ReactNode }) {
       </header>
 
       <div className="mx-auto flex max-w-[1600px]">
-        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-[17rem] shrink-0 overflow-y-auto border-r border-[var(--d-border)] px-3 pt-8 lg:block">
+        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-[18rem] shrink-0 overflow-y-auto border-r border-[var(--d-border)] px-3 pt-8 lg:block">
           <Sidebar current={current} onNavigate={() => undefined} />
         </aside>
         {menu ? (

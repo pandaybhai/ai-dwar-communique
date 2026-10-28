@@ -50,7 +50,9 @@ export function DocPage({ page }: { page: Page }) {
     return () => observer.disconnect();
   }, [page]);
 
-  const activeGroup = page.sections.find((s) => s.id === active)?.code ?? withCode[0]?.code ?? null;
+  const activeSection = page.sections.find((s) => s.id === active) ?? withCode[0] ?? null;
+  const activeGroup = activeSection?.code ?? null;
+  const asideGroup = activeSection?.aside ?? null;
   const e = page.endpoint;
   const all = flatNav();
   const at = all.findIndex((x) => x.href === page.path);
@@ -58,7 +60,13 @@ export function DocPage({ page }: { page: Page }) {
   const next = at >= 0 && at < all.length - 1 ? all[at + 1] : null;
 
   return (
-    <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,34rem)]">
+    <div
+      className={
+        withCode.length
+          ? "grid gap-10 xl:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,34rem)]"
+          : "max-w-[46rem]"
+      }
+    >
       <article className="min-w-0">
         <header className="docs-prose">
           {page.eyebrow ? (
@@ -71,7 +79,7 @@ export function DocPage({ page }: { page: Page }) {
           >
             {page.title}
           </h1>
-          <p className="mt-3 text-[18px] leading-relaxed text-[var(--d-muted)]">
+          <p className="mt-3 text-[17px] leading-relaxed text-[var(--d-muted)] sm:text-[18px]">
             {page.description}
           </p>
           {e ? (
@@ -79,7 +87,7 @@ export function DocPage({ page }: { page: Page }) {
               <div className="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--d-border)] bg-[var(--d-surface)] py-2 pl-3 pr-2 shadow-[var(--d-shadow)]">
                 <MethodBadge method={e.method} />
                 <code className="docs-mono min-w-0 flex-1 truncate text-[14px] text-[var(--d-fg)]">
-                  <span className="text-[var(--d-faint)]">{API_ORIGIN}</span>
+                  <span className="hidden text-[var(--d-faint)] sm:inline">{API_ORIGIN}</span>
                   {e.path}
                 </code>
                 <CopyButton
@@ -194,8 +202,17 @@ export function DocPage({ page }: { page: Page }) {
               key={active ?? "first"}
               group={activeGroup}
               fade
-              maxHeight="calc(100vh - 8rem)"
+              maxHeight={asideGroup ? "calc(62vh - 6rem)" : "calc(100vh - 8rem)"}
             />
+            {asideGroup ? (
+              <CodePanel
+                key={`${active ?? "first"}-aside`}
+                group={asideGroup}
+                fade
+                className="mt-4"
+                maxHeight="calc(38vh - 4rem)"
+              />
+            ) : null}
             {page.path !== DOCS_ROOT ? (
               <p className="mt-3 text-[12px] text-[var(--d-faint)]">
                 The code follows the section you're reading.

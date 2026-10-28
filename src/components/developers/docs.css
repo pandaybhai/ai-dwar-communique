@@ -11,11 +11,13 @@
   --d-subtle: oklch(0.975 0.006 165);
   --d-fg: oklch(0.2 0.02 255);
   --d-muted: oklch(0.47 0.02 255);
-  --d-faint: oklch(0.62 0.015 255);
+  /* Small text on white stays ≥ 4.5:1 (WCAG AA). */
+  --d-faint: oklch(0.53 0.015 255);
   --d-border: oklch(0.92 0.008 255);
   --d-border-strong: oklch(0.86 0.01 255);
-  --d-accent: oklch(0.6 0.14 162);
-  --d-accent-strong: oklch(0.5 0.12 162);
+  /* Dark enough for white text on it (≥ 4.5:1). */
+  --d-accent: oklch(0.5 0.12 162);
+  --d-accent-strong: oklch(0.43 0.1 162);
   --d-accent-soft: oklch(0.95 0.04 162);
   --d-ring: oklch(0.68 0.14 162);
   --d-shadow: 0 1px 2px oklch(0.2 0.02 255 / 0.04), 0 8px 24px -12px oklch(0.2 0.02 255 / 0.12);
@@ -36,7 +38,7 @@
   --background: var(--d-bg);
   --foreground: var(--d-fg);
   --card: var(--d-surface);
-  --primary: oklch(0.6 0.14 162);
+  --primary: var(--d-accent);
   --primary-foreground: oklch(0.99 0 0);
   --muted: var(--d-subtle);
   --muted-foreground: var(--d-muted);
@@ -245,6 +247,11 @@ html[data-docs-theme="dark"] .docs-method-DELETE {
     opacity: 1;
     transform: none;
   }
+}
+
+/* The search field: the dialog is the field, so its row carries the focus, not a box inside it. */
+.docs-root input.docs-search-input:focus-visible {
+  outline: none;
 }
 
 /* ---- status pills (errors) ---- */

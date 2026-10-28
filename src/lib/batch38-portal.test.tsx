@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -134,30 +134,46 @@ describe("one description, every page", () => {
       expect(pageByPath(`${DOCS_ROOT}/${p}`), p).not.toBeNull();
   });
 
-  it("the routes with a name in the address serve their page and a 404 for anything else", async () => {
+  it("every page route loads its own head (and a 404 for an unknown name), and keeps the docs out of the app's main bundle", async () => {
+    type HeadRoute = {
+      Route: {
+        options: {
+          loader: (a: { params: Record<string, string> }) => Promise<unknown>;
+          head: (a: { loaderData: unknown }) => { meta?: Array<Record<string, string>> };
+        };
+      };
+    };
     for (const [file, param, good] of [
       ["developers.reference.$endpoint", "endpoint", "send-template"],
       ["developers.webhooks.$event", "event", "message.received"],
       ["developers.guides.$slug", "slug", "verify-webhook-signatures"],
     ] as const) {
-      const mod = (await import(`../routes/${file}.tsx`)) as {
-        Route: {
-          options: {
-            loader: (a: { params: Record<string, string> }) => unknown;
-            head: (a: { params: Record<string, string> }) => { meta?: unknown[] };
-          };
-        };
-      };
-      expect(mod.Route.options.loader({ params: { [param]: good } }), file).toBeTruthy();
-      expect(
-        () => mod.Route.options.loader({ params: { [param]: "no-such-page" } }),
+      const mod = (await import(`../routes/${file}.tsx`)) as HeadRoute;
+      const loaderData = await mod.Route.options.loader({ params: { [param]: good } });
+      const meta = mod.Route.options.head({ loaderData }).meta ?? [];
+      expect(meta.length, file).toBeGreaterThan(3);
+      expect(meta[0]!["title"], file).toContain("AiDwar API docs");
+      await expect(
+        mod.Route.options.loader({ params: { [param]: "no-such-page" } }),
         file,
-      ).toThrow();
-      expect(
-        mod.Route.options.head({ params: { [param]: good } }).meta?.length,
-        file,
-      ).toBeGreaterThan(3);
+      ).rejects.toBeTruthy();
     }
+    // A route's loader and head stay in the main bundle: they reach the content only on demand.
+    for (const f of readdirSync(ROUTES).filter(
+      (x) => /^developers\..*\.tsx$/.test(x) && x !== "developers.api.tsx",
+    )) {
+      const src = readFileSync(join(ROUTES, f), "utf8");
+      const options = src.slice(src.indexOf("createFileRoute("), src.indexOf("component:"));
+      expect(options, f).toMatch(/docHeadFor\(/);
+      expect(options, f).not.toMatch(
+        /pageById|pageByPath|referencePath|eventPath|guidePath|docHead\(/,
+      );
+    }
+    const layout = readFileSync(join(ROUTES, "developers.tsx"), "utf8");
+    expect(layout).toContain('from "@/components/developers/theme-script"');
+    expect(readFileSync(join(ROUTES, "sitemap[.]xml.ts"), "utf8")).not.toMatch(
+      /^import .*developer-portal/m,
+    );
   });
 
   it("an endpoint page shows its purpose, URL, key, parameters, every language, every response and every error", () => {
@@ -608,6 +624,7 @@ describe("search", () => {
     expect(search(index, "/api/v1/campaigns/estimate")[0]!.href).toBe(
       referencePath("campaign-estimate"),
     );
+    expect(search(index, "campaign")[0]!.href).toBe(referencePath("campaign-create"));
     expect(search(index, "zzzz-nothing")).toEqual([]);
     for (const e of API_ENDPOINTS)
       expect(

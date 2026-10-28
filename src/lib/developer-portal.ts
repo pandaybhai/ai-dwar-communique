@@ -86,7 +86,14 @@ export type Block =
   | { kind: "preview"; endpointId: string }
   | { kind: "links"; items: Array<{ label: string; href: string; method?: string }> };
 
-export type Section = { id: string; title?: string; blocks: Block[]; code?: CodeGroup };
+export type Section = {
+  id: string;
+  title?: string;
+  blocks: Block[];
+  code?: CodeGroup;
+  /** Shown under `code` on wide screens: a request's answer beside it, as the best API docs do. */
+  aside?: CodeGroup;
+};
 
 export type PageKind = "overview" | "guide" | "reference" | "event" | "concept" | "index";
 
@@ -947,13 +954,19 @@ const RESPONSE_WORDS: Record<number, string> = {
 function referencePages(): Page[] {
   return API_ENDPOINTS.map((e) => {
     const extra = e.responses ?? [];
+    const success: CodeGroup = {
+      title: "Response",
+      status: e.response.status,
+      samples: [code("json", `${e.response.status}`, json(e.response.body))],
+    };
     return {
       id: `ref-${e.id}`,
       path: referencePath(e.id),
       kind: "reference" as const,
       eyebrow: e.group,
       title: e.title,
-      nav: e.title,
+      // The sidebar's label: the title without its note in brackets.
+      nav: e.title.replace(/\s*\([^)]*\)$/, ""),
       description: e.purpose ?? e.summary,
       endpoint: e,
       sections: [
@@ -964,12 +977,14 @@ function referencePages(): Page[] {
             ...(previewFor(e) ? [{ kind: "preview", endpointId: e.id } as Block] : []),
           ],
           code: { title: "Request", samples: requestSamples(e) },
+          aside: success,
         },
         {
           id: "parameters",
           title: "Parameters",
           blocks: [{ kind: "params", endpointId: e.id }],
           code: { title: "Request", samples: requestSamples(e) },
+          aside: success,
         },
         ...(e.more ?? []).map((m, i) => ({
           id: `example-${i + 1}`,
@@ -1627,7 +1642,7 @@ export function navigation(): NavGroup[] {
       groups: GROUP_ORDER.map((group) => ({
         title: group,
         items: API_ENDPOINTS.filter((e) => e.group === group).map((e) => ({
-          label: e.title,
+          label: e.title.replace(/\s*\([^)]*\)$/, ""),
           href: referencePath(e.id),
           method: e.method,
         })),
@@ -1695,7 +1710,7 @@ export function search(entries: SearchEntry[], query: string, limit = 8): Search
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return [];
   const scored = entries
-    .map((e) => {
+    .map((e, order) => {
       const title = e.title.toLowerCase();
       const hay = `${title} ${(e.path ?? "").toLowerCase()} ${(e.method ?? "").toLowerCase()} ${e.text.toLowerCase()}`;
       if (!words.every((w) => hay.includes(w))) return null;
@@ -1707,10 +1722,11 @@ export function search(entries: SearchEntry[], query: string, limit = 8): Search
         score += 1;
       }
       if (e.kind === "Endpoint") score += 0.5;
-      return { e, score };
+      return { e, score, order };
     })
-    .filter((x): x is { e: SearchEntry; score: number } => x !== null)
-    .sort((a, b) => b.score - a.score || a.e.title.localeCompare(b.e.title));
+    .filter((x): x is { e: SearchEntry; score: number; order: number } => x !== null)
+    // Ties keep the docs' own order (create before list before cancel).
+    .sort((a, b) => b.score - a.score || a.order - b.order);
   return scored.slice(0, limit).map((x) => x.e);
 }
 
