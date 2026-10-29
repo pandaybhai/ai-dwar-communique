@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, MessageSquareText, Phone, RefreshCw, Search } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  MessageSquareText,
+  Phone,
+  Plus,
+  RefreshCw,
+  Search,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { useOrg } from "@/lib/org-context";
 import { callApi } from "@/lib/whatsapp-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -15,21 +24,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { EmptyState, ErrorState } from "@/components/empty-state";
-import {
-  statusBadgeClass,
-  templateBodyText,
-  type TemplateRow,
-} from "@/lib/templates";
+import { statusBadgeClass, templateBodyText, type TemplateRow } from "@/lib/templates";
 import { componentsToPreview, TemplatePreview } from "@/components/templates/template-preview";
 import { CreateTemplateDialog } from "./create-template-dialog";
 import { usePermissions } from "@/hooks/use-permissions";
+import { usePageShortcut } from "@/hooks/use-page-shortcut";
+import { runAppCommand } from "@/lib/app-commands";
+import { cn } from "@/lib/utils";
 import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
 import { numberLabel, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
 
@@ -40,68 +42,86 @@ function TemplateSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+        <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
           <Skeleton className="h-4 w-32" />
-          <Skeleton className="mt-3 h-20 w-full rounded-xl" />
-          <Skeleton className="mt-3 h-4 w-24" />
+          <Skeleton className="mt-3 h-28 w-full rounded-lg" />
+          <Skeleton className="mt-3 h-3 w-24" />
         </div>
       ))}
     </div>
   );
 }
 
+/** Batch 41: the review states Meta gives a template, for the filter chips. */
+const STATUS_FILTERS = [
+  { key: "all", label: "All" },
+  { key: "APPROVED", label: "Approved" },
+  { key: "PENDING", label: "Pending" },
+  { key: "REJECTED", label: "Rejected" },
+] as const;
+
+const STATUS_ICON: Record<string, typeof CheckCircle2> = {
+  APPROVED: CheckCircle2,
+  PENDING: Clock,
+  IN_APPEAL: Clock,
+  REJECTED: XCircle,
+};
+
 function TemplateCard({ template, owner }: { template: TemplateRow; owner: string }) {
   const preview = componentsToPreview(template.components);
+  const StatusIcon = STATUS_ICON[template.status];
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-1 flex flex-col rounded-2xl border border-border/70 bg-card p-5 shadow-sm transition-shadow duration-200 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
+    <article className="animate-in fade-in slide-in-from-bottom-1 flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs transition-[box-shadow,border-color] duration-150 hover:border-border-strong hover:shadow-md">
+      <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{template.name}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {(template.category ?? "—").toLowerCase()} · {template.language}
+          <h3 className="truncate font-mono text-[0.8125rem] font-semibold text-foreground">
+            {template.name}
+          </h3>
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="capitalize">{(template.category ?? "—").toLowerCase()}</span>
+            <span aria-hidden="true">·</span>
+            <span>{template.language}</span>
           </p>
         </div>
-        {template.status === "REJECTED" && template.rejection_reason ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge
-                  variant="outline"
-                  className={`shrink-0 rounded-full ${statusBadgeClass(template.status)}`}
-                >
-                  {template.status.toLowerCase()}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs break-words">
-                {template.rejection_reason}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <Badge
-            variant="outline"
-            className={`shrink-0 rounded-full ${statusBadgeClass(template.status)}`}
-          >
-            {template.status.toLowerCase()}
-          </Badge>
-        )}
+        <span
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(template.status)}`}
+        >
+          {StatusIcon ? <StatusIcon className="h-3 w-3" aria-hidden="true" /> : null}
+          {template.status.toLowerCase()}
+        </span>
       </div>
 
-      <div className="mt-4 rounded-2xl bg-muted/40 p-3">
+      {template.status === "REJECTED" && template.rejection_reason ? (
+        <p className="mx-3 mb-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-xs text-danger-soft-foreground">
+          <span className="font-medium">Why Meta rejected it: </span>
+          {template.rejection_reason}
+        </p>
+      ) : null}
+
+      <div className="wa-wall mx-3 rounded-lg px-3 py-4">
         <TemplatePreview model={preview} className="max-w-none" />
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+      <div className="mt-auto flex items-center justify-between gap-3 px-4 py-3 text-[0.6875rem] text-muted-foreground">
         <span className="inline-flex min-w-0 items-center gap-1.5">
-          <Phone className="h-3 w-3 shrink-0" />
+          <Phone className="h-3 w-3 shrink-0" aria-hidden="true" />
           <span className="truncate">{owner}</span>
         </span>
         <span className="shrink-0">
           Created {new Date(template.created_at).toLocaleDateString()}
         </span>
       </div>
-    </div>
+    </article>
   );
+}
+
+/** Pending covers both of Meta's review states; paused or disabled ones show under All only. */
+function statusOf(t: TemplateRow): "APPROVED" | "PENDING" | "REJECTED" | "OTHER" {
+  const st = t.status.toUpperCase();
+  if (st === "APPROVED") return "APPROVED";
+  if (st === "REJECTED") return "REJECTED";
+  if (st === "PENDING" || st === "IN_APPEAL") return "PENDING";
+  return "OTHER";
 }
 
 export function TemplatesView() {
@@ -116,7 +136,11 @@ export function TemplatesView() {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [numberFilter, setNumberFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]["key"]>("all");
   const autoSynced = useRef<string | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  // Batch 41: / jumps to the search box.
+  usePageShortcut("/", () => searchRef.current?.focus());
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -185,9 +209,10 @@ export function TemplatesView() {
         const picked = numbers.find((n) => n.id === numberFilter);
         if (!picked || t.waba_id !== picked.waba_id) return false;
       }
+      if (statusFilter !== "all" && statusOf(t) !== statusFilter) return false;
       return true;
     });
-  }, [templates, query, numberFilter, numbers]);
+  }, [templates, query, numberFilter, numbers, statusFilter]);
 
   /** One group per business account, since each holds its own library. */
   const groups = useMemo(() => {
@@ -217,7 +242,7 @@ export function TemplatesView() {
   const createAccountId =
     numberFilter !== "all"
       ? numberFilter
-      : (numbers.find((n) => n.is_default) ?? numbers[0])?.id ?? null;
+      : ((numbers.find((n) => n.is_default) ?? numbers[0])?.id ?? null);
 
   if (loading) return <TemplateSkeleton />;
   if (error) return <ErrorState message={error} />;
@@ -227,17 +252,24 @@ export function TemplatesView() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full flex-col gap-2 sm:max-w-md sm:flex-row">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+              aria-hidden="true"
+            />
             <Input
+              ref={searchRef}
+              type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search templates"
-              className="rounded-full pl-9"
+              aria-label="Search templates"
+              aria-keyshortcuts="/"
+              className="pl-9"
             />
           </div>
           {multiple ? (
             <Select value={numberFilter} onValueChange={setNumberFilter}>
-              <SelectTrigger className="rounded-full sm:w-56">
+              <SelectTrigger className="sm:w-56" aria-label="Number">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -254,11 +286,10 @@ export function TemplatesView() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            className="rounded-full"
             onClick={() => void sync(numberFilter === "all" ? null : numberFilter)}
             disabled={Boolean(syncing) || !canManage}
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
             {numberFilter === "all" ? "Sync all numbers" : "Sync this number"}
           </Button>
           {canManage && orgId ? (
@@ -271,8 +302,8 @@ export function TemplatesView() {
         </div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-foreground">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <div className="flex items-start gap-2.5 rounded-xl border border-info-border bg-info-soft px-4 py-3 text-xs leading-relaxed text-info-soft-foreground">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
           Templates belong to the business account behind each number, so every number keeps its own
           library. Meta reviews every template — usually within minutes, occasionally a few hours.
@@ -280,11 +311,51 @@ export function TemplatesView() {
         </p>
       </div>
 
+      {templates.length > 0 ? (
+        <div
+          role="group"
+          aria-label="Show templates"
+          className="-mx-4 flex gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0"
+        >
+          {STATUS_FILTERS.map((f) => {
+            const n =
+              f.key === "all"
+                ? templates.length
+                : templates.filter((t) => statusOf(t) === f.key).length;
+            const on = statusFilter === f.key;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setStatusFilter(f.key)}
+                className={cn(
+                  "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[0.8125rem] font-medium transition-colors duration-150",
+                  on
+                    ? "border-foreground/15 bg-foreground text-background"
+                    : "border-border bg-card text-muted-foreground hover:border-border-strong hover:text-foreground",
+                )}
+              >
+                {f.label}
+                <span className={cn("tabular text-xs", on ? "opacity-70" : "text-faint")}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {templates.length === 0 ? (
         <EmptyState
           icon={MessageSquareText}
           title="No templates yet"
           description="Create your first template and submit it for review, or sync the ones already approved on your business account."
+          action={
+            canManage ? (
+              <Button onClick={() => runAppCommand({ kind: "new-template" })}>
+                <Plus className="h-4 w-4" aria-hidden="true" /> Create template
+              </Button>
+            ) : undefined
+          }
         />
       ) : groups.length === 0 ? (
         <EmptyState
@@ -298,13 +369,12 @@ export function TemplatesView() {
             <section key={group.wabaId} className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <Phone className="h-4 w-4 text-primary" />
+                  <h2 className="flex items-center gap-2 type-heading text-foreground">
+                    <Phone className="h-4 w-4 text-primary" aria-hidden="true" />
                     <span className="truncate">{group.label}</span>
                   </h2>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {group.rows.length} template{group.rows.length === 1 ? "" : "s"} in this
-                    library
+                    {group.rows.length} template{group.rows.length === 1 ? "" : "s"} in this library
                   </p>
                 </div>
                 {canManage && group.accountId ? (
@@ -322,7 +392,7 @@ export function TemplatesView() {
                   </Button>
                 ) : null}
               </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {group.rows.map((t) => (
                   <TemplateCard key={t.id} template={t} owner={group.label} />
                 ))}

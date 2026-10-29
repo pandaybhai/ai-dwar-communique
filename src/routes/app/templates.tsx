@@ -44,14 +44,12 @@ function TemplatesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Templates</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Pre-approved messages you can send any time — including outside the 24-hour window.
-        </p>
-      </div>
+    <>
+      <PageHeader
+        title="Templates"
+        description="Pre-approved messages you can send any time — including outside the 24-hour window."
+      />
       <TemplatesView />
-    </div>
+    </>
   );
 }

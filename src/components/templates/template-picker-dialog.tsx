@@ -89,11 +89,15 @@ export function TemplatePickerDialog({
     };
   }, [open, organizationId, wabaId]);
 
-
   const selected = templates.find((t) => t.id === selectedId) ?? null;
   // Batch 35: an opted-out contact never gets marketing (utility/authentication still go).
   const blocked = (t: TemplateRow) => contactOptedOut && !optedOutMayReceive(t.category);
-  const [price, setPrice] = useState<{ enabled: boolean; rate: number; currency: string; category: string } | null>(null);
+  const [price, setPrice] = useState<{
+    enabled: boolean;
+    rate: number;
+    currency: string;
+    category: string;
+  } | null>(null);
   const selectedName = selected?.name ?? null;
   useEffect(() => {
     setPrice(null);
@@ -101,7 +105,13 @@ export function TemplatePickerDialog({
     let cancelled = false;
     void callApi<{ enabled: boolean; rate: number; currency: string; category: string }>(
       "/api/whatsapp/template-price",
-      { body: { organization_id: organizationId, conversation_id: conversationId, template_name: selectedName } },
+      {
+        body: {
+          organization_id: organizationId,
+          conversation_id: conversationId,
+          template_name: selectedName,
+        },
+      },
     ).then(({ data }) => {
       if (!cancelled) setPrice(data);
     });
@@ -119,12 +129,11 @@ export function TemplatePickerDialog({
   const headerMediaFormat =
     spec?.headerMedia && spec.headerMedia.format !== "LOCATION" ? spec.headerMedia.format : null;
   const effectiveHeaderMedia = headerMediaUrl ?? spec?.headerMedia?.url ?? null;
-  const effectiveCardMedia = (i: number) =>
-    cardMediaUrls[i] ?? spec?.cards[i]?.mediaUrl ?? null;
+  const effectiveCardMedia = (i: number) => cardMediaUrls[i] ?? spec?.cards[i]?.mediaUrl ?? null;
   const mediaReady = Boolean(
     spec &&
-      (!headerMediaFormat || effectiveHeaderMedia) &&
-      spec.cards.every((_, i) => effectiveCardMedia(i)),
+    (!headerMediaFormat || effectiveHeaderMedia) &&
+    spec.cards.every((_, i) => effectiveCardMedia(i)),
   );
   const couponButtons = spec?.copyCodeButtons ?? [];
   const needsCoupon =
@@ -144,14 +153,10 @@ export function TemplatePickerDialog({
   const submit = async () => {
     if (!selected || !ready || !spec) return;
     const code = couponCode.trim();
-    const codes = code
-      ? Object.fromEntries(couponButtons.map((index) => [index, code]))
-      : {};
+    const codes = code ? Object.fromEntries(couponButtons.map((index) => [index, code])) : {};
     const built = buildTemplatePayloadComponents({
       spec,
-      values: Object.fromEntries(
-        Object.entries(values).map(([k, v]) => [k, v.trim()]),
-      ),
+      values: Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.trim()])),
       ...(effectiveHeaderMedia ? { headerMedia: { link: effectiveHeaderMedia } } : {}),
       ...(Object.keys(codes).length ? { couponCodes: codes } : {}),
       ...(needsOfferExpiry && !Number.isNaN(offerExpirationMs) ? { offerExpirationMs } : {}),
@@ -197,8 +202,8 @@ export function TemplatePickerDialog({
         <DialogHeader>
           <DialogTitle>Send a template</DialogTitle>
           <DialogDescription>
-            Approved templates can go out any time. Outside the 24-hour window they're the only way to reach a
-            customer.
+            Approved templates can go out any time. Outside the 24-hour window they're the only way
+            to reach a customer.
           </DialogDescription>
         </DialogHeader>
 
@@ -208,7 +213,7 @@ export function TemplatePickerDialog({
             <Skeleton className="h-14 w-full rounded-xl" />
           </div>
         ) : templates.length === 0 ? (
-          <div className="rounded-2xl border border-border/70 bg-muted/30 p-6 text-center">
+          <div className="rounded-xl border border-border bg-subtle p-6 text-center">
             <MessageSquareText className="mx-auto h-7 w-7 text-muted-foreground/60" />
             <p className="mt-3 text-sm font-medium text-foreground">No approved templates yet</p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -234,7 +239,7 @@ export function TemplatePickerDialog({
                     "w-full rounded-xl border px-4 py-3 text-left transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60",
                     selectedId === t.id
                       ? "border-primary bg-primary/5"
-                      : "border-border/70 bg-card hover:bg-muted/50",
+                      : "border-border bg-card hover:bg-subtle",
                   ].join(" ")}
                 >
                   <p className="text-sm font-medium text-foreground">
@@ -246,7 +251,9 @@ export function TemplatePickerDialog({
                     ) : null}
                   </p>
                   {blocked(t) ? (
-                    <p className="text-[11px] text-destructive">Opted out — marketing can't be sent to this contact.</p>
+                    <p className="text-[11px] text-destructive">
+                      Opted out — marketing can't be sent to this contact.
+                    </p>
                   ) : null}
                   <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground">
                     <WhatsAppText text={templateBodyText(t.components)} />
@@ -265,9 +272,7 @@ export function TemplatePickerDialog({
                         <Input
                           id={`var-${v}`}
                           value={values[v] ?? ""}
-                          onChange={(e) =>
-                            setValues((p) => ({ ...p, [v]: e.target.value }))
-                          }
+                          onChange={(e) => setValues((p) => ({ ...p, [v]: e.target.value }))}
                           className="mt-1"
                         />
                       </div>
@@ -310,12 +315,8 @@ export function TemplatePickerDialog({
                           format={card.format}
                           fileName=""
                           mediaUrl={effectiveCardMedia(i) ?? ""}
-                          onUploaded={(r) =>
-                            setCardMediaUrls((p) => ({ ...p, [i]: r.media_url }))
-                          }
-                          onCleared={() =>
-                            setCardMediaUrls((p) => ({ ...p, [i]: "" }))
-                          }
+                          onUploaded={(r) => setCardMediaUrls((p) => ({ ...p, [i]: r.media_url }))}
+                          onCleared={() => setCardMediaUrls((p) => ({ ...p, [i]: "" }))}
                         />
                       </div>
                     ))}
@@ -348,8 +349,8 @@ export function TemplatePickerDialog({
                   </div>
                 ) : null}
 
-                <div className="rounded-2xl bg-muted/40 p-3">
-                  <div className="overflow-hidden rounded-2xl rounded-br-md bg-primary/12 text-sm shadow-sm">
+                <div className="wa-wall rounded-xl border border-border p-3">
+                  <div className="wa-bubble-in wa-tail overflow-hidden !p-0 text-sm">
                     {effectiveHeaderMedia && headerMediaFormat === "IMAGE" ? (
                       <img
                         src={effectiveHeaderMedia}

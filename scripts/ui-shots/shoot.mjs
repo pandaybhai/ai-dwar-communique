@@ -3,7 +3,7 @@
  *
  *   VITE_AIDWAR_SUPABASE_URL=http://fake-backend.test VITE_AIDWAR_SUPABASE_ANON_KEY=fake \
  *     npx vite dev --port 5199 --host 127.0.0.1
- *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat]
+ *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41]
  *
  * Uses the Chromium + Playwright installed on the machine (not a project
  * dependency). The dev server must point the app at the fake backend host:
@@ -54,10 +54,79 @@ const SCENARIOS = {
   shortcuts: { path: "/app", conversations: 40, wait: "h1", act: async (page) => page.keyboard.press("Shift+?") },
 };
 
+const firstCampaign = "00000000-0000-4000-8000-000000007000";
+
+/** The campaign wizard, walked to a step (Batch 41: audience → … → review). */
+function wizardTo(target) {
+  return {
+    path: "/app/campaigns",
+    conversations: 40,
+    wait: "text=Diwali preview",
+    act: async (page) => {
+      await page.getByRole("button", { name: /create campaign/i }).first().click();
+      await page.waitForTimeout(700);
+      await page.getByLabel("Campaign name").fill("Diwali preview — VIP list");
+      await page.waitForTimeout(900);
+      if (target < 1) return;
+      await page.getByRole("button", { name: /^continue/i }).click();
+      await page.waitForTimeout(500);
+      await page.getByRole("dialog").getByText("order_shipped", { exact: true }).click();
+      await page.waitForTimeout(500);
+      if (target < 2) return;
+      await page.getByRole("button", { name: /^continue/i }).click();
+      await page.waitForTimeout(500);
+      for (const n of [1, 2]) {
+        await page.getByRole("combobox", { name: `Source for {{${n}}}` }).click();
+        await page.getByRole("option").first().click();
+        await page.waitForTimeout(200);
+      }
+      if (target < 3) return;
+      await page.getByRole("button", { name: /^continue/i }).click();
+      await page.waitForTimeout(400);
+      await page.getByRole("button", { name: /^continue/i }).click();
+      await page.waitForTimeout(600);
+    },
+  };
+}
+
+/** Batch 41: Home, Campaigns, Templates. */
+const SCENARIOS_B41 = {
+  home: { path: "/app", conversations: 40, wait: "text=Waiting on you", fullPage: true },
+  "home-journey": { path: "/app", conversations: 40, journey: true, wait: "text=Continue setup" },
+  "home-low-credits": { path: "/app", conversations: 40, lowCredits: true, wait: "text=Waiting on you", fullPage: true },
+  campaigns: { path: "/app/campaigns", conversations: 40, wait: "text=Diwali preview" },
+  "campaigns-empty": { path: "/app/campaigns", conversations: 40, campaigns: 0, wait: "h1" },
+  "campaign-detail": { path: `/app/campaigns/${firstCampaign}`, conversations: 40, wait: "text=Offer performance", fullPage: true },
+  "campaign-wizard": { ...wizardTo(0) },
+  "campaign-wizard-message": { ...wizardTo(1) },
+  "campaign-wizard-personalise": { ...wizardTo(2) },
+  "campaign-wizard-review": { ...wizardTo(4) },
+  templates: { path: "/app/templates", conversations: 40, wait: "text=order_shipped" },
+  "templates-empty": { path: "/app/templates", conversations: 40, templates: 0, wait: "h1" },
+  "template-create": {
+    fullPage: false,
+    path: "/app/templates",
+    conversations: 40,
+    wait: "text=order_shipped",
+    act: async (page) => {
+      await page.getByRole("button", { name: /create template/i }).first().click();
+      await page.waitForTimeout(900);
+    },
+  },
+};
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41 };
+
 const consoleErrors = [];
 
 async function shoot(browser, name, scenario, viewportName, theme) {
-  const fake = createBackend({ conversations: scenario.conversations });
+  const fake = createBackend({
+    conversations: scenario.conversations,
+    campaigns: scenario.campaigns,
+    templates: scenario.templates,
+    lowCredits: scenario.lowCredits,
+    journey: scenario.journey,
+  });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
     deviceScaleFactor: viewportName === "mobile" ? 2 : 1,
@@ -68,6 +137,8 @@ async function shoot(browser, name, scenario, viewportName, theme) {
       localStorage.setItem(key, value);
       localStorage.setItem("aidwar.active_org", "00000000-0000-4000-8000-0000000000a1");
       localStorage.setItem("aidwar.theme", theme);
+      // Batch 40's "Save & exit": Home shows the Continue setup card instead of redirecting.
+      sessionStorage.setItem("aidwar.journey.exited.00000000-0000-4000-8000-0000000000a1", "1");
     },
     [STORAGE_KEY, JSON.stringify(session()), theme],
   );
@@ -92,6 +163,18 @@ async function shoot(browser, name, scenario, viewportName, theme) {
   if (scenario.wait) await page.waitForSelector(scenario.wait, { timeout: 15000 }).catch(() => {});
   if (scenario.act) await scenario.act(page);
   await page.waitForTimeout(800);
+  if (scenario.fullPage) {
+    // The app's work area scrolls, not the window: grow the window to fit it.
+    const extra = await page.evaluate(() => {
+      const main = document.querySelector("main");
+      return main ? Math.max(0, main.scrollHeight - main.clientHeight) : 0;
+    });
+    if (extra > 0) {
+      const vp = VIEWPORTS[viewportName];
+      await page.setViewportSize({ width: vp.width, height: vp.height + extra });
+      await page.waitForTimeout(400);
+    }
+  }
   const file = join(OUT, `${name}-${viewportName}${theme === "dark" ? "-dark" : ""}.png`);
   if (scenario.crop) {
     const el = await page.$(scenario.crop);
@@ -106,7 +189,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
 
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch();
-for (const [name, scenario] of Object.entries(SCENARIOS)) {
+for (const [name, scenario] of Object.entries(SETS[args.set ?? "b39"])) {
   if (ONLY && !ONLY.includes(name)) continue;
   for (const vp of Object.keys(VIEWPORTS)) {
     for (const theme of THEMES) await shoot(browser, name, scenario, vp, theme);

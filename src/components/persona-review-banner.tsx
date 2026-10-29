@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button";
 import { employeeApi } from "@/lib/employee-client";
 
 /** One-time note on /app home when Aiden's behaviour is a website suggestion. */
-export function PersonaReviewBanner({ organizationId }: { organizationId: string | null | undefined }) {
+export function PersonaReviewBanner({
+  organizationId,
+}: {
+  organizationId: string | null | undefined;
+}) {
   const [versionId, setVersionId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,11 +35,13 @@ export function PersonaReviewBanner({ organizationId }: { organizationId: string
   };
 
   return (
-    <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center">
-      <Sparkles className="h-5 w-5 shrink-0 text-primary" />
+    <div className="mb-6 flex flex-col gap-3 rounded-xl border border-success-border bg-success-soft p-4 shadow-xs sm:flex-row sm:items-center">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card text-primary shadow-xs">
+        <Sparkles className="h-4 w-4" aria-hidden="true" />
+      </span>
       <p className="flex-1 text-sm text-foreground">
-        <span className="font-medium">I've drafted how I'll talk to your customers</span> from your website. Have a
-        quick look and fix anything that's off.
+        <span className="font-medium">I've drafted how I'll talk to your customers</span> from your
+        website. Have a quick look and fix anything that's off.
       </p>
       <div className="flex gap-2">
         <Button asChild size="sm" onClick={dismiss}>

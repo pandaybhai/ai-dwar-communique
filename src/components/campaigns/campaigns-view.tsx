@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Megaphone, Plus } from "lucide-react";
 import { aidwar } from "@/integrations/aidwar/client";
+import { CAMPAIGN_STATUS_LABELS, CAMPAIGN_STATUS_ORDER, type CampaignRow } from "@/lib/campaigns";
 import {
-  CAMPAIGN_STATUS_CLASSES,
-  CAMPAIGN_STATUS_LABELS,
-  CAMPAIGN_STATUS_ORDER,
-  percent,
-  type CampaignRow,
-} from "@/lib/campaigns";
+  CampaignStatusBadge,
+  ProgressCell,
+  RateBar,
+  RateBars,
+} from "@/components/campaigns/campaign-rates";
 import { formatDate } from "@/lib/contacts";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
@@ -16,8 +16,13 @@ import { CampaignWizard } from "@/components/campaigns/campaign-wizard";
 import { useAppCommand } from "@/lib/app-commands";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
+import { usePageShortcut } from "@/hooks/use-page-shortcut";
+
+/** Batch 41: the shared pieces live in campaign-rates (Home draws them too). */
+export { CampaignStatusBadge, ProgressCell } from "@/components/campaigns/campaign-rates";
 
 export function CampaignsView({
   organizationId,
@@ -40,6 +45,8 @@ export function CampaignsView({
     if (isAdmin) setWizardOpen(true);
   });
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Batch 41: N opens the wizard, for whoever may create a campaign.
+  usePageShortcut("n", () => setWizardOpen(true), isAdmin && !wizardOpen);
 
   const load = useCallback(async () => {
     setError(null);
@@ -59,8 +66,7 @@ export function CampaignsView({
     return () => clearInterval(t);
   }, [load]);
 
-  const visible =
-    statusFilter === "all" ? rows : rows.filter((r) => r.status === statusFilter);
+  const visible = statusFilter === "all" ? rows : rows.filter((r) => r.status === statusFilter);
 
   if (loading) return <TableSkeleton />;
   if (error) return <ErrorState message={error} />;
@@ -68,33 +74,44 @@ export function CampaignsView({
   return (
     <>
       <QualityBanner organizationId={organizationId} className="mb-4" />
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1.5">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div
+          role="group"
+          aria-label="Show campaigns"
+          className="-mx-4 flex gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0"
+        >
           {(["all", ...CAMPAIGN_STATUS_ORDER] as const).map((key) => {
             const label = key === "all" ? "All" : CAMPAIGN_STATUS_LABELS[key];
-            const count =
-              key === "all" ? rows.length : rows.filter((r) => r.status === key).length;
+            const count = key === "all" ? rows.length : rows.filter((r) => r.status === key).length;
             if (key !== "all" && count === 0 && statusFilter !== key) return null;
+            const on = statusFilter === key;
             return (
               <button
                 key={key}
                 type="button"
+                aria-pressed={on}
                 onClick={() => setStatusFilter(key)}
                 className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-150",
-                  statusFilter === key
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:text-foreground",
+                  "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[0.8125rem] font-medium transition-colors duration-150",
+                  on
+                    ? "border-foreground/15 bg-foreground text-background"
+                    : "border-border bg-card text-muted-foreground hover:border-border-strong hover:text-foreground",
                 )}
               >
-                {label} <span className="tabular-nums opacity-70">{count}</span>
+                {label}
+                <span className={cn("tabular text-xs", on ? "opacity-70" : "text-faint")}>
+                  {count}
+                </span>
               </button>
             );
           })}
         </div>
         {isAdmin && (
-          <Button className="rounded-full" onClick={() => setWizardOpen(true)}>
-            <Plus className="mr-1.5 h-4 w-4" /> Create campaign
+          <Button className="shrink-0" onClick={() => setWizardOpen(true)} aria-keyshortcuts="N">
+            <Plus className="h-4 w-4" /> Create campaign
+            <Kbd className="ml-1 hidden border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground shadow-none sm:inline-flex">
+              N
+            </Kbd>
           </Button>
         )}
       </div>
@@ -110,63 +127,140 @@ export function CampaignsView({
           }
           action={
             isAdmin && rows.length === 0 ? (
-              <Button className="rounded-full" onClick={() => setWizardOpen(true)}>
-                <Plus className="mr-1.5 h-4 w-4" /> Create your first campaign
+              <Button onClick={() => setWizardOpen(true)}>
+                <Plus className="h-4 w-4" /> Create your first campaign
               </Button>
             ) : undefined
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-border/70 bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Campaign</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Progress</th>
-                  <th className="px-4 py-3 font-medium">Delivered</th>
-                  <th className="px-4 py-3 font-medium">Read</th>
-                  <th className="px-4 py-3 font-medium">Replied</th>
-                  <th className="px-4 py-3 font-medium">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((c) => (
-                  <tr key={c.id} className="border-b border-border/50 transition-colors last:border-0 hover:bg-muted/40">
-                    <td className="px-4 py-3">
-                      <Link
-                        to="/app/campaigns/$id"
-                        params={{ id: c.id }}
-                        className="font-medium text-foreground hover:text-primary"
-                      >
-                        {c.name}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">{c.template_name}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                          CAMPAIGN_STATUS_CLASSES[c.status],
-                        )}
-                      >
-                        {CAMPAIGN_STATUS_LABELS[c.status]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-muted-foreground">
-                      {c.sent_count}/{c.total_recipients}
-                    </td>
-                    <td className="px-4 py-3 tabular-nums">{percent(c.delivered_count, c.total_recipients)}%</td>
-                    <td className="px-4 py-3 tabular-nums">{percent(c.read_count, c.total_recipients)}%</td>
-                    <td className="px-4 py-3 tabular-nums">{c.replied_count}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatDate(c.created_at)}</td>
+        <>
+          {/* Desktop: a dense table; the whole row opens the campaign. */}
+          <div className="hidden overflow-hidden rounded-xl border border-border bg-card shadow-xs md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border bg-subtle text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th scope="col" className="px-4 py-2.5 font-medium">
+                      Campaign
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 font-medium">
+                      Status
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 font-medium">
+                      Progress
+                    </th>
+                    <th scope="col" className="w-24 px-4 py-2.5 font-medium">
+                      Delivered
+                    </th>
+                    <th scope="col" className="w-24 px-4 py-2.5 font-medium">
+                      Read
+                    </th>
+                    <th scope="col" className="w-24 px-4 py-2.5 font-medium">
+                      Replied
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                      Created
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {visible.map((c) => (
+                    <tr
+                      key={c.id}
+                      className="group relative transition-colors duration-100 hover:bg-subtle"
+                    >
+                      <td className="max-w-[18rem] px-4 py-3">
+                        <Link
+                          to="/app/campaigns/$id"
+                          params={{ id: c.id }}
+                          className="block truncate font-medium text-foreground after:absolute after:inset-0 after:content-[''] group-hover:text-primary"
+                        >
+                          {c.name}
+                        </Link>
+                        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                          {c.template_name}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <CampaignStatusBadge status={c.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <ProgressCell
+                          sent={c.sent_count}
+                          failed={c.failed_count}
+                          total={c.total_recipients}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <RateBar
+                          kind="delivered"
+                          label="Delivered"
+                          part={c.delivered_count}
+                          total={c.total_recipients}
+                          pending={c.sent_count === 0}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <RateBar
+                          kind="read"
+                          label="Read"
+                          part={c.read_count}
+                          total={c.total_recipients}
+                          pending={c.sent_count === 0}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <RateBar
+                          kind="replied"
+                          label="Replied"
+                          part={c.replied_count}
+                          total={c.total_recipients}
+                          pending={c.sent_count === 0}
+                        />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-muted-foreground">
+                        {formatDate(c.created_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* Phones: one card per campaign. */}
+          <ul className="space-y-2.5 md:hidden">
+            {visible.map((c) => (
+              <li key={c.id}>
+                <Link
+                  to="/app/campaigns/$id"
+                  params={{ id: c.id }}
+                  className="block rounded-xl border border-border bg-card p-4 shadow-xs transition-colors active:bg-subtle"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">{c.name}</p>
+                      <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                        {c.template_name}
+                      </p>
+                    </div>
+                    <CampaignStatusBadge status={c.status} />
+                  </div>
+                  <div className="mt-3">
+                    <ProgressCell
+                      sent={c.sent_count}
+                      failed={c.failed_count}
+                      total={c.total_recipients}
+                      wide
+                    />
+                  </div>
+                  <RateBars campaign={c} labelled className="mt-3" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <CampaignWizard

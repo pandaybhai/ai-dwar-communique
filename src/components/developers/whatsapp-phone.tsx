@@ -258,7 +258,7 @@ export function PhoneFrame({
           <ChevronLeft className="h-5 w-5 opacity-90" aria-hidden="true" />
           {avatar ?? (
             <span className="grid h-8 w-8 place-items-center rounded-full bg-white/90 text-[13px] font-bold text-[#008069]">
-              A
+              {business.trim().charAt(0).toUpperCase() || "A"}
             </span>
           )}
           <span className="min-w-0 leading-tight">

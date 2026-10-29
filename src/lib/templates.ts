@@ -67,8 +67,6 @@ export function startsOrEndsWithVariable(text: string): boolean {
   return /^\{\{\s*\d+\s*\}\}/.test(t) || /\{\{\s*\d+\s*\}\}$/.test(t);
 }
 
-
-
 export function componentOf(
   components: TemplateComponent[] | null | undefined,
   type: string,
@@ -97,11 +95,16 @@ export function templateParamsFromComponents(
   components: Array<Record<string, unknown>> | null | undefined,
 ): Record<string, string> {
   const body = (components ?? []).find((c) => String(c["type"] ?? "").toLowerCase() === "body");
-  const params = Array.isArray(body?.["parameters"]) ? (body["parameters"] as Array<Record<string, unknown>>) : [];
+  const params = Array.isArray(body?.["parameters"])
+    ? (body["parameters"] as Array<Record<string, unknown>>)
+    : [];
   const out: Record<string, string> = {};
   params.forEach((p, i) => {
     if (typeof p["text"] !== "string") return;
-    const name = typeof p["parameter_name"] === "string" && p["parameter_name"] ? p["parameter_name"] : String(i + 1);
+    const name =
+      typeof p["parameter_name"] === "string" && p["parameter_name"]
+        ? p["parameter_name"]
+        : String(i + 1);
     out[name] = p["text"];
   });
   return out;
@@ -118,7 +121,9 @@ export type StoredTemplateStatus = "PENDING" | "APPROVED" | "REJECTED" | "PAUSED
  * PENDING. Null for a status we don't know (the caller decides).
  */
 export function metaTemplateStatus(raw: unknown): StoredTemplateStatus | null {
-  const status = String(raw ?? "").trim().toUpperCase();
+  const status = String(raw ?? "")
+    .trim()
+    .toUpperCase();
   switch (status) {
     case "PENDING":
     case "APPROVED":
@@ -152,14 +157,19 @@ export const TEMPLATE_SYNC_MAX_PAGES = 50;
  */
 export async function fetchAllTemplatePages(
   fetchPage: (after: string | null) => Promise<{ ok: boolean; body: Record<string, unknown> }>,
-): Promise<{ rows: Array<Record<string, unknown>>; error: Record<string, unknown> | null; pages: number }> {
+): Promise<{
+  rows: Array<Record<string, unknown>>;
+  error: Record<string, unknown> | null;
+  pages: number;
+}> {
   const rows: Array<Record<string, unknown>> = [];
   let after: string | null = null;
   for (let page = 0; page < TEMPLATE_SYNC_MAX_PAGES; page += 1) {
     const result = await fetchPage(after);
     if (!result.ok) return { rows, error: result.body, pages: page };
-    rows.push(...(((result.body["data"] as Array<Record<string, unknown>> | undefined) ?? [])));
-    const paging = result.body["paging"] as { next?: unknown; cursors?: { after?: unknown } } | undefined;
+    rows.push(...((result.body["data"] as Array<Record<string, unknown>> | undefined) ?? []));
+    const paging = result.body["paging"] as
+      { next?: unknown; cursors?: { after?: unknown } } | undefined;
     const next = typeof paging?.cursors?.after === "string" ? paging.cursors.after : null;
     if (!paging?.next || !next || next === after) return { rows, error: null, pages: page + 1 };
     after = next;
@@ -169,14 +179,15 @@ export async function fetchAllTemplatePages(
 
 export function statusBadgeClass(status: string): string {
   switch (status.toUpperCase()) {
+    // Batch 41: the design system's status tokens.
     case "APPROVED":
-      return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+      return "border-success-border bg-success-soft text-success-soft-foreground";
     case "REJECTED":
-      return "border-destructive/25 bg-destructive/10 text-destructive";
+      return "border-danger-border bg-danger-soft text-danger-soft-foreground";
     case "PAUSED":
       return "border-border bg-muted text-muted-foreground";
     default:
-      return "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+      return "border-warning-border bg-warning-soft text-warning-soft-foreground";
   }
 }
 
@@ -191,14 +202,7 @@ export function statusBadgeClass(status: string): string {
 export type HeaderFormat = "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | "LOCATION";
 
 export type ButtonKind =
-  | "QUICK_REPLY"
-  | "URL"
-  | "PHONE_NUMBER"
-  | "COPY_CODE"
-  | "FLOW"
-  | "CATALOG"
-  | "MPM"
-  | "OTP";
+  "QUICK_REPLY" | "URL" | "PHONE_NUMBER" | "COPY_CODE" | "FLOW" | "CATALOG" | "MPM" | "OTP";
 
 export const MEDIA_HEADER_FORMATS: HeaderFormat[] = ["IMAGE", "VIDEO", "DOCUMENT"];
 
@@ -223,13 +227,31 @@ export const BUTTON_OPTIONS: Array<{
   /** Buttons that only make sense for a shop with a catalogue connected. */
   commerce?: boolean;
 }> = [
-  { value: "QUICK_REPLY", label: "Quick reply", blurb: "A tappable answer that comes back to your inbox." },
-  { value: "URL", label: "Visit website", blurb: "Opens a link — can be personalised per customer." },
+  {
+    value: "QUICK_REPLY",
+    label: "Quick reply",
+    blurb: "A tappable answer that comes back to your inbox.",
+  },
+  {
+    value: "URL",
+    label: "Visit website",
+    blurb: "Opens a link — can be personalised per customer.",
+  },
   { value: "PHONE_NUMBER", label: "Call us", blurb: "Dials your number." },
   { value: "COPY_CODE", label: "Copy code", blurb: "Copies a coupon code to the clipboard." },
   { value: "FLOW", label: "Open a form", blurb: "Opens a form you built in Meta (a Flow)." },
-  { value: "CATALOG", label: "View catalogue", blurb: "Opens your shop inside the chat.", commerce: true },
-  { value: "MPM", label: "See products", blurb: "Shows a hand-picked set of products.", commerce: true },
+  {
+    value: "CATALOG",
+    label: "View catalogue",
+    blurb: "Opens your shop inside the chat.",
+    commerce: true,
+  },
+  {
+    value: "MPM",
+    label: "See products",
+    blurb: "Shows a hand-picked set of products.",
+    commerce: true,
+  },
 ];
 
 export type DraftButton = {
@@ -341,7 +363,13 @@ export function newButton(type: ButtonKind): DraftButton {
     case "COPY_CODE":
       return { ...base, text: "Copy code", example: "SAVE20" };
     case "FLOW":
-      return { ...base, text: "Open form", flow_id: "", flow_action: "navigate", navigate_screen: "" };
+      return {
+        ...base,
+        text: "Open form",
+        flow_id: "",
+        flow_action: "navigate",
+        navigate_screen: "",
+      };
     case "CATALOG":
       return { ...base, text: "View catalogue" };
     case "MPM":
@@ -425,12 +453,18 @@ export function validateButtons(buttons: DraftButton[], context: "template" | "c
     if (button.type === "URL") {
       const url = (button.url ?? "").trim();
       if (!url) errors.push(`${label} needs a web address.`);
-      else if (!/^https?:\/\//i.test(url)) errors.push(`${label}'s web address must start with https://.`);
+      else if (!/^https?:\/\//i.test(url))
+        errors.push(`${label}'s web address must start with https://.`);
       if (extractVariables(url).length > 0 && !(button.urlExample ?? "").trim()) {
-        errors.push(`${label} has a personalised link, so Meta needs an example of the full address.`);
+        errors.push(
+          `${label} has a personalised link, so Meta needs an example of the full address.`,
+        );
       }
     }
-    if (button.type === "PHONE_NUMBER" && !/^\+?[0-9]{6,20}$/.test((button.phone_number ?? "").trim())) {
+    if (
+      button.type === "PHONE_NUMBER" &&
+      !/^\+?[0-9]{6,20}$/.test((button.phone_number ?? "").trim())
+    ) {
       errors.push(`${label} needs a phone number with the country code, like +919876543210.`);
     }
     if (button.type === "COPY_CODE" && !(button.example ?? "").trim()) {
@@ -472,7 +506,9 @@ export function validateDraft(draft: TemplateDraft): string[] {
     errors.push("Number your variables in order, starting at {{1}}.");
   }
   if (startsOrEndsWithVariable(draft.body)) {
-    errors.push("Meta won't accept a message that starts or ends with a variable — add a word before or after it.");
+    errors.push(
+      "Meta won't accept a message that starts or ends with a variable — add a word before or after it.",
+    );
   }
   if (bodyVars.some((v) => !draft.bodyExamples[v]?.trim())) {
     errors.push("Meta requires an example value for every variable in the body.");
@@ -524,7 +560,9 @@ export function validateDraft(draft: TemplateDraft): string[] {
         errors.push(`${label}: number its variables in order, starting at {{1}}.`);
       }
       if (startsOrEndsWithVariable(card.body)) {
-        errors.push(`${label}: Meta won't accept text that starts or ends with a variable — add a word before or after it.`);
+        errors.push(
+          `${label}: Meta won't accept text that starts or ends with a variable — add a word before or after it.`,
+        );
       }
       if (vars.some((v) => !card.bodyExamples[v]?.trim())) {
         errors.push(`${label} needs an example value for every variable.`);
@@ -534,7 +572,9 @@ export function validateDraft(draft: TemplateDraft): string[] {
 
       if (first && i > 0) {
         if (card.format !== first.format) {
-          errors.push(`${label} must use the same media type as card 1 (${first.format.toLowerCase()}).`);
+          errors.push(
+            `${label} must use the same media type as card 1 (${first.format.toLowerCase()}).`,
+          );
         }
         const shape = (c: DraftCard) => c.buttons.map((b) => b.type).join(",");
         if (shape(card) !== shape(first)) {
@@ -742,10 +782,11 @@ export function preserveMediaUrls(
         cards: (component.cards ?? []).map((card, index) => {
           const url = previousCardUrls[index];
           if (!url) return card;
-          const parts = ((card["components"] as TemplateComponent[] | undefined) ?? []).map((part) =>
-            String(part.type).toUpperCase() === "HEADER"
-              ? { ...part, example: { ...(part.example ?? {}), aidwar_media_url: url } }
-              : part,
+          const parts = ((card["components"] as TemplateComponent[] | undefined) ?? []).map(
+            (part) =>
+              String(part.type).toUpperCase() === "HEADER"
+                ? { ...part, example: { ...(part.example ?? {}), aidwar_media_url: url } }
+                : part,
           );
           return { ...card, components: parts };
         }),
@@ -774,10 +815,11 @@ export function annotateStoredComponents(
         cards: (component.cards ?? []).map((card, index) => {
           const url = draft.cards[index]?.mediaUrl;
           if (!url) return card;
-          const parts = ((card["components"] as TemplateComponent[] | undefined) ?? []).map((part) =>
-            String(part.type).toUpperCase() === "HEADER"
-              ? { ...part, example: { ...(part.example ?? {}), aidwar_media_url: url } }
-              : part,
+          const parts = ((card["components"] as TemplateComponent[] | undefined) ?? []).map(
+            (part) =>
+              String(part.type).toUpperCase() === "HEADER"
+                ? { ...part, example: { ...(part.example ?? {}), aidwar_media_url: url } }
+                : part,
           );
           return { ...card, components: parts };
         }),
@@ -824,9 +866,7 @@ export function templateButtons(
   return componentOf(components, "BUTTONS")?.buttons ?? [];
 }
 
-export function templateCards(
-  components: TemplateComponent[] | null | undefined,
-): ReadableCard[] {
+export function templateCards(components: TemplateComponent[] | null | undefined): ReadableCard[] {
   const carousel = componentOf(components, "CAROUSEL");
   if (!carousel) return [];
   return (carousel.cards ?? []).map((card) => {
@@ -836,8 +876,7 @@ export function templateCards(
     const buttons = parts.find((p) => String(p.type).toUpperCase() === "BUTTONS");
     return {
       format: (String(header?.format ?? "IMAGE").toUpperCase() === "VIDEO" ? "VIDEO" : "IMAGE") as
-        | "IMAGE"
-        | "VIDEO",
+        "IMAGE" | "VIDEO",
       mediaUrl: (header?.example?.["aidwar_media_url"] as string | undefined) ?? null,
       body: body?.text ?? "",
       buttons: buttons?.buttons ?? [],
@@ -953,8 +992,7 @@ export function templateVariableSpec(
   const header = list.find((c) => String(c.type).toUpperCase() === "HEADER");
   const headerFormat = String(header?.format ?? "TEXT").toUpperCase();
 
-  const headerVars =
-    header && headerFormat === "TEXT" ? extractVariables(header.text ?? "") : [];
+  const headerVars = header && headerFormat === "TEXT" ? extractVariables(header.text ?? "") : [];
 
   const headerMedia =
     header && headerFormat !== "TEXT"
@@ -1031,17 +1069,14 @@ export type TemplatePayloadInput = {
 };
 
 export type TemplatePayloadResult =
-  | { components: Array<Record<string, unknown>>; error: null }
-  | { components: null; error: string };
+  { components: Array<Record<string, unknown>>; error: null } | { components: null; error: string };
 
 /**
  * Builds the Graph `template.components` payload and refuses to send when a
  * declared parameter has no value — naming the component and index instead of
  * letting Meta answer with #131008.
  */
-export function buildTemplatePayloadComponents(
-  input: TemplatePayloadInput,
-): TemplatePayloadResult {
+export function buildTemplatePayloadComponents(input: TemplatePayloadInput): TemplatePayloadResult {
   const components: Array<Record<string, unknown>> = [];
   const spec = input.spec;
 
@@ -1256,7 +1291,8 @@ function resolveMedia(
   supplied: MediaValue | undefined,
   storedUrl: string | null,
 ): Record<string, string> | null {
-  if (supplied?.id) return { id: supplied.id, ...(supplied.filename ? { filename: supplied.filename } : {}) };
+  if (supplied?.id)
+    return { id: supplied.id, ...(supplied.filename ? { filename: supplied.filename } : {}) };
   if (supplied?.link) {
     return { link: supplied.link, ...(supplied.filename ? { filename: supplied.filename } : {}) };
   }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   EXITED_KEY,
   journeyApi,
@@ -43,23 +44,31 @@ export function JourneyResume({
   }, [organizationId, isOwner, navigate]);
 
   if (!step) return null;
+  // Batch 41: restyled on the design system; what it reads and where it goes are Batch 40's.
+  const done = stepIndex(step);
   return (
-    <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-sm font-semibold">
+    <div className="mb-6 flex flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <div className="min-w-0 flex-1">
+        <p className="type-heading text-foreground">
           Step {stepIndex(step) + 1} of {JOURNEY_STEPS.length}: {STEP_LABELS[step]}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
           Your setup is saved. Pick up exactly where you left off.
         </p>
+        <div className="mt-3 flex max-w-xs gap-1" aria-hidden="true">
+          {JOURNEY_STEPS.map((s, i) => (
+            <span
+              key={s}
+              className={`h-1 flex-1 rounded-full ${i < done ? "bg-primary" : i === done ? "bg-primary/40" : "bg-muted"}`}
+            />
+          ))}
+        </div>
       </div>
-      <Link
-        to="/app/start"
-        search={{ step }}
-        className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground"
-      >
-        Continue setup <ArrowRight className="h-4 w-4" aria-hidden="true" />
-      </Link>
+      <Button asChild size="lg" className="shrink-0">
+        <Link to="/app/start" search={{ step }}>
+          Continue setup <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
+      </Button>
     </div>
   );
 }

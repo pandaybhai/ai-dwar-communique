@@ -155,7 +155,7 @@ export function CampaignTestSend({
       {answer?.results?.length ? (
         <ul className="space-y-0.5 text-xs">
           {answer.results.map((r) => (
-            <li key={r.phone} className={r.sent ? "text-emerald-600" : "text-destructive"}>
+            <li key={r.phone} className={r.sent ? "text-success" : "text-destructive"}>
               {r.phone}: {r.sent ? "sent" : (r.error ?? "not sent")}
             </li>
           ))}

@@ -97,24 +97,25 @@ export const CAMPAIGN_STATUS_ORDER: CampaignStatus[] = [
   "failed",
 ];
 
+/** Batch 41: the design system's status tokens (light and dark). */
 export const CAMPAIGN_STATUS_CLASSES: Record<CampaignStatus, string> = {
   draft: "border-border bg-muted text-muted-foreground",
-  scheduled: "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-400",
-  awaiting_approval: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  sending: "border-primary/25 bg-primary/10 text-primary",
-  paused: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  completed: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  scheduled: "border-info-border bg-info-soft text-info-soft-foreground",
+  awaiting_approval: "border-warning-border bg-warning-soft text-warning-soft-foreground",
+  sending: "border-success-border bg-success-soft text-success-soft-foreground",
+  paused: "border-warning-border bg-warning-soft text-warning-soft-foreground",
+  completed: "border-success-border bg-success-soft text-success-soft-foreground",
   cancelled: "border-border bg-muted text-muted-foreground",
-  failed: "border-destructive/25 bg-destructive/10 text-destructive",
+  failed: "border-danger-border bg-danger-soft text-danger-soft-foreground",
 };
 
 export const RECIPIENT_STATUS_CLASSES: Record<RecipientStatus, string> = {
   queued: "border-border bg-muted text-muted-foreground",
-  sending: "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-400",
-  sent: "border-primary/25 bg-primary/10 text-primary",
-  delivered: "border-primary/25 bg-primary/10 text-primary",
-  read: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  failed: "border-destructive/25 bg-destructive/10 text-destructive",
+  sending: "border-info-border bg-info-soft text-info-soft-foreground",
+  sent: "border-border bg-subtle text-foreground",
+  delivered: "border-info-border bg-info-soft text-info-soft-foreground",
+  read: "border-success-border bg-success-soft text-success-soft-foreground",
+  failed: "border-danger-border bg-danger-soft text-danger-soft-foreground",
   skipped: "border-border bg-muted text-muted-foreground",
 };
 
