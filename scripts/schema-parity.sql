@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 92, column 1105, view 2, function 114, index 165, trigger 70, cron_job 14.
+-- Expected objects: table 92, column 1105, view 2, function 114, index 167, trigger 70, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -1413,6 +1413,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'flow_runs_contact', NULL, NULL, 'on public.flow_runs', '20261001_flows_v2_engine.sql'),
     ('index', 'public', 'flow_runs_flow_started', NULL, NULL, 'on public.flow_runs', '20261012_flow_runs_responses_index.sql'),
     ('index', 'public', 'flow_runs_one_active', NULL, NULL, 'unique on public.flow_runs', '20261001_flows_v2_engine.sql'),
+    ('index', 'public', 'flow_runs_org_started_idx', NULL, NULL, 'on public.flow_runs', '20261190_batch45_home.sql'),
     ('index', 'public', 'flow_runs_wake', NULL, NULL, 'on public.flow_runs', '20261001_flows_v2_engine.sql'),
     ('index', 'public', 'flow_trigger_fires_org_flow', NULL, NULL, 'on public.flow_trigger_fires', '20261006_flows_v2_live_fixes.sql'),
     ('index', 'public', 'flow_trigger_fires_trigger_contact', NULL, NULL, 'on public.flow_trigger_fires', '20261006_flows_v2_live_fixes.sql'),
@@ -1441,6 +1442,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'message_templates_waba_idx', NULL, NULL, 'on public.message_templates', '20260818_multi_number.sql'),
     ('index', 'public', 'messages_campaign_idx', NULL, NULL, 'on public.messages', '20260828_revenue_attribution.sql'),
     ('index', 'public', 'messages_chat_media_created_idx', NULL, NULL, 'on public.messages', '20261110_batch32_media.sql'),
+    ('index', 'public', 'messages_conv_inbound_created_idx', NULL, NULL, 'on public.messages', '20261190_batch45_home.sql'),
     ('index', 'public', 'messages_flow_idx', NULL, NULL, 'on public.messages', '20260828_revenue_attribution.sql'),
     ('index', 'public', 'messages_inbound_meta_media_idx', NULL, NULL, 'on public.messages', '20261110_batch32_media.sql'),
     ('index', 'public', 'messages_org_conv_created_idx', NULL, NULL, 'on public.messages', '20260813_phase2_whatsapp_data_plane.sql'),
