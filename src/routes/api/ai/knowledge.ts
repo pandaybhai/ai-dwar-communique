@@ -635,12 +635,17 @@ export const Route = createFileRoute("/api/ai/knowledge")({
               .eq("id", pending.id)
               .eq("organization_id", auth.organizationId);
 
+            // Batch 51: an Approve / Decline from a "Needs you" item is the same
+            // answer (the owner's own words); the log says which they chose.
+            const decision = String(payload["decision"] ?? "");
             await logServerActivity(
               auth.supabase,
               auth.organizationId,
               auth.userId,
               "ai_answer_corrected",
-              { from: "unanswered" },
+              decision === "approve" || decision === "decline"
+                ? { from: "needs_you", decision, conversation_id: pending.conversation_id }
+                : { from: "unanswered" },
             );
 
             return Response.json({ ok: true, delivered });

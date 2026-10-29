@@ -24,6 +24,7 @@ import { ReplyingView } from "./replying-view";
 import { DraftsView } from "./drafts-view";
 import { OffView } from "./off-view";
 import { useNewHome, type HomeAccess } from "./use-new-home";
+import { canDecide } from "@/components/inbox/v2/owner-decision";
 
 /**
  * Batch 45: Home in the new design (docs/design/preview.html #home), shown
@@ -109,12 +110,16 @@ export function NewHome() {
           data={data}
           headline={replyingHeadline(data.active ?? 0)}
           stats={todayStats(data, "replying")}
+          organizationId={organizationId}
+          canDecide={canDecide(can)}
+          onDecided={() => void reload()}
         />
       ) : mode === "draft" ? (
         <DraftsView
           data={data}
           organizationId={organizationId!}
           canReply={can("inbox.reply")}
+          canDecide={canDecide(can)}
           stats={todayStats(data, "draft")}
           headlineFor={draftsHeadline}
           onSent={() => void reload()}
