@@ -14,6 +14,7 @@ export function WhatsAppBubble({
   sender,
   time,
   ticks,
+  meta,
   children,
   className,
 }: {
@@ -21,6 +22,8 @@ export function WhatsAppBubble({
   sender?: string;
   time?: string;
   ticks?: BubbleTicks;
+  /** Batch 46: more on the time line, before the time (a "Sent via API" tag, a sending clock). */
+  meta?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
@@ -49,8 +52,9 @@ export function WhatsAppBubble({
         <span className="block text-[0.78rem] font-bold text-aiden-deep">{sender}</span>
       ) : null}
       {children}
-      {time || ticks ? (
+      {time || ticks || meta ? (
         <span className="mt-0.5 flex items-center justify-end gap-1 text-[0.72rem] text-muted-foreground">
+          {meta}
           {time}
           {ticks ? <Ticks ticks={ticks} /> : null}
         </span>

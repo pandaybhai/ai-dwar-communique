@@ -3,6 +3,8 @@ import { Lock } from "lucide-react";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { InboxView } from "@/components/inbox/inbox-view";
+import { NewInboxView } from "@/components/inbox/v2/new-inbox-view";
+import { useNewDesign } from "@/lib/new-design";
 import { InboxTour } from "@/components/onboarding/inbox-tour";
 
 export const Route = createFileRoute("/app/inbox")({
@@ -25,6 +27,7 @@ export const Route = createFileRoute("/app/inbox")({
 
 function InboxPage() {
   const { enabled, loading } = useFeatureFlag("inbox");
+  const newDesign = useNewDesign();
 
   if (loading) {
     return (
@@ -52,10 +55,11 @@ function InboxPage() {
 
   // Batch 39: the Inbox fills the work area (the shell gives it the full
   // height); its title sits on top of the conversation list. Batch 40: the
-  // first-day tips float above it, out of the layout.
+  // first-day tips float above it, out of the layout. Batch 46: with the
+  // new_design flag on, the new Inbox (docs/design/preview.html #inbox).
   return (
     <>
-      <InboxView />
+      {newDesign ? <NewInboxView /> : <InboxView />}
       <InboxTour />
     </>
   );

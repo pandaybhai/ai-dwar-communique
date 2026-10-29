@@ -62,7 +62,7 @@ function readDetailsOpen(): boolean {
 type TemplateRow = { name: string; components: Array<Record<string, unknown>> | null };
 
 /** name → the template's body text and sample values (first row per name wins). */
-function templateBodies(rows: TemplateRow[]): Map<string, { text: string; samples: Record<string, string> }> {
+export function templateBodies(rows: TemplateRow[]): Map<string, { text: string; samples: Record<string, string> }> {
   const bodies = new Map<string, { text: string; samples: Record<string, string> }>();
   for (const t of rows) {
     const body = templateBodyOf(t.components);
@@ -77,7 +77,7 @@ function templateBodies(rows: TemplateRow[]): Map<string, { text: string; sample
  * those were stored, the template's sample values or "...". Display only; a
  * failed read leaves the thread as it was.
  */
-async function withTemplateText(orgId: string | null | undefined, messages: MessageRow[]): Promise<MessageRow[]> {
+export async function withTemplateText(orgId: string | null | undefined, messages: MessageRow[]): Promise<MessageRow[]> {
   const names = Array.from(
     new Set(messages.filter((m) => m.type === "template" && !m.body?.trim() && m.template_name).map((m) => m.template_name!)),
   );
