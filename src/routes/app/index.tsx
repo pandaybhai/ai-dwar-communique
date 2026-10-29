@@ -53,6 +53,8 @@ import {
 } from "@/lib/analytics";
 import type { CampaignRow } from "@/lib/campaigns";
 import type { HomeSummary } from "@/lib/home.server";
+import { useNewDesign } from "@/lib/new-design";
+import { NewHome } from "@/components/home-v2/new-home";
 
 const DESCRIPTION = "Today at a glance: conversations, what Aiden answered, who is waiting on you.";
 
@@ -67,8 +69,16 @@ export const Route = createFileRoute("/app/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: AppHome,
+  component: HomeRoute,
 });
+
+/**
+ * Batch 45: the new design's Home (src/components/home-v2) when the
+ * workspace has new_design on; otherwise the Batch 41 Home below, unchanged.
+ */
+function HomeRoute() {
+  return useNewDesign() ? <NewHome /> : <AppHome />;
+}
 
 const SOURCE_LABEL: Record<string, string> = {
   website: "Website",
