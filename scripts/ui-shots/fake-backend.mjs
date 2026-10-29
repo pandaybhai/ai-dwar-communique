@@ -8,6 +8,8 @@
  * and as many conversations as a scenario asks for.
  */
 
+import * as b42 from "./fake-b42.mjs";
+
 export const BACKEND = "http://fake-backend.test";
 export const STORAGE_KEY = "sb-fake-backend-auth-token";
 
@@ -22,7 +24,7 @@ const PERMISSIONS = [
   "ai.configure", "ai.use", "analytics.view", "automations.manage", "billing.pay", "billing.request",
   "billing.view", "campaigns.create", "campaigns.send", "campaigns.view", "cards.manage", "cards.view",
   "catalog.import", "catalog.manage", "catalog.view", "contacts.delete", "contacts.edit", "contacts.export",
-  "contacts.import", "contacts.view", "flows.manage", "flows.view", "inbox.reply", "inbox.view",
+  "contacts.import", "contacts.view", "flows.manage", "flows.view", "flows_v2.edit", "inbox.reply", "inbox.view",
   "inbox.assign", "inbox.close", "integrations.manage", "integrations.view", "public_api.manage",
   "revenue.view", "segments.manage", "settings.manage", "settings.view", "settings.whatsapp", "team.manage",
   "templates.manage",
@@ -119,6 +121,7 @@ export function makeConversations(n) {
       status: s?.status ?? (i % 5 === 4 ? "closed" : "open"),
       assigned_to: s ? s.assigned : [null, ME, NEHA, ARJUN][i % 4],
       whatsapp_account_id: ACCOUNT,
+      contact_id: `00000000-0000-4000-8000-${String(5000 + i).padStart(12, "0")}`,
       last_message_at: ago(at),
       last_customer_message_at: ago(i === 3 ? 3 * DAY : at),
       unread_count: s ? s.unread : i % 6 === 0 ? 1 : 0,
@@ -360,7 +363,7 @@ function parse(url) {
   for (const [k, v] of u.searchParams) {
     if (["select", "order", "limit", "offset", "or", "and"].includes(k)) continue;
     if (k.includes(".")) continue; // filters on embedded tables
-    const m = /^(eq|neq|in|is|ilike|gte|lte|gt|lt)\.(.*)$/.exec(v);
+    const m = /^(eq|neq|in|is|ilike|like|gte|lte|gt|lt)\.(.*)$/.exec(v);
     if (m) filters[k] = { op: m[1], value: m[2] };
   }
   return { table, filters, params: u.searchParams };
@@ -376,6 +379,7 @@ function applyFilters(rows, filters) {
       if (f.op === "in") return f.value.replace(/[()"]/g, "").split(",").includes(String(v));
       if (f.op === "is") return f.value === "null" ? v === null : String(v) === f.value;
       if (f.op === "gt") return Number(v) > Number(f.value);
+      if (f.op === "like") return String(v).startsWith(f.value.replace(/[%*].*$/, ""));
       return true;
     }),
   );
@@ -388,6 +392,8 @@ function applyFilters(rows, filters) {
 export function createBackend(options = {}) {
   const conversations = makeConversations(options.conversations ?? 40);
   const campaigns = options.campaigns === 0 ? [] : makeCampaigns();
+  // Batch 42: contacts are the Inbox's own customers (0 = the empty list).
+  const contacts = options.contacts === 0 ? [] : b42.makeContacts(conversations);
   const templates = options.templates === 0 ? [] : makeTemplates();
   const threads = new Map();
   const threadOf = (id) => {
@@ -439,15 +445,31 @@ export function createBackend(options = {}) {
     ],
     pending_owner_replies: () => [],
     automations: () => [],
-    contact_tags: () => [
-      { tag_id: "t1", tags: { id: "t1", name: "VIP" } },
-      { tag_id: "t2", tags: { id: "t2", name: "Wedding season" } },
+    contact_tags: (q) =>
+      q.filters.contact_id || q.params.get("select")?.includes("contact_id")
+        ? b42.makeContactTags(contacts)
+        : [
+            { tag_id: "t1", tags: { id: "t1", name: "VIP" } },
+            { tag_id: "t2", tags: { id: "t2", name: "Wedding season" } },
+          ],
+    tags: () => (options.contacts === 0 ? [] : b42.TAGS),
+    contacts: (q) => {
+      if (q.params.get("select") === "attributes") return contacts.slice(0, 12);
+      if (q.filters.id) return contacts;
+      return contacts.map((c) => ({ ...c, conversations: [{ id: conversations.find((v) => v.contact_id === c.id)?.id, last_message_at: conversations.find((v) => v.contact_id === c.id)?.last_message_at }] }));
+    },
+    flows: () => b42.makeFlows(),
+    flow_steps: () => b42.makeFlowSteps(),
+    scheduled_sends: () => b42.makeScheduledSends(),
+    organization_send_settings: () => [
+      { quiet_hours_enabled: true, quiet_hours_start: 21, quiet_hours_end: 9, quiet_hours_exempt_transactional: true, marketing_cap_per_day: 1, marketing_cap_per_week: 3 },
     ],
-    tags: () => [],
-    contacts: () =>
-      conversations.slice(0, 6).map((c) => ({ ...c.contact, conversations: [{ id: c.id, last_message_at: c.last_message_at }] })),
-    flow_triggers: () => [],
-    flow_runs: () => [],
+    flow_versions: () => b42.makeFlowVersions(),
+    flow_triggers: () => b42.makeFlowTriggers(),
+    flow_runs: () => b42.makeFlowRuns(),
+    orders: (q) => (q.filters.contact_id ? b42.makeOrders(q.filters.contact_id.value) : []),
+    ai_agents: () => [{ mode: "replying", is_default: true }],
+    products: () => [],
     wa_forms: () => [],
   };
 
@@ -471,7 +493,13 @@ export function createBackend(options = {}) {
     if (limit && method === "GET") rows = rows.slice(0, limit);
     // Campaign recipients: 20 rows drawn, but counted like a real 4,210-recipient send.
     const total =
-      q.table === "campaign_recipients" ? (method === "HEAD" ? 2580 : 4210) : rows.length;
+      q.table === "campaign_recipients"
+        ? method === "HEAD" ? 2580 : 4210
+        : q.table === "flow_runs" && q.filters.flow_id
+          ? (b42.flowRunTotal(q.filters.flow_id.value) ?? rows.length)
+          : q.table === "contacts" && rows.length >= 25 && !q.filters.opt_in_status
+            ? 1284
+            : rows.length;
     const headers = {
       "content-type": "application/json",
       "content-range": `0-${Math.max(0, rows.length - 1)}/${total}`,
@@ -538,6 +566,7 @@ export function createBackend(options = {}) {
         }));
       return reply(rows.slice(Number(args.p_offset ?? 0), Number(args.p_offset ?? 0) + Number(args.p_limit ?? 50)));
     }
+    if (fn === "contacts_source_breakdown") return reply(options.contacts === 0 ? [] : b42.SOURCE_BREAKDOWN);
     if (fn === "analytics_campaign_failures") {
       return reply([
         { reason: "131026: Message undeliverable — the number isn't on WhatsApp.", recipients: 19 },
@@ -580,7 +609,35 @@ export function createBackend(options = {}) {
     if (url.pathname.startsWith("/api/whatsapp/chat-media/")) {
       return route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%fake\n" });
     }
-    if (url.pathname === "/api/flows/triggers") return json({ runs: [] });
+    let action = "";
+    let body = {};
+    try {
+      body = JSON.parse(request.postData() || "{}");
+      action = String(body.action ?? "");
+    } catch {
+      action = "";
+    }
+    if (url.pathname === "/api/flows/triggers") {
+      if (action === "node_stats") return json({ ok: true, stats: b42.nodeStats() });
+      if (action === "contact_runs") return json({ ok: true, ...b42.contactRuns() });
+      if (action === "list")
+        return json({ ok: true, triggers: b42.makeFlowTriggers().filter((t) => t.flow_id === body.flow_id), fires: {}, conflicts: [] });
+      return json({ runs: [] });
+    }
+    if (url.pathname === "/api/flows/v2") {
+      if (action === "editor_context")
+        return json({ numbers: [{ id: ACCOUNT, label: "+91 98200 00000", onboarding: false }], whatsapp_account_id: null, members: [{ id: ME, name: "Riya Kapoor" }, { id: NEHA, name: "Neha Joshi" }], whatsapp_shop_connected: true });
+      if (action === "delete_check") return json({ active_runs: 12, refusal: null });
+      return json({ ok: true });
+    }
+    if (url.pathname === "/api/flows/responses") return json(b42.makeResponses());
+    if (url.pathname === "/api/ai/employee") return json(b42.employeeApi(action));
+    if (url.pathname === "/api/ai/knowledge") return json(b42.knowledgeApi(action));
+    if (url.pathname === "/api/internal/ai-run") {
+      await new Promise((r) => setTimeout(r, 400));
+      return json(b42.playgroundRun(String(body.question ?? "")));
+    }
+    if (url.pathname === "/api/contacts/opt-in" && action === "count_unknown") return json({ count: 214 });
     if (url.pathname === "/api/home/summary") {
       return json({
         today: { conversations: 48, ai_answers: 41, escalations: 3 },

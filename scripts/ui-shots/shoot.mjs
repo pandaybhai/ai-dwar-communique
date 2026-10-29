@@ -3,7 +3,7 @@
  *
  *   VITE_AIDWAR_SUPABASE_URL=http://fake-backend.test VITE_AIDWAR_SUPABASE_ANON_KEY=fake \
  *     npx vite dev --port 5199 --host 127.0.0.1
- *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41]
+ *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b42]
  *
  * Uses the Chromium + Playwright installed on the machine (not a project
  * dependency). The dev server must point the app at the fake backend host:
@@ -115,7 +115,95 @@ const SCENARIOS_B41 = {
   },
 };
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41 };
+const firstChatFlow = "00000000-0000-4000-8000-000000006100";
+
+/** Batch 42: Flows, Contacts, AI employee. */
+const SCENARIOS_B42 = {
+  flows: { path: "/app/flows", conversations: 40, wait: "text=Left items in cart", fullPage: true },
+  "flows-chat": {
+    path: "/app/flows",
+    conversations: 40,
+    wait: "text=Left items in cart",
+    act: async (page) => {
+      await page.getByRole("tab", { name: /chat flows/i }).click();
+      await page.waitForTimeout(1200);
+    },
+  },
+  "flows-deleted": {
+    path: "/app/flows",
+    conversations: 40,
+    wait: "text=Left items in cart",
+    act: async (page) => {
+      await page.getByRole("tab", { name: /chat flows/i }).click();
+      await page.waitForTimeout(800);
+      await page.getByRole("button", { name: /deleted flows/i }).click();
+      await page.waitForTimeout(600);
+    },
+  },
+  "flow-builder": { path: `/app/flows/v2/${firstChatFlow}`, conversations: 40, wait: ".react-flow__node" },
+  "flow-builder-node": {
+    path: `/app/flows/v2/${firstChatFlow}`,
+    conversations: 40,
+    wait: ".react-flow__node",
+    act: async (page) => {
+      await page.locator(".react-flow__node").nth(1).click();
+      await page.waitForTimeout(700);
+    },
+  },
+  "flow-runs": { path: `/app/flows/v2/${firstChatFlow}?view=responses`, conversations: 40, wait: "text=Asha Iyer" },
+  contacts: { path: "/app/contacts", conversations: 40, wait: "text=Vikram Mehta" },
+  "contacts-empty": { path: "/app/contacts", conversations: 40, contacts: 0, wait: "h1" },
+  "contacts-selected": {
+    path: "/app/contacts",
+    conversations: 40,
+    wait: "text=Vikram Mehta",
+    act: async (page) => {
+      const boxes = page.getByRole("checkbox", { name: /^select (?!all)/i });
+      for (const n of [0, 1, 2]) await boxes.nth(n).click();
+      await page.waitForTimeout(400);
+    },
+  },
+  "contact-drawer": {
+    path: "/app/contacts",
+    conversations: 40,
+    wait: "text=Vikram Mehta",
+    act: async (page) => {
+      await page.getByText("Vikram Mehta", { exact: true }).first().click();
+      await page.waitForTimeout(1500);
+    },
+  },
+  "contacts-import": {
+    path: "/app/contacts",
+    conversations: 40,
+    wait: "text=Vikram Mehta",
+    act: async (page) => {
+      await page.getByRole("button", { name: /import/i }).first().click();
+      await page.waitForTimeout(500);
+      await page.locator('input[type="file"]').setInputFiles({
+        name: "diwali-customers.csv",
+        mimeType: "text/csv",
+        buffer: Buffer.from(
+          "Mobile,Full name,Tags,City\n+919876543210,Priya Sharma,\"vip,repeat\",Jaipur\n+919812345678,Rahul Verma,new,Mumbai\n+919898765432,Anjali Patel,vip,Delhi\n",
+        ),
+      });
+      await page.waitForTimeout(800);
+    },
+  },
+  employee: { path: "/app/employee", conversations: 40, wait: "text=Aiden", fullPage: true },
+  "employee-test": {
+    path: "/app/employee",
+    conversations: 40,
+    wait: "text=Aiden",
+    act: async (page) => {
+      const box = page.getByLabel(/question a customer might ask|ask like a customer|a customer's question/i).first();
+      await box.fill("Is the rose-gold ring available in size 12?");
+      await box.press("Enter");
+      await page.waitForTimeout(1500);
+    },
+  },
+};
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b42: SCENARIOS_B42 };
 
 const consoleErrors = [];
 
@@ -126,6 +214,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     templates: scenario.templates,
     lowCredits: scenario.lowCredits,
     journey: scenario.journey,
+    contacts: scenario.contacts,
   });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
@@ -161,7 +250,8 @@ async function shoot(browser, name, scenario, viewportName, theme) {
   page.on("pageerror", (err) => consoleErrors.push(`${name}/${viewportName}/${theme}: ${err.message}`));
   await page.goto(`${BASE}${scenario.path}`, { waitUntil: "networkidle" });
   if (scenario.wait) await page.waitForSelector(scenario.wait, { timeout: 15000 }).catch(() => {});
-  if (scenario.act) await scenario.act(page);
+  // A step the old screen doesn't have (BEFORE shots) is logged, not fatal.
+  if (scenario.act) await scenario.act(page).catch((e) => console.log(`  ${name}: ${e.message.split("\n")[0]}`));
   await page.waitForTimeout(800);
   if (scenario.fullPage) {
     // The app's work area scrolls, not the window: grow the window to fit it.
