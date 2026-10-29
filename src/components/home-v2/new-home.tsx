@@ -19,6 +19,7 @@ import {
 import { Inbox } from "lucide-react";
 import { ModeSwitch, TestFirstDialog, type StatRow } from "./parts";
 import { ReplyingView } from "./replying-view";
+import { DraftsView } from "./drafts-view";
 import { useNewHome, type HomeAccess } from "./use-new-home";
 
 /**
@@ -93,9 +94,18 @@ export function NewHome() {
         <HomeSkeleton />
       ) : mode === "replying" ? (
         <ReplyingView data={data} headline={replyingHeadline(data.active ?? 0)} stats={todayStats(data, "replying")} />
+      ) : mode === "draft" ? (
+        <DraftsView
+          data={data}
+          organizationId={organizationId!}
+          canReply={can("inbox.reply")}
+          stats={todayStats(data, "draft")}
+          headlineFor={draftsHeadline}
+          onSent={() => void reload()}
+        />
       ) : (
-        // Batch 45: the Draft and Off Homes land in the next commits.
-        <p className="m-0 text-muted-foreground">{mode === "draft" ? draftsHeadline(0) : waitingHeadline(0)}</p>
+        // Batch 45: the Off Home lands in the next commit.
+        <p className="m-0 text-muted-foreground">{waitingHeadline(0)}</p>
       )}
 
       <TestFirstDialog
