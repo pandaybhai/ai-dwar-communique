@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 92, column 1105, view 2, function 114, index 167, trigger 70, cron_job 14.
+-- Expected objects: table 92, column 1105, view 2, function 114, index 168, trigger 70, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -1375,6 +1375,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'campaign_offer_events_org_idx', NULL, NULL, 'on public.campaign_offer_events', '20260903_campaign_offer_events.sql'),
     ('index', 'public', 'campaign_offer_events_unique_idx', NULL, NULL, 'unique on public.campaign_offer_events', '20260903_campaign_offer_events.sql'),
     ('index', 'public', 'campaign_recipients_campaign_idx', NULL, NULL, 'on public.campaign_recipients', '20260814_campaigns.sql'),
+    ('index', 'public', 'campaign_recipients_campaign_updated_idx', NULL, NULL, 'on public.campaign_recipients', '20261210_batch47_campaigns.sql'),
     ('index', 'public', 'campaign_recipients_contact_idx', NULL, NULL, 'on public.campaign_recipients', '20260814_campaigns.sql'),
     ('index', 'public', 'campaign_recipients_message_idx', NULL, NULL, 'on public.campaign_recipients', '20260814_campaigns.sql'),
     ('index', 'public', 'campaign_recipients_org_status_idx', NULL, NULL, 'on public.campaign_recipients', '20260816_analytics.sql'),

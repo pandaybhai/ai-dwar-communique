@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Braces, FilePlus2, FileText, Info, Loader2, Plus, Trash2 } from "lucide-react";
 import { useAppCommand } from "@/lib/app-commands";
 import { toast } from "sonner";
@@ -48,6 +48,8 @@ import { Kbd } from "@/components/ui/kbd";
 import { usePageShortcut } from "@/hooks/use-page-shortcut";
 import { useOrg } from "@/lib/org-context";
 import { cn } from "@/lib/utils";
+import { useNewDesign } from "@/lib/new-design";
+import { TemplatePhone } from "@/components/templates-v2/template-phone";
 
 function Section({
   title,
@@ -73,13 +75,21 @@ export function CreateTemplateDialog({
   organizationId,
   whatsappAccountId,
   onCreated,
+  start,
 }: {
   organizationId: string;
   /** Templates are submitted into one number's business account. */
   whatsappAccountId?: string | null;
   onCreated: () => void;
+  /**
+   * Batch 47: a starter picked on the new design's gallery opens the editor
+   * with it (a new `at` each time). Absent in the Batch 41 page.
+   */
+  start?: { kind: "blank" | "invoice"; at: number } | null | undefined;
 }) {
   const [open, setOpen] = useState(false);
+  // Batch 47: the new design's title, phone and chips; the form and submit are the same.
+  const nd = useNewDesign();
   // Batch 39: "New template" in the command palette opens this dialog.
   useAppCommand("new-template", () => setOpen(true));
   // Batch 41: so does N on the Templates page.
@@ -107,6 +117,12 @@ export function CreateTemplateDialog({
   const preview = useMemo(() => draftToPreview(draft), [draft]);
 
   const reset = () => setDraft(emptyDraft());
+
+  useEffect(() => {
+    if (!start) return;
+    setDraft(start.kind === "invoice" ? documentTemplateStarter() : emptyDraft());
+    setOpen(true);
+  }, [start]);
 
   /** Batch 41: put the next {{n}} where the cursor is. */
   const insertVariable = () => {
@@ -158,7 +174,7 @@ export function CreateTemplateDialog({
       <DialogTrigger asChild>
         <Button aria-keyshortcuts="N">
           <Plus className="h-4 w-4" aria-hidden="true" />
-          Create template
+          {nd ? "New template" : "Create template"}
           <Kbd className="ml-1 hidden border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground shadow-none sm:inline-flex">
             N
           </Kbd>
@@ -166,9 +182,11 @@ export function CreateTemplateDialog({
       </DialogTrigger>
       {/* Batch 41: a full-screen split view — the form, and the customer's phone beside it. */}
       <DialogContent className="left-0 top-0 flex h-[100dvh] max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:max-w-none sm:rounded-none">
-        <DialogHeader className="shrink-0 border-b border-border bg-card px-4 py-3 pr-14 text-left sm:px-6">
+        <DialogHeader className="shrink-0 border-b border-border bg-card px-4 py-3 pr-14 text-left sm:px-6 nd:border-line nd:bg-ground nd:py-4">
           <div className="mx-auto w-full max-w-6xl space-y-0.5">
-            <DialogTitle className="text-base">Create a template</DialogTitle>
+            <DialogTitle className="text-base nd:font-display nd:text-xl nd:font-extrabold">
+              {nd ? "New template" : "Create a template"}
+            </DialogTitle>
             <DialogDescription className="text-xs">
               Templates are reviewed by Meta — usually within minutes, sometimes a few hours.
               Marketing templates may only be sent to people who opted in to hear from you.
@@ -418,7 +436,7 @@ export function CreateTemplateDialog({
                               bodyVariables.map((v) => (
                                 <span
                                   key={v}
-                                  className="rounded-md border border-info-border bg-info-soft px-1.5 py-px font-mono text-[0.6875rem] text-info-soft-foreground"
+                                  className="rounded-md border border-info-border bg-info-soft px-1.5 py-px font-mono text-[0.6875rem] text-info-soft-foreground nd:rounded-full nd:border-transparent nd:bg-aiden-soft nd:px-2 nd:text-aiden-deep"
                                 >
                                   {`{{${v}}}`}
                                 </span>
@@ -453,7 +471,7 @@ export function CreateTemplateDialog({
                               className="flex items-center gap-1.5 text-xs"
                             >
                               Example for
-                              <span className="rounded-md border border-info-border bg-info-soft px-1.5 py-px font-mono text-[0.6875rem] text-info-soft-foreground">{`{{${v}}}`}</span>
+                              <span className="rounded-md border border-info-border bg-info-soft px-1.5 py-px font-mono text-[0.6875rem] text-info-soft-foreground nd:rounded-full nd:border-transparent nd:bg-aiden-soft nd:px-2 nd:text-aiden-deep">{`{{${v}}}`}</span>
                             </Label>
                             <Input
                               id={`ex-${v}`}
@@ -644,9 +662,17 @@ export function CreateTemplateDialog({
 
             <aside className="space-y-4 self-start lg:sticky lg:top-0" aria-label="Preview">
               <div>
-                <CustomerPhone business={active?.organization.name ?? "Your business"}>
-                  <TemplatePreview model={preview} />
-                </CustomerPhone>
+                {nd ? (
+                  <TemplatePhone
+                    model={preview}
+                    label="The message on the customer's WhatsApp"
+                    className="mx-auto"
+                  />
+                ) : (
+                  <CustomerPhone business={active?.organization.name ?? "Your business"}>
+                    <TemplatePreview model={preview} />
+                  </CustomerPhone>
+                )}
                 <p className="mt-3 text-center text-xs text-muted-foreground">
                   What your customer sees
                 </p>
@@ -674,7 +700,7 @@ export function CreateTemplateDialog({
           </div>
         </div>
 
-        <DialogFooter className="shrink-0 border-t border-border bg-card px-4 py-3 sm:px-6">
+        <DialogFooter className="shrink-0 border-t border-border bg-card px-4 py-3 sm:px-6 nd:border-line nd:bg-surface">
           <div className="mx-auto flex w-full max-w-6xl flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
             <p className="hidden flex-1 text-xs text-muted-foreground sm:block" aria-live="polite">
               {problems.length > 0
@@ -713,7 +739,7 @@ function StarterCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex items-start gap-3 rounded-xl border border-border bg-card p-3.5 text-left shadow-xs transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-md"
+      className="group flex items-start gap-3 rounded-xl border border-border bg-card p-3.5 text-left shadow-xs transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-md nd:rounded-[18px] nd:border-line nd:p-4"
     >
       <span
         className={cn(
