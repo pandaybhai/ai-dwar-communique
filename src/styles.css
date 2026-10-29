@@ -264,8 +264,16 @@
   --gold-line: #f1ddb3;
   --bubble-in: #eef3f2;
   --bubble-out: #ddf6ea;
+  --muted-ink: #4f6663;
+  --muted-ink-deep: #3f5753;
+  --ground-tint: #f8fbfa;
+  --ground-deep: #e8f0ee;
+  --line-strong: #c5d5d1;
+  --aiden-line: #b9e6d6;
   --shadow-ink: rgb(13 43 42 / 0.16);
   --scrim: rgb(13 43 42 / 0.35);
+  /* Mask alpha (not a colour you see): the beam's border-only mask. */
+  --mask-solid: rgb(0 0 0);
   --av1: #ffe1d6;
   --av1-ink: #8a3210;
   --av2: #dbeafe;
@@ -546,27 +554,27 @@ html[data-app][data-design="new"] {
   --popover: var(--surface);
   --popover-foreground: var(--ink);
   --primary: var(--aiden-deep);
-  --primary-foreground: #ffffff;
+  --primary-foreground: var(--ink-foreground);
   --secondary: var(--bubble-in);
   --secondary-foreground: var(--ink);
   --muted: var(--bubble-in);
-  --muted-foreground: #4f6663;
-  --faint: #4f6663;
-  --subtle: #f8fbfa;
-  --accent: #e8f0ee;
+  --muted-foreground: var(--muted-ink);
+  --faint: var(--muted-ink);
+  --subtle: var(--ground-tint);
+  --accent: var(--ground-deep);
   --accent-foreground: var(--ink);
   --destructive: var(--danger);
   --destructive-foreground: var(--danger-foreground);
   --border: var(--line);
-  --border-strong: #c5d5d1;
+  --border-strong: var(--line-strong);
   --input: var(--line);
   --ring: var(--aiden);
 
   --success: var(--aiden-deep);
-  --success-foreground: #ffffff;
+  --success-foreground: var(--ink-foreground);
   --success-soft: var(--aiden-soft);
   --success-soft-foreground: var(--aiden-deep);
-  --success-border: #b9e6d6;
+  --success-border: var(--aiden-line);
   --warning: var(--gold);
   --warning-foreground: var(--gold-ink);
   --warning-soft: var(--gold-bg);
@@ -582,7 +590,7 @@ html[data-app][data-design="new"] {
   --sidebar: var(--surface);
   --sidebar-foreground: var(--ink);
   --sidebar-primary: var(--ink);
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary-foreground: var(--ink-foreground);
   --sidebar-accent: var(--ground);
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: var(--line);
@@ -593,8 +601,8 @@ html[data-app][data-design="new"] {
   --wa-in: var(--surface);
   --wa-out: var(--bubble-out);
   --wa-text: var(--ink);
-  --wa-meta: #4f6663;
-  --wa-meta-out: #3f5753;
+  --wa-meta: var(--muted-ink);
+  --wa-meta-out: var(--muted-ink-deep);
 
   --elev-2xs: 0 1px 0 var(--shadow-ink);
   --elev-xs: 0 1px 2px var(--shadow-ink);

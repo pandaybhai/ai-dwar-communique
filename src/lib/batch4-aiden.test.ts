@@ -144,6 +144,16 @@ describe("(1) Aiden: set-up read during the burst, checks still after it", () =>
     // the burst began) and once when it ends; the set-up never waits for the end.
     expect(w.ops.filter(burstRead).length).toBeLessThanOrEqual(1);
     await vi.advanceTimersByTimeAsync(6000);
+    // The bookkeeping after the reply (the API webhook check, Batch 37/38)
+    // loads its modules lazily: real time no fake-clock advance covers, after
+    // which each of its queries sets a fake timer. Keep the clock moving until
+    // the webhook is done (vi.waitFor advances fake time on every check).
+    let finished = false;
+    done.then(
+      () => (finished = true),
+      () => (finished = true),
+    );
+    await vi.waitFor(() => expect(finished).toBe(true), { timeout: 4000, interval: 5 });
     await done;
     expect(w.ops.filter(burstRead).length).toBe(2);
   });

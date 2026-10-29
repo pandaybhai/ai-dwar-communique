@@ -14,7 +14,7 @@ type ContactsSearch = { opt_in?: string; tab?: "segments" };
 
 export const Route = createFileRoute("/app/contacts")({
   validateSearch: (search: Record<string, unknown>): ContactsSearch => {
-    const value = typeof search['opt_in'] === "string" ? (search['opt_in'] as string) : undefined;
+    const value = typeof search["opt_in"] === "string" ? (search["opt_in"] as string) : undefined;
     const out: ContactsSearch =
       value && ["unknown", "opted_in", "opted_out"].includes(value) ? { opt_in: value } : {};
     // Batch 44: ?tab=segments opens Segments (the new shell's Customers → Segments).

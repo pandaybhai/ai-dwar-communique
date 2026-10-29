@@ -130,7 +130,7 @@ function Demo({
   className?: string;
 }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" data-demo={title.toLowerCase().replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "")}>
       <h3 className="mb-3 text-sm font-semibold text-muted-foreground">{title}</h3>
       <div className={className}>{children}</div>
     </div>

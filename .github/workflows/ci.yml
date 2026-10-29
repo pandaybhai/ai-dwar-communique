@@ -40,6 +40,9 @@ jobs:
         run: npx tsc --noEmit -p .
       - name: Tests
         run: bun run test
+      # Batch 44: the same suite as a workspace with the new_design flag on.
+      - name: Tests (new_design on)
+        run: bun run test:new-design
       - name: Build
         run: bun run build
       - name: Lint (advisory)

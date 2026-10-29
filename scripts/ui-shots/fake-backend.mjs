@@ -411,7 +411,9 @@ export function createBackend(options = {}) {
     ].concat([{ role: "agent", user_id: NEHA }, { role: "agent", user_id: ARJUN }]),
     profiles: () => profiles,
     feature_flags: () => FLAGS.map((key) => ({ key, default_enabled: true })),
-    organization_feature_overrides: () => [],
+    // Batch 44: --design new switches this workspace's new_design flag on.
+    organization_feature_overrides: () =>
+      options.newDesign ? [{ flag_key: "new_design", enabled: true }] : [],
     whatsapp_accounts: () => [
       {
         id: ACCOUNT, organization_id: ORG, display_phone_number: "+91 98200 00000", verified_name: "Kesar & Co.",

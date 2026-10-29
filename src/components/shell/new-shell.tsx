@@ -139,7 +139,7 @@ function SectionNav({
             {...linkProps(s)}
             aria-current={on ? "page" : undefined}
             className={cn(
-              "inline-flex items-center rounded-full px-3.5 py-2 text-[0.9375rem] font-semibold transition-[background-color,color,box-shadow] duration-200",
+              "inline-flex items-center rounded-full px-3.5 py-2 text-[0.9375rem] font-semibold transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.97]",
               on
                 ? "bg-surface text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground",
@@ -173,7 +173,8 @@ function AccountMenu({ model }: { model: ShellModel }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`Account: ${name}`}
+          // Starts with the initials it shows, so voice control matches what is seen.
+          aria-label={`${personInitials(name)} (${name}), account menu`}
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gold text-[0.8125rem] font-bold text-gold-ink transition-[box-shadow] duration-200 hover:shadow-sm data-[state=open]:shadow-sm"
         >
           {personInitials(name)}
@@ -228,7 +229,12 @@ function AccountMenu({ model }: { model: ShellModel }) {
           disabled={signingOut}
           className="rounded-lg px-2.5 py-2 text-[0.9375rem]"
         >
-          {signingOut ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+          {signingOut ? (
+            <Loader2
+              className="h-4 w-4 animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+          ) : null}
           Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -261,7 +267,7 @@ function TopBar({
           className="hidden items-center gap-2.5 rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-muted-foreground transition-colors duration-200 hover:text-foreground wide:flex"
         >
           Search or jump
-          <Kbd aria-hidden="true">{MOD_KEY}K</Kbd>
+          <Kbd aria-hidden="true">{MOD_KEY === "⌘" ? "⌘K" : `${MOD_KEY} K`}</Kbd>
           <span className="sr-only">({MOD_KEY} K)</span>
         </button>
         <AccountMenu model={model} />
@@ -309,7 +315,7 @@ function BarIcon({ name }: { name: string }) {
 }
 
 const barItem =
-  "relative flex flex-col items-center gap-0.5 rounded-[12px] py-1.5 text-[0.72rem] font-semibold transition-colors duration-200";
+  "relative flex flex-col items-center gap-0.5 rounded-[12px] py-1.5 text-[0.72rem] font-semibold transition-[background-color,color,transform] duration-200 active:scale-[0.96]";
 
 function BottomBar({
   model,

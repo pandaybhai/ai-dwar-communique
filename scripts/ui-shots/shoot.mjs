@@ -3,7 +3,7 @@
  *
  *   VITE_AIDWAR_SUPABASE_URL=http://fake-backend.test VITE_AIDWAR_SUPABASE_ANON_KEY=fake \
  *     npx vite dev --port 5199 --host 127.0.0.1
- *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41]
+ *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b44] [--design classic|new]
  *
  * Uses the Chromium + Playwright installed on the machine (not a project
  * dependency). The dev server must point the app at the fake backend host:
@@ -25,6 +25,8 @@ const BASE = args.base ?? "http://127.0.0.1:5199";
 const OUT = args.out ?? "docs/screenshots/batch39/after";
 const THEMES = (args.themes ?? "light").split(",");
 const ONLY = args.only ? args.only.split(",") : null;
+/** Batch 44: "new" turns the workspace's new_design flag on. */
+const DESIGN = args.design ?? "classic";
 
 const VIEWPORTS = {
   desktop: { width: 1440, height: 900 },
@@ -115,7 +117,47 @@ const SCENARIOS_B41 = {
   },
 };
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41 };
+/** Batch 44: the new shell and every page inside it (run with --design new and --design classic). */
+const openAccount = async (page) => {
+  await page.getByRole("button", { name: /^Account:|account menu$/ }).click();
+  await page.waitForTimeout(500);
+};
+const SCENARIOS_B44 = {
+  shell: { path: "/app", conversations: 40, wait: "h1" },
+  "avatar-menu": { path: "/app", conversations: 40, wait: "h1", act: openAccount },
+  "more-sheet": {
+    path: "/app",
+    conversations: 40,
+    wait: "h1",
+    mobileOnly: true,
+    act: async (page) => {
+      await page.getByRole("button", { name: "More" }).click();
+      await page.waitForTimeout(600);
+    },
+  },
+  palette: SCENARIOS.palette,
+  design: { path: "/app/design", conversations: 40, wait: "h1", fullPage: true },
+  inbox: { path: "/app/inbox", conversations: 40 },
+  "inbox-chat": SCENARIOS["inbox-chat"],
+  campaigns: { path: "/app/campaigns", conversations: 40, wait: "h1" },
+  "campaign-detail": { path: `/app/campaigns/${firstCampaign}`, conversations: 40, wait: "h1" },
+  templates: { path: "/app/templates", conversations: 40, wait: "h1" },
+  cards: { path: "/app/cards", conversations: 40, wait: "h1" },
+  contacts: { path: "/app/contacts", conversations: 40, wait: "h1" },
+  segments: { path: "/app/contacts?tab=segments", conversations: 40, wait: "h1" },
+  receipts: { path: "/app/receipts", conversations: 40, wait: "h1" },
+  employee: { path: "/app/employee", conversations: 40, wait: "h1" },
+  flows: { path: "/app/flows", conversations: 40, wait: "h1" },
+  automations: { path: "/app/automations", conversations: 40, wait: "h1" },
+  catalog: { path: "/app/catalog", conversations: 40, wait: "h1" },
+  collections: { path: "/app/catalog/collections", conversations: 40, wait: "h1" },
+  analytics: { path: "/app/analytics", conversations: 40, wait: "h1" },
+  settings: { path: "/app/settings", conversations: 40, wait: "h1" },
+  team: { path: "/app/settings?tab=team", conversations: 40, wait: "h1" },
+  billing: { path: "/app/billing", conversations: 40, wait: "h1" },
+};
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44 };
 
 const consoleErrors = [];
 
@@ -126,6 +168,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     templates: scenario.templates,
     lowCredits: scenario.lowCredits,
     journey: scenario.journey,
+    newDesign: DESIGN === "new",
   });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
@@ -192,6 +235,7 @@ const browser = await chromium.launch();
 for (const [name, scenario] of Object.entries(SETS[args.set ?? "b39"])) {
   if (ONLY && !ONLY.includes(name)) continue;
   for (const vp of Object.keys(VIEWPORTS)) {
+    if (scenario.mobileOnly && vp !== "mobile") continue;
     for (const theme of THEMES) await shoot(browser, name, scenario, vp, theme);
   }
 }

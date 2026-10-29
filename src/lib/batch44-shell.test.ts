@@ -76,7 +76,13 @@ describe("route safety: the new shell reaches every page the sidebar shows", () 
     const { buildShellModel, reachablePaths } = await import("@/components/shell/sections");
     const items = [
       { to: "/app/inbox", label: "Shared Inbox", icon: HOME_ITEM.icon, flag: null, perm: null },
-      { to: "/app/something-new", label: "New thing", icon: HOME_ITEM.icon, flag: null, perm: null },
+      {
+        to: "/app/something-new",
+        label: "New thing",
+        icon: HOME_ITEM.icon,
+        flag: null,
+        perm: null,
+      },
     ];
     const model = buildShellModel(items, false);
     expect(model.overflow.map((o) => o.to)).toEqual(["/app/something-new"]);
@@ -137,7 +143,8 @@ describe("active section and sub-tab", () => {
   it("follows the address, search params and the longest path", async () => {
     const { navFeatures } = await import("./feature-registry");
     const { HOME_ITEM } = await import("@/components/shell/use-nav");
-    const { activeSection, activeTab, buildShellModel } = await import("@/components/shell/sections");
+    const { activeSection, activeTab, buildShellModel } =
+      await import("@/components/shell/sections");
     const items = navFeatures().map((f) => ({
       to: f.nav_path!,
       label: f.name,
@@ -183,9 +190,13 @@ describe("the new_design flag", () => {
     const sql = readFileSync(new URL(file!, dir), "utf8");
     const code = sql.replace(/--.*$/gm, "");
     expect(code).toMatch(/INSERT INTO public\.feature_flags[\s\S]*'new_design'[\s\S]*false\s*\)/);
-    expect(code).toMatch(/ON CONFLICT \(key\) DO UPDATE SET name = excluded\.name, description = excluded\.description;/);
+    expect(code).toMatch(
+      /ON CONFLICT \(key\) DO UPDATE SET name = excluded\.name, description = excluded\.description;/,
+    );
     // Never switches it on, never touches an override or a workspace.
-    expect(code).not.toMatch(/organization_feature_overrides|default_enabled\s*=\s*true|UPDATE public\.organizations/i);
+    expect(code).not.toMatch(
+      /organization_feature_overrides|default_enabled\s*=\s*true|UPDATE public\.organizations/i,
+    );
     expect(code).not.toMatch(/\bDROP TABLE|\bDELETE FROM|\bTRUNCATE/i);
   });
 
@@ -229,7 +240,9 @@ describe("the new_design flag", () => {
   it("the classic shell is kept, and the gate picks it whenever the flag is off", () => {
     const route = readFileSync(new URL("../routes/app/route.tsx", import.meta.url), "utf8");
     expect(route).toContain("const newDesign = useNewDesign() && Boolean(active);");
-    expect(route).toMatch(/if \(newDesign\) \{[\s\S]*<NewAppShell>[\s\S]*\}\s*return \(\s*<AppShell>/);
+    expect(route).toMatch(
+      /if \(newDesign\) \{[\s\S]*<NewAppShell>[\s\S]*\}\s*return \(\s*<AppShell>/,
+    );
     const classic = readFileSync(new URL("../components/app-shell.tsx", import.meta.url), "utf8");
     expect(classic).toContain("export function AppShell(");
     expect(classic).toContain('aria-label="Sidebar"');
@@ -240,7 +253,9 @@ describe("the new_design flag", () => {
     expect(css).toContain('@custom-variant nd (&:where([data-design="new"] *));');
     expect(css).toContain('html[data-app][data-design="new"] {');
     // The classic app block still sets the Batch 39 primary.
-    expect(css).toMatch(/html\[data-app\] \{\s*--background: var\(--gray-25\);[\s\S]*?--primary: var\(--brand-700\);/);
+    expect(css).toMatch(
+      /html\[data-app\] \{\s*--background: var\(--gray-25\);[\s\S]*?--primary: var\(--brand-700\);/,
+    );
     // Classic buttons are the primary colour, as before.
     expect(css).toMatch(/--btn-primary: var\(--primary\);/);
   });

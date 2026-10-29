@@ -22,7 +22,14 @@ vi.mock("@/components/shell/section-tabs", async (importOriginal) => {
     { key: "/app/cards", to: "/app/cards", label: "Cards" },
   ];
   const state = {
-    section: { key: "campaigns" as const, label: "Campaigns", icon: Megaphone, to: "/app/campaigns", tabs, owns: [] },
+    section: {
+      key: "campaigns" as const,
+      label: "Campaigns",
+      icon: Megaphone,
+      to: "/app/campaigns",
+      tabs,
+      owns: [],
+    },
     activeTab: tabs[0]!,
     counts: {},
   };
@@ -30,6 +37,10 @@ vi.mock("@/components/shell/section-tabs", async (importOriginal) => {
   const Fallback = createContext(state);
   return {
     ...actual,
-    useShellSection: () => useContext(actual.ShellSectionContext) ?? useContext(Fallback),
+    useShellSection: () => {
+      const provided = useContext(actual.ShellSectionContext);
+      const fallback = useContext(Fallback);
+      return provided ?? fallback;
+    },
   };
 });
