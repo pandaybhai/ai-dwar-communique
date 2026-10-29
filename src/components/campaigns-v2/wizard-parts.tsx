@@ -124,7 +124,7 @@ export function NdCostPanel({
       ) : null}
       {estimate && !estimate.can_send ? (
         <p className="m-0 mt-3 text-sm font-semibold text-danger-soft-foreground">
-          You&apos;re short {money(estimate.shortfall, estimate.currency)}. Add credits to send this
+          You’re short {money(estimate.shortfall, estimate.currency)}. Add credits to send this
           campaign.
         </p>
       ) : null}

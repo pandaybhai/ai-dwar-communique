@@ -65,7 +65,7 @@ export function NewTemplates() {
       .select("*")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
-    if (err) setError("We couldn't load your templates. Please refresh.");
+    if (err) setError("We couldn’t load your templates. Please refresh.");
     else setTemplates((data ?? []) as TemplateRow[]);
     setLoading(false);
   }, [orgId]);
@@ -343,7 +343,7 @@ function TemplateTile({
       </div>
       {state === "REJECTED" && t.rejection_reason ? (
         <p className="m-0 rounded-[14px] border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger-soft-foreground">
-          <b>Meta&apos;s reason:</b> {t.rejection_reason}
+          <b>Meta’s reason:</b> {t.rejection_reason}
         </p>
       ) : null}
       {/* A smaller PhoneFrame for the gallery: the same ink frame and dotted wall. */}

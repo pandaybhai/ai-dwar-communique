@@ -132,7 +132,7 @@ export function NewCards({
     });
     setPreviewing(null);
     if (error || !data?.url) {
-      toast.error(error ?? "The card couldn't be drawn just now. Try again in a moment.");
+      toast.error(error ?? "The card couldn’t be drawn just now. Try again in a moment.");
       return;
     }
     setPreviews((p) => ({ ...p, [kind]: data.url }));
@@ -145,7 +145,7 @@ export function NewCards({
     <>
       <PageHeader
         title="Cards"
-        description="Branded picture cards that go with your campaigns, flows and Aiden's answers. Set your logo and colours once; every card wears them."
+        description="Branded picture cards that go with your campaigns, flows and Aiden’s answers. Set your logo and colours once; every card wears them."
       />
 
       {loading ? (
@@ -165,7 +165,7 @@ export function NewCards({
                 The five designs
               </h2>
               <p className="m-0 mt-1 text-muted-foreground">
-                Send any of them from the Inbox, a flow&apos;s Send card step or a campaign. Aiden
+                Send any of them from the Inbox, a flow’s Send card step or a campaign. Aiden
                 can use the product card when it answers with a product.
               </p>
             </div>
@@ -246,7 +246,7 @@ export function NewCards({
                   <Label htmlFor="nd-brand-name">Name on the card</Label>
                   <Input
                     id="nd-brand-name"
-                    placeholder={orgName || "Your shop's name"}
+                    placeholder={orgName || "Your shop’s name"}
                     value={branding.brand_name}
                     disabled={!canManage}
                     onChange={(e) => field("brand_name", e.target.value)}
@@ -293,7 +293,7 @@ export function NewCards({
                   Where cards are used
                 </h2>
                 <p className="m-0 mt-1 text-muted-foreground">
-                  A card goes out only where you add one. If a card can&apos;t be drawn, the plain
+                  A card goes out only where you add one. If a card can’t be drawn, the plain
                   photo or text goes instead, so your message always arrives.
                 </p>
               </div>
@@ -311,7 +311,7 @@ export function NewCards({
                     htmlFor={`nd-switch-${PRODUCT_CARDS_SETTING}`}
                     className="font-semibold text-foreground"
                   >
-                    Product cards in Aiden&apos;s answers and Show products
+                    Product cards in Aiden’s answers and Show products
                   </label>
                   <p className="m-0 mt-1 text-sm text-muted-foreground">
                     On: the first product goes as a branded Product card, the rest as photos. Off:

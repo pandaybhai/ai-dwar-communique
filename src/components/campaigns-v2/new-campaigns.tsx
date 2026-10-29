@@ -275,7 +275,7 @@ export function CampaignsOff() {
       <EmptyState
         icon={Lock}
         title="Campaigns are turned off"
-        description="This feature isn't enabled for your workspace yet. Reach out to your administrator to switch it on."
+        description="This feature isn’t enabled for your workspace yet. Reach out to your administrator to switch it on."
       />
     </>
   );

@@ -534,9 +534,9 @@ function CampaignPhone({
       )}
       <p className="m-0 max-w-[260px] text-center text-sm text-muted-foreground">
         {template === null
-          ? `The template ${campaign.template_name ?? ""} isn't in your library any more.`
+          ? `The template ${campaign.template_name ?? ""} isn’t in your library any more.`
           : usesName
-            ? "{{name}} is each customer's own name."
+            ? "{{name}} is each customer’s own name."
             : "What every customer gets."}
       </p>
     </aside>

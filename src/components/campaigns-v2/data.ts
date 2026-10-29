@@ -45,7 +45,7 @@ export async function loadCampaignList(organizationId: string) {
     .order("created_at", { ascending: false });
   return {
     rows: (data ?? []) as CampaignRow[],
-    error: error ? "We couldn't load your campaigns. Please try again." : null,
+    error: error ? "We couldn’t load your campaigns. Please try again." : null,
   };
 }
 
@@ -81,7 +81,7 @@ export async function loadCampaignResults(q: ResultsQuery) {
   ]);
   return {
     campaign: cErr || !c ? null : (c as CampaignRow),
-    error: cErr || !c ? "We couldn't find this campaign." : null,
+    error: cErr || !c ? "We couldn’t find this campaign." : null,
     recipients: (r ?? []) as CampaignRecipientRow[],
     total: total ?? 0,
   };
