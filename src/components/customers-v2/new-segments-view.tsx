@@ -6,7 +6,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { callApi } from "@/lib/whatsapp-client";
 import { logActivity } from "@/lib/activity";
 import { formatDate, type TagRow } from "@/lib/contacts";
-import { normalizeFilters, type SegmentRow } from "@/lib/segments";
+import { isHandPicked, normalizeFilters, type SegmentRow } from "@/lib/segments";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { SegmentBuilderDialog } from "@/components/segments/segment-builder-dialog";
 import { Button } from "@/components/ui/button";
@@ -177,7 +177,11 @@ export function NewSegmentsView({
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-aiden-soft px-2.5 py-1 text-[0.8125rem] font-semibold text-aiden-deep">
-                  {s.filters.match === "all" ? "All rules" : "Any rule"}
+                  {isHandPicked(s.filters)
+                    ? "Picked by hand"
+                    : s.filters.match === "all"
+                      ? "All rules"
+                      : "Any rule"}
                 </span>
               </div>
 
@@ -198,22 +202,27 @@ export function NewSegmentsView({
               </p>
 
               <div className="-mx-2 mt-auto flex items-center gap-1 border-t border-line pt-3">
-                <button
-                  type="button"
-                  className={action}
-                  onClick={() => {
-                    setEditing(s);
-                    setDuplicateName(undefined);
-                    setBuilderOpen(true);
-                  }}
-                >
-                  <Pencil className="h-4 w-4" aria-hidden="true" />
-                  Edit
-                </button>
-                <button type="button" className={action} onClick={() => openDuplicate(s)}>
-                  <Copy className="h-4 w-4" aria-hidden="true" />
-                  Duplicate
-                </button>
+                {/* Batch 51: a hand-picked list has no rules to edit or copy. */}
+                {isHandPicked(s.filters) ? null : (
+                  <>
+                    <button
+                      type="button"
+                      className={action}
+                      onClick={() => {
+                        setEditing(s);
+                        setDuplicateName(undefined);
+                        setBuilderOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                      Edit
+                    </button>
+                    <button type="button" className={action} onClick={() => openDuplicate(s)}>
+                      <Copy className="h-4 w-4" aria-hidden="true" />
+                      Duplicate
+                    </button>
+                  </>
+                )}
                 {isAdmin ? (
                   <button
                     type="button"

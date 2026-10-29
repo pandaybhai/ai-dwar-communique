@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCheck, Contact as ContactIcon, Download, Search, Tag, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  CheckCheck,
+  Contact as ContactIcon,
+  Download,
+  Megaphone,
+  Search,
+  Tag,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
+import { handPickedSummary, saveHandPicked } from "@/lib/hand-picked";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { logActivity } from "@/lib/activity";
 import { callApi } from "@/lib/whatsapp-client";
@@ -123,6 +134,11 @@ export function NewContactsView({
   const canExport = can("contacts.export");
   const canDeleteContacts = can("contacts.delete");
   const canSeeOrders = can("integrations.view");
+  // Batch 51: "Send campaign" saves the ticked customers as a segment, then opens the wizard.
+  const campaignsFlag = useFeatureFlag("campaigns");
+  const canSendCampaign =
+    campaignsFlag.enabled && can("segments.manage") && can("campaigns.create");
+  const navigate = useNavigate();
   const isPhone = useMedia("(max-width: 700px)");
 
   const [search, setSearch] = useState("");
@@ -421,6 +437,36 @@ export function NewContactsView({
     toast.success(bulkOptInSummary(res.data));
     clearSelection();
     void load();
+  }
+
+  /**
+   * Batch 51: the ticked customers become a hand-picked segment (opted-out
+   * ones left out), and the campaign wizard opens with it chosen. The wizard
+   * does everything else: who is reachable, the cost and the wallet check.
+   */
+  async function sendCampaign() {
+    setBusy(true);
+    const { data: who } = await aidwar.auth.getUser();
+    const res = await saveHandPicked(aidwar, {
+      organizationId,
+      userId: who.user?.id ?? null,
+      contactIds: selectedIds,
+      segmentId: crypto.randomUUID(),
+      now: new Date(),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    void logActivity("segment_created", organizationId, {
+      hand_picked: true,
+      contacts: res.saved,
+      opted_out_left_out: res.optedOut,
+    });
+    toast.success(handPickedSummary(res.saved, res.optedOut));
+    clearSelection();
+    void navigate({ to: "/app/campaigns", search: { segment: res.segmentId } });
   }
 
   /** The drawer's own tag write (contact_tags upsert), for each ticked customer without the tag. */
@@ -849,6 +895,18 @@ export function NewContactsView({
             <CheckCheck className="h-4 w-4" aria-hidden="true" />
             {busy ? "Updating…" : "Mark as opted in"}
           </Button>
+          {canSendCampaign ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => void sendCampaign()}
+              className="order-2 phone:flex-1 border-muted-foreground bg-transparent text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground"
+            >
+              <Megaphone className="h-4 w-4" aria-hidden="true" />
+              Send campaign
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"

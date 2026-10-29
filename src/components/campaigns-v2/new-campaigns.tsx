@@ -31,11 +31,14 @@ export function NewCampaigns({
   organizationId,
   timezone,
   selectedId,
+  initialSegmentId,
 }: {
   organizationId: string;
   timezone: string;
   /** From /app/campaigns/$id; none on /app/campaigns. */
   selectedId?: string | undefined;
+  /** Batch 51: /app/campaigns?segment= — the wizard opens with this segment chosen. */
+  initialSegmentId?: string | undefined;
 }) {
   const { can } = usePermissions();
   const canCreate = can("campaigns.create");
@@ -45,6 +48,14 @@ export function NewCampaigns({
   );
   const [error, setError] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardSegment, setWizardSegment] = useState<string | undefined>(undefined);
+  // Opened once per ?segment=, then the address is cleaned so a reload doesn't reopen it.
+  useEffect(() => {
+    if (!initialSegmentId || !canCreate) return;
+    setWizardSegment(initialSegmentId);
+    setWizardOpen(true);
+    void navigate({ to: "/app/campaigns", search: {}, replace: true });
+  }, [initialSegmentId, canCreate, navigate]);
   // The command palette's "New campaign" and N open the same wizard (as on Batch 41's list).
   useAppCommand("new-campaign", () => {
     if (canCreate) setWizardOpen(true);
@@ -151,7 +162,11 @@ export function NewCampaigns({
 
       <CampaignWizard
         open={wizardOpen}
-        onOpenChange={setWizardOpen}
+        onOpenChange={(open) => {
+          setWizardOpen(open);
+          if (!open) setWizardSegment(undefined);
+        }}
+        initialSegmentId={wizardSegment}
         organizationId={organizationId}
         timezone={timezone}
         onLaunched={(id) => {

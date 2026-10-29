@@ -60,6 +60,34 @@ async function contactIdsForTag(
   return ids;
 }
 
+/**
+ * Batch 51: the customers saved by hand for a segment (segment_members). A
+ * read that fails (before 20261250 is applied, say) returns null: the rule
+ * then matches nobody, never everyone.
+ */
+async function contactIdsForList(
+  supabase: SupabaseClient,
+  organizationId: string,
+  segmentId: string,
+): Promise<string[] | null> {
+  if (!UUID_RE.test(segmentId)) return null;
+  const page = 1000;
+  const ids: string[] = [];
+  for (let from = 0; from < 50000; from += page) {
+    const { data, error } = await supabase
+      .from("segment_members")
+      .select("contact_id")
+      .eq("organization_id", organizationId)
+      .eq("segment_id", segmentId)
+      .order("contact_id", { ascending: true })
+      .range(from, from + page - 1);
+    if (error) return null;
+    const rows = (data as { contact_id: string }[]) ?? [];
+    ids.push(...rows.map((r) => r.contact_id));
+    if (rows.length < page) break;
+  }
+  return ids;
+}
 
 function attrPath(key: string): string | null {
   return KEY_RE.test(key) ? `attributes->>${key}` : null;
@@ -125,6 +153,11 @@ async function exprForCondition(
     }
     case "attribute":
       return exprForAttribute(c);
+    case "list": {
+      // Exactly the saved customers; an empty or unreadable list is nobody.
+      const ids = await contactIdsForList(supabase, organizationId, v);
+      return ids && ids.length ? `id.in.(${ids.join(",")})` : NEVER;
+    }
     default:
       return null;
   }
@@ -143,7 +176,12 @@ export async function segmentExpressions(
   const conditions = usableConditions(filters).slice(0, 25);
   const expressions: string[] = [];
   for (const c of conditions) {
-    if (!NO_VALUE_OPERATORS.has(c.operator) && c.field !== "created_at" && !c.value?.trim()) {
+    if (
+      !NO_VALUE_OPERATORS.has(c.operator) &&
+      c.field !== "created_at" &&
+      c.field !== "list" &&
+      !c.value?.trim()
+    ) {
       continue;
     }
     const expr = await exprForCondition(supabase, organizationId, c);

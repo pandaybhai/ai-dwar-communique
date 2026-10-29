@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 92, column 1106, view 2, function 114, index 168, trigger 70, cron_job 14.
+-- Expected objects: table 93, column 1111, view 2, function 114, index 169, trigger 70, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -97,6 +97,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('table', 'public', 'revenue_attributions', NULL, NULL, NULL, '20260828_revenue_attribution.sql'),
     ('table', 'public', 'role_permissions', NULL, NULL, NULL, '20260816_permissions.sql'),
     ('table', 'public', 'scheduled_sends', NULL, NULL, NULL, '20260825_flows.sql'),
+    ('table', 'public', 'segment_members', NULL, NULL, NULL, '20261250_batch51_gaps.sql'),
     ('table', 'public', 'segments', NULL, NULL, NULL, '20260814_segments.sql'),
     ('table', 'public', 'shopify_app_credentials', NULL, NULL, NULL, '20260929_shopify_app_credentials.sql'),
     ('table', 'public', 'short_links', NULL, NULL, NULL, '20260830_short_links.sql'),
@@ -1062,6 +1063,11 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'scheduled_sends', 'trigger_id', NULL, 'uuid', '20260825_flows.sql'),
     ('column', 'public', 'scheduled_sends', 'trigger_type', NULL, 'text', '20260825_flows.sql'),
     ('column', 'public', 'scheduled_sends', 'updated_at', NULL, 'timestamp with time zone', '20260825_flows.sql'),
+    ('column', 'public', 'segment_members', 'added_by', NULL, 'uuid', '20261250_batch51_gaps.sql'),
+    ('column', 'public', 'segment_members', 'contact_id', NULL, 'uuid', '20261250_batch51_gaps.sql'),
+    ('column', 'public', 'segment_members', 'created_at', NULL, 'timestamp with time zone', '20261250_batch51_gaps.sql'),
+    ('column', 'public', 'segment_members', 'organization_id', NULL, 'uuid', '20261250_batch51_gaps.sql'),
+    ('column', 'public', 'segment_members', 'segment_id', NULL, 'uuid', '20261250_batch51_gaps.sql'),
     ('column', 'public', 'segments', 'created_at', NULL, 'timestamp with time zone', '20260814_segments.sql'),
     ('column', 'public', 'segments', 'created_by', NULL, 'uuid', '20260814_segments.sql'),
     ('column', 'public', 'segments', 'description', NULL, 'text', '20260814_segments.sql'),
@@ -1478,6 +1484,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'scheduled_sends_org_idx', NULL, NULL, 'on public.scheduled_sends', '20260825_flows.sql'),
     ('index', 'public', 'scheduled_sends_pending_unique_idx', NULL, NULL, 'unique on public.scheduled_sends', '20260825_flows.sql'),
     ('index', 'public', 'scheduled_sends_trigger_idx', NULL, NULL, 'on public.scheduled_sends', '20260825_flows.sql'),
+    ('index', 'public', 'segment_members_org_segment_idx', NULL, NULL, 'on public.segment_members', '20261250_batch51_gaps.sql'),
     ('index', 'public', 'segments_org_idx', NULL, NULL, 'on public.segments', '20260814_segments.sql'),
     ('index', 'public', 'shopify_app_credentials_org_idx', NULL, NULL, 'on public.shopify_app_credentials', '20260929_shopify_app_credentials.sql'),
     ('index', 'public', 'short_links_org_idx', NULL, NULL, 'on public.short_links', '20260830_short_links.sql'),

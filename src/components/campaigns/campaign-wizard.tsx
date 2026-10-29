@@ -170,12 +170,15 @@ export function CampaignWizard({
   organizationId,
   timezone,
   onLaunched,
+  initialSegmentId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   organizationId: string;
   timezone: string;
   onLaunched: (campaignId: string) => void;
+  /** Batch 51: the segment chosen when it opens (Customers → Send campaign); else everyone. */
+  initialSegmentId?: string | undefined;
 }) {
   const { can } = usePermissions();
   const navigate = useNavigate();
@@ -230,7 +233,7 @@ export function CampaignWizard({
     if (!open) return;
     setStep(0);
     setName("");
-    setSegmentId("all");
+    setSegmentId(initialSegmentId ?? "all");
     setTemplateName("");
     setMappings({});
     setAudience(null);
@@ -245,6 +248,8 @@ export function CampaignWizard({
     setOfferDate("");
     setOfferTime("");
     if (open) setTestRef(crypto.randomUUID());
+    // initialSegmentId is read when the wizard opens, never while it is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // A different template means different slots — start its media clean.
