@@ -17,7 +17,7 @@ WhatsApp, Meta or Cashfree.
 - `classic/`: the same six screens with the flag off. All shots taken after merging main (Batch 47).
   `node scripts/ui-shots/b49-shots.mjs --design classic --only aiden,flows,flow-builder,automations,catalogue,collections --out docs/screenshots/batch49/classic`
 
-Flag off against untouched `main` (a worktree of `origin/main` on another
+Flag off against untouched `main` (a worktree of `origin/main` with Batch 47 merged, on another
 port, same script, same fake data): all 12 classic shots (6 screens at 1440
 and 390) are pixel-identical.
 
