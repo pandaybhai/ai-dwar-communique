@@ -3,7 +3,7 @@
  *
  *   VITE_AIDWAR_SUPABASE_URL=http://fake-backend.test VITE_AIDWAR_SUPABASE_ANON_KEY=fake \
  *     npx vite dev --port 5199 --host 127.0.0.1
- *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b44|b45|b46|b47] [--design classic|new]
+ *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b44|b45|b46|b47|b48] [--design classic|new]
  *
  * Uses the Chromium + Playwright installed on the machine (not a project
  * dependency). The dev server must point the app at the fake backend host:
@@ -260,7 +260,57 @@ const SCENARIOS_B50 = {
   start: { path: "/app/start?step=connect", conversations: 10, journeyFull: true, wait: "h1", settle: 1500 },
 };
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b50: SCENARIOS_B50 };
+/** Batch 48: Customers (run with --design new; --design classic shows flag off is unchanged). */
+const firstContactRow = async (page) => {
+  await page.getByRole("button", { name: /Asha Iyer/ }).first().click();
+  await page.waitForTimeout(1200);
+};
+const SCENARIOS_B48 = {
+  contacts: { path: "/app/contacts", conversations: 40, customers: true, wait: "text=Asha Iyer" },
+  "contacts-filtered": { path: "/app/contacts?opt_in=unknown", conversations: 40, customers: true, wait: "h1" },
+  "contacts-selected": {
+    path: "/app/contacts",
+    conversations: 40,
+    customers: true,
+    wait: "text=Asha Iyer",
+    act: async (page) => {
+      for (const name of ["Select Asha Iyer", "Select Vikram Mehta", "Select Meera Nair"]) {
+        await page.getByRole("checkbox", { name }).filter({ visible: true }).first().click();
+      }
+      await page.waitForTimeout(600);
+    },
+  },
+  "contact-drawer": { path: "/app/contacts", conversations: 40, customers: true, wait: "text=Asha Iyer", act: firstContactRow },
+  "contacts-empty": { path: "/app/contacts", conversations: 0, customers: true, wait: "h1" },
+  "import-upload": {
+    path: "/app/contacts",
+    conversations: 40,
+    customers: true,
+    wait: "text=Asha Iyer",
+    act: async (page) => {
+      await page.getByRole("button", { name: /^Import/ }).first().click();
+      await page.waitForTimeout(700);
+    },
+  },
+  "import-map": { path: "/app/contacts", conversations: 40, customers: true, wait: "text=Asha Iyer", act: (page) => importTo(page, 2) },
+  "import-confirm": { path: "/app/contacts", conversations: 40, customers: true, wait: "text=Asha Iyer", act: (page) => importTo(page, 3) },
+  segments: { path: "/app/contacts?tab=segments", conversations: 40, customers: true, wait: "text=VIP customers" },
+  receipts: { path: "/app/receipts", conversations: 40, customers: true, wait: "h1", fullPage: true },
+};
+
+const SAMPLE_IMPORT = "phone,name,tags,city\n+919876543210,Priya Sharma,\"vip,repeat-buyer\",Hyderabad\n+919812345678,Rahul Verma,new-customer,Mumbai\n+919898765432,Anjali Patel,vip,Delhi\n";
+async function importTo(page, step) {
+  await page.getByRole("button", { name: /^Import/ }).first().click();
+  await page.waitForTimeout(600);
+  await page.locator('input[type="file"]').setInputFiles({ name: "kesar-customers.csv", mimeType: "text/csv", buffer: Buffer.from(SAMPLE_IMPORT) });
+  await page.waitForTimeout(700);
+  if (step >= 3) {
+    await page.getByRole("button", { name: /^Continue/ }).click();
+    await page.waitForTimeout(600);
+  }
+}
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b48: SCENARIOS_B48, b50: SCENARIOS_B50 };
 
 const consoleErrors = [];
 
@@ -276,6 +326,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     planStatus: scenario.plan,
     richBilling: scenario.richBilling,
     journeyFull: scenario.journeyFull,
+    customers: scenario.customers,
   });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],

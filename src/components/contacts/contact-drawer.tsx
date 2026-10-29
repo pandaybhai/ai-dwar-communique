@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { MessageSquare, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -59,6 +59,8 @@ export function ContactDrawer({
   canDelete,
   onClose,
   onChanged,
+  extra,
+  side,
 }: {
   contact: ContactRow | null;
   organizationId: string;
@@ -66,6 +68,14 @@ export function ContactDrawer({
   canDelete: boolean;
   onClose: () => void;
   onChanged: () => void;
+  /**
+   * Batch 48, new design only: the read-only customer summary (chat, orders,
+   * flows, consent, what Aiden knows), shown above the edit fields; it
+   * replaces the drawer's own "View conversation" link. Unset: as before.
+   */
+  extra?: ReactNode;
+  /** Batch 48: "bottom" makes it the phone's sheet. Unset: the right-hand drawer as before. */
+  side?: "bottom";
 }) {
   const [name, setName] = useState("");
   const [optIn, setOptIn] = useState<OptInStatus>("unknown");
@@ -229,7 +239,15 @@ export function ContactDrawer({
 
   return (
     <Sheet open={Boolean(contact)} onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent
+        {...(side === "bottom"
+          ? {
+              side: "bottom" as const,
+              className:
+                "max-h-[88dvh] w-full overflow-y-auto rounded-t-[24px] pb-[calc(24px+env(safe-area-inset-bottom))]",
+            }
+          : { className: "w-full overflow-y-auto sm:max-w-md" })}
+      >
         {contact ? (
           <>
             <SheetHeader className="text-left">
@@ -247,6 +265,7 @@ export function ContactDrawer({
             </SheetHeader>
 
             <div className="mt-6 space-y-6">
+              {extra}
               <SourcePanel contact={contact} />
 
               <div className="space-y-2">
@@ -256,7 +275,7 @@ export function ContactDrawer({
 
               <div className="space-y-2">
                 <Label>Phone</Label>
-                <Input value={contact.phone} readOnly className="bg-muted/60" />
+                <Input value={contact.phone} readOnly aria-label="Phone" className="bg-muted/60" />
               </div>
 
               <OptInField
@@ -396,20 +415,22 @@ export function ContactDrawer({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Conversation</Label>
-                {loadingConversation ? (
-                  <Skeleton className="h-9 w-full rounded-full" />
-                ) : conversationId ? (
-                  <Button asChild variant="outline" className="w-full rounded-full">
-                    <Link to="/app/inbox">
-                      <MessageSquare className="mr-2 h-4 w-4" /> View conversation
-                    </Link>
-                  </Button>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No conversation yet.</p>
-                )}
-              </div>
+              {extra ? null : (
+                <div className="space-y-2">
+                  <Label>Conversation</Label>
+                  {loadingConversation ? (
+                    <Skeleton className="h-9 w-full rounded-full" />
+                  ) : conversationId ? (
+                    <Button asChild variant="outline" className="w-full rounded-full">
+                      <Link to="/app/inbox">
+                        <MessageSquare className="mr-2 h-4 w-4" /> View conversation
+                      </Link>
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No conversation yet.</p>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center gap-2 border-t border-border/70 pt-4">
                 <Button className="rounded-full" onClick={() => void save()} disabled={saving}>
@@ -463,7 +484,7 @@ export function OptInField({
       ) : (
         <>
           <Select value={value} onValueChange={(v) => onChange(v as OptInStatus)}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Opt-in status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -503,7 +524,7 @@ function SourcePanel({ contact }: { contact: ContactRow }) {
       <div className="flex items-center justify-between gap-2">
         <Label className="text-xs text-muted-foreground">Lead source</Label>
         <span
-          className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${sourceClass(contact.source)}`}
+          className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${sourceClass(contact.source)} nd:border-line nd:bg-surface nd:text-[0.8125rem] nd:font-semibold nd:text-foreground`}
         >
           {sourceLabel(contact.source)}
         </span>
