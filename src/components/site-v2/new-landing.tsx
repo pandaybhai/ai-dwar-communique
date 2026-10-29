@@ -170,7 +170,7 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
       </section>
 
       {/* The written walkthrough, per kind of business. */}
-      <section id="proof" className="scroll-mt-20 border-t border-border bg-surface">
+      <section id="proof" className="scroll-mt-20 border-t border-border bg-ground">
         <div className={cn(WRAP, "py-20 sm:py-24")}>
           <Reveal>
             {/* Batch 51: the same walkthrough (ProductProof's state and words) in the new look. */}

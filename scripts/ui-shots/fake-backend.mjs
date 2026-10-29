@@ -19,6 +19,8 @@ const ME = "00000000-0000-4000-8000-0000000000b1";
 const NEHA = "00000000-0000-4000-8000-0000000000b2";
 const ARJUN = "00000000-0000-4000-8000-0000000000b3";
 const ACCOUNT = "00000000-0000-4000-8000-0000000000c1";
+/** Batch 51: the hand-picked segment the Customers bulk bar saves. */
+export const HAND_PICKED = "00000000-0000-4000-8000-0000000051a0";
 
 const PERMISSIONS = [
   "ai.configure", "ai.use", "analytics.view", "automations.manage", "billing.pay", "billing.request",
@@ -470,6 +472,14 @@ export function createBackend(options = {}) {
         return FEED.map(([i, question, reply, at]) => ({
           conversation_id: conversations[i]?.id, output: reply, input_summary: question, sources: [], created_at: ago(at),
         }));
+      // Batch 51: the drawer's "Aiden's last summary" (a Catch me up run from the Inbox).
+      if (task === "summarise")
+        return [
+          {
+            output: "Wants the Meenakari set for her sister's wedding.\nAsked about delivery by Friday and a discount for two sets.\nStill open: the discount, waiting for you.",
+            created_at: ago(5 * HOUR),
+          },
+        ];
       if (task === "suggest_reply" && aiden.mode === "draft")
         return DRAFTS.map(([i, question, draft, at], k) => ({
           id: `run-draft-${k}`, conversation_id: conversations[i]?.id, output: draft, input_summary: question, created_at: ago(at),
@@ -486,8 +496,34 @@ export function createBackend(options = {}) {
     segments: () => [
       { id: "seg1", name: "VIP customers", description: "Spent ₹50,000+ this year", filters: {}, created_by: ME, created_at: ago(30 * DAY) },
       { id: "seg2", name: "Wedding season leads", description: "Asked about bridal sets", filters: {}, created_by: ME, created_at: ago(10 * DAY) },
+      // Batch 51: a list saved from the Customers bulk bar.
+      {
+        id: HAND_PICKED,
+        name: "Picked by hand, 3 customers, 29 Oct, 14:05:31",
+        description: "Picked by hand in Customers.",
+        filters: { match: "all", conditions: [{ field: "list", operator: "in", value: HAND_PICKED }] },
+        created_by: ME,
+        created_at: ago(MIN),
+      },
     ],
-    pending_owner_replies: () => [],
+    segment_members: () => [],
+    // Batch 51: each chat waiting on a person has its question filed under Unanswered.
+    pending_owner_replies: () =>
+      conversations
+        .filter((c) => c.needs_human)
+        .map((c, i) => ({
+          id: `gap-${i}`,
+          conversation_id: c.id,
+          question: c.needs_human_question || "Can I get ₹2,000 off if I take both sets today?",
+          status: "pending",
+          source: "customer",
+          created_at: c.needs_human_at ?? ago(10 * MIN),
+        })),
+    // Batch 51: notes on a customer (drawer), written by the team.
+    contact_notes: () => [
+      { id: "note-1", body: "Prefers a call after 6 pm. Buying for her sister's wedding in December.", author_id: NEHA, created_at: ago(2 * DAY) },
+      { id: "note-2", body: "Asked us to gift-wrap every order.", author_id: ME, created_at: ago(9 * DAY) },
+    ],
     automations: () => [],
     contact_tags: () => [
       { tag_id: "t1", tags: { id: "t1", name: "VIP" } },
@@ -840,6 +876,26 @@ export function createBackend(options = {}) {
     }
     if (url.pathname === "/api/campaigns/estimate") {
       return json({ enabled: true, recipients: 1186, category: "marketing", rate: 0.86, currency: "INR", estimate: 1019.96, available: 2840.5, shortfall: 0, can_send: true, needs_approval: false, approval_threshold: null, daily_limit: 10000, over_daily_limit: false, days_needed: 1 });
+    }
+    if (url.pathname === "/api/ai/knowledge") {
+      // Batch 51: Approve / Decline go through answer_gap.
+      return json({ ok: true, delivered: true });
+    }
+    if (url.pathname === "/api/whatsapp/templates") {
+      let body = {};
+      try {
+        body = JSON.parse(request.postData() || "{}");
+      } catch {
+        body = {};
+      }
+      // Batch 51: order_shipped is still sent by a scheduled campaign.
+      if (body.action === "delete" && templates.find((t) => t.id === body.template_id)?.name === "order_shipped")
+        return route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "This template is still used by the campaign “Diwali preview”. Finish or cancel the campaign, or change or switch off the flow, then delete it." }),
+        });
+      return json(body.action === "delete" ? { deleted: true } : { synced: templates.length, total: templates.length });
     }
     if (url.pathname === "/api/internal/ai-run") {
       // Batch 46: "Draft a reply" in the new Inbox shows Aiden's suggestion.
