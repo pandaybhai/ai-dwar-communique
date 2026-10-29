@@ -272,7 +272,9 @@ export function makeCampaigns() {
     name,
     template_name: ["diwali_preview", "order_shipped", "back_in_stock", "wedding_edit", "festive_offer"][i % 5],
     template_language: "en",
-    variable_mappings: null,
+    // Batch 47: {{1}} is the contact's name, as most campaigns set it.
+    variable_mappings: { 1: { source: "name" }, 2: { source: "static", value: "#KC-2041" } },
+    whatsapp_account_id: ACCOUNT,
     segment_id: null,
     status,
     scheduled_at: status === "scheduled" ? new Date(Date.now() + DAY).toISOString() : null,
@@ -500,6 +502,11 @@ export function createBackend(options = {}) {
       { id: "f-order", name: "Order status" },
     ],
     wa_forms: () => [],
+    // Batch 47: orders revenue attribution linked to the Dhanteras reminder.
+    revenue_attributions: (q) =>
+      q.filters.source_id?.value === "00000000-0000-4000-8000-000000007005"
+        ? [28900, 12300, 64500, 8900, 146400].map((order_total) => ({ order_total, currency: "INR" }))
+        : [],
   };
 
   async function rest(route, request) {
