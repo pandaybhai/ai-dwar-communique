@@ -11,15 +11,18 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useAidenModeSwitch } from "@/hooks/use-aiden-mode-switch";
 import { useOrg } from "@/lib/org-context";
 import {
+  closingWindows,
   draftsHeadline,
   replyingHeadline,
   waitingHeadline,
+  waitingQueue,
   type HomeMode,
 } from "@/lib/new-home";
 import { Inbox } from "lucide-react";
 import { ModeSwitch, TestFirstDialog, type StatRow } from "./parts";
 import { ReplyingView } from "./replying-view";
 import { DraftsView } from "./drafts-view";
+import { OffView } from "./off-view";
 import { useNewHome, type HomeAccess } from "./use-new-home";
 
 /**
@@ -104,8 +107,22 @@ export function NewHome() {
           onSent={() => void reload()}
         />
       ) : (
-        // Batch 45: the Off Home lands in the next commit.
-        <p className="m-0 text-muted-foreground">{waitingHeadline(0)}</p>
+        <OffView
+          data={data}
+          organizationId={organizationId!}
+          queue={waitingQueue(data.openChats ?? [], Date.now())}
+          closing={closingWindows(
+            (data.openChats ?? []).map((c) => ({ conversationId: c.id, lastInboundAt: c.lastInboundAt })),
+            Date.now(),
+          )}
+          headlineFor={waitingHeadline}
+          canReply={can("inbox.view")}
+          canAssign={can("inbox.assign")}
+          stats={todayStats(data, "off")}
+          tryDraft={
+            canSeeAiden && canChange ? () => void modeSwitch.setMode("draft") : null
+          }
+        />
       )}
 
       <TestFirstDialog
