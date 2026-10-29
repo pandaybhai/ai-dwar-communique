@@ -56,6 +56,39 @@ const SCENARIOS = {
 
 const firstCampaign = "00000000-0000-4000-8000-000000007000";
 
+/** The campaign wizard, walked to a step (Batch 41: audience → … → review). */
+function wizardTo(target) {
+  return {
+    path: "/app/campaigns",
+    conversations: 40,
+    wait: "text=Diwali preview",
+    act: async (page) => {
+      await page.getByRole("button", { name: /create campaign/i }).first().click();
+      await page.waitForTimeout(700);
+      await page.getByLabel("Campaign name").fill("Diwali preview — VIP list");
+      await page.waitForTimeout(900);
+      if (target < 1) return;
+      await page.getByRole("button", { name: /^continue/i }).click();
+      await page.waitForTimeout(500);
+      await page.getByRole("dialog").getByText("order_shipped", { exact: true }).click();
+      await page.waitForTimeout(500);
+      if (target < 2) return;
+      await page.getByRole("button", { name: /^continue/i }).click();
+      await page.waitForTimeout(500);
+      for (const n of [1, 2]) {
+        await page.getByRole("combobox", { name: `Source for {{${n}}}` }).click();
+        await page.getByRole("option").first().click();
+        await page.waitForTimeout(200);
+      }
+      if (target < 3) return;
+      await page.getByRole("button", { name: /^continue/i }).click();
+      await page.waitForTimeout(400);
+      await page.getByRole("button", { name: /^continue/i }).click();
+      await page.waitForTimeout(600);
+    },
+  };
+}
+
 /** Batch 41: Home, Campaigns, Templates. */
 const SCENARIOS_B41 = {
   home: { path: "/app", conversations: 40, wait: "text=Waiting on you", fullPage: true },
@@ -63,24 +96,10 @@ const SCENARIOS_B41 = {
   campaigns: { path: "/app/campaigns", conversations: 40, wait: "text=Diwali preview" },
   "campaigns-empty": { path: "/app/campaigns", conversations: 40, campaigns: 0, wait: "h1" },
   "campaign-detail": { path: `/app/campaigns/${firstCampaign}`, conversations: 40, wait: "text=Offer performance", fullPage: true },
-  "campaign-wizard": {
-    path: "/app/campaigns",
-    conversations: 40,
-    wait: "text=Diwali preview",
-    act: async (page) => {
-      await page.getByRole("button", { name: /create campaign/i }).first().click();
-      await page.waitForTimeout(700);
-      // Name → Audience → Message, with the order update template picked.
-      await page.getByLabel("Campaign name").fill("Diwali preview — VIP list");
-      await page.getByRole("button", { name: /continue/i }).click();
-      await page.waitForTimeout(900);
-      await page.getByRole("button", { name: /continue/i }).click();
-      await page.waitForTimeout(600);
-      await page.getByRole("combobox").filter({ hasText: /pick a template/i }).click();
-      await page.getByRole("option", { name: /order_shipped/ }).click();
-      await page.waitForTimeout(700);
-    },
-  },
+  "campaign-wizard": { ...wizardTo(0) },
+  "campaign-wizard-message": { ...wizardTo(1) },
+  "campaign-wizard-personalise": { ...wizardTo(2) },
+  "campaign-wizard-review": { ...wizardTo(4) },
   templates: { path: "/app/templates", conversations: 40, wait: "text=order_shipped" },
   "templates-empty": { path: "/app/templates", conversations: 40, templates: 0, wait: "h1" },
   "template-create": {

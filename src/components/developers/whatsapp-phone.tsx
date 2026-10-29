@@ -215,7 +215,7 @@ export function PhoneFrame({
         <div className="flex items-center gap-2 bg-[var(--wa-head)] px-2.5 pb-2.5 pt-1 text-white">
           <ChevronLeft className="h-5 w-5 opacity-90" aria-hidden="true" />
           <span className="grid h-8 w-8 place-items-center rounded-full bg-white/90 text-[13px] font-bold text-[#008069]">
-            A
+            {business.trim().charAt(0).toUpperCase() || "A"}
           </span>
           <span className="min-w-0 leading-tight">
             <span className="flex items-center gap-1 text-[14.5px] font-semibold">

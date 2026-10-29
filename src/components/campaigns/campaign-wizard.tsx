@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
   CalendarClock,
   Check,
+  Coins,
   Loader2,
+  type LucideIcon,
   Rocket,
   Send,
   Users,
@@ -44,6 +46,8 @@ import { CardAttachmentPicker } from "@/components/cards/card-attachment-picker"
 import { CardPreview } from "@/components/cards/card-preview";
 import type { CardAttachment } from "@/lib/customer-cards";
 import { TemplatePreview, componentsToPreview } from "@/components/templates/template-preview";
+import { CustomerPhone } from "@/components/templates/customer-phone";
+import { count } from "@/components/campaigns/campaign-rates";
 import { formatInZone, offerTimingIssue, zonedToUtcIso } from "@/lib/offers";
 
 import type { SegmentRow } from "@/lib/segments";
@@ -77,7 +81,25 @@ type AudienceSummary = {
   sample: SampleContact | null;
 };
 
-const STEPS = ["Name", "Audience", "Message", "Schedule", "Review"] as const;
+/**
+ * Batch 41: audience → message → personalise → test → review, then launch.
+ * The campaign name is asked with the audience; "when to send" with the review.
+ */
+const STEPS = ["Audience", "Message", "Personalise", "Test", "Review"] as const;
+
+const STEP_INTRO: Record<(typeof STEPS)[number], { title: string; hint: string }> = {
+  Audience: { title: "Who gets it?", hint: "Name the campaign and pick who receives it." },
+  Message: { title: "What they get", hint: "Pick one of your approved templates." },
+  Personalise: {
+    title: "Make it theirs",
+    hint: "Fill each blank from the contact's own details, and add any offer.",
+  },
+  Test: { title: "Try it on your phone", hint: "Optional: send yourself the exact message first." },
+  Review: {
+    title: "Check and launch",
+    hint: "Everything this campaign does, before anything sends.",
+  },
+};
 
 const FALLBACK_SAMPLE: SampleContact = {
   name: "Priya",
@@ -85,16 +107,24 @@ const FALLBACK_SAMPLE: SampleContact = {
   attributes: {},
 };
 
-function StepDots({ step }: { step: number }) {
+function StepDots({ step, onBack }: { step: number; onBack: (to: number) => void }) {
   return (
     <div>
       <ol className="flex items-center gap-1.5" aria-label="Steps">
         {STEPS.map((label, i) => (
           <li
             key={label}
-            className="flex min-w-0 flex-1 flex-col gap-1.5"
+            className="relative flex min-w-0 flex-1 flex-col gap-1.5"
             aria-current={i === step ? "step" : undefined}
           >
+            {i < step ? (
+              <button
+                type="button"
+                onClick={() => onBack(i)}
+                className="absolute inset-0 z-10 rounded-sm"
+                aria-label={`Back to ${label}`}
+              />
+            ) : null}
             <span
               className={cn(
                 "h-1 rounded-full transition-colors duration-300",
@@ -126,44 +156,6 @@ function StepDots({ step }: { step: number }) {
         Step {step + 1} of {STEPS.length} ·{" "}
         <span className="font-medium text-foreground">{STEPS[step]}</span>
       </p>
-    </div>
-  );
-}
-
-function ChatPreview({
-  body,
-  footer,
-  imageUrl,
-  mediaLabel,
-}: {
-  body: string;
-  footer: string;
-  imageUrl?: string | undefined;
-  mediaLabel?: string | undefined;
-}) {
-  return (
-    <div className="wa-wall rounded-xl border border-border p-4">
-      {/* As it lands on the customer's phone: the business's message on the left. */}
-      <div className="wa-bubble-in wa-tail max-w-[85%] !p-0">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt="Template header"
-            className="max-h-48 w-full rounded-t-lg object-cover p-1"
-          />
-        ) : mediaLabel ? (
-          <div className="m-1 flex h-24 items-center justify-center rounded-md bg-black/[0.06] text-xs text-wa-meta dark:bg-white/[0.06]">
-            {mediaLabel}
-          </div>
-        ) : null}
-        <div className="px-2.5 pb-1.5 pt-1.5">
-          <p className="inline whitespace-pre-wrap">
-            {body ? <WhatsAppText text={body} /> : "Your message preview"}
-          </p>
-          {footer ? <p className="mt-1 text-[0.8125rem] text-wa-meta">{footer}</p> : null}
-          <span className="wa-meta">now</span>
-        </div>
-      </div>
     </div>
   );
 }
@@ -325,14 +317,15 @@ export function CampaignWizard({
   }, [organizationId, segmentId, accountId]);
 
   useEffect(() => {
-    if (!open || step !== 1) return;
+    if (!open || step !== 0) return;
     const t = setTimeout(() => void loadAudience(), 150);
     return () => clearTimeout(t);
   }, [open, step, loadAudience]);
 
-  // What this send costs, and whether there's enough in the wallet.
+  // What this send costs, and whether there's enough in the wallet. Batch 41:
+  // always on screen, so it follows the audience and the template chosen.
   useEffect(() => {
-    if (!open || step !== 1) return;
+    if (!open) return;
     const recipients = audience?.eligible ?? 0;
     if (!recipients) {
       setEstimate(null);
@@ -356,7 +349,7 @@ export function CampaignWizard({
     return () => {
       cancelled = true;
     };
-  }, [open, step, organizationId, audience?.eligible, templates, templateName, accountId]);
+  }, [open, organizationId, audience?.eligible, templates, templateName, accountId]);
 
   const template = useMemo(
     () => templates.find((t) => t.name === templateName) ?? null,
@@ -477,12 +470,14 @@ export function CampaignWizard({
   ]);
 
   const canNext = () => {
-    if (step === 0) return name.trim().length >= 2;
-    if (step === 1)
+    if (step === 0)
       return (
-        Boolean(accountId) && (audience?.eligible ?? 0) > 0 && (estimate ? estimate.can_send : true)
+        name.trim().length >= 2 &&
+        Boolean(accountId) &&
+        (audience?.eligible ?? 0) > 0 &&
+        (estimate ? estimate.can_send : true)
       );
-
+    if (step === 1) return Boolean(template) && mediaReady;
     if (step === 2)
       return (
         Boolean(template) &&
@@ -491,9 +486,11 @@ export function CampaignWizard({
         offerIssue?.level !== "error" &&
         variables.every((n) => mappingIsComplete(mappings[String(n)]))
       );
-    if (step === 3) return (sendNow || Boolean(scheduledAt)) && offerIssue?.level !== "error";
     return true;
   };
+  /** Batch 41: "when to send" now sits on the review step, so launch checks it. */
+  const canLaunch =
+    !launching && offerReady && offerIssue?.level !== "error" && (sendNow || Boolean(scheduledAt));
 
   /** What this campaign sends with — launch and the test send use the same. */
   const sendSettings = useMemo(
@@ -550,696 +547,890 @@ export function CampaignWizard({
     onLaunched(data.campaign_id);
   };
 
+  const intro = STEP_INTRO[STEPS[step] ?? "Audience"];
+  const business = senderNumber?.verified_name || numberLabel(senderNumber) || "Your business";
+  const segmentName =
+    segmentId === "all"
+      ? "All opted-in contacts"
+      : (segments.find((s) => s.id === segmentId)?.name ?? "");
+  const goNext = () => {
+    if (step < STEPS.length - 1 && canNext()) setStep((s) => s + 1);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Create campaign</DialogTitle>
-          <DialogDescription>
-            Five quick steps — we&apos;ll show you exactly who receives what before anything sends.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="pb-2">
-          <StepDots step={step} />
-        </div>
-
-        {loadingLists ? (
-          <div className="space-y-3">
-            <Skeleton className="h-10 w-full rounded-lg" />
-            <Skeleton className="h-24 w-full rounded-xl" />
+      <DialogContent
+        className="left-0 top-0 flex h-[100dvh] max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:max-w-none sm:rounded-none"
+        onKeyDown={(e) => {
+          // ⌘/Ctrl + Enter moves on, the same as Continue.
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            goNext();
+          }
+        }}
+      >
+        <header className="shrink-0 border-b border-border bg-card px-4 py-3 pr-14 sm:px-6">
+          <div className="mx-auto flex max-w-6xl flex-col gap-3 md:flex-row md:items-center md:gap-8">
+            <div className="min-w-0 shrink-0">
+              <DialogTitle className="text-base">Create campaign</DialogTitle>
+              <DialogDescription className="sr-only">
+                Five quick steps — we&apos;ll show you exactly who receives what before anything
+                sends.
+              </DialogDescription>
+            </div>
+            <div className="min-w-0 flex-1">
+              <StepDots step={step} onBack={setStep} />
+            </div>
           </div>
-        ) : (
-          <div className="space-y-5">
-            {step === 0 && (
-              <div className="space-y-2">
-                <Label htmlFor="campaign-name">Campaign name</Label>
-                <Input
-                  id="campaign-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Diwali offer — VIP customers"
-                  autoFocus
-                />
-                <p className="text-xs text-muted-foreground">
-                  Only your team sees this. Customers never see the campaign name.
-                </p>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-background">
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_336px] lg:gap-12 lg:py-10">
+            <div className="min-w-0 max-w-2xl">
+              <div key={step} className="page-enter">
+                <h2 className="type-title text-foreground">{intro.title}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{intro.hint}</p>
               </div>
-            )}
 
-            {step === 1 && (
-              <div className="space-y-4">
-                {multiple ? (
-                  <div className="space-y-2">
-                    <Label>Send from</Label>
-                    <Select value={accountId} onValueChange={setAccountId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pick a number" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {numbers.map((n) => (
-                          <SelectItem key={n.id} value={n.id}>
-                            {numberLabel(n)}
-                            {numberSubtitle(n) ? ` · ${numberSubtitle(n)}` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Templates and delivery are tied to this number. Opt-outs always apply across
-                      the whole workspace.
-                    </p>
-                  </div>
-                ) : null}
-                <div className="space-y-2">
-                  <Label>Who should receive this?</Label>
-                  <Select value={segmentId} onValueChange={setSegmentId}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All opted-in contacts</SelectItem>
-                      {segments.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              {loadingLists ? (
+                <div className="mt-6 space-y-3" aria-busy="true" aria-label="Loading">
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                  <Skeleton className="h-24 w-full rounded-xl" />
+                  <Skeleton className="h-24 w-full rounded-xl" />
                 </div>
-
-                <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
-                  {!audienceLoading && audienceError ? (
-                    <p className="text-sm text-destructive">{audienceError}</p>
-                  ) : audienceLoading || !audience ? (
-                    <div className="space-y-2">
-                      <Skeleton className="h-7 w-28 rounded" />
-                      <Skeleton className="h-4 w-52 rounded" />
-                    </div>
-                  ) : (
+              ) : (
+                <div key={`body-${step}`} className="page-enter mt-6 space-y-6">
+                  {step === 0 && (
                     <>
-                      <div className="flex items-center gap-2 text-primary">
-                        <Users className="h-4 w-4" />
-                        <span className="text-2xl font-semibold tabular-nums">
-                          {audience.eligible}
-                        </span>
-                        <span className="text-sm text-muted-foreground">will receive it</span>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {audience.matched} matched · {audience.excluded} excluded (not opted in)
-                      </p>
-                    </>
-                  )}
-                </div>
-
-                {estimate ? (
-                  <div
-                    className={cn(
-                      "rounded-2xl border p-5 shadow-sm",
-                      estimate.can_send
-                        ? "border-border/70 bg-card"
-                        : "border-destructive/40 bg-destructive/5",
-                    )}
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="text-sm text-muted-foreground">This send costs about</span>
-                      <span className="text-lg font-semibold tabular-nums">
-                        {money(estimate.estimate, estimate.currency)}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {money(estimate.rate, estimate.currency)} per message · you have{" "}
-                      {money(estimate.available, estimate.currency)} in credits
-                    </p>
-                    {!estimate.can_send && (
-                      <div className="mt-3 space-y-2">
-                        <p className="text-sm text-destructive">
-                          You&apos;re short {money(estimate.shortfall, estimate.currency)}. Add
-                          credits to send this campaign.
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {can("billing.pay") && (
-                            <Button
-                              size="sm"
-                              className="rounded-full"
-                              onClick={() => navigate({ to: "/app/billing" })}
-                            >
-                              Buy credits
-                            </Button>
-                          )}
-                          {can("billing.request") && !can("billing.pay") && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full"
-                              onClick={() => navigate({ to: "/app/billing" })}
-                            >
-                              Request a top-up
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {estimate.can_send && estimate.needs_approval && (
-                      <p className="mt-3 text-sm text-warning-soft-foreground">
-                        This is above your approval limit, so it will wait for an owner to approve
-                        it before anything sends.
-                      </p>
-                    )}
-                    {estimate.over_daily_limit && (
-                      <p className="mt-3 text-sm text-warning-soft-foreground">
-                        Your number can message {estimate.daily_limit} people a day right now, so
-                        this will spread over about {estimate.days_needed} days.
-                      </p>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Approved template</Label>
-                  <Select value={templateName} onValueChange={setTemplateName}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pick a template" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templates.map((t) => (
-                        <SelectItem key={t.id} value={t.name}>
-                          {t.name} · {t.language}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {templates.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      You don&apos;t have an approved template yet. Create one under Templates
-                      first.
-                    </p>
-                  )}
-                </div>
-
-                {needsHeaderMedia && (
-                  <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
-                    <Label className="text-xs">
-                      {headerMediaFormat === "IMAGE"
-                        ? "Picture at the top"
-                        : headerMediaFormat === "VIDEO"
-                          ? "Clip at the top"
-                          : "File at the top"}
-                    </Label>
-                    <MediaUploader
-                      organizationId={organizationId}
-                      whatsappAccountId={accountId || null}
-                      slot="campaign-header"
-                      format={headerMediaFormat}
-                      fileName={headerMedia.fileName}
-                      mediaUrl={effectiveHeaderMedia}
-                      onUploaded={(r) =>
-                        setHeaderMedia({ url: r.media_url, fileName: r.file_name })
-                      }
-                      onCleared={() => setHeaderMedia({ url: "", fileName: "" })}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {headerMedia.url
-                        ? "This campaign sends the file you just uploaded."
-                        : header?.mediaUrl
-                          ? "Using the file this template was built with — upload another to replace it for this campaign."
-                          : "This template needs a file. Upload one before you continue."}
-                    </p>
-                  </div>
-                )}
-
-                {cards.length > 0 && (
-                  <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-3">
-                    <Label className="text-xs">Carousel cards</Label>
-                    {cards.map((card, i) => (
-                      <div key={i} className="space-y-1.5">
-                        <p className="text-xs font-medium">
-                          Card {i + 1}
-                          {card.body ? ` · ${card.body.slice(0, 40)}` : ""}
-                        </p>
-                        <MediaUploader
-                          organizationId={organizationId}
-                          whatsappAccountId={accountId || null}
-                          slot={`campaign-card:${i}`}
-                          format={card.format}
-                          fileName=""
-                          mediaUrl={effectiveCardMedia(i)}
-                          onUploaded={(r) =>
-                            setCardMedia((prev) => ({ ...prev, [i]: r.media_url }))
-                          }
-                          onCleared={() => setCardMedia((prev) => ({ ...prev, [i]: "" }))}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {(needsCoupon || needsOfferExpiry) && (
-                  <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-3">
-                    <Label className="text-xs">{offer ? offer.text : "Offer details"}</Label>
-                    {needsCoupon && (
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">
-                          {couponCards.length > 0 && !needsMainCoupon
-                            ? "Coupon code for every card"
-                            : "Coupon code"}
-                        </Label>
-                        <Input
-                          value={couponCode}
-                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                          placeholder="SAVE20"
-                          maxLength={15}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          {couponCards.length > 0
-                            ? "The code customers copy with one tap. Every card uses this unless you give that card its own code below."
-                            : "This is the code customers copy with one tap. Everyone in this campaign gets the same code."}
-                        </p>
-                      </div>
-                    )}
-
-                    {couponCards.length > 0 && (
                       <div className="space-y-2">
-                        <Label className="text-xs font-medium">Codes per card</Label>
-                        <p className="text-xs text-muted-foreground">
-                          Running a different discount on each card? Give that card its own code.
-                          Leave it blank to use the code above.
-                        </p>
-                        {couponCards.map((card) => {
-                          const isDupe = duplicateCouponCards.has(card.index);
-                          const isEmpty = effectiveCardCoupon(card.index).length === 0;
-                          return (
-                            <div key={card.index} className="space-y-1">
-                              <Label className="text-[11px] text-muted-foreground">
-                                Card {card.index + 1}
-                                {cards[card.index]?.body
-                                  ? ` · ${cards[card.index]!.body.slice(0, 40)}`
-                                  : ""}
-                              </Label>
-                              <Input
-                                value={cardCoupons[card.index] ?? ""}
-                                aria-invalid={isDupe || isEmpty}
-                                className={cn(
-                                  (isDupe || isEmpty) &&
-                                    "border-destructive focus-visible:ring-destructive",
-                                )}
-                                onChange={(e) =>
-                                  setCardCoupons((prev) => ({
-                                    ...prev,
-                                    [card.index]: e.target.value.toUpperCase(),
-                                  }))
-                                }
-                                placeholder={couponCode.trim() || "SHOES20"}
-                                maxLength={15}
-                              />
-                              {isDupe && (
-                                <p className="text-xs text-destructive">
-                                  Another card already uses this code — each card needs its own.
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {couponCards.some((c) => effectiveCardCoupon(c.index).length === 0) && (
-                          <p className="text-xs text-destructive">
-                            Every card with a copy-code button needs a code — either its own or the
-                            shared one above.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {needsOfferExpiry && (
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">Offer ends ({timezone})</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            type="date"
-                            value={offerDate}
-                            onChange={(e) => setOfferDate(e.target.value)}
-                          />
-                          <Input
-                            type="time"
-                            value={offerTime}
-                            onChange={(e) => setOfferTime(e.target.value)}
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {offerExpiresAt
-                            ? `The countdown ends ${formatInZone(offerExpiresAt, timezone)} — your workspace time.`
-                            : "The countdown in the message ticks down to this moment, read in your workspace timezone."}
+                        <Label htmlFor="campaign-name">Campaign name</Label>
+                        <Input
+                          id="campaign-name"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="Diwali offer — VIP customers"
+                          autoFocus
+                          aria-describedby="campaign-name-hint"
+                        />
+                        <p id="campaign-name-hint" className="text-xs text-muted-foreground">
+                          Only your team sees this. Customers never see the campaign name.
                         </p>
                       </div>
-                    )}
-                    {offerIssue && (
-                      <div
-                        role="status"
-                        className={cn(
-                          "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
-                          offerIssue.level === "error"
-                            ? "border-destructive/40 bg-destructive/10 text-destructive"
-                            : "border-warning-border bg-warning-soft text-warning-soft-foreground",
-                        )}
-                      >
-                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        <span>{offerIssue.message}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
 
-                {(needsCoupon || needsOfferExpiry) && template && (
-                  <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">
-                      Exactly what the customer sees
-                    </Label>
-                    <div className="wa-wall rounded-xl border border-border p-4">
-                      <TemplatePreview model={previewModel} />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      The countdown is live — it ticks down here the same way it will on their
-                      phone.
-                    </p>
-                  </div>
-                )}
-
-                {variables.map((n) => {
-                  const m = mappings[String(n)];
-                  return (
-                    <div
-                      key={n}
-                      className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3"
-                    >
-                      <Label className="text-xs">Variable {`{{${n}}}`}</Label>
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Select
-                          value={m?.source ?? ""}
-                          onValueChange={(v) => setMapping(n, { source: v as VariableSource })}
-                        >
-                          <SelectTrigger className="sm:w-56">
-                            <SelectValue placeholder="Choose a source" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(Object.keys(VARIABLE_SOURCE_LABELS) as VariableSource[]).map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {VARIABLE_SOURCE_LABELS[s]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-
-                        {m?.source === "attribute" && (
-                          <Select
-                            value={m.key ?? ""}
-                            onValueChange={(v) => setMapping(n, { key: v })}
-                          >
-                            <SelectTrigger className="flex-1">
-                              <SelectValue placeholder="Pick an attribute" />
+                      {multiple ? (
+                        <div className="space-y-2">
+                          <Label>Send from</Label>
+                          <Select value={accountId} onValueChange={setAccountId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Pick a number" />
                             </SelectTrigger>
                             <SelectContent>
-                              {attributeKeys.map((k) => (
-                                <SelectItem key={k} value={k}>
-                                  {k}
+                              {numbers.map((n) => (
+                                <SelectItem key={n.id} value={n.id}>
+                                  {numberLabel(n)}
+                                  {numberSubtitle(n) ? ` · ${numberSubtitle(n)}` : ""}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                        )}
-
-                        {m?.source === "static" && (
-                          <Input
-                            className="flex-1"
-                            value={m.value ?? ""}
-                            onChange={(e) => setMapping(n, { value: e.target.value })}
-                            placeholder="Text everyone sees"
-                          />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {template && (
-                  <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">
-                      Preview for {sample.name || sample.phone}
-                    </Label>
-                    <ChatPreview
-                      body={renderTemplate(bodyText, previewValues)}
-                      footer={footerText}
-                      imageUrl={
-                        needsHeaderMedia && headerMediaFormat === "IMAGE"
-                          ? effectiveHeaderMedia || undefined
-                          : undefined
-                      }
-                      mediaLabel={
-                        needsHeaderMedia && headerMediaFormat !== "IMAGE"
-                          ? headerMediaFormat === "VIDEO"
-                            ? "Video attached"
-                            : "Document attached"
-                          : undefined
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setSendNow(true)}
-                    className={cn(
-                      "rounded-2xl border p-4 text-left transition-all duration-200",
-                      sendNow
-                        ? "border-primary bg-primary/5 shadow-sm"
-                        : "border-border/70 hover:border-primary/40",
-                    )}
-                  >
-                    <Send className="mb-2 h-4 w-4 text-primary" />
-                    <p className="text-sm font-medium">Send now</p>
-                    <p className="text-xs text-muted-foreground">Starts within a minute.</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSendNow(false)}
-                    className={cn(
-                      "rounded-2xl border p-4 text-left transition-all duration-200",
-                      !sendNow
-                        ? "border-primary bg-primary/5 shadow-sm"
-                        : "border-border/70 hover:border-primary/40",
-                    )}
-                  >
-                    <CalendarClock className="mb-2 h-4 w-4 text-primary" />
-                    <p className="text-sm font-medium">Schedule</p>
-                    <p className="text-xs text-muted-foreground">Pick a date and time.</p>
-                  </button>
-                </div>
-
-                {!sendNow && (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="campaign-date">Date</Label>
-                      <Input
-                        id="campaign-date"
-                        type="date"
-                        value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="campaign-time">Time ({timezone})</Label>
-                      <Input
-                        id="campaign-time"
-                        type="time"
-                        value={time}
-                        onChange={(e) => setTime(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {offerIssue && (
-                  <div
-                    role="status"
-                    className={cn(
-                      "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
-                      offerIssue.level === "error"
-                        ? "border-destructive/40 bg-destructive/10 text-destructive"
-                        : "border-warning-border bg-warning-soft text-warning-soft-foreground",
-                    )}
-                  >
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    <span>{offerIssue.message}</span>
-                  </div>
-                )}
-
-                <CardAttachmentPicker
-                  idPrefix="campaign"
-                  value={card}
-                  onChange={setCard}
-                  hint="Write {{1}}, {{2}} and so on to reuse each contact's own details."
-                  explanation="Optional: a branded picture (offer, product, receipt…) sent to each contact right after this template. No card is sent unless you pick one."
-                  organizationId={organizationId}
-                />
-              </div>
-            )}
-
-            {step === 4 && (
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
-                  <dl className="space-y-2 text-sm">
-                    {[
-                      ["Campaign", name],
-                      ["Sending from", numberLabel(senderNumber)],
-
-                      [
-                        "Audience",
-                        `${audience?.eligible ?? 0} opted-in contacts${
-                          segmentId === "all"
-                            ? ""
-                            : ` · ${segments.find((s) => s.id === segmentId)?.name ?? ""}`
-                        }`,
-                      ],
-                      ["Template", templateName],
-                      [
-                        "Sending",
-                        sendNow
-                          ? "Immediately"
-                          : scheduledAt
-                            ? formatInZone(scheduledAt, timezone)
-                            : "—",
-                      ],
-                      ...(needsMainCoupon && couponCode.trim()
-                        ? [["Coupon code", couponCode.trim()] as [string, string]]
-                        : []),
-                      ...(offerExpiresAt
-                        ? [
-                            ["Offer ends", formatInZone(offerExpiresAt, timezone)] as [
-                              string,
-                              string,
-                            ],
-                          ]
-                        : []),
-                    ].map(([k, v]) => (
-                      <div key={k} className="flex justify-between gap-4">
-                        <dt className="text-muted-foreground">{k}</dt>
-                        <dd className="text-right font-medium">{v}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                  {couponCards.length > 0 && (
-                    <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Offer on each card
-                      </p>
-                      {couponCards.map((card) => (
-                        <div
-                          key={card.index}
-                          className="space-y-0.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs"
-                        >
-                          <p className="font-medium">
-                            Card {card.index + 1}
-                            {cards[card.index]?.body ? ` — ${cards[card.index]!.body}` : ""}
-                          </p>
-                          <p className="text-muted-foreground">
-                            Code{" "}
-                            <span className="font-mono font-medium text-foreground">
-                              {effectiveCardCoupon(card.index)}
-                            </span>
-                            {offerExpiresAt
-                              ? ` · ends ${formatInZone(offerExpiresAt, timezone)}`
-                              : ""}
+                          <p className="text-xs text-muted-foreground">
+                            Templates and delivery are tied to this number. Opt-outs always apply
+                            across the whole workspace.
                           </p>
                         </div>
-                      ))}
-                    </div>
+                      ) : null}
+
+                      <fieldset className="space-y-2">
+                        <legend className="mb-2 text-sm font-medium text-foreground">
+                          Who should receive this?
+                        </legend>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {[
+                            {
+                              id: "all",
+                              name: "All opted-in contacts",
+                              description: "Everyone who said yes to messages.",
+                            },
+                            ...segments.map((sg) => ({
+                              id: sg.id,
+                              name: sg.name,
+                              description: sg.description ?? "",
+                            })),
+                          ].map((option) => (
+                            <ChoiceCard
+                              key={option.id}
+                              name="campaign-segment"
+                              checked={segmentId === option.id}
+                              onSelect={() => setSegmentId(option.id)}
+                              title={option.name}
+                              detail={option.description}
+                            />
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      <div
+                        className="rounded-xl border border-border bg-card p-5 shadow-xs"
+                        aria-live="polite"
+                      >
+                        {!audienceLoading && audienceError ? (
+                          <p className="text-sm text-danger-soft-foreground">{audienceError}</p>
+                        ) : audienceLoading || !audience ? (
+                          <div className="space-y-2">
+                            <Skeleton className="h-7 w-28 rounded" />
+                            <Skeleton className="h-4 w-52 rounded" />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <Users className="h-4 w-4" aria-hidden="true" />
+                              </span>
+                              <span className="tabular text-2xl font-semibold text-foreground">
+                                {count.format(audience.eligible)}
+                              </span>
+                              <span className="text-sm text-muted-foreground">will receive it</span>
+                            </div>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {count.format(audience.matched)} matched ·{" "}
+                              {count.format(audience.excluded)} excluded (not opted in)
+                            </p>
+                          </>
+                        )}
+                      </div>
+
+                      {estimate && !estimate.can_send ? (
+                        <div className="space-y-3 rounded-xl border border-danger-border bg-danger-soft p-4">
+                          <p className="text-sm text-danger-soft-foreground">
+                            You&apos;re short {money(estimate.shortfall, estimate.currency)}. Add
+                            credits to send this campaign.
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {can("billing.pay") && (
+                              <Button size="sm" onClick={() => navigate({ to: "/app/billing" })}>
+                                Buy credits
+                              </Button>
+                            )}
+                            {can("billing.request") && !can("billing.pay") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => navigate({ to: "/app/billing" })}
+                              >
+                                Request a top-up
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+
+                  {step === 1 && (
+                    <>
+                      <fieldset className="space-y-2">
+                        <legend className="mb-2 text-sm font-medium text-foreground">
+                          Approved template
+                        </legend>
+                        {templates.length === 0 ? (
+                          <p className="rounded-xl border border-dashed border-border bg-subtle px-4 py-6 text-sm text-muted-foreground">
+                            You don&apos;t have an approved template yet. Create one under Templates
+                            first.
+                          </p>
+                        ) : (
+                          <div className="grid gap-2">
+                            {templates.map((t) => (
+                              <ChoiceCard
+                                key={t.id}
+                                name="campaign-template"
+                                checked={templateName === t.name}
+                                onSelect={() => setTemplateName(t.name)}
+                                title={<span className="font-mono text-[0.8125rem]">{t.name}</span>}
+                                meta={`${(t.category ?? "").toLowerCase()} · ${t.language}`}
+                                detail={templateBodyText(t.components)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </fieldset>
+
+                      {needsHeaderMedia && (
+                        <div className="space-y-2 rounded-xl border border-border bg-card p-4 shadow-xs">
+                          <Label className="text-sm">
+                            {headerMediaFormat === "IMAGE"
+                              ? "Picture at the top"
+                              : headerMediaFormat === "VIDEO"
+                                ? "Clip at the top"
+                                : "File at the top"}
+                          </Label>
+                          <MediaUploader
+                            organizationId={organizationId}
+                            whatsappAccountId={accountId || null}
+                            slot="campaign-header"
+                            format={headerMediaFormat}
+                            fileName={headerMedia.fileName}
+                            mediaUrl={effectiveHeaderMedia}
+                            onUploaded={(r) =>
+                              setHeaderMedia({ url: r.media_url, fileName: r.file_name })
+                            }
+                            onCleared={() => setHeaderMedia({ url: "", fileName: "" })}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            {headerMedia.url
+                              ? "This campaign sends the file you just uploaded."
+                              : header?.mediaUrl
+                                ? "Using the file this template was built with — upload another to replace it for this campaign."
+                                : "This template needs a file. Upload one before you continue."}
+                          </p>
+                        </div>
+                      )}
+
+                      {cards.length > 0 && (
+                        <div className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-xs">
+                          <Label className="text-sm">Carousel cards</Label>
+                          {cards.map((card, i) => (
+                            <div key={i} className="space-y-1.5">
+                              <p className="text-xs font-medium">
+                                Card {i + 1}
+                                {card.body ? ` · ${card.body.slice(0, 40)}` : ""}
+                              </p>
+                              <MediaUploader
+                                organizationId={organizationId}
+                                whatsappAccountId={accountId || null}
+                                slot={`campaign-card:${i}`}
+                                format={card.format}
+                                fileName=""
+                                mediaUrl={effectiveCardMedia(i)}
+                                onUploaded={(r) =>
+                                  setCardMedia((prev) => ({ ...prev, [i]: r.media_url }))
+                                }
+                                onCleared={() => setCardMedia((prev) => ({ ...prev, [i]: "" }))}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {step === 2 && (
+                    <>
+                      {variables.length > 0 ? (
+                        <div className="space-y-3">
+                          {variables.map((n) => {
+                            const m = mappings[String(n)];
+                            const done = mappingIsComplete(m);
+                            return (
+                              <div
+                                key={n}
+                                className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-xs"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <Label className="flex items-center gap-2 text-sm">
+                                    Variable
+                                    <span className="rounded-md border border-info-border bg-info-soft px-1.5 py-0.5 font-mono text-xs text-info-soft-foreground">
+                                      {`{{${n}}}`}
+                                    </span>
+                                  </Label>
+                                  {done ? (
+                                    <span className="min-w-0 truncate text-xs text-muted-foreground">
+                                      For {sample.name || sample.phone}:{" "}
+                                      <span className="font-medium text-foreground">
+                                        {previewValues[n] || "—"}
+                                      </span>
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                  <Select
+                                    value={m?.source ?? ""}
+                                    onValueChange={(v) =>
+                                      setMapping(n, { source: v as VariableSource })
+                                    }
+                                  >
+                                    <SelectTrigger
+                                      className="sm:w-56"
+                                      aria-label={`Source for {{${n}}}`}
+                                    >
+                                      <SelectValue placeholder="Choose a source" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {(
+                                        Object.keys(VARIABLE_SOURCE_LABELS) as VariableSource[]
+                                      ).map((src) => (
+                                        <SelectItem key={src} value={src}>
+                                          {VARIABLE_SOURCE_LABELS[src]}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+
+                                  {m?.source === "attribute" && (
+                                    <Select
+                                      value={m.key ?? ""}
+                                      onValueChange={(v) => setMapping(n, { key: v })}
+                                    >
+                                      <SelectTrigger
+                                        className="flex-1"
+                                        aria-label={`Attribute for {{${n}}}`}
+                                      >
+                                        <SelectValue placeholder="Pick an attribute" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {attributeKeys.map((k) => (
+                                          <SelectItem key={k} value={k}>
+                                            {k}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+
+                                  {m?.source === "static" && (
+                                    <Input
+                                      className="flex-1"
+                                      value={m.value ?? ""}
+                                      onChange={(e) => setMapping(n, { value: e.target.value })}
+                                      placeholder="Text everyone sees"
+                                      aria-label={`Text for {{${n}}}`}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="rounded-xl border border-dashed border-border bg-subtle px-4 py-5 text-sm text-muted-foreground">
+                          This template has no blanks to fill — everyone gets the same words.
+                        </p>
+                      )}
+
+                      {(needsCoupon || needsOfferExpiry) && (
+                        <div className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-xs">
+                          <Label className="text-sm">{offer ? offer.text : "Offer details"}</Label>
+                          {needsCoupon && (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium">
+                                {couponCards.length > 0 && !needsMainCoupon
+                                  ? "Coupon code for every card"
+                                  : "Coupon code"}
+                              </Label>
+                              <Input
+                                value={couponCode}
+                                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                                placeholder="SAVE20"
+                                maxLength={15}
+                                aria-invalid={needsMainCoupon && !couponCode.trim()}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                {couponCards.length > 0
+                                  ? "The code customers copy with one tap. Every card uses this unless you give that card its own code below."
+                                  : "This is the code customers copy with one tap. Everyone in this campaign gets the same code."}
+                              </p>
+                            </div>
+                          )}
+
+                          {couponCards.length > 0 && (
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium">Codes per card</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Running a different discount on each card? Give that card its own
+                                code. Leave it blank to use the code above.
+                              </p>
+                              {couponCards.map((card) => {
+                                const isDupe = duplicateCouponCards.has(card.index);
+                                const isEmpty = effectiveCardCoupon(card.index).length === 0;
+                                return (
+                                  <div key={card.index} className="space-y-1">
+                                    <Label className="text-[11px] text-muted-foreground">
+                                      Card {card.index + 1}
+                                      {cards[card.index]?.body
+                                        ? ` · ${cards[card.index]!.body.slice(0, 40)}`
+                                        : ""}
+                                    </Label>
+                                    <Input
+                                      value={cardCoupons[card.index] ?? ""}
+                                      aria-invalid={isDupe || isEmpty}
+                                      className={cn(
+                                        (isDupe || isEmpty) &&
+                                          "border-danger focus-visible:ring-danger",
+                                      )}
+                                      onChange={(e) =>
+                                        setCardCoupons((prev) => ({
+                                          ...prev,
+                                          [card.index]: e.target.value.toUpperCase(),
+                                        }))
+                                      }
+                                      placeholder={couponCode.trim() || "SHOES20"}
+                                      maxLength={15}
+                                    />
+                                    {isDupe && (
+                                      <p className="text-xs text-danger-soft-foreground">
+                                        Another card already uses this code — each card needs its
+                                        own.
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {couponCards.some(
+                                (c) => effectiveCardCoupon(c.index).length === 0,
+                              ) && (
+                                <p className="text-xs text-danger-soft-foreground">
+                                  Every card with a copy-code button needs a code — either its own
+                                  or the shared one above.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          {needsOfferExpiry && (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium">Offer ends ({timezone})</Label>
+                              <div className="flex gap-2">
+                                <Input
+                                  type="date"
+                                  value={offerDate}
+                                  onChange={(e) => setOfferDate(e.target.value)}
+                                  aria-label="Offer end date"
+                                />
+                                <Input
+                                  type="time"
+                                  value={offerTime}
+                                  onChange={(e) => setOfferTime(e.target.value)}
+                                  aria-label="Offer end time"
+                                />
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {offerExpiresAt
+                                  ? `The countdown ends ${formatInZone(offerExpiresAt, timezone)} — your workspace time.`
+                                  : "The countdown in the message ticks down to this moment, read in your workspace timezone."}
+                              </p>
+                            </div>
+                          )}
+                          {offerIssue && <OfferIssue issue={offerIssue} />}
+                        </div>
+                      )}
+
+                      <CardAttachmentPicker
+                        idPrefix="campaign"
+                        value={card}
+                        onChange={setCard}
+                        hint="Write {{1}}, {{2}} and so on to reuse each contact's own details."
+                        explanation="Optional: a branded picture (offer, product, receipt…) sent to each contact right after this template. No card is sent unless you pick one."
+                        organizationId={organizationId}
+                      />
+                    </>
+                  )}
+
+                  {step === 3 && (
+                    <>
+                      {testRef && templateName ? (
+                        <CampaignTestSend
+                          organizationId={organizationId}
+                          testRef={testRef}
+                          templateName={templateName}
+                          accountId={accountId}
+                          mappings={mappings}
+                          sendSettings={sendSettings}
+                        />
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">
+                        Nothing goes to your audience from this step. Skip it with Continue.
+                      </p>
+                    </>
+                  )}
+
+                  {step === 4 && (
+                    <>
+                      <fieldset>
+                        <legend className="mb-2 text-sm font-medium text-foreground">
+                          When should it send?
+                        </legend>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <ChoiceCard
+                            name="campaign-when"
+                            checked={sendNow}
+                            onSelect={() => setSendNow(true)}
+                            icon={Send}
+                            title="Send now"
+                            detail="Starts within a minute."
+                          />
+                          <ChoiceCard
+                            name="campaign-when"
+                            checked={!sendNow}
+                            onSelect={() => setSendNow(false)}
+                            icon={CalendarClock}
+                            title="Schedule"
+                            detail="Pick a date and time."
+                          />
+                        </div>
+                      </fieldset>
+
+                      {!sendNow && (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="campaign-date">Date</Label>
+                            <Input
+                              id="campaign-date"
+                              type="date"
+                              value={date}
+                              onChange={(e) => setDate(e.target.value)}
+                              aria-invalid={!date}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="campaign-time">Time ({timezone})</Label>
+                            <Input
+                              id="campaign-time"
+                              type="time"
+                              value={time}
+                              onChange={(e) => setTime(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {offerIssue && <OfferIssue issue={offerIssue} />}
+
+                      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+                        <dl className="divide-y divide-border text-sm">
+                          {[
+                            ["Campaign", name],
+                            ["Sending from", numberLabel(senderNumber)],
+                            [
+                              "Audience",
+                              `${count.format(audience?.eligible ?? 0)} opted-in contacts${
+                                segmentId === "all" ? "" : ` · ${segmentName}`
+                              }`,
+                            ],
+                            ["Template", templateName],
+                            [
+                              "Sending",
+                              sendNow
+                                ? "Immediately"
+                                : scheduledAt
+                                  ? formatInZone(scheduledAt, timezone)
+                                  : "—",
+                            ],
+                            ...(estimate
+                              ? [
+                                  [
+                                    "Cost",
+                                    `about ${money(estimate.estimate, estimate.currency)}`,
+                                  ] as [string, string],
+                                ]
+                              : []),
+                            ...(needsMainCoupon && couponCode.trim()
+                              ? [["Coupon code", couponCode.trim()] as [string, string]]
+                              : []),
+                            ...(offerExpiresAt
+                              ? [
+                                  ["Offer ends", formatInZone(offerExpiresAt, timezone)] as [
+                                    string,
+                                    string,
+                                  ],
+                                ]
+                              : []),
+                          ].map(([k, v]) => (
+                            <div key={k} className="flex justify-between gap-4 px-4 py-2.5">
+                              <dt className="text-muted-foreground">{k}</dt>
+                              <dd className="min-w-0 truncate text-right font-medium text-foreground">
+                                {v}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                        {couponCards.length > 0 && (
+                          <div className="space-y-2 border-t border-border p-4">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Offer on each card
+                            </p>
+                            {couponCards.map((c) => (
+                              <div
+                                key={c.index}
+                                className="space-y-0.5 rounded-lg border border-border bg-subtle px-3 py-2 text-xs"
+                              >
+                                <p className="font-medium">
+                                  Card {c.index + 1}
+                                  {cards[c.index]?.body ? ` — ${cards[c.index]!.body}` : ""}
+                                </p>
+                                <p className="text-muted-foreground">
+                                  Code{" "}
+                                  <span className="font-mono font-medium text-foreground">
+                                    {effectiveCardCoupon(c.index)}
+                                  </span>
+                                  {offerExpiresAt
+                                    ? ` · ends ${formatInZone(offerExpiresAt, timezone)}`
+                                    : ""}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
-                {needsCoupon || needsOfferExpiry ? (
-                  <div className="wa-wall rounded-xl border border-border p-4">
-                    <TemplatePreview model={previewModel} />
-                  </div>
-                ) : (
-                  <ChatPreview
-                    body={renderTemplate(bodyText, previewValues)}
-                    footer={footerText}
-                    imageUrl={
-                      needsHeaderMedia && headerMediaFormat === "IMAGE"
-                        ? effectiveHeaderMedia || undefined
-                        : undefined
-                    }
-                    mediaLabel={
-                      needsHeaderMedia && headerMediaFormat !== "IMAGE"
-                        ? headerMediaFormat === "VIDEO"
-                          ? "Video attached"
-                          : "Document attached"
-                        : undefined
-                    }
-                  />
-                )}
-                {card ? (
-                  <div className="space-y-2 rounded-2xl border border-border/70 bg-card p-4">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      Then this picture card, right after the template
-                    </p>
-                    <CardPreview kind={card.kind} vars={card.vars} className="max-w-[240px]" />
-                  </div>
-                ) : null}
-                {testRef && templateName ? (
-                  <CampaignTestSend
-                    organizationId={organizationId}
-                    testRef={testRef}
-                    templateName={templateName}
-                    accountId={accountId}
-                    mappings={mappings}
-                    sendSettings={sendSettings}
-                  />
-                ) : null}
+              )}
+            </div>
+
+            {/* The customer's phone and what it costs, beside every step. */}
+            <aside
+              className="space-y-4 self-start lg:sticky lg:top-0"
+              aria-label="Preview and cost"
+            >
+              <div>
+                <CustomerPhone business={business}>
+                  {template ? (
+                    <div className="space-y-2">
+                      <TemplatePreview model={previewModel} />
+                      {card ? (
+                        <CardPreview kind={card.kind} vars={card.vars} className="max-w-[220px]" />
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="wa-bubble-in wa-tail max-w-[85%] text-[0.8125rem] text-wa-meta">
+                      Pick a template and your message appears here, as your customer sees it.
+                    </div>
+                  )}
+                </CustomerPhone>
+                <p className="mt-3 text-center text-xs text-muted-foreground">
+                  {template ? `Preview for ${sample.name || sample.phone}` : "Live preview"}
+                  {offer?.hasExpiration ? " · the countdown is live" : ""}
+                </p>
               </div>
+              <CostPanel
+                audience={audience}
+                audienceLoading={audienceLoading}
+                estimate={estimate}
+              />
+            </aside>
+          </div>
+        </div>
+
+        <footer className="shrink-0 border-t border-border bg-card px-4 py-3 sm:px-6">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+            <Button
+              variant="ghost"
+              onClick={() => (step === 0 ? onOpenChange(false) : setStep((s) => s - 1))}
+              disabled={launching}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {step === 0 ? "Cancel" : "Back"}
+            </Button>
+            <CostLine
+              audience={audience}
+              audienceLoading={audienceLoading}
+              estimate={estimate}
+              className="hidden min-w-0 flex-1 justify-center sm:flex"
+            />
+            {step < STEPS.length - 1 ? (
+              <Button
+                disabled={!canNext()}
+                onClick={goNext}
+                aria-keyshortcuts="Control+Enter Meta+Enter"
+              >
+                Continue <ArrowRight className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button disabled={!canLaunch} onClick={() => void launch()}>
+                {launching ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Rocket className="h-4 w-4" />
+                )}
+                {sendNow ? "Launch campaign" : "Schedule campaign"}
+              </Button>
             )}
           </div>
-        )}
-
-        <div className="flex items-center justify-between gap-3 pt-2">
-          <Button
-            variant="ghost"
-            className="rounded-full"
-            onClick={() => (step === 0 ? onOpenChange(false) : setStep((s) => s - 1))}
-            disabled={launching}
-          >
-            <ArrowLeft className="mr-1.5 h-4 w-4" />
-            {step === 0 ? "Cancel" : "Back"}
-          </Button>
-          {step < STEPS.length - 1 ? (
-            <Button
-              className="rounded-full"
-              disabled={!canNext()}
-              onClick={() => setStep((s) => s + 1)}
-            >
-              Continue <ArrowRight className="ml-1.5 h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              className="rounded-full"
-              disabled={launching || !offerReady || offerIssue?.level === "error"}
-              onClick={() => void launch()}
-            >
-              {launching ? (
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-              ) : (
-                <Rocket className="mr-1.5 h-4 w-4" />
-              )}
-              {sendNow ? "Launch campaign" : "Schedule campaign"}
-            </Button>
-          )}
-        </div>
+          <CostLine
+            audience={audience}
+            audienceLoading={audienceLoading}
+            estimate={estimate}
+            className="mt-2 flex justify-center sm:hidden"
+          />
+        </footer>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** A selectable card: a real radio input, so arrows and Space work as usual. */
+function ChoiceCard({
+  name,
+  checked,
+  onSelect,
+  title,
+  meta,
+  detail,
+  icon: Icon,
+}: {
+  name: string;
+  checked: boolean;
+  onSelect: () => void;
+  title: ReactNode;
+  meta?: string | undefined;
+  detail?: string | undefined;
+  icon?: LucideIcon | undefined;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex cursor-pointer items-start gap-3 rounded-xl border bg-card p-3.5 shadow-xs transition-[border-color,box-shadow,background-color] duration-150",
+        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+        checked
+          ? "border-primary bg-primary/[0.04] ring-1 ring-primary"
+          : "border-border hover:border-border-strong",
+      )}
+    >
+      <input type="radio" name={name} checked={checked} onChange={onSelect} className="sr-only" />
+      <span
+        aria-hidden="true"
+        className={cn(
+          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+          checked ? "border-primary bg-primary" : "border-border-strong bg-card",
+        )}
+      >
+        {checked ? <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" /> : null}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+            {Icon ? <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" /> : null}
+            <span className="truncate">{title}</span>
+          </span>
+          {meta ? (
+            <span className="shrink-0 text-xs capitalize text-muted-foreground">{meta}</span>
+          ) : null}
+        </span>
+        {detail ? (
+          <span className="mt-1 line-clamp-2 block text-xs text-muted-foreground">{detail}</span>
+        ) : null}
+      </span>
+    </label>
+  );
+}
+
+function OfferIssue({ issue }: { issue: { level: "error" | "warning"; message: string } }) {
+  return (
+    <div
+      role="status"
+      className={cn(
+        "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
+        issue.level === "error"
+          ? "border-danger-border bg-danger-soft text-danger-soft-foreground"
+          : "border-warning-border bg-warning-soft text-warning-soft-foreground",
+      )}
+    >
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span>{issue.message}</span>
+    </div>
+  );
+}
+
+type CostProps = {
+  audience: AudienceSummary | null;
+  audienceLoading: boolean;
+  estimate: CampaignCostEstimate | null;
+};
+
+/** One line for the footer: who, and roughly what it costs. */
+function CostLine({
+  audience,
+  audienceLoading,
+  estimate,
+  className,
+}: CostProps & { className?: string }) {
+  return (
+    <p
+      className={cn("items-center gap-2 text-xs text-muted-foreground", className)}
+      aria-live="polite"
+    >
+      <Coins className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+      <span className="truncate">
+        {audienceLoading && !audience ? (
+          "Counting your audience…"
+        ) : audience ? (
+          <>
+            <span className="tabular font-medium text-foreground">
+              {count.format(audience.eligible)}
+            </span>{" "}
+            people
+            {estimate ? (
+              <>
+                {" · about "}
+                <span className="tabular font-medium text-foreground">
+                  {money(estimate.estimate, estimate.currency)}
+                </span>
+              </>
+            ) : null}
+          </>
+        ) : (
+          "Pick an audience to see the cost"
+        )}
+      </span>
+    </p>
+  );
+}
+
+/** The cost card beside the phone: the estimate and what it rests on. */
+function CostPanel({ audience, audienceLoading, estimate }: CostProps) {
+  return (
+    <section
+      aria-label="Cost"
+      className={cn(
+        "rounded-xl border bg-card p-4 shadow-xs",
+        estimate && !estimate.can_send ? "border-danger-border" : "border-border",
+      )}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm text-muted-foreground">This send costs about</span>
+        <span className="tabular text-lg font-semibold text-foreground">
+          {estimate ? money(estimate.estimate, estimate.currency) : "—"}
+        </span>
+      </div>
+      {estimate ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {money(estimate.rate, estimate.currency)} per message · you have{" "}
+          {money(estimate.available, estimate.currency)} in credits
+        </p>
+      ) : (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {audienceLoading
+            ? "Counting your audience…"
+            : audience
+              ? ""
+              : "Pick an audience to see the cost."}
+        </p>
+      )}
+      {audience ? (
+        <p className="mt-3 flex items-center gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+          <Users className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+          <span className="tabular font-medium text-foreground">
+            {count.format(audience.eligible)}
+          </span>{" "}
+          will receive it
+        </p>
+      ) : null}
+      {estimate && !estimate.can_send ? (
+        <p className="mt-3 text-xs text-danger-soft-foreground">
+          You&apos;re short {money(estimate.shortfall, estimate.currency)}. Add credits to send this
+          campaign.
+        </p>
+      ) : null}
+      {estimate?.can_send && estimate.needs_approval ? (
+        <p className="mt-3 text-xs text-warning-soft-foreground">
+          This is above your approval limit, so it will wait for an owner to approve it before
+          anything sends.
+        </p>
+      ) : null}
+      {estimate?.over_daily_limit ? (
+        <p className="mt-3 text-xs text-warning-soft-foreground">
+          Your number can message {estimate.daily_limit} people a day right now, so this will spread
+          over about {estimate.days_needed} days.
+        </p>
+      ) : null}
+    </section>
   );
 }
