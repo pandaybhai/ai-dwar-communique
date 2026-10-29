@@ -232,3 +232,27 @@ always Off).
 Every send (draft Send / Edit / Write my own) goes through the Inbox's
 `sendInboxText`, every assign through `assignConversation`, the mode switch
 through `set_mode`. Live updates use the Inbox's `subscribeInboxChanges`.
+
+## Inbox (Batch 46)
+
+`/app/inbox` with the flag on renders `NewInboxView`
+(`src/components/inbox/v2/`); with it off, the Batch 39 `InboxView` exactly
+as before (`batch46-inbox.test.tsx`). Three panes: chat list | chat | customer
+panel (inline from 1280px, a sheet below); on a phone the list, then the chat
+full screen with a back arrow, both bars stepping aside (`data-chat-open`,
+set only at 700px and under).
+
+| Piece | Where it comes from |
+| --- | --- |
+| Waiting for you (gold count) | The classic "Waiting for you" filter: `needs_human` |
+| Aiden on it | Open, not `needs_human`, not assigned: the chats `ai-agent.server.ts` answers. Reads "Nobody on it" when Aiden's mode is Off or Draft |
+| Done | The classic "Closed" filter. All chats, Open and Assigned to me stay under "More filters"; Unread, Unassigned, search, number and j/k/Enter/r/e/a/"/" as before |
+| Aiden badge on a row | That row is an Aiden-on-it chat and Aiden's mode is Replying |
+| 24-hour window chip | `isServiceWindowOpen` on `last_customer_message_at` (every send path's rule; exactly 24 h is still open): "Free replies for N more hours/minutes", gold under 2 hours, else "Window closed: send a template" |
+| Take over from Aiden / Hand back to Aiden | The per-chat switch Aiden already obeys: take over = assign to me (`assignConversation`); hand back = unassign and Mark as handled (`needs_human` cleared), only what is set |
+| "Aiden paused" note | `needs_human_reason` in Aiden's words (`handoverReasonText`), the question, what the customer was told, who on the team was told |
+| Aiden suggests | The composer's "Draft a reply" (`suggest_reply`), shown with Send (`sendInboxText`) and Edit; never run on its own |
+| "/" in an empty box | The template, picture card and form pickers already in the composer |
+| Customer panel | Labels, opt-in, the language they write in and their question (Aiden knows), this chat, the shop's `orders` for the contact (with `integrations.view`), photos and files in the chat |
+
+"Aiden is typing" is left out: nothing the Inbox reads says Aiden is mid-reply.

@@ -3,7 +3,7 @@
  *
  *   VITE_AIDWAR_SUPABASE_URL=http://fake-backend.test VITE_AIDWAR_SUPABASE_ANON_KEY=fake \
  *     npx vite dev --port 5199 --host 127.0.0.1
- *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b44|b45|b47] [--design classic|new]
+ *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b44|b45|b46|b47] [--design classic|new]
  *
  * Uses the Chromium + Playwright installed on the machine (not a project
  * dependency). The dev server must point the app at the fake backend host:
@@ -165,6 +165,38 @@ const SCENARIOS_B45 = {
   "home-classic": { path: "/app", conversations: 40, wait: "h1", fullPage: true },
 };
 
+/** Batch 46: the new Inbox (run with --design new; --design classic shows flag off is unchanged). */
+const chatAt = (i) => `00000000-0000-4000-8000-${String(1000 + i).padStart(12, "0")}`;
+const SCENARIOS_B46 = {
+  "inbox-list": { path: "/app/inbox", conversations: 40, wait: "text=Asha Iyer" },
+  "inbox-chat": { path: `/app/inbox?c=${chatAt(8)}`, conversations: 40, wait: "text=Meenakari" },
+  "inbox-needs-human": {
+    path: `/app/inbox?c=${firstId}`,
+    conversations: 40,
+    wait: "text=Meenakari",
+    act: async (page) => {
+      const draft = page.getByRole("button", { name: "Draft a reply" });
+      if (await draft.count()) {
+        await draft.first().click();
+        await page.waitForTimeout(600);
+      }
+    },
+  },
+  "inbox-taken-over": { path: `/app/inbox?c=${chatAt(1)}`, conversations: 40, wait: "text=Meenakari" },
+  "inbox-window-closed": { path: `/app/inbox?c=${chatAt(3)}`, conversations: 40, wait: "text=Meenakari" },
+  "inbox-empty": { path: "/app/inbox", conversations: 0, wait: "h1" },
+  "inbox-back": {
+    path: `/app/inbox?c=${firstId}`,
+    conversations: 40,
+    wait: "text=Meenakari",
+    mobileOnly: true,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Back to chats" }).click();
+      await page.waitForTimeout(500);
+    },
+  },
+};
+
 /** Batch 47: Campaigns, Templates and Cards in the new design (run with --design new). */
 const dhanteras = "00000000-0000-4000-8000-000000007005";
 const SCENARIOS_B47 = {
@@ -200,7 +232,7 @@ const SCENARIOS_B47 = {
   cards: { path: "/app/cards", conversations: 40, wait: "h1", settle: 1200, fullPage: true },
 };
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b47: SCENARIOS_B47 };
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47 };
 
 const consoleErrors = [];
 
