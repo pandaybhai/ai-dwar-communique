@@ -103,6 +103,7 @@ const SCENARIOS_B41 = {
   templates: { path: "/app/templates", conversations: 40, wait: "text=order_shipped" },
   "templates-empty": { path: "/app/templates", conversations: 40, templates: 0, wait: "h1" },
   "template-create": {
+    fullPage: false,
     path: "/app/templates",
     conversations: 40,
     wait: "text=order_shipped",

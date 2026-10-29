@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, MessageSquareText, Phone, RefreshCw, Search } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  MessageSquareText,
+  Phone,
+  Plus,
+  RefreshCw,
+  Search,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { useOrg } from "@/lib/org-context";
@@ -14,21 +24,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { EmptyState, ErrorState } from "@/components/empty-state";
-import {
-  statusBadgeClass,
-  templateBodyText,
-  type TemplateRow,
-} from "@/lib/templates";
+import { statusBadgeClass, templateBodyText, type TemplateRow } from "@/lib/templates";
 import { componentsToPreview, TemplatePreview } from "@/components/templates/template-preview";
 import { CreateTemplateDialog } from "./create-template-dialog";
 import { usePermissions } from "@/hooks/use-permissions";
+import { usePageShortcut } from "@/hooks/use-page-shortcut";
+import { runAppCommand } from "@/lib/app-commands";
+import { cn } from "@/lib/utils";
 import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
 import { numberLabel, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
 
@@ -49,43 +52,51 @@ function TemplateSkeleton() {
   );
 }
 
+/** Batch 41: the review states Meta gives a template, for the filter chips. */
+const STATUS_FILTERS = [
+  { key: "all", label: "All" },
+  { key: "APPROVED", label: "Approved" },
+  { key: "PENDING", label: "Pending" },
+  { key: "REJECTED", label: "Rejected" },
+] as const;
+
+const STATUS_ICON: Record<string, typeof CheckCircle2> = {
+  APPROVED: CheckCircle2,
+  PENDING: Clock,
+  IN_APPEAL: Clock,
+  REJECTED: XCircle,
+};
+
 function TemplateCard({ template, owner }: { template: TemplateRow; owner: string }) {
   const preview = componentsToPreview(template.components);
-  const statusBadge = (
-    <span
-      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(template.status)}`}
-    >
-      {template.status.toLowerCase()}
-    </span>
-  );
+  const StatusIcon = STATUS_ICON[template.status];
   return (
     <article className="animate-in fade-in slide-in-from-bottom-1 flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs transition-[box-shadow,border-color] duration-150 hover:border-border-strong hover:shadow-md">
       <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
         <div className="min-w-0">
-          <h3 className="truncate font-mono text-[0.8125rem] font-semibold text-foreground">{template.name}</h3>
+          <h3 className="truncate font-mono text-[0.8125rem] font-semibold text-foreground">
+            {template.name}
+          </h3>
           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             <span className="capitalize">{(template.category ?? "—").toLowerCase()}</span>
             <span aria-hidden="true">·</span>
             <span>{template.language}</span>
           </p>
         </div>
-        {template.status === "REJECTED" && template.rejection_reason ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button type="button" className="rounded-full" aria-label={`Rejected: ${template.rejection_reason}`}>
-                  {statusBadge}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs break-words">
-                {template.rejection_reason}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          statusBadge
-        )}
+        <span
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(template.status)}`}
+        >
+          {StatusIcon ? <StatusIcon className="h-3 w-3" aria-hidden="true" /> : null}
+          {template.status.toLowerCase()}
+        </span>
       </div>
+
+      {template.status === "REJECTED" && template.rejection_reason ? (
+        <p className="mx-3 mb-3 rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-xs text-danger-soft-foreground">
+          <span className="font-medium">Why Meta rejected it: </span>
+          {template.rejection_reason}
+        </p>
+      ) : null}
 
       <div className="wa-wall mx-3 rounded-lg px-3 py-4">
         <TemplatePreview model={preview} className="max-w-none" />
@@ -104,6 +115,15 @@ function TemplateCard({ template, owner }: { template: TemplateRow; owner: strin
   );
 }
 
+/** Pending covers both of Meta's review states; paused or disabled ones show under All only. */
+function statusOf(t: TemplateRow): "APPROVED" | "PENDING" | "REJECTED" | "OTHER" {
+  const st = t.status.toUpperCase();
+  if (st === "APPROVED") return "APPROVED";
+  if (st === "REJECTED") return "REJECTED";
+  if (st === "PENDING" || st === "IN_APPEAL") return "PENDING";
+  return "OTHER";
+}
+
 export function TemplatesView() {
   const { active } = useOrg();
   const { can } = usePermissions();
@@ -116,7 +136,11 @@ export function TemplatesView() {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [numberFilter, setNumberFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]["key"]>("all");
   const autoSynced = useRef<string | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  // Batch 41: / jumps to the search box.
+  usePageShortcut("/", () => searchRef.current?.focus());
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -185,9 +209,10 @@ export function TemplatesView() {
         const picked = numbers.find((n) => n.id === numberFilter);
         if (!picked || t.waba_id !== picked.waba_id) return false;
       }
+      if (statusFilter !== "all" && statusOf(t) !== statusFilter) return false;
       return true;
     });
-  }, [templates, query, numberFilter, numbers]);
+  }, [templates, query, numberFilter, numbers, statusFilter]);
 
   /** One group per business account, since each holds its own library. */
   const groups = useMemo(() => {
@@ -217,7 +242,7 @@ export function TemplatesView() {
   const createAccountId =
     numberFilter !== "all"
       ? numberFilter
-      : (numbers.find((n) => n.is_default) ?? numbers[0])?.id ?? null;
+      : ((numbers.find((n) => n.is_default) ?? numbers[0])?.id ?? null);
 
   if (loading) return <TemplateSkeleton />;
   if (error) return <ErrorState message={error} />;
@@ -227,12 +252,18 @@ export function TemplatesView() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full flex-col gap-2 sm:max-w-md sm:flex-row">
           <div className="relative w-full">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" aria-hidden="true" />
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+              aria-hidden="true"
+            />
             <Input
+              ref={searchRef}
+              type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search templates"
               aria-label="Search templates"
+              aria-keyshortcuts="/"
               className="pl-9"
             />
           </div>
@@ -280,11 +311,51 @@ export function TemplatesView() {
         </p>
       </div>
 
+      {templates.length > 0 ? (
+        <div
+          role="group"
+          aria-label="Show templates"
+          className="-mx-4 flex gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0"
+        >
+          {STATUS_FILTERS.map((f) => {
+            const n =
+              f.key === "all"
+                ? templates.length
+                : templates.filter((t) => statusOf(t) === f.key).length;
+            const on = statusFilter === f.key;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setStatusFilter(f.key)}
+                className={cn(
+                  "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[0.8125rem] font-medium transition-colors duration-150",
+                  on
+                    ? "border-foreground/15 bg-foreground text-background"
+                    : "border-border bg-card text-muted-foreground hover:border-border-strong hover:text-foreground",
+                )}
+              >
+                {f.label}
+                <span className={cn("tabular text-xs", on ? "opacity-70" : "text-faint")}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {templates.length === 0 ? (
         <EmptyState
           icon={MessageSquareText}
           title="No templates yet"
           description="Create your first template and submit it for review, or sync the ones already approved on your business account."
+          action={
+            canManage ? (
+              <Button onClick={() => runAppCommand({ kind: "new-template" })}>
+                <Plus className="h-4 w-4" aria-hidden="true" /> Create template
+              </Button>
+            ) : undefined
+          }
         />
       ) : groups.length === 0 ? (
         <EmptyState
@@ -303,8 +374,7 @@ export function TemplatesView() {
                     <span className="truncate">{group.label}</span>
                   </h2>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {group.rows.length} template{group.rows.length === 1 ? "" : "s"} in this
-                    library
+                    {group.rows.length} template{group.rows.length === 1 ? "" : "s"} in this library
                   </p>
                 </div>
                 {canManage && group.accountId ? (
