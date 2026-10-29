@@ -11,7 +11,10 @@ import type { HomeMode } from "@/lib/new-home";
  * a test unless skipped, and a refusal for plan or credits says why and offers
  * Billing. `onChanged` runs after a saved change.
  */
-export function useAidenModeSwitch(organizationId: string | null, onChanged: (mode: HomeMode) => void) {
+export function useAidenModeSwitch(
+  organizationId: string | null,
+  onChanged: (mode: HomeMode) => void,
+) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<HomeMode | null>(null);
   const [gate, setGate] = useState<{ mode: HomeMode; message: string } | null>(null);
@@ -34,7 +37,10 @@ export function useAidenModeSwitch(organizationId: string | null, onChanged: (mo
       if (error) {
         if ((raw as { billing?: boolean } | null)?.billing === true) {
           toast.error(error, {
-            action: { label: "Go to billing", onClick: () => void navigate({ to: "/app/billing" }) },
+            action: {
+              label: "Go to billing",
+              onClick: () => void navigate({ to: "/app/billing" }),
+            },
           });
         } else toast.error(error);
         return;

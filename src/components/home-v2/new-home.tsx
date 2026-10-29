@@ -57,7 +57,16 @@ export function NewHome() {
             teammates: can("inbox.assign"),
           }
         : null,
-    [ready, aiFlag.enabled, campaignsFlag.enabled, flowsFlag.enabled, flowsV2Flag.enabled, revenueFlag.enabled, billingFlag.enabled, can],
+    [
+      ready,
+      aiFlag.enabled,
+      campaignsFlag.enabled,
+      flowsFlag.enabled,
+      flowsV2Flag.enabled,
+      revenueFlag.enabled,
+      billingFlag.enabled,
+      can,
+    ],
   );
   const { data, loading, reload } = useNewHome(organizationId, timezone, access);
   const onChanged = useCallback(() => void reload(), [reload]);
@@ -96,7 +105,11 @@ export function NewHome() {
       {loading || !mode ? (
         <HomeSkeleton />
       ) : mode === "replying" ? (
-        <ReplyingView data={data} headline={replyingHeadline(data.active ?? 0)} stats={todayStats(data, "replying")} />
+        <ReplyingView
+          data={data}
+          headline={replyingHeadline(data.active ?? 0)}
+          stats={todayStats(data, "replying")}
+        />
       ) : mode === "draft" ? (
         <DraftsView
           data={data}
@@ -112,16 +125,17 @@ export function NewHome() {
           organizationId={organizationId!}
           queue={waitingQueue(data.openChats ?? [], Date.now())}
           closing={closingWindows(
-            (data.openChats ?? []).map((c) => ({ conversationId: c.id, lastInboundAt: c.lastInboundAt })),
+            (data.openChats ?? []).map((c) => ({
+              conversationId: c.id,
+              lastInboundAt: c.lastInboundAt,
+            })),
             Date.now(),
           )}
           headlineFor={waitingHeadline}
           canReply={can("inbox.view")}
           canAssign={can("inbox.assign")}
           stats={todayStats(data, "off")}
-          tryDraft={
-            canSeeAiden && canChange ? () => void modeSwitch.setMode("draft") : null
-          }
+          tryDraft={canSeeAiden && canChange ? () => void modeSwitch.setMode("draft") : null}
         />
       )}
 
@@ -139,14 +153,15 @@ function todayStats(data: ReturnType<typeof useNewHome>["data"], mode: HomeMode)
   const rows: StatRow[] = [];
   const s = data.summary;
   if (s) rows.push({ label: "Chats", value: s.today.conversations });
-  if (mode === "replying" && s) rows.push({ label: "Answered by Aiden", value: s.today.ai_answers });
+  if (mode === "replying" && s)
+    rows.push({ label: "Answered by Aiden", value: s.today.ai_answers });
   if (mode === "draft" && data.draftsToday !== null)
     rows.push({ label: "Drafts Aiden wrote", value: data.draftsToday });
   if (mode === "off" && data.flows) rows.push({ label: "Flow runs", value: data.flows.total });
-  if (data.sales) rows.push({ label: data.sales.label, value: data.sales.value, currency: data.sales.currency });
+  if (data.sales)
+    rows.push({ label: data.sales.label, value: data.sales.value, currency: data.sales.currency });
   return rows;
 }
-
 
 function HomeSkeleton() {
   return (

@@ -13,7 +13,18 @@ import { assignConversation } from "@/lib/inbox-actions";
 import { timeLeftLabel, waitedFor, type ClosingWindow, type WaitingChat } from "@/lib/new-home";
 import type { OpenChat } from "@/lib/new-home-data";
 import { cn } from "@/lib/utils";
-import { Bar, HomeAvatar, HomeGrid, HomeOrb, SideSection, TodayStats, contactName, count, firstName, type StatRow } from "./parts";
+import {
+  Bar,
+  HomeAvatar,
+  HomeGrid,
+  HomeOrb,
+  SideSection,
+  TodayStats,
+  contactName,
+  count,
+  firstName,
+  type StatRow,
+} from "./parts";
 import type { NewHomeData } from "./use-new-home";
 
 /** Rows shown before "See all in the inbox". */
@@ -80,7 +91,10 @@ export function OffView({
       }
     >
       {queue.length > 0 ? (
-        <ul aria-label="Customers waiting, oldest first" className="m-0 flex list-none flex-col gap-2.5 p-0">
+        <ul
+          aria-label="Customers waiting, oldest first"
+          className="m-0 flex list-none flex-col gap-2.5 p-0"
+        >
           {queue.slice(0, QUEUE_ROWS).map((w, i) => (
             <WaitingRow
               key={w.conversation.id}
@@ -141,7 +155,9 @@ function WaitingRow({
           </span>
         </div>
         <p className="m-0 mt-0.5 line-clamp-2 text-[15px] text-foreground">{item.said}</p>
-        {assignee ? <p className="m-0 mt-1 text-sm text-muted-foreground">With {assignee.name}</p> : null}
+        {assignee ? (
+          <p className="m-0 mt-1 text-sm text-muted-foreground">With {assignee.name}</p>
+        ) : null}
         <div className="mt-2.5 flex flex-wrap gap-2">
           {canReply ? (
             <Button asChild>
@@ -180,7 +196,13 @@ function WaitingRow({
 }
 
 /** The gold card: chats whose free reply window closes within 2 hours, soonest first. */
-function ClosingSoon({ closing, chats }: { closing: ClosingWindow[]; chats: Map<string, OpenChat> }) {
+function ClosingSoon({
+  closing,
+  chats,
+}: {
+  closing: ClosingWindow[];
+  chats: Map<string, OpenChat>;
+}) {
   const soonest = closing[0]!;
   const n = closing.length;
   const name = (id: string) => contactName(chats.get(id)?.contact);
@@ -189,15 +211,21 @@ function ClosingSoon({ closing, chats }: { closing: ClosingWindow[]; chats: Map<
       title="Free replies running out"
       actions={
         <Button asChild variant="gold">
-          <a href={`/app/inbox?c=${soonest.conversationId}`}>Reply to {firstName(name(soonest.conversationId))}</a>
+          <a href={`/app/inbox?c=${soonest.conversationId}`}>
+            Reply to {firstName(name(soonest.conversationId))}
+          </a>
         </Button>
       }
     >
       <div className="flex items-center gap-3.5">
-        <CountdownRing remaining={soonest.minutesLeft} label={timeLeftLabel(soonest.minutesLeft)} className="shrink-0" />
+        <CountdownRing
+          remaining={soonest.minutesLeft}
+          label={timeLeftLabel(soonest.minutesLeft)}
+          className="shrink-0"
+        />
         <p>
-          {n === 1 ? "1 chat loses" : `${count.format(n)} chats lose`} the free 24-hour window within 2 hours.
-          After that, a paid template is needed.
+          {n === 1 ? "1 chat loses" : `${count.format(n)} chats lose`} the free 24-hour window
+          within 2 hours. After that, a paid template is needed.
         </p>
       </div>
       <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0 text-sm">
@@ -209,7 +237,9 @@ function ClosingSoon({ closing, chats }: { closing: ClosingWindow[]; chats: Map<
             >
               {name(w.conversationId)}
             </a>
-            <span className="shrink-0 tabular-nums text-gold-ink">{timeLeftLabel(w.minutesLeft)}</span>
+            <span className="shrink-0 tabular-nums text-gold-ink">
+              {timeLeftLabel(w.minutesLeft)}
+            </span>
           </li>
         ))}
       </ul>
@@ -221,7 +251,9 @@ function FlowsToday({ flows }: { flows: NonNullable<NewHomeData["flows"]> }) {
   return (
     <SideSection id="home-flows" title="Your flows today">
       {flows.flows.length === 0 ? (
-        <p className="m-0 text-[15px] text-muted-foreground">None of your flows has run yet today.</p>
+        <p className="m-0 text-[15px] text-muted-foreground">
+          None of your flows has run yet today.
+        </p>
       ) : (
         flows.flows.slice(0, 4).map((f) => (
           <div key={f.flowId} className="flex flex-col gap-2.5">

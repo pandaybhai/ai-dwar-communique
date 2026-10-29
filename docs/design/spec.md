@@ -208,3 +208,27 @@ Tokens only; no `transition: all`; no tracked-capitals labels; no middle-dot
 strings; no decorative dots; no card inside a card; `:focus-visible` on every
 control; a reduced-motion fallback for every animation; `overflow-x: clip` on
 html and body; no invented metrics.
+
+## Home (Batch 45)
+
+`/app` with the flag on renders `NewHome` (`src/components/home-v2/`); with it
+off, the Batch 41 Home in `src/routes/app/index.tsx` exactly as before
+(`batch45-home.test.tsx` pins its code). Which of the three Homes shows is the
+mode Aiden really runs in (`homeModeFor` in `src/lib/new-home.ts`: the plan's
+AI, the workspace AI switch, the default agent's mode; a plan without AI is
+always Off).
+
+| Block | Where the number comes from |
+| --- | --- |
+| "Aiden is replying to N customers" | Open chats, not assigned, not waiting for a person, with a customer message in the last 30 minutes |
+| Aiden's latest replies | `agent_reply` runs matched to the message that was sent (the Inbox's `aiRunFor`), one per chat; `ai_runs.metadata` is not readable by members, so background runs are told apart this way |
+| Needs you | `needs_human` chats, then held owner questions (`/api/home/summary` waiting), at most 3 |
+| Today | Chats and Aiden's replies from `/api/home/summary`; sales from chats (Receipts' attribution, when any order in 30 days), else credits; drafts written today; flow runs today |
+| "N replies are ready for you" | Draft-mode `suggest_reply` runs with no `user_id` from the last 24 hours, latest per chat, with nothing sent in that chat since |
+| "N customers are waiting" | Open chats from the last 7 days whose newest message is the customer's, or that wait for a person; oldest first |
+| Free replies running out | Chats whose 24-hour window, from their newest customer message, closes within 2 hours (exactly 2 h in, closed out) |
+| Your flows today | Flows v2 `flow_runs` since the local day began, per flow |
+
+Every send (draft Send / Edit / Write my own) goes through the Inbox's
+`sendInboxText`, every assign through `assignConversation`, the mode switch
+through `set_mode`. Live updates use the Inbox's `subscribeInboxChanges`.

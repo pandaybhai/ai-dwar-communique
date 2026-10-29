@@ -1291,8 +1291,13 @@ html[data-design="new"] ::selection {
   opacity: 0.4;
 }
 .nd-draft[data-pos="gone"] {
-  transform: translateX(110%) rotate(6deg);
-  opacity: 0;
+  animation: nd-draft-out 0.45s var(--ease-out) forwards;
+}
+@keyframes nd-draft-out {
+  to {
+    transform: translateX(110%) rotate(6deg);
+    opacity: 0;
+  }
 }
 
 /* A page arriving; the phone's bottom sheet rising. */
@@ -1348,7 +1353,8 @@ html[data-chat-open] .nd-bottom-bar {
   .nd-sheet-up,
   .nd-scrim-in,
   .nd-slide-in,
-  .nd-oldest {
+  .nd-oldest,
+  .nd-draft[data-pos="gone"] {
     animation: none !important;
   }
   .nd-draft {

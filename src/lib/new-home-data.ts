@@ -77,7 +77,10 @@ export async function loadActiveChats(organizationId: string, now: number): Prom
 async function contactsOf(ids: string[]): Promise<Map<string, Contact>> {
   const out = new Map<string, Contact>();
   if (ids.length === 0) return out;
-  const { data } = await aidwar.from("conversations").select("id, contact:contacts(id, name, phone)").in("id", ids);
+  const { data } = await aidwar
+    .from("conversations")
+    .select("id, contact:contacts(id, name, phone)")
+    .in("id", ids);
   for (const row of (data ?? []) as Array<{ id: string; contact: Contact | Contact[] }>) {
     out.set(row.id, one(row.contact));
   }
@@ -87,7 +90,10 @@ async function contactsOf(ids: string[]): Promise<Map<string, Contact>> {
 export type FeedItem = FeedReply & { contact: Contact };
 
 /** Aiden's latest replies that reached customers (last 7 days), one per chat. */
-export async function loadAidenFeed(organizationId: string, now: number): Promise<FeedItem[] | null> {
+export async function loadAidenFeed(
+  organizationId: string,
+  now: number,
+): Promise<FeedItem[] | null> {
   const { data: runs, error } = await aidwar
     .from("ai_runs")
     .select("conversation_id, output, input_summary, sources, created_at")
@@ -139,32 +145,46 @@ export type NeedsYouItem = {
  */
 export async function loadNeedsYou(
   organizationId: string,
-  held: Array<{ id: string; question: string; asked_at: string; conversation_id: string | null; contact_name: string | null }>,
+  held: Array<{
+    id: string;
+    question: string;
+    asked_at: string;
+    conversation_id: string | null;
+    contact_name: string | null;
+  }>,
 ): Promise<{ items: NeedsYouItem[]; total: number } | null> {
   const { data, error, count } = await aidwar
     .from("conversations")
-    .select("id, needs_human_question, needs_human_reason, needs_human_at, last_message_at, contact:contacts(id, name, phone)", {
-      count: "exact",
-    })
+    .select(
+      "id, needs_human_question, needs_human_reason, needs_human_at, last_message_at, contact:contacts(id, name, phone)",
+      {
+        count: "exact",
+      },
+    )
     .eq("organization_id", organizationId)
     .eq("needs_human", true)
     .order("needs_human_at", { ascending: false, nullsFirst: false })
     .limit(3);
   if (error) return null;
-  const items: NeedsYouItem[] = ((data ?? []) as Array<{
-    id: string;
-    needs_human_question: string | null;
-    needs_human_reason: string | null;
-    needs_human_at: string | null;
-    last_message_at: string | null;
-    contact: Contact | Contact[];
-  }>).map((c) => {
+  const items: NeedsYouItem[] = (
+    (data ?? []) as Array<{
+      id: string;
+      needs_human_question: string | null;
+      needs_human_reason: string | null;
+      needs_human_at: string | null;
+      last_message_at: string | null;
+      contact: Contact | Contact[];
+    }>
+  ).map((c) => {
     const contact = one(c.contact);
     return {
       key: `c-${c.id}`,
       conversationId: c.id,
       who: contact?.name?.trim() || contact?.phone || "A customer",
-      question: c.needs_human_question?.trim() || handoverReasonText(c.needs_human_reason) || "Waiting for a person.",
+      question:
+        c.needs_human_question?.trim() ||
+        handoverReasonText(c.needs_human_reason) ||
+        "Waiting for a person.",
       at: c.needs_human_at ?? c.last_message_at ?? new Date().toISOString(),
     };
   });
@@ -192,7 +212,10 @@ export type DraftItem = ReadyDraft & { contact: Contact };
  * suggest_reply runs Aiden wrote on his own (no user_id — a teammate's
  * "Draft a reply" has one), latest per chat, with nothing sent since.
  */
-export async function loadReadyDrafts(organizationId: string, now: number): Promise<DraftItem[] | null> {
+export async function loadReadyDrafts(
+  organizationId: string,
+  now: number,
+): Promise<DraftItem[] | null> {
   const { data, error } = await aidwar
     .from("ai_runs")
     .select("id, conversation_id, input_summary, output, created_at")
@@ -228,7 +251,10 @@ export async function loadReadyDrafts(organizationId: string, now: number): Prom
 }
 
 /** How many drafts Aiden wrote on his own today. */
-export async function loadDraftsWrittenToday(organizationId: string, timezone: string): Promise<number | null> {
+export async function loadDraftsWrittenToday(
+  organizationId: string,
+  timezone: string,
+): Promise<number | null> {
   const { count, error } = await aidwar
     .from("ai_runs")
     .select("id", { count: "exact", head: true })
@@ -251,7 +277,10 @@ export type OpenChat = HomeConversation & {
  * Open chats with any message in the last 7 days (newest 200, as the Inbox
  * loads), each with its newest message and its newest customer message.
  */
-export async function loadOpenChats(organizationId: string, now: number): Promise<OpenChat[] | null> {
+export async function loadOpenChats(
+  organizationId: string,
+  now: number,
+): Promise<OpenChat[] | null> {
   const { data, error } = await aidwar
     .from("conversations")
     .select(
@@ -269,12 +298,17 @@ export async function loadOpenChats(organizationId: string, now: number): Promis
     .limit(200);
   if (error) return null;
   return ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
-    const lastIn = one(r["last_in"] as { created_at: string } | Array<{ created_at: string }> | null);
+    const lastIn = one(
+      r["last_in"] as { created_at: string } | Array<{ created_at: string }> | null,
+    );
     return {
       ...(r as unknown as HomeConversation),
       whatsapp_account_id: (r["whatsapp_account_id"] as string | null) ?? null,
       contact: one(r["contact"] as Contact | Contact[]),
-      preview: one(r["preview"] as HomeConversation["preview"] | Array<NonNullable<HomeConversation["preview"]>>),
+      preview: one(
+        r["preview"] as
+          HomeConversation["preview"] | Array<NonNullable<HomeConversation["preview"]>>,
+      ),
       lastInboundAt: lastIn?.created_at ?? null,
     };
   });
@@ -298,13 +332,16 @@ export async function loadFlowsToday(
   const names = new Map<string, string>();
   if (ids.length > 0) {
     const { data: flows } = await aidwar.from("flows").select("id, name").in("id", ids);
-    for (const f of (flows ?? []) as Array<{ id: string; name: string | null }>) names.set(f.id, f.name ?? "");
+    for (const f of (flows ?? []) as Array<{ id: string; name: string | null }>)
+      names.set(f.id, f.name ?? "");
   }
   return { flows: flowsToday(runs, names), total: count ?? runs.length };
 }
 
 /** The newest campaign that has sent anything. */
-export async function loadLatestCampaign(organizationId: string): Promise<CampaignRow | null | undefined> {
+export async function loadLatestCampaign(
+  organizationId: string,
+): Promise<CampaignRow | null | undefined> {
   const { data, error } = await aidwar
     .from("campaigns")
     .select("*")
@@ -321,11 +358,19 @@ export type Teammate = { user_id: string; name: string };
 
 /** The workspace's people, for Assign (the Inbox's own member read). */
 export async function loadTeammates(organizationId: string): Promise<Teammate[]> {
-  const { data } = await aidwar.from("organization_members").select("user_id").eq("organization_id", organizationId);
+  const { data } = await aidwar
+    .from("organization_members")
+    .select("user_id")
+    .eq("organization_id", organizationId);
   const ids = (data ?? []).map((r) => (r as { user_id: string }).user_id);
   if (ids.length === 0) return [];
-  const { data: profiles } = await aidwar.from("profiles").select("id, full_name, email").in("id", ids);
-  return ((profiles ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>).map((p) => ({
+  const { data: profiles } = await aidwar
+    .from("profiles")
+    .select("id, full_name, email")
+    .in("id", ids);
+  return (
+    (profiles ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>
+  ).map((p) => ({
     user_id: p.id,
     name: p.full_name?.trim() || p.email || "Teammate",
   }));

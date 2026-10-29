@@ -34,7 +34,9 @@ export function ReplyingView({
       lede={replyingLede(answered, needs?.total ?? null)}
       side={
         <>
-          {needs && needs.items.length > 0 ? <NeedsYou items={needs.items} total={needs.total} /> : null}
+          {needs && needs.items.length > 0 ? (
+            <NeedsYou items={needs.items} total={needs.total} />
+          ) : null}
           <TodayStats rows={stats} />
           {data.campaign ? <LatestCampaign campaign={data.campaign} /> : null}
         </>
@@ -44,7 +46,7 @@ export function ReplyingView({
         <AidenFeed items={data.feed} />
       ) : data.feed ? (
         <p className="m-0 rounded-[18px] border border-line bg-surface px-4 py-3.5 text-muted-foreground shadow-md">
-          Aiden's replies show here the moment he sends them.
+          Aiden’s replies show here the moment he sends them.
         </p>
       ) : null}
     </HomeGrid>
@@ -69,14 +71,14 @@ function replyingLede(answered: number | null, needs: number | null): string {
   return [first, second].filter(Boolean).join(" ") || "Aiden answers your customers as they write.";
 }
 
-/** Aiden's latest replies, newest on top; the newest types itself out. */
+/** Aiden’s latest replies, newest on top; the newest types itself out. */
 function AidenFeed({ items }: { items: FeedItem[] }) {
   const now = Date.now();
   // AnimatedList puts its last child on top: hand it oldest first.
   const ordered = items.slice().reverse();
   const newest = items[0]!;
   return (
-    <AnimatedList delay={600} aria-label="Aiden's latest replies">
+    <AnimatedList delay={600} role="group" aria-label="Aiden’s latest replies">
       {ordered.map((it) => {
         const who = contactName(it.contact);
         return (
@@ -88,10 +90,14 @@ function AidenFeed({ items }: { items: FeedItem[] }) {
             <div className="min-w-0 flex-1">
               <div className="flex justify-between gap-2.5 font-bold">
                 <span className="min-w-0 truncate">{who}</span>
-                <span className="shrink-0 text-sm font-medium text-muted-foreground">{agoLabel(it.at, now)}</span>
+                <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                  {agoLabel(it.at, now)}
+                </span>
               </div>
               {it.question ? (
-                <p className="m-0 mt-0.5 line-clamp-2 text-[15px] text-muted-foreground">{it.question}</p>
+                <p className="m-0 mt-0.5 line-clamp-2 text-[15px] text-muted-foreground">
+                  {it.question}
+                </p>
               ) : null}
               <div className="mt-2 rounded-[14px_14px_14px_4px] bg-bubble-out px-3 py-[9px] text-[15px]">
                 <small className="block text-[13px] font-bold text-aiden-deep">Aiden</small>

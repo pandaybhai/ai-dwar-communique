@@ -35,7 +35,8 @@ function rowsFor(op: FakeOp): unknown[] {
   return all.filter((r) =>
     op.filters.every(([m, a]) => {
       const [col, val] = a as [string, unknown];
-      if (m === "eq" && typeof col === "string" && !col.includes(".") && col in r) return r[col] === val;
+      if (m === "eq" && typeof col === "string" && !col.includes(".") && col in r)
+        return r[col] === val;
       if (m === "is" && col === "user_id") return r["user_id"] === null;
       return true;
     }),
@@ -49,7 +50,11 @@ function useRows(rows: Rows) {
       const data = rowsFor(op);
       const head = (op.select?.[1] as { head?: boolean } | undefined)?.head;
       const single = op.filters.some(([m]) => m === "maybeSingle");
-      return { data: head ? null : single ? (data[0] ?? null) : data, error: null, count: data.length };
+      return {
+        data: head ? null : single ? (data[0] ?? null) : data,
+        error: null,
+        count: data.length,
+      };
     },
     () => ({ data: null, error: { message: "not in this test" } }),
   );
@@ -63,7 +68,11 @@ vi.mock("@/integrations/aidwar/client", () => ({
       const ch = { topic, on: [] as (typeof h.channels)[number]["on"], removed: false };
       h.channels.push(ch);
       const api = {
-        on: (_e: string, cfg: { table: string; filter: string }, cb: (p: { new: unknown }) => void) => {
+        on: (
+          _e: string,
+          cfg: { table: string; filter: string },
+          cb: (p: { new: unknown }) => void,
+        ) => {
           ch.on.push({ table: cfg.table, filter: cfg.filter, cb });
           return api;
         },
@@ -94,7 +103,8 @@ vi.mock("@/lib/whatsapp-client", () => ({
     if (path.startsWith("/api/home/summary")) return { data: SUMMARY, error: null, raw: SUMMARY };
     if (path === "/api/whatsapp/send-message") {
       const body = init.body as { body?: string };
-      if (body.body === "fail please") return { data: null, error: "The 24-hour window has closed.", raw: null };
+      if (body.body === "fail please")
+        return { data: null, error: "The 24-hour window has closed.", raw: null };
       return { data: { message_id: "m1" }, error: null, raw: null };
     }
     return { data: null, error: "not in this test", raw: null };
@@ -113,7 +123,14 @@ vi.mock("@/lib/new-design", async (importOriginal) => ({
   useNewDesign: () => h.newDesign,
 }));
 
-const ACCESS = { aiPlan: true, campaigns: false, flows: true, revenue: false, billing: false, teammates: false };
+const ACCESS = {
+  aiPlan: true,
+  campaigns: false,
+  flows: true,
+  revenue: false,
+  billing: false,
+  teammates: false,
+};
 const ORG = "org-1";
 
 const contact = (id: string, name: string) => ({ id, name, phone: "+919800000000" });
@@ -158,7 +175,10 @@ describe("which Home: the mode Aiden really runs in", () => {
       expect(data.mode).toBe(expected);
       const ops = h.db!.ops;
       const touched = (needle: string) =>
-        ops.some((o) => o.table === needle || (o.table === "ai_runs" && h.db!.has(o, "eq", "task", needle)));
+        ops.some(
+          (o) =>
+            o.table === needle || (o.table === "ai_runs" && h.db!.has(o, "eq", "task", needle)),
+        );
       expect(touched(reads)).toBe(true);
       expect(touched(never)).toBe(false);
       // Every read is scoped to the workspace (RLS does the rest).
@@ -209,7 +229,8 @@ describe("free replies running out: windows closing within 2 hours", () => {
     const { isServiceWindowOpen } = await import("./service-window");
     for (const left of [-1, 0, 1, HOUR, 2 * HOUR]) {
       const last = ago(24 * HOUR - left);
-      const inCard = closingWindows([{ conversationId: "c", lastInboundAt: last }], NOW).length === 1;
+      const inCard =
+        closingWindows([{ conversationId: "c", lastInboundAt: last }], NOW).length === 1;
       expect(inCard).toBe(isServiceWindowOpen({ last_customer_message_at: last }, NOW));
     }
   });
@@ -224,7 +245,9 @@ describe("free replies running out: windows closing within 2 hours", () => {
           needs_human: false,
           last_message_at: ago(5 * MIN),
           contact: contact("k1", "Asha"),
-          preview: [{ body: "Thanks", type: "text", direction: "outbound", created_at: ago(5 * MIN) }],
+          preview: [
+            { body: "Thanks", type: "text", direction: "outbound", created_at: ago(5 * MIN) },
+          ],
           last_in: [{ created_at: ago(23 * HOUR) }],
         },
       ],
@@ -241,7 +264,11 @@ describe("free replies running out: windows closing within 2 hours", () => {
 describe("drafts: Send uses the Inbox's existing send", () => {
   it("sendDraftReply posts exactly what the Inbox composer posts", async () => {
     const { sendDraftReply } = await import("@/components/home-v2/drafts-view");
-    const res = await sendDraftReply(ORG, { conversationId: "conv-9" }, "  Yes, we can deliver by Friday.  ");
+    const res = await sendDraftReply(
+      ORG,
+      { conversationId: "conv-9" },
+      "  Yes, we can deliver by Friday.  ",
+    );
     expect(res).toEqual({ sent: true, error: null });
     expect(h.calls).toEqual([
       {
@@ -260,7 +287,10 @@ describe("drafts: Send uses the Inbox's existing send", () => {
 
   it("sends nothing for empty words and passes the server's refusal through", async () => {
     const { sendDraftReply } = await import("@/components/home-v2/drafts-view");
-    expect(await sendDraftReply(ORG, { conversationId: "c" }, "   ")).toEqual({ sent: false, error: null });
+    expect(await sendDraftReply(ORG, { conversationId: "c" }, "   ")).toEqual({
+      sent: false,
+      error: null,
+    });
     expect(h.calls).toHaveLength(0);
     expect(await sendDraftReply(ORG, { conversationId: "c" }, "fail please")).toEqual({
       sent: false,
@@ -273,28 +303,82 @@ describe("drafts: Send uses the Inbox's existing send", () => {
     const inbox = src("components/inbox/inbox-view.tsx");
     expect(inbox).toMatch(/sendInboxText\(orgId, activeConversation\.id, text\)/);
     expect(inbox).toMatch(/assignConversation\(orgId, activeConversation, assignee\)/);
-    expect(inbox).not.toMatch(/"\/api\/whatsapp\/send-message",\s*\{\s*body:\s*\{[^}]*message_type: "text"/);
-    const home = ["drafts-view.tsx", "off-view.tsx", "replying-view.tsx", "new-home.tsx", "use-new-home.ts"]
+    expect(inbox).not.toMatch(
+      /"\/api\/whatsapp\/send-message",\s*\{\s*body:\s*\{[^}]*message_type: "text"/,
+    );
+    const home = [
+      "drafts-view.tsx",
+      "off-view.tsx",
+      "replying-view.tsx",
+      "new-home.tsx",
+      "use-new-home.ts",
+    ]
       .map((f) => src(`components/home-v2/${f}`))
       .join("\n");
     expect(home).not.toMatch(/send-message|\.update\(|\.insert\(|\.upsert\(|\.delete\(/);
-    expect(src("components/home-v2/drafts-view.tsx")).toMatch(/sendInboxText\(organizationId, draft\.conversationId, body\)/);
+    expect(src("components/home-v2/drafts-view.tsx")).toMatch(
+      /sendInboxText\(organizationId, draft\.conversationId, body\)/,
+    );
   });
 
   it("ready drafts: Aiden's own (no user_id), latest per chat, gone once anything is sent", async () => {
     const { readyDrafts } = await import("./new-home");
     const runs = [
-      { id: "r1", conversation_id: "a", input_summary: "Open Sunday?", output: "Yes, 11 to 8.", created_at: ago(10 * MIN) },
-      { id: "r2", conversation_id: "a", input_summary: "And Monday?", output: "Monday too.", created_at: ago(2 * MIN) },
-      { id: "r3", conversation_id: "b", input_summary: "Price?", output: "₹1,200.", created_at: ago(30 * MIN) },
-      { id: "r4", conversation_id: "c", input_summary: "Hi", output: "  ", created_at: ago(1 * MIN) },
+      {
+        id: "r1",
+        conversation_id: "a",
+        input_summary: "Open Sunday?",
+        output: "Yes, 11 to 8.",
+        created_at: ago(10 * MIN),
+      },
+      {
+        id: "r2",
+        conversation_id: "a",
+        input_summary: "And Monday?",
+        output: "Monday too.",
+        created_at: ago(2 * MIN),
+      },
+      {
+        id: "r3",
+        conversation_id: "b",
+        input_summary: "Price?",
+        output: "₹1,200.",
+        created_at: ago(30 * MIN),
+      },
+      {
+        id: "r4",
+        conversation_id: "c",
+        input_summary: "Hi",
+        output: "  ",
+        created_at: ago(1 * MIN),
+      },
     ];
     const sent = new Map([["b", ago(20 * MIN)]]);
     expect(readyDrafts(runs, sent).map((d) => d.runId)).toEqual(["r2"]);
     useRows({
       ai_runs: [
-        { id: "auto", organization_id: ORG, task: "suggest_reply", status: "ok", user_id: null, conversation_id: "a", input_summary: "Q", output: "Draft", created_at: ago(MIN) },
-        { id: "manual", organization_id: ORG, task: "suggest_reply", status: "ok", user_id: "u1", conversation_id: "b", input_summary: "Q", output: "Mine", created_at: ago(MIN) },
+        {
+          id: "auto",
+          organization_id: ORG,
+          task: "suggest_reply",
+          status: "ok",
+          user_id: null,
+          conversation_id: "a",
+          input_summary: "Q",
+          output: "Draft",
+          created_at: ago(MIN),
+        },
+        {
+          id: "manual",
+          organization_id: ORG,
+          task: "suggest_reply",
+          status: "ok",
+          user_id: "u1",
+          conversation_id: "b",
+          input_summary: "Q",
+          output: "Mine",
+          created_at: ago(MIN),
+        },
       ],
       messages: [],
       conversations: [{ id: "a", contact: contact("k", "Asha") }],
@@ -310,17 +394,69 @@ describe("Aiden's feed: only replies that reached a customer", () => {
   it("skips background runs inside a chat (a photo described) and keeps one per chat", async () => {
     const { sentAidenReplies } = await import("./new-home");
     const runs = [
-      { conversation_id: "a", output: "Yes, we deliver to Pune.", input_summary: "Pune?", sources: [], created_at: ago(2 * MIN) },
-      { conversation_id: "a", output: "A gold ring on a red cloth.", input_summary: "Describe this picture.", sources: [], created_at: ago(3 * MIN) },
-      { conversation_id: "b", output: "Open 11 to 8.", input_summary: "Sunday?", sources: [], created_at: ago(9 * MIN) },
-      { conversation_id: "b", output: "Older answer.", input_summary: "Older?", sources: [], created_at: ago(40 * MIN) },
+      {
+        conversation_id: "a",
+        output: "Yes, we deliver to Pune.",
+        input_summary: "Pune?",
+        sources: [],
+        created_at: ago(2 * MIN),
+      },
+      {
+        conversation_id: "a",
+        output: "A gold ring on a red cloth.",
+        input_summary: "Describe this picture.",
+        sources: [],
+        created_at: ago(3 * MIN),
+      },
+      {
+        conversation_id: "b",
+        output: "Open 11 to 8.",
+        input_summary: "Sunday?",
+        sources: [],
+        created_at: ago(9 * MIN),
+      },
+      {
+        conversation_id: "b",
+        output: "Older answer.",
+        input_summary: "Older?",
+        sources: [],
+        created_at: ago(40 * MIN),
+      },
     ];
     const messages = [
-      { conversation_id: "a", direction: "outbound" as const, body: "Yes, we deliver to Pune.", sent_by: null, metadata: null, created_at: ago(2 * MIN - 2000) },
-      { conversation_id: "b", direction: "outbound" as const, body: "Open 11 to 8.", sent_by: null, metadata: null, created_at: ago(9 * MIN - 2000) },
-      { conversation_id: "b", direction: "outbound" as const, body: "Older answer.", sent_by: null, metadata: null, created_at: ago(40 * MIN - 2000) },
+      {
+        conversation_id: "a",
+        direction: "outbound" as const,
+        body: "Yes, we deliver to Pune.",
+        sent_by: null,
+        metadata: null,
+        created_at: ago(2 * MIN - 2000),
+      },
+      {
+        conversation_id: "b",
+        direction: "outbound" as const,
+        body: "Open 11 to 8.",
+        sent_by: null,
+        metadata: null,
+        created_at: ago(9 * MIN - 2000),
+      },
+      {
+        conversation_id: "b",
+        direction: "outbound" as const,
+        body: "Older answer.",
+        sent_by: null,
+        metadata: null,
+        created_at: ago(40 * MIN - 2000),
+      },
       // A person's reply with the same words is not Aiden's.
-      { conversation_id: "a", direction: "outbound" as const, body: "A gold ring on a red cloth.", sent_by: "u1", metadata: null, created_at: ago(MIN) },
+      {
+        conversation_id: "a",
+        direction: "outbound" as const,
+        body: "A gold ring on a red cloth.",
+        sent_by: "u1",
+        metadata: null,
+        created_at: ago(MIN),
+      },
     ];
     const feed = sentAidenReplies(runs, messages);
     expect(feed.map((f) => [f.conversationId, f.reply])).toEqual([
@@ -362,20 +498,40 @@ describe("live: realtime adds an item without a reload", () => {
 
   it("a reply Aiden sends after the page loaded appears in the feed on the next change", async () => {
     const reply = (cid: string, text: string, q: string, at: number) => ({
-      run: { organization_id: ORG, task: "agent_reply", status: "ok", conversation_id: cid, output: text, input_summary: q, sources: [], created_at: ago(at) },
-      msg: { conversation_id: cid, direction: "outbound", body: text, sent_by: null, metadata: null, created_at: ago(at - 1000) },
+      run: {
+        organization_id: ORG,
+        task: "agent_reply",
+        status: "ok",
+        conversation_id: cid,
+        output: text,
+        input_summary: q,
+        sources: [],
+        created_at: ago(at),
+      },
+      msg: {
+        conversation_id: cid,
+        direction: "outbound",
+        body: text,
+        sent_by: null,
+        metadata: null,
+        created_at: ago(at - 1000),
+      },
     });
     const first = reply("a", "Yes, open on Sunday.", "Sunday?", 10 * MIN);
     const base = {
       ai_agents: [{ organization_id: ORG, is_default: true, mode: "replying" }],
       organization_ai_settings: [{ organization_id: ORG, ai_enabled: true }],
-      conversations: [{ id: "a", contact: contact("ka", "Asha Iyer") }, { id: "b", contact: contact("kb", "Rohan Das") }],
+      conversations: [
+        { id: "a", contact: contact("ka", "Asha Iyer") },
+        { id: "b", contact: contact("kb", "Rohan Das") },
+      ],
     };
     useRows({ ...base, ai_runs: [first.run], messages: [first.msg] });
     const { loadNewHome, liveHomeReload } = await import("@/components/home-v2/use-new-home");
     const { ReplyingView } = await import("@/components/home-v2/replying-view");
     let data = await loadNewHome(ORG, "Asia/Kolkata", ACCESS, NOW);
-    const html = () => renderToStaticMarkup(<ReplyingView data={data} headline="Aiden is replying" stats={[]} />);
+    const html = () =>
+      renderToStaticMarkup(<ReplyingView data={data} headline="Aiden is replying" stats={[]} />);
     expect(html()).toContain("Yes, open on Sunday.");
     expect(html()).not.toContain("We deliver to Pune");
 
@@ -433,9 +589,25 @@ describe("the three Homes, drawn", () => {
       <ReplyingView
         data={{
           ...base,
-          feed: [{ conversationId: "a", question: "Sunday?", reply: "Open 11 to 8.", at: ago(MIN), contact: contact("k", "Asha Iyer") }],
+          feed: [
+            {
+              conversationId: "a",
+              question: "Sunday?",
+              reply: "Open 11 to 8.",
+              at: ago(MIN),
+              contact: contact("k", "Asha Iyer"),
+            },
+          ],
           needsYou: {
-            items: [{ key: "c-1", conversationId: "c1", who: "Rohan Das", question: "Can I get a refund?", at: ago(MIN) }],
+            items: [
+              {
+                key: "c-1",
+                conversationId: "c1",
+                who: "Rohan Das",
+                question: "Can I get a refund?",
+                at: ago(MIN),
+              },
+            ],
             total: 1,
           },
         }}
@@ -452,7 +624,11 @@ describe("the three Homes, drawn", () => {
     expect(html).toContain("Today");
     // Nothing waiting: no gold card at all.
     const calm = renderToStaticMarkup(
-      <ReplyingView data={{ ...base, needsYou: { items: [], total: 0 } }} headline="x" stats={[]} />,
+      <ReplyingView
+        data={{ ...base, needsYou: { items: [], total: 0 } }}
+        headline="x"
+        stats={[]}
+      />,
     );
     expect(calm).not.toContain("Needs you");
     expect(calm).toContain("Nothing needs you right now.");
@@ -471,7 +647,11 @@ describe("the three Homes, drawn", () => {
     });
     const html = renderToStaticMarkup(
       <DraftsView
-        data={{ ...base, mode: "draft", drafts: [draft("1", "Asha Iyer"), draft("2", "Rohan Das")] }}
+        data={{
+          ...base,
+          mode: "draft",
+          drafts: [draft("1", "Asha Iyer"), draft("2", "Rohan Das")],
+        }}
         organizationId={ORG}
         canReply
         stats={[]}
@@ -488,12 +668,26 @@ describe("the three Homes, drawn", () => {
     expect(html.match(/>Send</g)).toHaveLength(1);
     expect(html).toMatch(/data-pos="1"[^>]*aria-hidden="true"/);
     const empty = renderToStaticMarkup(
-      <DraftsView data={{ ...base, mode: "draft", drafts: [] }} organizationId={ORG} canReply stats={[]} headlineFor={draftsHeadline} onSent={() => {}} />,
+      <DraftsView
+        data={{ ...base, mode: "draft", drafts: [] }}
+        organizationId={ORG}
+        canReply
+        stats={[]}
+        headlineFor={draftsHeadline}
+        onSent={() => {}}
+      />,
     );
     expect(empty).toContain("All caught up");
     // Someone without inbox.reply sees the chat link, not Send.
     const viewer = renderToStaticMarkup(
-      <DraftsView data={{ ...base, mode: "draft", drafts: [draft("1", "Asha Iyer")] }} organizationId={ORG} canReply={false} stats={[]} headlineFor={draftsHeadline} onSent={() => {}} />,
+      <DraftsView
+        data={{ ...base, mode: "draft", drafts: [draft("1", "Asha Iyer")] }}
+        organizationId={ORG}
+        canReply={false}
+        stats={[]}
+        headlineFor={draftsHeadline}
+        onSent={() => {}}
+      />,
     );
     expect(viewer).not.toContain(">Send<");
     expect(viewer).toContain('href="/app/inbox?c=c-1"');
@@ -502,7 +696,13 @@ describe("the three Homes, drawn", () => {
   it("off: waiting oldest first, the gold card for closing windows, flows today, try draft mode", async () => {
     const { OffView } = await import("@/components/home-v2/off-view");
     const { waitingQueue, closingWindows, waitingHeadline } = await import("./new-home");
-    const chat = (id: string, name: string, at: number, direction: string, lastIn: number | null) => ({
+    const chat = (
+      id: string,
+      name: string,
+      at: number,
+      direction: string,
+      lastIn: number | null,
+    ) => ({
       id,
       status: "open",
       assigned_to: null,
@@ -520,7 +720,10 @@ describe("the three Homes, drawn", () => {
     ];
     const queue = waitingQueue(openChats, NOW);
     expect(queue.map((w) => w.conversation.id)).toEqual(["old", "new"]);
-    const closing = closingWindows(openChats.map((c) => ({ conversationId: c.id, lastInboundAt: c.lastInboundAt })), NOW);
+    const closing = closingWindows(
+      openChats.map((c) => ({ conversationId: c.id, lastInboundAt: c.lastInboundAt })),
+      NOW,
+    );
     const props = {
       data: {
         ...base,
@@ -547,7 +750,9 @@ describe("the three Homes, drawn", () => {
     expect(html).toContain("Welcome message");
     expect(html).toContain("Try Aiden in draft mode");
     // A plan without AI, or a role that can't change Aiden: no nudge.
-    expect(renderToStaticMarkup(<OffView {...props} tryDraft={null} />)).not.toContain("Try Aiden in draft mode");
+    expect(renderToStaticMarkup(<OffView {...props} tryDraft={null} />)).not.toContain(
+      "Try Aiden in draft mode",
+    );
     expect(waitingHeadline(1)).toBe("1 customer is waiting");
   });
 });

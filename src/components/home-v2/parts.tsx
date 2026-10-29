@@ -70,7 +70,7 @@ const MODE_OPTIONS: Array<{ key: HomeMode; label: string }> = [
 ];
 
 /**
- * Aiden's mode, the preview's segmented switch: the same three modes as the
+ * Aiden’s mode, the preview's segmented switch: the same three modes as the
  * Employee page, and only ai.configure may change it. (set_mode keeps the
  * workspace AI switch equal to the mode, syncAiSwitch, so Off to Draft is one
  * press here too.)
@@ -101,7 +101,11 @@ export function ModeSwitch({
             aria-pressed={pressed}
             aria-busy={busy === o.key || undefined}
             disabled={!canChange || busy !== null}
-            title={canChange ? undefined : "Only someone who can change Aiden's settings can switch this."}
+            title={
+              canChange
+                ? undefined
+                : "Only someone who can change Aiden’s settings can switch this."
+            }
             onClick={() => {
               if (!pressed) onChange(o.key);
             }}
@@ -157,7 +161,7 @@ export function TestFirstDialog({
               void navigate({ to: "/app/employee" });
             }}
           >
-            Test on Aiden's page
+            Test on Aiden’s page
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -292,7 +296,9 @@ export function HomeGrid({
               {headline}
             </h1>
           </div>
-          <p className="m-0 max-w-[44ch] text-[17px] text-muted-foreground phone:text-base">{lede}</p>
+          <p className="m-0 max-w-[44ch] text-[17px] text-muted-foreground phone:text-base">
+            {lede}
+          </p>
         </div>
         {children}
       </section>

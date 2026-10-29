@@ -6,7 +6,15 @@ import { sendInboxText } from "@/lib/inbox-actions";
 import { agoLabel } from "@/lib/new-home";
 import type { DraftItem } from "@/lib/new-home-data";
 import { NeedsYou } from "./replying-view";
-import { HomeAvatar, HomeGrid, HomeOrb, LatestCampaign, TodayStats, contactName, type StatRow } from "./parts";
+import {
+  HomeAvatar,
+  HomeGrid,
+  HomeOrb,
+  LatestCampaign,
+  TodayStats,
+  contactName,
+  type StatRow,
+} from "./parts";
 import type { NewHomeData } from "./use-new-home";
 
 /**
@@ -54,9 +62,12 @@ export function DraftsView({
   const drafts = (data.drafts ?? []).filter((d) => !sent.has(d.runId));
   const left = drafts.filter((d) => d.runId !== leaving).length;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   const send = async (draft: DraftItem, text: string): Promise<boolean> => {
     const { sent: ok, error } = await sendDraftReply(organizationId, draft, text);
@@ -86,7 +97,9 @@ export function DraftsView({
       }
       side={
         <>
-          {needs && needs.items.length > 0 ? <NeedsYou items={needs.items} total={needs.total} /> : null}
+          {needs && needs.items.length > 0 ? (
+            <NeedsYou items={needs.items} total={needs.total} />
+          ) : null}
           <TodayStats rows={stats} />
           {data.campaign ? <LatestCampaign campaign={data.campaign} /> : null}
         </>
@@ -98,9 +111,12 @@ export function DraftsView({
           Every draft has been sent or answered.
         </p>
       ) : (
-        <div className="relative pb-7" aria-label="Aiden's drafts">
+        <div role="group" className="relative pb-7" aria-label="Aiden’s drafts">
           {drafts.slice(0, 3).map((d, i) => {
-            const pos = d.runId === leaving ? "gone" : String(drafts.slice(0, i).filter((x) => x.runId !== leaving).length);
+            const pos =
+              d.runId === leaving
+                ? "gone"
+                : String(drafts.slice(0, i).filter((x) => x.runId !== leaving).length);
             return (
               <DraftCard
                 key={d.runId}
@@ -147,7 +163,9 @@ function DraftCard({
       aria-label={top ? `Draft for ${who}` : undefined}
       className={
         "nd-draft rounded-[20px] border border-line bg-surface p-5 shadow-lg " +
-        (top ? "relative z-[3]" : `absolute inset-x-0 top-0 h-full ${pos === "gone" ? "z-[4]" : pos === "1" ? "z-[2]" : "z-[1]"}`)
+        (top
+          ? "relative z-[3]"
+          : `absolute inset-x-0 top-0 h-full ${pos === "gone" ? "z-[4]" : pos === "1" ? "z-[2]" : "z-[1]"}`)
       }
     >
       <div className="flex justify-between gap-2.5 font-bold">
@@ -155,19 +173,26 @@ function DraftCard({
           <HomeAvatar seed={draft.contact?.id ?? draft.conversationId} label={who} />
           <span className="min-w-0 truncate">{who}</span>
         </span>
-        <span className="shrink-0 text-sm font-medium text-muted-foreground">{agoLabel(draft.at, Date.now())}</span>
+        <span className="shrink-0 text-sm font-medium text-muted-foreground">
+          {agoLabel(draft.at, Date.now())}
+        </span>
       </div>
       {draft.question ? (
-        <p className="m-0 mt-3 rounded-[14px_14px_14px_4px] bg-bubble-in px-3 py-2.5">{draft.question}</p>
+        <p className="m-0 mt-3 rounded-[14px_14px_14px_4px] bg-bubble-in px-3 py-2.5">
+          {draft.question}
+        </p>
       ) : null}
       {editing === null ? (
         <div className="mt-2.5 rounded-[14px_14px_4px_14px] bg-bubble-out px-3 py-2.5">
-          <small className="block text-[13px] font-bold text-aiden-deep">Aiden's draft</small>
+          <small className="block text-[13px] font-bold text-aiden-deep">Aiden’s draft</small>
           <span className="whitespace-pre-line">{draft.draft}</span>
         </div>
       ) : (
         <div className="mt-2.5">
-          <label htmlFor={`draft-${draft.runId}`} className="mb-1.5 block text-[13px] font-bold text-aiden-deep">
+          <label
+            htmlFor={`draft-${draft.runId}`}
+            className="mb-1.5 block text-[13px] font-bold text-aiden-deep"
+          >
             Your reply to {who}
           </label>
           <Textarea
@@ -201,7 +226,7 @@ function DraftCard({
                   Send
                 </Button>
                 <Button variant="outline" disabled={busy} onClick={() => setEditing(null)}>
-                  Back to Aiden's draft
+                  Back to Aiden’s draft
                 </Button>
               </>
             )}

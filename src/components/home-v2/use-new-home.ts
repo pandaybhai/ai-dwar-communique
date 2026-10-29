@@ -76,11 +76,18 @@ const EMPTY: NewHomeData = {
  * receipts — any order in the last 30 days — else the wallet's credits (the
  * Billing summary), else nothing.
  */
-async function loadSales(organizationId: string, timezone: string, access: HomeAccess): Promise<Sales | null> {
+async function loadSales(
+  organizationId: string,
+  timezone: string,
+  access: HomeAccess,
+): Promise<Sales | null> {
   if (access.revenue) {
     const [today, month] = await Promise.all([
       fetchAttributionSummary(organizationId, makeFilters(periodForDays(timezone, 1, "Today"))),
-      fetchAttributionSummary(organizationId, makeFilters(periodForDays(timezone, 30, "Last 30 days"))),
+      fetchAttributionSummary(
+        organizationId,
+        makeFilters(periodForDays(timezone, 30, "Last 30 days")),
+      ),
     ]);
     if (today.data && month.data && Number(month.data.orders_total) > 0) {
       return {
@@ -91,11 +98,18 @@ async function loadSales(organizationId: string, timezone: string, access: HomeA
     }
   }
   if (access.billing) {
-    const res = await callApi<BillingSummary>(`/api/billing/summary?organization_id=${organizationId}`, {
-      method: "GET",
-    });
+    const res = await callApi<BillingSummary>(
+      `/api/billing/summary?organization_id=${organizationId}`,
+      {
+        method: "GET",
+      },
+    );
     if (res.data && !res.error && res.data.wallet)
-      return { label: "Credits", value: Number(res.data.wallet.available), currency: res.data.wallet.currency || "INR" };
+      return {
+        label: "Credits",
+        value: Number(res.data.wallet.available),
+        currency: res.data.wallet.currency || "INR",
+      };
   }
   return null;
 }
@@ -126,9 +140,16 @@ export async function loadNewHome(
   });
   const summary = summaryRes.error ? null : summaryRes.data;
   const held = summary?.waiting ?? [];
-  const campaign = access.campaigns && mode !== "off" ? loadLatestCampaign(organizationId) : Promise.resolve(null);
+  const campaign =
+    access.campaigns && mode !== "off" ? loadLatestCampaign(organizationId) : Promise.resolve(null);
 
-  const next: NewHomeData = { ...EMPTY, mode, aiEnabled: modeRow?.aiEnabled ?? null, summary, sales };
+  const next: NewHomeData = {
+    ...EMPTY,
+    mode,
+    aiEnabled: modeRow?.aiEnabled ?? null,
+    summary,
+    sales,
+  };
   if (mode === "replying") {
     const [active, feed, needsYou, latest] = await Promise.all([
       loadActiveChats(organizationId, now),
@@ -176,7 +197,8 @@ export function liveHomeReload(organizationId: string, reload: () => void): () =
     }
   };
   const stop = subscribeInboxChanges(`home:${organizationId}`, organizationId, {
-    onMessage: (payload) => changed((payload.new as { direction?: string } | null)?.direction === "inbound"),
+    onMessage: (payload) =>
+      changed((payload.new as { direction?: string } | null)?.direction === "inbound"),
     onConversation: () => changed(false),
   });
   return () => {
@@ -188,7 +210,11 @@ export function liveHomeReload(organizationId: string, reload: () => void): () =
 }
 
 /** The new Home's data, read again live (liveHomeReload) so nothing needs a reload. */
-export function useNewHome(organizationId: string | null, timezone: string, access: HomeAccess | null) {
+export function useNewHome(
+  organizationId: string | null,
+  timezone: string,
+  access: HomeAccess | null,
+) {
   const [data, setData] = useState<NewHomeData>(EMPTY);
   const [loading, setLoading] = useState(true);
   const seq = useRef(0);
