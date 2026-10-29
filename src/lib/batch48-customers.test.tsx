@@ -484,7 +484,7 @@ describe("the list's chips, columns and bulk bar", () => {
       { contact_id: null, total: 5, currency: "INR" },
     ]);
     expect(spent).toEqual({ a: { INR: 41200, USD: 120 } });
-    expect(spentLabel(spent["a"]!.INR ? { INR: 41200 } : {})).toBe("₹41,200");
+    expect(spentLabel({ INR: 41200 })).toBe("₹41,200");
     expect(spentLabel(undefined)).toBe("—");
     expect(spentLabel(spent["a"])).toMatch(/^₹41,200 \+ (US\$|\$)120$/);
   });
@@ -501,7 +501,8 @@ describe("the list's chips, columns and bulk bar", () => {
     const view = src("components/customers-v2/new-contacts-view.tsx");
     expect(view).toContain("slide-in-from-bottom-4");
     expect(view).toContain("motion-reduce:animate-none");
-    expect(view).toContain("phone:bottom-[calc(84px+env(safe-area-inset-bottom))]");
+    expect(view).toContain("sticky -bottom-8");
+    expect(view).toContain("phone:-bottom-2");
     expect(view).not.toMatch(/transition-all|transition: all/);
   });
 

@@ -797,11 +797,14 @@ export function NewContactsView({
         ) : null}
       </div>
 
+      {/* The bulk bar: sticky inside the work area, whose bottom padding already
+          clears the phone's bottom bar (and the home indicator), so these
+          offsets put it 16px above the window's edge / 12px above that bar. */}
       {canEdit && selectedIds.length ? (
         <div
           role="region"
           aria-label="Selected customers"
-          className="sticky bottom-4 z-20 mx-auto flex w-fit max-w-full flex-wrap items-center gap-2.5 rounded-2xl bg-ink py-2.5 pl-[18px] pr-3 text-ink-foreground shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none phone:bottom-[calc(84px+env(safe-area-inset-bottom))] phone:w-full"
+          className="sticky -bottom-8 z-20 mx-auto flex w-fit max-w-full flex-wrap items-center gap-2.5 rounded-2xl bg-ink py-2.5 pl-[18px] pr-3 text-ink-foreground shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none phone:-bottom-2 phone:w-full"
         >
           <span className="tabular font-semibold phone:flex-1 phone:basis-[60%]" aria-live="polite">
             {selectedLabel(selectedIds.length)}

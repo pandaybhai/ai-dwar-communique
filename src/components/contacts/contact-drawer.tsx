@@ -275,7 +275,7 @@ export function ContactDrawer({
 
               <div className="space-y-2">
                 <Label>Phone</Label>
-                <Input value={contact.phone} readOnly className="bg-muted/60" />
+                <Input value={contact.phone} readOnly aria-label="Phone" className="bg-muted/60" />
               </div>
 
               <OptInField
@@ -484,7 +484,7 @@ export function OptInField({
       ) : (
         <>
           <Select value={value} onValueChange={(v) => onChange(v as OptInStatus)}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Opt-in status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -524,7 +524,7 @@ function SourcePanel({ contact }: { contact: ContactRow }) {
       <div className="flex items-center justify-between gap-2">
         <Label className="text-xs text-muted-foreground">Lead source</Label>
         <span
-          className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${sourceClass(contact.source)}`}
+          className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${sourceClass(contact.source)} nd:border-line nd:bg-surface nd:text-[0.8125rem] nd:font-semibold nd:text-foreground`}
         >
           {sourceLabel(contact.source)}
         </span>

@@ -205,10 +205,12 @@ export function NewReceiptsView({
             <dt className="text-sm text-muted-foreground">{k.label}</dt>
             <dd className="tabular m-0 mt-1 font-display text-2xl font-semibold">
               {loading ? <Skeleton className="h-7 w-24" /> : k.value}
+              {"note" in k && k.note ? (
+                <span className="mt-1 block font-sans text-xs font-normal text-muted-foreground">
+                  {k.note}
+                </span>
+              ) : null}
             </dd>
-            {"note" in k && k.note ? (
-              <p className="m-0 mt-1 text-xs text-muted-foreground">{k.note}</p>
-            ) : null}
           </div>
         ))}
       </dl>
