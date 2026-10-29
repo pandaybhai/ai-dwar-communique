@@ -91,8 +91,8 @@ export const MESSAGE_CLASS_LABELS: Record<MessageClass, string> = {
 };
 
 export const MESSAGE_CLASS_CLASSES: Record<MessageClass, string> = {
-  marketing: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300",
-  transactional: "border-primary/40 bg-primary/10 text-primary",
+  marketing: "border-warning-border bg-warning-soft text-warning-soft-foreground",
+  transactional: "border-info-border bg-info-soft text-info-soft-foreground",
 };
 
 /** One plain sentence per message class, for people new to automation. */
@@ -176,11 +176,11 @@ export const STATUS_LABELS: Record<SendStatus, string> = {
 };
 
 export const STATUS_CLASSES: Record<SendStatus, string> = {
-  scheduled: "border-border bg-muted text-foreground",
-  sent: "border-emerald-600/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300",
-  cancelled: "border-border bg-muted text-foreground",
-  failed: "border-destructive/40 bg-destructive/10 text-destructive",
-  skipped: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+  scheduled: "border-info-border bg-info-soft text-info-soft-foreground",
+  sent: "border-success-border bg-success-soft text-success-soft-foreground",
+  cancelled: "border-border bg-muted text-muted-foreground",
+  failed: "border-danger-border bg-danger-soft text-danger-soft-foreground",
+  skipped: "border-warning-border bg-warning-soft text-warning-soft-foreground",
 };
 
 /** Every reason the engine writes, as a sentence a shop owner understands. */

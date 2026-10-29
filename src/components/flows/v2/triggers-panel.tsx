@@ -14,7 +14,7 @@ export type TriggerRow = {
   is_enabled: boolean;
 };
 
-const KIND_LABELS: Record<string, string> = {
+export const KIND_LABELS: Record<string, string> = {
   keyword: "Keyword",
   first_message: "First message ever",
   ctwa_ad: "Click-to-WhatsApp ad",

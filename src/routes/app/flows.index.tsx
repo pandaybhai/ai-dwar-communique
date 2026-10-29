@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Lock, Workflow } from "lucide-react";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,6 +30,9 @@ export const Route = createFileRoute("/app/flows/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
+  // Batch 42: the open tab lives in the address, so a link or a refresh keeps it.
+  validateSearch: (search: Record<string, unknown>): { tab?: "chat" | "log" } =>
+    search["tab"] === "chat" || search["tab"] === "log" ? { tab: search["tab"] } : {},
   component: FlowsPage,
 });
 
@@ -39,6 +42,9 @@ function FlowsPage() {
   const { enabled, loading: flagLoading } = useFeatureFlag("flows");
   const [flows, setFlows] = useState<FlowRow[]>([]);
   const { enabled: v2 } = useFeatureFlag("flows_v2");
+  const { tab } = Route.useSearch();
+  const navigate = useNavigate({ from: "/app/flows/" });
+  const current = tab === "chat" && !v2 ? "flows" : (tab ?? "flows");
 
   return (
     <>
@@ -67,7 +73,12 @@ function FlowsPage() {
           description="Ask the shop owner to give you permission to see automatic messages."
         />
       ) : (
-        <Tabs defaultValue="flows">
+        <Tabs
+          value={current}
+          onValueChange={(v) =>
+            void navigate({ search: v === "flows" ? {} : { tab: v as "chat" | "log" }, replace: true })
+          }
+        >
           <TabsList className="mb-6">
             <TabsTrigger value="flows">Your flows</TabsTrigger>
             {v2 && <TabsTrigger value="chat">Chat flows</TabsTrigger>}

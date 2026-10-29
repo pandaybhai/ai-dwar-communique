@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowRight, MoonStar, Workflow } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Banknote,
+  ClipboardCheck,
+  MessageSquare,
+  MoonStar,
+  PackageCheck,
+  Repeat,
+  RotateCcw,
+  ShoppingCart,
+  Sparkles,
+  Star,
+  Workflow,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
@@ -13,6 +29,7 @@ import { CodPanel } from "@/components/flows/cod-panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import {
   DEFAULT_SEND_SETTINGS,
   MESSAGE_CLASS_CLASSES,
@@ -22,6 +39,7 @@ import {
   flowPromise,
   flowStepsLabel,
   flowTitle,
+  flowTrigger,
   hour12,
   messageClassOf,
   type FlowRow,
@@ -187,9 +205,18 @@ export function FlowsView({
 
   if (flows === null) {
     return (
-      <div className="space-y-4" aria-busy="true" aria-label="Loading your flows">
-        <Skeleton className="h-44 w-full rounded-2xl" />
-        <Skeleton className="h-44 w-full rounded-2xl" />
+      <div className="space-y-3" aria-busy="true" aria-label="Loading your flows">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex gap-4 rounded-xl border border-border bg-card p-5 shadow-xs">
+            <Skeleton className="h-10 w-10 rounded-lg" />
+            <div className="flex-1 space-y-2.5">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-3 w-full max-w-lg" />
+              <Skeleton className="h-8 w-full max-w-md rounded-lg" />
+            </div>
+            <Skeleton className="h-6 w-11 rounded-full" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -201,7 +228,7 @@ export function FlowsView({
         title="Nothing set up yet"
         description="Flows send WhatsApp messages for you — a reminder when someone leaves items in their cart, an update when an order ships. They appear here as soon as your shop is connected."
         action={
-          <Button asChild className="min-h-11 rounded-full">
+          <Button asChild>
             <Link to="/app/settings">Connect your shop</Link>
           </Button>
         }
@@ -218,91 +245,112 @@ export function FlowsView({
       </p>
 
       {noneOn ? (
-        <div className="rounded-2xl border border-primary/25 bg-primary/5 p-5">
-          <h2 className="text-sm font-semibold text-foreground">
-            Nothing is switched on yet
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Read what each one does below, then turn on the one you want. You can turn it off again
-            at any time.
-          </p>
+        <div className="flex items-start gap-3 rounded-xl border border-info-border bg-info-soft p-4">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-info-soft-foreground" aria-hidden="true" />
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Nothing is switched on yet</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Read what each one does below, then turn on the one you want. You can turn it off again
+              at any time.
+            </p>
+          </div>
         </div>
       ) : null}
 
       {marketingUnreachable ? <ReachabilityWarning count={unknownContacts ?? 0} /> : null}
 
-      <ul className="grid list-none gap-4 p-0">
+      <ul className="grid list-none gap-3 p-0">
         {flows.map((flow) => {
           const cls = messageClassOf(flow);
           const stat = summary[flow.id] ?? EMPTY;
           const flowSteps = steps.filter((s) => s.flow_id === flow.id);
           const title = flowTitle(flow);
+          const Icon = FLOW_ICONS[flow.key] ?? Workflow;
           return (
             <li
               key={flow.id}
-              className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm transition-shadow duration-200 hover:shadow-md motion-reduce:transition-none sm:p-6"
+              className={cn(
+                "rounded-xl border bg-card p-4 shadow-xs transition-[box-shadow,border-color] duration-200 hover:shadow-sm motion-reduce:transition-none sm:p-5",
+                flow.is_enabled ? "border-border" : "border-border/70",
+              )}
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+              <div className="flex items-start gap-4">
                 <span
-                  className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${MESSAGE_CLASS_CLASSES[cls]}`}
+                  className={cn(
+                    "hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex",
+                    flow.is_enabled ? "bg-success-soft text-success-soft-foreground" : "bg-muted text-muted-foreground",
+                  )}
                 >
-                  {MESSAGE_CLASS_LABELS[cls]}
+                  <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="type-heading text-foreground">{title}</h2>
+                        <span
+                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${MESSAGE_CLASS_CLASSES[cls]}`}
+                        >
+                          {MESSAGE_CLASS_LABELS[cls]}
+                        </span>
+                      </div>
+                      <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted-foreground">
+                        {flowPromise(flow)}
+                      </p>
+                    </div>
+                    <label
+                      htmlFor={`flow-toggle-${flow.id}`}
+                      className="flex min-h-11 shrink-0 cursor-pointer items-center gap-3 rounded-lg text-sm font-medium text-foreground"
+                    >
+                      <span className={flow.is_enabled ? "text-success-soft-foreground" : "text-muted-foreground"}>
+                        {flow.is_enabled ? "On — messages are going out" : "Off — nothing is sent"}
+                      </span>
+                      <PermissionGate
+                        allowed={canManage}
+                        reason="Ask the shop owner to give you permission to turn flows on and off."
+                      >
+                        <Switch
+                          id={`flow-toggle-${flow.id}`}
+                          checked={flow.is_enabled}
+                          onCheckedChange={(v) => void toggle(flow, v)}
+                        />
+                      </PermissionGate>
+                    </label>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-subtle px-3 py-2">
+                    <StepsPath trigger={flowTrigger(flow)} steps={flowSteps} on={flow.is_enabled} />
+                    <span className="text-xs text-muted-foreground">
+                      {flowStepsLabel(flow.is_enabled, flowSteps.filter((s) => s.is_enabled).length, flowSteps.length)}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:flex sm:flex-wrap">
+                      <Stat label="Sent in the last 7 days" value={stat.sent} tone="good" />
+                      <Stat label="Waiting to send" value={stat.scheduled} />
+                      <Stat label="Skipped in the last 7 days" value={stat.skipped} tone="warn" />
+                      <Stat label="Not sent in the last 7 days" value={stat.cancelled} />
+                    </dl>
+                    <Link
+                      to="/app/flows/$id"
+                      params={{ id: flow.id }}
+                      className="inline-flex min-h-11 shrink-0 items-center gap-1.5 self-start rounded-lg px-2 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:self-auto"
+                    >
+                      See the messages
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span className="sr-only">for {title}</span>
+                    </Link>
+                  </div>
+                  <p className="mt-2 text-xs text-faint">{MESSAGE_CLASS_HINTS[cls]}</p>
+                </div>
               </div>
-
-              <p className="mt-2 max-w-prose text-sm leading-relaxed text-foreground">
-                {flowPromise(flow)}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">{MESSAGE_CLASS_HINTS[cls]}</p>
-
-              <div className="mt-4 flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-                <label
-                  htmlFor={`flow-toggle-${flow.id}`}
-                  className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-foreground"
-                >
-                  <PermissionGate
-                    allowed={canManage}
-                    reason="Ask the shop owner to give you permission to turn flows on and off."
-                  >
-                    <Switch
-                      id={`flow-toggle-${flow.id}`}
-                      checked={flow.is_enabled}
-                      onCheckedChange={(v) => void toggle(flow, v)}
-                    />
-                  </PermissionGate>
-                  <span>
-                    {flow.is_enabled ? "On — messages are going out" : "Off — nothing is sent"}
-                  </span>
-                </label>
-
-                <Link
-                  to="/app/flows/$id"
-                  params={{ id: flow.id }}
-                  className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                >
-                  See the messages
-                  <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span className="sr-only">for {title}</span>
-                </Link>
-              </div>
-
-              <p className="mt-3 text-sm text-muted-foreground">
-                {flowStepsLabel(flow.is_enabled, flowSteps.filter((s) => s.is_enabled).length, flowSteps.length)}
-              </p>
-
-              <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Stat label="Sent in the last 7 days" value={stat.sent} tone="good" />
-                <Stat label="Waiting to send" value={stat.scheduled} />
-                <Stat label="Skipped in the last 7 days" value={stat.skipped} tone="warn" />
-                <Stat label="Not sent in the last 7 days" value={stat.cancelled} />
-              </dl>
             </li>
           );
         })}
       </ul>
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-muted/30 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-subtle p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <MoonStar className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm text-foreground">
@@ -311,13 +359,12 @@ export function FlowsView({
               : `Messages can go out at any hour, and the same customer gets at most ${settings.marketing_cap_per_day} promotional message a day.`}
           </p>
         </div>
-        <Link
-          to="/app/settings"
-          className="inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
-          Change
-          <span className="sr-only"> sending times and limits</span>
-        </Link>
+        <Button asChild variant="outline" size="sm" className="shrink-0 self-start sm:self-auto">
+          <Link to="/app/settings">
+            Change
+            <span className="sr-only"> sending times and limits</span>
+          </Link>
+        </Button>
       </div>
 
       {flows.some((f) => f.key === "cod_confirmation") ? (
@@ -329,6 +376,52 @@ export function FlowsView({
   );
 }
 
+/** Batch 42: a store flow drawn as its path — what starts it, then each message and its wait. */
+function StepsPath({ trigger, steps, on }: { trigger: string; steps: FlowStepRow[]; on: boolean }) {
+  const ordered = [...steps].sort((a, b) => a.step_order - b.step_order);
+  return (
+    <ol className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs" aria-label="How this flow runs">
+      <li className="inline-flex items-center gap-1.5 rounded-md bg-card px-2 py-1 font-medium text-foreground shadow-xs">
+        <Zap className={cn("h-3 w-3", on ? "text-chart-3" : "text-faint")} aria-hidden="true" />
+        {trigger}
+      </li>
+      {ordered.map((s, i) => (
+        <li key={s.id} className="inline-flex items-center gap-1.5">
+          <span aria-hidden="true" className="h-px w-3 bg-border-strong" />
+          <span className="text-faint">{waitLabel(s.delay_minutes)}</span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium",
+              s.is_enabled ? "bg-chart-1/12 text-success-soft-foreground" : "bg-muted text-muted-foreground line-through",
+            )}
+          >
+            <MessageSquare className="h-3 w-3" aria-hidden="true" />
+            <span className="sr-only">Message </span>
+            {i + 1}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function waitLabel(minutes: number): string {
+  if (!minutes) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) return `${Math.round(minutes / 60)}h`;
+  return `${Math.round(minutes / 1440)}d`;
+}
+
+const FLOW_ICONS: Record<string, LucideIcon> = {
+  abandoned_checkout: ShoppingCart,
+  order_lifecycle: PackageCheck,
+  winback: RotateCcw,
+  reorder: Repeat,
+  form_followup: ClipboardCheck,
+  review_request: Star,
+  cod_confirmation: Banknote,
+};
+
 function Stat({
   label,
   value,
@@ -339,15 +432,15 @@ function Stat({
   tone?: "good" | "warn";
 }) {
   const toneClass =
-    tone === "good"
-      ? "text-emerald-700 dark:text-emerald-400"
-      : tone === "warn"
-        ? "text-amber-700 dark:text-amber-400"
+    tone === "good" && value > 0
+      ? "text-success-soft-foreground"
+      : tone === "warn" && value > 0
+        ? "text-warning-soft-foreground"
         : "text-foreground";
   return (
-    <div className="rounded-xl border border-border/60 bg-muted/30 px-4 py-3">
-      <dd className={`text-xl font-bold tracking-tight ${toneClass}`}>{value}</dd>
-      <dt className="mt-0.5 text-xs text-muted-foreground">{label}</dt>
+    <div className="flex items-baseline gap-1.5">
+      <dd className={`tabular text-base font-semibold ${toneClass}`}>{value.toLocaleString("en-IN")}</dd>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
     </div>
   );
 }
@@ -360,29 +453,27 @@ function Stat({
 export function ReachabilityWarning({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-amber-600/40 bg-amber-500/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border border-warning-border bg-warning-soft p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3">
         <AlertTriangle
-          className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-400"
+          className="mt-0.5 h-4 w-4 shrink-0 text-warning-soft-foreground"
           aria-hidden="true"
         />
         <div>
           <p className="text-sm font-semibold text-foreground">
             {count.toLocaleString()} customers won't get promotional messages
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground">
             They haven't agreed to promotional messages yet — customers brought in from your shop
             start out that way. They will still get order updates.
           </p>
         </div>
       </div>
-      <Link
-        to="/app/contacts"
-        search={{ opt_in: "unknown" }}
-        className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      >
-        See these customers
-      </Link>
+      <Button asChild variant="outline" size="sm" className="shrink-0 self-start sm:self-auto">
+        <Link to="/app/contacts" search={{ opt_in: "unknown" }}>
+          See these customers
+        </Link>
+      </Button>
     </div>
   );
 }

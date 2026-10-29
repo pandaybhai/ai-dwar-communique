@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { IMAGE_MAX_BYTES, IMAGE_TYPES, MAX_BRANCHES, MAX_BUTTONS, MAX_CONDITIONS, MAX_LIST_ROWS, MAX_PRODUCT_ITEMS, PRODUCT_SORTS, imageProblem, parseBudget, type Branch, type Condition, type FlowNode } from "@/lib/flow-graph";
 import { NODE_META, uid } from "./node-meta";
+import { styleOf } from "./node-style";
 import { SendCardConfig } from "./send-card-config";
 import { MAX_RULES_CHARS, rulesHours } from "@/lib/aiden-flow-rules";
 
@@ -117,13 +118,13 @@ export function NodeConfig({ node, problems, pickers, onChange, onDelete }: Prop
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 font-heading font-semibold"><meta.icon className="h-4 w-4 text-primary" /> {meta.label}</div>
-        {node.type !== "start" && <Button variant="ghost" size="sm" onClick={onDelete}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button>}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold"><span className={`flex h-6 w-6 items-center justify-center rounded-md ${styleOf(node.type).chip}`}><meta.icon className="h-3.5 w-3.5" aria-hidden="true" /></span> {meta.label}</div>
+        {node.type !== "start" && <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-danger" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>}
       </div>
       {meta.hint && <p className="text-xs text-muted-foreground">{meta.hint}</p>}
       {problems.length > 0 && (
-        <ul className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+        <ul role="alert" className="space-y-1 rounded-lg border border-danger-border bg-danger-soft p-3 text-sm text-danger-soft-foreground">
           {problems.map((p, i) => <li key={i}>{p}</li>)}
         </ul>
       )}

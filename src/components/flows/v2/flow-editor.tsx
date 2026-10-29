@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges,
+  Background, BackgroundVariant, ConnectionLineType, MiniMap, Panel, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, useViewport,
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange, useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { History, LayoutGrid, Play, Redo2, Save, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles, Zap, Table2, Workflow, Trash2 } from "lucide-react";
+import { AlertCircle, History, LayoutGrid, Maximize, Minus, MoreHorizontal, Play, Plus, Redo2, Save, Search, Undo2, Upload, EyeOff, Settings2, Download, FileUp, Copy, Sparkles, Zap, Table2, Workflow, Trash2, X } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,12 +25,50 @@ import { SimulatorPanel } from "./simulator-panel";
 import { TriggersPanel } from "./triggers-panel";
 import { ResponsesPanel } from "./responses-panel";
 import { DeleteFlowDialog } from "@/components/flows/v2/delete-flow-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Kbd } from "@/components/ui/kbd";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { MOD_KEY } from "@/lib/keyboard";
+import { styleOf } from "./node-style";
 
 type RFNode = Node<RFData>;
 type Snapshot = { nodes: RFNode[]; edges: Edge[] };
 export type VersionRow = { id: string; version: number; status: string; published_at: string | null; created_at: string };
 
 const nodeTypes = { flow: FlowNodeCard };
+/** Batch 42: what a palette step carries while it is dragged onto the canvas. */
+const DRAG_TYPE = "application/x-aidwar-step";
+
+/** Follows the app's light / dark switch (the .dark class on <html>), for the canvas's own colours. */
+function useDarkTheme(): boolean {
+  const [dark, setDark] = useState(() => typeof document !== "undefined" && document.documentElement.classList.contains("dark"));
+  useEffect(() => {
+    const root = document.documentElement;
+    const obs = new MutationObserver(() => setDark(root.classList.contains("dark")));
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  return dark;
+}
+
+/** Batch 42: zoom out, the zoom level, zoom in and fit — one bar in the canvas corner. */
+function ZoomBar() {
+  const rf = useReactFlow();
+  const { zoom } = useViewport();
+  const btn = "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  return (
+    <Panel position="bottom-left" className="!m-3 flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm">
+      <button type="button" aria-label="Zoom out" className={btn} onClick={() => void rf.zoomOut({ duration: 150 })}><Minus className="h-3.5 w-3.5" /></button>
+      <button type="button" aria-label="Reset zoom to 100%" title="Reset to 100%" className="tabular h-7 min-w-11 rounded-md px-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => void rf.zoomTo(1, { duration: 150 })}>
+        {Math.round(zoom * 100)}%
+      </button>
+      <button type="button" aria-label="Zoom in" className={btn} onClick={() => void rf.zoomIn({ duration: 150 })}><Plus className="h-3.5 w-3.5" /></button>
+      <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
+      <button type="button" aria-label="Fit the whole flow" title="Fit the whole flow" className={btn} onClick={() => void rf.fitView({ duration: 250, padding: 0.2 })}><Maximize className="h-3.5 w-3.5" /></button>
+    </Panel>
+  );
+}
 
 function toRF(g: FlowGraph): Snapshot {
   return {
@@ -122,6 +160,8 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
   const [simOpen, setSimOpen] = useState(false);
   const [histOpen, setHistOpen] = useState(false);
   const [path, setPath] = useState<string[]>([]);
+  const [paletteSearch, setPaletteSearch] = useState("");
+  const dark = useDarkTheme();
   const past = useRef<Snapshot[]>([]);
   const future = useRef<Snapshot[]>([]);
   const clipboard = useRef<Snapshot | null>(null);
@@ -238,10 +278,12 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     commit({ ...snap, edges: addEdge({ ...c, id: uid("e"), sourceHandle: handle }, edges) });
   }, [canEdit, snap, commit]);
 
-  const addNode = (kind: NodeType) => {
-    const center = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const addNode = (kind: NodeType, at?: { x: number; y: number }) => {
+    const center = at ?? rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
     const id = uid();
-    commit({ ...snap, nodes: [...snap.nodes.map((n) => ({ ...n, selected: false })), { id, type: "flow", position: { x: center.x - 128, y: center.y - 60 }, selected: true, data: { kind, data: NODE_META[kind].defaults() } }] });
+    // Batch 42: a new step lands on the 16px grid, like a dragged one.
+    const snapTo = (v: number) => Math.round(v / 16) * 16;
+    commit({ ...snap, nodes: [...snap.nodes.map((n) => ({ ...n, selected: false })), { id, type: "flow", position: { x: snapTo(center.x - 128), y: snapTo(center.y - (at ? 24 : 60)) }, selected: true, data: { kind, data: NODE_META[kind].defaults() } }] });
     setSelected(id);
   };
 
@@ -264,6 +306,23 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
     commit({ nodes: snap.nodes.filter((n) => n.id !== id), edges: snap.edges.filter((e) => e.source !== id && e.target !== id) });
     setSelected(null);
   };
+
+  // Batch 42: Ctrl/⌘ S saves the draft (also while typing in a step); Esc closes the step panel.
+  const saveRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (view !== "canvas") return;
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
+        if (!canEdit) return;
+        e.preventDefault();
+        saveRef.current();
+      } else if (e.key === "Escape" && !(e.target as HTMLElement | null)?.closest?.('[role="dialog"], [role="menu"]')) {
+        setSelected(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canEdit, view]);
 
   // Keyboard: undo/redo/copy/paste.
   useEffect(() => {
@@ -316,6 +375,10 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
       if (note) toast.warning(note);
     }
     return true;
+  };
+
+  saveRef.current = () => {
+    if (dirty && !busy) void saveDraft();
   };
 
   const publish = async () => {
@@ -407,52 +470,96 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
 
   const pathSet = useMemo(() => new Set(path), [path]);
   const rfNodes = useMemo(
-    () => snap.nodes.map((n) => ({ ...n, data: { ...n.data, problems: problemsByNode.get(n.id), stats: stats?.[n.id] }, className: simOpen && pathSet.has(n.id) ? "rounded-2xl ring-2 ring-primary/60" : "" })),
+    () => snap.nodes.map((n) => ({ ...n, data: { ...n.data, problems: problemsByNode.get(n.id), stats: stats?.[n.id] }, className: simOpen && pathSet.has(n.id) ? "rounded-xl ring-2 ring-primary/60" : "" })),
     [snap.nodes, problemsByNode, stats, simOpen, pathSet],
   );
-  const rfEdges = useMemo(() => snap.edges.map((e) => ({ ...e, animated: simOpen && pathSet.has(e.source) && pathSet.has(e.target) })), [snap.edges, simOpen, pathSet]);
+  // Batch 42: rounded right-angle connections; the test chat's path is drawn in the accent.
+  const rfEdges = useMemo(() => snap.edges.map((e) => {
+    const onPath = simOpen && pathSet.has(e.source) && pathSet.has(e.target);
+    return { ...e, type: "smoothstep", pathOptions: { borderRadius: 14 }, animated: onPath, style: { strokeWidth: onPath ? 2.25 : 1.5, stroke: onPath ? "var(--primary)" : "var(--border-strong)" } };
+  }), [snap.edges, simOpen, pathSet]);
+  const nodeName = (nodeId: string) => {
+    const n = snap.nodes.find((x) => x.id === nodeId);
+    return n ? String(n.data.data["label"] ?? "") || NODE_META[n.data.kind].label : "A step";
+  };
   const sel = snap.nodes.find((n) => n.id === selected) ?? null;
   const onPath = useCallback((ids: string[]) => setPath(ids), []);
   const groups = ["Messages", "Ask", "Logic", "Actions", "Other"] as const;
 
+  const problemNodes = problems.filter((p) => p.nodeId);
+  const focusNode = (nodeId: string) => {
+    setSelected(nodeId);
+    setSnap((cur) => ({ ...cur, nodes: cur.nodes.map((n) => ({ ...n, selected: n.id === nodeId })) }));
+    setTimeout(() => void rf.fitView({ nodes: [{ id: nodeId }], duration: 300, maxZoom: 1.1, padding: 0.6 }), 30);
+  };
+  const paletteQuery = paletteSearch.trim().toLowerCase();
+  const palette = paletteTypes({ cards: !cardsLoading && cardsOn }).filter(
+    (k) => !paletteQuery || `${NODE_META[k].label} ${NODE_META[k].hint ?? ""}`.toLowerCase().includes(paletteQuery),
+  );
+  const selStyle = sel ? styleOf(sel.data.kind) : null;
+  const tip = (label: string, hint?: string) => (
+    <TooltipContent side="bottom" className="flex items-center gap-2">
+      {label}
+      {hint ? <Kbd>{hint}</Kbd> : null}
+    </TooltipContent>
+  );
+
   return (
-    <div className="flex h-[calc(100vh-9rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-        <Input className="h-9 w-56 font-semibold" value={name} disabled={!canEdit} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${published && !switchedOff ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{published ? (switchedOff ? "Off" : "Published") : "Draft only"}</span>
-        {dirty && (saveError ? <span className="text-xs font-medium text-destructive" role="alert" title={saveError}>Not saved — {saveError}</span> : <span className="text-xs text-muted-foreground">Unsaved changes</span>)}
+    <div className="flex h-[calc(100dvh-9rem)] min-h-[560px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-3 py-2 [scrollbar-width:none]">
+        <div className="flex min-w-0 shrink-0 items-center gap-2">
+          <label htmlFor="flow-name" className="sr-only">Flow name</label>
+          <Input id="flow-name" className="h-8 w-44 border-transparent bg-transparent px-2 font-semibold shadow-none hover:border-border focus-visible:border-ring sm:w-60" value={name} disabled={!canEdit} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
+          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${published && !switchedOff ? "border-success-border bg-success-soft text-success-soft-foreground" : "border-border bg-muted text-muted-foreground"}`}>{published ? (switchedOff ? "Off" : "Published") : "Draft only"}</span>
+          {dirty && (saveError ? <span className="max-w-56 shrink-0 truncate text-xs font-medium text-danger" role="alert" title={saveError}>Not saved — {saveError}</span> : <span className="shrink-0 text-xs text-muted-foreground">Unsaved changes</span>)}
+        </div>
         {canViewResponses && (
-          <div role="tablist" aria-label="Flow view" className="inline-flex rounded-lg border border-border p-0.5">
+          <div role="tablist" aria-label="Flow view" className="inline-flex shrink-0 rounded-lg bg-muted p-0.5">
             {([["canvas", "Canvas", Workflow], ["responses", "Responses", Table2]] as const).map(([v, label, Icon]) => (
               <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
-                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition ${view === v ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors duration-150 ${view === v ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"}`}>
                 <Icon className="h-3.5 w-3.5" /> {label}
               </button>
             ))}
           </div>
         )}
-        <div className="ml-auto flex flex-wrap items-center gap-1">
-          {canEdit && (<>
-            <Button size="icon" variant="ghost" aria-label="Undo" onClick={undo}><Undo2 className="h-4 w-4" /></Button>
-            <Button size="icon" variant="ghost" aria-label="Redo" onClick={redo}><Redo2 className="h-4 w-4" /></Button>
-            <Button size="sm" variant="ghost" onClick={() => { commit({ ...snap, nodes: autoLayout(snap) }); setTimeout(() => rf.fitView({ duration: 250 }), 50); }}><LayoutGrid className="mr-1 h-4 w-4" /> Tidy</Button>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {canEdit && view === "canvas" && (<>
+            <Tooltip><TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="Undo" onClick={undo}><Undo2 className="h-4 w-4" /></Button></TooltipTrigger>{tip("Undo", `${MOD_KEY} Z`)}</Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="Redo" onClick={redo}><Redo2 className="h-4 w-4" /></Button></TooltipTrigger>{tip("Redo", `${MOD_KEY} ⇧ Z`)}</Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="Tidy" onClick={() => { commit({ ...snap, nodes: autoLayout(snap) }); setTimeout(() => rf.fitView({ duration: 250 }), 50); }}><LayoutGrid className="h-4 w-4" /></Button></TooltipTrigger>{tip("Tidy the canvas")}</Tooltip>
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-border" />
           </>)}
-          <Button size="sm" variant="ghost" onClick={() => setHistOpen(true)}><History className="mr-1 h-4 w-4" /> Versions</Button>
-          <Button size="sm" variant="ghost" onClick={() => setTriggersOpen(true)}><Zap className="mr-1 h-4 w-4" /> Triggers</Button>
-          <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)}><Settings2 className="mr-1 h-4 w-4" /> Flow settings</Button>
-          <Button size="icon" variant="ghost" aria-label="Export" title="Export JSON" onClick={exportJson}><Download className="h-4 w-4" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => setTriggersOpen(true)}><Zap className="h-4 w-4" /> <span className="hidden lg:inline">Triggers</span><span className="sr-only lg:hidden">Triggers</span></Button>
+          <Button size="sm" variant="ghost" onClick={() => setHistOpen(true)}><History className="h-4 w-4" /> <span className="hidden lg:inline">Versions</span><span className="sr-only lg:hidden">Versions</span></Button>
+          <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)}><Settings2 className="h-4 w-4" /> <span className="hidden xl:inline">Flow settings</span><span className="sr-only xl:hidden">Flow settings</span></Button>
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon-sm" variant="ghost" aria-label="More actions"><MoreHorizontal className="h-4 w-4" /></Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              {tip("More actions")}
+            </Tooltip>
+            <DropdownMenuContent align="end" className="w-52">
+              {canEdit && aiOn ? <DropdownMenuItem onSelect={() => setGenOpen(true)}><Sparkles className="h-4 w-4" /> Generate</DropdownMenuItem> : null}
+              <DropdownMenuItem onSelect={exportJson}><Download className="h-4 w-4" /> Export JSON</DropdownMenuItem>
+              {canEdit ? (<>
+                <DropdownMenuItem onSelect={() => fileRef.current?.click()}><FileUp className="h-4 w-4" /> Import JSON</DropdownMenuItem>
+                <DropdownMenuItem disabled={busy} onSelect={() => void duplicate()}><Copy className="h-4 w-4" /> Duplicate flow</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={busy} onSelect={() => setDeleteOpen(true)} className="text-danger focus:text-danger"><Trash2 className="h-4 w-4" /> Delete flow</DropdownMenuItem>
+              </>) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {canEdit && <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); e.target.value = ""; }} />}
+          <span aria-hidden="true" className="mx-1 h-5 w-px bg-border" />
+          <Button size="sm" variant="outline" onClick={() => setSimOpen(true)}><Play className="h-4 w-4" /> Test</Button>
           {canEdit && (<>
-            <Button size="icon" variant="ghost" aria-label="Import" title="Import JSON" onClick={() => fileRef.current?.click()}><FileUp className="h-4 w-4" /></Button>
-            <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); e.target.value = ""; }} />
-            <Button size="icon" variant="ghost" aria-label="Duplicate" title="Duplicate flow" disabled={busy} onClick={() => void duplicate()}><Copy className="h-4 w-4" /></Button>
-            <Button size="icon" variant="ghost" aria-label="Delete flow" title="Delete flow" disabled={busy} onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4" /></Button>
-            {aiOn && <Button size="sm" variant="ghost" onClick={() => setGenOpen(true)}><Sparkles className="mr-1 h-4 w-4" /> Generate</Button>}
-          </>)}
-          <Button size="sm" variant="outline" onClick={() => setSimOpen(true)}><Play className="mr-1 h-4 w-4" /> Test</Button>
-          {canEdit && (<>
-            <Button size="sm" variant="outline" disabled={busy || !dirty} onClick={() => void saveDraft()}><Save className="mr-1 h-4 w-4" /> Save draft</Button>
-            {published && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void unpublish()}><EyeOff className="mr-1 h-4 w-4" /> Unpublish</Button>}
-            <Button size="sm" disabled={busy} onClick={() => void publish()}><Upload className="mr-1 h-4 w-4" /> Publish</Button>
+            <Tooltip><TooltipTrigger asChild><Button size="sm" variant="outline" disabled={busy || !dirty} onClick={() => void saveDraft()}><Save className="h-4 w-4" /> Save draft</Button></TooltipTrigger>{tip("Save draft", `${MOD_KEY} S`)}</Tooltip>
+            {published && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void unpublish()}><EyeOff className="h-4 w-4" /> Unpublish</Button>}
+            <Button size="sm" disabled={busy} onClick={() => void publish()}><Upload className="h-4 w-4" /> Publish</Button>
           </>)}
         </div>
       </div>
@@ -461,36 +568,64 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
         flow={{ id: flowId, name }}
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        onDeleted={() => void navigate({ to: "/app/flows" })}
+        onDeleted={() => void navigate({ to: "/app/flows", search: { tab: "chat" } })}
       />
       {view === "responses" && (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <ResponsesPanel organizationId={organizationId} flowId={flowId} canExport={Boolean(canExportResponses)} />
         </div>
       )}
-      <div className={`flex min-h-0 flex-1${view === "responses" ? " hidden" : ""}`}>
+      <div className={`relative flex min-h-0 flex-1${view === "responses" ? " hidden" : ""}`}>
         {canEdit && (
-          <aside className="hidden w-48 shrink-0 overflow-y-auto border-r border-border p-3 md:block">
-            {groups.map((g) => (
-              <div key={g} className="mb-4">
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g}</p>
-                {paletteTypes({ cards: !cardsLoading && cardsOn }).filter((k) => NODE_META[k].group === g).map((k) => {
-                  const M = NODE_META[k];
-                  return (
-                    <button key={k} type="button" title={M.hint} onClick={() => addNode(k)} className="mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-muted">
-                      <M.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                      <span className="min-w-0">
-                        {M.label}
-                        {M.hint && <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{M.hint}</span>}
-                      </span>
-                    </button>
-                  );
-                })}
+          <aside aria-label="Steps you can add" className="hidden w-56 shrink-0 flex-col border-r border-border bg-subtle md:flex">
+            <div className="border-b border-border p-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" aria-hidden="true" />
+                <Input value={paletteSearch} onChange={(e) => setPaletteSearch(e.target.value)} placeholder="Find a step" aria-label="Find a step" className="h-8 bg-card pl-8 text-sm" />
               </div>
-            ))}
+              <p className="mt-1.5 px-0.5 text-[0.6875rem] text-muted-foreground">Click to add, or drag onto the canvas.</p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              {groups.map((g) => {
+                const items = palette.filter((k) => NODE_META[k].group === g);
+                if (!items.length) return null;
+                return (
+                  <div key={g} className="mb-3">
+                    <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">{g}</p>
+                    {items.map((k) => {
+                      const M = NODE_META[k];
+                      const st = styleOf(k);
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          title={M.hint}
+                          draggable
+                          onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, k); e.dataTransfer.effectAllowed = "copy"; }}
+                          onClick={() => addNode(k)}
+                          className="mb-0.5 flex w-full cursor-grab items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-card hover:shadow-xs active:cursor-grabbing"
+                        >
+                          <span className={`mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded ${st.chip}`}><M.icon className="h-3 w-3" aria-hidden="true" /></span>
+                          <span className="min-w-0">
+                            {M.label}
+                            {M.hint && <span className="mt-0.5 block text-[0.6875rem] leading-snug text-muted-foreground">{M.hint}</span>}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {palette.length === 0 ? <p className="px-2 py-6 text-center text-xs text-muted-foreground">No step matches “{paletteSearch}”.</p> : null}
+            </div>
           </aside>
         )}
-        <div className="relative min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1" onDragOver={(e) => { if (canEdit && e.dataTransfer.types.includes(DRAG_TYPE)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }} onDrop={(e) => {
+          const kind = e.dataTransfer.getData(DRAG_TYPE) as NodeType;
+          if (!canEdit || !kind || !NODE_META[kind]) return;
+          e.preventDefault();
+          addNode(kind, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+        }}>
           <ReactFlow
             nodes={rfNodes}
             edges={rfEdges}
@@ -503,30 +638,84 @@ function EditorInner({ organizationId, flowId, name: initialName, initial, publi
             nodesDraggable={canEdit}
             nodesConnectable={canEdit}
             deleteKeyCode={canEdit ? ["Backspace", "Delete"] : null}
+            snapToGrid
+            snapGrid={[16, 16]}
+            connectionLineType={ConnectionLineType.SmoothStep}
+            connectionLineStyle={{ stroke: "var(--primary)", strokeWidth: 2 }}
+            colorMode={dark ? "dark" : "light"}
+            minZoom={0.2}
+            maxZoom={2}
             fitView
+            fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
             proOptions={{ hideAttribution: true }}
+            className="bg-subtle"
           >
-            <Background gap={16} />
-            <Controls showInteractive={false} />
-            <MiniMap pannable zoomable className="!hidden sm:!block" />
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1.2} color="var(--border-strong)" />
+            <ZoomBar />
+            <MiniMap
+              pannable
+              zoomable
+              ariaLabel="Map of the whole flow"
+              className="!m-3 !hidden overflow-hidden !rounded-lg !border !border-border !bg-card !shadow-sm sm:!block"
+              nodeColor={(n) => styleOf((n.data as RFData).kind).fill}
+              nodeBorderRadius={8}
+              maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
+            />
           </ReactFlow>
           {problems.length > 0 && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-destructive/30 bg-background px-3 py-1 text-xs text-destructive shadow-sm">
-              {problems.length} thing{problems.length === 1 ? "" : "s"} to fix before publishing{problems.find((p) => !p.nodeId) ? ` — ${problems.find((p) => !p.nodeId)!.message}` : ""}
+            <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type="button" className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-danger-border bg-card px-3 py-1.5 text-xs font-medium text-danger-soft-foreground shadow-md transition-colors duration-150 hover:bg-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                    {problems.length} thing{problems.length === 1 ? "" : "s"} to fix before publishing{problems.find((p) => !p.nodeId) ? ` — ${problems.find((p) => !p.nodeId)!.message}` : ""}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="center" className="w-80 p-1.5">
+                  <ul className="max-h-64 overflow-y-auto">
+                    {problems.map((p, i) => (
+                      <li key={i}>
+                        {p.nodeId ? (
+                          <button type="button" onClick={() => focusNode(p.nodeId!)} className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent">
+                            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" aria-hidden="true" />
+                            <span className="min-w-0">
+                              <span className="block font-medium text-foreground">{nodeName(p.nodeId)}</span>
+                              <span className="block text-xs text-muted-foreground">{p.message}</span>
+                            </span>
+                          </button>
+                        ) : (
+                          <p className="flex items-start gap-2 px-2 py-1.5 text-sm text-foreground"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" aria-hidden="true" />{p.message}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {problemNodes.length > 0 ? <p className="border-t border-border px-2 pb-1 pt-2 text-xs text-muted-foreground">Pick one to jump to that step.</p> : null}
+                </PopoverContent>
+              </Popover>
             </div>
           )}
         </div>
         {sel && (
-          <aside className="w-80 shrink-0 overflow-y-auto border-l border-border p-4">
-            <fieldset disabled={!canEdit}>
-              <NodeConfig
-                node={{ id: sel.id, type: sel.data.kind, data: sel.data.data }}
-                problems={problemsByNode.get(sel.id) ?? []}
-                pickers={{ ...pickers, variables, members: edCtx.members, testHttp, uploadImage }}
-                onChange={(d) => updateData(sel.id, d)}
-                onDelete={() => deleteNode(sel.id)}
-              />
-            </fieldset>
+          <aside aria-label="Edit step" className="absolute inset-x-0 bottom-0 z-20 flex max-h-[65%] flex-col border-t border-border bg-card shadow-2xl md:static md:z-auto md:max-h-none md:w-96 md:shrink-0 md:border-l md:border-t-0 md:shadow-none">
+            <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+              <span className={`flex h-6 w-6 items-center justify-center rounded-md ${selStyle?.chip ?? ""}`}>{(() => { const I = NODE_META[sel.data.kind].icon; return <I className="h-3.5 w-3.5" aria-hidden="true" />; })()}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold">{String(sel.data.data["label"] ?? "") || NODE_META[sel.data.kind].label}</span>
+                {selStyle?.label ? <span className="block text-xs text-muted-foreground">{selStyle.label}</span> : null}
+              </span>
+              <Tooltip><TooltipTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="Close" onClick={() => setSelected(null)}><X className="h-4 w-4" /></Button></TooltipTrigger>{tip("Close", "Esc")}</Tooltip>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <fieldset disabled={!canEdit}>
+                <NodeConfig
+                  node={{ id: sel.id, type: sel.data.kind, data: sel.data.data }}
+                  problems={problemsByNode.get(sel.id) ?? []}
+                  pickers={{ ...pickers, variables, members: edCtx.members, testHttp, uploadImage }}
+                  onChange={(d) => updateData(sel.id, d)}
+                  onDelete={() => deleteNode(sel.id)}
+                />
+              </fieldset>
+            </div>
           </aside>
         )}
       </div>

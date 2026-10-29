@@ -94,7 +94,7 @@ function FlowEditorPage() {
 
   return (
     <div className="space-y-3">
-      <Link to="/app/flows" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> All flows</Link>
+      <Link to="/app/flows" search={{ tab: "chat" }} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> All flows</Link>
       <FlowEditor
         key={`${id}:${rev}`}
         organizationId={orgId}
