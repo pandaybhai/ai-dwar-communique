@@ -1,5 +1,5 @@
 import { useEffect, type CSSProperties } from "react";
-import { useRouterState } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { NEW_DESIGN_FONTS_HREF } from "@/lib/new-design";
 
 /**
@@ -24,16 +24,24 @@ export function newSiteOn(search: unknown, env: boolean = NEW_SITE_ENV): boolean
   return env || isNewSitePreview(search);
 }
 
-/** The switch for the page being shown (server and browser agree: both read the router). */
+/**
+ * The address's search, read from the router (server and browser agree).
+ * The pages re-render on navigation through their own route hooks; without a
+ * router (a page rendered on its own in a test) only the env decides.
+ */
+function useCurrentSearch(): unknown {
+  const router = useRouter({ warn: false }) as ReturnType<typeof useRouter> | undefined;
+  return router?.state?.location?.search;
+}
+
+/** The switch for the page being shown. */
 export function useNewSite(): boolean {
-  const search = useRouterState({ select: (s) => s.location.search });
-  return newSiteOn(search);
+  return newSiteOn(useCurrentSearch());
 }
 
 /** Search to carry on the new pages' own links while previewing. */
 export function useSitePreviewSearch(): Record<string, string> {
-  const search = useRouterState({ select: (s) => s.location.search });
-  return !NEW_SITE_ENV && isNewSitePreview(search) ? { site: "new" } : {};
+  return !NEW_SITE_ENV && isNewSitePreview(useCurrentSearch()) ? { site: "new" } : {};
 }
 
 /** The new design's fonts, as a route head link (only when the switch is on). */

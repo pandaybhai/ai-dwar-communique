@@ -75,7 +75,7 @@ function Ticker({ value, run, prefix = "" }: { value: number; run: boolean; pref
 
 /* ------------------------------------------------------------ hero chat */
 
-const REPLY = "Yes Priya, 2 pairs left. Here they are:";
+const REPLY = "Yes Priya, 2 left in medium. Here it is:";
 
 /**
  * Aiden answering a customer, step by step: the question, Aiden typing, the
@@ -118,7 +118,7 @@ export function AidenChatDemo() {
   return (
     <div ref={ref} className="flex flex-col items-center gap-3">
       <figure
-        aria-label="Example: Aiden answering a customer on WhatsApp for a sample jewellery shop"
+        aria-label="Example: Aiden answering a customer on WhatsApp for a sample clothing shop"
         className="m-0 w-full max-w-[340px] rounded-[36px] bg-ink p-2.5 shadow-2xl"
       >
         <div className="flex items-center gap-3 rounded-t-[28px] bg-surface px-4 pb-3 pt-4">
@@ -132,7 +132,7 @@ export function AidenChatDemo() {
         </div>
         <div className="nd-wall flex h-[440px] flex-col justify-end gap-2 overflow-hidden rounded-b-[28px] px-3 pb-4 pt-3 [mask-image:linear-gradient(to_bottom,transparent,black_40px)]">
           <WhatsAppBubble from="in" time="8:44" className="nd-slide-in">
-            Hi, do you have the Kundan jhumkas from your Diwali post?
+            Hi, do you have the block-print kurta from your Diwali post?
           </WhatsAppBubble>
           {step >= 2 ? (
             <WhatsAppBubble
@@ -147,14 +147,14 @@ export function AidenChatDemo() {
           ) : null}
           {step >= 3 ? (
             <ProductBubble
-              title="Kundan jhumkas, 22K"
-              detail="₹24,500, 2 in stock"
+              title="Block-print kurta, cotton"
+              detail="₹2,450, 2 in stock"
               className="nd-slide-in"
             />
           ) : null}
           {step >= 4 ? (
             <WhatsAppBubble from="in" time="8:51" className="nd-slide-in">
-              Can you do ₹2,000 less? I&apos;ll take both today.
+              Can you do ₹200 less? I&apos;ll take both today.
             </WhatsAppBubble>
           ) : null}
           {step >= 5 ? (
@@ -183,7 +183,7 @@ export function AidenChatDemo() {
 /* ---------------------------------------------------------------- inbox */
 
 const CHATS: Array<{ i: string; name: string; last: string; when: string; tone: string; gold?: boolean; aiden?: boolean }> = [
-  { i: "PR", name: "Priya Reddy", last: "Can you do ₹2,000 less?", when: "26m", tone: "bg-av1 text-av1-ink", gold: true },
+  { i: "PR", name: "Priya Reddy", last: "Can you do ₹200 less?", when: "26m", tone: "bg-av1 text-av1-ink", gold: true },
   { i: "RK", name: "Rahul Kapoor", last: "Aiden replied with sizes", when: "now", tone: "bg-av2 text-av2-ink", aiden: true },
   { i: "AV", name: "Ananya Verma", last: "Open on Sunday?", when: "9m", tone: "bg-av5 text-av5-ink", aiden: true },
   { i: "NM", name: "Neha Menon", last: "Thank you so much!", when: "1h", tone: "bg-av4 text-av4-ink" },
@@ -244,14 +244,14 @@ export function InboxDemo() {
         </div>
         <div className="nd-wall flex flex-1 flex-col gap-2 p-4">
           <WhatsAppBubble from="in" time="8:51">
-            Can you do ₹2,000 less? I&apos;ll take both today.
+            Can you do ₹200 less? I&apos;ll take both today.
           </WhatsAppBubble>
           <WhatsAppBubble from="system">Aiden paused: discounts need you.</WhatsAppBubble>
         </div>
         <div className="flex flex-col gap-2 border-t border-border p-3">
           <div className="flex flex-wrap items-center gap-3 rounded-[14px] border border-gold-line bg-gold-bg px-3 py-2.5 text-sm">
             <span className="min-w-0 flex-1">
-              <b>Aiden suggests:</b> &ldquo;We can do ₹23,500 each if you take both today.&rdquo;
+              <b>Aiden suggests:</b> &ldquo;We can do ₹2,350 each if you take both today.&rdquo;
             </span>
             <span className="rounded-[11px] bg-gold px-3.5 py-2 text-sm font-bold text-gold-ink">Send</span>
           </div>
@@ -337,7 +337,7 @@ export function CampaignPhone() {
         <div className="overflow-hidden rounded-[12px] bg-surface shadow-xs">
           <span aria-hidden="true" className="block h-[130px] bg-gradient-to-br from-av5-ink to-av1-ink" />
           <p className="m-0 px-2.5 py-2 text-sm">
-            Hi Asha, our Diwali collection is here. 22K temple jewellery, made in Hyderabad.
+            Hi Asha, our Diwali collection is here. Hand block-printed cotton, made in Jaipur.
           </p>
           {["View collection", "Talk to us"].map((b) => (
             <span key={b} className="block border-t border-line p-[9px] text-center text-sm font-bold text-aiden-deep">
