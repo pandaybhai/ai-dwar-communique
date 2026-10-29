@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -27,9 +27,12 @@ export const ADD_CONTACT_CONSENT_HELPER = "WhatsApp requires consent. Untick if 
 export function AddContactDialog({
   organizationId,
   onCreated,
+  trigger,
 }: {
   organizationId: string;
   onCreated: () => void;
+  /** Batch 48: the new design's "Add customer" button; the classic button otherwise. */
+  trigger?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -107,10 +110,12 @@ export function AddContactDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="rounded-full">
-          <Plus className="mr-2 h-4 w-4" />
-          Add contact
-        </Button>
+        {trigger ?? (
+          <Button className="rounded-full">
+            <Plus className="mr-2 h-4 w-4" />
+            Add contact
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
