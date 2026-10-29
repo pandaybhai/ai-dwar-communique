@@ -44,9 +44,19 @@ export function useSitePreviewSearch(): Record<string, string> {
   return !NEW_SITE_ENV && isNewSitePreview(useCurrentSearch()) ? { site: "new" } : {};
 }
 
-/** The new design's fonts, as a route head link (only when the switch is on). */
-export function newSiteFontLinks(search: unknown) {
-  return newSiteOn(search) ? [{ rel: "stylesheet", href: NEW_DESIGN_FONTS_HREF }] : [];
+/**
+ * The new design's fonts (Bricolage Grotesque, Instrument Sans) load after the
+ * page is up, never in the head: text paints at once in the fallback face and
+ * swaps when they arrive (display=swap), so the landing's first paint and its
+ * mobile score don't wait for a second font request. Same file as the app.
+ */
+function ensureSiteFonts() {
+  if (document.getElementById("nd-fonts")) return;
+  const link = document.createElement("link");
+  link.id = "nd-fonts";
+  link.rel = "stylesheet";
+  link.href = NEW_DESIGN_FONTS_HREF;
+  document.head.appendChild(link);
 }
 
 /**
@@ -102,13 +112,47 @@ export function useSiteSurface(on: boolean) {
     if (!on) return;
     const root = document.documentElement;
     const entries = Object.entries(SITE_TOKENS).filter(([k]) => k.startsWith("--"));
-    for (const [k, v] of entries) root.style.setProperty(k, String(v));
     const hadDesign = root.getAttribute("data-design");
-    root.setAttribute("data-design", "new");
+    let applied = false;
+    // Not in the page's first moments: the wrapper already carries the look,
+    // so the fonts and the portal tokens wait until the page is loaded and idle.
+    const cancel = afterLoadIdle(() => {
+      applied = true;
+      ensureSiteFonts();
+      for (const [k, v] of entries) root.style.setProperty(k, String(v));
+      root.setAttribute("data-design", "new");
+    });
     return () => {
+      cancel();
+      if (!applied) return;
       for (const [k] of entries) root.style.removeProperty(k);
       if (hadDesign === null) root.removeAttribute("data-design");
       else root.setAttribute("data-design", hadDesign);
     };
   }, [on]);
+}
+
+/** Runs `fn` once the page has loaded and the browser is idle; returns a cancel. */
+export function afterLoadIdle(fn: () => void): () => void {
+  let done = false;
+  let idle: number | null = null;
+  const idleApi = window as Window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
+  const run = () => {
+    if (done) return;
+    if (idleApi.requestIdleCallback) idle = idleApi.requestIdleCallback(() => !done && (done = true, fn()), { timeout: 1500 });
+    else idle = window.setTimeout(() => !done && (done = true, fn()), 200);
+  };
+  if (document.readyState === "complete") run();
+  else window.addEventListener("load", run, { once: true });
+  return () => {
+    done = true;
+    window.removeEventListener("load", run);
+    if (idle !== null) {
+      if (idleApi.cancelIdleCallback) idleApi.cancelIdleCallback(idle);
+      window.clearTimeout(idle);
+    }
+  };
 }

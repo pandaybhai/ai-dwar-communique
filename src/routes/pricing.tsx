@@ -18,14 +18,14 @@ import {
   type Plan,
 } from "@/components/marketing/pricing-copy";
 import { NewPricing } from "@/components/site-v2/new-pricing";
-import { newSiteFontLinks, useNewSite } from "@/lib/new-site";
+import { useNewSite } from "@/lib/new-site";
 
 const TITLE = "Pricing — AiDwar WhatsApp marketing plans";
 const DESCRIPTION =
   "Simple monthly plans for WhatsApp marketing in India. Pay for the platform, top up message credits as you go. GST invoices on every payment.";
 
 export const Route = createFileRoute("/pricing")({
-  head: ({ match }) => ({
+  head: () => ({
     meta: [
       { title: TITLE },
       { name: "description", content: DESCRIPTION },
@@ -34,7 +34,6 @@ export const Route = createFileRoute("/pricing")({
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
-    links: newSiteFontLinks(match.search),
   }),
   // Plans and message rates are server-rendered so search engines and readers see them.
   loader: async () => {

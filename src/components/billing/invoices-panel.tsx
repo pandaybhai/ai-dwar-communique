@@ -255,7 +255,7 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
               description="Every payment and plan fee gets a GST invoice here, ready to download."
             />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Invoices">
               <table className="w-full min-w-[640px] text-sm">
                 <thead className="text-left text-xs uppercase text-muted-foreground nd:text-sm nd:font-semibold nd:normal-case">
                   <tr>
@@ -264,7 +264,9 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
                     <th className="py-2">For</th>
                     <th className="py-2">Status</th>
                     <th className="py-2 text-right">Amount</th>
-                    <th className="py-2" />
+                    <th className="py-2">
+                      <span className="sr-only">Download</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

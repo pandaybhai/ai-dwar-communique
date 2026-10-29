@@ -39,14 +39,29 @@ vi.mock("@/lib/whatsapp-client", () => ({
 }));
 
 const ROOT = join(__dirname, "..");
+/** sha256 of the landing's and the pricing page's head on main (title, description, og, canonical, JSON-LD). */
+const INDEX_HEAD = "5df4128ddbb6d581e6aa07833f7d73efd782d90e9c76d1639f901e3d11dc68a1";
+const PRICING_HEAD = "5038479965261d278bdd615f54c6bd3a5dba7c953dc4e672f52c6d8ccf2484bb";
 const src = (path: string) => readFileSync(join(ROOT, path), "utf8");
 /** Code without its comments. */
 const code = (text: string) =>
   text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
-/** The additive new-design changes to a classic file: `nd:` classes and `export` on a function. */
+/**
+ * The additive changes to a classic file: `nd:` classes, `export` on a
+ * function, and the a11y fixes axe asked for on these screens (a focusable,
+ * named scroll region round the billing tables, a name for the download
+ * column), which help both looks and change nothing else.
+ */
 const withoutNd = (text: string) =>
-  text.replace(/ nd:[^\s"`]+/g, "").replace(/^export function /gm, "function ");
+  text
+    .replace(/ nd:[^\s"`]+/g, "")
+    .replace(/^export function /gm, "function ")
+    .replace(/ tabIndex=\{0\} role="region" aria-label="[^"]+"/g, "")
+    .replace(
+      /<th className="py-2">\n\s*<span className="sr-only">Download<\/span>\n\s*<\/th>/,
+      '<th className="py-2" />',
+    );
 
 type LazyRoute = {
   options: {
@@ -448,21 +463,27 @@ describe("the public site: new_site switch, default off", () => {
     for (const [file, hash] of Object.entries(MAIN)) expect([file, sha(src(file))]).toEqual([file, hash]);
   });
 
-  it("keeps each page's SEO meta; the new fonts load only when the switch is on", async () => {
-    const head = async (path: string, search: Record<string, unknown>) => {
+  it("keeps each page's SEO meta exactly; the new fonts load after the page is up, not in the head", async () => {
+    const head = async (path: string) => {
       const { Route } = (await import(`../routes/${path}.tsx`)) as { Route: LazyRoute };
-      return Route.options.head!({ match: { search } });
+      return Route.options.head!({ match: { search: {} } });
     };
-    const off = await head("index", {});
-    expect(off.meta).toContainEqual({ title: "AiDwar — Your AI employee inside WhatsApp" });
-    expect(off.links).toEqual([{ rel: "canonical", href: "https://aidwar.in/" }]);
-    const on = await head("index", { site: "new" });
-    expect(on.meta).toEqual(off.meta);
-    expect(on.links?.[0]).toEqual({ rel: "canonical", href: "https://aidwar.in/" });
-    expect(String(on.links?.[1]?.["href"])).toContain("Bricolage+Grotesque");
-    const pricingOff = await head("pricing", {});
-    expect(pricingOff.meta).toContainEqual({ title: "Pricing — AiDwar WhatsApp marketing plans" });
-    expect(pricingOff.links).toEqual([]);
+    const landing = await head("index");
+    expect(landing.meta).toContainEqual({ title: "AiDwar — Your AI employee inside WhatsApp" });
+    expect(landing.links).toEqual([{ rel: "canonical", href: "https://aidwar.in/" }]);
+    const pricing = await head("pricing");
+    expect(pricing.meta).toContainEqual({ title: "Pricing — AiDwar WhatsApp marketing plans" });
+    expect(pricing.links).toBeUndefined();
+    // The head definitions are main's, byte for byte.
+    const headOf = (file: string) => {
+      const text = src(file);
+      return text.slice(text.indexOf("  head: () => ({"), text.indexOf("  component:"));
+    };
+    expect(sha(headOf("routes/index.tsx"))).toBe(INDEX_HEAD);
+    expect(sha(headOf("routes/pricing.tsx"))).toBe(PRICING_HEAD);
+    const site = src("lib/new-site.ts");
+    expect(site).toContain("ensureSiteFonts();");
+    expect(site).toContain("NEW_DESIGN_FONTS_HREF");
   });
 
   it("the new pages use the same plans, rates, sign-up links and demo form", () => {

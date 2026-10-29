@@ -22,7 +22,7 @@ export function AuthShell({
           <div className="mb-8 text-center">
             <Link
               to="/"
-              className="font-display text-[1.625rem] font-extrabold tracking-[-0.02em] text-foreground"
+              className="font-display text-[1.625rem] font-extrabold tracking-[-0.02em] text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
             >
               aidwar
             </Link>

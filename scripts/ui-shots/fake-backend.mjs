@@ -735,6 +735,13 @@ export function createBackend(options = {}) {
         period: { start: ago(20 * DAY), end: ago(-10 * DAY) },
       });
     }
+    if (url.pathname === "/api/developer/keys") {
+      // Batch 50: Settings → API and webhooks.
+      return json({ keys: [{ id: "k1", name: "Shopify sync", masked: "adw_live_••••3f9a", created_at: ago(30 * DAY), last_used_at: ago(2 * HOUR), revoked_at: null }] });
+    }
+    if (url.pathname === "/api/developer/webhook") {
+      return json({ url: null, status: null, last_delivery: null, recent: [], mode: "multi", limit: 3, webhooks: [] });
+    }
     if (url.pathname === "/api/billing/plan") {
       const limits = (c, m, a, t) => ({ contacts: c, messages_monthly: m, ai_answers_monthly: a, team_members: t });
       return json({
@@ -797,6 +804,10 @@ export function createBackend(options = {}) {
         body = JSON.parse(request.postData() || "{}");
       } catch {
         body = {};
+      }
+      if (body.action === "handoff_alerts") {
+        // Batch 50: Settings → Notifications (the hand-off alerts card).
+        return json({ phones: ["+919820011111"], email: "riya@kesar.example", business_numbers: ["+919820000000"], owner_phone: "+919820011111", owner_is_business_number: false });
       }
       if (body.action === "set_mode") {
         aiden.mode = String(body.mode);

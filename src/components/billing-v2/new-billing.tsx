@@ -402,15 +402,13 @@ function Stat({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 border-b border-border py-3 last:border-0">
-      <div className="flex items-baseline justify-between gap-4">
-        <dt className="text-body text-muted-foreground">{label}</dt>
-        <dd className="text-right font-display text-xl font-semibold tabular-nums text-foreground">
-          {children}
-        </dd>
-      </div>
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1.5 border-b border-border py-3 last:border-0">
+      <dt className="text-body text-muted-foreground">{label}</dt>
+      <dd className="text-right font-display text-xl font-semibold tabular-nums text-foreground">
+        {children}
+      </dd>
       {bar || note ? (
-        <dd className="flex flex-col gap-1.5">
+        <dd className="col-span-2 flex flex-col gap-1.5">
           {bar}
           {note ? <span className="text-sm text-muted-foreground">{note}</span> : null}
         </dd>

@@ -417,7 +417,7 @@ export function HistoryTabs({
 
 function LedgerTable({ rows, currency }: { rows: LedgerEntry[]; currency: string }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Credit history">
       <table className="w-full min-w-[520px] text-sm">
         <thead className="text-left text-xs uppercase text-muted-foreground nd:text-sm nd:font-semibold nd:normal-case">
           <tr>
@@ -455,7 +455,7 @@ function LedgerTable({ rows, currency }: { rows: LedgerEntry[]; currency: string
 
 function SimpleTable({ rows, currency }: { rows: DocRow[]; currency: string }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Payment history">
       <table className="w-full min-w-[520px] text-sm">
         <tbody>
           {rows.map((row) => {

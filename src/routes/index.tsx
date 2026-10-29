@@ -15,7 +15,7 @@ import { trackMarketing } from "@/lib/marketing-analytics";
 import { getPublicPlans } from "@/lib/public-plans.functions";
 import { AUDIENCE_BENEFITS, CAPABILITIES, FAQS, STEPS } from "@/components/marketing/landing-copy";
 import { NewLanding } from "@/components/site-v2/new-landing";
-import { newSiteFontLinks, useNewSite } from "@/lib/new-site";
+import { useNewSite } from "@/lib/new-site";
 
 const TITLE = "AiDwar — Your AI employee inside WhatsApp";
 const DESCRIPTION =
@@ -23,7 +23,7 @@ const DESCRIPTION =
 
 export const Route = createFileRoute("/")({
   loader: () => getPublicPlans(),
-  head: ({ match }) => ({
+  head: () => ({
     meta: [
       { title: TITLE },
       { name: "description", content: DESCRIPTION },
@@ -33,7 +33,7 @@ export const Route = createFileRoute("/")({
       { property: "og:url", content: "https://aidwar.in/" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
-    links: [{ rel: "canonical", href: "https://aidwar.in/" }, ...newSiteFontLinks(match.search)],
+    links: [{ rel: "canonical", href: "https://aidwar.in/" }],
     scripts: [
       {
         type: "application/ld+json",

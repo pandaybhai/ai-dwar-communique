@@ -63,7 +63,7 @@ export function NewPricing({
               aria-pressed={o.on}
               onClick={() => setAnnual(o.set)}
               className={cn(
-                "rounded-[10px] px-4 py-2 text-sm font-semibold transition-colors duration-200",
+                "rounded-[10px] px-4 py-2 text-sm font-semibold transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden",
                 o.on ? "bg-ink text-ink-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -79,7 +79,7 @@ export function NewPricing({
           <div className="rounded-[20px] border border-border bg-surface p-10 text-center">
             <p className="m-0 text-sm text-muted-foreground">
               We couldn't load the plans just now. Refresh the page, or write to us at{" "}
-              <a className="font-semibold text-aiden-deep underline" href="mailto:support@aidwar.in">
+              <a className="font-semibold text-aiden-deep underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden" href="mailto:support@aidwar.in">
                 support@aidwar.in
               </a>{" "}
               and we'll send them over.
@@ -177,7 +177,7 @@ export function NewPricing({
           <MessageRatesTable rates={rates} />
           <p className="m-0 mt-6 text-sm text-muted-foreground">
             Cancelling a plan or asking for a refund? See{" "}
-            <Link to="/refunds" className="font-semibold text-aiden-deep underline">
+            <Link to="/refunds" className="font-semibold text-aiden-deep underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden">
               Refunds &amp; Cancellations
             </Link>
             .

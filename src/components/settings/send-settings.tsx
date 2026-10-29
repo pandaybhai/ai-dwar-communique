@@ -128,7 +128,7 @@ export function SendSettingsTab() {
                 disabled={!canManage || !row.quiet_hours_enabled}
                 onValueChange={(v) => set({ quiet_hours_start: Number(v) })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Quiet hours start">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -147,7 +147,7 @@ export function SendSettingsTab() {
                 disabled={!canManage || !row.quiet_hours_enabled}
                 onValueChange={(v) => set({ quiet_hours_end: Number(v) })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Quiet hours end">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -162,7 +162,7 @@ export function SendSettingsTab() {
             <div className="space-y-2">
               <Label>Timezone</Label>
               <Select value={timezone} disabled={!canManage} onValueChange={setTimezone}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Timezone">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

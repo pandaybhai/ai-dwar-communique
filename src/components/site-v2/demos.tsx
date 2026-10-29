@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckCheck } from "lucide-react";
 import { AidenOrb } from "@/components/design-v2/aiden-orb";
 import { ProductBubble, WhatsAppBubble } from "@/components/design-v2/whatsapp-bubble";
+import { afterLoadIdle } from "@/lib/new-site";
 import { cn } from "@/lib/utils";
 
 /**
@@ -23,9 +24,12 @@ function prefersReducedMotion(): boolean {
 function useSeen<T extends HTMLElement>(threshold = 0.3) {
   const ref = useRef<T | null>(null);
   const [seen, setSeen] = useState(false);
+  // Nothing moves until the page has loaded and gone idle (the first paint comes first).
+  const [ready, setReady] = useState(false);
+  useEffect(() => afterLoadIdle(() => setReady(true)), []);
   useEffect(() => {
     const el = ref.current;
-    if (!el || seen) return;
+    if (!el || seen || !ready) return;
     if (typeof IntersectionObserver === "undefined" || prefersReducedMotion()) {
       setSeen(true);
       return;
@@ -41,7 +45,7 @@ function useSeen<T extends HTMLElement>(threshold = 0.3) {
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [seen, threshold]);
+  }, [seen, threshold, ready]);
   return { ref, seen };
 }
 
@@ -168,7 +172,7 @@ export function AidenChatDemo() {
         type="button"
         onClick={() => setRun((r) => r + 1)}
         className={cn(
-          "rounded-full px-3 py-1.5 text-sm font-semibold text-aiden-deep transition-opacity duration-200 hover:bg-aiden-soft",
+          "rounded-full px-3 py-1.5 text-sm font-semibold text-aiden-deep transition-opacity duration-200 hover:bg-aiden-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden",
           step >= 5 ? "opacity-100" : "pointer-events-none opacity-0",
         )}
         tabIndex={step >= 5 ? 0 : -1}

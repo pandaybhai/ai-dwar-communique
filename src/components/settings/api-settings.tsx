@@ -388,7 +388,7 @@ export function WebhookCard() {
           <p className="mt-1 text-sm text-muted-foreground">
             We POST each event to your address as it happens, signed with that webhook's own secret
             (X-AiDwar-Signature). Failed deliveries are retried for 24 hours.{" "}
-            <a href={`${DOCS_PATH}/webhooks`} className="text-primary hover:underline">
+            <a href={`${DOCS_PATH}/webhooks`} className="text-primary hover:underline nd:underline nd:underline-offset-2">
               Events and payloads
             </a>
           </p>
@@ -666,12 +666,12 @@ export function ApiQuickstartCard() {
               href={DOCS_PATH}
               target="_blank"
               rel="noreferrer"
-              className="text-primary hover:underline"
+              className="text-primary hover:underline nd:underline nd:underline-offset-2"
             >
               Read the API docs
             </a>{" "}
             (templates, replies, contacts, incoming messages, balance) or{" "}
-            <a href={POSTMAN_PATH} download className="text-primary hover:underline">
+            <a href={POSTMAN_PATH} download className="text-primary hover:underline nd:underline nd:underline-offset-2">
               download the Postman collection
             </a>
             .
@@ -708,7 +708,7 @@ export function ApiQuickstartCard() {
             </div>
           ) : null}
           <div className="relative">
-            <pre className="overflow-x-auto rounded-xl border border-border/70 bg-muted/50 p-4 font-mono text-xs leading-relaxed">
+            <pre tabIndex={0} className="overflow-x-auto rounded-xl border border-border/70 bg-muted/50 p-4 font-mono text-xs leading-relaxed">
               <code>{curl}</code>
             </pre>
             <div className="absolute right-2 top-2">

@@ -141,7 +141,7 @@ export function DeleteWorkspaceCard() {
           </Button>
           <p className="text-xs text-muted-foreground">
             See the{" "}
-            <Link to="/data-deletion" className="text-primary hover:underline">
+            <Link to="/data-deletion" className="text-primary hover:underline nd:underline nd:underline-offset-2">
               data deletion policy
             </Link>{" "}
             for what we delete and what we&apos;re required to keep.

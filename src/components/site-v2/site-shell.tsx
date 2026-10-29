@@ -46,7 +46,7 @@ export function NewSiteHeader() {
         <Link
           to="/"
           search={preview as never}
-          className="font-display text-[1.375rem] font-extrabold tracking-[-0.02em] text-foreground"
+          className="font-display text-[1.375rem] font-extrabold tracking-[-0.02em] text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
         >
           aidwar
         </Link>
@@ -55,7 +55,7 @@ export function NewSiteHeader() {
           <Link
             to="/pricing"
             search={preview as never}
-            className="rounded-full px-3 py-2 text-[0.9375rem] font-semibold text-muted-foreground transition-colors duration-200 hover:bg-surface hover:text-foreground"
+            className="rounded-full px-3 py-2 text-[0.9375rem] font-semibold text-muted-foreground transition-colors duration-200 hover:bg-surface hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
             activeProps={{ className: "bg-surface text-foreground shadow-xs", "aria-current": "page" }}
           >
             Pricing
@@ -71,7 +71,7 @@ export function NewSiteHeader() {
               <Link
                 to="/login"
                 search={preview as never}
-                className="rounded-full px-3 py-2 text-[0.9375rem] font-semibold text-muted-foreground transition-colors duration-200 hover:bg-surface hover:text-foreground"
+                className="rounded-full px-3 py-2 text-[0.9375rem] font-semibold text-muted-foreground transition-colors duration-200 hover:bg-surface hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
               >
                 Log in
               </Link>

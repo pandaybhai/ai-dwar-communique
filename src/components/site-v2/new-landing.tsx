@@ -98,7 +98,7 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
             <button
               type="button"
               onClick={() => scrollToId("proof")}
-              className="font-semibold text-aiden-deep underline-offset-4 hover:underline"
+              className="font-semibold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
             >
               See it answer a question
             </button>{" "}
@@ -106,7 +106,7 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
             <Link
               to="/pricing"
               search={preview as never}
-              className="font-semibold text-aiden-deep underline-offset-4 hover:underline"
+              className="font-semibold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
             >
               see pricing
             </Link>
@@ -196,7 +196,7 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
                     }}
                     aria-pressed={active}
                     className={cn(
-                      "flex h-full w-full flex-col gap-3 rounded-[20px] border bg-surface p-7 text-left transition-[box-shadow,border-color] duration-200",
+                      "flex h-full w-full flex-col gap-3 rounded-[20px] border bg-surface p-7 text-left transition-[box-shadow,border-color] duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden",
                       active ? "border-aiden shadow-lg" : "border-border shadow-md hover:shadow-lg",
                     )}
                   >
@@ -352,7 +352,7 @@ function PlansStrip({ plans, preview }: { plans: PublicPlan[]; preview: Record<s
         <Link
           to="/pricing"
           search={preview as never}
-          className="mt-8 inline-flex items-center gap-1 font-semibold text-aiden-deep underline-offset-4 hover:underline"
+          className="mt-8 inline-flex items-center gap-1 font-semibold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
         >
           Compare every plan <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
