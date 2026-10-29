@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { aidwar } from "@/integrations/aidwar/client";
 import { useAppSurface } from "@/lib/theme";
+import { useDesignSurface } from "@/lib/new-design";
+import { useNewSite } from "@/lib/new-site";
 import { logActivity } from "@/lib/activity";
 
 const TITLE = "Log in — AiDwar";
@@ -33,6 +35,9 @@ function LoginPage() {
   // Batch 40: sign-up and log-in are the journey's first screens, so they
   // wear the app's look (Batch 39's tokens, light/dark), not the marketing site's.
   useAppSurface();
+  // Batch 50: the new_site switch (no workspace yet) puts on the new design's tokens.
+  const newSite = useNewSite();
+  useDesignSurface(newSite);
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
   const goNext = () =>
@@ -66,6 +71,7 @@ function LoginPage() {
 
   return (
     <AuthShell
+      design={newSite ? "new" : "classic"}
       title="Welcome back"
       subtitle="Log in to your AiDwar workspace."
       footer={

@@ -675,6 +675,24 @@ export function createBackend(options = {}) {
         generated_at: new Date().toISOString(),
       });
     }
+    if (url.pathname === "/api/onboarding/journey" && options.journeyFull) {
+      // Batch 50: /app/start on its "connect" step, with what step 1 learned.
+      return json({
+        state: {
+          step: "connect",
+          facts: { hasOrg: true, hasMaterial: true, connected: false, connectSkipped: false, tested: false, wentLive: false },
+          recorded: ["business"],
+          business: { name: "Kesar & Co.", logoUrl: null, color: "#8a3210" },
+          website: { sourceId: "ks1", host: "kesar.example", url: "https://kesar.example", status: "synced", itemCount: 126, lastError: null },
+          number: null,
+          mode: "draft",
+          active: true,
+        },
+        can_configure: true,
+        owner_phone: "+919820000000",
+        learned: [],
+      });
+    }
     if (url.pathname === "/api/onboarding/journey") {
       // Batch 40: an owner who left the first-run journey at "connect" (Save & exit).
       return json(options.journey ? { state: { active: true, step: "connect" }, can_configure: true, owner_phone: null } : {});

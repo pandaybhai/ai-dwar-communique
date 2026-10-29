@@ -35,8 +35,8 @@ export function JourneyShell({
   return (
     <div className="ob-stage min-h-[100dvh] text-foreground" style={style}>
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 pt-5 sm:px-8 sm:pt-7">
-        <span className="text-lg font-bold tracking-tight">
-          Ai<span className="text-primary">Dwar</span>
+        <span className="text-lg font-bold tracking-tight nd:font-display nd:text-[1.375rem] nd:font-extrabold nd:lowercase nd:tracking-[-0.02em]">
+          Ai<span className="text-primary nd:text-foreground">Dwar</span>
         </span>
         {exit}
       </header>
@@ -73,7 +73,7 @@ export function ProgressRail({
             <>
               <span className="relative block h-1 overflow-hidden rounded-full bg-border">
                 <span
-                  className="ob-rail-fill absolute inset-0 rounded-full bg-primary"
+                  className="ob-rail-fill absolute inset-0 rounded-full bg-primary nd:bg-aiden"
                   style={{ transform: `scaleX(${i < current || done ? 1 : isCurrent ? 0.5 : 0})` }}
                 />
               </span>
@@ -131,7 +131,7 @@ export function StepHeading({
   return (
     <div className={cn("ob-rise max-w-2xl", className)}>
       {eyebrow ? <p className="text-sm font-semibold text-primary">{eyebrow}</p> : null}
-      <h1 className="mt-2 text-balance text-3xl font-bold tracking-tight sm:text-5xl sm:leading-[1.08]">
+      <h1 className="mt-2 text-balance text-3xl font-bold tracking-tight sm:text-5xl sm:leading-[1.08] nd:font-display nd:font-extrabold nd:tracking-[-0.03em] nd:sm:leading-[1.02]">
         {title}
       </h1>
       {lead ? (
@@ -146,7 +146,7 @@ export function StepHeading({
  * round, full width on a phone. Also handed to the Facebook connect button.
  */
 export const PRIMARY_ACTION_CLASS =
-  "h-14 w-full rounded-full px-8 text-base font-semibold shadow-md sm:w-auto [&_svg]:size-5";
+  "h-14 w-full rounded-full px-8 text-base font-semibold shadow-md sm:w-auto [&_svg]:size-5 nd:rounded-xl nd:font-bold nd:shadow-none";
 
 /** The one primary action of a step (Batch 39's Button, default variant). */
 export function PrimaryAction({ className, ...props }: ButtonProps) {

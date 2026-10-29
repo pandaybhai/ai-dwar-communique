@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { PrimaryAction } from "@/components/onboarding/journey-shell";
 import { aidwar } from "@/integrations/aidwar/client";
 import { useAppSurface } from "@/lib/theme";
+import { useDesignSurface } from "@/lib/new-design";
+import { useNewSite } from "@/lib/new-site";
 import { keepAttribution } from "@/lib/onboarding-client";
 
 const TITLE = "Create your account — AiDwar";
@@ -69,6 +71,9 @@ function SignupPage() {
   // Batch 40: sign-up and log-in are the journey's first screens, so they
   // wear the app's look (Batch 39's tokens, light/dark), not the marketing site's.
   useAppSurface();
+  // Batch 50: the new_site switch (no workspace yet) puts on the new design's tokens.
+  const newSite = useNewSite();
+  useDesignSurface(newSite);
   const navigate = useNavigate();
   const search = Route.useSearch();
   const { redirect } = search;
@@ -148,6 +153,7 @@ function SignupPage() {
     const gmail = /@(gmail|googlemail)\.com$/i.test(sentTo);
     return (
       <AuthShell
+        design={newSite ? "new" : "classic"}
         title="Check your email"
         subtitle="One tap and you're in."
         footer={
@@ -199,6 +205,7 @@ function SignupPage() {
 
   return (
     <AuthShell
+      design={newSite ? "new" : "classic"}
       title="Your AI employee on WhatsApp"
       subtitle="Create your account. Five minutes from now, Aiden is answering your customers."
       footer={

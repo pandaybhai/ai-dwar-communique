@@ -223,7 +223,7 @@ const SCENARIOS_B50 = {
   "billing-trial": { path: "/app/billing", conversations: 10, richBilling: true, plan: "trial", wait: "text=Choose your plan", settle: 2200, fullPage: true },
   "billing-locked": { path: "/app/billing", conversations: 10, richBilling: true, plan: "locked", wait: "text=Reactivate", settle: 2200 },
   "billing-past-due": { path: "/app/billing", conversations: 10, richBilling: true, plan: "past_due", wait: "text=Credits available", settle: 2200 },
-  start: { path: "/app/start", conversations: 10, journey: true, wait: "h1", settle: 1500 },
+  start: { path: "/app/start?step=connect", conversations: 10, journeyFull: true, wait: "h1", settle: 1500 },
 };
 
 const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b50: SCENARIOS_B50 };
@@ -241,6 +241,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     aidenMode: scenario.aidenMode,
     planStatus: scenario.plan,
     richBilling: scenario.richBilling,
+    journeyFull: scenario.journeyFull,
   });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
