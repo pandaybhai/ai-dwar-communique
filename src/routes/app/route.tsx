@@ -4,6 +4,7 @@ import { OrgProvider, useOrg } from "@/lib/org-context";
 import { AppShell } from "@/components/app-shell";
 import { OrgOnboarding } from "@/components/org-onboarding";
 import { ErrorState, PageSkeleton } from "@/components/empty-state";
+import { useAppSurface } from "@/lib/theme";
 
 export const Route = createFileRoute("/app")({
   ssr: false,
@@ -24,6 +25,7 @@ export const Route = createFileRoute("/app")({
 });
 
 function AppGate() {
+  useAppSurface();
   const { loading, error, active, reload } = useOrg();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 

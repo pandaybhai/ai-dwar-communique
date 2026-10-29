@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isApiSource } from "@/lib/public-api-source";
 import {
   AlertCircle,
@@ -7,9 +7,11 @@ import {
   Check,
   CheckCheck,
   Clock,
+  Download,
+  FileText,
   Loader2,
   MessageSquareText,
-  Paperclip,
+  PanelRight,
   ClipboardList,
   Send,
   Sparkles,
@@ -19,12 +21,14 @@ import {
   GraduationCap,
   Languages,
   HandHelping,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Kbd } from "@/components/ui/kbd";
 import { usePermissions } from "@/hooks/use-permissions";
 import { CorrectionDialog } from "@/components/inbox/correction-dialog";
 import { FlowRunBanner } from "@/components/inbox/flow-run-banner";
@@ -37,6 +41,7 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { languageLabel } from "@/lib/languages";
 import { describeAlertResult, handoverReasonText, type HandoffAlertResult } from "@/lib/ai-outcome";
 import { aiRunFor, questionBefore, type AiRunNote, type AiRunRow } from "@/lib/inbox-ai-runs";
+import { cn } from "@/lib/utils";
 
 import {
   Select,
@@ -67,6 +72,7 @@ import {
   type MemberRow,
   type MessageRow,
 } from "./inbox-utils";
+import { ContactAvatar } from "./contact-avatar";
 import { WhatsAppText } from "@/components/whatsapp-text";
 
 function StatusTicks({ message }: { message: MessageRow }) {
@@ -75,7 +81,7 @@ function StatusTicks({ message }: { message: MessageRow }) {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="inline-flex text-destructive">
+            <span className="inline-flex text-destructive" tabIndex={0} aria-label="Failed to send">
               <AlertCircle className="h-3.5 w-3.5" />
             </span>
           </TooltipTrigger>
@@ -87,12 +93,12 @@ function StatusTicks({ message }: { message: MessageRow }) {
     );
   }
   if (message.status === "read")
-    return <CheckCheck className="h-3.5 w-3.5 text-sky-500" aria-label="Read" />;
+    return <CheckCheck className="h-3.5 w-3.5 text-wa-tick" aria-label="Read" />;
   if (message.status === "delivered")
-    return <CheckCheck className="h-3.5 w-3.5 text-muted-foreground" aria-label="Delivered" />;
+    return <CheckCheck className="h-3.5 w-3.5" aria-label="Delivered" />;
   if (message.status === "sent")
-    return <Check className="h-3.5 w-3.5 text-muted-foreground" aria-label="Sent" />;
-  return <Clock className="h-3 w-3 text-muted-foreground" aria-label="Pending" />;
+    return <Check className="h-3.5 w-3.5" aria-label="Sent" />;
+  return <Clock className="h-3 w-3" aria-label="Pending" />;
 }
 
 /** image / video / audio / document — never guessed from the URL alone. */
@@ -104,6 +110,15 @@ function mediaKind(message: MessageRow): "image" | "video" | "audio" | "document
   if (source.startsWith("video")) return "video";
   if (source.startsWith("audio")) return "audio";
   return "document";
+}
+
+/** "PDF", "DOCX" … from the file name or type, for the document card. */
+function fileTypeLabel(message: MessageRow, label: string): string {
+  const ext = /\.([a-z0-9]{2,5})$/i.exec(label)?.[1];
+  if (ext) return ext.toUpperCase();
+  const mime = (message.media_mime ?? "").toLowerCase();
+  if (mime.includes("pdf")) return "PDF";
+  return "File";
 }
 
 /** Shows the file the customer sent (see mediaSource). */
@@ -159,7 +174,7 @@ function MessageMedia({
 
   if (gone) {
     return (
-      <p className="mb-1.5 rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+      <p className="mb-1.5 rounded-md border border-dashed border-current/25 px-3 py-2 text-xs opacity-75">
         {gone}
       </p>
     );
@@ -169,13 +184,13 @@ function MessageMedia({
 
   if (failed) {
     return (
-      <p className="mb-1.5 rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+      <p className="mb-1.5 rounded-md border border-dashed border-current/25 px-3 py-2 text-xs opacity-75">
         We couldn't load this file — it may have expired on WhatsApp.
       </p>
     );
   }
   if (!src) {
-    return <Skeleton className="mb-1.5 h-32 w-48 rounded-xl" />;
+    return <Skeleton className={cn("mb-1.5 rounded-md", kind === "document" ? "h-14 w-60" : "h-40 w-60")} />;
   }
 
   if (kind === "image") {
@@ -184,24 +199,30 @@ function MessageMedia({
         src={src}
         alt={label}
         loading="lazy"
-        className="mb-1.5 max-h-56 w-full rounded-xl object-cover"
+        className="-mx-[5px] -mt-[2px] mb-1.5 block max-h-72 w-[calc(100%+10px)] min-w-[200px] rounded-md object-cover"
       />
     );
   }
   if (kind === "video") {
-    return <video src={src} controls className="mb-1.5 max-h-56 w-full rounded-xl" />;
+    return <video src={src} controls className="-mx-[5px] -mt-[2px] mb-1.5 max-h-72 w-[calc(100%+10px)] rounded-md" />;
   }
   if (kind === "audio") {
-    return <audio src={src} controls className="mb-1.5 w-full" />;
+    return <audio src={src} controls className="mb-1.5 w-64 max-w-full" />;
   }
   return (
     <a
       href={src}
       download={label}
-      className="mb-1.5 flex items-center gap-2 rounded-xl border border-border/70 px-3 py-2 text-xs font-medium text-primary underline-offset-2 hover:underline"
+      className="-mx-[3px] mb-1.5 flex min-w-[220px] items-center gap-3 rounded-md bg-black/[0.045] px-3 py-2.5 text-wa-text transition-colors hover:bg-black/[0.07] dark:bg-white/[0.06] dark:hover:bg-white/[0.09]"
     >
-      <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-      {label}
+      <span className="flex h-9 w-8 shrink-0 items-center justify-center rounded-[4px] bg-danger text-[0.5625rem] font-bold text-danger-foreground">
+        {fileTypeLabel(message, label) === "PDF" ? "PDF" : <FileText className="h-4 w-4" aria-hidden="true" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{label}</span>
+        <span className="block text-[0.6875rem] text-wa-meta">{fileTypeLabel(message, label)}</span>
+      </span>
+      <Download className="h-4 w-4 shrink-0 text-wa-meta" aria-hidden="true" />
     </a>
   );
 }
@@ -264,14 +285,14 @@ function useHandoffAlertText(conversationId: string, waiting: boolean, waitingSi
 function FormAnswers({ name, answers }: { name: string; answers: Array<{ label: string; value: string }> }) {
   return (
     <div className="min-w-[200px]">
-      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-primary">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-wa-link">
         <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
         {name}
       </p>
       <dl className="space-y-1">
         {answers.map((a, i) => (
           <div key={`${a.label}-${i}`} className="grid grid-cols-[auto_1fr] gap-x-2">
-            <dt className="text-muted-foreground">{a.label}:</dt>
+            <dt className="text-wa-meta">{a.label}:</dt>
             <dd className="break-words font-medium">{a.value}</dd>
           </div>
         ))}
@@ -292,6 +313,8 @@ export function Bubble({
   aiRun,
   agentName,
   onTeach,
+  tail = true,
+  fresh = false,
 }: {
   message: MessageRow;
   organizationId: string | null;
@@ -300,6 +323,10 @@ export function Bubble({
   agentName: string;
   /** Opens "Improve this answer" for the reply this message is part of. */
   onTeach?: (note: AiRunNote) => void;
+  /** Batch 39: the first bubble of a run from one side carries WhatsApp's tail. */
+  tail?: boolean;
+  /** Batch 39: arrived while the chat was open — lands with a short animation. */
+  fresh?: boolean;
 }) {
   const outbound = message.direction === "outbound";
   const body = message.body?.trim() ?? "";
@@ -319,15 +346,14 @@ export function Bubble({
   const isTest = message.metadata?.["test"] === true;
   const fileName = typeof message.metadata?.["document_filename"] === "string" ? (message.metadata["document_filename"] as string) : null;
   return (
-    <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
-      <div className="max-w-[80%] sm:max-w-[68%]">
+    <div className={cn("flex", outbound ? "justify-end pr-2" : "justify-start pl-2", fresh && "msg-arrive")}>
+      <div className={cn("flex max-w-[85%] flex-col sm:max-w-[65%]", outbound ? "items-end" : "items-start")}>
         <div
-          className={[
-            "animate-in fade-in slide-in-from-bottom-1 rounded-2xl px-3.5 py-2 text-sm shadow-sm duration-200",
-            outbound
-              ? "rounded-br-md bg-primary/12 text-foreground"
-              : "rounded-bl-md border border-border/70 bg-card text-foreground",
-          ].join(" ")}
+          className={cn(
+            outbound ? "wa-bubble-out" : "wa-bubble-in",
+            tail && "wa-tail",
+            message.status === "failed" && "ring-1 ring-danger/40",
+          )}
         >
           {hasMedia ? (
             <MessageMedia message={message} organizationId={organizationId} label={fileName ?? (mediaOnly ? mediaLabel(message) : text)} />
@@ -338,20 +364,26 @@ export function Bubble({
               answers={message.metadata?.["answers"] as Array<{ label: string; value: string }>}
             />
           ) : mediaOnly ? null : (
-            <p className="whitespace-pre-wrap break-words leading-relaxed">
+            <p className="inline whitespace-pre-wrap break-words">
               <WhatsAppText text={text} />
             </p>
           )}
-          <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
-            {viaApi ? <span className="rounded-full border border-border/70 px-1.5">Sent via API</span> : null}
-            {isTest ? <span className="rounded-full border border-border/70 px-1.5">Test</span> : null}
+          <span className="wa-meta">
+            {aiRun ? (
+              <span className="inline-flex items-center" title={`Written by ${agentName}`}>
+                <Sparkles className="h-3 w-3" aria-hidden="true" />
+                <span className="sr-only">Written by {agentName}</span>
+              </span>
+            ) : null}
+            {viaApi ? <span className="rounded-full border border-current/30 px-1.5 leading-[14px]">Sent via API</span> : null}
+            {isTest ? <span className="rounded-full border border-current/30 px-1.5 leading-[14px]">Test</span> : null}
             <span>{clockTime(message.created_at)}</span>
             {outbound ? <StatusTicks message={message} /> : null}
-          </div>
+          </span>
         </div>
 
         {aiRun ? (
-          <div className="mt-1 flex flex-wrap items-center justify-end gap-2 text-[11px] text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center justify-end gap-2 px-1 text-[0.6875rem] text-muted-foreground">
             {aiRun.taughtOn ? (
               <span className="flex items-center gap-1">
                 <GraduationCap className="h-3 w-3 text-primary" />
@@ -361,7 +393,7 @@ export function Bubble({
             {onTeach ? (
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors duration-200 hover:bg-muted hover:text-foreground"
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors duration-150 hover:bg-card hover:text-foreground"
                 onClick={() => onTeach(aiRun)}
               >
                 <Sparkles className="h-3 w-3" />
@@ -375,6 +407,47 @@ export function Bubble({
   );
 }
 
+/** The textarea grows with what's typed (up to ~7 lines), and shrinks back after sending. */
+function useAutoHeight(ref: React.RefObject<HTMLTextAreaElement | null>, value: string) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 176)}px`;
+  }, [ref, value]);
+}
+
+function ComposerTool({
+  label,
+  onClick,
+  disabled,
+  busy,
+  icon,
+  text,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  icon: React.ReactNode;
+  text?: string;
+}) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn("h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground", text ? "w-8 px-0 @2xl:w-auto @2xl:px-2" : "w-8 px-0")}
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={text ? undefined : label}
+      title={label}
+    >
+      {busy ? <Loader2 className="animate-spin" /> : icon}
+      {text ? <span className="hidden text-[0.8125rem] @2xl:inline">{text}</span> : null}
+    </Button>
+  );
+}
 
 export function ChatThread({
   conversation,
@@ -392,6 +465,10 @@ export function ChatThread({
   onAssign,
   onToggleStatus,
   onResolveNeedsHuman,
+  assignOpen,
+  onAssignOpenChange,
+  detailsOpen,
+  onToggleDetails,
 }: {
   conversation: ConversationRow;
   messages: MessageRow[];
@@ -411,7 +488,12 @@ export function ChatThread({
   onToggleStatus: () => void;
   /** Clears the "Waiting for you" flag once a person has picked the thread up (Aiden is back on it). */
   onResolveNeedsHuman?: () => void;
-
+  /** Batch 39: the assignee picker, opened by the "a" shortcut. */
+  assignOpen?: boolean;
+  onAssignOpenChange?: (open: boolean) => void;
+  /** Batch 39: the contact details panel beside the chat. */
+  detailsOpen?: boolean;
+  onToggleDetails?: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -420,6 +502,8 @@ export function ChatThread({
   const [proposedTags, setProposedTags] = useState<string[] | null>(null);
   const [applyingTags, setApplyingTags] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  useAutoHeight(composerRef, draft);
   const open = withinWindow(conversation.last_customer_message_at);
   const label = contactLabel(conversation.contact);
   const { can } = usePermissions();
@@ -437,6 +521,9 @@ export function ChatThread({
     return null;
   }, [messages]);
   const [teaching, setTeaching] = useState<AiRunNote | null>(null);
+  // Batch 39: on a narrow chat the hand-off banner shows its first lines; "More" opens the rest.
+  const [bannerMore, setBannerMore] = useState(false);
+  useEffect(() => setBannerMore(false), [conversation.id]);
 
   // Batch 28: on the newest message whenever a chat opens or grows — also
   // after its messages finish loading (the end marker only exists then), and
@@ -447,6 +534,19 @@ export function ChatThread({
     const frame = requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
     return () => cancelAnimationFrame(frame);
   }, [messages.length, lastMessageId, conversation.id, loading]);
+
+  // Batch 39: messages already there when the chat loaded don't animate;
+  // only ones that arrive while it is open do.
+  const seenRef = useRef<{ id: string; ids: Set<string> } | null>(null);
+  useEffect(() => {
+    if (loading) {
+      seenRef.current = null;
+      return;
+    }
+    if (seenRef.current?.id !== conversation.id) {
+      seenRef.current = { id: conversation.id, ids: new Set(messages.map((m) => m.id)) };
+    }
+  }, [loading, conversation.id, messages]);
 
   useEffect(() => {
     setSummary(null);
@@ -474,6 +574,7 @@ export function ChatThread({
     if (kind === "suggest") {
       setDraft(text);
       toast.success("Draft ready — read it, edit it, then send.");
+      requestAnimationFrame(() => composerRef.current?.focus());
     } else {
       setSummary(text);
     }
@@ -531,6 +632,7 @@ export function ChatThread({
       }
       toast.success("Labels added to this contact.");
       setProposedTags(null);
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("aidwar:contact-tags-changed"));
     } finally {
       setApplyingTags(false);
     }
@@ -542,83 +644,135 @@ export function ChatThread({
   const [teachOffer, setTeachOffer] = useState<AiRunNote | null>(null);
   useEffect(() => setTeachOffer(null), [conversation.id]);
 
+  // Batch 39: the box empties the moment Send is pressed (the message shows
+  // in the chat right away); if the send fails, the words come back.
   const submit = async () => {
     const text = draft.trim();
     if (!text || sending) return;
+    setDraft("");
     const ok = await onSend(text);
     if (ok) {
-      setDraft("");
       const asked = [...messages].reverse().find((m) => m.direction === "inbound" && (m.body ?? "").trim());
       if (canTeach && asked) setTeachOffer({ question: (asked.body ?? "").trim(), reply: text, taughtOn: null });
+    } else {
+      setDraft((current) => (current.trim() ? current : text));
     }
   };
 
-  let lastDay = "";
+  const aiTools = canUseAi && organizationId;
+  const noMessages = messages.length === 0;
+
+  // Day groups, so each day's label can stick to the top while you scroll it.
+  const days = useMemo(() => {
+    const out: Array<{ day: string; items: MessageRow[] }> = [];
+    for (const m of messages) {
+      const day = dayLabel(m.created_at);
+      const last = out[out.length - 1];
+      if (last && last.day === day) last.items.push(m);
+      else out.push({ day, items: [m] });
+    }
+    return out;
+  }, [messages]);
+  const assignee = members.find((m) => m.user_id === conversation.assigned_to) ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center gap-3 border-b border-border/70 bg-card px-4 py-3">
-        <Button variant="ghost" size="icon" className="rounded-full lg:hidden" onClick={onBack}>
+    <div className="@container flex h-full min-h-0 flex-col bg-card">
+      <header className="flex h-[60px] shrink-0 items-center gap-2 border-b border-border bg-card px-2 sm:gap-3 sm:px-4">
+        <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
           <span className="sr-only">Back to conversations</span>
         </Button>
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-          {initials(label)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">{label}</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {conversation.contact?.phone ?? "—"}
-            {fromNumber ? <span className="opacity-70"> · via {fromNumber}</span> : null}
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={onToggleDetails}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 pr-2 text-left transition-colors hover:bg-accent/60 @md:max-w-[15rem] @md:flex-initial"
+          aria-label={`${label} — contact details`}
+          disabled={!onToggleDetails}
+        >
+          <ContactAvatar seed={conversation.contact?.id ?? conversation.id} label={label} className="h-9 w-9 text-xs" />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-foreground">{label}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {conversation.contact?.phone ?? "—"}
+              {fromNumber ? <span className="opacity-80"> · via {fromNumber}</span> : null}
+            </span>
+          </span>
+        </button>
 
-        <AidenRulesBadge conversationId={conversation.id} />
+        <div className="hidden min-w-0 flex-1 items-center gap-2 overflow-hidden @md:flex">
+          <AidenRulesBadge conversationId={conversation.id} />
 
-        {customerLanguage ? (
+          {customerLanguage ? (
+            <Badge
+              variant="outline"
+              className="hidden shrink-0 rounded-full font-normal @3xl:inline-flex"
+              title="Your AI employee replies in this language"
+            >
+              <Languages className="mr-1 h-3 w-3" />
+              {customerLanguage === "hi-Latn" ? "Hinglish" : languageLabel(customerLanguage)}
+            </Badge>
+          ) : null}
+
           <Badge
-            variant="outline"
-            className="hidden rounded-full font-normal sm:inline-flex"
-            title="Your AI employee replies in this language"
+            variant={conversation.status === "closed" ? "muted" : "success"}
+            className="hidden shrink-0 rounded-full capitalize @2xl:inline-flex"
           >
-            <Languages className="mr-1 h-3 w-3" />
-            {customerLanguage === "hi-Latn" ? "Hinglish" : languageLabel(customerLanguage)}
+            {conversation.status}
           </Badge>
-        ) : null}
+        </div>
 
-        <Badge
-          variant="secondary"
-          className={
-            conversation.status === "closed"
-              ? "rounded-full"
-              : "rounded-full bg-primary/10 text-primary"
-          }
-        >
-          {conversation.status}
-        </Badge>
-        <Select
-          value={conversation.assigned_to ?? "unassigned"}
-          onValueChange={(v) => onAssign(v === "unassigned" ? null : v)}
-        >
-          <SelectTrigger className="hidden w-44 rounded-full sm:flex">
-            <UserRound className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-            <SelectValue placeholder="Assign" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="unassigned">Unassigned</SelectItem>
-            {members.map((m) => (
-              <SelectItem key={m.user_id} value={m.user_id}>
-                {m.full_name || m.email || "Team member"}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" className="rounded-full" onClick={onToggleStatus}>
-          {conversation.status === "closed" ? "Reopen" : "Close"}
-        </Button>
-        {conversation.contact && organizationId ? (
-          <FlowRunHistory organizationId={organizationId} contactId={conversation.contact.id} conversationId={conversation.id} />
-        ) : null}
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+          <Select
+            value={conversation.assigned_to ?? "unassigned"}
+            onValueChange={(v) => onAssign(v === "unassigned" ? null : v)}
+            {...(assignOpen !== undefined ? { open: assignOpen } : {})}
+            {...(onAssignOpenChange ? { onOpenChange: onAssignOpenChange } : {})}
+          >
+            <SelectTrigger
+              className="hidden h-8 w-auto max-w-44 gap-1.5 rounded-full border-transparent bg-transparent px-2.5 shadow-none hover:bg-accent sm:flex"
+              aria-label={`Assigned to ${assignee ? assignee.full_name || assignee.email || "Team member" : "nobody"} (press A)`}
+            >
+              {assignee ? (
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/12 text-[0.5625rem] font-semibold text-primary">
+                  {initials(assignee.full_name || assignee.email || "?")}
+                </span>
+              ) : (
+                <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <span className="min-w-0">
+                <span className="hidden truncate @2xl:inline">
+                  <SelectValue placeholder="Assign" />
+                </span>
+              </span>
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="unassigned">Unassigned</SelectItem>
+              {members.map((m) => (
+                <SelectItem key={m.user_id} value={m.user_id}>
+                  {m.full_name || m.email || "Team member"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" className="rounded-full" onClick={onToggleStatus} title={conversation.status === "closed" ? undefined : "Close (E)"}>
+            {conversation.status === "closed" ? "Reopen" : "Close"}
+          </Button>
+          {conversation.contact && organizationId ? (
+            <FlowRunHistory organizationId={organizationId} contactId={conversation.contact.id} conversationId={conversation.id} />
+          ) : null}
+          {onToggleDetails ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onToggleDetails}
+              aria-label={detailsOpen ? "Hide contact details" : "Show contact details"}
+              aria-pressed={detailsOpen ?? false}
+              className={cn("text-muted-foreground", detailsOpen && "bg-accent text-foreground")}
+            >
+              <PanelRight />
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       {conversation.contact && organizationId ? (
@@ -626,41 +780,62 @@ export function ChatThread({
       ) : null}
 
       {conversation.needs_human ? (
-        <div className="flex flex-wrap items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
-          <HandHelping className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Waiting for you.{" "}
-              {handoverReasonText(conversation.needs_human_reason) ?? "I stepped back on this one."}
-            </p>
-            {conversation.needs_human_question ? (
-              <p className="mt-0.5 break-words opacity-90">
-                They asked: “{conversation.needs_human_question}”
+        <div
+          data-shot="needs-human"
+          role="status"
+          className="flex shrink-0 flex-col gap-2.5 border-b border-warning-border bg-warning-soft px-4 py-3 text-xs text-warning-soft-foreground @xl:flex-row @xl:items-start @xl:gap-3"
+        >
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-warning/25">
+              <HandHelping className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <p className="text-[0.8125rem] font-semibold">
+                Waiting for you.{" "}
+                <span className="font-medium">{handoverReasonText(conversation.needs_human_reason) ?? "I stepped back on this one."}</span>
               </p>
-            ) : null}
-            {/* What the customer was told — only when Aiden tried to tell them
-                (a flow's hand-off sends the customer nothing, so it says nothing). */}
-            {conversation.handover_state ? (
-              <p className="mt-0.5 opacity-80">
-                {conversation.handover_state === "sent"
-                  ? "I told them a colleague would reply here shortly."
-                  : conversation.handover_state === "window_closed"
-                    ? "Their 24-hour window had closed, so I couldn't tell them — send an approved template."
-                    : "I couldn't get a message to them, so they're still waiting."}
-              </p>
-            ) : null}
-            {alertText ? <p className="mt-0.5 opacity-80">{alertText}</p> : null}
+              {conversation.needs_human_question ? (
+                <p className="break-words opacity-90">
+                  They asked: “{conversation.needs_human_question}”
+                </p>
+              ) : null}
+              <div className={cn("space-y-0.5", !bannerMore && "hidden @xl:block")}>
+                {/* What the customer was told — only when Aiden tried to tell them
+                    (a flow's hand-off sends the customer nothing, so it says nothing). */}
+                {conversation.handover_state ? (
+                  <p className="opacity-85">
+                    {conversation.handover_state === "sent"
+                      ? "I told them a colleague would reply here shortly."
+                      : conversation.handover_state === "window_closed"
+                        ? "Their 24-hour window had closed, so I couldn't tell them — send an approved template."
+                        : "I couldn't get a message to them, so they're still waiting."}
+                  </p>
+                ) : null}
+                {alertText ? <p className="opacity-85">{alertText}</p> : null}
+              </div>
+            </div>
           </div>
-          {onResolveNeedsHuman ? (
-            <Button size="sm" variant="outline" className="rounded-full" onClick={onResolveNeedsHuman}>
-              Mark as handled
-            </Button>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-2 pl-10 @xl:pl-0">
+            {(conversation.handover_state || alertText) && !bannerMore ? (
+              <button
+                type="button"
+                onClick={() => setBannerMore(true)}
+                className="text-xs font-medium underline underline-offset-2 @xl:hidden"
+              >
+                More
+              </button>
+            ) : null}
+            {onResolveNeedsHuman ? (
+              <Button size="sm" variant="outline" className="h-8 rounded-full border-warning-border bg-card/80" onClick={onResolveNeedsHuman}>
+                <Check /> Mark as handled
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
       {conversation.contact?.opt_in_status === "opted_out" ? (
-        <div className="flex items-start gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2.5 text-xs text-destructive">
+        <div className="flex shrink-0 items-start gap-2 border-b border-danger-border bg-danger-soft px-4 py-2.5 text-xs text-danger-soft-foreground">
           <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <p>
             This contact opted out — no marketing. Service replies within the 24-hour window and
@@ -671,218 +846,260 @@ export function ChatThread({
 
 
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30 px-4 py-5">
+      <div className="wa-wall min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6" aria-label={`Messages with ${label}`} role="log">
         {loading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-12 w-2/3 rounded-2xl" />
-            <Skeleton className="ml-auto h-10 w-1/2 rounded-2xl" />
-            <Skeleton className="h-16 w-3/5 rounded-2xl" />
+          <div className="mx-auto max-w-3xl space-y-3" aria-busy="true">
+            <Skeleton className="h-12 w-2/3 rounded-lg bg-wa-in/80" />
+            <Skeleton className="ml-auto h-10 w-1/2 rounded-lg bg-wa-out/80" />
+            <Skeleton className="h-16 w-3/5 rounded-lg bg-wa-in/80" />
           </div>
-        ) : messages.length === 0 ? (
+        ) : noMessages ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <MessageSquareText className="h-8 w-8 text-muted-foreground/60" />
-            <p className="mt-3 text-sm font-medium text-foreground">No messages yet</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Start the conversation with a message below.
-            </p>
+            <div className="rounded-xl bg-wa-in/90 px-5 py-4 shadow-sm">
+              <MessageSquareText className="mx-auto h-7 w-7 text-wa-meta" />
+              <p className="mt-3 text-sm font-medium text-wa-text">No messages yet</p>
+              <p className="mt-1 text-xs text-wa-meta">
+                Start the conversation with a message below.
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-2">
-            {messages.map((m) => {
-              const day = dayLabel(m.created_at);
-              const showDay = day !== lastDay;
-              lastDay = day;
-              return (
-                <div key={m.id} className="flex flex-col gap-2">
-                  {showDay ? (
-                    <div className="my-2 flex justify-center">
-                      <span className="rounded-full bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
-                        {day}
-                      </span>
-                    </div>
-                  ) : null}
-                  <Bubble
-                    message={m}
-                    organizationId={organizationId}
-                    agentName="Your AI employee"
-                    aiRun={aiRunFor(m, aiRuns)}
-                    {...(canTeach
-                      ? {
-                          onTeach: (note: AiRunNote) =>
-                            setTeaching({ ...note, question: note.question.trim() || questionBefore(messages, messages.indexOf(m)) }),
-                        }
-                      : {})}
-                  />
+          <div className="mx-auto flex max-w-3xl flex-col">
+            {days.map((group) => (
+              <section key={group.day} className="flex flex-col" aria-label={group.day}>
+                <div className="sticky top-0 z-10 flex justify-center py-2">
+                  <span className="rounded-lg bg-wa-in/95 px-3 py-1 text-[0.6875rem] font-medium uppercase tracking-wide text-wa-meta shadow-[0_1px_0.5px_rgb(11_20_26/0.13)] backdrop-blur">
+                    {group.day}
+                  </span>
                 </div>
-              );
-            })}
-            <div ref={bottomRef} />
+                {group.items.map((m, i) => {
+                  const prev = group.items[i - 1];
+                  const first = !prev || prev.direction !== m.direction;
+                  const seen = seenRef.current;
+                  const fresh = Boolean(seen && seen.id === conversation.id && !seen.ids.has(m.id));
+                  return (
+                    <div key={m.id} className={first ? "mt-2.5" : "mt-0.5"}>
+                      <Bubble
+                        message={m}
+                        organizationId={organizationId}
+                        agentName="Your AI employee"
+                        aiRun={aiRunFor(m, aiRuns)}
+                        tail={first}
+                        fresh={fresh}
+                        {...(canTeach
+                          ? {
+                              onTeach: (note: AiRunNote) =>
+                                setTeaching({ ...note, question: note.question.trim() || questionBefore(messages, messages.indexOf(m)) }),
+                            }
+                          : {})}
+                      />
+                    </div>
+                  );
+                })}
+              </section>
+            ))}
+            <div ref={bottomRef} className="h-1" />
           </div>
         )}
       </div>
 
-      <div className="border-t border-border/70 bg-card px-4 py-3">
-        {canUseAi && organizationId ? (
-          <div className="mx-auto mb-3 max-w-3xl space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
+      <div className="shrink-0 border-t border-border bg-card px-3 pb-3 pt-2.5 sm:px-4">
+        <div className="mx-auto max-w-3xl">
+          {proposedTags ? (
+            <div className="msg-arrive mb-2.5 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-subtle px-3.5 py-2.5">
+              <Tags className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+              <span className="text-xs font-medium text-muted-foreground">It suggests:</span>
+              {proposedTags.map((t) => (
+                <Badge key={t} variant="secondary" className="rounded-full">
+                  {t}
+                </Badge>
+              ))}
+              <div className="ml-auto flex gap-2">
+                <Button
+                  size="xs"
+                  className="rounded-full"
+                  disabled={applyingTags}
+                  onClick={() => void applyTags()}
+                >
+                  {applyingTags ? <Loader2 className="animate-spin" /> : null}
+                  Add them
+                </Button>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="rounded-full"
+                  onClick={() => setProposedTags(null)}
+                >
+                  No thanks
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {summary ? (
+            <div className="msg-arrive relative mb-2.5 rounded-xl border border-border bg-subtle px-3.5 py-2.5 pr-9">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                The short version
+              </p>
+              <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                {summary}
+              </p>
+              <button
+                type="button"
+                onClick={() => setSummary(null)}
+                className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Hide the short version"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : null}
+          {teachOffer ? (
+            <div className="msg-arrive mb-2.5 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-subtle px-3.5 py-2 text-xs text-muted-foreground">
+              <GraduationCap className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+              <span className="min-w-0 flex-1">Teach Aiden this answer? Next time a customer asks, Aiden can answer it.</span>
               <Button
-                size="sm"
+                size="xs"
                 variant="outline"
                 className="rounded-full"
-                disabled={assisting !== null || messages.length === 0}
-                onClick={() => void assist("suggest")}
+                onClick={() => {
+                  setTeaching(teachOffer);
+                  setTeachOffer(null);
+                }}
               >
-                {assisting === "suggest" ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Wand2 className="mr-2 h-3.5 w-3.5" />
-                )}
-                Draft a reply
+                Teach Aiden
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="rounded-full"
-                disabled={assisting !== null || messages.length === 0}
-                onClick={() => void assist("summary")}
-              >
-                {assisting === "summary" ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-2 h-3.5 w-3.5" />
-                )}
-                Catch me up
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="rounded-full"
-                disabled={assisting !== null || messages.length === 0}
-                onClick={() => void proposeTags()}
-              >
-                {assisting === "tags" ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Tags className="mr-2 h-3.5 w-3.5" />
-                )}
-                Suggest labels
+              <Button size="xs" variant="ghost" className="rounded-full" onClick={() => setTeachOffer(null)}>
+                Not now
               </Button>
             </div>
-            {proposedTags ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3.5 py-2.5">
-                <span className="text-xs font-medium text-muted-foreground">It suggests:</span>
-                {proposedTags.map((t) => (
-                  <Badge key={t} variant="secondary" className="rounded-full">
-                    {t}
-                  </Badge>
-                ))}
-                <div className="ml-auto flex gap-2">
-                  <Button
-                    size="sm"
-                    className="rounded-full"
-                    disabled={applyingTags}
-                    onClick={() => void applyTags()}
-                  >
-                    {applyingTags ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-                    Add them
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="rounded-full"
-                    onClick={() => setProposedTags(null)}
-                  >
-                    No thanks
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-            {summary ? (
-              <div className="rounded-xl border border-border/70 bg-muted/30 px-3.5 py-2.5">
-                <p className="text-xs font-medium text-muted-foreground">The short version</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                  {summary}
-                </p>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {teachOffer ? (
-          <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3.5 py-2 text-xs text-muted-foreground">
-            <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span className="min-w-0 flex-1">Teach Aiden this answer? Next time a customer asks, Aiden can answer it.</span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="rounded-full"
-              onClick={() => {
-                setTeaching(teachOffer);
-                setTeachOffer(null);
-              }}
-            >
-              Teach Aiden
-            </Button>
-            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setTeachOffer(null)}>
-              Not now
-            </Button>
-          </div>
-        ) : null}
-        {open ? (
+          ) : null}
+          {open ? (
 
-          <div className="mx-auto flex max-w-3xl items-end gap-2">
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void submit();
-                }
-              }}
-              placeholder="Write a message…"
-              rows={1}
-              className="max-h-32 min-h-11 resize-none rounded-2xl"
-            />
-            <SendFormButton organizationId={organizationId} conversationId={conversation.id} />
-            <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen />
-            {/* Batch 35: an approved template can go any time, not only once the window closes. */}
-            <Button
-              variant="outline"
-              className="h-11 w-11 shrink-0 rounded-full p-0"
-              aria-label="Send a template"
-              title="Send a template"
-              onClick={() => setPickerOpen(true)}
-            >
-              <MessageSquareText className="h-4 w-4" />
-            </Button>
-            <Button
-              className="h-11 w-11 shrink-0 rounded-full p-0"
-              disabled={!draft.trim() || sending}
-              onClick={() => void submit()}
-            >
-              <Send className="h-4 w-4" />
-              <span className="sr-only">Send message</span>
-            </Button>
-          </div>
-        ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 sm:flex-row sm:items-center sm:justify-between dark:text-amber-400">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>Outside the 24-hour window — send a template instead.</p>
+            <div className="rounded-2xl border border-input bg-card shadow-xs transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/15">
+              <Textarea
+                id="inbox-composer"
+                ref={composerRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void submit();
+                  }
+                  if (e.key === "Escape") e.currentTarget.blur();
+                }}
+                placeholder="Write a message…"
+                aria-label={`Message ${label}`}
+                rows={1}
+                className="max-h-44 min-h-11 resize-none rounded-2xl border-0 bg-transparent px-4 pb-1 pt-3 text-[0.9375rem] shadow-none hover:border-0 focus-visible:ring-0 md:text-[0.9375rem]"
+              />
+              <div className="flex items-center gap-0.5 px-2 pb-2">
+                <SendFormButton organizationId={organizationId} conversationId={conversation.id} />
+                <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen />
+                {/* Batch 35: an approved template can go any time, not only once the window closes. */}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                  aria-label="Send a template"
+                  title="Send a template"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <MessageSquareText className="h-4 w-4" />
+                </Button>
+                {aiTools ? (
+                  <>
+                    <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+                    <ComposerTool
+                      label="Draft a reply"
+                      text="Draft a reply"
+                      icon={<Wand2 />}
+                      busy={assisting === "suggest"}
+                      disabled={assisting !== null || noMessages}
+                      onClick={() => void assist("suggest")}
+                    />
+                    <ComposerTool
+                      label="Catch me up"
+                      text="Catch me up"
+                      icon={<Sparkles />}
+                      busy={assisting === "summary"}
+                      disabled={assisting !== null || noMessages}
+                      onClick={() => void assist("summary")}
+                    />
+                    <ComposerTool
+                      label="Suggest labels"
+                      icon={<Tags />}
+                      busy={assisting === "tags"}
+                      disabled={assisting !== null || noMessages}
+                      onClick={() => void proposeTags()}
+                    />
+                  </>
+                ) : null}
+                <span className="flex-1" aria-hidden="true" />
+                <span className="hidden items-center gap-1 whitespace-nowrap pr-2 text-[0.6875rem] text-faint @3xl:flex" aria-hidden="true">
+                  <Kbd>↵</Kbd> send · <Kbd>⇧</Kbd>
+                  <Kbd>↵</Kbd> new line
+                </span>
+                <Button
+                  size="icon-sm"
+                  className="h-9 w-9 shrink-0 rounded-full"
+                  disabled={!draft.trim() || sending}
+                  onClick={() => void submit()}
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  <span className="sr-only">Send message</span>
+                </Button>
+              </div>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen={false} />
-              <Button
-                size="sm"
-                className="shrink-0 rounded-full"
-                onClick={() => setPickerOpen(true)}
-              >
-                <MessageSquareText className="mr-2 h-4 w-4" />
-                Send a template
-              </Button>
+          ) : (
+            <div className="flex flex-col gap-3 rounded-2xl border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-soft-foreground sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>Outside the 24-hour window — send a template instead.</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen={false} />
+                <Button
+                  size="sm"
+                  className="shrink-0 rounded-full"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <MessageSquareText className="mr-2 h-4 w-4" />
+                  Send a template
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+          {!open && aiTools ? (
+            <div className="mt-2 flex flex-wrap items-center gap-0.5">
+              <ComposerTool
+                label="Draft a reply"
+                text="Draft a reply"
+                icon={<Wand2 />}
+                busy={assisting === "suggest"}
+                disabled={assisting !== null || noMessages}
+                onClick={() => void assist("suggest")}
+              />
+              <ComposerTool
+                label="Catch me up"
+                text="Catch me up"
+                icon={<Sparkles />}
+                busy={assisting === "summary"}
+                disabled={assisting !== null || noMessages}
+                onClick={() => void assist("summary")}
+              />
+              <ComposerTool
+                label="Suggest labels"
+                text="Suggest labels"
+                icon={<Tags />}
+                busy={assisting === "tags"}
+                disabled={assisting !== null || noMessages}
+                onClick={() => void proposeTags()}
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <TemplatePickerDialog

@@ -5,20 +5,46 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design system definition.
+ * AiDwar design system (Batch 39) — the one source of truth for the app's look.
+ * Every token is a CSS variable; @theme inline exposes it to Tailwind
+ * (--color-primary → bg-primary / text-primary, --shadow-md → shadow-md,
+ * --ease-out → ease-out, --text-body → text-body). /app/design shows them all.
  *
- * The @theme inline block maps CSS custom properties to Tailwind utility
- * classes (e.g. --color-primary -> bg-primary, text-primary).
+ * Layers:
+ *   1. Scales (:root)       brand-50…950, gray-0…1000 (hue 255), wa-* — raw
+ *                           values; prefer the semantic tokens below in code.
+ *   2. Semantic (:root)     background, foreground, card, primary, muted, border,
+ *                           success / warning / danger / info (+ -soft, -soft-
+ *                           foreground, -border), faint, subtle, border-strong.
+ *   3. App (html[data-app]) the signed-in app's values, light and .dark. The
+ *                           marketing site and the developer portal keep the
+ *                           :root values until they are redesigned (Part 4).
  *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
+ * Spacing is Tailwind's 4px grid (p-1 = 4px, p-2 = 8px …). Radii come from
+ * --radius (sm 6 · md 8 · lg 10 · xl 14 · 2xl 18 · full). Colours are oklch.
+ * Text on every token pair below meets WCAG AA (4.5:1) in both themes.
  *
- * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
- * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ * To add a semantic colour: give it a value in :root, html[data-app] and
+ * html[data-app].dark, then register --color-<name>: var(--<name>) in @theme.
  */
 
 @theme inline {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Type scale: 2xs 11 · xs 12 · sm 14 (dense UI) · body 15 (reading) · base 16
+     (inputs on phones stay 16 so iOS never zooms) · lg 18 · title 22 · display 28. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.5rem;
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.75rem;
+  --text-title--letter-spacing: -0.015em;
+  --text-display: 1.75rem;
+  --text-display--line-height: 2.125rem;
+  --text-display--letter-spacing: -0.022em;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -26,6 +52,22 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+
+  /* Elevation: subtle, layered (a tight contact shadow + a soft ambient one). */
+  --shadow-2xs: var(--elev-2xs);
+  --shadow-xs: var(--elev-xs);
+  --shadow-sm: var(--elev-sm);
+  --shadow-md: var(--elev-md);
+  --shadow-lg: var(--elev-lg);
+  --shadow-xl: var(--elev-xl);
+  --shadow-2xl: var(--elev-2xl);
+
+  /* Motion. Durations: --dur-fast 120ms (hover, press) · --dur-base 180ms
+     (menus, tabs) · --dur-slow 280ms (sheets, panels). */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.3, 1.15);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -38,14 +80,37 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
+  --color-subtle: var(--subtle);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-success-soft-foreground: var(--success-soft-foreground);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-soft-foreground: var(--warning-soft-foreground);
+  --color-warning-border: var(--warning-border);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-soft-foreground: var(--danger-soft-foreground);
+  --color-danger-border: var(--danger-border);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-info-soft-foreground: var(--info-soft-foreground);
+  --color-info-border: var(--info-border);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -59,9 +124,84 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* WhatsApp, as the customer sees it: chat wall, bubbles, meta text, ticks. */
+  --color-wa-wall: var(--wa-wall);
+  --color-wa-in: var(--wa-in);
+  --color-wa-out: var(--wa-out);
+  --color-wa-text: var(--wa-text);
+  --color-wa-meta: var(--wa-meta);
+  --color-wa-meta-out: var(--wa-meta-out);
+  --color-wa-tick: var(--wa-tick);
+  --color-wa-link: var(--wa-link);
+
+  /* Raw scales (for charts, illustrations and the design page). */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+  --color-brand-950: var(--brand-950);
+  --color-gray-0: var(--gray-0);
+  --color-gray-25: var(--gray-25);
+  --color-gray-50: var(--gray-50);
+  --color-gray-100: var(--gray-100);
+  --color-gray-150: var(--gray-150);
+  --color-gray-200: var(--gray-200);
+  --color-gray-300: var(--gray-300);
+  --color-gray-400: var(--gray-400);
+  --color-gray-500: var(--gray-500);
+  --color-gray-600: var(--gray-600);
+  --color-gray-700: var(--gray-700);
+  --color-gray-800: var(--gray-800);
+  --color-gray-850: var(--gray-850);
+  --color-gray-900: var(--gray-900);
+  --color-gray-950: var(--gray-950);
+  --color-gray-1000: var(--gray-1000);
 }
 
 :root {
+  /* ---- 1. scales ---- */
+  --brand-50: oklch(0.979 0.018 165);
+  --brand-100: oklch(0.952 0.04 164);
+  --brand-200: oklch(0.905 0.075 163);
+  --brand-300: oklch(0.845 0.11 163);
+  --brand-400: oklch(0.765 0.14 162);
+  --brand-500: oklch(0.68 0.15 162);
+  --brand-600: oklch(0.6 0.14 162);
+  --brand-700: oklch(0.51 0.125 162);
+  --brand-800: oklch(0.45 0.105 162);
+  --brand-900: oklch(0.37 0.08 163);
+  --brand-950: oklch(0.27 0.055 164);
+
+  --gray-0: oklch(1 0 0);
+  --gray-25: oklch(0.99 0.002 255);
+  --gray-50: oklch(0.982 0.003 255);
+  --gray-100: oklch(0.966 0.005 255);
+  --gray-150: oklch(0.945 0.006 255);
+  --gray-200: oklch(0.92 0.008 255);
+  --gray-300: oklch(0.87 0.01 255);
+  --gray-400: oklch(0.72 0.014 255);
+  --gray-500: oklch(0.6 0.016 255);
+  --gray-600: oklch(0.5 0.018 255);
+  --gray-700: oklch(0.4 0.02 255);
+  --gray-800: oklch(0.3 0.02 255);
+  --gray-850: oklch(0.25 0.018 255);
+  --gray-900: oklch(0.21 0.016 255);
+  --gray-950: oklch(0.175 0.014 255);
+  --gray-1000: oklch(0.145 0.012 255);
+
+  --font-feature: "ss01", "cv11";
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 280ms;
+
+  /* ---- 2. semantic (marketing + portal values; the app overrides below) ---- */
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.18 0.02 255);
@@ -75,14 +215,39 @@
   --secondary-foreground: oklch(0.21 0.02 250);
   --muted: oklch(0.972 0.005 250);
   --muted-foreground: oklch(0.5 0.02 255);
+  --faint: oklch(0.56 0.015 255);
+  --subtle: oklch(0.982 0.003 255);
   --accent: oklch(0.955 0.03 162);
   --accent-foreground: oklch(0.42 0.1 162);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(0.918 0.01 255);
+  --border-strong: oklch(0.86 0.01 255);
   --input: oklch(0.918 0.01 255);
   --ring: oklch(0.696 0.149 162.48);
   --shadow-card: 0 12px 32px -12px color-mix(in oklab, oklch(0.18 0.02 255) 18%, transparent);
+
+  --success: oklch(0.51 0.125 162);
+  --success-foreground: oklch(1 0 0);
+  --success-soft: oklch(0.965 0.03 164);
+  --success-soft-foreground: oklch(0.42 0.1 162);
+  --success-border: oklch(0.86 0.08 163);
+  --warning: oklch(0.75 0.15 70);
+  --warning-foreground: oklch(0.25 0.05 60);
+  --warning-soft: oklch(0.975 0.035 85);
+  --warning-soft-foreground: oklch(0.45 0.1 60);
+  --warning-border: oklch(0.88 0.08 80);
+  --danger: oklch(0.56 0.2 27);
+  --danger-foreground: oklch(1 0 0);
+  --danger-soft: oklch(0.97 0.018 25);
+  --danger-soft-foreground: oklch(0.48 0.17 27);
+  --danger-border: oklch(0.87 0.06 25);
+  --info: oklch(0.55 0.15 250);
+  --info-foreground: oklch(1 0 0);
+  --info-soft: oklch(0.97 0.018 250);
+  --info-soft-foreground: oklch(0.46 0.13 252);
+  --info-border: oklch(0.87 0.05 250);
+
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -96,8 +261,29 @@
   --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
   --sidebar-border: oklch(0.929 0.013 255.508);
   --sidebar-ring: oklch(0.704 0.04 256.788);
+
+  /* WhatsApp's own colours (light). Meta text a shade darker than WhatsApp's
+     so 11px timestamps keep 4.5:1 on both bubbles. */
+  --wa-wall: #efeae2;
+  --wa-in: #ffffff;
+  --wa-out: #d9fdd3;
+  --wa-text: #111b21;
+  --wa-meta: #5b6a73;
+  --wa-meta-out: #4d6155;
+  --wa-tick: #1a8ad4;
+  --wa-link: #027eb5;
+
+  /* Tailwind's default shadows (the marketing site keeps them). */
+  --elev-2xs: 0 1px rgb(0 0 0 / 0.05);
+  --elev-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --elev-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --elev-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --elev-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --elev-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --elev-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
 }
 
+/* Kept for anything outside the app that toggles .dark itself. */
 .dark {
   --background: oklch(0.129 0.042 264.695);
   --foreground: oklch(0.984 0.003 247.858);
@@ -133,17 +319,142 @@
   --sidebar-ring: oklch(0.551 0.027 264.364);
 }
 
+/* ---- 3. the app, light ---- */
+html[data-app] {
+  --background: var(--gray-25);
+  --foreground: var(--gray-900);
+  --card: var(--gray-0);
+  --card-foreground: var(--gray-900);
+  --popover: var(--gray-0);
+  --popover-foreground: var(--gray-900);
+  --primary: var(--brand-700);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: var(--gray-100);
+  --secondary-foreground: var(--gray-900);
+  --muted: var(--gray-100);
+  --muted-foreground: oklch(0.48 0.018 255);
+  --faint: oklch(0.53 0.016 255);
+  --subtle: var(--gray-50);
+  --accent: var(--gray-150);
+  --accent-foreground: var(--gray-900);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
+  --border: var(--gray-200);
+  --border-strong: var(--gray-300);
+  --input: oklch(0.885 0.009 255);
+  --ring: var(--brand-600);
+
+  --chart-1: var(--brand-600);
+  --chart-2: oklch(0.6 0.14 250);
+  --chart-3: oklch(0.7 0.15 70);
+  --chart-4: oklch(0.6 0.17 300);
+  --chart-5: oklch(0.62 0.19 25);
+
+  --sidebar: var(--gray-50);
+  --sidebar-foreground: var(--gray-800);
+  --sidebar-primary: var(--brand-700);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: var(--gray-150);
+  --sidebar-accent-foreground: var(--gray-900);
+  --sidebar-border: var(--gray-200);
+  --sidebar-ring: var(--brand-600);
+
+  --elev-2xs: 0 1px 0 oklch(0.2 0.02 255 / 0.04);
+  --elev-xs: 0 1px 2px oklch(0.2 0.02 255 / 0.06);
+  --elev-sm: 0 1px 2px oklch(0.2 0.02 255 / 0.05), 0 1px 3px oklch(0.2 0.02 255 / 0.05);
+  --elev-md: 0 1px 2px oklch(0.2 0.02 255 / 0.04), 0 4px 12px -2px oklch(0.2 0.02 255 / 0.09);
+  --elev-lg: 0 2px 4px oklch(0.2 0.02 255 / 0.04), 0 12px 28px -8px oklch(0.2 0.02 255 / 0.16);
+  --elev-xl: 0 4px 8px oklch(0.2 0.02 255 / 0.05), 0 24px 48px -12px oklch(0.2 0.02 255 / 0.24);
+  --elev-2xl: 0 8px 16px oklch(0.2 0.02 255 / 0.06), 0 40px 80px -20px oklch(0.2 0.02 255 / 0.32);
+}
+
+/* ---- 3. the app, dark ---- */
+html[data-app].dark {
+  color-scheme: dark;
+  --background: var(--gray-1000);
+  --foreground: oklch(0.95 0.004 255);
+  --card: var(--gray-950);
+  --card-foreground: oklch(0.95 0.004 255);
+  --popover: var(--gray-900);
+  --popover-foreground: oklch(0.95 0.004 255);
+  --primary: oklch(0.76 0.14 162);
+  --primary-foreground: var(--gray-1000);
+  --secondary: var(--gray-850);
+  --secondary-foreground: oklch(0.95 0.004 255);
+  --muted: var(--gray-900);
+  --muted-foreground: oklch(0.72 0.012 255);
+  --faint: oklch(0.65 0.012 255);
+  --subtle: oklch(0.165 0.013 255);
+  --accent: var(--gray-850);
+  --accent-foreground: oklch(0.95 0.004 255);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
+  --border: oklch(0.27 0.014 255);
+  --border-strong: oklch(0.34 0.016 255);
+  --input: oklch(0.32 0.016 255);
+  --ring: oklch(0.76 0.14 162);
+
+  --success: oklch(0.76 0.14 162);
+  --success-foreground: var(--gray-1000);
+  --success-soft: oklch(0.26 0.045 163);
+  --success-soft-foreground: oklch(0.84 0.12 162);
+  --success-border: oklch(0.38 0.07 163);
+  --warning: oklch(0.8 0.14 75);
+  --warning-foreground: var(--gray-1000);
+  --warning-soft: oklch(0.27 0.045 70);
+  --warning-soft-foreground: oklch(0.87 0.11 80);
+  --warning-border: oklch(0.4 0.07 70);
+  --danger: oklch(0.7 0.17 25);
+  --danger-foreground: var(--gray-1000);
+  --danger-soft: oklch(0.26 0.05 25);
+  --danger-soft-foreground: oklch(0.83 0.1 25);
+  --danger-border: oklch(0.4 0.09 25);
+  --info: oklch(0.72 0.13 250);
+  --info-foreground: var(--gray-1000);
+  --info-soft: oklch(0.26 0.045 250);
+  --info-soft-foreground: oklch(0.84 0.08 250);
+  --info-border: oklch(0.4 0.07 250);
+
+  --chart-1: oklch(0.76 0.14 162);
+  --chart-2: oklch(0.72 0.13 250);
+  --chart-3: oklch(0.8 0.14 75);
+  --chart-4: oklch(0.72 0.15 300);
+  --chart-5: oklch(0.7 0.17 25);
+
+  --sidebar: oklch(0.13 0.011 255);
+  --sidebar-foreground: oklch(0.86 0.008 255);
+  --sidebar-primary: oklch(0.76 0.14 162);
+  --sidebar-primary-foreground: var(--gray-1000);
+  --sidebar-accent: var(--gray-900);
+  --sidebar-accent-foreground: oklch(0.95 0.004 255);
+  --sidebar-border: oklch(0.24 0.013 255);
+  --sidebar-ring: oklch(0.76 0.14 162);
+
+  --wa-wall: #0b141a;
+  --wa-in: #202c33;
+  --wa-out: #005c4b;
+  --wa-text: #e9edef;
+  --wa-meta: #8696a0;
+  --wa-meta-out: #c3d5cf;
+  --wa-tick: #53bdeb;
+  --wa-link: #53bdeb;
+
+  --elev-2xs: 0 1px 0 oklch(0 0 0 / 0.3);
+  --elev-xs: 0 1px 2px oklch(0 0 0 / 0.4);
+  --elev-sm: 0 1px 2px oklch(0 0 0 / 0.35), 0 1px 3px oklch(0 0 0 / 0.3);
+  --elev-md: 0 1px 2px oklch(0 0 0 / 0.35), 0 4px 12px -2px oklch(0 0 0 / 0.45);
+  --elev-lg: 0 2px 4px oklch(0 0 0 / 0.35), 0 12px 28px -8px oklch(0 0 0 / 0.6);
+  --elev-xl: 0 0 0 1px oklch(1 0 0 / 0.04), 0 4px 8px oklch(0 0 0 / 0.4), 0 24px 48px -12px oklch(0 0 0 / 0.7);
+  --elev-2xl: 0 0 0 1px oklch(1 0 0 / 0.05), 0 8px 16px oklch(0 0 0 / 0.45), 0 40px 80px -20px oklch(0 0 0 / 0.8);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
   }
 
   html {
-    font-family:
-      "Plus Jakarta Sans",
-      ui-sans-serif,
-      system-ui,
-      sans-serif;
+    font-family: var(--font-sans);
     scroll-behavior: smooth;
   }
 
@@ -151,6 +462,59 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+
+  html[data-app] body {
+    font-feature-settings: var(--font-feature);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html[data-app] ::selection {
+    background: color-mix(in oklab, var(--primary) 24%, transparent);
+  }
+
+  /* One focus ring for anything focusable that doesn't draw its own. */
+  html[data-app] :where(a, button, [role="button"], [tabindex], summary):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* No colour transitions while the theme flips. */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+}
+
+/* Type styles for headings and labels (documented on /app/design). */
+@utility type-display {
+  font-size: var(--text-display);
+  line-height: var(--text-display--line-height);
+  letter-spacing: var(--text-display--letter-spacing);
+  font-weight: 700;
+}
+@utility type-title {
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+  letter-spacing: var(--text-title--letter-spacing);
+  font-weight: 650;
+}
+@utility type-heading {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+@utility type-label {
+  font-size: var(--text-2xs);
+  line-height: 1rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+@utility tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes bubble-in {
@@ -213,6 +577,8 @@
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -353,4 +719,126 @@ html[data-docs-theme="dark"] .docs-root .wa-phone {
 }
 .wa-tick {
   transition: color 0.3s ease;
+}
+
+/*
+ * Inbox chat bubbles (Batch 39): WhatsApp-faithful, from the --wa-* tokens.
+ * .wa-bubble-in / .wa-bubble-out draw the bubble and its tail (.wa-tail on the
+ * first bubble of a run); .wa-meta is the time + ticks, floated so a short
+ * message keeps them on its last line as WhatsApp does.
+ */
+.wa-bubble-in,
+.wa-bubble-out {
+  position: relative;
+  padding: 6px 8px 7px 9px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  line-height: 1.35rem;
+  color: var(--wa-text);
+  box-shadow: 0 1px 0.5px rgb(11 20 26 / 0.13);
+  overflow-wrap: anywhere;
+  display: flow-root;
+}
+.wa-bubble-in {
+  background: var(--wa-in);
+}
+.wa-bubble-out {
+  background: var(--wa-out);
+}
+.wa-bubble-in.wa-tail {
+  border-top-left-radius: 0;
+}
+.wa-bubble-out.wa-tail {
+  border-top-right-radius: 0;
+}
+.wa-bubble-in.wa-tail::before,
+.wa-bubble-out.wa-tail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 13px;
+}
+.wa-bubble-in.wa-tail::before {
+  left: -8px;
+  background: var(--wa-in);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+.wa-bubble-out.wa-tail::before {
+  right: -8px;
+  background: var(--wa-out);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.wa-meta {
+  float: right;
+  margin: 6px 0 -5px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  color: var(--wa-meta);
+  white-space: nowrap;
+}
+.wa-bubble-out .wa-meta {
+  color: var(--wa-meta-out);
+}
+html[data-app] .wa-wall {
+  background-color: var(--wa-wall);
+}
+html[data-app].dark .wa-wall {
+  background-image:
+    radial-gradient(circle at 20% 30%, oklch(1 0 0 / 0.025) 0 2px, transparent 3px),
+    radial-gradient(circle at 70% 60%, oklch(1 0 0 / 0.02) 0 2px, transparent 3px),
+    radial-gradient(circle at 40% 80%, oklch(1 0 0 / 0.02) 0 1.5px, transparent 2.5px);
+}
+@keyframes msg-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.msg-arrive {
+  animation: msg-arrive var(--dur-base) var(--ease-out) both;
+}
+
+/* App shell (Batch 39): pages fade in; the phone tab bar steps aside in a chat. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.page-enter {
+  animation: page-enter 220ms var(--ease-out) both;
+}
+html[data-chat-open] .mobile-tabbar {
+  display: none;
+}
+@media (max-width: 1023px) {
+  /* Inside a chat on a phone, the chat's own header is the only header. */
+  html[data-chat-open] .app-topbar {
+    display: none;
+  }
+  html[data-chat-open] #main {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Contact avatars: one soft hue per person (ContactAvatar). Text ≥ 4.5:1. */
+.avatar-tone {
+  background: oklch(0.93 0.045 var(--av-h, 162));
+  color: oklch(0.4 0.1 var(--av-h, 162));
+}
+html[data-app].dark .avatar-tone {
+  background: oklch(0.32 0.06 var(--av-h, 162));
+  color: oklch(0.9 0.06 var(--av-h, 162));
 }
