@@ -10,7 +10,7 @@ import {
 } from "@/lib/campaigns";
 import type { TemplateRow } from "@/lib/templates";
 import { componentsToPreview, type PreviewModel } from "@/components/templates/template-preview";
-import { money } from "@/lib/billing";
+import { money, type CampaignCostEstimate } from "@/lib/billing";
 
 /**
  * Batch 47: the new Campaigns screen's reads (docs/design/preview.html
@@ -399,4 +399,16 @@ export function campaignPreviewModel(
     })),
     couponCode: coupon,
   };
+}
+
+/** The footer's one line: who, and roughly what it costs. */
+export function ndCostLine(
+  audience: { eligible: number } | null,
+  audienceLoading: boolean,
+  estimate: CampaignCostEstimate | null,
+): string {
+  if (audienceLoading && !audience) return "Counting who gets it";
+  if (!audience) return "Pick who gets it to see the cost";
+  const people = `${count.format(audience.eligible)} people`;
+  return estimate ? `${people}, about ${money(estimate.estimate, estimate.currency)}` : people;
 }

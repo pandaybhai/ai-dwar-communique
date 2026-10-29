@@ -1,8 +1,9 @@
 import { FileText, MapPin, PlaySquare, Timer } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { PhoneFrame } from "@/components/design-v2";
 import type { PreviewButton, PreviewModel } from "@/components/templates/template-preview";
 import { WhatsAppText } from "@/components/whatsapp-text";
+import { formatCountdown } from "@/lib/offers";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,6 +31,24 @@ export function TemplatePhone({
       {after ? <div className="mt-2">{after}</div> : null}
     </PhoneFrame>
   );
+}
+
+/** A limited-time offer ticks down as on the customer's phone (the Batch 41 preview's rule). */
+function Countdown({ expiresAt }: { expiresAt: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!expiresAt) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [expiresAt]);
+  const end = expiresAt ? new Date(expiresAt).getTime() : Number.NaN;
+  if (Number.isNaN(end)) return <>Ends in 11:59:00</>;
+  return <>{end - now > 0 ? `Ends in ${formatCountdown(end - now)}` : "Offer ended"}</>;
+}
+
+function codeFor(button: PreviewButton, couponCode: string | null | undefined): string | null {
+  const type = String(button["type"] ?? "").toUpperCase();
+  return (type === "COPY_CODE" || type === "OTP") && couponCode ? couponCode : null;
 }
 
 function buttonLabel(button: PreviewButton): string {
@@ -78,6 +97,13 @@ function Media({
   );
 }
 
+function Code({ code }: { code: string | null }) {
+  if (!code) return null;
+  return (
+    <span className="ml-1.5 rounded-md bg-aiden-soft px-1.5 py-0.5 font-mono text-xs">{code}</span>
+  );
+}
+
 /** The message card itself, for a PhoneFrame or a gallery tile. */
 export function TemplateMessage({ model }: { model: PreviewModel }) {
   const { header, body, footer, buttons, cards, offer } = model;
@@ -98,6 +124,11 @@ export function TemplateMessage({ model }: { model: PreviewModel }) {
           <span className="flex items-center gap-2 border-b border-line px-2.5 py-2 text-sm font-semibold text-aiden-deep">
             <Timer className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="min-w-0 truncate">{offer.text}</span>
+            {offer.hasExpiration ? (
+              <span className="ml-auto shrink-0 tabular-nums">
+                <Countdown expiresAt={offer.expiresAt ?? null} />
+              </span>
+            ) : null}
           </span>
         ) : null}
         <div className="px-2.5 py-2 text-sm text-foreground">
@@ -117,6 +148,7 @@ export function TemplateMessage({ model }: { model: PreviewModel }) {
             className="block border-t border-line p-[9px] text-center text-sm font-bold text-aiden-deep"
           >
             {buttonLabel(b)}
+            <Code code={codeFor(b, model.couponCode)} />
           </span>
         ))}
       </div>
@@ -140,6 +172,7 @@ export function TemplateMessage({ model }: { model: PreviewModel }) {
                   className="block border-t border-line p-2 text-center text-[0.8125rem] font-bold text-aiden-deep"
                 >
                   {buttonLabel(b)}
+                  <Code code={codeFor(b, card.couponCode ?? model.couponCode)} />
                 </span>
               ))}
             </div>
