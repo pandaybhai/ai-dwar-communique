@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { Clock, Lock, MessageSquareReply, Pencil, Plus, Sparkles, Trash2, Workflow } from "lucide-react";
+import {
+  Clock,
+  Lock,
+  MessageSquareReply,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  Workflow,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AutomationDrawer } from "@/components/automations/automation-drawer";
 import { WhatsAppBubble } from "@/components/design-v2";
@@ -74,7 +83,13 @@ export function NewAutomationsPage() {
   );
 }
 
-export function AutomationsV2({ organizationId, canManage }: { organizationId: string; canManage: boolean }) {
+export function AutomationsV2({
+  organizationId,
+  canManage,
+}: {
+  organizationId: string;
+  canManage: boolean;
+}) {
   const [rows, setRows] = useState<AutomationRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastFired, setLastFired] = useState<Record<string, string>>({});
@@ -109,7 +124,7 @@ export function AutomationsV2({ organizationId, canManage }: { organizationId: s
       .order("created_at", { ascending: false })
       .limit(200);
     const map: Record<string, string> = {};
-    for (const run of ((runs as { automation_id: string; created_at: string }[]) ?? [])) {
+    for (const run of (runs as { automation_id: string; created_at: string }[]) ?? []) {
       if (!map[run.automation_id]) map[run.automation_id] = run.created_at;
     }
     setLastFired(map);
@@ -120,9 +135,7 @@ export function AutomationsV2({ organizationId, canManage }: { organizationId: s
   }, [load]);
 
   async function toggle(row: AutomationRow, next: boolean) {
-    setRows((prev) =>
-      (prev ?? []).map((r) => (r.id === row.id ? { ...r, is_active: next } : r)),
-    );
+    setRows((prev) => (prev ?? []).map((r) => (r.id === row.id ? { ...r, is_active: next } : r)));
     const { error: err } = await aidwar
       .from("automations")
       .update({ is_active: next, updated_at: new Date().toISOString() })
@@ -160,7 +173,10 @@ export function AutomationsV2({ organizationId, canManage }: { organizationId: s
     return (
       <div className="flex flex-col gap-3">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-28 animate-pulse rounded-[18px] bg-bubble-in motion-reduce:animate-none" />
+          <div
+            key={i}
+            className="h-28 animate-pulse rounded-[18px] bg-bubble-in motion-reduce:animate-none"
+          />
         ))}
       </div>
     );
@@ -193,16 +209,28 @@ export function AutomationsV2({ organizationId, canManage }: { organizationId: s
             const mine = rows.filter((r) => r.trigger_type === g.type);
             if (!mine.length) return null;
             return (
-              <section key={g.type} aria-labelledby={`auto-${g.type}`} className="flex flex-col gap-3">
+              <section
+                key={g.type}
+                aria-labelledby={`auto-${g.type}`}
+                className="flex flex-col gap-3"
+              >
                 <div className="flex items-center gap-3">
-                  <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-full bg-aiden-soft text-aiden-deep">
+                  <span
+                    aria-hidden="true"
+                    className="grid h-9 w-9 place-items-center rounded-full bg-aiden-soft text-aiden-deep"
+                  >
                     <g.icon className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <h2 id={`auto-${g.type}`} className="m-0 font-display text-[1.25rem] font-semibold">
+                    <h2
+                      id={`auto-${g.type}`}
+                      className="m-0 font-display text-[1.25rem] font-semibold"
+                    >
                       {g.title}
                     </h2>
-                    <p className="m-0 text-sm text-muted-foreground">{TRIGGER_DESCRIPTIONS[g.type]}</p>
+                    <p className="m-0 text-sm text-muted-foreground">
+                      {TRIGGER_DESCRIPTIONS[g.type]}
+                    </p>
                   </div>
                 </div>
                 <ul className="m-0 grid list-none gap-3 p-0 wide:grid-cols-2">
@@ -228,7 +256,12 @@ export function AutomationsV2({ organizationId, canManage }: { organizationId: s
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          <span className={cn("text-[13px] font-semibold", row.is_active ? "text-aiden-deep" : "text-muted-foreground")}>
+                          <span
+                            className={cn(
+                              "text-[13px] font-semibold",
+                              row.is_active ? "text-aiden-deep" : "text-muted-foreground",
+                            )}
+                          >
                             {row.is_active ? "Running" : "Paused"}
                           </span>
                           <Switch
@@ -241,14 +274,21 @@ export function AutomationsV2({ organizationId, canManage }: { organizationId: s
                       </div>
                       {row.message_body?.trim() ? (
                         <div className="nd-wall flex flex-col rounded-[14px] p-3">
-                          <WhatsAppBubble from="out" sender="Your reply" className="text-sm wide:max-w-[85%]">
+                          <WhatsAppBubble
+                            from="out"
+                            sender="Your reply"
+                            className="text-sm wide:max-w-[85%]"
+                          >
                             <span className="whitespace-pre-wrap">{row.message_body}</span>
                           </WhatsAppBubble>
                         </div>
                       ) : null}
                       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
                         <p className="m-0 text-sm text-muted-foreground">
-                          {lastFired[row.id] ? `Last sent ${formatDate(lastFired[row.id]!)}` : "Not sent yet"}, priority {row.priority}
+                          {lastFired[row.id]
+                            ? `Last sent ${formatDate(lastFired[row.id]!)}`
+                            : "Not sent yet"}
+                          , priority {row.priority}
                         </p>
                         <div className="flex items-center gap-1">
                           <Button
@@ -263,7 +303,12 @@ export function AutomationsV2({ organizationId, canManage }: { organizationId: s
                             <Pencil className="h-4 w-4" />
                           </Button>
                           {canManage ? (
-                            <Button variant="ghost" size="icon-sm" onClick={() => setPendingDelete(row)} aria-label={`Delete ${row.name}`}>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => setPendingDelete(row)}
+                              aria-label={`Delete ${row.name}`}
+                            >
                               <Trash2 className="h-4 w-4 text-muted-foreground" />
                             </Button>
                           ) : null}

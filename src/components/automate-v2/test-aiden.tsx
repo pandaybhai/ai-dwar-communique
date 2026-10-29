@@ -4,12 +4,7 @@ import { toast } from "sonner";
 import { PhoneFrame, ProductBubble, WhatsAppBubble } from "@/components/design-v2";
 import { Button } from "@/components/ui/button";
 import { outcomeOf } from "@/lib/ai-outcome";
-import {
-  aiRunApi,
-  employeeApi,
-  moneyText,
-  type PlaygroundRun,
-} from "@/lib/employee-client";
+import { aiRunApi, employeeApi, moneyText, type PlaygroundRun } from "@/lib/employee-client";
 
 type Turn = { id: number; question: string; run: PlaygroundRun | null; pending: boolean };
 
@@ -82,7 +77,9 @@ export function TestAiden({
         setTurns((t) => t.filter((x) => x.id !== id));
         return;
       }
-      setTurns((t) => t.map((x) => (x.id === id ? { ...x, run: data?.run ?? null, pending: false } : x)));
+      setTurns((t) =>
+        t.map((x) => (x.id === id ? { ...x, run: data?.run ?? null, pending: false } : x)),
+      );
       await onRan();
     },
     [organizationId, onRan],
@@ -109,7 +106,10 @@ export function TestAiden({
         </p>
       </div>
 
-      <PhoneFrame label={`Test chat with ${name}`} className="wide:max-w-[320px] phone:max-w-[320px]">
+      <PhoneFrame
+        label={`Test chat with ${name}`}
+        className="wide:max-w-[320px] phone:max-w-[320px]"
+      >
         <div
           ref={wall}
           aria-live="polite"
@@ -207,7 +207,13 @@ function TurnView({
           <span className="text-muted-foreground">Thinking…</span>
         </WhatsAppBubble>
       ) : run ? (
-        <RunView run={run} name={name} currency={currency} enabling={enabling} {...(onEnableAi ? { onEnableAi } : {})} />
+        <RunView
+          run={run}
+          name={name}
+          currency={currency}
+          enabling={enabling}
+          {...(onEnableAi ? { onEnableAi } : {})}
+        />
       ) : (
         <WhatsAppBubble from="system">{name} couldn&rsquo;t answer this one.</WhatsAppBubble>
       )}
@@ -240,7 +246,9 @@ function RunView({
   return (
     <>
       {blocked ? (
-        <WhatsAppBubble from="system">{run.error || `${name} couldn't answer this one.`}</WhatsAppBubble>
+        <WhatsAppBubble from="system">
+          {run.error || `${name} couldn't answer this one.`}
+        </WhatsAppBubble>
       ) : (
         <WhatsAppBubble
           from="out"
@@ -254,7 +262,9 @@ function RunView({
         <ProductBubble
           key={m.imageUrl}
           title={m.title}
-          detail={m.price === null ? "Price on request" : moneyText(m.price, m.currency || currency)}
+          detail={
+            m.price === null ? "Price on request" : moneyText(m.price, m.currency || currency)
+          }
           image={m.imageUrl}
           imageAlt={m.title}
           className="w-[200px]"
@@ -267,7 +277,13 @@ function RunView({
         </WhatsAppBubble>
       ) : null}
       {blocked && run.status === "refused" && onEnableAi ? (
-        <Button size="sm" variant="gold" className="self-center" disabled={enabling} onClick={onEnableAi}>
+        <Button
+          size="sm"
+          variant="gold"
+          className="self-center"
+          disabled={enabling}
+          onClick={onEnableAi}
+        >
           {enabling ? "Turning on…" : `Turn ${name} on and ask again`}
         </Button>
       ) : null}

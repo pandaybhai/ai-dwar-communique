@@ -80,25 +80,40 @@ export function RunTimeline({
           .from("flow_run_events")
           .select("run_id, node_id, event, at")
           .eq("organization_id", organizationId)
-          .in("run_id", list.map((r) => r.id))
+          .in(
+            "run_id",
+            list.map((r) => r.id),
+          )
           .order("at", { ascending: true })
           .limit(500),
-        aidwar.from("flow_versions").select("id, graph").eq("organization_id", organizationId).in("id", versionIds),
-        aidwar.from("contacts").select("id, name, phone").eq("organization_id", organizationId).in("id", contactIds),
+        aidwar
+          .from("flow_versions")
+          .select("id, graph")
+          .eq("organization_id", organizationId)
+          .in("id", versionIds),
+        aidwar
+          .from("contacts")
+          .select("id, name, phone")
+          .eq("organization_id", organizationId)
+          .in("id", contactIds),
       ]);
       if (!live) return;
       const byRun: Record<string, RunEvent[]> = {};
       for (const e of (ev.data ?? []) as RunEvent[]) (byRun[e.run_id] ??= []).push(e);
       setEvents(byRun);
       setGraphs(
-        Object.fromEntries(((vers.data ?? []) as Array<{ id: string; graph: FlowGraph }>).map((v) => [v.id, v.graph])),
+        Object.fromEntries(
+          ((vers.data ?? []) as Array<{ id: string; graph: FlowGraph }>).map((v) => [
+            v.id,
+            v.graph,
+          ]),
+        ),
       );
       setNames(
         Object.fromEntries(
-          ((people.data ?? []) as Array<{ id: string; name: string | null; phone: string }>).map((c) => [
-            c.id,
-            c.name?.trim() || c.phone,
-          ]),
+          ((people.data ?? []) as Array<{ id: string; name: string | null; phone: string }>).map(
+            (c) => [c.id, c.name?.trim() || c.phone],
+          ),
         ),
       );
     })();
@@ -111,12 +126,20 @@ export function RunTimeline({
     return (
       <div className="flex flex-col gap-2" aria-label={`Loading runs of ${flowName}`}>
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-20 animate-pulse rounded-[18px] bg-bubble-in motion-reduce:animate-none" />
+          <div
+            key={i}
+            className="h-20 animate-pulse rounded-[18px] bg-bubble-in motion-reduce:animate-none"
+          />
         ))}
       </div>
     );
   }
-  if (failed) return <p className="m-0 text-sm text-muted-foreground">The run history didn&rsquo;t load. Refresh to try again.</p>;
+  if (failed)
+    return (
+      <p className="m-0 text-sm text-muted-foreground">
+        The run history didn&rsquo;t load. Refresh to try again.
+      </p>
+    );
   if (!runs.length) {
     return (
       <p className="m-0 flex items-center gap-2 rounded-[18px] border border-dashed border-line px-4 py-5 text-sm text-muted-foreground">
@@ -132,7 +155,9 @@ export function RunTimeline({
         const status = responseStatus(run.status);
         const graph = graphs[run.version_id];
         const shown = timelineEvents(events[run.id] ?? []);
-        const how = run.trigger?.["kind"] ? triggerText({ kind: String(run.trigger["kind"]), config: run.trigger }) : null;
+        const how = run.trigger?.["kind"]
+          ? triggerText({ kind: String(run.trigger["kind"]), config: run.trigger })
+          : null;
         return (
           <li key={run.id} className="rounded-[18px] border border-line bg-surface p-4 shadow-md">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -143,18 +168,28 @@ export function RunTimeline({
                   {how ? `, from ${how.charAt(0).toLowerCase()}${how.slice(1)}` : ""}
                 </span>
               </p>
-              <span className={cn("rounded-full px-2.5 py-0.5 text-[13px] font-semibold", STATUS_TONE[status])}>
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-[13px] font-semibold",
+                  STATUS_TONE[status],
+                )}
+              >
                 {RESPONSE_STATUS_LABELS[status]}
               </span>
             </div>
             {shown.length ? (
               <ol className="m-0 mt-3 flex list-none flex-col gap-0 border-l-2 border-line p-0 pl-4">
                 {shown.map((e, i) => (
-                  <li key={`${e.at}-${i}`} className="flex items-baseline justify-between gap-3 py-1 text-sm">
+                  <li
+                    key={`${e.at}-${i}`}
+                    className="flex items-baseline justify-between gap-3 py-1 text-sm"
+                  >
                     <span
                       className={cn(
                         "min-w-0",
-                        e.event === "failed" || e.event.endsWith("_failed") ? "font-semibold text-danger" : "text-foreground",
+                        e.event === "failed" || e.event.endsWith("_failed")
+                          ? "font-semibold text-danger"
+                          : "text-foreground",
                       )}
                     >
                       {eventText(e.event, stepTitle(graph, e.node_id))}

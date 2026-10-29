@@ -33,12 +33,18 @@ export function NewFlowsPage() {
       <PageHeader
         title="Flows"
         description="Menus, questions and follow-ups that run on WhatsApp by themselves, plus your store's automatic messages."
-        {...(canCreate && enabled && can("flows.view") ? { actions: <NewChatFlowButton onClick={() => setCreating(true)} /> } : {})}
+        {...(canCreate && enabled && can("flows.view")
+          ? { actions: <NewChatFlowButton onClick={() => setCreating(true)} /> }
+          : {})}
       />
       {loading || permsLoading || flagLoading ? (
         <PageSkeleton />
       ) : !active ? (
-        <EmptyState icon={Workflow} title="Pick a shop first" description="Choose a shop at the top of the page to see its automatic messages." />
+        <EmptyState
+          icon={Workflow}
+          title="Pick a shop first"
+          description="Choose a shop at the top of the page to see its automatic messages."
+        />
       ) : !enabled ? (
         <EmptyState
           icon={Lock}
@@ -46,7 +52,11 @@ export function NewFlowsPage() {
           description="Automatic messages aren't available on your account yet. Ask us or your administrator to switch them on."
         />
       ) : !can("flows.view") ? (
-        <EmptyState icon={Lock} title="You don’t have access to this" description="Ask the shop owner to give you permission to see automatic messages." />
+        <EmptyState
+          icon={Lock}
+          title="You don’t have access to this"
+          description="Ask the shop owner to give you permission to see automatic messages."
+        />
       ) : (
         <Tabs value={current} onValueChange={setTab}>
           <TabsList className="mb-6">
@@ -56,7 +66,11 @@ export function NewFlowsPage() {
           </TabsList>
           {v2 ? (
             <TabsContent value="chat">
-              <ChatFlowsV2 organizationId={active.organization.id} createOpen={creating} onCreateOpenChange={setCreating} />
+              <ChatFlowsV2
+                organizationId={active.organization.id}
+                createOpen={creating}
+                onCreateOpenChange={setCreating}
+              />
             </TabsContent>
           ) : null}
           {/* Kept mounted (hidden) so What was sent knows the store flows' names, as on the classic page where this tab opens first. */}
@@ -64,7 +78,11 @@ export function NewFlowsPage() {
             <FlowsView organizationId={active.organization.id} onLoaded={setFlows} />
           </TabsContent>
           <TabsContent value="log">
-            <SendsLog organizationId={active.organization.id} flows={flows} timezone={active.organization.timezone || "Asia/Kolkata"} />
+            <SendsLog
+              organizationId={active.organization.id}
+              flows={flows}
+              timezone={active.organization.timezone || "Asia/Kolkata"}
+            />
           </TabsContent>
         </Tabs>
       )}

@@ -21,7 +21,12 @@ const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
 
 const args = Object.fromEntries(
-  process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []),
+  process.argv
+    .slice(2)
+    .reduce(
+      (acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc),
+      [],
+    ),
 );
 const BASE = args.base ?? "http://127.0.0.1:5199";
 const OUT = args.out ?? "docs/screenshots/batch49/new";
@@ -43,7 +48,9 @@ const SCENARIOS = {
     wait: "text=Test Aiden",
     settle: 1500,
     act: async (page) => {
-      await page.getByLabel("A question a customer might ask").fill("Is the Meenakari set available in red?");
+      await page
+        .getByLabel("A question a customer might ask")
+        .fill("Is the Meenakari set available in red?");
       await page.getByRole("button", { name: "Ask", exact: true }).click();
       await page.waitForTimeout(1400);
       await page.locator("#test-aiden-heading").scrollIntoViewIfNeeded();
@@ -59,9 +66,25 @@ const SCENARIOS = {
       await page.locator("#aiden-review-heading").scrollIntoViewIfNeeded();
     },
   },
-  "aiden-draft": { path: "/app/employee", aidenMode: "draft", wait: "text=Needs your answer", settle: 1500 },
-  "aiden-switched-off": { path: "/app/employee", aidenMode: "off", aiEnabled: false, wait: "text=Needs your answer", settle: 1500 },
-  "aiden-empty": { path: "/app/employee", empty: true, wait: "text=Nothing waits on you", settle: 1500 },
+  "aiden-draft": {
+    path: "/app/employee",
+    aidenMode: "draft",
+    wait: "text=Needs your answer",
+    settle: 1500,
+  },
+  "aiden-switched-off": {
+    path: "/app/employee",
+    aidenMode: "off",
+    aiEnabled: false,
+    wait: "text=Needs your answer",
+    settle: 1500,
+  },
+  "aiden-empty": {
+    path: "/app/employee",
+    empty: true,
+    wait: "text=Nothing waits on you",
+    settle: 1500,
+  },
   flows: { path: "/app/flows", wait: "text=Welcome menu", fullPage: true, settle: 1500 },
   "flows-deleted": {
     path: "/app/flows",
@@ -77,7 +100,12 @@ const SCENARIOS = {
   "automations-empty": { path: "/app/automations", empty: true, wait: "h1", settle: 1200 },
   catalogue: { path: "/app/catalog", wait: "text=Temple jhumkas", fullPage: true, settle: 1500 },
   "catalogue-empty": { path: "/app/catalog", empty: true, wait: "h1", settle: 1500 },
-  collections: { path: "/app/catalog/collections", wait: "text=Bridal edit", fullPage: true, settle: 1200 },
+  collections: {
+    path: "/app/catalog/collections",
+    wait: "text=Bridal edit",
+    fullPage: true,
+    settle: 1200,
+  },
 };
 
 const consoleErrors = [];
@@ -109,8 +137,13 @@ async function shoot(browser, name, scenario, viewportName) {
     const url = route.request().url();
     if (url.startsWith(BACKEND)) return fake.backend(route);
     if (url.startsWith(`${BASE}/api/`)) return fake.api(route);
-    if (url.startsWith(BASE) || url.startsWith("data:") || url.startsWith("blob:")) return route.continue();
-    if (url.startsWith("https://fonts.googleapis.com") || url.startsWith("https://fonts.gstatic.com")) return route.continue();
+    if (url.startsWith(BASE) || url.startsWith("data:") || url.startsWith("blob:"))
+      return route.continue();
+    if (
+      url.startsWith("https://fonts.googleapis.com") ||
+      url.startsWith("https://fonts.gstatic.com")
+    )
+      return route.continue();
     return route.abort();
   });
   await context.routeWebSocket(/fake-backend\.test/, (ws) => fake.realtime(ws));
@@ -129,9 +162,13 @@ async function shoot(browser, name, scenario, viewportName) {
   const overflow = await page.evaluate(() => {
     const main = document.querySelector("main");
     const doc = document.documentElement;
-    return Math.max(doc.scrollWidth - doc.clientWidth, main ? main.scrollWidth - main.clientWidth : 0);
+    return Math.max(
+      doc.scrollWidth - doc.clientWidth,
+      main ? main.scrollWidth - main.clientWidth : 0,
+    );
   });
-  if (overflow > 1) consoleErrors.push(`${name}/${viewportName}: page is ${overflow}px wider than the screen`);
+  if (overflow > 1)
+    consoleErrors.push(`${name}/${viewportName}: page is ${overflow}px wider than the screen`);
   if (scenario.fullPage) {
     const extra = await page.evaluate(() => {
       const main = document.querySelector("main");

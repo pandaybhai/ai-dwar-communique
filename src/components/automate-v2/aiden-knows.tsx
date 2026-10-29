@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { BookOpen, FileText, Globe, MessageCircleQuestion, ShoppingBag, type LucideIcon } from "lucide-react";
+import {
+  BookOpen,
+  FileText,
+  Globe,
+  MessageCircleQuestion,
+  ShoppingBag,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { aidwar } from "@/integrations/aidwar/client";
 import { NOT_ARCHIVED_DUPLICATE } from "@/lib/catalog";
@@ -40,7 +47,10 @@ export function AidenKnows({
   catalogueOn: boolean;
   onManage: () => void;
 }) {
-  const [catalogue, setCatalogue] = useState<{ products: number; lastUpdated: string | null } | null>(null);
+  const [catalogue, setCatalogue] = useState<{
+    products: number;
+    lastUpdated: string | null;
+  } | null>(null);
 
   useEffect(() => {
     if (!catalogueOn) return;
@@ -61,7 +71,8 @@ export function AidenKnows({
       if (!live) return;
       setCatalogue({
         products: total.count ?? 0,
-        lastUpdated: ((latest.data ?? []) as Array<{ updated_at: string | null }>)[0]?.updated_at ?? null,
+        lastUpdated:
+          ((latest.data ?? []) as Array<{ updated_at: string | null }>)[0]?.updated_at ?? null,
       });
     });
     return () => {
@@ -91,7 +102,9 @@ export function AidenKnows({
                 aria-hidden="true"
                 className={cn(
                   "grid h-10 w-10 shrink-0 place-items-center rounded-full",
-                  row.state === "empty" ? "bg-bubble-in text-muted-foreground" : "bg-aiden-soft text-aiden-deep",
+                  row.state === "empty"
+                    ? "bg-bubble-in text-muted-foreground"
+                    : "bg-aiden-soft text-aiden-deep",
                 )}
               >
                 <Icon className="h-[18px] w-[18px]" />
@@ -104,7 +117,9 @@ export function AidenKnows({
                 <span
                   className={cn(
                     "shrink-0 rounded-full px-2.5 py-1 text-[13px] font-semibold",
-                    row.state === "problem" ? "bg-gold-bg text-gold-ink" : "bg-aiden-soft text-aiden-deep",
+                    row.state === "problem"
+                      ? "bg-gold-bg text-gold-ink"
+                      : "bg-aiden-soft text-aiden-deep",
                   )}
                 >
                   {state}

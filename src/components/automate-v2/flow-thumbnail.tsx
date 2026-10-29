@@ -7,13 +7,26 @@ import { thumbnailLayout, toneOf } from "./flows-v2";
  * group's colour, each link a line, on the chat wall's dots. Decorative; the
  * card says the flow's name and step count in words.
  */
-export function FlowThumbnail({ graph, className }: { graph: FlowGraph | null; className?: string }) {
+export function FlowThumbnail({
+  graph,
+  className,
+}: {
+  graph: FlowGraph | null;
+  className?: string;
+}) {
   const W = 280;
   const H = 120;
   const { boxes, lines } = thumbnailLayout(graph, W, H);
   return (
-    <div aria-hidden="true" className={cn("nd-wall overflow-hidden rounded-[14px] border border-line", className)}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="block h-[120px] w-full" preserveAspectRatio="xMidYMid meet">
+    <div
+      aria-hidden="true"
+      className={cn("nd-wall overflow-hidden rounded-[14px] border border-line", className)}
+    >
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="block h-[120px] w-full"
+        preserveAspectRatio="xMidYMid meet"
+      >
         {lines.map((l) => {
           const mid = (l.x1 + l.x2) / 2;
           return (

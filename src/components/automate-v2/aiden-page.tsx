@@ -40,7 +40,8 @@ import { AidenReview } from "./aiden-review";
 import { AidenStatusCard } from "./aiden-status-card";
 import { TestAiden } from "./test-aiden";
 
-export type EmployeeTab = "job" | "knows" | "gaps" | "behaviour" | "brains" | "forms" | "try" | "work";
+export type EmployeeTab =
+  "job" | "knows" | "gaps" | "behaviour" | "brains" | "forms" | "try" | "work";
 
 /**
  * Batch 49: Automate > Aiden in the new design (new_design on). The top is
@@ -93,7 +94,8 @@ export function NewAidenPage() {
   const openTab = (next: EmployeeTab) => {
     setTab(next);
     const reduce =
-      typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     requestAnimationFrame(() =>
       tabsRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }),
     );
@@ -170,7 +172,10 @@ export function NewAidenPage() {
                 onSetMode={(m) => void setMode(m)}
                 onTurnOn={() => void turnOn()}
                 turningOn={turningOn}
-                week={{ answered: overview?.week.answered ?? 0, passed: overview?.week.passed ?? 0 }}
+                week={{
+                  answered: overview?.week.answered ?? 0,
+                  passed: overview?.week.passed ?? 0,
+                }}
                 spend={overview?.spend_this_month ?? 0}
                 currency={currency}
                 testedRecently={Boolean(overview?.tested_recently)}
@@ -250,7 +255,10 @@ export function NewAidenPage() {
               </TabsContent>
 
               <TabsContent value="knows" className="space-y-6">
-                <PriceReviewsCard organizationId={active.organization.id} canConfigure={canConfigure} />
+                <PriceReviewsCard
+                  organizationId={active.organization.id}
+                  canConfigure={canConfigure}
+                />
                 <KnowledgeManager
                   organizationId={active.organization.id}
                   sources={overview?.sources ?? []}
@@ -280,7 +288,10 @@ export function NewAidenPage() {
                   canConfigure={canConfigure}
                   onChanged={load}
                 />
-                <HandoffAlertsCard organizationId={active.organization.id} canConfigure={canConfigure} />
+                <HandoffAlertsCard
+                  organizationId={active.organization.id}
+                  canConfigure={canConfigure}
+                />
                 <PromptPreview
                   organizationId={active.organization.id}
                   agentName={overview?.agent?.name ?? "your AI employee"}
@@ -291,7 +302,10 @@ export function NewAidenPage() {
 
               {formsOn ? (
                 <TabsContent value="forms">
-                  <FormsManager organizationId={active.organization.id} canConfigure={canConfigure} />
+                  <FormsManager
+                    organizationId={active.organization.id}
+                    canConfigure={canConfigure}
+                  />
                 </TabsContent>
               ) : null}
 

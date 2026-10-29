@@ -67,7 +67,10 @@ export function NewCataloguePage() {
   );
 }
 
-type CollectionCard = CollectionRow & { count: number; images: Array<{ id: string; title: string; image_url: string }> };
+type CollectionCard = CollectionRow & {
+  count: number;
+  images: Array<{ id: string; title: string; image_url: string }>;
+};
 
 /**
  * Batch 49: Shop > Collections in the new design: each collection as a card
@@ -92,7 +95,10 @@ export function NewCollectionsPage() {
         .eq("organization_id", organizationId)
         .order("sort_order")
         .order("name"),
-      aidwar.from("product_collection_items").select("collection_id, product_id").eq("organization_id", organizationId),
+      aidwar
+        .from("product_collection_items")
+        .select("collection_id, product_id")
+        .eq("organization_id", organizationId),
     ]);
     const list = (cols ?? []) as CollectionRow[];
     const byCollection = new Map<string, string[]>();
@@ -103,7 +109,11 @@ export function NewCollectionsPage() {
     }
     const wanted = [...new Set(list.flatMap((c) => (byCollection.get(c.id) ?? []).slice(0, 12)))];
     const { data: prods } = wanted.length
-      ? await aidwar.from("products").select("id, title, image_url").eq("organization_id", organizationId).in("id", wanted.slice(0, 300))
+      ? await aidwar
+          .from("products")
+          .select("id, title, image_url")
+          .eq("organization_id", organizationId)
+          .in("id", wanted.slice(0, 300))
       : { data: [] };
     const withPhoto = new Map(
       ((prods ?? []) as Array<{ id: string; title: string; image_url: string | null }>)
@@ -113,7 +123,14 @@ export function NewCollectionsPage() {
     setCards(
       list.map((c) => {
         const ids = byCollection.get(c.id) ?? [];
-        return { ...c, count: ids.length, images: ids.map((id) => withPhoto.get(id)).filter((x): x is NonNullable<typeof x> => Boolean(x)).slice(0, 4) };
+        return {
+          ...c,
+          count: ids.length,
+          images: ids
+            .map((id) => withPhoto.get(id))
+            .filter((x): x is NonNullable<typeof x> => Boolean(x))
+            .slice(0, 4),
+        };
       }),
     );
   }, [organizationId]);
@@ -162,8 +179,14 @@ export function NewCollectionsPage() {
       {cards && cards.length > 0 ? (
         <ul className="m-0 mb-10 grid list-none gap-4 p-0 wide:grid-cols-3">
           {cards.map((c) => (
-            <li key={c.id} className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-3 shadow-md">
-              <div aria-hidden="true" className="grid aspect-[16/9] grid-cols-2 grid-rows-2 gap-1 overflow-hidden rounded-[14px] bg-bubble-in">
+            <li
+              key={c.id}
+              className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-3 shadow-md"
+            >
+              <div
+                aria-hidden="true"
+                className="grid aspect-[16/9] grid-cols-2 grid-rows-2 gap-1 overflow-hidden rounded-[14px] bg-bubble-in"
+              >
                 {c.images.length === 0 ? (
                   <span className="col-span-2 row-span-2 grid place-items-center text-muted-foreground">
                     <Layers className="h-6 w-6" />
@@ -198,7 +221,10 @@ export function NewCollectionsPage() {
         </ul>
       ) : null}
       <section aria-labelledby="manage-collections-heading" className="flex flex-col gap-2">
-        <h2 id="manage-collections-heading" className="m-0 font-display text-[1.25rem] font-semibold">
+        <h2
+          id="manage-collections-heading"
+          className="m-0 font-display text-[1.25rem] font-semibold"
+        >
           Manage collections
         </h2>
         <div ref={manager}>

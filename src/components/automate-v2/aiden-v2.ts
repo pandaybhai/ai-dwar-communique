@@ -14,7 +14,11 @@ export type AidenMode = "off" | "draft" | "replying";
 export const AIDEN_MODES: Array<{ key: AidenMode; label: string; meaning: string }> = [
   { key: "off", label: "Off", meaning: "Your team answers every message." },
   { key: "draft", label: "Drafts", meaning: "Aiden writes replies, you read and send them." },
-  { key: "replying", label: "Replying", meaning: "Aiden replies to customers and passes anything unsure to you." },
+  {
+    key: "replying",
+    label: "Replying",
+    meaning: "Aiden replies to customers and passes anything unsure to you.",
+  },
 ];
 
 export function asMode(mode: string | null | undefined): AidenMode {
@@ -90,7 +94,8 @@ export type KnowsRow = {
 
 const DOCUMENT_TYPES = new Set(["pdf", "spreadsheet", "upload", "docx", "image"]);
 const count = new Intl.NumberFormat("en-IN");
-const plural = (n: number, one: string, many: string) => `${count.format(n)} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many: string) =>
+  `${count.format(n)} ${n === 1 ? one : many}`;
 
 /** The newest of the given times. */
 function newest(times: Array<string | null | undefined>): string | null {

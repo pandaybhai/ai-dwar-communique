@@ -14,12 +14,23 @@ export type StepGroup = NodeMeta["group"];
  * A step's colour by its palette group (node-meta's NODE_META.group):
  * messages emerald, questions gold, logic violet, actions blue, start ink.
  */
-export const GROUP_TONE: Record<StepGroup | "start", { chip: string; stroke: string; fill: string }> = {
-  Messages: { chip: "bg-aiden-soft text-aiden-deep", stroke: "var(--aiden)", fill: "var(--aiden-soft)" },
+export const GROUP_TONE: Record<
+  StepGroup | "start",
+  { chip: string; stroke: string; fill: string }
+> = {
+  Messages: {
+    chip: "bg-aiden-soft text-aiden-deep",
+    stroke: "var(--aiden)",
+    fill: "var(--aiden-soft)",
+  },
   Ask: { chip: "bg-gold-bg text-gold-ink", stroke: "var(--gold)", fill: "var(--gold-bg)" },
   Logic: { chip: "bg-av3 text-av3-ink", stroke: "var(--av3-ink)", fill: "var(--av3)" },
   Actions: { chip: "bg-av2 text-av2-ink", stroke: "var(--av2-ink)", fill: "var(--av2)" },
-  Other: { chip: "bg-bubble-in text-muted-foreground", stroke: "var(--line)", fill: "var(--bubble-in)" },
+  Other: {
+    chip: "bg-bubble-in text-muted-foreground",
+    stroke: "var(--line)",
+    fill: "var(--bubble-in)",
+  },
   start: { chip: "bg-ink text-ink-foreground", stroke: "var(--ink)", fill: "var(--ink)" },
 };
 
@@ -28,14 +39,22 @@ export function toneOf(type: NodeType) {
   return GROUP_TONE[NODE_META[type]?.group ?? "Other"];
 }
 
-export type TriggerRow = { flow_id: string; kind: string; config: Record<string, unknown> | null; is_enabled: boolean };
+export type TriggerRow = {
+  flow_id: string;
+  kind: string;
+  config: Record<string, unknown> | null;
+  is_enabled: boolean;
+};
 
 /** "Keyword “menu”, “hi”", "First message ever", … for one trigger, with the Triggers panel's names. */
 export function triggerText(t: Pick<TriggerRow, "kind" | "config">): string {
   if (t.kind === "keyword") {
     const kws = ((t.config?.["keywords"] as string[] | undefined) ?? []).filter(Boolean);
     if (kws.length) {
-      const shown = kws.slice(0, 2).map((k) => `“${k}”`).join(", ");
+      const shown = kws
+        .slice(0, 2)
+        .map((k) => `“${k}”`)
+        .join(", ");
       return `Keyword ${shown}${kws.length > 2 ? ` and ${kws.length - 2} more` : ""}`;
     }
   }
@@ -51,12 +70,17 @@ export function triggersLine(triggers: TriggerRow[]): string {
 }
 
 /** The graph a flow's card shows: the published version, else the newest draft. */
-export function graphForCard<V extends { flow_id: string; status: string; version: number; graph: FlowGraph }>(
-  versions: V[],
-  flowId: string,
-): FlowGraph | null {
+export function graphForCard<
+  V extends { flow_id: string; status: string; version: number; graph: FlowGraph },
+>(versions: V[], flowId: string): FlowGraph | null {
   const mine = versions.filter((v) => v.flow_id === flowId).sort((a, b) => b.version - a.version);
-  return (mine.find((v) => v.status === "published") ?? mine.find((v) => v.status === "draft") ?? mine[0])?.graph ?? null;
+  return (
+    (
+      mine.find((v) => v.status === "published") ??
+      mine.find((v) => v.status === "draft") ??
+      mine[0]
+    )?.graph ?? null
+  );
 }
 
 export type ThumbBox = { id: string; type: NodeType; x: number; y: number; w: number; h: number };
@@ -79,7 +103,10 @@ export function thumbnailLayout(graph: FlowGraph | null, width = 280, height = 1
   const minY = Math.min(...pts.map((p) => p.y));
   const maxX = Math.max(...pts.map((p) => p.x + NODE_W));
   const maxY = Math.max(...pts.map((p) => p.y + NODE_H));
-  const scale = Math.min((width - pad * 2) / Math.max(1, maxX - minX), (height - pad * 2) / Math.max(1, maxY - minY));
+  const scale = Math.min(
+    (width - pad * 2) / Math.max(1, maxX - minX),
+    (height - pad * 2) / Math.max(1, maxY - minY),
+  );
   const offX = (width - (maxX - minX) * scale) / 2;
   const offY = (height - (maxY - minY) * scale) / 2;
   const boxes: ThumbBox[] = nodes.map((n, i) => ({
@@ -106,14 +133,19 @@ export function thumbnailLayout(graph: FlowGraph | null, width = 280, height = 1
  * its own label, else its kind ("Buttons", "Question"), with what it says
  * quoted when it says something ("Buttons “Hi! How can we help?”").
  */
-export function stepTitle(graph: FlowGraph | null | undefined, nodeId: string | null): string | null {
+export function stepTitle(
+  graph: FlowGraph | null | undefined,
+  nodeId: string | null,
+): string | null {
   if (!nodeId) return null;
   const node = graph?.nodes.find((n) => n.id === nodeId);
   if (!node) return null;
   const label = String(node.data["label"] ?? "").trim();
   if (label) return label;
   const kind = NODE_META[node.type]?.label ?? node.type;
-  const text = String(node.data["text"] ?? "").replace(/\s+/g, " ").trim();
+  const text = String(node.data["text"] ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (text) return `${kind} “${text.length > 40 ? `${text.slice(0, 39)}…` : text}”`;
   const name = stepName(node);
   return name && name !== node.type && name !== kind ? `${kind} ${name}` : kind;
@@ -158,7 +190,14 @@ const EVENT_WORDS: Record<string, string> = {
 export function eventText(event: string, step: string | null): string {
   const words = EVENT_WORDS[event] ?? event.replace(/_/g, " ");
   if (!step) return words.replace(/ (at|from)$/, "");
-  if (event === "started" || event === "ended" || event === "pause" || event === "resume" || event === "stop") return words;
+  if (
+    event === "started" ||
+    event === "ended" ||
+    event === "pause" ||
+    event === "resume" ||
+    event === "stop"
+  )
+    return words;
   return `${words} ${step}`;
 }
 

@@ -57,7 +57,7 @@ export function ShopOverview({
 }) {
   const { can } = usePermissions();
   const { enabled: shopOn } = useFeatureFlag("whatsapp_catalog");
-  const [data, setData] = useState<Overview | null>(null);
+  const [summary, setSummary] = useState<Overview | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -105,7 +105,7 @@ export function ShopOverview({
           .order("updated_at", { ascending: false })
           .limit(2),
       ]);
-    setData({
+    setSummary({
       total,
       website,
       store,
@@ -124,10 +124,10 @@ export function ShopOverview({
   }, [load]);
 
   async function refreshFromWebsite() {
-    if (!data?.site) return;
+    if (!summary?.site) return;
     setBusy(true);
     const { error } = await callApi("/api/ai/knowledge", {
-      body: { organization_id: organizationId, action: "read_changes", source_id: data.site.id },
+      body: { organization_id: organizationId, action: "read_changes", source_id: summary.site.id },
     });
     setBusy(false);
     if (error) {
@@ -140,12 +140,12 @@ export function ShopOverview({
     await load();
   }
 
-  if (!data) {
+  if (!summary) {
     return (
       <div className="mb-10 h-64 animate-pulse rounded-[20px] bg-bubble-in motion-reduce:animate-none" />
     );
   }
-  const reading = data.site ? READING.has(data.site.status) : false;
+  const reading = summary.site ? READING.has(summary.site.status) : false;
 
   return (
     <div className="mb-10 grid items-start gap-10 wide:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
@@ -163,17 +163,17 @@ export function ShopOverview({
                 Your catalogue
               </h2>
               <p className="m-0 font-display text-[clamp(2rem,4vw,2.75rem)] font-extrabold leading-none tracking-[-0.03em] tabular-nums">
-                <NumberTicker value={data.total} />{" "}
+                <NumberTicker value={summary.total} />{" "}
                 <span className="text-[0.5em] font-semibold tracking-normal">products</span>
               </p>
               <p className="m-0 mt-1.5 text-sm text-muted-foreground">
-                {data.lastUpdated
-                  ? `Last change ${relativeTime(data.lastUpdated)}.`
+                {summary.lastUpdated
+                  ? `Last change ${relativeTime(summary.lastUpdated)}.`
                   : "Nothing added yet."}{" "}
                 Aiden, campaigns and your WhatsApp shop all use this list.
               </p>
             </div>
-            {data.site && can("ai.configure") ? (
+            {summary.site && can("ai.configure") ? (
               <Button
                 variant="outline"
                 disabled={busy || reading}
@@ -189,20 +189,20 @@ export function ShopOverview({
             ) : null}
           </div>
           <dl className="m-0 grid grid-cols-2 gap-x-6 border-t border-line pt-4 wide:grid-cols-4">
-            <Stat label="From your website" value={data.website} />
-            <Stat label="From your store" value={data.store} />
-            <Stat label="Hidden from customers" value={data.hidden} />
-            <Stat label="Without a photo" value={data.noPhoto} />
+            <Stat label="From your website" value={summary.website} />
+            <Stat label="From your store" value={summary.store} />
+            <Stat label="Hidden from customers" value={summary.hidden} />
+            <Stat label="Without a photo" value={summary.noPhoto} />
           </dl>
           <p className="m-0 text-sm text-muted-foreground">
-            {data.collections > 0
-              ? `${data.collections} collection${data.collections === 1 ? "" : "s"} group these for campaigns and flows. `
+            {summary.collections > 0
+              ? `${summary.collections} collection${summary.collections === 1 ? "" : "s"} group these for campaigns and flows. `
               : "No collections yet. "}
             <Link
               to="/app/catalog/collections"
               className="font-semibold text-aiden-deep underline-offset-4 hover:underline"
             >
-              {data.collections > 0 ? "See collections" : "Make one"}
+              {summary.collections > 0 ? "See collections" : "Make one"}
             </Link>
           </p>
         </section>
@@ -225,7 +225,7 @@ export function ShopOverview({
                 text="Take a look at our shop. Tap a piece to see it, or add it to your cart."
                 buttons={["View catalogue"]}
               />
-              {data.preview.map((p) => (
+              {summary.preview.map((p) => (
                 <ProductBubble
                   key={p.id}
                   title={p.title}

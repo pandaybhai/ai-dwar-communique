@@ -134,7 +134,12 @@ export function AidenReview({
             ))}
           </ul>
           {gapTotal > pending.length ? (
-            <Button variant="outline" size="sm" className="self-start" onClick={() => onSeeAll("gaps")}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() => onSeeAll("gaps")}
+            >
               See all {gapTotal}
             </Button>
           ) : null}
@@ -150,7 +155,13 @@ export function AidenReview({
           </p>
           <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
             {toCheck.map((run) => (
-              <RunItem key={run.id} run={run} name={name} organizationId={organizationId} canConfigure={canConfigure} />
+              <RunItem
+                key={run.id}
+                run={run}
+                name={name}
+                organizationId={organizationId}
+                canConfigure={canConfigure}
+              />
             ))}
           </ul>
           <Button variant="ghost" size="sm" className="self-start" onClick={() => onSeeAll("work")}>
@@ -177,13 +188,13 @@ function GapItem({
 }) {
   const fieldId = useId();
   const [open, setOpen] = useState(false);
-  const [answer, setAnswer] = useState("");
+  const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
 
   // UnansweredList's teach and dismiss, same bodies, same messages.
   const teach = async () => {
-    const text = answer.trim();
-    if (!text) {
+    const answer = draft.trim();
+    if (!answer) {
       toast.error("Write the answer first.");
       return;
     }
@@ -192,7 +203,7 @@ function GapItem({
       organization_id: organizationId,
       action: "answer_gap",
       reply_id: gap.id,
-      answer: text,
+      answer,
     });
     setBusy(false);
     if (error) {
@@ -204,7 +215,7 @@ function GapItem({
         ? "Sent to the customer — and I'll remember it."
         : "Saved — customer's window has closed, they'll get it next time they write.",
     );
-    setAnswer("");
+    setDraft("");
     setOpen(false);
     onDone();
   };
@@ -250,8 +261,8 @@ function GapItem({
               id={fieldId}
               rows={2}
               autoFocus
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
             />
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="gold" disabled={busy} onClick={() => void teach()}>
@@ -307,7 +318,7 @@ function RunItem({
     const { error } = await knowledgeApi({
       organization_id: organizationId,
       action: "correct",
-      question,
+      question: question.trim(),
       answer: answer.trim(),
     });
     setSaving(false);
@@ -331,14 +342,22 @@ function RunItem({
         {run.output?.trim() || outcome.reason || outcome.label}
       </p>
       {saved ? (
-        <p className="m-0 text-sm font-semibold text-aiden-deep">{name} uses your answer from now on.</p>
+        <p className="m-0 text-sm font-semibold text-aiden-deep">
+          {name} uses your answer from now on.
+        </p>
       ) : canConfigure ? (
         open ? (
           <div className="flex flex-col gap-2">
             <label htmlFor={fieldId} className="text-sm font-semibold">
               The answer {name} should have given
             </label>
-            <Textarea id={fieldId} rows={2} autoFocus value={answer} onChange={(e) => setAnswer(e.target.value)} />
+            <Textarea
+              id={fieldId}
+              rows={2}
+              autoFocus
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+            />
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="gold" disabled={saving} onClick={() => void save()}>
                 {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
