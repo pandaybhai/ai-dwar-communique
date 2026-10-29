@@ -216,27 +216,33 @@ export function ShopOverview({
               WhatsApp shop
             </h2>
             <p className="m-0 text-sm text-muted-foreground">
-              How your products look to a customer in WhatsApp.
+              {summary.preview.length > 0
+                ? "How your products look to a customer in WhatsApp."
+                : "Products with a photo show here as a customer sees them in WhatsApp."}
             </p>
           </div>
-          <PhoneFrame label="Your products in a WhatsApp chat" className="phone:max-w-[300px]">
-            <div className="-mt-4 flex flex-col gap-2">
-              <PhoneMessage
-                text="Take a look at our shop. Tap a piece to see it, or add it to your cart."
-                buttons={["View catalogue"]}
-              />
-              {summary.preview.map((p) => (
-                <ProductBubble
-                  key={p.id}
-                  title={p.title}
-                  detail={p.price === null ? "Price on request" : formatMoney(p.price, p.currency)}
-                  image={p.image_url}
-                  imageAlt={p.title}
-                  className="w-[200px] [&_b]:text-sm"
+          {summary.preview.length > 0 ? (
+            <PhoneFrame label="Your products in a WhatsApp chat" className="phone:max-w-[300px]">
+              <div className="-mt-4 flex flex-col gap-2">
+                <PhoneMessage
+                  text="Take a look at our shop. Tap a piece to see it, or add it to your cart."
+                  buttons={["View catalogue"]}
                 />
-              ))}
-            </div>
-          </PhoneFrame>
+                {summary.preview.map((p) => (
+                  <ProductBubble
+                    key={p.id}
+                    title={p.title}
+                    detail={
+                      p.price === null ? "Price on request" : formatMoney(p.price, p.currency)
+                    }
+                    image={p.image_url}
+                    imageAlt={p.title}
+                    className="w-[200px] [&_b]:text-sm"
+                  />
+                ))}
+              </div>
+            </PhoneFrame>
+          ) : null}
           <div className="w-full">{shopCard}</div>
         </section>
       ) : null}
