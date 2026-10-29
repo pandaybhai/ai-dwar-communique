@@ -9,6 +9,9 @@ import type { TagRow } from "@/lib/contacts";
 import { ContactsView } from "@/components/contacts/contacts-view";
 import { SegmentsView } from "@/components/segments/segments-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { NewContactsView } from "@/components/customers-v2/new-contacts-view";
+import { NewSegmentsView } from "@/components/customers-v2/new-segments-view";
+import { useNewDesign } from "@/lib/new-design";
 
 type ContactsSearch = { opt_in?: string; tab?: "segments" };
 
@@ -37,6 +40,7 @@ function ContactsPage() {
   const { enabled, loading } = useFeatureFlag("contacts");
   const { active } = useOrg();
   const organizationId = active?.organization.id ?? null;
+  const newDesign = useNewDesign();
 
   const [tags, setTags] = useState<TagRow[]>([]);
   const [attributeKeys, setAttributeKeys] = useState<string[]>([]);
@@ -44,7 +48,11 @@ function ContactsPage() {
   const loadMeta = useCallback(async () => {
     if (!organizationId) return;
     const [{ data: tagRows }, { data: contactRows }] = await Promise.all([
-      aidwar.from("tags").select("id, name, color").eq("organization_id", organizationId).order("name"),
+      aidwar
+        .from("tags")
+        .select("id, name, color")
+        .eq("organization_id", organizationId)
+        .order("name"),
       aidwar
         .from("contacts")
         .select("attributes")
@@ -54,7 +62,7 @@ function ContactsPage() {
     ]);
     setTags((tagRows as TagRow[]) ?? []);
     const keys = new Set<string>();
-    for (const row of ((contactRows as { attributes: Record<string, unknown> | null }[]) ?? [])) {
+    for (const row of (contactRows as { attributes: Record<string, unknown> | null }[]) ?? []) {
       for (const key of Object.keys(row.attributes ?? {})) keys.add(key);
     }
     setAttributeKeys(Array.from(keys).sort());
@@ -79,6 +87,16 @@ function ContactsPage() {
           description="This feature isn't enabled for your workspace yet. Reach out to your administrator to switch it on."
         />
       </>
+    );
+  }
+
+  // Batch 48: with new_design on, Customers → Contacts / Segments
+  // (docs/design/preview.html #customers); the sub-tabs live in the page head.
+  if (newDesign) {
+    return tab === "segments" ? (
+      <NewSegmentsView organizationId={organizationId} tags={tags} attributeKeys={attributeKeys} />
+    ) : (
+      <NewContactsView organizationId={organizationId} initialOptIn={optInParam} />
     );
   }
 

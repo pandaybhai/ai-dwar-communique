@@ -8,6 +8,8 @@
  * and as many conversations as a scenario asks for.
  */
 
+import { makeCustomers } from "./fake-customers.mjs";
+
 export const BACKEND = "http://fake-backend.test";
 export const STORAGE_KEY = "sb-fake-backend-auth-token";
 
@@ -510,6 +512,10 @@ export function createBackend(options = {}) {
         : [],
   };
 
+  // Batch 48: the Customers screens' data (fake-customers.mjs), only when a scenario asks.
+  const customers = options.customers ? makeCustomers(conversations) : null;
+  if (customers) Object.assign(tables, customers.tables);
+
   async function rest(route, request) {
     const q = parse(request.url());
     const method = request.method();
@@ -531,7 +537,9 @@ export function createBackend(options = {}) {
     // Campaign recipients: 20 rows drawn, but counted like a real 4,210-recipient send.
     const select = q.params.get("select") ?? "";
     const total =
-      q.table === "campaign_recipients"
+      customers && q.table === "contacts" && select.includes("opt_in_status")
+        ? customers.total
+        : q.table === "campaign_recipients"
         ? method === "HEAD"
           ? 2580
           : 4210
@@ -564,6 +572,8 @@ export function createBackend(options = {}) {
     }
     const reply = (body) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body), headers: { "access-control-allow-origin": "*" } });
+    const fromCustomers = customers?.rpc(fn);
+    if (fromCustomers !== undefined) return reply(fromCustomers);
     if (fn === "analytics_timeseries") {
       const days = 7;
       const day = (offset) =>
@@ -652,6 +662,16 @@ export function createBackend(options = {}) {
     const url = new URL(request.url());
     const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     if (url.pathname === "/api/permissions") return json({ permissions: PERMISSIONS, overrides: {} });
+    if (customers) {
+      let body = {};
+      try {
+        body = JSON.parse(request.postData() || "{}");
+      } catch {
+        body = {};
+      }
+      const answer = customers.api(url.pathname, body);
+      if (answer !== undefined) return json(answer);
+    }
     if (url.pathname.startsWith("/api/whatsapp/chat-media/")) {
       return route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%fake\n" });
     }

@@ -198,7 +198,57 @@ const SCENARIOS_B46 = {
 };
 
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46 };
+/** Batch 48: Customers (run with --design new; --design classic shows flag off is unchanged). */
+const firstContactRow = async (page) => {
+  await page.getByRole("button", { name: /Asha Iyer/ }).first().click();
+  await page.waitForTimeout(1200);
+};
+const SCENARIOS_B48 = {
+  contacts: { path: "/app/contacts", conversations: 40, customers: true, wait: "text=Asha Iyer" },
+  "contacts-filtered": { path: "/app/contacts?opt_in=unknown", conversations: 40, customers: true, wait: "h1" },
+  "contacts-selected": {
+    path: "/app/contacts",
+    conversations: 40,
+    customers: true,
+    wait: "text=Asha Iyer",
+    act: async (page) => {
+      for (const name of ["Select Asha Iyer", "Select Vikram Mehta", "Select Meera Nair"]) {
+        await page.getByRole("checkbox", { name }).filter({ visible: true }).first().click();
+      }
+      await page.waitForTimeout(600);
+    },
+  },
+  "contact-drawer": { path: "/app/contacts", conversations: 40, customers: true, wait: "text=Asha Iyer", act: firstContactRow },
+  "contacts-empty": { path: "/app/contacts", conversations: 0, customers: true, wait: "h1" },
+  "import-upload": {
+    path: "/app/contacts",
+    conversations: 40,
+    customers: true,
+    wait: "text=Asha Iyer",
+    act: async (page) => {
+      await page.getByRole("button", { name: /^Import/ }).first().click();
+      await page.waitForTimeout(700);
+    },
+  },
+  "import-map": { path: "/app/contacts", conversations: 40, customers: true, wait: "text=Asha Iyer", act: (page) => importTo(page, 2) },
+  "import-confirm": { path: "/app/contacts", conversations: 40, customers: true, wait: "text=Asha Iyer", act: (page) => importTo(page, 3) },
+  segments: { path: "/app/contacts?tab=segments", conversations: 40, customers: true, wait: "text=VIP customers" },
+  receipts: { path: "/app/receipts", conversations: 40, customers: true, wait: "h1", fullPage: true },
+};
+
+const SAMPLE_IMPORT = "phone,name,tags,city\n+919876543210,Priya Sharma,\"vip,repeat-buyer\",Hyderabad\n+919812345678,Rahul Verma,new-customer,Mumbai\n+919898765432,Anjali Patel,vip,Delhi\n";
+async function importTo(page, step) {
+  await page.getByRole("button", { name: /^Import/ }).first().click();
+  await page.waitForTimeout(600);
+  await page.locator('input[type="file"]').setInputFiles({ name: "kesar-customers.csv", mimeType: "text/csv", buffer: Buffer.from(SAMPLE_IMPORT) });
+  await page.waitForTimeout(700);
+  if (step >= 3) {
+    await page.getByRole("button", { name: /^Continue/ }).click();
+    await page.waitForTimeout(600);
+  }
+}
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b48: SCENARIOS_B48 };
 
 const consoleErrors = [];
 
@@ -211,6 +261,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     journey: scenario.journey,
     newDesign: DESIGN === "new",
     aidenMode: scenario.aidenMode,
+    customers: scenario.customers,
   });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
