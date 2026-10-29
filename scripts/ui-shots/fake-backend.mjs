@@ -353,6 +353,14 @@ export function makeTemplates() {
   ];
 }
 
+/** Batch 43: made-up plans for the screenshots (Billing and the public pricing). */
+export const PLANS = [
+  { key: "starter", name: "Starter", tagline: "For a shop finding its feet on WhatsApp", currency: "INR", price_monthly: 1999, price_annual: 19990, limits: { members: 2, numbers: 1, ai_answers: 500, contacts: 2000, messages_monthly: 5000 }, highlights: ["Shared inbox", "Campaigns and templates"] },
+  { key: "growth", name: "Growth", tagline: "For shops sending every week", currency: "INR", price_monthly: 4999, price_annual: 49990, limits: { members: 5, numbers: 2, ai_answers: 1000, contacts: 10000, messages_monthly: 25000 }, highlights: ["Flows and automations", "Revenue tracking"] },
+  { key: "pro", name: "Pro", tagline: "For teams running several numbers", currency: "INR", price_monthly: 9999, price_annual: 99990, limits: { members: 15, numbers: 5, ai_answers: 5000, contacts: 50000, messages_monthly: 100000 }, highlights: ["Public API and webhooks", "Priority support"] },
+  { key: "enterprise", name: "Enterprise", tagline: "Custom volumes and white-label", currency: "INR", price_monthly: null, price_annual: null, limits: { members: -1, numbers: -1, ai_answers: -1 }, highlights: ["Dedicated manager"] },
+];
+
 function parse(url) {
   const u = new URL(url);
   const table = u.pathname.replace(/^\/rest\/v1\//, "");
@@ -394,9 +402,13 @@ export function createBackend(options = {}) {
     if (!threads.has(id)) threads.set(id, id === conversations[0]?.id ? makeThread(id) : makeThread(id).slice(0, 4));
     return threads.get(id);
   };
+  // Batch 43: the plan state a Billing scenario starts in (active by default).
+  const planStatus = options.planStatus ?? "active";
   const org = (id, name) => ({
     id, name, slug: name.toLowerCase().replace(/\W+/g, "-"), status: "active", timezone: "Asia/Kolkata",
-    plan_status: "active", plan_version_id: "pv1", trial_ends_at: null,
+    plan_status: id === ORG ? planStatus : "active",
+    plan_version_id: id === ORG && planStatus === "trial" ? null : "pv1",
+    trial_ends_at: id === ORG && planStatus === "trial" ? ago(-9 * DAY) : null,
   });
   const profiles = [
     { id: ME, full_name: "Riya Kapoor", email: "riya@kesar.example", is_super_admin: false },
@@ -405,10 +417,18 @@ export function createBackend(options = {}) {
   ];
 
   const tables = {
-    organization_members: () => [
-      { role: "owner", user_id: ME, created_at: "2026-01-01", organizations: org(ORG, "Kesar & Co.") },
-      { role: "admin", user_id: ME, created_at: "2026-02-01", organizations: org(ORG_2, "Kesar Outlet Store") },
-    ].concat([{ role: "agent", user_id: NEHA }, { role: "agent", user_id: ARJUN }]),
+    organization_members: (q) =>
+      (q.params.get("select") ?? "").includes("organizations")
+        ? [
+            { role: "owner", user_id: ME, created_at: "2026-01-01", organizations: org(ORG, "Kesar & Co.") },
+            { role: "admin", user_id: ME, created_at: "2026-02-01", organizations: org(ORG_2, "Kesar Outlet Store") },
+          ]
+        : [
+            // Settings → Team (Batch 43).
+            { id: "m1", role: "owner", user_id: ME, created_at: "2026-01-01" },
+            { id: "m2", role: "admin", user_id: NEHA, created_at: "2026-03-14" },
+            { id: "m3", role: "agent", user_id: ARJUN, created_at: "2026-06-02" },
+          ],
     profiles: () => profiles,
     feature_flags: () => FLAGS.map((key) => ({ key, default_enabled: true })),
     organization_feature_overrides: () => [],
@@ -449,6 +469,37 @@ export function createBackend(options = {}) {
     flow_triggers: () => [],
     flow_runs: () => [],
     wa_forms: () => [],
+    // Batch 43: Settings.
+    permissions: () => [
+      { key: "inbox.reply", name: "Reply in the Inbox", description: "Send replies to customers.", category: "Inbox", min_role: "agent" },
+      { key: "campaigns.send", name: "Send campaigns", description: "Launch campaigns to customers.", category: "Campaigns", min_role: "admin" },
+      { key: "billing.pay", name: "Pay", description: "Buy credits and pay invoices.", category: "Billing", min_role: "owner" },
+    ],
+    role_permissions: () => [
+      { role: "agent", permission_key: "inbox.reply" },
+      { role: "admin", permission_key: "inbox.reply" },
+      { role: "admin", permission_key: "campaigns.send" },
+      { role: "owner", permission_key: "billing.pay" },
+    ],
+    member_permissions: () => [{ user_id: ARJUN, permission_key: "campaigns.send", granted: true }],
+    activity_log: () => [
+      { user_id: ME, created_at: ago(4 * MIN) },
+      { user_id: NEHA, created_at: ago(2 * HOUR) },
+      { user_id: ARJUN, created_at: ago(3 * DAY) },
+    ],
+    invitations: () => [
+      { id: "inv1", email: "kabir@kesar.example", role: "agent", token: "fake-invite-token", expires_at: ago(-5 * DAY) },
+    ],
+    organization_send_settings: () => [
+      {
+        quiet_hours_enabled: true, quiet_hours_start: "21:00", quiet_hours_end: "09:00", quiet_hours_exempt_transactional: true,
+        marketing_cap_per_day: 1, marketing_cap_per_week: 3, attribution_window_hours: 168, gst_percent: 18,
+        winback_after_days: 45, reorder_after_days: 30,
+      },
+    ],
+    lead_source_markers: () => [],
+    opt_out_keywords: () => [],
+    deletion_requests: () => [],
   };
 
   async function rest(route, request) {
@@ -606,16 +657,97 @@ export function createBackend(options = {}) {
         organization_id: ORG,
         enabled: true,
         wallet: { balance: 2840.5, held: 0, available: options.lowCredits ? 180 : 2840.5, currency: "INR", lifetime_purchased: 12000, lifetime_consumed: 9159.5 },
-        plan: { key: "growth", name: "Growth" },
+        plan: planStatus === "trial" ? { key: null, name: null } : { key: "growth", name: "Growth", tagline: "For shops sending every week", status: planStatus, price_monthly: 4999, limits: {}, highlights: [], trial_ends_at: null, billing_day: 3 },
         ai_answers: { included: 1000, used: 812 },
-        usage: [],
-        usage_total: 0,
-        rates: [],
-        packs: [],
+        usage: [
+          { category: "messaging", label: "Campaign & template messages", amount: 6420.4, count: 7480 },
+          { category: "automation", label: "Automations & flows", amount: 1310.6, count: 1520 },
+          { category: "ai", label: "AI answers over your allowance", amount: 0, count: 0 },
+          { category: "inbox", label: "Inbox replies", amount: 128.5, count: 151 },
+        ],
+        usage_total: 7859.5,
+        rates: [
+          { category: "marketing", rate: 0.8631, currency: "INR" },
+          { category: "utility", rate: 0.115, currency: "INR" },
+          { category: "authentication", rate: 0.115, currency: "INR" },
+          { category: "service", rate: 0, currency: "INR" },
+        ],
+        packs: [
+          { id: "pack1", name: "Starter pack", amount: 1000, bonus_amount: 0, currency: "INR" },
+          { id: "pack2", name: "Growth pack", amount: 5000, bonus_amount: 250, currency: "INR" },
+          { id: "pack3", name: "Scale pack", amount: 20000, bonus_amount: 1500, currency: "INR" },
+        ],
         settings: { low_credit_threshold: 500, auto_topup_enabled: false, monthly_budget_cap: null, campaign_approval_threshold: null, overdraft_limit: 0, credits_expire_months: 12 },
         billing_account: { id: null, name: null, gstin: null, billing_email: null, state_code: null },
         period: { start: ago(20 * DAY), end: ago(-10 * DAY) },
       });
+    }
+    if (url.pathname === "/api/billing/plan") {
+      return json({
+        plan_status: planStatus,
+        plan_version_id: planStatus === "trial" ? null : "pv1",
+        trial_ends_at: planStatus === "trial" ? ago(-9 * DAY) : null,
+        current_plan: planStatus === "trial" ? null : { key: "growth", name: "Growth" },
+        suggested_plan: "growth",
+        default_whatsapp: "+91 98200 00000",
+        gstin: null,
+        pending_payment: null,
+        plans: PLANS.map((p) => ({ ...p, plan_version_id: `pv-${p.key}`, limits: { contacts: p.limits.contacts, messages_monthly: p.limits.messages_monthly, ai_answers_monthly: p.limits.ai_answers, team_members: p.limits.members } })),
+      });
+    }
+    if (url.pathname === "/api/billing/invoices") {
+      return json({
+        invoices: [
+          { id: "inv-3", invoice_number: "AD/26-27/0142", kind: "tax_invoice", purpose: "plan_fee", status: planStatus === "past_due" ? "issued" : "paid", issue_date: ago(2 * DAY), due_date: ago(-5 * DAY), period_start: ago(2 * DAY), period_end: ago(-28 * DAY), total: 5899, amount_paid: planStatus === "past_due" ? 0 : 5899, currency: "INR", pdf_path: "x", pay_url: "https://example.invalid/pay", roi_snapshot: { attributed_revenue: 184500, total_cost: 9159.5 } },
+          { id: "inv-2", invoice_number: "AD/26-27/0127", kind: "tax_invoice", purpose: "credit_purchase", status: "paid", issue_date: ago(12 * DAY), due_date: null, period_start: null, period_end: null, total: 5900, amount_paid: 5900, currency: "INR", pdf_path: "x", pay_url: null, roi_snapshot: null },
+          { id: "inv-1", invoice_number: "AD/26-27/0098", kind: "tax_invoice", purpose: "plan_fee", status: "paid", issue_date: ago(32 * DAY), due_date: null, period_start: ago(32 * DAY), period_end: ago(2 * DAY), total: 5899, amount_paid: 5899, currency: "INR", pdf_path: "x", pay_url: null, roi_snapshot: null },
+        ],
+        autopay: { enabled: planStatus === "active", status: "active", cycle: "monthly", next_charge_at: ago(-28 * DAY), cancel_at_period_end: false, short_url: null },
+      });
+    }
+    if (url.pathname === "/api/billing/ledger") {
+      const kind = url.searchParams.get("kind");
+      if (kind === "payments") {
+        return json({ entries: [
+          { id: "pay-2", purpose: "Credits", status: "paid", paid_at: ago(12 * DAY), amount: 5900, currency: "INR" },
+          { id: "pay-1", purpose: "Plan fee", status: "paid", paid_at: ago(32 * DAY), amount: 5899, currency: "INR" },
+        ] });
+      }
+      let balance = options.lowCredits ? 180 : 2840.5;
+      const moves = [-412.6, -96.2, -1019.96, -38.4, 5000, -870.3, -12.5, -640, -220.8, 5000, -84, -310.2];
+      const entries = moves.map((amount, i) => {
+        const row = { id: `led-${i}`, entry_type: amount > 0 ? "credit_purchase" : i % 3 === 0 ? "debit_campaign" : "debit_message", amount, balance_after: Math.round(balance * 100) / 100, currency: "INR", description: amount > 0 ? "Credits bought — Growth pack" : i % 3 === 0 ? "Campaign: Diwali preview — VIP list" : null, reference_type: null, created_at: ago(i * 1.7 * DAY + HOUR) };
+        balance -= amount;
+        return row;
+      });
+      return json({ entries, next_cursor: null });
+    }
+    if (url.pathname === "/api/developer/keys") {
+      return json({ keys: [
+        { id: "k1", name: "Shopify order updates", masked: "adw_live_••••••••3f9a", created_at: ago(40 * DAY), last_used_at: ago(12 * MIN), revoked_at: null },
+        { id: "k2", name: "Zapier", masked: "adw_live_••••••••a71c", created_at: ago(90 * DAY), last_used_at: null, revoked_at: ago(20 * DAY) },
+      ] });
+    }
+    if (url.pathname === "/api/developer/webhook") {
+      return json({ url: null, status: null, last_delivery: null, recent: [], mode: "multi", limit: 3, webhooks: [] });
+    }
+    if (url.pathname === "/api/whatsapp/token-status") {
+      return json({ connected: true, is_platform_org: false, numbers: [{ whatsapp_account_id: ACCOUNT, display_phone_number: "+91 98200 00000", never_expires: true }] });
+    }
+    if (url.pathname === "/api/whatsapp/profile") {
+      return json({
+        profile: { about: "Handcrafted jewellery since 1987 ✨", address: "14 Linking Road, Bandra West, Mumbai", description: "Gold, silver and kundan jewellery. Custom engraving and bridal sets.", email: "hello@kesar.example", websites: ["https://kesar.example"], vertical: "RETAIL", profile_picture_url: null },
+        name: { verified_name: "Kesar & Co.", name_status: "APPROVED", new_display_name: null, new_name_status: null },
+      });
+    }
+    if (url.pathname === "/api/integrations/shopify") {
+      return json({ configured: true, integrations: [] });
+    }
+    if (url.pathname === "/api/integrations/flow-connections") {
+      return json({ google_available: true, google: null, razorpay: null, razorpay_webhook_url: "https://aidwar.in/api/public/razorpay-flow-webhook" });
+    }
+    if (url.pathname === "/api/ai/employee") {
+      return json({ phones: ["+91 98111 22334"], email: "riya@kesar.example", business_numbers: ["+91 98200 00000"], owner_phone: "+91 98111 22334", owner_is_business_number: false });
     }
     if (url.pathname === "/api/campaigns/audience") {
       return json({ matched: 1240, eligible: 1186, excluded: 54, sample: { name: "Asha Iyer", phone: "+919820011223", attributes: {} } });

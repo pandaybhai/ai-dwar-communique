@@ -115,7 +115,42 @@ const SCENARIOS_B41 = {
   },
 };
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41 };
+/** Batch 43: Settings, Billing and the public website. */
+const settingsAt = (tab, wait, extra = {}) => ({ path: `/app/settings?tab=${tab}`, conversations: 40, wait, fullPage: true, ...extra });
+const SCENARIOS_B43 = {
+  "settings-workspace": settingsAt("general", "text=Organization name"),
+  "settings-team": settingsAt("team", "text=Neha Joshi"),
+  "settings-whatsapp": settingsAt("whatsapp", "text=+91 98200 00000"),
+  "settings-api": settingsAt("api", "text=Shopify order updates"),
+  "settings-sending": settingsAt("sending", "text=Quiet hours"),
+  "settings-notifications": settingsAt("notifications", "text=+91 98111 22334"),
+  "settings-danger": settingsAt("danger", "text=Delete workspace"),
+  billing: { path: "/app/billing", conversations: 40, wait: "text=AD/26-27/0142", fullPage: true },
+  "billing-low": { path: "/app/billing", conversations: 40, lowCredits: true, wait: "text=AD/26-27/0142", fullPage: true },
+  "billing-trial": { path: "/app/billing", conversations: 40, planStatus: "trial", wait: "text=Growth", fullPage: true },
+  "billing-past-due": { path: "/app/billing", conversations: 40, planStatus: "past_due", wait: "text=AD/26-27/0142", fullPage: true },
+  "billing-locked": { path: "/app/billing", conversations: 40, planStatus: "locked", wait: "text=Growth", fullPage: true },
+  "billing-buy": {
+    path: "/app/billing",
+    conversations: 40,
+    wait: "text=AD/26-27/0142",
+    act: async (page) => {
+      await page.getByRole("button", { name: /buy credits/i }).first().click();
+      await page.waitForTimeout(400);
+      await page.getByRole("dialog").getByText("Growth pack").click();
+      await page.waitForTimeout(500);
+    },
+  },
+  landing: { path: "/", anon: true, wait: "h1", fullPage: true },
+  "landing-fold": { path: "/", anon: true, wait: "h1" },
+  pricing: { path: "/pricing", anon: true, wait: "text=Message credit rates (India)", fullPage: true },
+  contact: { path: "/contact", anon: true, wait: "h1", fullPage: true },
+  refunds: { path: "/refunds", anon: true, wait: "h1", fullPage: true },
+  terms: { path: "/terms", anon: true, wait: "h1" },
+  demo: { path: "/demo", anon: true, wait: "h1", fullPage: true },
+};
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b43: SCENARIOS_B43 };
 
 const consoleErrors = [];
 
@@ -126,6 +161,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     templates: scenario.templates,
     lowCredits: scenario.lowCredits,
     journey: scenario.journey,
+    planStatus: scenario.planStatus,
   });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
@@ -134,13 +170,13 @@ async function shoot(browser, name, scenario, viewportName, theme) {
   });
   await context.addInitScript(
     ([key, value, theme]) => {
-      localStorage.setItem(key, value);
+      if (value) localStorage.setItem(key, value);
       localStorage.setItem("aidwar.active_org", "00000000-0000-4000-8000-0000000000a1");
       localStorage.setItem("aidwar.theme", theme);
       // Batch 40's "Save & exit": Home shows the Continue setup card instead of redirecting.
       sessionStorage.setItem("aidwar.journey.exited.00000000-0000-4000-8000-0000000000a1", "1");
     },
-    [STORAGE_KEY, JSON.stringify(session()), theme],
+    [STORAGE_KEY, scenario.anon ? null : JSON.stringify(session()), theme],
   );
   // Only the dev server and the fake backend; nothing else leaves the page.
   await context.route("**/*", (route) => {
