@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FlowEditor, type VersionRow } from "@/components/flows/v2/flow-editor";
 import type { FlowGraph } from "@/lib/flow-graph";
 import { isFlowDeleted } from "@/lib/flow-delete";
+import { useNewDesign } from "@/lib/new-design";
 
 export const Route = createFileRoute("/app/flows/v2/$id")({
   head: () => ({
@@ -26,8 +27,23 @@ export const Route = createFileRoute("/app/flows/v2/$id")({
   // ?view=responses opens the flow on its Responses view (the flows list's Responses link).
   validateSearch: (search: Record<string, unknown>): { view?: "responses" } =>
     search["view"] === "responses" ? { view: "responses" } : {},
-  component: FlowEditorPage,
+  component: FlowEditorRoute,
 });
+
+/**
+ * Batch 49: in the new design the builder sits in .nd-flow-builder, which
+ * restyles the canvas, minimap, zoom and panels (flow-builder-v2.css); the
+ * page, its reads and the editor are the same either way.
+ */
+function FlowEditorRoute() {
+  return useNewDesign() ? (
+    <div className="nd-flow-builder">
+      <FlowEditorPage />
+    </div>
+  ) : (
+    <FlowEditorPage />
+  );
+}
 
 type Loaded = { name: string; graph: FlowGraph; published: boolean; enabled: boolean | null; versions: VersionRow[] };
 

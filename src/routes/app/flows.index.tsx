@@ -10,6 +10,8 @@ import { FlowsView } from "@/components/flows/flows-view";
 import { SendsLog } from "@/components/flows/sends-log";
 import { ChatFlowsList } from "@/components/flows/v2/chat-flows-list";
 import type { FlowRow } from "@/lib/flows";
+import { useNewDesign } from "@/lib/new-design";
+import { NewFlowsPage } from "@/components/automate-v2/flows-page";
 
 export const Route = createFileRoute("/app/flows/")({
   head: () => ({
@@ -30,8 +32,13 @@ export const Route = createFileRoute("/app/flows/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: FlowsPage,
+  component: FlowsRoute,
 });
+
+/** Batch 49: Automate > Flows in the new design; the classic page below otherwise. */
+function FlowsRoute() {
+  return useNewDesign() ? <NewFlowsPage /> : <FlowsPage />;
+}
 
 function FlowsPage() {
   const { active, loading } = useOrg();

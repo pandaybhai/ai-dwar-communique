@@ -2,6 +2,8 @@ import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { outputsOf, type FlowNode, type NodeType } from "@/lib/flow-graph";
 import { NODE_META, handleLabel, summary } from "./node-meta";
+import { useNewDesign } from "@/lib/new-design";
+import { FlowNodeViewV2 } from "@/components/automate-v2/flow-node-v2";
 
 export type RFData = { kind: NodeType; data: Record<string, unknown>; problems?: string[] | undefined; stats?: { entered: number; exited: number; dropped: number } | undefined };
 
@@ -46,4 +48,9 @@ function FlowNodeView({ id, data, selected }: NodeProps & { data: RFData }) {
   );
 }
 
-export const FlowNodeCard = memo(FlowNodeView);
+/** Batch 49: the new design draws the step its own way (same handles); otherwise FlowNodeView above, unchanged. */
+function FlowNodePick(props: NodeProps & { data: RFData }) {
+  return useNewDesign() ? <FlowNodeViewV2 {...props} /> : <FlowNodeView {...props} />;
+}
+
+export const FlowNodeCard = memo(FlowNodePick);

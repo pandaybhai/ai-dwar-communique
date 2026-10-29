@@ -1,0 +1,118 @@
+/*
+ * Batch 49: the flow builder in the new design (docs/design/spec.md tokens).
+ * Everything sits under html[data-design="new"] .nd-flow-builder (the route's
+ * wrapper while new_design is on), so with the flag off the builder is
+ * exactly as before. Look only: colours, radii, shadows of React Flow's
+ * canvas, minimap and zoom buttons, and the editor's palette and panels.
+ */
+
+html[data-design="new"] .nd-flow-builder .react-flow {
+  --xy-background-color: var(--ground);
+  --xy-background-pattern-color: var(--line);
+  --xy-edge-stroke: var(--muted-ink);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--aiden);
+  --xy-connectionline-stroke: var(--aiden);
+  --xy-minimap-background-color: var(--surface);
+  --xy-minimap-mask-background-color: rgb(13 43 42 / 0.06);
+  --xy-minimap-mask-stroke-color: var(--line);
+  --xy-minimap-node-background-color: var(--aiden-soft);
+  --xy-minimap-node-stroke-color: var(--aiden);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--ground);
+  --xy-controls-button-color: var(--ink);
+  --xy-controls-button-color-hover: var(--ink);
+  --xy-controls-button-border-color: var(--line);
+  --xy-controls-box-shadow: 0 10px 28px -20px var(--shadow-ink);
+  --xy-selection-background-color: rgb(15 157 116 / 0.08);
+  --xy-selection-border: 1px dotted var(--aiden);
+}
+
+/* Links: muted ink, emerald when selected. */
+html[data-design="new"] .nd-flow-builder .react-flow__edge-path {
+  stroke: var(--muted-ink);
+  stroke-width: 1.75;
+}
+html[data-design="new"] .nd-flow-builder .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--aiden);
+  stroke-width: 2.25;
+}
+
+/* Steps: React Flow's own node frame steps aside so the step card draws itself. */
+html[data-design="new"] .nd-flow-builder .react-flow__node-flow {
+  border-radius: 18px;
+}
+html[data-design="new"] .nd-flow-builder .react-flow__node-flow:focus-visible {
+  outline: 2px solid var(--aiden);
+  outline-offset: 3px;
+}
+html[data-design="new"] .nd-flow-builder .nd-flow-handle {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--surface);
+  background: var(--aiden);
+  box-shadow: 0 0 0 1px var(--aiden);
+}
+
+/* Minimap and zoom: white cards with the design's hairline and soft shadow. */
+html[data-design="new"] .nd-flow-builder .react-flow__minimap {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 10px 28px -20px var(--shadow-ink);
+}
+html[data-design="new"] .nd-flow-builder .react-flow__controls {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+html[data-design="new"] .nd-flow-builder .react-flow__controls-button {
+  width: 32px;
+  height: 32px;
+  transition: background-color 0.2s;
+}
+html[data-design="new"] .nd-flow-builder .react-flow__controls-button:focus-visible {
+  outline: 2px solid var(--aiden);
+  outline-offset: -2px;
+}
+html[data-design="new"] .nd-flow-builder .react-flow__controls-button svg {
+  max-width: 14px;
+  max-height: 14px;
+}
+
+/* The editor frame, palette and side panel. */
+html[data-design="new"] .nd-flow-builder .react-flow__renderer {
+  background: var(--ground);
+}
+html[data-design="new"] .nd-flow-builder .rounded-2xl {
+  border-radius: 22px;
+}
+html[data-design="new"] .nd-flow-builder aside {
+  background: var(--surface);
+}
+/* No tracked capitals (Hallmark floor): the palette's group names in sentence case. */
+html[data-design="new"] .nd-flow-builder aside .uppercase {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  color: var(--muted-ink);
+}
+html[data-design="new"] .nd-flow-builder aside button {
+  border-radius: 11px;
+  transition: background-color 0.2s;
+}
+html[data-design="new"] .nd-flow-builder aside button:hover {
+  background: var(--aiden-soft);
+}
+html[data-design="new"] .nd-flow-builder aside button:focus-visible {
+  outline: 2px solid var(--aiden);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-design="new"] .nd-flow-builder .react-flow__controls-button,
+  html[data-design="new"] .nd-flow-builder aside button,
+  html[data-design="new"] .nd-flow-builder .nd-flow-step {
+    transition: none;
+  }
+}

@@ -5,6 +5,8 @@ import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { useOrg } from "@/lib/org-context";
 import { AutomationsView } from "@/components/automations/automations-view";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useNewDesign } from "@/lib/new-design";
+import { NewAutomationsPage } from "@/components/automate-v2/automations-v2";
 
 const DESCRIPTION =
   "Welcome messages, keyword auto-replies and off-hours cover — one reply per message, always.";
@@ -18,8 +20,13 @@ export const Route = createFileRoute("/app/automations")({
       { property: "og:description", content: DESCRIPTION },
     ],
   }),
-  component: AutomationsPage,
+  component: AutomationsRoute,
 });
+
+/** Batch 49: Automate > Automations in the new design; the classic page below otherwise. */
+function AutomationsRoute() {
+  return useNewDesign() ? <NewAutomationsPage /> : <AutomationsPage />;
+}
 
 function AutomationsPage() {
   const { enabled, loading } = useFeatureFlag("automations");
