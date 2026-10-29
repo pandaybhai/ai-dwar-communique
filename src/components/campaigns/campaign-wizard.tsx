@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
-
   ArrowRight,
   CalendarClock,
   Check,
@@ -44,15 +43,8 @@ import { WhatsAppText } from "@/components/whatsapp-text";
 import { CardAttachmentPicker } from "@/components/cards/card-attachment-picker";
 import { CardPreview } from "@/components/cards/card-preview";
 import type { CardAttachment } from "@/lib/customer-cards";
-import {
-  TemplatePreview,
-  componentsToPreview,
-} from "@/components/templates/template-preview";
-import {
-  formatInZone,
-  offerTimingIssue,
-  zonedToUtcIso,
-} from "@/lib/offers";
+import { TemplatePreview, componentsToPreview } from "@/components/templates/template-preview";
+import { formatInZone, offerTimingIssue, zonedToUtcIso } from "@/lib/offers";
 
 import type { SegmentRow } from "@/lib/segments";
 import { Button } from "@/components/ui/button";
@@ -78,7 +70,6 @@ import { cn } from "@/lib/utils";
 import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
 import { numberLabel, numberSubtitle } from "@/lib/whatsapp-numbers";
 
-
 type AudienceSummary = {
   matched: number;
   eligible: number;
@@ -99,7 +90,11 @@ function StepDots({ step }: { step: number }) {
     <div>
       <ol className="flex items-center gap-1.5" aria-label="Steps">
         {STEPS.map((label, i) => (
-          <li key={label} className="flex min-w-0 flex-1 flex-col gap-1.5" aria-current={i === step ? "step" : undefined}>
+          <li
+            key={label}
+            className="flex min-w-0 flex-1 flex-col gap-1.5"
+            aria-current={i === step ? "step" : undefined}
+          >
             <span
               className={cn(
                 "h-1 rounded-full transition-colors duration-300",
@@ -110,17 +105,26 @@ function StepDots({ step }: { step: number }) {
             <span
               className={cn(
                 "hidden items-center gap-1 truncate text-xs sm:flex",
-                i === step ? "font-medium text-foreground" : i < step ? "text-primary" : "text-muted-foreground",
+                i === step
+                  ? "font-medium text-foreground"
+                  : i < step
+                    ? "text-primary"
+                    : "text-muted-foreground",
               )}
             >
-              {i < step ? <Check className="h-3 w-3 shrink-0" aria-hidden="true" /> : <span className="tabular text-faint">{i + 1}</span>}
+              {i < step ? (
+                <Check className="h-3 w-3 shrink-0" aria-hidden="true" />
+              ) : (
+                <span className="tabular text-faint">{i + 1}</span>
+              )}
               {label}
             </span>
           </li>
         ))}
       </ol>
       <p className="mt-2 text-xs text-muted-foreground sm:hidden">
-        Step {step + 1} of {STEPS.length} · <span className="font-medium text-foreground">{STEPS[step]}</span>
+        Step {step + 1} of {STEPS.length} ·{" "}
+        <span className="font-medium text-foreground">{STEPS[step]}</span>
       </p>
     </div>
   );
@@ -142,7 +146,11 @@ function ChatPreview({
       {/* As it lands on the customer's phone: the business's message on the left. */}
       <div className="wa-bubble-in wa-tail max-w-[85%] !p-0">
         {imageUrl ? (
-          <img src={imageUrl} alt="Template header" className="max-h-48 w-full rounded-t-lg object-cover p-1" />
+          <img
+            src={imageUrl}
+            alt="Template header"
+            className="max-h-48 w-full rounded-t-lg object-cover p-1"
+          />
         ) : mediaLabel ? (
           <div className="m-1 flex h-24 items-center justify-center rounded-md bg-black/[0.06] text-xs text-wa-meta dark:bg-white/[0.06]">
             {mediaLabel}
@@ -350,9 +358,6 @@ export function CampaignWizard({
     };
   }, [open, step, organizationId, audience?.eligible, templates, templateName, accountId]);
 
-
-
-
   const template = useMemo(
     () => templates.find((t) => t.name === templateName) ?? null,
     [templates, templateName],
@@ -368,8 +373,7 @@ export function CampaignWizard({
   const headerMediaFormat = (header?.format ?? "IMAGE") as "IMAGE" | "VIDEO" | "DOCUMENT";
   /** What actually goes out for each slot: this campaign's file, else the template's. */
   const effectiveHeaderMedia = headerMedia.url || header?.mediaUrl || "";
-  const effectiveCardMedia = (index: number) =>
-    cardMedia[index] || cards[index]?.mediaUrl || "";
+  const effectiveCardMedia = (index: number) => cardMedia[index] || cards[index]?.mediaUrl || "";
   const mediaReady =
     (!needsHeaderMedia || Boolean(effectiveHeaderMedia)) &&
     cards.every((_, i) => Boolean(effectiveCardMedia(i)));
@@ -381,10 +385,7 @@ export function CampaignWizard({
   /** Copy-code buttons on the message itself (outside any carousel). */
   const needsMainCoupon = spec.copyCodeButtons.length > 0;
   /** Cards that copy a code — each can run its own discount. */
-  const couponCards = useMemo(
-    () => spec.cards.filter((c) => c.copyCodeButtons.length > 0),
-    [spec],
-  );
+  const couponCards = useMemo(() => spec.cards.filter((c) => c.copyCodeButtons.length > 0), [spec]);
   const needsCoupon = needsMainCoupon || couponCards.length > 0;
   /** The code a given card actually sends: its own, else the main one. */
   const effectiveCardCoupon = (index: number) =>
@@ -415,7 +416,6 @@ export function CampaignWizard({
     return zonedToUtcIso(offerDate, offerTime || "23:59", timezone);
   }, [needsOfferExpiry, offerDate, offerTime, timezone]);
   const offerReady = couponsReady && (!needsOfferExpiry || Boolean(offerExpiresAt));
-
 
   const previewValues = useMemo(() => {
     const out: Record<number, string> = {};
@@ -480,9 +480,7 @@ export function CampaignWizard({
     if (step === 0) return name.trim().length >= 2;
     if (step === 1)
       return (
-        Boolean(accountId) &&
-        (audience?.eligible ?? 0) > 0 &&
-        (estimate ? estimate.can_send : true)
+        Boolean(accountId) && (audience?.eligible ?? 0) > 0 && (estimate ? estimate.can_send : true)
       );
 
     if (step === 2)
@@ -496,7 +494,6 @@ export function CampaignWizard({
     if (step === 3) return (sendNow || Boolean(scheduledAt)) && offerIssue?.level !== "error";
     return true;
   };
-
 
   /** What this campaign sends with — launch and the test send use the same. */
   const sendSettings = useMemo(
@@ -515,7 +512,17 @@ export function CampaignWizard({
       ...(card ? { card: { kind: card.kind, vars: card.vars } } : {}),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [needsHeaderMedia, headerMedia.url, cards, cardMedia, cardCoupons, needsCoupon, couponCode, offerExpiresAt, card],
+    [
+      needsHeaderMedia,
+      headerMedia.url,
+      cards,
+      cardMedia,
+      cardCoupons,
+      needsCoupon,
+      couponCode,
+      offerExpiresAt,
+      card,
+    ],
   );
 
   const launch = async () => {
@@ -607,7 +614,6 @@ export function CampaignWizard({
                 <div className="space-y-2">
                   <Label>Who should receive this?</Label>
                   <Select value={segmentId} onValueChange={setSegmentId}>
-
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -708,7 +714,6 @@ export function CampaignWizard({
                     )}
                   </div>
                 ) : null}
-
               </div>
             )}
 
@@ -730,7 +735,8 @@ export function CampaignWizard({
                   </Select>
                   {templates.length === 0 && (
                     <p className="text-xs text-muted-foreground">
-                      You don&apos;t have an approved template yet. Create one under Templates first.
+                      You don&apos;t have an approved template yet. Create one under Templates
+                      first.
                     </p>
                   )}
                 </div>
@@ -785,9 +791,7 @@ export function CampaignWizard({
                           onUploaded={(r) =>
                             setCardMedia((prev) => ({ ...prev, [i]: r.media_url }))
                           }
-                          onCleared={() =>
-                            setCardMedia((prev) => ({ ...prev, [i]: "" }))
-                          }
+                          onCleared={() => setCardMedia((prev) => ({ ...prev, [i]: "" }))}
                         />
                       </div>
                     ))}
@@ -796,9 +800,7 @@ export function CampaignWizard({
 
                 {(needsCoupon || needsOfferExpiry) && (
                   <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-3">
-                    <Label className="text-xs">
-                      {offer ? offer.text : "Offer details"}
-                    </Label>
+                    <Label className="text-xs">{offer ? offer.text : "Offer details"}</Label>
                     {needsCoupon && (
                       <div className="space-y-1.5">
                         <Label className="text-xs font-medium">
@@ -824,13 +826,12 @@ export function CampaignWizard({
                       <div className="space-y-2">
                         <Label className="text-xs font-medium">Codes per card</Label>
                         <p className="text-xs text-muted-foreground">
-                          Running a different discount on each card? Give that card its own
-                          code. Leave it blank to use the code above.
+                          Running a different discount on each card? Give that card its own code.
+                          Leave it blank to use the code above.
                         </p>
                         {couponCards.map((card) => {
                           const isDupe = duplicateCouponCards.has(card.index);
-                          const isEmpty =
-                            effectiveCardCoupon(card.index).length === 0;
+                          const isEmpty = effectiveCardCoupon(card.index).length === 0;
                           return (
                             <div key={card.index} className="space-y-1">
                               <Label className="text-[11px] text-muted-foreground">
@@ -857,28 +858,23 @@ export function CampaignWizard({
                               />
                               {isDupe && (
                                 <p className="text-xs text-destructive">
-                                  Another card already uses this code — each card needs its
-                                  own.
+                                  Another card already uses this code — each card needs its own.
                                 </p>
                               )}
                             </div>
                           );
                         })}
-                        {couponCards.some(
-                          (c) => effectiveCardCoupon(c.index).length === 0,
-                        ) && (
+                        {couponCards.some((c) => effectiveCardCoupon(c.index).length === 0) && (
                           <p className="text-xs text-destructive">
-                            Every card with a copy-code button needs a code — either its own
-                            or the shared one above.
+                            Every card with a copy-code button needs a code — either its own or the
+                            shared one above.
                           </p>
                         )}
                       </div>
                     )}
                     {needsOfferExpiry && (
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">
-                          Offer ends ({timezone})
-                        </Label>
+                        <Label className="text-xs font-medium">Offer ends ({timezone})</Label>
                         <div className="flex gap-2">
                           <Input
                             type="date"
@@ -929,7 +925,6 @@ export function CampaignWizard({
                     </p>
                   </div>
                 )}
-
 
                 {variables.map((n) => {
                   const m = mappings[String(n)];
@@ -1124,7 +1119,12 @@ export function CampaignWizard({
                         ? [["Coupon code", couponCode.trim()] as [string, string]]
                         : []),
                       ...(offerExpiresAt
-                        ? [["Offer ends", formatInZone(offerExpiresAt, timezone)] as [string, string]]
+                        ? [
+                            ["Offer ends", formatInZone(offerExpiresAt, timezone)] as [
+                              string,
+                              string,
+                            ],
+                          ]
                         : []),
                     ].map(([k, v]) => (
                       <div key={k} className="flex justify-between gap-4">
@@ -1145,9 +1145,7 @@ export function CampaignWizard({
                         >
                           <p className="font-medium">
                             Card {card.index + 1}
-                            {cards[card.index]?.body
-                              ? ` — ${cards[card.index]!.body}`
-                              : ""}
+                            {cards[card.index]?.body ? ` — ${cards[card.index]!.body}` : ""}
                           </p>
                           <p className="text-muted-foreground">
                             Code{" "}
@@ -1203,7 +1201,6 @@ export function CampaignWizard({
                     sendSettings={sendSettings}
                   />
                 ) : null}
-
               </div>
             )}
           </div>
@@ -1228,7 +1225,11 @@ export function CampaignWizard({
               Continue <ArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
           ) : (
-            <Button className="rounded-full" disabled={launching || !offerReady || offerIssue?.level === "error"} onClick={() => void launch()}>
+            <Button
+              className="rounded-full"
+              disabled={launching || !offerReady || offerIssue?.level === "error"}
+              onClick={() => void launch()}
+            >
               {launching ? (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
               ) : (

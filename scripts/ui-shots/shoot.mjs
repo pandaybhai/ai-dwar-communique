@@ -62,7 +62,7 @@ const SCENARIOS_B41 = {
   "home-low-credits": { path: "/app", conversations: 40, lowCredits: true, wait: "text=Waiting on you", fullPage: true },
   campaigns: { path: "/app/campaigns", conversations: 40, wait: "text=Diwali preview" },
   "campaigns-empty": { path: "/app/campaigns", conversations: 40, campaigns: 0, wait: "h1" },
-  "campaign-detail": { path: `/app/campaigns/${firstCampaign}`, conversations: 40, wait: "text=Offer performance" },
+  "campaign-detail": { path: `/app/campaigns/${firstCampaign}`, conversations: 40, wait: "text=Offer performance", fullPage: true },
   "campaign-wizard": {
     path: "/app/campaigns",
     conversations: 40,

@@ -198,6 +198,7 @@ export function CampaignsView({
                           label="Delivered"
                           part={c.delivered_count}
                           total={c.total_recipients}
+                          pending={c.sent_count === 0}
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -206,6 +207,7 @@ export function CampaignsView({
                           label="Read"
                           part={c.read_count}
                           total={c.total_recipients}
+                          pending={c.sent_count === 0}
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -214,6 +216,7 @@ export function CampaignsView({
                           label="Replied"
                           part={c.replied_count}
                           total={c.total_recipients}
+                          pending={c.sent_count === 0}
                         />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-muted-foreground">

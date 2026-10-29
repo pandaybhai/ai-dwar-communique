@@ -82,7 +82,7 @@ export function ProgressCell({
 }
 
 const RATE_TONE = {
-  delivered: "bg-chart-2",
+  delivered: "bg-brand-500",
   read: "bg-primary",
   replied: "bg-chart-4",
 } as const;
@@ -94,6 +94,7 @@ export function RateBar({
   total,
   label,
   labelled,
+  pending,
   className,
 }: {
   kind: keyof typeof RATE_TONE;
@@ -102,9 +103,25 @@ export function RateBar({
   label: string;
   /** Show the label above the number (where there's no column header). */
   labelled?: boolean | undefined;
+  /** Nothing has been sent yet: a dash, not a misleading 0%. */
+  pending?: boolean | undefined;
   className?: string | undefined;
 }) {
   const value = percent(part, total);
+  if (pending)
+    return (
+      <div className={cn("min-w-0", className)}>
+        {labelled ? (
+          <div className="text-2xs text-muted-foreground" aria-hidden="true">
+            {label}
+          </div>
+        ) : null}
+        <div className="text-sm text-faint">
+          —<span className="sr-only"> {label.toLowerCase()}: nothing sent yet</span>
+        </div>
+        <div className="mt-1 h-1 rounded-full bg-muted" aria-hidden="true" />
+      </div>
+    );
   return (
     <div
       className={cn("min-w-0", className)}
@@ -146,6 +163,7 @@ export function RateBars({
   className?: string | undefined;
 }) {
   const total = campaign.total_recipients;
+  const pending = campaign.sent_count === 0;
   return (
     <div className={cn("grid grid-cols-3 gap-3", className)}>
       <RateBar
