@@ -14,7 +14,7 @@ WhatsApp, Meta or Cashfree.
   answer in the phone, Teach Aiden open), Flows (list with run history,
   deleted flows, empty), the builder, Automations (and empty), Catalogue (and
   empty), Collections. `node scripts/ui-shots/b49-shots.mjs --design new --out docs/screenshots/batch49/new`
-- `classic/`: the same six screens with the flag off.
+- `classic/`: the same six screens with the flag off. All shots taken after merging main (Batch 47).
   `node scripts/ui-shots/b49-shots.mjs --design classic --only aiden,flows,flow-builder,automations,catalogue,collections --out docs/screenshots/batch49/classic`
 
 Flag off against untouched `main` (a worktree of `origin/main` on another
@@ -22,6 +22,6 @@ port, same script, same fake data): all 12 classic shots (6 screens at 1440
 and 390) are pixel-identical.
 
 Every run reported no console errors and no horizontal page scroll at either
-width. Lighthouse accessibility (snapshot mode, 1440): Aiden, Flows,
+width. Lighthouse accessibility (snapshot mode, 1440 and 390, on the code merged with main after Batch 47): Aiden, Flows,
 Automations, Catalogue and Collections 100; the builder 96 (its existing
 flow-name input has no label: `flow-editor.tsx`, classic code, left as is).
