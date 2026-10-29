@@ -118,6 +118,9 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
               stage = "finish";
               const { finishOnboardingCrawl } = await import("@/lib/merchant-channel.server");
               await finishOnboardingCrawl(supabase, sourceId, result);
+              // Batch 40: the funnel's website_read (once per workspace; never throws).
+              const { recordWebsiteRead } = await import("@/lib/onboarding-journey.server");
+              await recordWebsiteRead(supabase, sourceId, result);
               // First website read with no behaviour yet → a suggested one to review.
               // Out of time: the next tick makes it (never past this tick's end).
               if (tickEnds - Date.now() >= PERSONA_MIN_MS) {

@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 92, column 1105, view 2, function 114, index 164, trigger 70, cron_job 14.
+-- Expected objects: table 92, column 1105, view 2, function 114, index 165, trigger 70, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -1349,6 +1349,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'ai_task_models_agent_task_idx', NULL, NULL, 'unique on public.ai_task_models', '20260902_ai_core.sql'),
     ('index', 'public', 'ai_task_models_org_task_idx', NULL, NULL, 'unique on public.ai_task_models', '20260902_ai_core.sql'),
     ('index', 'public', 'ai_tool_calls_run_idx', NULL, NULL, 'on public.ai_tool_calls', '20260902_ai_core.sql'),
+    ('index', 'public', 'analytics_events_onboarding_once', NULL, NULL, 'unique on public.analytics_events', '20261170_batch40_onboarding.sql'),
     ('index', 'public', 'analytics_events_org_time_idx', NULL, NULL, 'on public.analytics_events', '20260819_event_spine_usage_ai.sql'),
     ('index', 'public', 'analytics_events_org_type_time_idx', NULL, NULL, 'on public.analytics_events', '20260819_event_spine_usage_ai.sql'),
     ('index', 'public', 'analytics_events_properties_idx', NULL, NULL, 'on public.analytics_events', '20260819_event_spine_usage_ai.sql'),

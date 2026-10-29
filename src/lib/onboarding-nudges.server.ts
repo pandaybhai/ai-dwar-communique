@@ -9,6 +9,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { JourneyStep } from "@/lib/onboarding-journey";
 
 export const CODE_TEMPLATE_NAME = "aidwar_onboarding_start";
 export const CODE_TEMPLATE_BODY =
@@ -18,8 +19,32 @@ export const RESUME_TEMPLATE_NAME = "aidwar_onboarding_resume";
 export const RESUME_TEMPLATE_BODY =
   "Hi {{1}}, Aiden here from AiDwar. We stopped at {{2}}. Reply here to continue, or say 'help'.";
 
+/**
+ * Batch 40: the resume nudge that can be acted on — a link button straight
+ * to the step the owner stopped at (/app/start?step=…). Used only once Meta
+ * has approved it; until then the two templates above go out exactly as
+ * before.
+ */
+export const RESUME_LINK_TEMPLATE_NAME = "aidwar_onboarding_resume_link";
+export const RESUME_LINK_TEMPLATE_BODY =
+  "Hi {{1}}, Aiden here from AiDwar. Your setup for {{2}} is saved, right where you left it: {{3}}. Tap below to carry on.";
+export const RESUME_LINK_BUTTON_URL = "https://aidwar.in/app/start?step={{1}}";
+
+/** "where we stopped", for the link nudge, by journey step. */
+export const STEP_PHRASE: Record<JourneyStep, string> = {
+  business: "telling me about your business",
+  connect: "connecting your WhatsApp number",
+  aiden: "trying me out with a customer question",
+  live: "choosing how I reply",
+};
+
 const NUDGE_AFTER_MS = 24 * 60 * 60 * 1000;
-const EXPIRE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Batch 40: a quiet month ends a session, not a quiet week — the owner is
+ * often quiet on WhatsApp precisely because they are on the web connecting
+ * their number, and a session that expired then never recorded the connection.
+ */
+export const EXPIRE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 const NUDGEABLE = ["bound", "learning", "ready", "tested"];
 
 type SessionRow = {
@@ -87,8 +112,112 @@ export async function ensureResumeTemplate(
   return { status: "PENDING", created: true, error: null };
 }
 
+/** Creates the link template in the platform workspace and submits it to Meta, once. */
+export async function ensureResumeLinkTemplate(
+  supabase: SupabaseClient,
+  actorId: string,
+): Promise<{ status: string | null; created: boolean; error: string | null }> {
+  const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+  const orgId = await resolvePlatformOrg(supabase);
+  if (!orgId) return { status: null, created: false, error: "No platform workspace." };
+
+  const { data: existing } = await supabase
+    .from("message_templates")
+    .select("status")
+    .eq("organization_id", orgId)
+    .eq("name", RESUME_LINK_TEMPLATE_NAME)
+    .eq("language", "en_US")
+    .maybeSingle();
+  if (existing) {
+    return { status: (existing as { status: string | null }).status, created: false, error: null };
+  }
+
+  const { emptyDraft, extractVariables } = await import("@/lib/templates");
+  const { createTemplateFromDraft } = await import("@/lib/template-create.server");
+  const draft = emptyDraft();
+  draft.name = RESUME_LINK_TEMPLATE_NAME;
+  draft.language = "en";
+  draft.category = "UTILITY";
+  draft.body = RESUME_LINK_TEMPLATE_BODY;
+  draft.bodyExamples = Object.fromEntries(
+    extractVariables(RESUME_LINK_TEMPLATE_BODY).map((v, i) => [
+      v,
+      ["Priya", "Asha Studio", "connecting your WhatsApp number"][i] ?? "",
+    ]),
+  );
+  draft.buttons = [
+    { type: "URL", text: "Continue setup", url: RESUME_LINK_BUTTON_URL, urlExample: "https://aidwar.in/app/start?step=connect" },
+  ];
+  const result = await createTemplateFromDraft(supabase, { organizationId: orgId, userId: actorId, draft });
+  if (!result.ok) return { status: null, created: false, error: result.error };
+  return { status: "PENDING", created: true, error: null };
+}
+
+type ApprovedTemplate = { name: string; language: string; components: unknown; status: string | null };
+
+/** The link template when Meta has approved it, else null (the old templates are used). */
+async function approvedLinkTemplate(
+  supabase: SupabaseClient,
+  platformOrgId: string,
+): Promise<ApprovedTemplate | null> {
+  const { data } = await supabase
+    .from("message_templates")
+    .select("name, language, components, status")
+    .eq("organization_id", platformOrgId)
+    .eq("name", RESUME_LINK_TEMPLATE_NAME)
+    .eq("language", "en_US")
+    .maybeSingle();
+  const row = data as ApprovedTemplate | null;
+  return row && String(row.status ?? "").toUpperCase() === "APPROVED" ? row : null;
+}
+
 /**
- * One pass: expire week-old sessions, nudge day-old ones (once each), and
+ * The web journey step a workspace stopped at, when it is in the journey
+ * (started there, not finished, not dismissed). Null: not a web sign-up.
+ */
+export async function journeyStepFor(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<JourneyStep | null> {
+  const { loadJourneyState } = await import("@/lib/onboarding-journey.server");
+  const state = await loadJourneyState(supabase, organizationId);
+  if (!state.active || state.step === "done") return null;
+  return state.step;
+}
+
+/** Sends the link nudge. True when WhatsApp accepted it. */
+async function sendLinkNudge(
+  supabase: SupabaseClient,
+  platformOrgId: string,
+  sender: unknown,
+  template: ApprovedTemplate,
+  args: { contactId: string | null; phone: string; firstName: string; orgName: string; step: JourneyStep },
+): Promise<boolean> {
+  const { sendCampaignTemplate } = await import("@/lib/campaigns.server");
+  const outcome = await sendCampaignTemplate(
+    supabase,
+    platformOrgId,
+    sender as Parameters<typeof sendCampaignTemplate>[2],
+    {
+      contactId: args.contactId,
+      phone: args.phone,
+      variables: { "1": args.firstName, "2": args.orgName, "3": STEP_PHRASE[args.step] },
+    },
+    {
+      name: template.name,
+      language: template.language,
+      variableOrder: [1, 2, 3],
+      components: (template.components ?? null) as import("@/lib/templates").TemplateComponent[] | null,
+    },
+    { campaignId: null, category: "utility", buttonParams: { 0: args.step } },
+  );
+  if (outcome.messageId && !outcome.error) return true;
+  console.error("[onboarding-link-nudge] send failed", args.phone.slice(-4), outcome.error);
+  return false;
+}
+
+/**
+ * One pass: expire month-old sessions, nudge day-old ones (once each), and
  * remind owners who never sent their code. Returns counts for the worker.
  */
 export async function runOnboardingNudges(
@@ -111,7 +240,7 @@ async function runResumePass(
 ): Promise<{ expired: number; nudged: number; skipped: string | null }> {
   const now = Date.now();
 
-  // A week of silence: the session is over. Quiet, no message.
+  // A month of silence: the session is over. Quiet, no message.
   const { data: expiredRows } = await supabase
     .from("onboarding_sessions")
     .update({ status: "expired" })
@@ -160,12 +289,15 @@ async function runResumePass(
     .eq("name", RESUME_TEMPLATE_NAME)
     .eq("language", "en_US")
     .maybeSingle();
-  const template = templateRow as
+  const stored = templateRow as
     | { name: string; language: string; components: unknown; status: string | null }
     | null;
-  if (!template) return { expired, nudged: 0, skipped: "template_missing" };
-  if (String(template.status ?? "").toUpperCase() !== "APPROVED") {
-    return { expired, nudged: 0, skipped: `template_${String(template.status ?? "unknown").toLowerCase()}` };
+  const template = stored && String(stored.status ?? "").toUpperCase() === "APPROVED" ? stored : null;
+  // Batch 40: the link nudge, once approved, can go out even without the old one.
+  const linkTemplate = await approvedLinkTemplate(supabase, platformOrgId);
+  if (!template && !linkTemplate) {
+    if (!stored) return { expired, nudged: 0, skipped: "template_missing" };
+    return { expired, nudged: 0, skipped: `template_${String(stored.status ?? "unknown").toLowerCase()}` };
   }
 
   // Sent from the onboarding number, never from a merchant's own number.
@@ -207,6 +339,24 @@ async function runResumePass(
       ((contact as { name?: string | null } | null)?.name ?? "").trim().split(/\s+/)[0] ||
       ((org as { name?: string } | null)?.name ?? "").trim() ||
       "there";
+
+    // Batch 40: "reply here to continue" can't connect a number. With the
+    // link template approved, the nudge opens the exact step instead.
+    const step =
+      (await journeyStepFor(supabase, session.organization_id)) ??
+      (session.status === "tested" ? "connect" : null);
+    if (linkTemplate && (step || !template)) {
+      const sent = await sendLinkNudge(supabase, platformOrgId, sender, linkTemplate, {
+        contactId: (contact as { id: string } | null)?.id ?? null,
+        phone: session.phone,
+        firstName,
+        orgName: ((org as { name?: string } | null)?.name ?? "").trim() || "your business",
+        step: step ?? "business",
+      });
+      if (sent) nudged += 1;
+      continue;
+    }
+    if (!template) continue;
 
     const outcome = await sendCampaignTemplate(
       supabase,
@@ -276,14 +426,16 @@ async function runCodePass(
     .eq("name", CODE_TEMPLATE_NAME)
     .eq("language", "en_US")
     .maybeSingle();
-  const template = templateRow as
+  const stored = templateRow as
     | { name: string; language: string; components: unknown; status: string | null }
     | null;
-  if (!template) return { nudged: 0, skipped: "code_template_missing" };
-  if (String(template.status ?? "").toUpperCase() !== "APPROVED") {
+  const template = stored && String(stored.status ?? "").toUpperCase() === "APPROVED" ? stored : null;
+  const linkTemplate = await approvedLinkTemplate(supabase, platformOrgId);
+  if (!template && !linkTemplate) {
+    if (!stored) return { nudged: 0, skipped: "code_template_missing" };
     return {
       nudged: 0,
-      skipped: `code_template_${String(template.status ?? "unknown").toLowerCase()}`,
+      skipped: `code_template_${String(stored.status ?? "unknown").toLowerCase()}`,
     };
   }
 
@@ -333,6 +485,25 @@ async function runCodePass(
     const orgName = ((org as { name?: string } | null)?.name ?? "your business").trim();
     const firstName =
       ((contact as { name?: string | null } | null)?.name ?? "").trim().split(/\s+/)[0] || "there";
+
+    // Batch 40: a web sign-up never needed the code — "reply with your code
+    // and I'll read your website" is the wrong ask. It gets the link to the
+    // step it stopped at (once approved); everyone else gets the code, as before.
+    const step = await journeyStepFor(supabase, session.organization_id);
+    if (step && linkTemplate) {
+      if (
+        await sendLinkNudge(supabase, platformOrgId, sender, linkTemplate, {
+          contactId: (contact as { id: string } | null)?.id ?? null,
+          phone: session.phone,
+          firstName,
+          orgName: orgName || "your business",
+          step,
+        })
+      )
+        nudged += 1;
+      continue;
+    }
+    if (!template) continue;
 
     const outcome = await sendCampaignTemplate(
       supabase,

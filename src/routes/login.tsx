@@ -2,10 +2,11 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { AuthShell } from "@/components/auth-shell";
-import { Button } from "@/components/ui/button";
+import { PrimaryAction } from "@/components/onboarding/journey-shell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { aidwar } from "@/integrations/aidwar/client";
+import { useAppSurface } from "@/lib/theme";
 import { logActivity } from "@/lib/activity";
 
 const TITLE = "Log in — AiDwar";
@@ -29,6 +30,9 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
+  // Batch 40: sign-up and log-in are the journey's first screens, so they
+  // wear the app's look (Batch 39's tokens, light/dark), not the marketing site's.
+  useAppSurface();
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
   const goNext = () =>
@@ -76,19 +80,19 @@ function LoginPage() {
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Work email</Label>
-          <Input id="email" name="email" type="email" autoComplete="email" required placeholder="you@company.com" />
+          <Input id="email" name="email" type="email" autoComplete="email" required placeholder="you@company.com" className="h-12 rounded-xl text-base" />
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input id="password" name="password" type="password" autoComplete="current-password" required />
+          <Input id="password" name="password" type="password" autoComplete="current-password" required className="h-12 rounded-xl text-base" />
         </div>
         {error ? (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-soft-foreground">{error}</p>
         ) : null}
-        <Button type="submit" className="w-full rounded-full" disabled={pending}>
-          {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+        <PrimaryAction type="submit" className="sm:w-full" disabled={pending}>
+          {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
           Log in
-        </Button>
+        </PrimaryAction>
       </form>
     </AuthShell>
   );

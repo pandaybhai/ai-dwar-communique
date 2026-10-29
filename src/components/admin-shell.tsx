@@ -11,7 +11,7 @@ import {
   Send,
   Menu,
   ShieldCheck,
-  Users, Sparkles } from "lucide-react";
+  Users, Sparkles, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -21,6 +21,7 @@ import { AiProviderBanner } from "@/components/admin/ai-provider-banner";
 const NAV = [
   { to: "/admin/organizations", label: "Organizations", icon: Building2 },
   { to: "/admin/customers", label: "Customers", icon: Users },
+  { to: "/admin/onboarding", label: "Onboarding funnel", icon: Filter },
   { to: "/admin/leads", label: "Leads & Demos", icon: MessageSquarePlus },
   { to: "/admin/billing", label: "Billing", icon: CreditCard },
   { to: "/admin/sending", label: "Sending now", icon: Send },
@@ -73,8 +74,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="lg:hidden">
-                <Menu className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open the admin menu">
+                <Menu className="h-5 w-5" aria-hidden="true" />
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-72 p-6">
@@ -84,9 +85,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </Sheet>
 
           <span className="text-xl font-bold tracking-tight text-foreground">
-            Ai<span className="text-primary">Dwar</span>
+            Ai<span className="text-brand-700">Dwar</span>
           </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
             <ShieldCheck className="h-3.5 w-3.5" /> Super Admin
           </span>
 
