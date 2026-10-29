@@ -597,6 +597,10 @@ export function createBackend(options = {}) {
         generated_at: new Date().toISOString(),
       });
     }
+    if (url.pathname === "/api/onboarding/journey") {
+      // Batch 40: an owner who left the first-run journey at "connect" (Save & exit).
+      return json(options.journey ? { state: { active: true, step: "connect" }, can_configure: true, owner_phone: null } : {});
+    }
     if (url.pathname === "/api/billing/summary") {
       return json({
         organization_id: ORG,

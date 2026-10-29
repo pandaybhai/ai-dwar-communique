@@ -27,3 +27,31 @@ What the BEFORE shots (`docs/screenshots/batch41/before`, light + dark, 1440 + 3
   WhatsApp, which is the whole point of a preview; cards stretch to the
   tallest in their row; the info note is a large tinted block.
 - **Create template**: two columns, the preview column is small and generic.
+
+## Second pass (the full Batch 41 brief, after Batches 39 and 40 merged)
+
+BEFORE is now `main` with Batch 39 (shell, tokens, Inbox), taken from a
+worktree of `main` with the same fake data. What the brief asked for beyond a
+restyle, and where it lives:
+
+| Ask | Where |
+| --- | --- |
+| Home as a command centre: today at a glance, what Aiden did, next best actions, charts | `routes/app/index.tsx` — summary + Analytics' 7-day series + latest campaigns + billing summary |
+| Campaign list with delivered / read / reply rates as tiny bars | `campaigns/campaign-rates.tsx` (`RateBar(s)`), `campaigns-view.tsx` |
+| Wizard: audience → template → personalise → test → review → launch, full screen, live preview, cost always visible | `campaigns/campaign-wizard.tsx`, `templates/customer-phone.tsx` |
+| Results page: funnel sent → delivered → read → replied, timeline, recipient filters | `campaigns/campaign-detail.tsx` |
+| Template gallery with status badges and rejection reasons | `templates/templates-view.tsx` |
+| Split-screen editor, Batch 35 toolbar, variable chips, starter cards | `templates/create-template-dialog.tsx` |
+
+Reusable pieces for Batches 42–43:
+
+- `CustomerPhone` (`templates/customer-phone.tsx`): the portal phone (Batch 38)
+  in the app's own WhatsApp colours, light and dark — for any screen that
+  composes a customer-facing message.
+- `usePageShortcut(key, run, enabled)` (`hooks/use-page-shortcut.ts`): a
+  page's single-key shortcut, never while typing or with a dialog open.
+- `RateBar` / `RateBars` / `CampaignStatusBadge` / `ProgressCell`
+  (`campaigns/campaign-rates.tsx`).
+- Full-screen flows: `DialogContent` with
+  `left-0 top-0 h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 rounded-none p-0`
+  and a header / scrolling body / footer column (see the wizard).

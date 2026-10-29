@@ -92,6 +92,7 @@ function wizardTo(target) {
 /** Batch 41: Home, Campaigns, Templates. */
 const SCENARIOS_B41 = {
   home: { path: "/app", conversations: 40, wait: "text=Waiting on you", fullPage: true },
+  "home-journey": { path: "/app", conversations: 40, journey: true, wait: "text=Continue setup" },
   "home-low-credits": { path: "/app", conversations: 40, lowCredits: true, wait: "text=Waiting on you", fullPage: true },
   campaigns: { path: "/app/campaigns", conversations: 40, wait: "text=Diwali preview" },
   "campaigns-empty": { path: "/app/campaigns", conversations: 40, campaigns: 0, wait: "h1" },
@@ -124,6 +125,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     campaigns: scenario.campaigns,
     templates: scenario.templates,
     lowCredits: scenario.lowCredits,
+    journey: scenario.journey,
   });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
@@ -135,6 +137,8 @@ async function shoot(browser, name, scenario, viewportName, theme) {
       localStorage.setItem(key, value);
       localStorage.setItem("aidwar.active_org", "00000000-0000-4000-8000-0000000000a1");
       localStorage.setItem("aidwar.theme", theme);
+      // Batch 40's "Save & exit": Home shows the Continue setup card instead of redirecting.
+      sessionStorage.setItem("aidwar.journey.exited.00000000-0000-4000-8000-0000000000a1", "1");
     },
     [STORAGE_KEY, JSON.stringify(session()), theme],
   );
