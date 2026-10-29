@@ -141,6 +141,18 @@ const SCENARIOS_B43 = {
       await page.waitForTimeout(500);
     },
   },
+  // The Batch 39 shell's light-mode contrast fixes: sidebar foot, account chip, primary hover.
+  "shell-a11y": {
+    path: "/app/campaigns",
+    conversations: 40,
+    wait: "text=Diwali preview",
+    desktopOnly: true,
+    act: async (page) => {
+      await page.getByRole("button", { name: /create campaign/i }).first().hover();
+      await page.waitForTimeout(300);
+    },
+    clips: { top: { x: 240, y: 0, width: 1200, height: 260 }, foot: { x: 0, y: 820, width: 240, height: 80 } },
+  },
   landing: { path: "/", anon: true, wait: "h1", fullPage: true },
   "landing-fold": { path: "/", anon: true, wait: "h1" },
   pricing: { path: "/pricing", anon: true, wait: "text=Message credit rates (India)", fullPage: true },
@@ -212,6 +224,15 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     }
   }
   const file = join(OUT, `${name}-${viewportName}${theme === "dark" ? "-dark" : ""}.png`);
+  if (scenario.clips) {
+    for (const [part, clip] of Object.entries(scenario.clips)) {
+      const f = join(OUT, `${name}-${part}${theme === "dark" ? "-dark" : ""}.png`);
+      await page.screenshot({ path: f, clip });
+      console.log("wrote", f);
+    }
+    await context.close();
+    return;
+  }
   if (scenario.crop) {
     const el = await page.$(scenario.crop);
     if (el) await el.screenshot({ path: file });
@@ -228,6 +249,7 @@ const browser = await chromium.launch();
 for (const [name, scenario] of Object.entries(SETS[args.set ?? "b39"])) {
   if (ONLY && !ONLY.includes(name)) continue;
   for (const vp of Object.keys(VIEWPORTS)) {
+    if (scenario.desktopOnly && vp !== "desktop") continue;
     for (const theme of THEMES) await shoot(browser, name, scenario, vp, theme);
   }
 }

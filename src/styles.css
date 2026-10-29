@@ -76,6 +76,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -211,6 +212,7 @@
   --popover-foreground: oklch(0.129 0.042 264.695);
   --primary: oklch(0.696 0.149 162.48);
   --primary-foreground: oklch(0.995 0 0);
+  --primary-hover: var(--brand-700);
   --secondary: oklch(0.972 0.008 160);
   --secondary-foreground: oklch(0.21 0.02 250);
   --muted: oklch(0.972 0.005 250);
@@ -293,6 +295,7 @@
   --popover-foreground: oklch(0.984 0.003 247.858);
   --primary: oklch(0.929 0.013 255.508);
   --primary-foreground: oklch(0.208 0.042 265.755);
+  --primary-hover: oklch(0.87 0.013 255.508);
   --secondary: oklch(0.279 0.041 260.031);
   --secondary-foreground: oklch(0.984 0.003 247.858);
   --muted: oklch(0.279 0.041 260.031);
@@ -329,6 +332,8 @@ html[data-app] {
   --popover-foreground: var(--gray-900);
   --primary: var(--brand-700);
   --primary-foreground: oklch(1 0 0);
+  /* Batch 43: a solid hover that keeps text ≥ 4.5:1 (primary/90 fell to 4.43:1). */
+  --primary-hover: var(--brand-800);
   --secondary: var(--gray-100);
   --secondary-foreground: var(--gray-900);
   --muted: var(--gray-100);
@@ -379,6 +384,7 @@ html[data-app].dark {
   --popover-foreground: oklch(0.95 0.004 255);
   --primary: oklch(0.76 0.14 162);
   --primary-foreground: var(--gray-1000);
+  --primary-hover: oklch(0.81 0.13 162);
   --secondary: var(--gray-850);
   --secondary-foreground: oklch(0.95 0.004 255);
   --muted: var(--gray-900);

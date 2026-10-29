@@ -107,13 +107,14 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`Workspace: ${org.name}. Switch workspace`}
           className={cn(
             "flex h-11 w-full items-center gap-2.5 rounded-lg px-1.5 transition-colors hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent",
             collapsed && "justify-center px-0",
           )}
         >
+          {collapsed ? <span className="sr-only">{org.name}</span> : null}
           {body}
+          <span className="sr-only">: switch workspace</span>
           {!collapsed ? <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden="true" /> : null}
         </button>
       </DropdownMenuTrigger>
@@ -238,7 +239,7 @@ function NavGroups({
                   <CountBadge value={inbox.unread} tone="primary" label={`${inbox.unread} with unread messages`} />
                 </span>
               ) : item.to === "/app/employee" && gapCount > 0 ? (
-                <span className="rounded-full bg-primary/12 px-2 py-0.5 text-xs font-semibold text-primary">{gapCount}</span>
+                <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-semibold text-success-soft-foreground">{gapCount}</span>
               ) : null;
               const dot = isInbox ? inbox.waiting + inbox.unread > 0 : item.to === "/app/employee" && gapCount > 0;
               return (
@@ -292,7 +293,7 @@ function SidebarBody({
             Keyboard shortcuts <Kbd className="ml-1 border-transparent bg-background/15 text-background shadow-none">?</Kbd>
           </TooltipContent>
         </Tooltip>
-        {!collapsed ? <Wordmark className="ml-1 flex-1 text-sm opacity-80" /> : null}
+        {!collapsed ? <Wordmark className="ml-1 flex-1 text-sm" /> : null}
         {onToggle ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -348,13 +349,13 @@ function UserMenu({ onShortcuts }: { onShortcuts: () => void }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`Account: ${name}`}
           className="flex h-9 items-center gap-2 rounded-full p-0.5 pr-0.5 transition-colors hover:bg-accent data-[state=open]:bg-accent sm:pr-2.5"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-primary">
+          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-full bg-success-soft text-xs font-semibold text-success-soft-foreground">
             {initials || "A"}
           </span>
-          <span className="hidden max-w-[9rem] truncate text-sm font-medium text-foreground sm:inline">{name}</span>
+          <span className="sr-only">Account: </span>
+          <span className="sr-only sm:not-sr-only sm:max-w-[9rem] sm:truncate sm:text-sm sm:font-medium sm:text-foreground">{name}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
