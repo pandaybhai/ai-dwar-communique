@@ -208,3 +208,51 @@ Tokens only; no `transition: all`; no tracked-capitals labels; no middle-dot
 strings; no decorative dots; no card inside a card; `:focus-visible` on every
 control; a reduced-motion fallback for every animation; `overflow-x: clip` on
 html and body; no invented metrics.
+
+## Home (Batch 45)
+
+`/app` with the flag on renders `NewHome` (`src/components/home-v2/`); with it
+off, the Batch 41 Home in `src/routes/app/index.tsx` exactly as before
+(`batch45-home.test.tsx` pins its code). Which of the three Homes shows is the
+mode Aiden really runs in (`homeModeFor` in `src/lib/new-home.ts`: the plan's
+AI, the workspace AI switch, the default agent's mode; a plan without AI is
+always Off).
+
+| Block | Where the number comes from |
+| --- | --- |
+| "Aiden is replying to N customers" | Open chats, not assigned, not waiting for a person, with a customer message in the last 30 minutes |
+| Aiden's latest replies | `agent_reply` runs matched to the message that was sent (the Inbox's `aiRunFor`), one per chat; `ai_runs.metadata` is not readable by members, so background runs are told apart this way |
+| Needs you | `needs_human` chats, then held owner questions (`/api/home/summary` waiting), at most 3 |
+| Today | Chats and Aiden's replies from `/api/home/summary`; sales from chats (Receipts' attribution, when any order in 30 days), else credits; drafts written today; flow runs today |
+| "N replies are ready for you" | Draft-mode `suggest_reply` runs with no `user_id` from the last 24 hours, latest per chat, with nothing sent in that chat since |
+| "N customers are waiting" | Open chats from the last 7 days whose newest message is the customer's, or that wait for a person; oldest first |
+| Free replies running out | Chats whose 24-hour window, from their newest customer message, closes within 2 hours (exactly 2 h in, closed out) |
+| Your flows today | Flows v2 `flow_runs` since the local day began, per flow |
+
+Every send (draft Send / Edit / Write my own) goes through the Inbox's
+`sendInboxText`, every assign through `assignConversation`, the mode switch
+through `set_mode`. Live updates use the Inbox's `subscribeInboxChanges`.
+
+## Inbox (Batch 46)
+
+`/app/inbox` with the flag on renders `NewInboxView`
+(`src/components/inbox/v2/`); with it off, the Batch 39 `InboxView` exactly
+as before (`batch46-inbox.test.tsx`). Three panes: chat list | chat | customer
+panel (inline from 1280px, a sheet below); on a phone the list, then the chat
+full screen with a back arrow, both bars stepping aside (`data-chat-open`,
+set only at 700px and under).
+
+| Piece | Where it comes from |
+| --- | --- |
+| Waiting for you (gold count) | The classic "Waiting for you" filter: `needs_human` |
+| Aiden on it | Open, not `needs_human`, not assigned: the chats `ai-agent.server.ts` answers. Reads "Nobody on it" when Aiden's mode is Off or Draft |
+| Done | The classic "Closed" filter. All chats, Open and Assigned to me stay under "More filters"; Unread, Unassigned, search, number and j/k/Enter/r/e/a/"/" as before |
+| Aiden badge on a row | That row is an Aiden-on-it chat and Aiden's mode is Replying |
+| 24-hour window chip | `isServiceWindowOpen` on `last_customer_message_at` (every send path's rule; exactly 24 h is still open): "Free replies for N more hours/minutes", gold under 2 hours, else "Window closed: send a template" |
+| Take over from Aiden / Hand back to Aiden | The per-chat switch Aiden already obeys: take over = assign to me (`assignConversation`); hand back = unassign and Mark as handled (`needs_human` cleared), only what is set |
+| "Aiden paused" note | `needs_human_reason` in Aiden's words (`handoverReasonText`), the question, what the customer was told, who on the team was told |
+| Aiden suggests | The composer's "Draft a reply" (`suggest_reply`), shown with Send (`sendInboxText`) and Edit; never run on its own |
+| "/" in an empty box | The template, picture card and form pickers already in the composer |
+| Customer panel | Labels, opt-in, the language they write in and their question (Aiden knows), this chat, the shop's `orders` for the contact (with `integrations.view`), photos and files in the chat |
+
+"Aiden is typing" is left out: nothing the Inbox reads says Aiden is mid-reply.

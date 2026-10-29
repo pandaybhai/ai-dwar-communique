@@ -6,6 +6,8 @@ import { useOrg } from "@/lib/org-context";
 import { logActivity } from "@/lib/activity";
 import { emitClientEvent } from "@/lib/events-capture";
 import { callApi } from "@/lib/whatsapp-client";
+import { subscribeInboxChanges } from "@/lib/inbox-realtime";
+import { assignConversation, sendInboxText } from "@/lib/inbox-actions";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
@@ -211,53 +213,30 @@ export function InboxView() {
   // ---- realtime ----
   useEffect(() => {
     if (!orgId) return;
-    const channel = aidwar
-      .channel(`inbox:${orgId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "messages",
-          filter: `organization_id=eq.${orgId}`,
-        },
-        (payload) => {
-          const row = payload.new as MessageRow | undefined;
-          void loadConversations();
-          if (!row || row.conversation_id !== activeIdRef.current) return;
-          setMessages((prev) => {
-            const idx = prev.findIndex((m) => m.id === row.id);
-            if (idx === -1) {
-              // Batch 39: the real row of a message shown while it was sending takes its place.
-              const pending = row.direction === "outbound" ? prev.findIndex((m) => m.id.startsWith("sending-") && m.body === row.body) : -1;
-              if (pending !== -1) {
-                const next = [...prev];
-                next[pending] = row;
-                return next;
-              }
-              return [...prev, row];
+    return subscribeInboxChanges(`inbox:${orgId}`, orgId, {
+      onMessage: (payload) => {
+        const row = payload.new as MessageRow | undefined;
+        void loadConversations();
+        if (!row || row.conversation_id !== activeIdRef.current) return;
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === row.id);
+          if (idx === -1) {
+            // Batch 39: the real row of a message shown while it was sending takes its place.
+            const pending = row.direction === "outbound" ? prev.findIndex((m) => m.id.startsWith("sending-") && m.body === row.body) : -1;
+            if (pending !== -1) {
+              const next = [...prev];
+              next[pending] = row;
+              return next;
             }
-            const next = [...prev];
-            next[idx] = { ...next[idx]!, ...row };
-            return next;
-          });
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversations",
-          filter: `organization_id=eq.${orgId}`,
-        },
-        () => void loadConversations(),
-      )
-      .subscribe();
-
-    return () => {
-      void aidwar.removeChannel(channel);
-    };
+            return [...prev, row];
+          }
+          const next = [...prev];
+          next[idx] = { ...next[idx]!, ...row };
+          return next;
+        });
+      },
+      onConversation: () => void loadConversations(),
+    });
   }, [orgId, loadConversations]);
 
   // Batch 28: the newest open wins. A slower earlier open (or the ?c= link
@@ -346,17 +325,7 @@ export function InboxView() {
         created_at: new Date().toISOString(),
       },
     ]);
-    const { error: sendError } = await callApi<{ message_id: string }>(
-      "/api/whatsapp/send-message",
-      {
-        body: {
-          organization_id: orgId,
-          conversation_id: activeConversation.id,
-          message_type: "text",
-          body: text,
-        },
-      },
-    );
+    const { error: sendError } = await sendInboxText(orgId, activeConversation.id, text);
     setSending(false);
     if (sendError) {
       setMessages((prev) => prev.filter((m) => m.id !== pendingId));
@@ -402,28 +371,11 @@ export function InboxView() {
 
   const handleAssign = async (assignee: string | null) => {
     if (!activeConversation || !orgId) return;
-    const { error: err } = await aidwar
-      .from("conversations")
-      .update({ assigned_to: assignee })
-      .eq("id", activeConversation.id);
-    if (err) {
-      toast.error("We couldn't update the assignment. Please try again.");
-      return;
-    }
+    const saved = await assignConversation(orgId, activeConversation, assignee);
+    if (!saved) return;
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_to: assignee } : c)),
     );
-    toast.success(assignee ? "Conversation assigned." : "Conversation unassigned.");
-    void logActivity("conversation_assigned", orgId, {
-      conversation_id: activeConversation.id,
-      assigned_to: assignee,
-    });
-    emitClientEvent("conversation.assigned", orgId, {
-      entityType: "conversation",
-      entityId: activeConversation.id,
-      whatsappAccountId: activeConversation.whatsapp_account_id ?? null,
-      properties: { assigned_to: assignee },
-    });
   };
 
   const handleResolveNeedsHuman = async () => {

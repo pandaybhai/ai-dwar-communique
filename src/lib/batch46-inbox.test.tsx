@@ -213,21 +213,27 @@ describe("take over / hand back use the existing per-chat switch", () => {
     expect(takeoverPlan({ assigned_to: null, needs_human: false }, null)).toBeNull();
   });
 
-  it("the new Inbox writes nothing the classic Inbox doesn't: same updates, same send endpoint", () => {
+  it("the new Inbox writes nothing the classic Inbox doesn't: same updates, same shared actions", () => {
     const classicView = src("components/inbox/inbox-view.tsx");
+    const actions = src("lib/inbox-actions.ts");
     const hook = src("components/inbox/v2/use-inbox.ts");
     const updates = (code: string) =>
       [...code.matchAll(/\.update\((\{[^)]*\})\)/g)].map((m) => m[1]!.replace(/\s+/g, " "));
-    expect(updates(hook)).toHaveLength(4);
-    // Every update the new hook makes is one the classic view makes.
-    for (const u of updates(hook)) expect(updates(classicView)).toContain(u);
+    // The hook's own updates are exactly the classic view's (unread, Mark as handled, close).
+    expect(updates(hook)).toHaveLength(3);
     expect(updates(hook).sort()).toEqual(updates(classicView).sort());
-    // No insert, upsert, delete or RPC of its own; one send endpoint, the classic one.
-    expect(hook).not.toMatch(/\.(insert|upsert|delete|rpc)\(/);
+    // Assign, text send and live updates: the helpers the classic Inbox and Home use (Batch 45).
+    for (const shared of ["assignConversation(", "sendInboxText(", "subscribeInboxChanges("]) {
+      expect(hook).toContain(shared);
+      expect(classicView).toContain(shared);
+    }
+    expect(updates(actions)).toEqual(["{ assigned_to: assignee }"]);
+    // No insert, upsert, delete or RPC of its own; its one endpoint is the classic template send.
+    expect(hook).not.toMatch(/\.(insert|upsert|delete|rpc|channel)\(/);
     expect([...hook.matchAll(/"\/api\/[^"]+"/g)].map((m) => m[0])).toEqual([
       '"/api/whatsapp/send-message"',
-      '"/api/whatsapp/send-message"',
     ]);
+    expect(classicView).toContain('message_type: "template"');
     // Take over / hand back go only through the classic assign and Mark-as-handled writes.
     const takeover = hook.slice(
       hook.indexOf("const handleTakeover"),

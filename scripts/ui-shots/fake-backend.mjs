@@ -77,6 +77,9 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
+/** Batch 45: chats (by index) whose customer last wrote 22-24 hours ago, so the window closes soon. */
+const CLOSING = { 1: 22 * HOUR + 20 * MIN, 12: 23 * HOUR + 5 * MIN };
+
 /** n conversations, newest first; the first few are hand-written for the shots. */
 export function makeConversations(n) {
   const rows = [];
@@ -120,7 +123,7 @@ export function makeConversations(n) {
       assigned_to: s ? s.assigned : [null, ME, NEHA, ARJUN][i % 4],
       whatsapp_account_id: ACCOUNT,
       last_message_at: ago(at),
-      last_customer_message_at: ago(i === 3 ? 3 * DAY : at),
+      last_customer_message_at: ago(i === 3 ? 3 * DAY : CLOSING[i] ?? at),
       unread_count: s ? s.unread : i % 6 === 0 ? 1 : 0,
       needs_human: s ? s.needs : i % 17 === 0,
       needs_human_reason: s?.reason ?? (i % 17 === 0 ? "asked_for_human" : null),
@@ -128,6 +131,8 @@ export function makeConversations(n) {
       needs_human_at: s?.needs ? ago(at) : null,
       handover_state: s?.needs ? "sent" : null,
       created_at: ago(at + DAY),
+      // Batch 45: the customer's newest message (a chat's 24-hour window).
+      last_in: [{ created_at: ago(i === 3 ? 3 * DAY : CLOSING[i] ?? at) }],
       contact: {
         id: `00000000-0000-4000-8000-${String(5000 + i).padStart(12, "0")}`,
         name: s ? s.name : `${first} ${last}`,
@@ -244,6 +249,19 @@ const AI_RUNS = (thread) => [
     sources: [],
     created_at: new Date(new Date(thread[3].created_at).getTime() - 2000).toISOString(),
   },
+];
+
+/** Batch 45: Aiden's latest replies (agent_reply) and Draft-mode drafts (suggest_reply), by chat index. */
+const FEED = [
+  [6, "Do you deliver to Pune?", "Yes, we deliver across India. Pune orders reach you in 2 to 3 days, free above ₹5,000.", 2 * MIN],
+  [7, "Are you open on Sunday?", "Yes, our Jaipur store is open on Sunday from 11 am to 8 pm.", 9 * MIN],
+  [8, "Can I exchange it for a different design?", "Of course. Exchanges are free within 7 days. Bring the bill or share your order number here.", 14 * MIN],
+  [9, "Where is my order?", "Order KC-2033 left our store at 2 pm and reaches you tomorrow.", 31 * MIN],
+];
+const DRAFTS = [
+  [0, "Can I get the Meenakari set by Friday? It's for my sister's wedding", "Yes, Asha. If you order by Wednesday 6 pm we can deliver the Meenakari set by Friday. Shall I reserve it for you?", 2 * MIN],
+  [10, "Do you do custom engraving?", "Yes, we engrave names or dates on rings and pendants. It takes 2 days.", 5 * MIN],
+  [11, "What are your store timings on Sunday?", "On Sunday we are open from 11 am to 8 pm.", 8 * MIN],
 ];
 
 /** Campaigns in every state the list shows (Batch 41). */
@@ -387,6 +405,8 @@ function applyFilters(rows, filters) {
  */
 export function createBackend(options = {}) {
   const conversations = makeConversations(options.conversations ?? 40);
+  /** Batch 45: Aiden's mode for Home ("replying" | "draft" | "off"); set_mode moves it. */
+  const aiden = { mode: options.aidenMode ?? "replying" };
   const campaigns = options.campaigns === 0 ? [] : makeCampaigns();
   const templates = options.templates === 0 ? [] : makeTemplates();
   const threads = new Map();
@@ -423,13 +443,34 @@ export function createBackend(options = {}) {
     ],
     conversations: () => conversations,
     messages: (q) => {
-      const cid = q.filters.conversation_id?.value;
+      const f = q.filters.conversation_id;
+      if (f?.op === "in") {
+        // Batch 45: Aiden's sent replies (the feed's runs, sent 2 s later).
+        if (aiden.mode !== "replying") return [];
+        return FEED.map(([i, , reply, at]) => ({
+          conversation_id: conversations[i]?.id, direction: "outbound", body: reply, sent_by: null, metadata: null,
+          created_at: ago(at - 2000),
+        }));
+      }
+      const cid = f?.value;
       return cid ? threadOf(cid).slice().reverse() : [];
     },
     ai_runs: (q) => {
       const cid = q.filters.conversation_id?.value;
-      return cid ? AI_RUNS(threadOf(cid)) : [];
+      if (cid && q.filters.conversation_id.op === "eq") return AI_RUNS(threadOf(cid));
+      const task = q.filters.task?.value;
+      if (task === "agent_reply" && aiden.mode === "replying")
+        return FEED.map(([i, question, reply, at]) => ({
+          conversation_id: conversations[i]?.id, output: reply, input_summary: question, sources: [], created_at: ago(at),
+        }));
+      if (task === "suggest_reply" && aiden.mode === "draft")
+        return DRAFTS.map(([i, question, draft, at], k) => ({
+          id: `run-draft-${k}`, conversation_id: conversations[i]?.id, output: draft, input_summary: question, created_at: ago(at),
+        }));
+      return [];
     },
+    ai_agents: () => [{ organization_id: ORG, is_default: true, mode: aiden.mode }],
+    organization_ai_settings: () => [{ organization_id: ORG, ai_enabled: aiden.mode !== "off" }],
     message_templates: () => templates,
     campaigns: () => campaigns,
     campaign_recipients: (q) => (q.filters.campaign_id ? makeRecipients(q.filters.campaign_id.value) : []),
@@ -449,10 +490,17 @@ export function createBackend(options = {}) {
     contacts: () =>
       conversations.slice(0, 6).map((c) => ({ ...c.contact, conversations: [{ id: c.id, last_message_at: c.last_message_at }] })),
     flow_triggers: () => [],
-    flow_runs: () => [],
+    flow_runs: (q) =>
+      q.filters.started_at
+        ? [["f-welcome", 22], ["f-price", 19], ["f-order", 17]].flatMap(([flow_id, n]) => Array.from({ length: n }, () => ({ flow_id })))
+        : [],
+    flows: () => [
+      { id: "f-welcome", name: "Welcome message" },
+      { id: "f-price", name: "Keyword “price”" },
+      { id: "f-order", name: "Order status" },
+    ],
     wa_forms: () => [],
-    // Batch 46: Aiden replying (the new Inbox's "Aiden on it"), and a shop order for the first chat.
-    ai_agents: () => [{ id: "agent1", organization_id: ORG, is_default: true, mode: options.aidenMode ?? "replying" }],
+    // Batch 46: a shop order for the first chat (the new Inbox's customer panel).
     orders: (q) =>
       q.filters.contact_id?.value === conversations[0]?.contact.id
         ? [
@@ -481,8 +529,15 @@ export function createBackend(options = {}) {
     const limit = Number(q.params.get("limit") ?? "0");
     if (limit && method === "GET") rows = rows.slice(0, limit);
     // Campaign recipients: 20 rows drawn, but counted like a real 4,210-recipient send.
+    const select = q.params.get("select") ?? "";
     const total =
-      q.table === "campaign_recipients" ? (method === "HEAD" ? 2580 : 4210) : rows.length;
+      q.table === "campaign_recipients"
+        ? method === "HEAD"
+          ? 2580
+          : 4210
+        : q.table === "conversations" && select.includes("messages!inner")
+          ? 3 // Batch 45: chats Aiden is in right now
+          : rows.length;
     const headers = {
       "content-type": "application/json",
       "content-range": `0-${Math.max(0, rows.length - 1)}/${total}`,
@@ -548,6 +603,15 @@ export function createBackend(options = {}) {
           total_count: 4210,
         }));
       return reply(rows.slice(Number(args.p_offset ?? 0), Number(args.p_offset ?? 0) + Number(args.p_limit ?? 50)));
+    }
+    if (fn === "analytics_attribution_summary") {
+      const today = args.p_from === args.p_to;
+      return reply({
+        timezone: "Asia/Kolkata", from: args.p_from, to: args.p_to, window_hours: 72, currency: "INR",
+        orders_total: today ? 4 : 61, revenue_total: today ? 212000 : 2940000,
+        orders_attributed: today ? 3 : 44, revenue_attributed: today ? 184000 : 2210000,
+        orders_unattributed: 1, revenue_unattributed: 28000, median_hours_to_conversion: 5, messages_sent: 2630,
+      });
     }
     if (fn === "analytics_campaign_failures") {
       return reply([
@@ -627,6 +691,19 @@ export function createBackend(options = {}) {
         billing_account: { id: null, name: null, gstin: null, billing_email: null, state_code: null },
         period: { start: ago(20 * DAY), end: ago(-10 * DAY) },
       });
+    }
+    if (url.pathname === "/api/ai/employee") {
+      let body = {};
+      try {
+        body = JSON.parse(request.postData() || "{}");
+      } catch {
+        body = {};
+      }
+      if (body.action === "set_mode") {
+        aiden.mode = String(body.mode);
+        return json({ ok: true, mode: aiden.mode });
+      }
+      return json({});
     }
     if (url.pathname === "/api/campaigns/audience") {
       return json({ matched: 1240, eligible: 1186, excluded: 54, sample: { name: "Asha Iyer", phone: "+919820011223", attributes: {} } });

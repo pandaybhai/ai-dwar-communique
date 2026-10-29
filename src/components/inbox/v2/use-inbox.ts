@@ -5,6 +5,8 @@ import { useOrg } from "@/lib/org-context";
 import { logActivity } from "@/lib/activity";
 import { emitClientEvent } from "@/lib/events-capture";
 import { callApi } from "@/lib/whatsapp-client";
+import { assignConversation, sendInboxText } from "@/lib/inbox-actions";
+import { subscribeInboxChanges } from "@/lib/inbox-realtime";
 import { inboxChanged } from "@/hooks/use-inbox-counts";
 import { useAppCommand } from "@/lib/app-commands";
 import type { TemplateSendPayload } from "@/components/templates/template-picker-dialog";
@@ -26,8 +28,10 @@ export const CONVERSATION_COLUMNS =
 
 /**
  * Batch 46: the new Inbox's data. The same reads, realtime channel and writes
- * as the classic InboxView (inbox-view.tsx, left untouched so the flag-off
- * Inbox stays exactly as it was); Batch 50 drops the classic copy. Adds one
+ * as the classic InboxView (inbox-view.tsx, left as it is so the flag-off
+ * Inbox stays exactly as it was): assign, text send and live updates through
+ * the shared src/lib/inbox-actions.ts / inbox-realtime.ts (Batch 45), the
+ * rest as the classic view writes them; Batch 50 drops the classic copy. Adds one
  * read: Aiden's workspace mode, so the list only says "Aiden on it" when
  * Aiden replies.
  */
@@ -160,52 +164,36 @@ export function useInbox() {
     void loadMembers();
   }, [loadConversations, loadMembers]);
 
-  // ---- realtime (the classic Inbox's channel and handling) ----
+  // ---- realtime (the Inbox's channel, subscribeInboxChanges, and its handling) ----
   useEffect(() => {
     if (!orgId) return;
-    const channel = aidwar
-      .channel(`inbox:${orgId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "messages", filter: `organization_id=eq.${orgId}` },
-        (payload) => {
-          const row = payload.new as MessageRow | undefined;
-          void loadConversations();
-          if (!row || row.conversation_id !== activeIdRef.current) return;
-          setMessages((prev) => {
-            const idx = prev.findIndex((m) => m.id === row.id);
-            if (idx === -1) {
-              const pending =
-                row.direction === "outbound"
-                  ? prev.findIndex((m) => m.id.startsWith("sending-") && m.body === row.body)
-                  : -1;
-              if (pending !== -1) {
-                const next = [...prev];
-                next[pending] = row;
-                return next;
-              }
-              return [...prev, row];
+    return subscribeInboxChanges(`inbox:${orgId}`, orgId, {
+      onMessage: (payload) => {
+        const row = payload.new as MessageRow | undefined;
+        void loadConversations();
+        if (!row || row.conversation_id !== activeIdRef.current) return;
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === row.id);
+          if (idx === -1) {
+            // The real row of a message shown while it was sending takes its place (Batch 39).
+            const pending =
+              row.direction === "outbound"
+                ? prev.findIndex((m) => m.id.startsWith("sending-") && m.body === row.body)
+                : -1;
+            if (pending !== -1) {
+              const next = [...prev];
+              next[pending] = row;
+              return next;
             }
-            const next = [...prev];
-            next[idx] = { ...next[idx]!, ...row };
-            return next;
-          });
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "conversations",
-          filter: `organization_id=eq.${orgId}`,
-        },
-        () => void loadConversations(),
-      )
-      .subscribe();
-    return () => {
-      void aidwar.removeChannel(channel);
-    };
+            return [...prev, row];
+          }
+          const next = [...prev];
+          next[idx] = { ...next[idx]!, ...row };
+          return next;
+        });
+      },
+      onConversation: () => void loadConversations(),
+    });
   }, [orgId, loadConversations]);
 
   // The newest open wins (Batch 28).
@@ -272,17 +260,7 @@ export function useInbox() {
         created_at: new Date().toISOString(),
       },
     ]);
-    const { error: sendError } = await callApi<{ message_id: string }>(
-      "/api/whatsapp/send-message",
-      {
-        body: {
-          organization_id: orgId,
-          conversation_id: activeConversation.id,
-          message_type: "text",
-          body: text,
-        },
-      },
-    );
+    const { error: sendError } = await sendInboxText(orgId, activeConversation.id, text);
     setSending(false);
     if (sendError) {
       setMessages((prev) => prev.filter((m) => m.id !== pendingId));
@@ -317,32 +295,14 @@ export function useInbox() {
     return true;
   };
 
-  /** The classic assign write (and its activity + event); `said` replaces the toast. */
-  const handleAssign = async (assignee: string | null, said?: string | null): Promise<boolean> => {
+  /** The Inbox's assign (assignConversation: the update, its toast, activity and event). */
+  const handleAssign = async (assignee: string | null): Promise<boolean> => {
     if (!activeConversation || !orgId) return false;
-    const { error: err } = await aidwar
-      .from("conversations")
-      .update({ assigned_to: assignee })
-      .eq("id", activeConversation.id);
-    if (err) {
-      toast.error("We couldn't update the assignment. Please try again.");
-      return false;
-    }
+    const saved = await assignConversation(orgId, activeConversation, assignee);
+    if (!saved) return false;
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_to: assignee } : c)),
     );
-    if (said !== null)
-      toast.success(said ?? (assignee ? "Conversation assigned." : "Conversation unassigned."));
-    void logActivity("conversation_assigned", orgId, {
-      conversation_id: activeConversation.id,
-      assigned_to: assignee,
-    });
-    emitClientEvent("conversation.assigned", orgId, {
-      entityType: "conversation",
-      entityId: activeConversation.id,
-      whatsappAccountId: activeConversation.whatsapp_account_id ?? null,
-      properties: { assigned_to: assignee },
-    });
     return true;
   };
 
@@ -368,25 +328,25 @@ export function useInbox() {
     return true;
   };
 
-  /** Take over from Aiden / hand back: only the two classic writes above (takeoverPlan). */
+  /** Take over from Aiden / hand back: only the Inbox's assign and Mark-as-handled writes (takeoverPlan). */
   const handleTakeover = async (): Promise<void> => {
     if (!activeConversation) return;
     const plan = takeoverPlan(activeConversation, userId);
     if (!plan) return;
     if (plan.action === "take_over") {
-      await handleAssign(
-        userId,
-        "You took over. Aiden won't reply in this chat until you hand it back.",
-      );
+      await handleAssign(userId);
       return;
     }
-    let ok = true;
+    let unassigned = false;
     for (const write of plan.writes) {
-      if ("assigned_to" in write) ok = (await handleAssign(null, null)) && ok;
-      else ok = (await handleResolveNeedsHuman(null)) && ok;
-      if (!ok) return;
+      if ("assigned_to" in write) {
+        if (!(await handleAssign(null))) return;
+        unassigned = true;
+      } else if (
+        !(await handleResolveNeedsHuman(unassigned ? null : "Aiden is back on this chat."))
+      )
+        return;
     }
-    toast.success("Aiden is back on this chat.");
   };
 
   const handleToggleStatus = async () => {

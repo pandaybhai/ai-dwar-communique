@@ -1255,6 +1255,51 @@ html[data-design="new"] ::selection {
   }
 }
 
+/* Batch 45, Home: a waiting customer's row arriving (staggered by --i), the
+   oldest one also keeping the gold halo; Aiden's drafts as a stack, the one
+   just sent sliding away and the next rising. */
+.nd-slide-in {
+  animation: nd-slide 0.5s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 180ms);
+}
+.nd-oldest {
+  animation:
+    nd-slide 0.5s var(--ease-out) both,
+    nd-pulse-gold 2s ease-in-out 0.5s infinite;
+}
+@keyframes nd-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.nd-draft {
+  transition:
+    transform 0.45s var(--ease-out),
+    opacity 0.45s var(--ease-out);
+}
+.nd-draft[data-pos="1"] {
+  transform: translateY(14px) scale(0.96);
+  opacity: 0.7;
+}
+.nd-draft[data-pos="2"] {
+  transform: translateY(28px) scale(0.92);
+  opacity: 0.4;
+}
+.nd-draft[data-pos="gone"] {
+  animation: nd-draft-out 0.45s var(--ease-out) forwards;
+}
+@keyframes nd-draft-out {
+  to {
+    transform: translateX(110%) rotate(6deg);
+    opacity: 0;
+  }
+}
+
 /* A page arriving; the phone's bottom sheet rising. */
 .nd-view-enter {
   animation: nd-fade 0.35s ease-out both;
@@ -1306,7 +1351,13 @@ html[data-chat-open] .nd-bottom-bar {
   .nd-bar-grow,
   .nd-view-enter,
   .nd-sheet-up,
-  .nd-scrim-in {
+  .nd-scrim-in,
+  .nd-slide-in,
+  .nd-oldest,
+  .nd-draft[data-pos="gone"] {
     animation: none !important;
+  }
+  .nd-draft {
+    transition: none;
   }
 }

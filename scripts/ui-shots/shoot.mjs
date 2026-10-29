@@ -3,7 +3,7 @@
  *
  *   VITE_AIDWAR_SUPABASE_URL=http://fake-backend.test VITE_AIDWAR_SUPABASE_ANON_KEY=fake \
  *     npx vite dev --port 5199 --host 127.0.0.1
- *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b44] [--design classic|new]
+ *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b44|b45] [--design classic|new]
  *
  * Uses the Chromium + Playwright installed on the machine (not a project
  * dependency). The dev server must point the app at the fake backend host:
@@ -157,6 +157,14 @@ const SCENARIOS_B44 = {
   billing: { path: "/app/billing", conversations: 40, wait: "h1" },
 };
 
+/** Batch 45: the new Home in each of Aiden's modes (run with --design new; classic = Batch 41's Home). */
+const SCENARIOS_B45 = {
+  "home-replying": { path: "/app", conversations: 40, aidenMode: "replying", wait: "text=Aiden is replying", settle: 4500 },
+  "home-draft": { path: "/app", conversations: 40, aidenMode: "draft", wait: "text=ready for you", settle: 3000 },
+  "home-off": { path: "/app", conversations: 40, aidenMode: "off", wait: "text=customers are waiting", settle: 3000 },
+  "home-classic": { path: "/app", conversations: 40, wait: "h1", fullPage: true },
+};
+
 /** Batch 46: the new Inbox (run with --design new; --design classic shows flag off is unchanged). */
 const chatAt = (i) => `00000000-0000-4000-8000-${String(1000 + i).padStart(12, "0")}`;
 const SCENARIOS_B46 = {
@@ -189,7 +197,8 @@ const SCENARIOS_B46 = {
   },
 };
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b46: SCENARIOS_B46 };
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46 };
 
 const consoleErrors = [];
 
@@ -200,8 +209,8 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     templates: scenario.templates,
     lowCredits: scenario.lowCredits,
     journey: scenario.journey,
-    aidenMode: scenario.aidenMode,
     newDesign: DESIGN === "new",
+    aidenMode: scenario.aidenMode,
   });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
@@ -238,7 +247,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
   await page.goto(`${BASE}${scenario.path}`, { waitUntil: "networkidle" });
   if (scenario.wait) await page.waitForSelector(scenario.wait, { timeout: 15000 }).catch(() => {});
   if (scenario.act) await scenario.act(page);
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(scenario.settle ?? 800);
   if (scenario.fullPage) {
     // The app's work area scrolls, not the window: grow the window to fit it.
     const extra = await page.evaluate(() => {
