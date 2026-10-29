@@ -4,6 +4,8 @@ import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { useOrg } from "@/lib/org-context";
 import { CampaignsView } from "@/components/campaigns/campaigns-view";
+import { useNewDesign } from "@/lib/new-design";
+import { CampaignsOff, NewCampaigns } from "@/components/campaigns-v2/new-campaigns";
 
 export const Route = createFileRoute("/app/campaigns/")({
   head: () => ({
@@ -20,8 +22,26 @@ export const Route = createFileRoute("/app/campaigns/")({
       },
     ],
   }),
-  component: CampaignsPage,
+  component: CampaignsRoute,
 });
+
+/**
+ * Batch 47: the new design's Campaigns (src/components/campaigns-v2) when the
+ * workspace has new_design on; otherwise the Batch 41 page below, unchanged.
+ */
+function CampaignsRoute() {
+  return useNewDesign() ? <NewCampaignsPage /> : <CampaignsPage />;
+}
+
+function NewCampaignsPage() {
+  const { enabled, loading } = useFeatureFlag("campaigns");
+  const { active, loading: orgLoading } = useOrg();
+  if (loading || orgLoading || !active) return <PageSkeleton />;
+  if (!enabled) return <CampaignsOff />;
+  return (
+    <NewCampaigns organizationId={active.organization.id} timezone={active.organization.timezone} />
+  );
+}
 
 function CampaignsPage() {
   const { enabled, loading } = useFeatureFlag("campaigns");
