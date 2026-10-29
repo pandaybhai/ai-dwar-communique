@@ -119,7 +119,7 @@ export const AUDIENCES: Array<{
   },
 ];
 
-const MODES = [
+export const MODES = [
   {
     id: "off",
     label: "Off",
@@ -140,19 +140,20 @@ const MODES = [
   },
 ] as const;
 
-export function ProductProof({
-  audience,
-  onAudienceChange,
-}: {
-  audience: ProofAudience;
-  onAudienceChange: (audience: ProofAudience) => void;
-}) {
+export type ProofMode = (typeof MODES)[number]["id"];
+
+/**
+ * The walkthrough's state, shared by this look and the new landing's
+ * (Batch 51, site-v2/proof-v2.tsx): the business type's examples, the picked
+ * question and mode, and the one "proof_engaged" event.
+ */
+export function useProductProof(audience: ProofAudience) {
   const group = useMemo(
     () => AUDIENCES.find((a) => a.id === audience) ?? AUDIENCES[0]!,
     [audience],
   );
   const [exampleId, setExampleId] = useState(group.examples[0]!.id);
-  const [mode, setMode] = useState<(typeof MODES)[number]["id"]>("replying");
+  const [mode, setMode] = useState<ProofMode>("replying");
   const engaged = useRef(false);
 
   useEffect(() => {
@@ -167,6 +168,18 @@ export function ProductProof({
       trackMarketing("proof_engaged", props);
     }
   }
+
+  return { group, example, mode, setMode, setExampleId, engage };
+}
+
+export function ProductProof({
+  audience,
+  onAudienceChange,
+}: {
+  audience: ProofAudience;
+  onAudienceChange: (audience: ProofAudience) => void;
+}) {
+  const { group, example, mode, setMode, setExampleId, engage } = useProductProof(audience);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_1.05fr] lg:items-start lg:gap-12">
@@ -279,13 +292,8 @@ export function ProductProof({
   );
 }
 
-export function ExampleChat({
-  example,
-  mode,
-}: {
-  example: Example;
-  mode: "off" | "draft" | "replying";
-}) {
+/** The question, then the reply: 0, 1, 2 (both at once with reduced motion). */
+export function useShownSteps(example: Example, mode: string): number {
   const [shown, setShown] = useState(0);
 
   useEffect(() => {
@@ -304,6 +312,18 @@ export function ExampleChat({
       clearTimeout(b);
     };
   }, [example, mode]);
+
+  return shown;
+}
+
+export function ExampleChat({
+  example,
+  mode,
+}: {
+  example: Example;
+  mode: "off" | "draft" | "replying";
+}) {
+  const shown = useShownSteps(example, mode);
 
   const sent = mode === "replying";
   const heldBack = mode === "off";
