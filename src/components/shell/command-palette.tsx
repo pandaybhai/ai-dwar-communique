@@ -23,6 +23,7 @@ import { runAppCommand } from "@/lib/app-commands";
 import { useThemeChoice } from "@/lib/theme";
 import { initials } from "@/components/inbox/inbox-utils";
 import { groupNav, type NavItem } from "./use-nav";
+import { settingsJumps } from "@/components/settings-v2/settings-jumps";
 
 type ContactHit = { conversationId: string; name: string | null; phone: string };
 
@@ -265,6 +266,30 @@ export function CommandPalette({
                     New template
                   </Item>
                 ) : null}
+              </CommandPrimitive.Group>
+            ) : null}
+
+            {design === "new" ? (
+              // Batch 50: "profile", "API", "team" jump straight to their Settings section.
+              <CommandPrimitive.Group heading="Settings" className={GROUP_HEADING}>
+                {settingsJumps({
+                  settingsVisible: !restricted && items.some((i) => i.to === "/app/settings"),
+                  isFeatureEnabled,
+                  can,
+                }).map((j) => (
+                  <Item
+                    key={j.key}
+                    value={`settings ${j.value}`}
+                    icon={<UserRound />}
+                    hint="Settings"
+                    onSelect={() => {
+                      onOpenChange(false);
+                      void navigate({ to: "/app/settings", search: { tab: j.tab } as never });
+                    }}
+                  >
+                    {j.label}
+                  </Item>
+                ))}
               </CommandPrimitive.Group>
             ) : null}
 

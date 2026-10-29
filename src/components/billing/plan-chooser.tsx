@@ -58,7 +58,7 @@ const LIMIT_COPY: Record<string, string> = {
   knowledge_pages: "website pages read",
 };
 
-function limitLines(limits: Record<string, unknown>): string[] {
+export function limitLines(limits: Record<string, unknown>): string[] {
   return Object.entries(limits)
     .filter(([key, value]) => key in LIMIT_COPY && (typeof value === "number" || value === null))
     .slice(0, 4)
@@ -203,7 +203,9 @@ export function PlanChooser({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold tracking-tight text-foreground">{heading}</h2>
+        <h2 className="text-xl font-bold tracking-tight text-foreground nd:font-display nd:text-[1.375rem] nd:font-semibold nd:tracking-normal">
+          {heading}
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">{sub}</p>
       </div>
 
@@ -232,6 +234,11 @@ export function PlanChooser({
               className={cn(
                 "flex flex-col rounded-2xl transition-shadow duration-200",
                 suggested ? "border-primary shadow-lg shadow-primary/10" : "hover:shadow-md",
+                // Batch 50, new design only: premium cards, Aiden's pick ringed
+                // in emerald, the plan you had in ink.
+                "nd:rounded-[20px] nd:shadow-md",
+                suggested && "nd:border-aiden nd:shadow-lg nd:ring-2 nd:ring-aiden/25",
+                current && !suggested && "nd:border-ink nd:ring-1 nd:ring-ink",
               )}
             >
               <CardHeader className="pb-3">
@@ -254,10 +261,10 @@ export function PlanChooser({
               <CardContent className="flex flex-1 flex-col gap-4">
                 <div>
                   {custom ? (
-                    <p className="text-2xl font-bold">Custom</p>
+                    <p className="text-2xl font-bold nd:font-display nd:font-semibold">Custom</p>
                   ) : (
                     <>
-                      <p className="text-2xl font-bold">
+                      <p className="text-2xl font-bold nd:font-display nd:text-[1.75rem] nd:font-semibold nd:tabular-nums">
                         {money(plan.price_monthly, plan.currency)}
                         <span className="text-sm font-normal text-muted-foreground"> / month</span>
                       </p>

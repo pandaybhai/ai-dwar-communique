@@ -269,7 +269,7 @@ export function DemoForm({
         <p
           ref={headingRef}
           tabIndex={-1}
-          className="text-xs font-semibold uppercase tracking-wide text-primary outline-none"
+          className="text-xs font-semibold uppercase tracking-wide text-primary outline-none nd:text-sm nd:normal-case nd:tracking-normal"
         >
           Step {step} of 2
         </p>

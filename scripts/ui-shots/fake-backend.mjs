@@ -420,7 +420,10 @@ export function createBackend(options = {}) {
   };
   const org = (id, name) => ({
     id, name, slug: name.toLowerCase().replace(/\W+/g, "-"), status: "active", timezone: "Asia/Kolkata",
-    plan_status: "active", plan_version_id: "pv1", trial_ends_at: null,
+    // Batch 50: --plan trial | locked | past_due | paused shows Billing's other states.
+    plan_status: options.planStatus ?? "active",
+    plan_version_id: options.planStatus === "trial" ? null : "pv1",
+    trial_ends_at: options.planStatus === "trial" ? ago(-9 * DAY) : null,
   });
   const profiles = [
     { id: ME, full_name: "Riya Kapoor", email: "riya@kesar.example", is_super_admin: false },
@@ -699,9 +702,105 @@ export function createBackend(options = {}) {
         generated_at: new Date().toISOString(),
       });
     }
+    if (url.pathname === "/api/onboarding/journey" && options.journeyFull) {
+      // Batch 50: /app/start on its "connect" step, with what step 1 learned.
+      return json({
+        state: {
+          step: "connect",
+          facts: { hasOrg: true, hasMaterial: true, connected: false, connectSkipped: false, tested: false, wentLive: false },
+          recorded: ["business"],
+          business: { name: "Kesar & Co.", logoUrl: null, color: "#8a3210" },
+          website: { sourceId: "ks1", host: "kesar.example", url: "https://kesar.example", status: "synced", itemCount: 126, lastError: null },
+          number: null,
+          mode: "draft",
+          active: true,
+        },
+        can_configure: true,
+        owner_phone: "+919820000000",
+        learned: [],
+      });
+    }
     if (url.pathname === "/api/onboarding/journey") {
       // Batch 40: an owner who left the first-run journey at "connect" (Save & exit).
       return json(options.journey ? { state: { active: true, step: "connect" }, can_configure: true, owner_phone: null } : {});
+    }
+    if (url.pathname === "/api/billing/summary" && options.richBilling) {
+      // Batch 50: a month of real-looking spend for the new Billing page.
+      return json({
+        organization_id: ORG,
+        enabled: true,
+        wallet: { balance: 18640.5, held: 1200, available: options.lowCredits ? 180 : 17440.5, currency: "INR", lifetime_purchased: 60000, lifetime_consumed: 41359.5 },
+        plan: { key: "growth", name: "Growth", tagline: null, status: "active", price_monthly: 4999, limits: {}, highlights: [], trial_ends_at: null, billing_day: 3 },
+        ai_answers: { included: 1000, used: 812 },
+        usage: [
+          { category: "messaging", label: "Campaign and template messages", amount: 6420.8, count: 7466 },
+          { category: "ai", label: "AI answers over your allowance", amount: 0, count: 0 },
+          { category: "automation", label: "Flows and follow-ups", amount: 1184.2, count: 1377 },
+          { category: "inbox", label: "Inbox templates", amount: 212.4, count: 247 },
+        ],
+        usage_total: 7817.4,
+        rates: [
+          { category: "marketing", rate: 0.8631, currency: "INR" },
+          { category: "utility", rate: 0.1150, currency: "INR" },
+          { category: "authentication", rate: 0.1150, currency: "INR" },
+          { category: "service", rate: 0, currency: "INR" },
+        ],
+        packs: [
+          { id: "p1", name: "Starter pack", amount: 2000, bonus_amount: 0, currency: "INR" },
+          { id: "p2", name: "Growth pack", amount: 5000, bonus_amount: 250, currency: "INR" },
+          { id: "p3", name: "Scale pack", amount: 10000, bonus_amount: 750, currency: "INR" },
+        ],
+        settings: { low_credit_threshold: 500, auto_topup_enabled: false, monthly_budget_cap: null, campaign_approval_threshold: null, overdraft_limit: 0, credits_expire_months: 12 },
+        billing_account: { id: null, name: null, gstin: null, billing_email: null, state_code: null },
+        period: { start: ago(20 * DAY), end: ago(-10 * DAY) },
+      });
+    }
+    if (url.pathname === "/api/developer/keys") {
+      // Batch 50: Settings → API and webhooks.
+      return json({ keys: [{ id: "k1", name: "Shopify sync", masked: "adw_live_••••3f9a", created_at: ago(30 * DAY), last_used_at: ago(2 * HOUR), revoked_at: null }] });
+    }
+    if (url.pathname === "/api/developer/webhook") {
+      return json({ url: null, status: null, last_delivery: null, recent: [], mode: "multi", limit: 3, webhooks: [] });
+    }
+    if (url.pathname === "/api/billing/plan") {
+      const limits = (c, m, a, t) => ({ contacts: c, messages_monthly: m, ai_answers_monthly: a, team_members: t });
+      return json({
+        plan_status: options.planStatus ?? "active",
+        plan_version_id: options.planStatus === "trial" ? null : "pv1",
+        trial_ends_at: options.planStatus === "trial" ? ago(-9 * DAY) : null,
+        current_plan: options.planStatus === "trial" ? null : { key: "growth", name: "Growth" },
+        suggested_plan: options.planStatus === "trial" ? "growth" : null,
+        default_whatsapp: "+91 98200 00000",
+        gstin: null,
+        pending_payment: null,
+        plans: [
+          { key: "starter", name: "Starter", tagline: "One number, one person", plan_version_id: "pv0", price_monthly: 1999, price_annual: 19990, currency: "INR", limits: limits(2000, 5000, 300, 2), highlights: ["Aiden replies in your voice"] },
+          { key: "growth", name: "Growth", tagline: "For a busy shop", plan_version_id: "pv1", price_monthly: 4999, price_annual: 49990, currency: "INR", limits: limits(10000, 25000, 1000, 5), highlights: ["Campaigns and flows"] },
+          { key: "scale", name: "Scale", tagline: "Several numbers and teams", plan_version_id: "pv2", price_monthly: 11999, price_annual: 119990, currency: "INR", limits: limits(50000, 100000, 5000, 15), highlights: ["Public API"] },
+          { key: "enterprise", name: "Enterprise", tagline: "Talk to us", plan_version_id: "pv3", price_monthly: null, price_annual: null, currency: "INR", limits: limits(null, null, null, null), highlights: [] },
+        ],
+      });
+    }
+    if (url.pathname === "/api/billing/ledger") {
+      const kind = url.searchParams.get("kind");
+      if (kind === "payments")
+        return json({ entries: [{ id: "pay1", purpose: "Credit purchase", status: "paid", amount: 5900, currency: "INR", paid_at: ago(12 * DAY) }] });
+      return json({
+        entries: [
+          { id: "l1", entry_type: "debit_message", amount: -642.5, balance_after: 17440.5, currency: "INR", description: "Diwali drop: 744 messages", reference_type: null, created_at: ago(DAY) },
+          { id: "l2", entry_type: "purchase", amount: 5000, balance_after: 18083, currency: "INR", description: "Growth pack", reference_type: null, created_at: ago(12 * DAY) },
+          { id: "l3", entry_type: "bonus", amount: 250, balance_after: 13083, currency: "INR", description: "Growth pack bonus", reference_type: null, created_at: ago(12 * DAY) },
+        ],
+      });
+    }
+    if (url.pathname === "/api/billing/invoices") {
+      return json({
+        invoices: [
+          { id: "inv1", invoice_number: "AID/26-27/0142", kind: "tax_invoice", purpose: "plan_fee", status: options.planStatus === "past_due" || options.planStatus === "paused" ? "issued" : "paid", issue_date: ago(3 * DAY), due_date: ago(-4 * DAY), period_start: ago(3 * DAY), period_end: ago(-27 * DAY), total: 5898.82, amount_paid: 0, currency: "INR", pdf_path: "x.pdf", pay_url: "https://example.test/pay", roi_snapshot: null },
+          { id: "inv2", invoice_number: "AID/26-27/0118", kind: "tax_invoice", purpose: "credit_purchase", status: "paid", issue_date: ago(12 * DAY), due_date: null, period_start: null, period_end: null, total: 5900, amount_paid: 5900, currency: "INR", pdf_path: "y.pdf", pay_url: null, roi_snapshot: null },
+        ],
+        autopay: { enabled: false, status: null, cycle: null, next_charge_at: null, cancel_at_period_end: false, short_url: null, pay_per_period: true },
+      });
     }
     if (url.pathname === "/api/billing/summary") {
       return json({
@@ -725,6 +824,10 @@ export function createBackend(options = {}) {
         body = JSON.parse(request.postData() || "{}");
       } catch {
         body = {};
+      }
+      if (body.action === "handoff_alerts") {
+        // Batch 50: Settings → Notifications (the hand-off alerts card).
+        return json({ phones: ["+919820011111"], email: "riya@kesar.example", business_numbers: ["+919820000000"], owner_phone: "+919820011111", owner_is_business_number: false });
       }
       if (body.action === "set_mode") {
         aiden.mode = String(body.mode);

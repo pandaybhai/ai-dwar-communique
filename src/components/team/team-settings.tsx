@@ -81,7 +81,7 @@ function Hint({
       <Tooltip>
         <TooltipTrigger asChild>
           <span tabIndex={0} className="inline-flex">
-            <span className="pointer-events-none block opacity-50">{children}</span>
+            <span className="pointer-events-none block opacity-50 nd:opacity-100">{children}</span>
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs text-xs leading-relaxed">{reason}</TooltipContent>
@@ -354,7 +354,10 @@ export function TeamSettings() {
                         onValueChange={(v) => void changeRole(m, v as OrgRole)}
                         disabled={busyMember === m.id}
                       >
-                        <SelectTrigger className="w-36 rounded-full">
+                        <SelectTrigger
+                          className="w-36 rounded-full"
+                          aria-label={`Role for ${m.full_name ?? m.email ?? "this member"}`}
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -392,6 +395,7 @@ export function TeamSettings() {
                         variant="ghost"
                         size="sm"
                         className="rounded-full text-muted-foreground"
+                        aria-label={`Remove ${m.full_name ?? m.email ?? "this member"}`}
                         disabled={busyMember === m.id}
                         onClick={() => void removeMember(m)}
                       >
@@ -431,7 +435,7 @@ export function TeamSettings() {
                 className="sm:flex-1"
               />
               <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as OrgRole)}>
-                <SelectTrigger className="sm:w-40">
+                <SelectTrigger className="sm:w-40" aria-label="Role for the new teammate">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

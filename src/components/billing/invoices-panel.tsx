@@ -48,9 +48,9 @@ type AutoPay = {
 };
 
 const STATUS_COPY: Record<string, { label: string; tone: string }> = {
-  issued: { label: "Due", tone: "bg-amber-100 text-amber-800" },
-  paid: { label: "Paid", tone: "bg-emerald-100 text-emerald-800" },
-  partially_paid: { label: "Part paid", tone: "bg-amber-100 text-amber-800" },
+  issued: { label: "Due", tone: "bg-amber-100 text-amber-800 nd:bg-gold-bg nd:text-gold-ink" },
+  paid: { label: "Paid", tone: "bg-emerald-100 text-emerald-800 nd:bg-aiden-soft nd:text-aiden-deep" },
+  partially_paid: { label: "Part paid", tone: "bg-amber-100 text-amber-800 nd:bg-gold-bg nd:text-gold-ink" },
   void: { label: "Cancelled", tone: "bg-muted text-muted-foreground" },
 };
 
@@ -166,7 +166,7 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
             Auto-pay
           </CardTitle>
           {autopay?.enabled ? (
-            <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">On</Badge>
+            <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 nd:bg-aiden-soft nd:text-aiden-deep nd:hover:bg-aiden-soft">On</Badge>
           ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
@@ -255,16 +255,18 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
               description="Every payment and plan fee gets a GST invoice here, ready to download."
             />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Invoices">
               <table className="w-full min-w-[640px] text-sm">
-                <thead className="text-left text-xs uppercase text-muted-foreground">
+                <thead className="text-left text-xs uppercase text-muted-foreground nd:text-sm nd:font-semibold nd:normal-case">
                   <tr>
                     <th className="py-2">Date</th>
                     <th className="py-2">Invoice</th>
                     <th className="py-2">For</th>
                     <th className="py-2">Status</th>
                     <th className="py-2 text-right">Amount</th>
-                    <th className="py-2" />
+                    <th className="py-2">
+                      <span className="sr-only">Download</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

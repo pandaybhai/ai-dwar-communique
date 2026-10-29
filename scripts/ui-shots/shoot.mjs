@@ -232,6 +232,34 @@ const SCENARIOS_B47 = {
   cards: { path: "/app/cards", conversations: 40, wait: "h1", settle: 1200, fullPage: true },
 };
 
+/** Batch 50: Settings (each section), Billing in each plan state (run with --design new and classic). */
+const settingsAt = (tab, wait = "h1") => ({ path: `/app/settings${tab ? `?tab=${tab}` : ""}`, conversations: 10, wait, settle: 1200 });
+const SCENARIOS_B50 = {
+  settings: settingsAt(""),
+  "settings-team": settingsAt("team"),
+  "settings-whatsapp": settingsAt("whatsapp", "text=WhatsApp profile"),
+  "settings-api": settingsAt("api"),
+  "settings-notifications": settingsAt("notifications"),
+  "settings-sending": settingsAt("sending"),
+  "settings-danger": settingsAt("danger"),
+  "settings-palette": {
+    path: "/app/settings",
+    conversations: 10,
+    wait: "h1",
+    act: async (page) => {
+      await page.keyboard.press("Control+k");
+      await page.keyboard.type("profile", { delay: 40 });
+      await page.waitForTimeout(700);
+    },
+  },
+  billing: { path: "/app/billing", conversations: 10, richBilling: true, wait: "text=Credits available", settle: 6000, fullPage: true },
+  "billing-low": { path: "/app/billing", conversations: 10, richBilling: true, lowCredits: true, wait: "text=Credits available", settle: 6000 },
+  "billing-trial": { path: "/app/billing", conversations: 10, richBilling: true, plan: "trial", wait: "text=Choose your plan", settle: 6000, fullPage: true },
+  "billing-locked": { path: "/app/billing", conversations: 10, richBilling: true, plan: "locked", wait: "text=Reactivate", settle: 6000 },
+  "billing-past-due": { path: "/app/billing", conversations: 10, richBilling: true, plan: "past_due", wait: "text=Credits available", settle: 6000 },
+  start: { path: "/app/start?step=connect", conversations: 10, journeyFull: true, wait: "h1", settle: 1500 },
+};
+
 /** Batch 48: Customers (run with --design new; --design classic shows flag off is unchanged). */
 const firstContactRow = async (page) => {
   await page.getByRole("button", { name: /Asha Iyer/ }).first().click();
@@ -282,7 +310,7 @@ async function importTo(page, step) {
   }
 }
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b48: SCENARIOS_B48 };
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b48: SCENARIOS_B48, b50: SCENARIOS_B50 };
 
 const consoleErrors = [];
 
@@ -295,6 +323,9 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     journey: scenario.journey,
     newDesign: DESIGN === "new",
     aidenMode: scenario.aidenMode,
+    planStatus: scenario.plan,
+    richBilling: scenario.richBilling,
+    journeyFull: scenario.journeyFull,
     customers: scenario.customers,
   });
   const context = await browser.newContext({
