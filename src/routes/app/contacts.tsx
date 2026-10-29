@@ -10,14 +10,16 @@ import { ContactsView } from "@/components/contacts/contacts-view";
 import { SegmentsView } from "@/components/segments/segments-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type ContactsSearch = { opt_in?: string };
+type ContactsSearch = { opt_in?: string; tab?: "segments" };
 
 export const Route = createFileRoute("/app/contacts")({
   validateSearch: (search: Record<string, unknown>): ContactsSearch => {
-    const value = typeof search['opt_in'] === "string" ? (search['opt_in'] as string) : undefined;
-    return value && ["unknown", "opted_in", "opted_out"].includes(value)
-      ? { opt_in: value }
-      : {};
+    const value = typeof search["opt_in"] === "string" ? (search["opt_in"] as string) : undefined;
+    const out: ContactsSearch =
+      value && ["unknown", "opted_in", "opted_out"].includes(value) ? { opt_in: value } : {};
+    // Batch 44: ?tab=segments opens Segments (the new shell's Customers → Segments).
+    if (search["tab"] === "segments") out.tab = "segments";
+    return out;
   },
   head: () => ({
     meta: [
@@ -31,7 +33,7 @@ export const Route = createFileRoute("/app/contacts")({
 });
 
 function ContactsPage() {
-  const optInParam = Route.useSearch().opt_in;
+  const { opt_in: optInParam, tab } = Route.useSearch();
   const { enabled, loading } = useFeatureFlag("contacts");
   const { active } = useOrg();
   const organizationId = active?.organization.id ?? null;
@@ -86,8 +88,9 @@ function ContactsPage() {
         title="Contacts"
         description="Your customer list with tags and smart segments, so every campaign reaches exactly the right people."
       />
-      <Tabs defaultValue="contacts">
-        <TabsList className="mb-6">
+      <Tabs key={tab ?? "contacts"} defaultValue={tab ?? "contacts"}>
+        {/* The new design shows these as the Customers sub-tabs in the page head. */}
+        <TabsList className="mb-6 nd:hidden">
           <TabsTrigger value="contacts">All contacts</TabsTrigger>
           <TabsTrigger value="segments">Segments</TabsTrigger>
         </TabsList>

@@ -139,6 +139,16 @@ function tslibEsm(): Plugin {
 export default defineConfig({
   vite: {
     plugins: [buildInfoGenerator(), featureRegistryGuard(), featureRegistrySync(), tslibEsm()],
+    // Batch 44: `bun run test:new-design` runs the whole suite as a workspace
+    // with the new_design flag on (src/lib/test-support/new-design-on.ts).
+    ...({
+      test: {
+        setupFiles:
+          process.env["AIDWAR_TEST_NEW_DESIGN"] === "on"
+            ? ["./src/lib/test-support/new-design-on.ts"]
+            : [],
+      },
+    } as object),
   },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).

@@ -45,13 +45,23 @@ const GROUPS: Array<{ label: string; paths: string[] }> = [
 
 export type NavGroup = { label: string | null; items: NavItem[] };
 
-/** The nav items this person may see, exactly as the sidebar always filtered them. */
-export function useNavItems(): { items: NavItem[]; restricted: boolean } {
-  const { isFeatureEnabled, flagsLoading, active } = useOrg();
-  const automationsCount = useAutomationsCount(active?.organization.id ?? null);
-  const { can, loading: permsLoading } = usePermissions();
-  const status = active?.organization.plan_status;
-  const restricted = status === "locked" || status === "paused";
+export type NavFilterInput = {
+  isFeatureEnabled: (key: string) => boolean;
+  flagsLoading: boolean;
+  can: (permission: string) => boolean;
+  permsLoading: boolean;
+  planStatus: string | null | undefined;
+  automationsCount: number | null;
+};
+
+/**
+ * The nav items this person may see, exactly as the sidebar always filtered
+ * them. Pure (Batch 44) so the classic sidebar and the new shell share it and
+ * a test can walk every role and flag mix.
+ */
+export function filterNavItems(input: NavFilterInput): { items: NavItem[]; restricted: boolean } {
+  const { isFeatureEnabled, flagsLoading, can, permsLoading, planStatus, automationsCount } = input;
+  const restricted = planStatus === "locked" || planStatus === "paused";
   const items = restricted
     ? [
         ...NAV.filter(
@@ -73,6 +83,21 @@ export function useNavItems(): { items: NavItem[]; restricted: boolean } {
           !(item.to === "/app/automations" && automationsNavHidden(automationsCount)),
       );
   return { items, restricted };
+}
+
+/** The nav items this person may see, exactly as the sidebar always filtered them. */
+export function useNavItems(): { items: NavItem[]; restricted: boolean } {
+  const { isFeatureEnabled, flagsLoading, active } = useOrg();
+  const automationsCount = useAutomationsCount(active?.organization.id ?? null);
+  const { can, loading: permsLoading } = usePermissions();
+  return filterNavItems({
+    isFeatureEnabled,
+    flagsLoading,
+    can,
+    permsLoading,
+    planStatus: active?.organization.plan_status,
+    automationsCount,
+  });
 }
 
 /** The visible items in their groups, Home first (not while the workspace is locked). */

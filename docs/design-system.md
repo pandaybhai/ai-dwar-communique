@@ -1,5 +1,11 @@
 # AiDwar design system (Batch 39)
 
+> **Replaced by [`docs/design/spec.md`](design/spec.md) (Batch 44).** The new
+> design (approved preview: [`docs/design/preview.html`](design/preview.html))
+> is rolled out per workspace behind the `new_design` flag. This file still
+> describes the classic look that a workspace with the flag off sees, and it is
+> removed with that look after Batch 50.
+
 The live reference is **`/app/design`** (signed in; not in the nav — open it by
 address or from ⌘K → "Design system"). It shows every token and component in
 light and dark. This file is the short version for whoever builds the next

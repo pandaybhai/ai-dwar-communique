@@ -477,7 +477,7 @@ function TopBar({
 /* ------------------------------------------------------------- plan banner */
 
 /** "X days left" for a workspace on trial with no plan; a lock notice when locked. */
-function PlanBanner() {
+export function PlanBanner() {
   const { active } = useOrg();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const org = active?.organization;

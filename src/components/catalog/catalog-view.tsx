@@ -218,7 +218,7 @@ export function CatalogView({ organizationId }: { organizationId: string }) {
             setPage(0);
           }}
         >
-          <SelectTrigger className="w-[170px]">
+          <SelectTrigger className="w-[170px]" aria-label="Filter by collection">
             <SelectValue placeholder="Collection" />
           </SelectTrigger>
           <SelectContent>
@@ -237,7 +237,7 @@ export function CatalogView({ organizationId }: { organizationId: string }) {
             setPage(0);
           }}
         >
-          <SelectTrigger className="w-[150px]">
+          <SelectTrigger className="w-[150px]" aria-label="Filter by availability">
             <SelectValue placeholder="Availability" />
           </SelectTrigger>
           <SelectContent>
@@ -256,7 +256,7 @@ export function CatalogView({ organizationId }: { organizationId: string }) {
             setPage(0);
           }}
         >
-          <SelectTrigger className="w-[150px]">
+          <SelectTrigger className="w-[150px]" aria-label="Filter by source">
             <SelectValue placeholder="Source" />
           </SelectTrigger>
           <SelectContent>

@@ -1,0 +1,210 @@
+# AiDwar design spec (Batch 44 onward)
+
+The approved preview is **`docs/design/preview.html`** (the founder's artifact,
+saved unchanged). Open it in a browser: hash routes `#home #inbox #campaigns
+#customers #automate #shop`; the phone layout starts at 700px. Screenshots of it
+at 1440 and 390 are in `docs/screenshots/batch44/preview/`. When this file and
+the preview disagree, the preview wins, except where a colour is listed under
+"Contrast fixes" below.
+
+The live reference in the app is **`/app/design`** (every token and shared
+component, with motion). Batches 45 to 50 build screens from this spec.
+
+## Rollout
+
+The whole new look sits behind the per-workspace feature flag **`new_design`**
+(feature registry entry `new_design`, migration
+`supabase/aidwar-migrations/20261180_batch44_new_design_flag.sql`, default off).
+
+- Flag off (or the flag row missing): the Batch 39 to 41 look and sidebar,
+  byte for byte.
+- Flag on: `<html data-design="new">` turns on the tokens below, the new shell
+  (`src/components/shell/new-shell.tsx`) replaces the sidebar, and the `nd:`
+  Tailwind variant restyles the shadcn primitives.
+- One switch decides it: `useNewDesign()` in `src/lib/new-design.ts`.
+
+Rules for Batches 45 to 50 while the flag exists:
+
+1. New-look styles go behind `html[data-design="new"]` (CSS) or the `nd:`
+   variant (class strings): `nd:bg-ink nd:text-ink-foreground`.
+2. A screen rebuilt for the new design renders its new version only when
+   `useNewDesign()` is true and keeps its current version otherwise.
+3. The classic shell (`src/components/app-shell.tsx`) stays until Batch 50 is
+   done and the founder says to remove it.
+
+## Tokens
+
+Defined in `src/styles.css` under `html[data-app][data-design="new"]`. Light
+only for now; the dark values are defined under `.dark` but the theme switch is
+hidden while the new design is on (Batch 50 decides dark).
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--ground` → `background` | `#F3F7F6` | Porcelain page canvas |
+| `--surface` → `card`, `popover` | `#FFFFFF` | Cards, menus, inputs, the active nav pill |
+| `--line` → `border`, `input` | `#DCE7E4` | Every hairline and control border |
+| `--text` → `foreground`, `ink` | `#0D2B2A` | Deep peacock ink: text, dark primary buttons, the phone frame |
+| `--muted` → `muted-foreground` | `#4F6663` | Secondary text, idle nav items |
+| `--aiden` | `#0F9D74` | Emerald: Aiden's orb, bars, focus ring |
+| `--aiden-deep` → `primary` | `#0A7A5A` | Emerald text on light: links, "Aiden" labels, active tab text |
+| `--aiden-soft` | `#E3F6EF` | Selected tab, active bottom-bar item, tags |
+| `--aiden-glow` | `rgb(15 157 116 / .32)` | The orb's glow |
+| `--gold` | `#F2B544` | Decisions: gold buttons, waiting counts, beam |
+| `--gold-ink` | `#6E4100` | Text on gold and on gold-bg |
+| `--gold-bg` → `warning-soft` | `#FFF6E3` | The "needs you" card, system notes in a chat |
+| `--gold-line` → `warning-border` | `#F1DDB3` | Gold card hairlines, the countdown track |
+| `--bubble-in` → `secondary`, `muted` | `#EEF3F2` | Customer bubble on white, quiet fills |
+| `--bubble-out` | `#DDF6EA` | Business / Aiden bubble |
+| `--on-dark` → `ink-foreground` | `#FFFFFF` | Text on ink |
+| `--shadow-ink` | `rgb(13 43 42 / .16)` | The only shadow colour |
+| `--av1..5` / `--av1..5-ink` | peach, blue, violet, green, pink | Contact avatars |
+
+Status tokens map onto the family: `success*` = Aiden, `warning*` = gold;
+`danger*` and `info*` keep Batch 39's hues.
+
+### Contrast fixes (decided in Batch 44)
+
+Every text pair is at least 4.5:1. Two preview colours failed and were nudged
+darker; nothing else changed:
+
+| Pair | Preview | Ratio | Now | Ratio |
+| --- | --- | --- | --- | --- |
+| aiden-deep on aiden-soft / bubble-out | `#0B7F5E` | 4.44 / 4.38 | `#0A7A5A` | 4.74 / 4.68 |
+| gold-ink on gold | `#7A4800` | 4.16 | `#6E4100` | 4.74 |
+
+Checked pairs: text on ground 13.9, muted on ground 5.7, muted on white 6.2,
+muted on bubble-in 5.5, white on ink 15.0, gold-ink on gold-bg 8.1, every
+avatar pair 6.7 or more. Focus ring (aiden on ground) 3.2, above the 3:1 for
+non-text.
+
+## Type
+
+| Role | Face | Size / line / weight | Tracking |
+| --- | --- | --- | --- |
+| Display (page title, `h1`) | Bricolage Grotesque | clamp(32px, 4.6vw, 52px) / 1.02 / 800 | -1.6px (-1px on phones, 30px) |
+| Page head (`.phead h1`) | Bricolage Grotesque | clamp(28px, 3.4vw, 40px) / 1.05 / 800 | -1px |
+| Section head (`h2`, `.h3x`) | Bricolage Grotesque | 18 to 22px / 1.25 / 600 | 0 |
+| Big number | Bricolage Grotesque | 24 to 28px / 600 | tabular numbers |
+| Wordmark | Bricolage Grotesque | 22px / 800 | -0.5px, lower case "aidwar" |
+| Body | Instrument Sans | 16px / 1.5 / 400 | 0 |
+| Nav, buttons | Instrument Sans | 14 to 15px / 600 to 700 | 0 |
+| Small, meta | Instrument Sans | 13 to 14px / 500 | 0 |
+| Bottom-bar label | Instrument Sans | 11.5px / 600 | 0 |
+
+Fonts load from Google Fonts in the document head (no package). Labels are
+never tracked capitals: under the new design `type-label` is sentence case,
+untracked.
+
+## Radii
+
+| Thing | Radius |
+| --- | --- |
+| Buttons, inputs, kbd hosts | 11 to 12px (`rounded-lg` = 11px) |
+| Menus, chat rows, suggestion box | 14px (`rounded-xl` = 15px) |
+| Cards, feed items, drafts | 18 to 20px (`rounded-2xl` = 19px) |
+| Big panels (inbox) | 22px (`rounded-3xl` = 23px) |
+| Bottom sheet | 24px top corners |
+| Phone frame / screen | 36px / 28px |
+| Nav items, tabs, chips, counts | full pill |
+
+`--radius` is 11px under the new design; Tailwind's `rounded-*` steps follow.
+
+## Shadows
+
+All from one colour, `--shadow-ink`, soft and low:
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `shadow-xs` | `0 1px 2px` | Active nav pill, chat bubbles |
+| `shadow-sm` | `0 1px 2px` + `0 8px 20px -16px` | Buttons on hover, small cards |
+| `shadow-md` | `0 10px 28px -20px` | Feed items, list cards |
+| `shadow-lg` | `0 18px 40px -16px` | Menus, popovers |
+| `shadow-xl` | `0 20px 50px -30px` | Big panels, the bulk bar |
+| `shadow-2xl` | `0 30px 60px -30px` | Phone frame, dialogs, sheets |
+
+## Motion
+
+- Easing `cubic-bezier(.2,.8,.2,1)` for everything that arrives; linear only
+  for the beam.
+- Durations: hover 200 to 250ms; list items slide in 500ms (`translateY(-12px)
+  scale(.98)` to rest); views fade 350ms (`translateY(6px)`); sheets rise 300ms;
+  bars grow 1.2s; numbers tick 1.2s ease-out cubic.
+- Only `transform` and `opacity` animate (plus `background-color` / `color` on
+  hover). Never `transition: all`, never width / height / top / left.
+- Loops (orb ripple 2.4s, orb breathe 4s, beam 4s, caret blink 1s, oldest
+  waiting pulse 2s) are reserved for live state: Aiden working, Aiden waiting,
+  something needs you.
+- `prefers-reduced-motion: reduce` turns every animation and transition off;
+  tickers show the final number, typing shows the whole text, lists show all
+  items.
+
+## Layout
+
+- Container: max 1200px, centred, 16px side gutter (safe-area aware), 28px
+  between blocks.
+- Desktop top bar (over 700px): wordmark, six pill nav items (Home, Inbox with
+  the gold waiting count, Campaigns, Customers, Automate, Shop), spacer,
+  "Search or jump ⌘K" (opens the command palette), the avatar menu.
+- Phone (700px and under): wordmark and avatar on top; a fixed bottom bar
+  Home / Inbox (gold badge) / Campaigns / Customers / More, safe-area padded;
+  More opens a bottom sheet (Automate, Shop, Analytics, Settings, Billing and
+  wallet, Team). Inside an open chat both bars step aside
+  (`html[data-chat-open]`).
+- Page head (`.phead`): the section's name as the title, its sub-tabs as pills
+  (selected = aiden-soft / aiden-deep), actions on the right; under 700px the
+  actions wrap below.
+
+## Sections and sub-tabs
+
+| Section | Sub-tabs (route) |
+| --- | --- |
+| Home | (none); Analytics lives here (`/app/analytics`, "See all numbers", ⌘K) |
+| Inbox | (none) |
+| Campaigns | Campaigns `/app/campaigns` · Templates `/app/templates` · Cards `/app/cards` |
+| Customers | Contacts `/app/contacts` · Segments `/app/contacts?tab=segments` · Sales from chats `/app/receipts` |
+| Automate | Aiden `/app/employee` · Flows `/app/flows` · Automations `/app/automations` |
+| Shop | Catalogue `/app/catalog` · Collections `/app/catalog/collections` · Shopify `/app/settings?tab=integrations` |
+| Avatar menu | Settings · Billing and wallet · Team (`/app/settings?tab=team`) · Switch workspace · Super Admin · Log out |
+
+Every tab and item is filtered by the same feature flags and permissions as
+the sidebar (`filterNavItems` in `src/components/shell/use-nav.ts`); a
+registry page the map doesn't know yet appears in the avatar menu and the More
+sheet. `src/lib/batch44-shell.test.ts` fails if any page the sidebar shows, for
+any role and flag mix, can't be reached in the new shell.
+
+## Buttons
+
+| Variant | Look | Use |
+| --- | --- | --- |
+| `default` | Ink fill, white text, 700 | The one primary action per view |
+| `gold` | Gold fill, gold-ink text, 700 | A decision the owner makes (approve, send the suggestion) |
+| `outline` / `secondary` | White, line border, ink text, 600 | Everything else |
+| `ghost` | No fill, muted text | Toolbars |
+| `soft` | aiden-soft fill, aiden-deep text | Tinted secondary |
+| `destructive` | Danger fill | Confirming loss only |
+
+## Shared components
+
+All in `src/components/design-v2/` (motion sources from Magic UI in
+`src/components/magicui/`, restyled to the tokens):
+
+| Component | What it is |
+| --- | --- |
+| `AidenOrb` | The emerald orb. `state="replying"` ripples, `"draft"` breathes, `"off"` (team) is pale and pulses gently |
+| `NeedsYouCard` | Gold card with the moving border beam; title, body, actions |
+| `NumberTicker` | Counts up to a number once in view (Indian grouping by default) |
+| `AnimatedList` | Items slide in from the top, newest first |
+| `TypingText` | Types a reply with a blinking caret |
+| `WhatsAppBubble` | `in` / `out` / `system`, sender label, time, ticks; `ProductBubble` for a product card |
+| `PhoneFrame` | The ink phone with a dotted chat wall |
+| `CountdownRing` | Gold ring for a closing 24-hour window |
+| `PageHeader` | Title, sub-tabs, actions (the section's tabs come from the shell) |
+| `BottomSheet` | Phone sheet that rises from the bottom, safe-area padded |
+| `AvatarCircles` | Overlapping contact avatars with a "+N" |
+
+## Hallmark floor (applies to every new-design screen)
+
+Tokens only; no `transition: all`; no tracked-capitals labels; no middle-dot
+strings; no decorative dots; no card inside a card; `:focus-visible` on every
+control; a reduced-motion fallback for every animation; `overflow-x: clip` on
+html and body; no invented metrics.

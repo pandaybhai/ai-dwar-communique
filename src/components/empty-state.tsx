@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { SectionTabs, useShellSection } from "@/components/shell/section-tabs";
 
 export function PageHeader({
   title,
@@ -14,6 +15,28 @@ export function PageHeader({
   /** Batch 39: buttons on the right of the title (stack under it on phones). */
   actions?: ReactNode;
 }) {
+  const shell = useShellSection();
+  if (shell?.section && shell.section.tabs.length > 1) {
+    // Batch 44, new design: the preview's page head — the section's name, its
+    // sub-tabs and the page's actions on one line, the page's own words below.
+    return (
+      <div className="mb-7 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <h1 className="min-w-0 font-display text-[clamp(1.75rem,3.4vw,2.5rem)] font-extrabold leading-[1.05] tracking-[-0.03em] [overflow-wrap:break-word] text-foreground">
+            {shell.section.label}
+          </h1>
+          <SectionTabs />
+          {actions ? (
+            <div className="flex flex-wrap items-center gap-2 wide:ml-auto">{actions}</div>
+          ) : null}
+        </div>
+        <p className="max-w-2xl text-body text-muted-foreground">
+          <span className="sr-only">{title}: </span>
+          {description}
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">

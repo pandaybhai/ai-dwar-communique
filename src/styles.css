@@ -3,6 +3,20 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+/* Batch 44: the new design (docs/design/spec.md), per workspace behind the
+   new_design flag. `nd:` classes apply only under <html data-design="new">;
+   `phone:` / `wide:` are the preview's 700px split. */
+@custom-variant nd (&:where([data-design="new"] *));
+@custom-variant phone {
+  @media (max-width: 700px) {
+    @slot;
+  }
+}
+@custom-variant wide {
+  @media (min-width: 701px) {
+    @slot;
+  }
+}
 
 /*
  * AiDwar design system (Batch 39) — the one source of truth for the app's look.
@@ -29,7 +43,8 @@
  */
 
 @theme inline {
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-body);
+  --font-display: var(--font-head);
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
   /* Type scale: 2xs 11 · xs 12 · sm 14 (dense UI) · body 15 (reading) · base 16
@@ -135,6 +150,34 @@
   --color-wa-tick: var(--wa-tick);
   --color-wa-link: var(--wa-link);
 
+  /* Batch 44 (new design): the preview's own palette. */
+  --color-btn-primary: var(--btn-primary);
+  --color-btn-primary-foreground: var(--btn-primary-foreground);
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-aiden: var(--aiden);
+  --color-aiden-deep: var(--aiden-deep);
+  --color-aiden-soft: var(--aiden-soft);
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-gold-bg: var(--gold-bg);
+  --color-gold-line: var(--gold-line);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-out: var(--bubble-out);
+  --color-av1: var(--av1);
+  --color-av1-ink: var(--av1-ink);
+  --color-av2: var(--av2);
+  --color-av2-ink: var(--av2-ink);
+  --color-av3: var(--av3);
+  --color-av3-ink: var(--av3-ink);
+  --color-av4: var(--av4);
+  --color-av4-ink: var(--av4-ink);
+  --color-av5: var(--av5);
+  --color-av5-ink: var(--av5-ink);
+
   /* Raw scales (for charts, illustrations and the design page). */
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
@@ -197,6 +240,50 @@
   --gray-1000: oklch(0.145 0.012 255);
 
   --font-feature: "ss01", "cv11";
+  --font-body: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-head: var(--font-body);
+
+  /* Batch 44: the new design's palette (docs/design/spec.md). Defined
+     everywhere so its classes resolve; the semantic tokens only switch to it
+     under html[data-app][data-design="new"]. Two preview colours are a shade
+     darker for 4.5:1 (aiden-deep #0B7F5E, gold-ink #7A4800). */
+  --btn-primary: var(--primary);
+  --btn-primary-foreground: var(--primary-foreground);
+  --ink: #0d2b2a;
+  --ink-foreground: #ffffff;
+  --ground: #f3f7f6;
+  --surface: #ffffff;
+  --line: #dce7e4;
+  --aiden: #0f9d74;
+  --aiden-deep: #0a7a5a;
+  --aiden-soft: #e3f6ef;
+  --aiden-glow: rgb(15 157 116 / 0.32);
+  --gold: #f2b544;
+  --gold-ink: #6e4100;
+  --gold-bg: #fff6e3;
+  --gold-line: #f1ddb3;
+  --bubble-in: #eef3f2;
+  --bubble-out: #ddf6ea;
+  --muted-ink: #4f6663;
+  --muted-ink-deep: #3f5753;
+  --ground-tint: #f8fbfa;
+  --ground-deep: #e8f0ee;
+  --line-strong: #c5d5d1;
+  --aiden-line: #b9e6d6;
+  --shadow-ink: rgb(13 43 42 / 0.16);
+  --scrim: rgb(13 43 42 / 0.35);
+  /* Mask alpha (not a colour you see): the beam's border-only mask. */
+  --mask-solid: rgb(0 0 0);
+  --av1: #ffe1d6;
+  --av1-ink: #8a3210;
+  --av2: #dbeafe;
+  --av2-ink: #1e3a8a;
+  --av3: #ede9fe;
+  --av3-ink: #4c1d95;
+  --av4: #dcfce7;
+  --av4-ink: #14532d;
+  --av5: #fce7f3;
+  --av5-ink: #831843;
   --dur-fast: 120ms;
   --dur-base: 180ms;
   --dur-slow: 280ms;
@@ -448,13 +535,91 @@ html[data-app].dark {
   --elev-2xl: 0 0 0 1px oklch(1 0 0 / 0.05), 0 8px 16px oklch(0 0 0 / 0.45), 0 40px 80px -20px oklch(0 0 0 / 0.8);
 }
 
+/* ---- 4. the new design (Batch 44), light only: flag new_design on ----
+   Comes after the dark block on purpose: while the new design shows it wins
+   even if a stored dark choice left .dark on <html> (Batch 50 decides dark).
+   Every text pair ≥ 4.5:1 (docs/design/spec.md, "Contrast fixes"). */
+html[data-app][data-design="new"] {
+  color-scheme: light;
+  --font-body: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-head: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --radius: 0.6875rem;
+  --btn-primary: var(--ink);
+  --btn-primary-foreground: var(--ink-foreground);
+
+  --background: var(--ground);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--aiden-deep);
+  --primary-foreground: var(--ink-foreground);
+  --secondary: var(--bubble-in);
+  --secondary-foreground: var(--ink);
+  --muted: var(--bubble-in);
+  --muted-foreground: var(--muted-ink);
+  --faint: var(--muted-ink);
+  --subtle: var(--ground-tint);
+  --accent: var(--ground-deep);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
+  --border: var(--line);
+  --border-strong: var(--line-strong);
+  --input: var(--line);
+  --ring: var(--aiden);
+
+  --success: var(--aiden-deep);
+  --success-foreground: var(--ink-foreground);
+  --success-soft: var(--aiden-soft);
+  --success-soft-foreground: var(--aiden-deep);
+  --success-border: var(--aiden-line);
+  --warning: var(--gold);
+  --warning-foreground: var(--gold-ink);
+  --warning-soft: var(--gold-bg);
+  --warning-soft-foreground: var(--gold-ink);
+  --warning-border: var(--gold-line);
+
+  --chart-1: var(--aiden);
+  --chart-2: var(--aiden-deep);
+  --chart-3: var(--gold);
+  --chart-4: var(--av2-ink);
+  --chart-5: var(--av1-ink);
+
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: var(--ink-foreground);
+  --sidebar-accent: var(--ground);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--aiden);
+
+  /* The chat as the preview draws it: porcelain wall, white in, mint out. */
+  --wa-wall: var(--ground);
+  --wa-in: var(--surface);
+  --wa-out: var(--bubble-out);
+  --wa-text: var(--ink);
+  --wa-meta: var(--muted-ink);
+  --wa-meta-out: var(--muted-ink-deep);
+
+  --elev-2xs: 0 1px 0 var(--shadow-ink);
+  --elev-xs: 0 1px 2px var(--shadow-ink);
+  --elev-sm: 0 1px 2px var(--shadow-ink), 0 8px 20px -16px var(--shadow-ink);
+  --elev-md: 0 10px 28px -20px var(--shadow-ink);
+  --elev-lg: 0 18px 40px -16px var(--shadow-ink);
+  --elev-xl: 0 20px 50px -30px var(--shadow-ink), 0 1px 2px var(--shadow-ink);
+  --elev-2xl: 0 30px 60px -30px var(--shadow-ink), 0 2px 6px var(--shadow-ink);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
   }
 
   html {
-    font-family: var(--font-sans);
+    font-family: var(--font-body);
     scroll-behavior: smooth;
   }
 
@@ -967,5 +1132,181 @@ html[data-app].dark .wa-phone {
   }
   .ob-choice:hover {
     transform: none;
+  }
+}
+
+/*
+ * Batch 44: the new design's base and motion (docs/design/spec.md). All of it
+ * applies only under <html data-design="new"> (flag new_design) or inside the
+ * shared components in src/components/design-v2, so the classic look is
+ * untouched. Only transform and opacity animate; reduced motion stops all of
+ * it (rules at the end).
+ */
+html[data-design="new"],
+html[data-design="new"] body {
+  overflow-x: clip;
+}
+html[data-app][data-design="new"] body {
+  font-feature-settings: normal;
+}
+html[data-design="new"] :where(.type-display, .type-title, .font-display) {
+  font-family: var(--font-head);
+}
+html[data-design="new"] .type-display {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+html[data-design="new"] .type-title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+/* Labels are the body face, a step smaller, sentence case, untracked. */
+html[data-design="new"] .type-label {
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+html[data-design="new"] ::selection {
+  background: var(--aiden-soft);
+}
+
+.nd-wall {
+  background-color: var(--ground);
+  background-image: radial-gradient(var(--line) 1px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+/* Aiden's orb: replying ripples, a draft breathes, off (the team) pulses pale. */
+.nd-orb-core {
+  background: radial-gradient(circle at 36% 30%, var(--aiden-soft), var(--aiden) 50%, var(--aiden-deep));
+  box-shadow: 0 10px 30px var(--aiden-glow);
+}
+.nd-orb-off .nd-orb-core {
+  background: radial-gradient(circle at 36% 30%, var(--surface), var(--av4) 40%, var(--aiden));
+}
+.nd-orb-ring {
+  border: 1.5px solid var(--aiden);
+  opacity: 0;
+  animation: nd-rip 2.4s ease-out infinite;
+  animation-delay: calc(var(--i, 0) * 0.8s);
+}
+.nd-orb-draft .nd-orb-core,
+.nd-orb-off .nd-orb-core {
+  animation: nd-breathe 4s ease-in-out infinite;
+}
+@keyframes nd-rip {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+@keyframes nd-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+/* Typing caret. */
+.nd-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: -0.18em;
+  background: var(--aiden-deep);
+  animation: nd-blink 1s steps(1) infinite;
+}
+@keyframes nd-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* The oldest waiting customer: a slow gold halo. */
+.nd-pulse-gold {
+  animation: nd-pulse-gold 2s ease-in-out 0.5s infinite;
+}
+@keyframes nd-pulse-gold {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--gold-bg);
+  }
+}
+
+/* A bar that grows to its value once (funnels, campaign read rates). */
+.nd-bar-grow {
+  transform-origin: left center;
+  animation: nd-grow 1.2s var(--ease-out) both;
+}
+@keyframes nd-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* A page arriving; the phone's bottom sheet rising. */
+.nd-view-enter {
+  animation: nd-fade 0.35s ease-out both;
+}
+@keyframes nd-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.nd-sheet-up {
+  animation: nd-up 0.3s var(--ease-out) both;
+}
+@keyframes nd-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+.nd-scrim-in {
+  animation: nd-scrim 0.25s ease-out both;
+}
+@keyframes nd-scrim {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The new shell's bars step aside inside an open chat on a phone, as Batch 39's did. */
+html[data-chat-open] .nd-bottom-bar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nd-orb-ring {
+    animation: none;
+    opacity: 0;
+  }
+  .nd-orb-draft .nd-orb-core,
+  .nd-orb-off .nd-orb-core,
+  .nd-caret,
+  .nd-pulse-gold,
+  .nd-bar-grow,
+  .nd-view-enter,
+  .nd-sheet-up,
+  .nd-scrim-in {
+    animation: none !important;
   }
 }

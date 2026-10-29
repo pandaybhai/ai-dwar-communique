@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { PageHeader } from "@/components/empty-state";
+import { useShellSection } from "@/components/shell/section-tabs";
 import { CARD_USES, PRODUCT_CARDS_SETTING, productCardsInAnswers } from "@/lib/customer-cards";
 
 const CARD_KINDS = [
@@ -39,6 +41,7 @@ export function CardsView({
   organizationId: string;
   canManage: boolean;
 }) {
+  const shell = useShellSection();
   const [branding, setBranding] = useState<Branding>(EMPTY);
   const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -156,14 +159,22 @@ export function CardsView({
 
   return (
     <div className="space-y-8 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Cards</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Branded picture cards that travel with your campaigns, flows and AI answers — an offer,
-          a product, an order update, a receipt or an appointment. Set your logo and colours once;
-          every card wears them.
-        </p>
-      </div>
+      {shell ? (
+        // Batch 44, new design: the Campaigns page head with its sub-tabs.
+        <PageHeader
+          title="Cards"
+          description="Branded picture cards that travel with your campaigns, flows and AI answers — an offer, a product, an order update, a receipt or an appointment. Set your logo and colours once; every card wears them."
+        />
+      ) : (
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Cards</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Branded picture cards that travel with your campaigns, flows and AI answers — an offer,
+            a product, an order update, a receipt or an appointment. Set your logo and colours once;
+            every card wears them.
+          </p>
+        </div>
+      )}
 
       <section className="max-w-2xl rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
         <div className="flex items-center gap-2">

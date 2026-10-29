@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Loader2, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +52,9 @@ export const Route = createFileRoute("/app/settings")({
 
 function SettingsPage() {
   const { active, loading, error } = useOrg();
+  const tabParam = useRouterState({
+    select: (st) => (st.location.search as Record<string, unknown>)["tab"] as string | undefined,
+  });
 
   return (
     <>
@@ -69,7 +72,8 @@ function SettingsPage() {
       ) : !active ? (
         <ErrorState message="We couldn't find your workspace. Please refresh the page." />
       ) : (
-        <SettingsTabs />
+        // Batch 44: a new ?tab= (the avatar menu's Team, Shop → Shopify) opens that tab.
+        <SettingsTabs key={tabParam ?? ""} />
       )}
     </>
   );

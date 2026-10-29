@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:new-design": "AIDWAR_TEST_NEW_DESIGN=on vitest run",
     "format": "prettier --write ."
   },
   "dependencies": {
@@ -58,6 +59,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.2",
+    "motion": "^14.7.1",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",

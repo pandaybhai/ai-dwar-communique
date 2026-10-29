@@ -332,7 +332,7 @@ export function ContactsView({
             setPage(0);
           }}
         >
-          <SelectTrigger className="sm:w-48">
+          <SelectTrigger className="sm:w-48" aria-label="Filter by tag">
             <SelectValue placeholder="All tags" />
           </SelectTrigger>
           <SelectContent>
@@ -351,7 +351,7 @@ export function ContactsView({
             setPage(0);
           }}
         >
-          <SelectTrigger className="sm:w-44">
+          <SelectTrigger className="sm:w-44" aria-label="Filter by opt-in status">
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -371,7 +371,7 @@ export function ContactsView({
               setPage(0);
             }}
           >
-            <SelectTrigger className="sm:w-52">
+            <SelectTrigger className="sm:w-52" aria-label="Filter by segment">
               <SelectValue placeholder="All contacts" />
             </SelectTrigger>
             <SelectContent>
