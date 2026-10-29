@@ -4,6 +4,8 @@ import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useOrg } from "@/lib/org-context";
+import { useNewDesign } from "@/lib/new-design";
+import { NewCataloguePage } from "@/components/shop-v2/shop-pages";
 import { CatalogView } from "@/components/catalog/catalog-view";
 import { ProductsSummary } from "@/components/catalog/products-summary";
 import { WhatsAppShopCard } from "@/components/catalog/whatsapp-shop-card";
@@ -30,8 +32,13 @@ export const Route = createFileRoute("/app/catalog/")({
       { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: CatalogPage,
+  component: CatalogRoute,
 });
+
+/** Batch 49: Shop in the new design; the classic page below otherwise. */
+function CatalogRoute() {
+  return useNewDesign() ? <NewCataloguePage /> : <CatalogPage />;
+}
 
 function CatalogPage() {
   const { enabled, loading } = useFeatureFlag("catalogs");

@@ -4,6 +4,8 @@ import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useOrg } from "@/lib/org-context";
+import { useNewDesign } from "@/lib/new-design";
+import { NewCollectionsPage } from "@/components/shop-v2/shop-pages";
 import { CollectionsView } from "@/components/catalog/collections-view";
 import { Button } from "@/components/ui/button";
 
@@ -24,8 +26,13 @@ export const Route = createFileRoute("/app/catalog/collections")({
       { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: CollectionsPage,
+  component: CollectionsRoute,
 });
+
+/** Batch 49: Shop in the new design; the classic page below otherwise. */
+function CollectionsRoute() {
+  return useNewDesign() ? <NewCollectionsPage /> : <CollectionsPage />;
+}
 
 function CollectionsPage() {
   const { enabled, loading } = useFeatureFlag("catalogs");
