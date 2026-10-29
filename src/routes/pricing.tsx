@@ -10,13 +10,22 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "@/components/marketing/reveal";
 import { MessageRatesTable } from "@/components/marketing/message-rates";
+import {
+  CreditsExplained,
+  FEATURED,
+  inr,
+  limitLine,
+  type Plan,
+} from "@/components/marketing/pricing-copy";
+import { NewPricing } from "@/components/site-v2/new-pricing";
+import { newSiteFontLinks, useNewSite } from "@/lib/new-site";
 
 const TITLE = "Pricing — AiDwar WhatsApp marketing plans";
 const DESCRIPTION =
   "Simple monthly plans for WhatsApp marketing in India. Pay for the platform, top up message credits as you go. GST invoices on every payment.";
 
 export const Route = createFileRoute("/pricing")({
-  head: () => ({
+  head: ({ match }) => ({
     meta: [
       { title: TITLE },
       { name: "description", content: DESCRIPTION },
@@ -25,51 +34,28 @@ export const Route = createFileRoute("/pricing")({
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: newSiteFontLinks(match.search),
   }),
   // Plans and message rates are server-rendered so search engines and readers see them.
   loader: async () => {
     const [plans, rates] = await Promise.all([getPublicPlans(), getPublicRates()]);
     return { ...plans, rates: rates.rates };
   },
-  component: PricingPage,
+  component: Pricing,
 });
 
-type Plan = {
-  key: string;
-  name: string;
-  tagline: string | null;
-  currency: string;
-  price_monthly: number | null;
-  price_annual: number | null;
-  limits: Record<string, number>;
-  highlights: string[];
-};
-
-const FEATURED = "growth";
-
-function inr(value: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function limitLine(limits: Record<string, number>): string[] {
-  const lines: string[] = [];
-  const members = Number(limits["members"] ?? 0);
-  const numbers = Number(limits["numbers"] ?? 0);
-  const ai = Number(limits["ai_answers"] ?? 0);
-  lines.push(members === -1 ? "Unlimited team members" : `${members} team members`);
-  lines.push(
-    numbers === -1
-      ? "Unlimited business numbers"
-      : `${numbers} business ${numbers === 1 ? "number" : "numbers"}`,
+/** Batch 50: the switch new_site shows the new pricing page; off, the current one below. */
+function Pricing() {
+  const on = useNewSite();
+  const loaded = Route.useLoaderData();
+  if (!on) return <PricingPage />;
+  return (
+    <NewPricing
+      plans={loaded.plans}
+      failed={!loaded.ok || loaded.plans.length === 0}
+      rates={loaded.rates}
+    />
   );
-  lines.push(
-    ai === -1 ? "Unlimited AI answers" : `${ai.toLocaleString("en-IN")} AI answers a month`,
-  );
-  return lines;
 }
 
 function PricingPage() {
@@ -223,21 +209,7 @@ function PricingPage() {
           <div className="mx-auto max-w-4xl px-5 py-16 sm:px-8">
             <h2 className="font-heading text-2xl font-bold">How message credits work</h2>
             <div className="mt-6 space-y-5 text-sm leading-relaxed text-muted-foreground">
-              <p>
-                Meta charges per conversation, and the rate depends on what you're sending —
-                promotions, order updates or one-time passcodes. We pass that through with a clear
-                margin, show you the exact rate in your billing page before you send, and never
-                bill you for replies inside the 24-hour service window.
-              </p>
-              <p>
-                Credits are prepaid: top up whenever you like, and every campaign tells you what it
-                will cost before it goes out. If a campaign would take you below zero, we stop it
-                and ask you first.
-              </p>
-              <p>
-                Every payment gets a GST tax invoice with your GSTIN on it, downloadable from your
-                billing page. Turn on auto-pay and the plan fee takes care of itself.
-              </p>
+              <CreditsExplained />
             </div>
             <MessageRatesTable rates={loaded.rates} />
             <p className="mt-6 text-sm text-muted-foreground">
