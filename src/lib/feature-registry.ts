@@ -1398,6 +1398,32 @@ export const FEATURES: readonly FeatureManifest[] = [
     ],
     data_tables: ["api_keys", "api_requests", "api_webhook_deliveries"],
   },
+  {
+    // Batch 44: a switch, not a page. On = this workspace sees the new design
+    // (docs/design/spec.md): new tokens, the top-bar shell and the restyled
+    // controls. Off (the default, and while the flag row doesn't exist) = the
+    // Batch 39 to 41 look and sidebar exactly as before. Rows are in
+    // 20261180_batch44_new_design_flag.sql; useNewDesign() reads it.
+    key: "new_design",
+    depends_on: [],
+    name: "New design",
+    description:
+      "Show this workspace the new AiDwar design: top-bar navigation, the new colours and type, and the restyled controls.",
+    icon: "sparkles",
+    flag_key: "new_design",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "new_design.view",
+        name: "See the new design",
+        description: "Use the app in the new design when it is switched on for the workspace.",
+        min_role: "agent",
+      },
+    ],
+    analytics: none,
+    activity_actions: [],
+    data_tables: [],
+  },
 ] as const;
 
 export const ROLE_RANK: Record<OrgRole, number> = { owner: 4, admin: 3, marketer: 2, agent: 1 };

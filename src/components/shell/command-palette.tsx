@@ -135,6 +135,8 @@ export function CommandPalette({
   restricted,
   onToggleSidebar,
   onShowShortcuts,
+  design = "classic",
+  sectionLabel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -142,6 +144,12 @@ export function CommandPalette({
   restricted: boolean;
   onToggleSidebar: () => void;
   onShowShortcuts: () => void;
+  /**
+   * Batch 44: "new" (the new shell) has no sidebar and no theme choice yet
+   * (light only until Batch 50), and labels pages with their section.
+   */
+  design?: "classic" | "new";
+  sectionLabel?: (to: string) => string | null;
 }) {
   const navigate = useNavigate();
   const { active, isFeatureEnabled } = useOrg();
@@ -265,9 +273,9 @@ export function CommandPalette({
                 g.items.map((item) => (
                   <Item
                     key={item.to}
-                    value={`go ${item.label} ${g.label ?? ""}`}
+                    value={`go ${item.label} ${(design === "new" ? sectionLabel?.(item.to) : g.label) ?? ""}`}
                     icon={<item.icon />}
-                    hint={g.label ?? undefined}
+                    hint={(design === "new" ? sectionLabel?.(item.to) : g.label) ?? undefined}
                     onSelect={() => go(item.to)}
                   >
                     {item.label}
@@ -277,35 +285,39 @@ export function CommandPalette({
             </CommandPrimitive.Group>
 
             <CommandPrimitive.Group heading="Preferences" className={GROUP_HEADING}>
-              <Item
-                value="theme light mode"
-                icon={<Sun />}
-                onSelect={() => run(() => setTheme("light"))}
-              >
-                Light theme
-              </Item>
-              <Item
-                value="theme dark mode night"
-                icon={<Moon />}
-                onSelect={() => run(() => setTheme("dark"))}
-              >
-                Dark theme
-              </Item>
-              <Item
-                value="theme system auto"
-                icon={<Monitor />}
-                onSelect={() => run(() => setTheme("system"))}
-              >
-                Match system theme
-              </Item>
-              <Item
-                value="toggle collapse sidebar"
-                icon={<PanelLeft />}
-                hint="["
-                onSelect={() => run(onToggleSidebar)}
-              >
-                Collapse or expand sidebar
-              </Item>
+              {design === "classic" ? (
+                <>
+                  <Item
+                    value="theme light mode"
+                    icon={<Sun />}
+                    onSelect={() => run(() => setTheme("light"))}
+                  >
+                    Light theme
+                  </Item>
+                  <Item
+                    value="theme dark mode night"
+                    icon={<Moon />}
+                    onSelect={() => run(() => setTheme("dark"))}
+                  >
+                    Dark theme
+                  </Item>
+                  <Item
+                    value="theme system auto"
+                    icon={<Monitor />}
+                    onSelect={() => run(() => setTheme("system"))}
+                  >
+                    Match system theme
+                  </Item>
+                  <Item
+                    value="toggle collapse sidebar"
+                    icon={<PanelLeft />}
+                    hint="["
+                    onSelect={() => run(onToggleSidebar)}
+                  >
+                    Collapse or expand sidebar
+                  </Item>
+                </>
+              ) : null}
               <Item
                 value="keyboard shortcuts help"
                 icon={<Keyboard />}

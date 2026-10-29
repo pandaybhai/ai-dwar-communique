@@ -5,6 +5,8 @@ import { AppShell } from "@/components/app-shell";
 import { OnboardingJourney } from "@/components/onboarding/onboarding-journey";
 import { ErrorState, PageSkeleton } from "@/components/empty-state";
 import { useAppSurface } from "@/lib/theme";
+import { useDesignSurface, useNewDesign } from "@/lib/new-design";
+import { NewAppShell } from "@/components/shell/new-shell";
 
 /** /login's ?redirect= for a page under /app; Home needs none. */
 export function loginSearch(href: string): { redirect?: string } {
@@ -34,6 +36,9 @@ export const Route = createFileRoute("/app")({
 function AppGate() {
   useAppSurface();
   const { loading, error, active, reload } = useOrg();
+  // Batch 44: the new design, per workspace (flag `new_design`, off = classic).
+  const newDesign = useNewDesign() && Boolean(active);
+  useDesignSurface(newDesign);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   if (loading) {
@@ -75,6 +80,14 @@ function AppGate() {
 
   // The journey is full screen: no sidebar, nothing else to look at.
   if (pathname === "/app/start" || pathname.startsWith("/app/start/")) return <Outlet />;
+
+  if (newDesign) {
+    return (
+      <NewAppShell>
+        <Outlet />
+      </NewAppShell>
+    );
+  }
 
   return (
     <AppShell>
