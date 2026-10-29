@@ -16,7 +16,10 @@ const { chromium } = require("playwright");
 const args = Object.fromEntries(
   process.argv
     .slice(2)
-    .reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []),
+    .reduce(
+      (acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc),
+      [],
+    ),
 );
 const BASE = args.base ?? "http://127.0.0.1:5199";
 const OUT = args.out ?? "docs/screenshots/batch46/compare";
@@ -27,7 +30,11 @@ const chat = (i) => `00000000-0000-4000-8000-${String(1000 + i).padStart(12, "0"
 
 async function appPage(browser, viewport, path, conversations = 40) {
   const fake = createBackend({ conversations, newDesign: true });
-  const context = await browser.newContext({ viewport, deviceScaleFactor: 2, reducedMotion: "reduce" });
+  const context = await browser.newContext({
+    viewport,
+    deviceScaleFactor: 2,
+    reducedMotion: "reduce",
+  });
   await context.addInitScript(
     ([key, value]) => {
       localStorage.setItem(key, value);
@@ -40,8 +47,10 @@ async function appPage(browser, viewport, path, conversations = 40) {
     const url = route.request().url();
     if (url.startsWith(BACKEND)) return fake.backend(route);
     if (url.startsWith(`${BASE}/api/`)) return fake.api(route);
-    if (url.startsWith(BASE) || url.startsWith("data:") || url.startsWith("blob:")) return route.continue();
-    if (url.includes("fonts.googleapis.com") || url.includes("fonts.gstatic.com")) return route.continue();
+    if (url.startsWith(BASE) || url.startsWith("data:") || url.startsWith("blob:"))
+      return route.continue();
+    if (url.includes("fonts.googleapis.com") || url.includes("fonts.gstatic.com"))
+      return route.continue();
     return route.abort();
   });
   await context.routeWebSocket(/fake-backend\.test/, (ws) => fake.realtime(ws));
@@ -54,7 +63,11 @@ async function appPage(browser, viewport, path, conversations = 40) {
 }
 
 async function previewPage(browser, viewport) {
-  const context = await browser.newContext({ viewport, deviceScaleFactor: 2, reducedMotion: "reduce" });
+  const context = await browser.newContext({
+    viewport,
+    deviceScaleFactor: 2,
+    reducedMotion: "reduce",
+  });
   const page = await context.newPage();
   await page.goto(`${PREVIEW}#inbox`);
   await page.waitForTimeout(1000);

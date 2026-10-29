@@ -38,7 +38,9 @@ export function tabLabel(tab: InboxTab, mode: AidenMode): string {
  * Open, nobody waiting on a person, nobody holding it: the chats Aiden
  * answers (ai-agent.server.ts skips an assigned or needs_human chat).
  */
-export function isAidenChat(c: Pick<ConversationRow, "status" | "needs_human" | "assigned_to">): boolean {
+export function isAidenChat(
+  c: Pick<ConversationRow, "status" | "needs_human" | "assigned_to">,
+): boolean {
   return c.status === "open" && c.needs_human !== true && !c.assigned_to;
 }
 
@@ -128,7 +130,10 @@ export type TakeoverPlan =
   | {
       action: "hand_back";
       label: "Hand back to Aiden";
-      writes: Array<{ assigned_to: null } | { needs_human: false; needs_human_reason: null; handover_state: null }>;
+      writes: Array<
+        | { assigned_to: null }
+        | { needs_human: false; needs_human_reason: null; handover_state: null }
+      >;
     };
 
 export function takeoverPlan(
@@ -136,9 +141,12 @@ export function takeoverPlan(
   userId: string | null,
 ): TakeoverPlan | null {
   if (c.assigned_to || c.needs_human) {
-    const writes: Array<{ assigned_to: null } | { needs_human: false; needs_human_reason: null; handover_state: null }> = [];
+    const writes: Array<
+      { assigned_to: null } | { needs_human: false; needs_human_reason: null; handover_state: null }
+    > = [];
     if (c.assigned_to) writes.push({ assigned_to: null });
-    if (c.needs_human) writes.push({ needs_human: false, needs_human_reason: null, handover_state: null });
+    if (c.needs_human)
+      writes.push({ needs_human: false, needs_human_reason: null, handover_state: null });
     return { action: "hand_back", label: "Hand back to Aiden", writes };
   }
   if (!userId) return null;
@@ -167,7 +175,10 @@ export function phonePane(activeId: string | null): "list" | "chat" {
 }
 
 /** A product picture Aiden sent, split into its name and the rest of its caption. */
-export function productCaption(body: string | null | undefined): { title: string; detail: string | null } {
+export function productCaption(body: string | null | undefined): {
+  title: string;
+  detail: string | null;
+} {
   const text = (body ?? "").trim();
   const lines = text.split("\n");
   const first = lines[0] ?? "";

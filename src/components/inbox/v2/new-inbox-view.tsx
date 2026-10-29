@@ -3,7 +3,13 @@ import { Search, X } from "lucide-react";
 import { ErrorState } from "@/components/empty-state";
 import { Kbd } from "@/components/ui/kbd";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
 import { numberLabel } from "@/lib/whatsapp-numbers";
@@ -84,7 +90,9 @@ export function NewInboxView() {
   const [highlight, setHighlight] = useState(0);
   const [keyboardNav, setKeyboardNav] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState<boolean>(() => (typeof window === "undefined" ? true : readDetailsOpen()));
+  const [detailsOpen, setDetailsOpen] = useState<boolean>(() =>
+    typeof window === "undefined" ? true : readDetailsOpen(),
+  );
   const [detailsSheet, setDetailsSheet] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const isPhone = useMedia(PHONE);
@@ -98,14 +106,17 @@ export function NewInboxView() {
   const current: InboxView = view ?? "all";
 
   const filtered = useMemo(
-    () => filterChats(conversations, { view: current, userId, numberId: numberFilter, quick, search }),
+    () =>
+      filterChats(conversations, { view: current, userId, numberId: numberFilter, quick, search }),
     [conversations, current, userId, numberFilter, quick, search],
   );
   const waitingCount = conversations.filter((c) => c.needs_human).length;
   const numberById = useMemo(() => new Map(numbers.map((n) => [n.id, n])), [numbers]);
   const viaLabel = useCallback(
     (c: ConversationRow) =>
-      numbers.length > 1 && c.whatsapp_account_id ? numberLabel(numberById.get(c.whatsapp_account_id)) : null,
+      numbers.length > 1 && c.whatsapp_account_id
+        ? numberLabel(numberById.get(c.whatsapp_account_id))
+        : null,
     [numbers.length, numberById],
   );
   const activeNumberLabel =
@@ -115,7 +126,9 @@ export function NewInboxView() {
 
   useEffect(() => {
     const i = activeId ? filtered.findIndex((c) => c.id === activeId) : -1;
-    setHighlight((h) => (i !== -1 ? i : Math.min(Math.max(h, 0), Math.max(filtered.length - 1, 0))));
+    setHighlight((h) =>
+      i !== -1 ? i : Math.min(Math.max(h, 0), Math.max(filtered.length - 1, 0)),
+    );
   }, [activeId, filtered]);
 
   // On a phone an open chat is the whole screen: both bars step aside.
@@ -226,11 +239,17 @@ export function NewInboxView() {
         {/* Chat list */}
         <section
           aria-label="Chats"
-          className={cn("flex min-h-0 min-w-0 flex-col border-line wide:border-r", pane === "chat" ? "phone:hidden" : "flex")}
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col border-line wide:border-r",
+            pane === "chat" ? "phone:hidden" : "flex",
+          )}
         >
           <div className="flex shrink-0 flex-col gap-2.5 px-3 pb-2 pt-3">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
               <input
                 ref={searchRef}
                 value={search}
@@ -260,7 +279,9 @@ export function NewInboxView() {
                   <X className="h-3.5 w-3.5" />
                 </button>
               ) : (
-                <Kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2">/</Kbd>
+                <Kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2">
+                  /
+                </Kbd>
               )}
             </div>
             <div role="group" aria-label="Show" className="flex flex-wrap gap-1">
@@ -275,7 +296,9 @@ export function NewInboxView() {
                     onClick={() => setView(t)}
                     className={cn(
                       pill,
-                      on ? "bg-aiden-soft text-aiden-deep" : "text-muted-foreground hover:bg-ground hover:text-foreground active:bg-accent",
+                      on
+                        ? "bg-aiden-soft text-aiden-deep"
+                        : "text-muted-foreground hover:bg-ground hover:text-foreground active:bg-accent",
                     )}
                   >
                     {tabLabel(t, aidenMode)}
@@ -288,7 +311,11 @@ export function NewInboxView() {
                 );
               })}
             </div>
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Quick filters">
+            <div
+              className="flex flex-wrap items-center gap-1.5"
+              role="group"
+              aria-label="Quick filters"
+            >
               {(
                 [
                   ["unread", "Unread"],
@@ -304,7 +331,9 @@ export function NewInboxView() {
                     onClick={() => toggleQuick(key)}
                     className={cn(
                       "h-7 rounded-full border px-2.5 text-[0.8125rem] font-semibold transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden active:bg-accent",
-                      on ? "border-transparent bg-aiden-soft text-aiden-deep" : "border-line text-muted-foreground hover:text-foreground",
+                      on
+                        ? "border-transparent bg-aiden-soft text-aiden-deep"
+                        : "border-line text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {text}
@@ -414,7 +443,10 @@ export function NewInboxView() {
                     : "When a customer writes to your WhatsApp number, the chat shows up here and Aiden can answer it."}
                 </p>
                 {conversations.length ? (
-                  <p className="m-0 mt-3 flex items-center justify-center gap-1 text-[0.8125rem] text-muted-foreground" aria-hidden="true">
+                  <p
+                    className="m-0 mt-3 flex items-center justify-center gap-1 text-[0.8125rem] text-muted-foreground"
+                    aria-hidden="true"
+                  >
                     <Kbd>J</Kbd>
                     <Kbd>K</Kbd> move, <Kbd>↵</Kbd> open, <Kbd>/</Kbd> search
                   </p>
@@ -441,9 +473,14 @@ export function NewInboxView() {
 
       {activeConversation ? (
         <Sheet open={detailsSheet && !panelInline} onOpenChange={setDetailsSheet}>
-          <SheetContent side="right" className="w-[22rem] max-w-[90vw] p-0 [&>button:last-child]:hidden">
+          <SheetContent
+            side="right"
+            className="w-[22rem] max-w-[90vw] p-0 [&>button:last-child]:hidden"
+          >
             <SheetTitle className="sr-only">Contact details</SheetTitle>
-            <SheetDescription className="sr-only">Who this customer is and where the chat stands.</SheetDescription>
+            <SheetDescription className="sr-only">
+              Who this customer is and where the chat stands.
+            </SheetDescription>
             <CustomerPanel
               conversation={activeConversation}
               members={members}

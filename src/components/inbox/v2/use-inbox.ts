@@ -80,7 +80,11 @@ export function useInbox() {
     const names = Array.from(
       new Set(
         rows
-          .map((c) => (c.preview?.type === "template" && !c.preview.body?.trim() ? c.preview.template_name : null))
+          .map((c) =>
+            c.preview?.type === "template" && !c.preview.body?.trim()
+              ? c.preview.template_name
+              : null,
+          )
           .filter(Boolean) as string[],
       ),
     );
@@ -95,7 +99,10 @@ export function useInbox() {
         const name = c.preview?.template_name;
         const tpl = name ? bodies.get(name) : undefined;
         if (c.preview && tpl && !c.preview.body?.trim())
-          c.preview = { ...c.preview, body: fillTemplateText(tpl.text, c.preview.metadata, tpl.samples) };
+          c.preview = {
+            ...c.preview,
+            body: fillTemplateText(tpl.text, c.preview.metadata, tpl.samples),
+          };
       }
     }
     setError(null);
@@ -106,10 +113,16 @@ export function useInbox() {
 
   const loadMembers = useCallback(async () => {
     if (!orgId) return;
-    const { data } = await aidwar.from("organization_members").select("user_id").eq("organization_id", orgId);
+    const { data } = await aidwar
+      .from("organization_members")
+      .select("user_id")
+      .eq("organization_id", orgId);
     const ids = (data ?? []).map((r) => (r as { user_id: string }).user_id);
     if (ids.length === 0) return setMembers([]);
-    const { data: profiles } = await aidwar.from("profiles").select("id, full_name, email").in("id", ids);
+    const { data: profiles } = await aidwar
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", ids);
     setMembers(
       (profiles ?? []).map((p) => {
         const row = p as { id: string; full_name: string | null; email: string | null };
@@ -123,7 +136,12 @@ export function useInbox() {
     if (!orgId) return;
     let live = true;
     void Promise.resolve(
-      aidwar.from("ai_agents").select("mode").eq("organization_id", orgId).eq("is_default", true).maybeSingle(),
+      aidwar
+        .from("ai_agents")
+        .select("mode")
+        .eq("organization_id", orgId)
+        .eq("is_default", true)
+        .maybeSingle(),
     )
       .then(({ data, error: err }) => {
         if (!live || err) return;
@@ -176,7 +194,12 @@ export function useInbox() {
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "conversations", filter: `organization_id=eq.${orgId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
+          filter: `organization_id=eq.${orgId}`,
+        },
         () => void loadConversations(),
       )
       .subscribe();
@@ -249,14 +272,17 @@ export function useInbox() {
         created_at: new Date().toISOString(),
       },
     ]);
-    const { error: sendError } = await callApi<{ message_id: string }>("/api/whatsapp/send-message", {
-      body: {
-        organization_id: orgId,
-        conversation_id: activeConversation.id,
-        message_type: "text",
-        body: text,
+    const { error: sendError } = await callApi<{ message_id: string }>(
+      "/api/whatsapp/send-message",
+      {
+        body: {
+          organization_id: orgId,
+          conversation_id: activeConversation.id,
+          message_type: "text",
+          body: text,
+        },
       },
-    });
+    );
     setSending(false);
     if (sendError) {
       setMessages((prev) => prev.filter((m) => m.id !== pendingId));
@@ -270,14 +296,17 @@ export function useInbox() {
   const handleSendTemplate = async (payload: TemplateSendPayload): Promise<boolean> => {
     if (!orgId || !activeConversation) return false;
     setSending(true);
-    const { error: sendError } = await callApi<{ message_id: string }>("/api/whatsapp/send-message", {
-      body: {
-        organization_id: orgId,
-        conversation_id: activeConversation.id,
-        message_type: "template",
-        ...payload,
+    const { error: sendError } = await callApi<{ message_id: string }>(
+      "/api/whatsapp/send-message",
+      {
+        body: {
+          organization_id: orgId,
+          conversation_id: activeConversation.id,
+          message_type: "template",
+          ...payload,
+        },
       },
-    });
+    );
     setSending(false);
     if (sendError) {
       toast.error(sendError);
@@ -302,7 +331,8 @@ export function useInbox() {
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_to: assignee } : c)),
     );
-    if (said !== null) toast.success(said ?? (assignee ? "Conversation assigned." : "Conversation unassigned."));
+    if (said !== null)
+      toast.success(said ?? (assignee ? "Conversation assigned." : "Conversation unassigned."));
     void logActivity("conversation_assigned", orgId, {
       conversation_id: activeConversation.id,
       assigned_to: assignee,
@@ -344,7 +374,10 @@ export function useInbox() {
     const plan = takeoverPlan(activeConversation, userId);
     if (!plan) return;
     if (plan.action === "take_over") {
-      await handleAssign(userId, "You took over. Aiden won't reply in this chat until you hand it back.");
+      await handleAssign(
+        userId,
+        "You took over. Aiden won't reply in this chat until you hand it back.",
+      );
       return;
     }
     let ok = true;
@@ -359,12 +392,17 @@ export function useInbox() {
   const handleToggleStatus = async () => {
     if (!activeConversation || !orgId) return;
     const next = activeConversation.status === "closed" ? "open" : "closed";
-    const { error: err } = await aidwar.from("conversations").update({ status: next }).eq("id", activeConversation.id);
+    const { error: err } = await aidwar
+      .from("conversations")
+      .update({ status: next })
+      .eq("id", activeConversation.id);
     if (err) {
       toast.error("We couldn't update this conversation. Please try again.");
       return;
     }
-    setConversations((prev) => prev.map((c) => (c.id === activeConversation.id ? { ...c, status: next } : c)));
+    setConversations((prev) =>
+      prev.map((c) => (c.id === activeConversation.id ? { ...c, status: next } : c)),
+    );
     toast.success(next === "closed" ? "Conversation closed." : "Conversation reopened.");
     if (next === "closed") {
       void logActivity("conversation_closed", orgId, { conversation_id: activeConversation.id });

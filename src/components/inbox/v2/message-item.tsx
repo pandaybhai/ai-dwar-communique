@@ -1,5 +1,6 @@
 import { memo, type ReactNode } from "react";
-import { Clock, GraduationCap, Sparkles } from "lucide-react";
+import { AlertCircle, Clock, GraduationCap, Sparkles } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReducedMotion } from "motion/react";
 import { AnimatedListItem } from "@/components/magicui/animated-list";
 import { ProductBubble, WhatsAppBubble } from "@/components/design-v2";
@@ -7,7 +8,7 @@ import { WhatsAppText } from "@/components/whatsapp-text";
 import { isApiSource } from "@/lib/public-api-source";
 import type { AiRunNote } from "@/lib/inbox-ai-runs";
 import { cn } from "@/lib/utils";
-import { FormAnswers, MessageMedia, StatusTicks, mediaLabel } from "../chat-thread";
+import { FormAnswers, MessageMedia, mediaLabel } from "../chat-thread";
 import { clockTime, mediaGoneNote, mediaSource, type MessageRow } from "../inbox-utils";
 import { productCaption } from "./inbox-v2";
 
@@ -16,6 +17,29 @@ export function Arrive({ fresh, children }: { fresh: boolean; children: ReactNod
   const reduce = useReducedMotion();
   if (!fresh || reduce) return <>{children}</>;
   return <AnimatedListItem>{children}</AnimatedListItem>;
+}
+
+/** A failed send: the reason on hover or focus (Batch 39's StatusTicks, with an image role so the label is allowed). */
+function FailedMark({ detail }: { detail: string | null }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            role="img"
+            className="inline-flex text-destructive"
+            tabIndex={0}
+            aria-label="Failed to send"
+          >
+            <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs break-words">
+          {detail?.slice(0, 200) || "This message failed to send."}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 function tagClass() {
@@ -56,8 +80,10 @@ export const MessageItem = memo(function MessageItem({
   const viaApi = isApiSource(message.metadata?.["source"]);
   const isTest = message.metadata?.["test"] === true;
   const fileName =
-    typeof message.metadata?.["document_filename"] === "string" ? (message.metadata["document_filename"] as string) : null;
-  const sender = outbound ? (aiRun ? "Aiden" : teammate ?? undefined) : undefined;
+    typeof message.metadata?.["document_filename"] === "string"
+      ? (message.metadata["document_filename"] as string)
+      : null;
+  const sender = outbound ? (aiRun ? "Aiden" : (teammate ?? undefined)) : undefined;
   const ticks =
     message.status === "read" || message.status === "delivered" || message.status === "sent"
       ? (message.status as "read" | "delivered" | "sent")
@@ -66,15 +92,22 @@ export const MessageItem = memo(function MessageItem({
     <>
       {viaApi ? <span className={tagClass()}>Sent via API</span> : null}
       {isTest ? <span className={tagClass()}>Test</span> : null}
-      {outbound && message.status === "failed" ? <StatusTicks message={message} /> : null}
-      {outbound && message.status === "pending" ? <Clock className="h-3 w-3" aria-label="Sending" /> : null}
+      {outbound && message.status === "failed" ? (
+        <FailedMark detail={message.error_detail} />
+      ) : null}
+      {outbound && message.status === "pending" ? (
+        <Clock className="h-3 w-3" role="img" aria-label="Sending" />
+      ) : null}
     </>
   );
 
   // A product Aiden sent with its picture (an outbound picture we host): the product card.
   const source = mediaSource(message, organizationId);
   const product =
-    outbound && message.metadata?.["kind"] === "ai_product" && source?.kind === "url" && !mediaGoneNote(message);
+    outbound &&
+    message.metadata?.["kind"] === "ai_product" &&
+    source?.kind === "url" &&
+    !mediaGoneNote(message);
 
   return (
     <Arrive fresh={fresh}>

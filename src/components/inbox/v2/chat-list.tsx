@@ -2,7 +2,14 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { MessagesSquare } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { contactLabel, initials, previewText, relativeTime, type ConversationRow, type MemberRow } from "../inbox-utils";
+import {
+  contactLabel,
+  initials,
+  previewText,
+  relativeTime,
+  type ConversationRow,
+  type MemberRow,
+} from "../inbox-utils";
 import { avatarTone, isAidenChat, TONE_CLASS, type AidenMode } from "./inbox-v2";
 
 /** One fixed row height (px), so the list can window like Batch 39's. */
@@ -11,7 +18,15 @@ export const CHAT_ROW = 68;
 const OVERSCAN = 600;
 
 /** A contact's initials on one of the five avatar tones. */
-export function ToneAvatar({ seed, label, className }: { seed: string; label: string; className?: string }) {
+export function ToneAvatar({
+  seed,
+  label,
+  className,
+}: {
+  seed: string;
+  label: string;
+  className?: string;
+}) {
   return (
     <span
       aria-hidden="true"
@@ -84,7 +99,12 @@ const ChatRow = memo(function ChatRow({
             </span>
           </span>
           <span className="flex min-w-0 items-center gap-2">
-            <span className={cn("min-w-0 flex-1 truncate text-sm", unread ? "text-foreground" : "text-muted-foreground")}>
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-sm",
+                unread ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
               {c.preview?.direction === "outbound" ? <span className="sr-only">Sent: </span> : null}
               {previewText(c)}
             </span>
@@ -187,7 +207,11 @@ export function ChatList({
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-1 px-3 py-1" aria-busy="true" aria-label="Loading conversations">
+      <div
+        className="flex flex-col gap-1 px-3 py-1"
+        aria-busy="true"
+        aria-label="Loading conversations"
+      >
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="flex h-16 items-center gap-3 px-2.5">
             <Skeleton className="h-10 w-10 rounded-full" />
@@ -243,8 +267,16 @@ export function ChatList({
   }
 
   return (
-    <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
-      <ul aria-label="Conversations" className="relative" style={{ height: rows.length * CHAT_ROW }}>
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2"
+    >
+      <ul
+        aria-label="Conversations"
+        className="relative"
+        style={{ height: rows.length * CHAT_ROW }}
+      >
         {visible}
       </ul>
     </div>

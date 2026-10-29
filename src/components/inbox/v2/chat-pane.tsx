@@ -18,7 +18,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +39,10 @@ import { handoverReasonText } from "@/lib/ai-outcome";
 import { aiRunFor, questionBefore, type AiRunNote } from "@/lib/inbox-ai-runs";
 import { cn } from "@/lib/utils";
 import { WhatsAppBubble } from "@/components/design-v2";
-import { TemplatePickerDialog, type TemplateSendPayload } from "@/components/templates/template-picker-dialog";
+import {
+  TemplatePickerDialog,
+  type TemplateSendPayload,
+} from "@/components/templates/template-picker-dialog";
 import { CorrectionDialog } from "../correction-dialog";
 import { FlowRunBanner } from "../flow-run-banner";
 import { AidenRulesBadge } from "../aiden-rules-badge";
@@ -41,7 +50,14 @@ import { FlowRunHistory } from "../flow-run-history";
 import { SendCardButton } from "../send-card-button";
 import { SendFormButton } from "../send-form-button";
 import { useAiRuns, useAutoHeight, useHandoffAlertText } from "../chat-thread";
-import { contactLabel, dayLabel, initials, type ConversationRow, type MemberRow, type MessageRow } from "../inbox-utils";
+import {
+  contactLabel,
+  dayLabel,
+  initials,
+  type ConversationRow,
+  type MemberRow,
+  type MessageRow,
+} from "../inbox-utils";
 import { ToneAvatar } from "./chat-list";
 import { MessageItem } from "./message-item";
 import { takeoverPlan, windowChip, type AidenMode } from "./inbox-v2";
@@ -90,7 +106,13 @@ function Tool({
 }
 
 /** The chat's window chip: free replies left, or closed. */
-export function WindowChip({ lastCustomerMessageAt, now }: { lastCustomerMessageAt: string | null; now: number }) {
+export function WindowChip({
+  lastCustomerMessageAt,
+  now,
+}: {
+  lastCustomerMessageAt: string | null;
+  now: number;
+}) {
   const chip = windowChip(lastCustomerMessageAt, now);
   return (
     <span
@@ -176,7 +198,11 @@ export function ChatPane({
   const canUseAi = can("ai.use");
   const canTeach = can("ai.configure");
   const aiRuns = useAiRuns(organizationId, conversation.id);
-  const alertText = useHandoffAlertText(conversation.id, Boolean(conversation.needs_human), conversation.needs_human_at);
+  const alertText = useHandoffAlertText(
+    conversation.id,
+    Boolean(conversation.needs_human),
+    conversation.needs_human_at,
+  );
   const plan = takeoverPlan(conversation, userId);
   const assignee = members.find((m) => m.user_id === conversation.assigned_to) ?? null;
   const assigneeName = assignee ? assignee.full_name || assignee.email || "Team member" : null;
@@ -198,7 +224,19 @@ export function ChatPane({
     const frame = requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
     return () => cancelAnimationFrame(frame);
     // The composer growing (a suggestion, a summary) shrinks the wall: stay on the newest.
-  }, [messages.length, lastMessageId, conversation.id, loading, conversation.needs_human, conversation.assigned_to, alertText, suggestion, summary, proposedTags, teachOffer]);
+  }, [
+    messages.length,
+    lastMessageId,
+    conversation.id,
+    loading,
+    conversation.needs_human,
+    conversation.assigned_to,
+    alertText,
+    suggestion,
+    summary,
+    proposedTags,
+    teachOffer,
+  ]);
 
   // Messages already there when the chat loaded don't animate; new ones slide in.
   const seenRef = useRef<{ id: string; ids: Set<string> } | null>(null);
@@ -280,7 +318,10 @@ export function ChatPane({
         }
         await aidwar
           .from("contact_tags")
-          .upsert({ contact_id: contactId, tag_id: tagId, organization_id: organizationId }, { onConflict: "contact_id,tag_id" });
+          .upsert(
+            { contact_id: contactId, tag_id: tagId, organization_id: organizationId },
+            { onConflict: "contact_id,tag_id" },
+          );
       }
       toast.success("Labels added to this contact.");
       setProposedTags(null);
@@ -295,8 +336,11 @@ export function ChatPane({
     if (!text || sending) return;
     const ok = await onSend(text);
     if (ok) {
-      const asked = [...messages].reverse().find((m) => m.direction === "inbound" && (m.body ?? "").trim());
-      if (canTeach && asked) setTeachOffer({ question: (asked.body ?? "").trim(), reply: text, taughtOn: null });
+      const asked = [...messages]
+        .reverse()
+        .find((m) => m.direction === "inbound" && (m.body ?? "").trim());
+      if (canTeach && asked)
+        setTeachOffer({ question: (asked.body ?? "").trim(), reply: text, taughtOn: null });
     } else restore(text);
   };
   const submit = async () => {
@@ -327,9 +371,15 @@ export function ChatPane({
   // "/" in an empty box: the template, card and form pickers (the same buttons as the tool row).
   const toolButton = (name: string) =>
     toolsRef.current?.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`) ?? null;
-  const [slashItems, setSlashItems] = useState<{ card: boolean; form: boolean }>({ card: false, form: false });
+  const [slashItems, setSlashItems] = useState<{ card: boolean; form: boolean }>({
+    card: false,
+    form: false,
+  });
   const openSlash = () => {
-    setSlashItems({ card: Boolean(toolButton("Send card")), form: Boolean(toolButton("Send form")) });
+    setSlashItems({
+      card: Boolean(toolButton("Send card")),
+      form: Boolean(toolButton("Send form")),
+    });
     setSlashOpen(true);
   };
   const pickSlash = (what: "template" | "card" | "form") => {
@@ -389,14 +439,22 @@ export function ChatPane({
   // workspace switch is when Aiden doesn't reply in this workspace at all.
   const takeoverButton = (className: string) =>
     plan && aidenReplies ? (
-      <Button className={cn("rounded-[12px]", className)} onClick={() => void takeover()} disabled={taking} data-takeover={plan.action}>
+      <Button
+        className={cn("rounded-[12px]", className)}
+        onClick={() => void takeover()}
+        disabled={taking}
+        data-takeover={plan.action}
+      >
         {taking ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
         {plan.label}
       </Button>
     ) : !aidenReplies ? (
       <Link
         to="/app/employee"
-        className={cn("rounded-full px-2 py-1.5 text-center text-sm font-semibold text-aiden-deep underline-offset-4 hover:underline", className)}
+        className={cn(
+          "rounded-full px-2 py-1.5 text-center text-sm font-semibold text-aiden-deep underline-offset-4 hover:underline",
+          className,
+        )}
       >
         {aidenMode === "draft" ? "Aiden drafts only: change" : "Aiden is off: switch on"}
       </Link>
@@ -419,16 +477,18 @@ export function ChatPane({
             type="button"
             onClick={onToggleDetails}
             className="flex min-w-0 flex-1 items-center gap-3 rounded-[14px] py-0.5 pr-2 text-left transition-colors duration-200 hover:bg-ground active:bg-accent"
-            aria-label={`${label}, contact details`}
           >
             <ToneAvatar seed={conversation.contact?.id ?? conversation.id} label={label} />
             <span className="flex min-w-0 flex-col">
               <b className="truncate font-bold">{label}</b>
               <span className="truncate text-sm text-muted-foreground">
-                {conversation.contact?.name?.trim() ? (conversation.contact.phone ?? "") : "No name saved"}
+                {conversation.contact?.name?.trim()
+                  ? (conversation.contact.phone ?? "")
+                  : "No name saved"}
                 {fromNumber ? ` via ${fromNumber}` : ""}
               </span>
             </span>
+            <span className="sr-only">, contact details</span>
           </button>
           <span className="flex shrink-0 items-center gap-1">
             <Select
@@ -462,7 +522,11 @@ export function ChatPane({
               </SelectContent>
             </Select>
             {conversation.contact && organizationId ? (
-              <FlowRunHistory organizationId={organizationId} contactId={conversation.contact.id} conversationId={conversation.id} />
+              <FlowRunHistory
+                organizationId={organizationId}
+                contactId={conversation.contact.id}
+                conversationId={conversation.id}
+              />
             ) : null}
             <Button
               variant="outline"
@@ -492,8 +556,8 @@ export function ChatPane({
       {conversation.contact?.opt_in_status === "opted_out" ? (
         <p className="m-0 flex shrink-0 items-start gap-2 border-b border-danger-border bg-danger-soft px-4 py-2.5 text-sm text-danger-soft-foreground">
           <Ban className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          This contact opted out: no marketing. Service replies within the 24-hour window and utility or
-          authentication templates (an order update, a code) are still fine.
+          This contact opted out: no marketing. Service replies within the 24-hour window and
+          utility or authentication templates (an order update, a code) are still fine.
         </p>
       ) : null}
 
@@ -539,7 +603,12 @@ export function ChatPane({
                       {...(canTeach
                         ? {
                             onTeach: (note: AiRunNote) =>
-                              setTeaching({ ...note, question: note.question.trim() || questionBefore(messages, messages.indexOf(m)) }),
+                              setTeaching({
+                                ...note,
+                                question:
+                                  note.question.trim() ||
+                                  questionBefore(messages, messages.indexOf(m)),
+                              }),
                           }
                         : {})}
                     />
@@ -548,12 +617,16 @@ export function ChatPane({
               </section>
             ))}
             {conversation.needs_human ? (
-              <WhatsAppBubble from="system" className="flex flex-col items-center gap-1" >
+              <WhatsAppBubble from="system" className="flex flex-col items-center gap-1">
                 <span data-shot="needs-human" className="block">
-                  Aiden paused: {handoverReasonText(conversation.needs_human_reason) ?? "I stepped back on this one."}
+                  Aiden paused:{" "}
+                  {handoverReasonText(conversation.needs_human_reason) ??
+                    "I stepped back on this one."}
                 </span>
                 {conversation.needs_human_question ? (
-                  <span className="block font-medium">They asked: “{conversation.needs_human_question}”</span>
+                  <span className="block font-medium">
+                    They asked: “{conversation.needs_human_question}”
+                  </span>
                 ) : null}
                 {conversation.handover_state ? (
                   <span className="block font-medium">
@@ -576,8 +649,8 @@ export function ChatPane({
               </WhatsAppBubble>
             ) : conversation.assigned_to && aidenReplies ? (
               <WhatsAppBubble from="system">
-                {conversation.assigned_to === userId ? "You" : (assigneeName ?? "A teammate")} took over. Aiden won't
-                reply here until the chat is handed back.
+                {conversation.assigned_to === userId ? "You" : (assigneeName ?? "A teammate")} took
+                over. Aiden won't reply here until the chat is handed back.
               </WhatsAppBubble>
             ) : null}
             <div ref={bottomRef} className="h-px" />
@@ -592,16 +665,31 @@ export function ChatPane({
             <Tags className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <span className="font-semibold text-muted-foreground">It suggests:</span>
             {proposedTags.map((t) => (
-              <span key={t} className="rounded-full bg-aiden-soft px-2.5 py-0.5 text-[0.8125rem] font-semibold text-aiden-deep">
+              <span
+                key={t}
+                className="rounded-full bg-aiden-soft px-2.5 py-0.5 text-[0.8125rem] font-semibold text-aiden-deep"
+              >
                 {t}
               </span>
             ))}
             <span className="ml-auto flex gap-2">
-              <Button size="sm" className="rounded-full" disabled={applyingTags} onClick={() => void applyTags()}>
-                {applyingTags ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
+              <Button
+                size="sm"
+                className="rounded-full"
+                disabled={applyingTags}
+                onClick={() => void applyTags()}
+              >
+                {applyingTags ? (
+                  <Loader2 className="animate-spin motion-reduce:animate-none" />
+                ) : null}
                 Add them
               </Button>
-              <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setProposedTags(null)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="rounded-full"
+                onClick={() => setProposedTags(null)}
+              >
                 No thanks
               </Button>
             </span>
@@ -613,7 +701,9 @@ export function ChatPane({
               <Sparkles className="h-4 w-4 text-aiden-deep" aria-hidden="true" />
               The short version
             </p>
-            <p className="m-0 mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-[0.9375rem]">{summary}</p>
+            <p className="m-0 mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-[0.9375rem]">
+              {summary}
+            </p>
             <button
               type="button"
               onClick={() => setSummary(null)}
@@ -627,7 +717,9 @@ export function ChatPane({
         {teachOffer ? (
           <div className="flex flex-wrap items-center gap-2 rounded-[14px] border border-line bg-ground px-3 py-2 text-sm text-muted-foreground">
             <GraduationCap className="h-4 w-4 shrink-0 text-aiden-deep" aria-hidden="true" />
-            <span className="min-w-0 flex-1">Teach Aiden this answer? Next time a customer asks, Aiden can answer it.</span>
+            <span className="min-w-0 flex-1">
+              Teach Aiden this answer? Next time a customer asks, Aiden can answer it.
+            </span>
             <Button
               size="sm"
               variant="outline"
@@ -639,7 +731,12 @@ export function ChatPane({
             >
               Teach Aiden
             </Button>
-            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setTeachOffer(null)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="rounded-full"
+              onClick={() => setTeachOffer(null)}
+            >
               Not now
             </Button>
           </div>
@@ -653,7 +750,12 @@ export function ChatPane({
               <b>Aiden suggests:</b> “{suggestion}”
             </span>
             <span className="flex shrink-0 gap-2">
-              <Button size="sm" variant="outline" className="rounded-[11px]" onClick={editSuggestion}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-[11px]"
+                onClick={editSuggestion}
+              >
                 Edit
               </Button>
               <Button
@@ -672,7 +774,10 @@ export function ChatPane({
 
         {open ? (
           <div className="flex items-end gap-2.5">
-            <DropdownMenu open={slashOpen} onOpenChange={(o) => (o ? openSlash() : setSlashOpen(false))}>
+            <DropdownMenu
+              open={slashOpen}
+              onOpenChange={(o) => (o ? openSlash() : setSlashOpen(false))}
+            >
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
@@ -685,9 +790,17 @@ export function ChatPane({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="top">
                 <DropdownMenuLabel>Send</DropdownMenuLabel>
-                <DropdownMenuItem onSelect={() => pickSlash("template")}>A template</DropdownMenuItem>
-                {slashItems.card ? <DropdownMenuItem onSelect={() => pickSlash("card")}>A picture card</DropdownMenuItem> : null}
-                {slashItems.form ? <DropdownMenuItem onSelect={() => pickSlash("form")}>A form</DropdownMenuItem> : null}
+                <DropdownMenuItem onSelect={() => pickSlash("template")}>
+                  A template
+                </DropdownMenuItem>
+                {slashItems.card ? (
+                  <DropdownMenuItem onSelect={() => pickSlash("card")}>
+                    A picture card
+                  </DropdownMenuItem>
+                ) : null}
+                {slashItems.form ? (
+                  <DropdownMenuItem onSelect={() => pickSlash("form")}>A form</DropdownMenuItem>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
             <Textarea
@@ -707,12 +820,18 @@ export function ChatPane({
                 }
                 if (e.key === "Escape") e.currentTarget.blur();
               }}
-              placeholder={compact ? "Message, or / for more" : "Type a message, or / for templates"}
+              placeholder={
+                compact ? "Message, or / for more" : "Type a message, or / for templates"
+              }
               aria-label={`Message ${label}`}
               rows={1}
               className="max-h-44 min-h-[46px] flex-1 resize-none rounded-[12px] border-line bg-surface px-3.5 py-[11px] text-[0.9375rem] shadow-none md:text-[0.9375rem]"
             />
-            <Button className="h-[46px] shrink-0 rounded-[12px] px-4" disabled={!draft.trim() || sending} onClick={() => void submit()}>
+            <Button
+              className="h-[46px] shrink-0 rounded-[12px] px-4"
+              disabled={!draft.trim() || sending}
+              onClick={() => void submit()}
+            >
               {sending ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
               Send
             </Button>
@@ -720,10 +839,15 @@ export function ChatPane({
         ) : (
           <div className="flex flex-col gap-3 rounded-[14px] border border-gold-line bg-gold-bg px-3.5 py-3 text-sm text-gold-ink wide:flex-row wide:items-center">
             <p className="m-0 flex-1 font-semibold">
-              The 24-hour window is closed. Free replies open again when they write; until then, send an approved template.
+              The 24-hour window is closed. Free replies open again when they write; until then,
+              send an approved template.
             </p>
             <span className="flex shrink-0 flex-wrap items-center gap-2">
-              <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen={false} />
+              <SendCardButton
+                organizationId={organizationId}
+                conversationId={conversation.id}
+                windowOpen={false}
+              />
               <Button variant="gold" className="rounded-[11px]" onClick={() => setPickerOpen(true)}>
                 <MessageSquareText />
                 Send a template
@@ -736,7 +860,11 @@ export function ChatPane({
           {open ? (
             <>
               <SendFormButton organizationId={organizationId} conversationId={conversation.id} />
-              <SendCardButton organizationId={organizationId} conversationId={conversation.id} windowOpen />
+              <SendCardButton
+                organizationId={organizationId}
+                conversationId={conversation.id}
+                windowOpen
+              />
               {/* Batch 35: an approved template can go any time. */}
               <Button
                 variant="ghost"

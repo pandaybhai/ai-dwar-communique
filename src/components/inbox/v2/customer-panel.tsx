@@ -2,11 +2,18 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Check, Copy, FileText, Image as ImageIcon, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { aidwar } from "@/integrations/aidwar/client";
+import { usePermissions } from "@/hooks/use-permissions";
 import { OPT_IN_LABELS, type OptInStatus } from "@/lib/contacts";
 import { languageLabel } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { mediaKind, mediaLabel } from "../chat-thread";
-import { contactLabel, relativeTime, type ConversationRow, type MemberRow, type MessageRow } from "../inbox-utils";
+import {
+  contactLabel,
+  relativeTime,
+  type ConversationRow,
+  type MemberRow,
+  type MessageRow,
+} from "../inbox-utils";
 import { ToneAvatar } from "./chat-list";
 import { windowChip } from "./inbox-v2";
 
@@ -22,7 +29,9 @@ function useContactTags(organizationId: string | null, contactId: string | null)
         .eq("organization_id", organizationId)
         .eq("contact_id", contactId);
       if (error) return setTags([]);
-      const names = ((data ?? []) as Array<{ tags: { name: string } | Array<{ name: string }> | null }>)
+      const names = (
+        (data ?? []) as Array<{ tags: { name: string } | Array<{ name: string }> | null }>
+      )
         .map((r) => (Array.isArray(r.tags) ? r.tags[0]?.name : r.tags?.name))
         .filter((n): n is string => Boolean(n));
       setTags(names);
@@ -50,14 +59,19 @@ type OrderRow = {
 
 /**
  * The contact's latest orders from the shop sync (public.orders, readable by
- * members, indexed on organization + contact). No orders, no shop or a failed
- * read: the section says so and nothing breaks.
+ * people with integrations.view (its RLS policy), indexed on organization +
+ * contact). Without that permission the section isn't shown; no orders, no
+ * shop or a failed read: the section says so and nothing breaks.
  */
-function useContactOrders(organizationId: string | null, contactId: string | null) {
+function useContactOrders(
+  organizationId: string | null,
+  contactId: string | null,
+  allowed: boolean,
+) {
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   useEffect(() => {
     setOrders(null);
-    if (!organizationId || !contactId) return setOrders([]);
+    if (!allowed || !organizationId || !contactId) return setOrders([]);
     let live = true;
     void Promise.resolve(
       aidwar
@@ -75,7 +89,7 @@ function useContactOrders(organizationId: string | null, contactId: string | nul
     return () => {
       live = false;
     };
-  }, [organizationId, contactId]);
+  }, [organizationId, contactId, allowed]);
   return orders;
 }
 
@@ -140,7 +154,9 @@ export function CustomerPanel({
   const label = contactLabel(conversation.contact);
   const contactId = conversation.contact?.id ?? null;
   const tags = useContactTags(organizationId, contactId);
-  const orders = useContactOrders(organizationId, contactId);
+  const { can } = usePermissions();
+  const canSeeOrders = can("integrations.view");
+  const orders = useContactOrders(organizationId, contactId, canSeeOrders);
   const [copied, setCopied] = useState(false);
   const assignee = members.find((m) => m.user_id === conversation.assigned_to) ?? null;
   const optIn = (conversation.contact?.opt_in_status ?? "unknown") as OptInStatus;
@@ -151,7 +167,8 @@ export function CustomerPanel({
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const m = messages[i];
     if (m && m.direction === "inbound" && m.detected_language) {
-      language = m.detected_language === "hi-Latn" ? "Hinglish" : languageLabel(m.detected_language);
+      language =
+        m.detected_language === "hi-Latn" ? "Hinglish" : languageLabel(m.detected_language);
       break;
     }
   }
@@ -191,7 +208,11 @@ export function CustomerPanel({
         </button>
       ) : null}
       <div className="flex flex-col items-start gap-2">
-        <ToneAvatar seed={contactId ?? conversation.id} label={label} className="h-[72px] w-[72px] text-2xl" />
+        <ToneAvatar
+          seed={contactId ?? conversation.id}
+          label={label}
+          className="h-[72px] w-[72px] text-2xl"
+        />
         <h2 className="m-0 max-w-full truncate text-lg font-bold">{label}</h2>
         {conversation.contact?.phone ? (
           <button
@@ -201,7 +222,11 @@ export function CustomerPanel({
             aria-label={`Copy ${conversation.contact.phone}`}
           >
             <span className="tabular">{conversation.contact.phone}</span>
-            {copied ? <Check className="h-3.5 w-3.5 text-aiden-deep" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-aiden-deep" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
           </button>
         ) : null}
         <div className="flex flex-wrap gap-1.5">
@@ -209,7 +234,10 @@ export function CustomerPanel({
             <Skeleton className="h-6 w-20 rounded-full" />
           ) : (
             tags.map((t) => (
-              <span key={t} className="rounded-full bg-gold-bg px-2.5 py-1 text-[0.8125rem] font-semibold text-gold-ink">
+              <span
+                key={t}
+                className="rounded-full bg-gold-bg px-2.5 py-1 text-[0.8125rem] font-semibold text-gold-ink"
+              >
                 {t}
               </span>
             ))
@@ -226,7 +254,9 @@ export function CustomerPanel({
           </span>
         </div>
         {tags !== null && tags.length === 0 ? (
-          <p className="m-0 text-sm text-muted-foreground">No labels yet. "Suggest labels" under the chat adds some.</p>
+          <p className="m-0 text-sm text-muted-foreground">
+            No labels yet. "Suggest labels" under the chat adds some.
+          </p>
         ) : null}
       </div>
 
@@ -240,7 +270,8 @@ export function CustomerPanel({
           </>
         ) : (
           <p className="m-0 text-[0.9375rem] text-muted-foreground">
-            Nothing saved about this customer yet. "Catch me up" under the chat sums up this conversation.
+            Nothing saved about this customer yet. "Catch me up" under the chat sums up this
+            conversation.
           </p>
         )}
       </Block>
@@ -249,7 +280,11 @@ export function CustomerPanel({
         <dl className="m-0 flex w-full flex-col gap-1">
           <Line label="Status">{conversation.status === "closed" ? "Done" : "Open"}</Line>
           <Line label="With">
-            {assignee ? assignee.full_name || assignee.email || "Team member" : conversation.needs_human ? "Waiting for you" : "Aiden"}
+            {assignee
+              ? assignee.full_name || assignee.email || "Team member"
+              : conversation.needs_human
+                ? "Waiting for you"
+                : "Aiden"}
           </Line>
           <Line label="24-hour window">{chip.open ? chip.text : "Closed: templates only"}</Line>
           {conversation.last_customer_message_at ? (
@@ -262,21 +297,25 @@ export function CustomerPanel({
         </dl>
       </Block>
 
-      <Block title="Orders">
-        {orders === null ? (
-          <Skeleton className="h-5 w-40" />
-        ) : orders.length ? (
-          <dl className="m-0 flex w-full flex-col gap-1">
-            {orders.map((o) => (
-              <Line key={o.id} label={o.order_number ? `Order ${o.order_number}` : "Order"}>
-                <span className="tabular">{money(o.total, o.currency)}</span>
-              </Line>
-            ))}
-          </dl>
-        ) : (
-          <p className="m-0 text-[0.9375rem] text-muted-foreground">No orders from your shop yet.</p>
-        )}
-      </Block>
+      {canSeeOrders ? (
+        <Block title="Orders">
+          {orders === null ? (
+            <Skeleton className="h-5 w-40" />
+          ) : orders.length ? (
+            <dl className="m-0 flex w-full flex-col gap-1">
+              {orders.map((o) => (
+                <Line key={o.id} label={o.order_number ? `Order ${o.order_number}` : "Order"}>
+                  <span className="tabular">{money(o.total, o.currency)}</span>
+                </Line>
+              ))}
+            </dl>
+          ) : (
+            <p className="m-0 text-[0.9375rem] text-muted-foreground">
+              No orders from your shop yet.
+            </p>
+          )}
+        </Block>
+      ) : null}
 
       <Block title="Media">
         {media.length ? (
@@ -295,19 +334,29 @@ export function CustomerPanel({
                     className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-2.5 rounded-[11px] px-2 py-1.5 text-left text-[0.9375rem] transition-colors duration-200 hover:bg-ground active:bg-accent"
                   >
                     {kind === "image" ? (
-                      <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <ImageIcon
+                        className="h-4 w-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                     ) : (
-                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <FileText
+                        className="h-4 w-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                     )}
                     <span className="min-w-0 flex-1 truncate">{name}</span>
-                    <span className="shrink-0 text-[0.8125rem] text-muted-foreground">{relativeTime(m.created_at)}</span>
+                    <span className="shrink-0 text-[0.8125rem] text-muted-foreground">
+                      {relativeTime(m.created_at)}
+                    </span>
                   </button>
                 </li>
               );
             })}
           </ul>
         ) : (
-          <p className="m-0 text-[0.9375rem] text-muted-foreground">No photos or files in this chat.</p>
+          <p className="m-0 text-[0.9375rem] text-muted-foreground">
+            No photos or files in this chat.
+          </p>
         )}
       </Block>
     </div>

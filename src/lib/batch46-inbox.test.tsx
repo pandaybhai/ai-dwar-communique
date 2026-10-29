@@ -15,7 +15,9 @@ vi.mock("@/lib/new-design", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/new-design")>()),
   useNewDesign: () => h.newDesign,
 }));
-vi.mock("@/hooks/use-feature-flag", () => ({ useFeatureFlag: () => ({ enabled: true, loading: false }) }));
+vi.mock("@/hooks/use-feature-flag", () => ({
+  useFeatureFlag: () => ({ enabled: true, loading: false }),
+}));
 vi.mock("@/hooks/use-permissions", () => ({
   usePermissions: () => ({ can: () => true, reasonFor: () => null, loading: false }),
 }));
@@ -116,13 +118,25 @@ describe("tabs map onto the existing Inbox filters", () => {
   });
 
   it("search, number and quick filters work as before on top of a tab", () => {
-    const base = { view: "all" as InboxView, userId: ME, numberId: "all", quick: new Set<"unread" | "unassigned">(), search: "" };
+    const base = {
+      view: "all" as InboxView,
+      userId: ME,
+      numberId: "all",
+      quick: new Set<"unread" | "unassigned">(),
+      search: "",
+    };
     expect(filterChats(chats, { ...base, numberId: "n2" }).map((c) => c.id)).toEqual(["6"]);
-    expect(filterChats(chats, { ...base, quick: new Set(["unread"]) }).map((c) => c.id)).toEqual(["6"]);
-    expect(filterChats(chats, { ...base, quick: new Set(["unassigned"]) }).map((c) => c.id)).toEqual(["1", "3", "5"]);
+    expect(filterChats(chats, { ...base, quick: new Set(["unread"]) }).map((c) => c.id)).toEqual([
+      "6",
+    ]);
+    expect(
+      filterChats(chats, { ...base, quick: new Set(["unassigned"]) }).map((c) => c.id),
+    ).toEqual(["1", "3", "5"]);
     expect(filterChats(chats, { ...base, search: "name 4" }).map((c) => c.id)).toEqual(["4"]);
     expect(filterChats(chats, { ...base, search: "+91000005" }).map((c) => c.id)).toEqual(["5"]);
-    expect(filterChats(chats, { ...base, view: "waiting", search: "name 2" }).map((c) => c.id)).toEqual(["2"]);
+    expect(
+      filterChats(chats, { ...base, view: "waiting", search: "name 2" }).map((c) => c.id),
+    ).toEqual(["2"]);
   });
 
   it("opens on Waiting for you when someone waits, else on every chat", () => {
@@ -138,16 +152,29 @@ describe("the 24-hour window chip", () => {
   const H = 3_600_000;
 
   it("counts down in hours, then minutes", () => {
-    expect(windowChip(before(3 * H), now)).toMatchObject({ open: true, closing: false, text: "Free replies for 21 more hours" });
+    expect(windowChip(before(3 * H), now)).toMatchObject({
+      open: true,
+      closing: false,
+      text: "Free replies for 21 more hours",
+    });
     expect(windowChip(before(60_000), now).text).toBe("Free replies for 23 more hours");
     expect(windowChip(before(23 * H - 60_000), now).text).toBe("Free replies for 1 more hour");
-    expect(windowChip(before(23 * H), now)).toMatchObject({ text: "Free replies for 1 more hour", closing: true });
-    expect(windowChip(before(23 * H + 60_000), now)).toMatchObject({ text: "Free replies for 59 more minutes", closing: true });
+    expect(windowChip(before(23 * H), now)).toMatchObject({
+      text: "Free replies for 1 more hour",
+      closing: true,
+    });
+    expect(windowChip(before(23 * H + 60_000), now)).toMatchObject({
+      text: "Free replies for 59 more minutes",
+      closing: true,
+    });
     expect(windowChip(before(24 * H - 60_000), now).text).toBe("Free replies for 1 more minute");
   });
 
   it("exactly 24 hours is still open (every send path's rule), one millisecond later it is closed", () => {
-    expect(windowChip(before(24 * H), now)).toMatchObject({ open: true, text: "Free replies for less than a minute" });
+    expect(windowChip(before(24 * H), now)).toMatchObject({
+      open: true,
+      text: "Free replies for less than a minute",
+    });
     expect(windowChip(before(24 * H + 1), now)).toEqual({
       open: false,
       closing: false,
@@ -189,7 +216,9 @@ describe("take over / hand back use the existing per-chat switch", () => {
   it("the new Inbox writes nothing the classic Inbox doesn't: same updates, same send endpoint", () => {
     const classicView = src("components/inbox/inbox-view.tsx");
     const hook = src("components/inbox/v2/use-inbox.ts");
-    const updates = (code: string) => [...code.matchAll(/\.update\((\{[^)]*\})\)/g)].map((m) => m[1]!.replace(/\s+/g, " "));
+    const updates = (code: string) =>
+      [...code.matchAll(/\.update\((\{[^)]*\})\)/g)].map((m) => m[1]!.replace(/\s+/g, " "));
+    expect(updates(hook)).toHaveLength(4);
     // Every update the new hook makes is one the classic view makes.
     for (const u of updates(hook)) expect(updates(classicView)).toContain(u);
     expect(updates(hook).sort()).toEqual(updates(classicView).sort());
@@ -200,7 +229,10 @@ describe("take over / hand back use the existing per-chat switch", () => {
       '"/api/whatsapp/send-message"',
     ]);
     // Take over / hand back go only through the classic assign and Mark-as-handled writes.
-    const takeover = hook.slice(hook.indexOf("const handleTakeover"), hook.indexOf("const handleToggleStatus"));
+    const takeover = hook.slice(
+      hook.indexOf("const handleTakeover"),
+      hook.indexOf("const handleToggleStatus"),
+    );
     expect(takeover).toContain("takeoverPlan(");
     expect(takeover).toContain("handleAssign(");
     expect(takeover).toContain("handleResolveNeedsHuman(");
@@ -252,7 +284,9 @@ describe("the phone layout", () => {
         onToggleDetails={() => {}}
       />,
     );
-    expect(html).toMatch(/aria-label="Back to chats"[^>]*>|class="[^"]*wide:hidden[^"]*"[^>]*aria-label="Back to chats"/);
+    expect(html).toMatch(
+      /aria-label="Back to chats"[^>]*>|class="[^"]*wide:hidden[^"]*"[^>]*aria-label="Back to chats"/,
+    );
     expect(html.match(/data-takeover="take_over"/g)).toHaveLength(2);
     expect(html).toContain("w-full wide:hidden");
     expect(html).toContain("hidden wide:inline-flex");
@@ -308,12 +342,24 @@ describe("messages", () => {
         ...over,
       }) as never;
     const ai = renderToStaticMarkup(
-      <MessageItem message={msg({})} organizationId="o" aiRun={{ question: "q", reply: "Hello", taughtOn: null }} teammate={null} fresh={false} />,
+      <MessageItem
+        message={msg({})}
+        organizationId="o"
+        aiRun={{ question: "q", reply: "Hello", taughtOn: null }}
+        teammate={null}
+        fresh={false}
+      />,
     );
     expect(ai).toContain(">Aiden</span>");
     expect(ai).toContain("Read");
     const person = renderToStaticMarkup(
-      <MessageItem message={msg({ sent_by: "u" })} organizationId="o" aiRun={null} teammate="Riya" fresh={false} />,
+      <MessageItem
+        message={msg({ sent_by: "u" })}
+        organizationId="o"
+        aiRun={null}
+        teammate="Riya"
+        fresh={false}
+      />,
     );
     expect(person).toContain(">Riya</span>");
     const product = renderToStaticMarkup(
@@ -335,7 +381,13 @@ describe("messages", () => {
     expect(product).toContain("Silk scarf");
     expect(product).toContain("₹1,200");
     const failed = renderToStaticMarkup(
-      <MessageItem message={msg({ status: "failed" })} organizationId="o" aiRun={null} teammate={null} fresh={false} />,
+      <MessageItem
+        message={msg({ status: "failed" })}
+        organizationId="o"
+        aiRun={null}
+        teammate={null}
+        fresh={false}
+      />,
     );
     expect(failed).toContain('aria-label="Failed to send"');
     expect(productCaption("Name only")).toEqual({ title: "Name only", detail: null });
@@ -346,8 +398,11 @@ describe("messages", () => {
 describe("flag off: today's Inbox", () => {
   it("the route renders the classic Inbox with the flag off and the new one with it on", async () => {
     const { Route } = await import("../routes/app/inbox");
-    const Page = (Route as unknown as { options: { component: React.ComponentType & { preload?: () => Promise<void> } } })
-      .options.component;
+    const Page = (
+      Route as unknown as {
+        options: { component: React.ComponentType & { preload?: () => Promise<void> } };
+      }
+    ).options.component;
     await Page.preload?.();
     h.newDesign = false;
     const off = renderToStaticMarkup(<Page />);
@@ -363,7 +418,12 @@ describe("flag off: today's Inbox", () => {
     const view = src("components/inbox/inbox-view.tsx");
     expect(view).toContain("export function InboxView()");
     expect(view).not.toContain("v2/");
-    for (const f of ["inbox-view.tsx", "chat-thread.tsx", "conversation-list.tsx", "contact-panel.tsx"]) {
+    for (const f of [
+      "inbox-view.tsx",
+      "chat-thread.tsx",
+      "conversation-list.tsx",
+      "contact-panel.tsx",
+    ]) {
       expect(src(`components/inbox/${f}`)).not.toMatch(/new-design|useNewDesign|inbox\/v2/);
     }
   });
