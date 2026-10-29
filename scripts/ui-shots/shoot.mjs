@@ -165,7 +165,40 @@ const SCENARIOS_B45 = {
   "home-classic": { path: "/app", conversations: 40, wait: "h1", fullPage: true },
 };
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45 };
+/** Batch 46: the new Inbox (run with --design new; --design classic shows flag off is unchanged). */
+const chatAt = (i) => `00000000-0000-4000-8000-${String(1000 + i).padStart(12, "0")}`;
+const SCENARIOS_B46 = {
+  "inbox-list": { path: "/app/inbox", conversations: 40, wait: "text=Asha Iyer" },
+  "inbox-chat": { path: `/app/inbox?c=${chatAt(8)}`, conversations: 40, wait: "text=Meenakari" },
+  "inbox-needs-human": {
+    path: `/app/inbox?c=${firstId}`,
+    conversations: 40,
+    wait: "text=Meenakari",
+    act: async (page) => {
+      const draft = page.getByRole("button", { name: "Draft a reply" });
+      if (await draft.count()) {
+        await draft.first().click();
+        await page.waitForTimeout(600);
+      }
+    },
+  },
+  "inbox-taken-over": { path: `/app/inbox?c=${chatAt(1)}`, conversations: 40, wait: "text=Meenakari" },
+  "inbox-window-closed": { path: `/app/inbox?c=${chatAt(3)}`, conversations: 40, wait: "text=Meenakari" },
+  "inbox-empty": { path: "/app/inbox", conversations: 0, wait: "h1" },
+  "inbox-back": {
+    path: `/app/inbox?c=${firstId}`,
+    conversations: 40,
+    wait: "text=Meenakari",
+    mobileOnly: true,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Back to chats" }).click();
+      await page.waitForTimeout(500);
+    },
+  },
+};
+
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46 };
 
 const consoleErrors = [];
 

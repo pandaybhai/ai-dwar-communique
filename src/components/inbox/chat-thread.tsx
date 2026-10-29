@@ -75,7 +75,7 @@ import {
 import { ContactAvatar } from "./contact-avatar";
 import { WhatsAppText } from "@/components/whatsapp-text";
 
-function StatusTicks({ message }: { message: MessageRow }) {
+export function StatusTicks({ message }: { message: MessageRow }) {
   if (message.status === "failed") {
     return (
       <TooltipProvider>
@@ -102,7 +102,7 @@ function StatusTicks({ message }: { message: MessageRow }) {
 }
 
 /** image / video / audio / document — never guessed from the URL alone. */
-function mediaKind(message: MessageRow): "image" | "video" | "audio" | "document" {
+export function mediaKind(message: MessageRow): "image" | "video" | "audio" | "document" {
   const mime = (message.media_mime ?? "").toLowerCase();
   const type = (message.type ?? "").toLowerCase();
   const source = mime || type;
@@ -122,7 +122,7 @@ function fileTypeLabel(message: MessageRow, label: string): string {
 }
 
 /** Shows the file the customer sent (see mediaSource). */
-function MessageMedia({
+export function MessageMedia({
   message,
   organizationId,
   label,
@@ -231,7 +231,7 @@ function MessageMedia({
  * The AI answers of this conversation, newest first, so a merchant can improve
  * the exact reply they are looking at (matched by aiRunFor).
  */
-function useAiRuns(organizationId: string | null, conversationId: string) {
+export function useAiRuns(organizationId: string | null, conversationId: string) {
   const [runs, setRuns] = useState<AiRunRow[]>([]);
 
   const load = useCallback(async () => {
@@ -259,7 +259,7 @@ function useAiRuns(organizationId: string | null, conversationId: string) {
  * could be). Its own read, so the Inbox list never depends on the column; a
  * failed read (e.g. 20261080 not applied yet) just shows nothing.
  */
-function useHandoffAlertText(conversationId: string, waiting: boolean, waitingSince: string | null | undefined) {
+export function useHandoffAlertText(conversationId: string, waiting: boolean, waitingSince: string | null | undefined) {
   const [text, setText] = useState<string | null>(null);
   useEffect(() => {
     setText(null);
@@ -282,7 +282,7 @@ function useHandoffAlertText(conversationId: string, waiting: boolean, waitingSi
 }
 
 /** A filled-in WhatsApp form, read as "question: answer" rows. */
-function FormAnswers({ name, answers }: { name: string; answers: Array<{ label: string; value: string }> }) {
+export function FormAnswers({ name, answers }: { name: string; answers: Array<{ label: string; value: string }> }) {
   return (
     <div className="min-w-[200px]">
       <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-wa-link">
@@ -302,7 +302,7 @@ function FormAnswers({ name, answers }: { name: string; answers: Array<{ label: 
 }
 
 /** Alt text / file name for a media message without words. */
-function mediaLabel(message: MessageRow): string {
+export function mediaLabel(message: MessageRow): string {
   const kind = mediaKind(message);
   return kind === "image" ? "Picture" : kind === "video" ? "Video" : kind === "audio" ? "Voice note" : "Document";
 }
@@ -408,7 +408,7 @@ export function Bubble({
 }
 
 /** The textarea grows with what's typed (up to ~7 lines), and shrinks back after sending. */
-function useAutoHeight(ref: React.RefObject<HTMLTextAreaElement | null>, value: string) {
+export function useAutoHeight(ref: React.RefObject<HTMLTextAreaElement | null>, value: string) {
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
