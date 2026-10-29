@@ -411,7 +411,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       metrics: [],
       dashboard_section: false,
     },
-    activity_actions: ["template_created", "template_synced"],
+    activity_actions: ["template_created", "template_synced", "template_deleted"],
     ai_tools: [
       {
         name: "list_approved_templates",

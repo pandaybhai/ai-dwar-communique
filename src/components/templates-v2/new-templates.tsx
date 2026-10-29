@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FilePlus2, FileText, MessageSquareText, RefreshCw, Search } from "lucide-react";
+import {
+  FilePlus2,
+  FileText,
+  MessageSquareText,
+  MoreHorizontal,
+  RefreshCw,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
@@ -8,6 +16,12 @@ import { componentsToPreview } from "@/components/templates/template-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -24,7 +38,13 @@ import { templateBodyText, type TemplateRow } from "@/lib/templates";
 import { numberLabel } from "@/lib/whatsapp-numbers";
 import { cn } from "@/lib/utils";
 import { TemplateMessage } from "./template-phone";
-import { reviewStateOf, TEMPLATE_STATUS_FILTERS, type ReviewState } from "./templates-data";
+import {
+  isDeletedTemplate,
+  reviewStateOf,
+  TEMPLATE_STATUS_FILTERS,
+  type ReviewState,
+} from "./templates-data";
+import { DeleteTemplateDialog } from "./delete-template";
 
 /**
  * Batch 47: Templates in the new design, the Campaigns section's second tab.
@@ -53,6 +73,8 @@ export function NewTemplates() {
   const [numberFilter, setNumberFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<ReviewState | "all">("all");
   const [start, setStart] = useState<{ kind: "blank" | "invoice"; at: number } | null>(null);
+  // Batch 51: the template whose Delete dialog is open.
+  const [deleting, setDeleting] = useState<TemplateRow | null>(null);
   const autoSynced = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   usePageShortcut("/", () => searchRef.current?.focus());
@@ -66,7 +88,8 @@ export function NewTemplates() {
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
     if (err) setError("We couldn’t load your templates. Please refresh.");
-    else setTemplates((data ?? []) as TemplateRow[]);
+    // Batch 51: one deleted here (deleted_at) leaves the gallery.
+    else setTemplates(((data ?? []) as TemplateRow[]).filter((t) => !isDeletedTemplate(t)));
     setLoading(false);
   }, [orgId]);
 
@@ -285,6 +308,7 @@ export function NewTemplates() {
                       template={t}
                       owner={multiple ? ownerOf(t.waba_id) : null}
                       index={i}
+                      {...(canManage ? { onDelete: () => setDeleting(t) } : {})}
                     />
                   ))}
                 </ul>
@@ -293,6 +317,17 @@ export function NewTemplates() {
           )}
         </div>
       )}
+
+      {canManage && orgId ? (
+        <DeleteTemplateDialog
+          organizationId={orgId}
+          template={deleting}
+          onOpenChange={(open) => {
+            if (!open) setDeleting(null);
+          }}
+          onDeleted={() => void load()}
+        />
+      ) : null}
     </>
   );
 }
@@ -309,10 +344,13 @@ function TemplateTile({
   template: t,
   owner,
   index,
+  onDelete,
 }: {
   template: TemplateRow;
   owner: string | null;
   index: number;
+  /** Batch 51: with templates.manage, the tile's menu has "Delete template". */
+  onDelete?: () => void;
 }) {
   const state = reviewStateOf(t);
   const chip = STATE_CHIP[state];
@@ -332,13 +370,38 @@ function TemplateTile({
             {owner ? `, ${owner}` : null}
           </p>
         </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-full px-2.5 py-0.5 text-[0.8125rem] font-semibold",
-            chip.className,
-          )}
-        >
-          {label}
+        <span className="flex shrink-0 items-center gap-1">
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-2.5 py-0.5 text-[0.8125rem] font-semibold",
+              chip.className,
+            )}
+          >
+            {label}
+          </span>
+          {onDelete ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="-mr-1.5 -mt-1 text-muted-foreground hover:text-foreground"
+                  aria-label={`More for ${t.name}`}
+                >
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={onDelete}
+                  className="text-danger-soft-foreground focus:text-danger-soft-foreground"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  Delete template
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </span>
       </div>
       {state === "REJECTED" && t.rejection_reason ? (

@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 92, column 1105, view 2, function 114, index 168, trigger 70, cron_job 14.
+-- Expected objects: table 92, column 1106, view 2, function 114, index 168, trigger 70, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -826,6 +826,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'message_templates', 'category', NULL, 'text', '20260813_message_templates.sql'),
     ('column', 'public', 'message_templates', 'components', NULL, 'jsonb', '20260813_message_templates.sql'),
     ('column', 'public', 'message_templates', 'created_at', NULL, 'timestamp with time zone', '20260813_message_templates.sql'),
+    ('column', 'public', 'message_templates', 'deleted_at', NULL, 'timestamp with time zone', '20261250_batch51_gaps.sql'),
     ('column', 'public', 'message_templates', 'id', NULL, 'uuid', '20260813_message_templates.sql'),
     ('column', 'public', 'message_templates', 'language', NULL, 'text', '20260813_message_templates.sql'),
     ('column', 'public', 'message_templates', 'meta_template_id', NULL, 'text', '20260813_message_templates.sql'),
