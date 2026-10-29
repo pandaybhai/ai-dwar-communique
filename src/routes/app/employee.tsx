@@ -35,6 +35,8 @@ import { usePendingGapCount } from "@/hooks/use-pending-gaps";
 import { usePermissions } from "@/hooks/use-permissions";
 import { employeeApi, moneyText, type EmployeeOverview } from "@/lib/employee-client";
 import { useOrg } from "@/lib/org-context";
+import { useNewDesign } from "@/lib/new-design";
+import { NewAidenPage } from "@/components/automate-v2/aiden-page";
 
 
 
@@ -52,8 +54,13 @@ export const Route = createFileRoute("/app/employee")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: EmployeePage,
+  component: EmployeeRoute,
 });
+
+/** Batch 49: Automate > Aiden in the new design; the classic page below otherwise. */
+function EmployeeRoute() {
+  return useNewDesign() ? <NewAidenPage /> : <EmployeePage />;
+}
 
 const MODES = [
   { key: "off", label: "Off", blurb: "I do nothing. Your team handles every message." },
