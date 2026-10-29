@@ -280,3 +280,25 @@ before (`batch48-customers.test.tsx` pins their files).
 
 "Send campaign" is not in the bulk bar: a campaign's audience is every
 opted-in contact or a segment, never a hand-picked list.
+
+## Automate and Shop (Batch 49)
+
+The preview draws only these sections' headings and tabs, so the screens are
+designed in its language. Each route switches on `useNewDesign()`; with it off
+the classic page renders, and `batch49-automate-shop.test.tsx` pins the classic
+page's code to main's bytes. New code lives in `src/components/automate-v2/`
+and `src/components/shop-v2/`; every existing control stays, as the same
+component with the same props, below the new blocks.
+
+| Screen | New (read only, or the classic call) | Kept as it is |
+| --- | --- | --- |
+| Automate > Aiden `/app/employee` | Orb + status card (Off / Drafts / Replying, the Employee page's lock while AI is switched off, `set_mode` through the shared `useAidenModeSwitch`, Turn on = `save_settings`); Test Aiden in a `PhoneFrame` (the Playground's `playground` run); Needs your answer (gaps with `answer_gap` / `dismiss_gap`, the week's passed-on answers with the work log's `correct`); What Aiden knows (overview sources and the catalogue's count, with freshness) | AidenSetupCard, WeeklyReport, the test gate, and every tab: My job, What I know, Questions for you, How I behave (behaviour, hand-off alerts, prompt), My brain & tools, Forms, Try me, My work |
+| Automate > Flows `/app/flows` | Chat flow cards: mini map from the published (else draft) graph, status, triggers in the Triggers panel's names, runs; run history per flow (last 10 runs on the `(flow_id, started_at)` index, each step named from the run's own version) | Restore, create from a starter and the Batch 35 delete dialog (the classic calls); Store flows (FlowsView); What was sent (SendsLog) |
+| Flow builder `/app/flows/v2/$id` | `.nd-flow-builder` styles (canvas dots, links, minimap, zoom, palette in sentence case) and a step card coloured by palette group: Messages emerald, Ask gold, Logic violet, Actions blue, Start ink | The editor, its reads, saves, publish and every handle id (the test renders both step cards for every step type and compares handles) |
+| Automate > Automations `/app/automations` | Grouped by kind (Welcome message, Keyword replies, Off-hours), the reply as a WhatsApp bubble | The switch and delete (the classic functions, line for line), AutomationDrawer |
+| Shop > Catalogue `/app/catalog` | Overview: counts (all, website, store, hidden, without a photo, collections), newest change, ProductsSummary's Refresh from website; a phone showing two real visible products as a WhatsApp shop message | WhatsAppShopCard, CategoryWordsCard, CatalogView (grid, filters, bulk actions, product dialog, upload) |
+| Shop > Collections `/app/catalog/collections` | A card per collection with up to four of its products' photos | CollectionsView (new, edit, order, assign, delete) |
+
+Keyword replies are automations of the keyword kind, so they live on the
+Automations tab; Forms stay on Aiden's Forms tab (the shell's Automate tabs are
+Batch 44's map). Shopify stays the shell's jump to Settings > Integrations.
