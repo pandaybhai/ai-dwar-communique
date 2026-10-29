@@ -125,9 +125,8 @@ describe("Settings: one page, a left sub-nav, the classic tabs' own cards", () =
   });
 
   it("every old link still lands where it did (?tab= and Google's return)", async () => {
-    const { sectionFor, visibleSections } = await import(
-      "@/components/settings-v2/settings-sections"
-    );
+    const { sectionFor, visibleSections } =
+      await import("@/components/settings-v2/settings-sections");
     const all = visibleSections({
       shopify: true,
       connections: true,
@@ -175,16 +174,17 @@ describe("Settings: one page, a left sub-nav, the classic tabs' own cards", () =
       expect(classic).toContain(`<${card}`);
     }
     // Notifications is the Aiden page's own hand-off alerts card, same component and permission.
-    expect(page).toContain('<HandoffAlertsCard organizationId={orgId} canConfigure={can("ai.configure")} />');
+    expect(page).toContain(
+      '<HandoffAlertsCard organizationId={orgId} canConfigure={can("ai.configure")} />',
+    );
     expect(src("routes/app/employee.tsx")).toContain("<HandoffAlertsCard");
     // The Workspace form is the classic GeneralTab itself, handed in by the route.
     expect(classic).toContain("<NewSettingsPage workspace={<GeneralTab />} />");
   });
 
   it("the WhatsApp profile is its own card on top, and steps aside inside each number", async () => {
-    const { WhatsAppProfileCard, WhatsAppProfileHoisted } = await import(
-      "@/components/whatsapp-profile-card"
-    );
+    const { WhatsAppProfileCard, WhatsAppProfileHoisted } =
+      await import("@/components/whatsapp-profile-card");
     const card = (placement: "number" | "top", hoisted: boolean) =>
       renderToStaticMarkup(
         <WhatsAppProfileHoisted.Provider value={hoisted}>
@@ -239,7 +239,7 @@ describe("⌘K jumps to profile, API and team", () => {
     expect(palette.slice(palette.lastIndexOf('design === "new"', at), at)).toContain(
       '<CommandPrimitive.Group heading="Settings"',
     );
-    expect(palette).toContain('search: { tab: j.tab }');
+    expect(palette).toContain("search: { tab: j.tab }");
   });
 });
 
@@ -256,7 +256,11 @@ describe("Billing and wallet: same payments, same amounts", () => {
     });
     expect(note("trial", false, "2026-10-29T09:00:00Z")?.title).toBe("Your free trial ends today.");
     expect(note("trial", false, null)?.title).toBe("You're on a free trial.");
-    expect(note("locked", false)).toMatchObject({ action: "Reactivate", target: "plans", tone: "danger" });
+    expect(note("locked", false)).toMatchObject({
+      action: "Reactivate",
+      target: "plans",
+      tone: "danger",
+    });
     expect(note("paused")).toMatchObject({ action: "See open invoices", target: "invoices" });
     expect(note("past_due")).toMatchObject({ action: "See open invoices", tone: "gold" });
     expect(note("cancelled")?.href).toMatch(/^mailto:hello@aidwar\.in/);
@@ -298,7 +302,9 @@ describe("Billing and wallet: same payments, same amounts", () => {
     ]);
     expect(page.match(/method: "GET"/g)).toHaveLength(2);
     expect(page).toContain("confirmCashfreeReturn(paymentId)");
-    expect(page).not.toMatch(/openCashfreeCheckout|\/api\/billing\/purchase|\.(insert|update|upsert|delete|rpc)\(/);
+    expect(page).not.toMatch(
+      /openCashfreeCheckout|\/api\/billing\/purchase|\.(insert|update|upsert|delete|rpc)\(/,
+    );
     // The same gate as the classic page decides who may top up.
     expect(page).toContain("creditPurchaseBlock(org?.plan_status)");
     expect(page).toContain('can("billing.pay")');
@@ -354,10 +360,14 @@ describe("flag off: today's Settings, Billing and journey", () => {
     // PlanChooser: also its new-design-only cn() entries and their comment.
     const plan = withoutNd(src("components/billing/plan-chooser.tsx"))
       .split("\n")
-      .filter((l) => !/^\s*\/\/ (Batch 50, new design only|in emerald, the plan you had in ink)/.test(l))
+      .filter(
+        (l) => !/^\s*\/\/ (Batch 50, new design only|in emerald, the plan you had in ink)/.test(l),
+      )
       .filter(
         (l) =>
-          !/^\s*("nd:[^"]*"|suggested && "nd:[^"]*"|current && !suggested && "nd:[^"]*"),?$/.test(l),
+          !/^\s*("nd:[^"]*"|suggested && "nd:[^"]*"|current && !suggested && "nd:[^"]*"),?$/.test(
+            l,
+          ),
       )
       .join("\n")
       .replace(
@@ -367,16 +377,15 @@ describe("flag off: today's Settings, Billing and journey", () => {
     expect(sha(plan)).toBe("dc4d782c5477dbdf671fa103a41d6ef65944160d54ba3c1c771c544493a35b4c");
   });
 
-  it("nd: classes do nothing without the new design (the variant needs data-design=\"new\")", () => {
+  it('nd: classes do nothing without the new design (the variant needs data-design="new")', () => {
     expect(src("styles.css")).toContain('@custom-variant nd (&:where([data-design="new"] *));');
   });
 });
 
 describe("the public site: new_site switch, default off", () => {
   it("is off unless the build turns it on or the address asks for the preview", async () => {
-    const { newSiteOn, NEW_SITE_ENV } = await vi.importActual<typeof import("@/lib/new-site")>(
-      "@/lib/new-site",
-    );
+    const { newSiteOn, NEW_SITE_ENV } =
+      await vi.importActual<typeof import("@/lib/new-site")>("@/lib/new-site");
     expect(NEW_SITE_ENV).toBe(false);
     expect(newSiteOn({}, false)).toBe(false);
     expect(newSiteOn(undefined, false)).toBe(false);
@@ -420,13 +429,21 @@ describe("the public site: new_site switch, default off", () => {
     );
     const copy = src("components/marketing/landing-copy.ts");
     expect(
-      sha(copy.slice(copy.indexOf("export const CAPABILITIES = [")).replace(/^export const /gm, "const ").trim()),
+      sha(
+        copy
+          .slice(copy.indexOf("export const CAPABILITIES = ["))
+          .replace(/^export const /gm, "const ")
+          .trim(),
+      ),
     ).toBe("3fb26b2481c7961d760b6630666867270e8e7c02e0a06a3f3a3d822d510f991e");
     const pricing = src("components/marketing/pricing-copy.tsx");
     expect(
       sha(
         pricing
-          .slice(pricing.indexOf("export type Plan = {"), pricing.indexOf('/** "How message credits work"'))
+          .slice(
+            pricing.indexOf("export type Plan = {"),
+            pricing.indexOf('/** "How message credits work"'),
+          )
           .replace(/^export (type|const|function) /gm, "$1 ")
           .trim(),
       ),
@@ -446,21 +463,29 @@ describe("the public site: new_site switch, default off", () => {
       "routes/terms.tsx": "e660541f1acb896ece7951f466f05f5af9ce28ef0a8fd6f04246991cf0b298fb",
       "routes/privacy.tsx": "e1b42dae00e26213e2344d89ca36515e49dd018f5cd1da34ed3ba694cb423610",
       "routes/refunds.tsx": "5c607bfde33a444b086b4ac8a56548580307d33bf7c3eac5412a4108f0e385ab",
-      "routes/refund-policy.tsx": "804c9591fb15bec80f1fd8aa537cac15cc4a111e387a3b86a49024d2369ee382",
-      "routes/cancellation-policy.tsx": "e082813f3b4a4e7f6cffc77eec9f130ca99c0a2306adbd04e0b18d4dff5c6c46",
+      "routes/refund-policy.tsx":
+        "804c9591fb15bec80f1fd8aa537cac15cc4a111e387a3b86a49024d2369ee382",
+      "routes/cancellation-policy.tsx":
+        "e082813f3b4a4e7f6cffc77eec9f130ca99c0a2306adbd04e0b18d4dff5c6c46",
       "routes/shipping.tsx": "3e880f1944bfba67859e315180e7ec3fa5b5b8a2772011ecea672822af4bd565",
-      "routes/data-deletion.tsx": "6f2f9ea19b612c58b8f55aebc032dde6e4d76fc1062bea826ccd6329345d403f",
+      "routes/data-deletion.tsx":
+        "6f2f9ea19b612c58b8f55aebc032dde6e4d76fc1062bea826ccd6329345d403f",
       "routes/contact.tsx": "abbb9abb202f0859103d8fae3b8beeb62d3caf3d5bf477366766bcbaac410dd2",
       "routes/demo.tsx": "afe9afbb19d09234dfaedc8ad89d772a53945d8c4da4e2bf89f450a208bf33b4",
       "routes/sitemap[.]xml.ts": "ec3be00bdbdcf9e555c7f7c8ece0a6c9e7395c61d8f41e71ebb68dc433bb6675",
       "routes/llms[.]txt.ts": "2d5a5402596064070a3ac3beaef4f5090fcc5f4b88f8a999287504a65f1a0ef3",
-      "routes/llms-full[.]txt.ts": "b9df56c53b009a18831ea1b757718ba2721e4f6ab3345ca28fce6d6a5a6a96b7",
-      "components/legal-page.tsx": "45bc8ac3f0f1dbd52fb0a422139db9873cdc7168ac451927b993dc5db0ad08c3",
-      "components/site-footer.tsx": "a085135cbbf9d041226ba6b6af9b59e709409837f506b842857e0cb35e63747d",
+      "routes/llms-full[.]txt.ts":
+        "b9df56c53b009a18831ea1b757718ba2721e4f6ab3345ca28fce6d6a5a6a96b7",
+      "components/legal-page.tsx":
+        "45bc8ac3f0f1dbd52fb0a422139db9873cdc7168ac451927b993dc5db0ad08c3",
+      "components/site-footer.tsx":
+        "a085135cbbf9d041226ba6b6af9b59e709409837f506b842857e0cb35e63747d",
       "lib/company.ts": "7b0ac09c4b2100a50dc4aa688d9c610184ebf227f8c6c8ba892491cdd6f79208",
-      "components/marketing/message-rates.tsx": "bbf1e85fe19704c587108e63cc80f4330d7680e50c2c951699d1e395ffff85ba",
+      "components/marketing/message-rates.tsx":
+        "bbf1e85fe19704c587108e63cc80f4330d7680e50c2c951699d1e395ffff85ba",
     };
-    for (const [file, hash] of Object.entries(MAIN)) expect([file, sha(src(file))]).toEqual([file, hash]);
+    for (const [file, hash] of Object.entries(MAIN))
+      expect([file, sha(src(file))]).toEqual([file, hash]);
   });
 
   it("keeps each page's SEO meta exactly; the new fonts load after the page is up, not in the head", async () => {
@@ -514,7 +539,12 @@ describe("sign-up and log-in: restyled only", () => {
     const { AuthShell } = await import("@/components/auth-shell");
     const frame = (design?: "new") =>
       renderToStaticMarkup(
-        <AuthShell title="Welcome back" subtitle="Log in." footer="x" {...(design ? { design } : {})}>
+        <AuthShell
+          title="Welcome back"
+          subtitle="Log in."
+          footer="x"
+          {...(design ? { design } : {})}
+        >
           <form />
         </AuthShell>,
       );

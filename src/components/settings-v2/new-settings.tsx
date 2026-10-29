@@ -39,8 +39,7 @@ import {
   type SettingsSectionKey,
 } from "./settings-sections";
 
-const DESCRIPTION =
-  "Workspace details, your team, and the connections that power your messaging.";
+const DESCRIPTION = "Workspace details, your team, and the connections that power your messaging.";
 
 /**
  * Batch 50: Settings in the new design (flag new_design on). A left sub-nav
@@ -139,7 +138,9 @@ function SettingsLayout({ workspace }: { workspace: ReactNode }) {
           </h2>
           <p className="text-body text-muted-foreground">{section.blurb}</p>
         </div>
-        <div className={cn("space-y-6", current === "danger" && "border-t border-danger-border pt-6")}>
+        <div
+          className={cn("space-y-6", current === "danger" && "border-t border-danger-border pt-6")}
+        >
           <SectionBody section={current} workspace={workspace} />
         </div>
       </section>
@@ -228,8 +229,8 @@ function SectionBody({
         <>
           <HandoffAlertsCard organizationId={orgId} canConfigure={can("ai.configure")} />
           <p className="text-sm text-muted-foreground">
-            Receipts and low-credit notes go to the billing WhatsApp number you give when you
-            choose a plan.
+            Receipts and low-credit notes go to the billing WhatsApp number you give when you choose
+            a plan.
           </p>
         </>
       );

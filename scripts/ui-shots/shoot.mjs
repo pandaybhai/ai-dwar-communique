@@ -252,11 +252,11 @@ const SCENARIOS_B50 = {
       await page.waitForTimeout(700);
     },
   },
-  billing: { path: "/app/billing", conversations: 10, richBilling: true, wait: "text=Credits available", settle: 2200, fullPage: true },
-  "billing-low": { path: "/app/billing", conversations: 10, richBilling: true, lowCredits: true, wait: "text=Credits available", settle: 2200 },
-  "billing-trial": { path: "/app/billing", conversations: 10, richBilling: true, plan: "trial", wait: "text=Choose your plan", settle: 2200, fullPage: true },
-  "billing-locked": { path: "/app/billing", conversations: 10, richBilling: true, plan: "locked", wait: "text=Reactivate", settle: 2200 },
-  "billing-past-due": { path: "/app/billing", conversations: 10, richBilling: true, plan: "past_due", wait: "text=Credits available", settle: 2200 },
+  billing: { path: "/app/billing", conversations: 10, richBilling: true, wait: "text=Credits available", settle: 6000, fullPage: true },
+  "billing-low": { path: "/app/billing", conversations: 10, richBilling: true, lowCredits: true, wait: "text=Credits available", settle: 6000 },
+  "billing-trial": { path: "/app/billing", conversations: 10, richBilling: true, plan: "trial", wait: "text=Choose your plan", settle: 6000, fullPage: true },
+  "billing-locked": { path: "/app/billing", conversations: 10, richBilling: true, plan: "locked", wait: "text=Reactivate", settle: 6000 },
+  "billing-past-due": { path: "/app/billing", conversations: 10, richBilling: true, plan: "past_due", wait: "text=Credits available", settle: 6000 },
   start: { path: "/app/start?step=connect", conversations: 10, journeyFull: true, wait: "h1", settle: 1500 },
 };
 

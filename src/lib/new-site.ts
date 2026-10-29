@@ -41,7 +41,8 @@ export function useNewSite(): boolean {
 
 /** Search to carry on the new pages' own links while previewing. */
 export function useSitePreviewSearch(): Record<string, string> {
-  return !NEW_SITE_ENV && isNewSitePreview(useCurrentSearch()) ? { site: "new" } : {};
+  const search = useCurrentSearch();
+  return !NEW_SITE_ENV && isNewSitePreview(search) ? { site: "new" } : {};
 }
 
 /**
@@ -142,8 +143,9 @@ export function afterLoadIdle(fn: () => void): () => void {
   };
   const run = () => {
     if (done) return;
-    if (idleApi.requestIdleCallback) idle = idleApi.requestIdleCallback(() => !done && (done = true, fn()), { timeout: 1500 });
-    else idle = window.setTimeout(() => !done && (done = true, fn()), 200);
+    if (idleApi.requestIdleCallback)
+      idle = idleApi.requestIdleCallback(() => !done && ((done = true), fn()), { timeout: 1500 });
+    else idle = window.setTimeout(() => !done && ((done = true), fn()), 200);
   };
   if (document.readyState === "complete") run();
   else window.addEventListener("load", run, { once: true });

@@ -12,7 +12,13 @@ import { SITE_TOKENS, useSitePreviewSearch, useSiteSurface } from "@/lib/new-sit
  * SiteFooter, unchanged, so every policy link and the company line stay word
  * for word.
  */
-export function NewSiteShell({ children, footer = true }: { children: ReactNode; footer?: boolean }) {
+export function NewSiteShell({
+  children,
+  footer = true,
+}: {
+  children: ReactNode;
+  footer?: boolean;
+}) {
   useSiteSurface(true);
   return (
     <div
@@ -56,7 +62,10 @@ export function NewSiteHeader() {
             to="/pricing"
             search={preview as never}
             className="rounded-full px-3 py-2 text-[0.9375rem] font-semibold text-muted-foreground transition-colors duration-200 hover:bg-surface hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
-            activeProps={{ className: "bg-surface text-foreground shadow-xs", "aria-current": "page" }}
+            activeProps={{
+              className: "bg-surface text-foreground shadow-xs",
+              "aria-current": "page",
+            }}
           >
             Pricing
           </Link>

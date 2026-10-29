@@ -95,9 +95,7 @@ export function billingStateNote(input: {
 }
 
 /** The month's usage as bars: spent kinds only, largest first, share of the largest. */
-export function usageBars(
-  usage: UsageBucket[],
-): Array<UsageBucket & { share: number }> {
+export function usageBars(usage: UsageBucket[]): Array<UsageBucket & { share: number }> {
   const spent = usage.filter((b) => Number(b.amount) > 0);
   const top = Math.max(0, ...spent.map((b) => Number(b.amount)));
   return [...spent]

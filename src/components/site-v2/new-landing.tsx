@@ -5,12 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Reveal } from "@/components/marketing/reveal";
 import { ProductProof, type ProofAudience } from "@/components/marketing/product-proof";
 import { DemoForm } from "@/components/marketing/demo-form";
-import {
-  AUDIENCE_BENEFITS,
-  CAPABILITIES,
-  FAQS,
-  STEPS,
-} from "@/components/marketing/landing-copy";
+import { AUDIENCE_BENEFITS, CAPABILITIES, FAQS, STEPS } from "@/components/marketing/landing-copy";
 import { trackMarketing } from "@/lib/marketing-analytics";
 import { useSitePreviewSearch } from "@/lib/new-site";
 import type { PublicPlan } from "@/lib/public-plans.functions";
@@ -54,7 +49,12 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
   return (
     <NewSiteShell>
       {/* Hero: the promise on the left, Aiden at work on the right. */}
-      <section className={cn(WRAP, "grid items-center gap-12 pb-16 pt-12 sm:pt-16 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:pb-24")}>
+      <section
+        className={cn(
+          WRAP,
+          "grid items-center gap-12 pb-16 pt-12 sm:pt-16 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:pb-24",
+        )}
+      >
         <div className="flex min-w-0 flex-col gap-6">
           <span className="inline-flex w-fit items-center rounded-full bg-aiden-soft px-3.5 py-1.5 text-sm font-semibold text-aiden-deep">
             Built on the official WhatsApp Business Platform
@@ -122,8 +122,8 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
             <Reveal className="flex flex-col gap-4">
               <h2 className={H2}>It asks you. Everything else, it handles.</h2>
               <p className="m-0 max-w-[46ch] text-[1.0625rem] text-muted-foreground">
-                {CAPABILITIES[2]!.body} One shared inbox, so your team can see who is handling
-                which chat.
+                {CAPABILITIES[2]!.body} One shared inbox, so your team can see who is handling which
+                chat.
               </p>
             </Reveal>
             <Reveal delay={100}>
@@ -205,7 +205,10 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
                     <ul className="m-0 flex list-none flex-col gap-2 p-0 text-muted-foreground">
                       {b.points.map((p) => (
                         <li key={p} className="flex gap-2">
-                          <Check className="mt-1 size-4 shrink-0 text-aiden-deep" aria-hidden="true" />
+                          <Check
+                            className="mt-1 size-4 shrink-0 text-aiden-deep"
+                            aria-hidden="true"
+                          />
                           {p}
                         </li>
                       ))}
@@ -317,7 +320,11 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
 function PlansStrip({ plans, preview }: { plans: PublicPlan[]; preview: Record<string, string> }) {
   if (!plans.length) return null;
   const inr = (v: number) =>
-    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }).format(v);
   return (
     <section className="border-t border-border">
       <div className={cn(WRAP, "py-20 sm:py-24")}>
@@ -331,7 +338,9 @@ function PlansStrip({ plans, preview }: { plans: PublicPlan[]; preview: Record<s
               key={plan.key}
               className={cn(
                 "flex flex-col gap-2 rounded-[20px] border bg-surface p-6",
-                plan.key === "growth" ? "border-aiden shadow-lg ring-2 ring-aiden/20" : "border-border shadow-md",
+                plan.key === "growth"
+                  ? "border-aiden shadow-lg ring-2 ring-aiden/20"
+                  : "border-border shadow-md",
               )}
             >
               <h3 className="m-0 font-display text-lg font-semibold">{plan.name}</h3>
@@ -339,13 +348,18 @@ function PlansStrip({ plans, preview }: { plans: PublicPlan[]; preview: Record<s
                 {plan.price_monthly ? (
                   <>
                     {inr(plan.price_monthly)}
-                    <span className="font-sans text-sm font-normal text-muted-foreground"> / month</span>
+                    <span className="font-sans text-sm font-normal text-muted-foreground">
+                      {" "}
+                      / month
+                    </span>
                   </>
                 ) : (
                   "Let's talk"
                 )}
               </p>
-              {plan.tagline ? <p className="m-0 text-sm text-muted-foreground">{plan.tagline}</p> : null}
+              {plan.tagline ? (
+                <p className="m-0 text-sm text-muted-foreground">{plan.tagline}</p>
+              ) : null}
             </li>
           ))}
         </ul>

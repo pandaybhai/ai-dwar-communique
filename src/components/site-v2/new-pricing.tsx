@@ -37,7 +37,9 @@ export function NewPricing({
 
   return (
     <NewSiteShell>
-      <section className={cn(WRAP, "flex flex-col items-center gap-5 pb-12 pt-14 text-center sm:pt-20")}>
+      <section
+        className={cn(WRAP, "flex flex-col items-center gap-5 pb-12 pt-14 text-center sm:pt-20")}
+      >
         <h1 className="m-0 max-w-3xl font-display text-[clamp(2.25rem,5.2vw,3.75rem)] font-extrabold leading-[1.04] tracking-[-0.035em] [text-wrap:balance]">
           Pricing that grows with the shop, not against it
         </h1>
@@ -45,8 +47,8 @@ export function NewPricing({
           Every plan starts with a free day one on WhatsApp. No card needed.
         </p>
         <p className="m-0 max-w-2xl text-sm text-muted-foreground">
-          One monthly plan for the platform. Message credits are topped up separately and charged
-          at cost plus a small margin — you always see the per-message rate before you send.
+          One monthly plan for the platform. Message credits are topped up separately and charged at
+          cost plus a small margin — you always see the per-message rate before you send.
         </p>
         <div
           role="group"
@@ -68,7 +70,9 @@ export function NewPricing({
               )}
             >
               {o.label}
-              {o.set ? <span className="ml-1.5 text-xs font-medium opacity-90">2 months free</span> : null}
+              {o.set ? (
+                <span className="ml-1.5 text-xs font-medium opacity-90">2 months free</span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -79,7 +83,10 @@ export function NewPricing({
           <div className="rounded-[20px] border border-border bg-surface p-10 text-center">
             <p className="m-0 text-sm text-muted-foreground">
               We couldn't load the plans just now. Refresh the page, or write to us at{" "}
-              <a className="font-semibold text-aiden-deep underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden" href="mailto:support@aidwar.in">
+              <a
+                className="font-semibold text-aiden-deep underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+                href="mailto:support@aidwar.in"
+              >
                 support@aidwar.in
               </a>{" "}
               and we'll send them over.
@@ -94,70 +101,82 @@ export function NewPricing({
               return (
                 <li key={plan.key} className="h-full">
                   <Reveal delay={index * 60} className="h-full">
-                  <div
-                    className={cn(
-                      "flex h-full flex-col rounded-[20px] border bg-surface p-6",
-                      featured
-                        ? "border-aiden shadow-xl ring-2 ring-aiden/25"
-                        : "border-border shadow-md",
-                    )}
-                  >
-                    {featured ? (
-                      <span className="mb-3 inline-flex w-fit items-center gap-1 rounded-full bg-aiden-soft px-3 py-1 text-xs font-bold text-aiden-deep">
-                        <Sparkles className="h-3 w-3" aria-hidden="true" />
-                        Most popular
-                      </span>
-                    ) : null}
-                    <h2 className="m-0 font-display text-[1.375rem] font-semibold">{plan.name}</h2>
-                    <p className="m-0 mt-1 min-h-10 text-sm text-muted-foreground">{plan.tagline}</p>
-                    <div className="mt-5">
-                      {custom ? (
-                        <div className="font-display text-3xl font-semibold">Let's talk</div>
-                      ) : (
-                        <>
-                          <span className="font-display text-[2.5rem] font-extrabold leading-none tracking-[-0.03em] tabular-nums">
-                            {inr(price)}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {annual ? " / year" : " / month"}
-                          </span>
-                          {!annual && plan.price_annual ? (
-                            <p className="m-0 mt-1 text-sm text-muted-foreground">
-                              or {inr(plan.price_annual)}/yr
-                            </p>
-                          ) : null}
-                        </>
+                    <div
+                      className={cn(
+                        "flex h-full flex-col rounded-[20px] border bg-surface p-6",
+                        featured
+                          ? "border-aiden shadow-xl ring-2 ring-aiden/25"
+                          : "border-border shadow-md",
                       )}
-                      <p className="m-0 mt-1 text-xs text-muted-foreground">
-                        {custom ? "Custom terms and white-label" : "Plus 18% GST, plus credits"}
+                    >
+                      {featured ? (
+                        <span className="mb-3 inline-flex w-fit items-center gap-1 rounded-full bg-aiden-soft px-3 py-1 text-xs font-bold text-aiden-deep">
+                          <Sparkles className="h-3 w-3" aria-hidden="true" />
+                          Most popular
+                        </span>
+                      ) : null}
+                      <h2 className="m-0 font-display text-[1.375rem] font-semibold">
+                        {plan.name}
+                      </h2>
+                      <p className="m-0 mt-1 min-h-10 text-sm text-muted-foreground">
+                        {plan.tagline}
                       </p>
+                      <div className="mt-5">
+                        {custom ? (
+                          <div className="font-display text-3xl font-semibold">Let's talk</div>
+                        ) : (
+                          <>
+                            <span className="font-display text-[2.5rem] font-extrabold leading-none tracking-[-0.03em] tabular-nums">
+                              {inr(price)}
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                              {annual ? " / year" : " / month"}
+                            </span>
+                            {!annual && plan.price_annual ? (
+                              <p className="m-0 mt-1 text-sm text-muted-foreground">
+                                or {inr(plan.price_annual)}/yr
+                              </p>
+                            ) : null}
+                          </>
+                        )}
+                        <p className="m-0 mt-1 text-xs text-muted-foreground">
+                          {custom ? "Custom terms and white-label" : "Plus 18% GST, plus credits"}
+                        </p>
+                      </div>
+                      <ul className="m-0 mt-6 flex flex-1 list-none flex-col gap-2.5 p-0 text-sm">
+                        {limitLine(plan.limits).map((line) => (
+                          <li key={line} className="flex items-start gap-2">
+                            <Check
+                              className="mt-0.5 h-4 w-4 shrink-0 text-aiden-deep"
+                              aria-hidden="true"
+                            />
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                        {plan.highlights.map((line) => (
+                          <li key={line} className="flex items-start gap-2">
+                            <Check
+                              className="mt-0.5 h-4 w-4 shrink-0 text-aiden-deep"
+                              aria-hidden="true"
+                            />
+                            <span className="text-muted-foreground">{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {custom ? (
+                        <Button asChild variant="outline" className="mt-6">
+                          <a href="mailto:support@aidwar.in?subject=AiDwar%20Enterprise">
+                            Talk to us
+                          </a>
+                        </Button>
+                      ) : (
+                        <Button asChild className="mt-6" variant={featured ? "default" : "outline"}>
+                          <Link to="/signup" search={{ ...preview, plan: plan.key } as never}>
+                            Start free
+                          </Link>
+                        </Button>
+                      )}
                     </div>
-                    <ul className="m-0 mt-6 flex flex-1 list-none flex-col gap-2.5 p-0 text-sm">
-                      {limitLine(plan.limits).map((line) => (
-                        <li key={line} className="flex items-start gap-2">
-                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-aiden-deep" aria-hidden="true" />
-                          <span>{line}</span>
-                        </li>
-                      ))}
-                      {plan.highlights.map((line) => (
-                        <li key={line} className="flex items-start gap-2">
-                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-aiden-deep" aria-hidden="true" />
-                          <span className="text-muted-foreground">{line}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {custom ? (
-                      <Button asChild variant="outline" className="mt-6">
-                        <a href="mailto:support@aidwar.in?subject=AiDwar%20Enterprise">Talk to us</a>
-                      </Button>
-                    ) : (
-                      <Button asChild className="mt-6" variant={featured ? "default" : "outline"}>
-                        <Link to="/signup" search={{ ...preview, plan: plan.key } as never}>
-                          Start free
-                        </Link>
-                      </Button>
-                    )}
-                  </div>
                   </Reveal>
                 </li>
               );
@@ -177,7 +196,10 @@ export function NewPricing({
           <MessageRatesTable rates={rates} />
           <p className="m-0 mt-6 text-sm text-muted-foreground">
             Cancelling a plan or asking for a refund? See{" "}
-            <Link to="/refunds" className="font-semibold text-aiden-deep underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden">
+            <Link
+              to="/refunds"
+              className="font-semibold text-aiden-deep underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+            >
               Refunds &amp; Cancellations
             </Link>
             .

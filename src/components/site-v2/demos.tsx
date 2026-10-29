@@ -186,11 +186,46 @@ export function AidenChatDemo() {
 
 /* ---------------------------------------------------------------- inbox */
 
-const CHATS: Array<{ i: string; name: string; last: string; when: string; tone: string; gold?: boolean; aiden?: boolean }> = [
-  { i: "PR", name: "Priya Reddy", last: "Can you do ₹200 less?", when: "26m", tone: "bg-av1 text-av1-ink", gold: true },
-  { i: "RK", name: "Rahul Kapoor", last: "Aiden replied with sizes", when: "now", tone: "bg-av2 text-av2-ink", aiden: true },
-  { i: "AV", name: "Ananya Verma", last: "Open on Sunday?", when: "9m", tone: "bg-av5 text-av5-ink", aiden: true },
-  { i: "NM", name: "Neha Menon", last: "Thank you so much!", when: "1h", tone: "bg-av4 text-av4-ink" },
+const CHATS: Array<{
+  i: string;
+  name: string;
+  last: string;
+  when: string;
+  tone: string;
+  gold?: boolean;
+  aiden?: boolean;
+}> = [
+  {
+    i: "PR",
+    name: "Priya Reddy",
+    last: "Can you do ₹200 less?",
+    when: "26m",
+    tone: "bg-av1 text-av1-ink",
+    gold: true,
+  },
+  {
+    i: "RK",
+    name: "Rahul Kapoor",
+    last: "Aiden replied with sizes",
+    when: "now",
+    tone: "bg-av2 text-av2-ink",
+    aiden: true,
+  },
+  {
+    i: "AV",
+    name: "Ananya Verma",
+    last: "Open on Sunday?",
+    when: "9m",
+    tone: "bg-av5 text-av5-ink",
+    aiden: true,
+  },
+  {
+    i: "NM",
+    name: "Neha Menon",
+    last: "Thank you so much!",
+    when: "1h",
+    tone: "bg-av4 text-av4-ink",
+  },
 ];
 
 /** The shared Inbox: who is waiting for you, what Aiden is handling, and his suggested reply. */
@@ -223,16 +258,31 @@ export function InboxDemo() {
             )}
             style={{ ["--i" as string]: k }}
           >
-            <span className={cn("grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold", c.tone)}>
+            <span
+              className={cn(
+                "grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold",
+                c.tone,
+              )}
+            >
               {c.i}
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
               <b className="truncate text-sm">{c.name}</b>
-              <span className={cn("truncate text-sm", c.aiden ? "text-aiden-deep" : "text-muted-foreground")}>
+              <span
+                className={cn(
+                  "truncate text-sm",
+                  c.aiden ? "text-aiden-deep" : "text-muted-foreground",
+                )}
+              >
                 {c.last}
               </span>
             </span>
-            <span className={cn("text-xs", c.gold ? "font-bold text-gold-ink" : "text-muted-foreground")}>
+            <span
+              className={cn(
+                "text-xs",
+                c.gold ? "font-bold text-gold-ink" : "text-muted-foreground",
+              )}
+            >
               {c.when}
             </span>
           </div>
@@ -240,7 +290,9 @@ export function InboxDemo() {
       </div>
       <div className="flex min-w-0 flex-col">
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-          <span className="grid size-9 place-items-center rounded-full bg-av1 text-sm font-bold text-av1-ink">PR</span>
+          <span className="grid size-9 place-items-center rounded-full bg-av1 text-sm font-bold text-av1-ink">
+            PR
+          </span>
           <span className="flex min-w-0 flex-col">
             <b className="text-sm">Priya Reddy</b>
             <span className="text-xs text-muted-foreground">Free replies for 21 more hours</span>
@@ -257,7 +309,9 @@ export function InboxDemo() {
             <span className="min-w-0 flex-1">
               <b>Aiden suggests:</b> &ldquo;We can do ₹2,350 each if you take both today.&rdquo;
             </span>
-            <span className="rounded-[11px] bg-gold px-3.5 py-2 text-sm font-bold text-gold-ink">Send</span>
+            <span className="rounded-[11px] bg-gold px-3.5 py-2 text-sm font-bold text-gold-ink">
+              Send
+            </span>
           </div>
         </div>
       </div>
@@ -290,7 +344,10 @@ export function CampaignDemo() {
       </div>
       <dl className="m-0 flex flex-col gap-4">
         {FUNNEL.map((f, k) => (
-          <div key={f.label} className="grid grid-cols-[6.5rem_auto] items-baseline gap-x-4 gap-y-1">
+          <div
+            key={f.label}
+            className="grid grid-cols-[6.5rem_auto] items-baseline gap-x-4 gap-y-1"
+          >
             <dt className="text-muted-foreground">{f.label}</dt>
             <dd className="m-0 font-display text-[1.75rem] font-semibold tabular-nums">
               <Ticker value={f.n} run={seen} />
@@ -339,12 +396,18 @@ export function CampaignPhone() {
     >
       <div className="nd-wall flex flex-col gap-0.5 rounded-[28px] px-3 pb-5 pt-10">
         <div className="overflow-hidden rounded-[12px] bg-surface shadow-xs">
-          <span aria-hidden="true" className="block h-[130px] bg-gradient-to-br from-av5-ink to-av1-ink" />
+          <span
+            aria-hidden="true"
+            className="block h-[130px] bg-gradient-to-br from-av5-ink to-av1-ink"
+          />
           <p className="m-0 px-2.5 py-2 text-sm">
             Hi Asha, our Diwali collection is here. Hand block-printed cotton, made in Jaipur.
           </p>
           {["View collection", "Talk to us"].map((b) => (
-            <span key={b} className="block border-t border-line p-[9px] text-center text-sm font-bold text-aiden-deep">
+            <span
+              key={b}
+              className="block border-t border-line p-[9px] text-center text-sm font-bold text-aiden-deep"
+            >
               {b}
             </span>
           ))}

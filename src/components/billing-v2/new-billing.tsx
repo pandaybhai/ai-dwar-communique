@@ -245,7 +245,13 @@ function BillingBody({
     day: "numeric",
     month: "short",
   });
-  const decimals = (n: number) => (Number.isInteger(n) ? 0 : 2);
+  // The ticker counts whole rupees; the paise sit beside it, exact from the start.
+  const rupees = (n: number) => {
+    const p = Math.round(n * 100);
+    const whole = Math.trunc(p / 100);
+    const rest = p % 100;
+    return { whole, paise: `.${String(rest).padStart(2, "0")}` };
+  };
 
   return (
     <div className="flex flex-col gap-10">
@@ -260,12 +266,14 @@ function BillingBody({
             </h2>
             <p className="font-display text-[clamp(2.5rem,6vw,3.75rem)] font-extrabold leading-none tracking-[-0.03em] text-foreground">
               <span className="sr-only">{money(wallet.available, wallet.currency)}</span>
-              <NumberTicker
-                aria-hidden="true"
-                value={wallet.available}
-                decimalPlaces={decimals(wallet.available)}
-                prefix={wallet.currency === "INR" ? "₹" : ""}
-              />
+              {wallet.available < 0 || wallet.currency !== "INR" ? (
+                <span aria-hidden="true">{money(wallet.available, wallet.currency)}</span>
+              ) : (
+                <span aria-hidden="true">
+                  <NumberTicker value={rupees(wallet.available).whole} prefix="₹" />
+                  {rupees(wallet.available).paise}
+                </span>
+              )}
             </p>
             <p className="text-body text-muted-foreground">
               {wallet.held > 0
@@ -323,7 +331,9 @@ function BillingBody({
                   >
                     <i
                       className="nd-bar-grow block h-full rounded-full bg-aiden"
-                      style={{ width: `${Math.min(100, (aiUsed / Math.max(aiIncluded, 1)) * 100)}%` }}
+                      style={{
+                        width: `${Math.min(100, (aiUsed / Math.max(aiIncluded, 1)) * 100)}%`,
+                      }}
                     />
                   </div>
                 ) : null
@@ -385,7 +395,11 @@ function BillingBody({
         organizationId={organizationId}
         packs={summary.packs}
       />
-      <RequestTopupDialog open={askOpen} onOpenChange={setAskOpen} organizationId={organizationId} />
+      <RequestTopupDialog
+        open={askOpen}
+        onOpenChange={setAskOpen}
+        organizationId={organizationId}
+      />
     </div>
   );
 }
@@ -503,9 +517,7 @@ function PlanCards({ organizationId }: { organizationId: string }) {
               aria-current={current ? "true" : undefined}
               className={cn(
                 "flex flex-col gap-4 rounded-[20px] border bg-card p-6",
-                current
-                  ? "border-ink shadow-lg ring-1 ring-ink"
-                  : "border-border shadow-md",
+                current ? "border-ink shadow-lg ring-1 ring-ink" : "border-border shadow-md",
               )}
             >
               <div className="flex items-center justify-between gap-2">
