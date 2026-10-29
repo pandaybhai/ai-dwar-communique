@@ -132,11 +132,11 @@ const GRAPHS = {
   [F_WELCOME]: {
     nodes: [
       node("start", "start", 40, 160),
-      node("menu", "buttons", 340, 140, { text: "Hi {{name}}! How can we help today?", buttons: [{ id: "b1", title: "Browse jewellery" }, { id: "b2", title: "Order status" }, { id: "b3", title: "Talk to us" }] }),
-      node("shop", "show_products", 680, 20, { category: "Earrings", max_items: 5 }),
-      node("ask", "ask", 680, 220, { text: "Please send your order number.", variable: "order_no", label: "Order number" }),
-      node("team", "assign", 680, 420, { mode: "round_robin" }),
-      node("end", "end", 1000, 220),
+      node("menu", "buttons", 360, 120, { text: "Hi {{name}}! How can we help today?", buttons: [{ id: "b1", title: "Browse jewellery" }, { id: "b2", title: "Order status" }, { id: "b3", title: "Talk to us" }] }),
+      node("shop", "show_products", 720, -120, { category: "Earrings", max_items: 5 }),
+      node("ask", "ask", 720, 180, { text: "Please send your order number.", variable: "order_no", label: "Order number" }),
+      node("team", "assign", 720, 480, { mode: "round_robin" }),
+      node("end", "end", 1080, 200),
     ],
     edges: [edge("start", "menu"), edge("menu", "shop", "b1"), edge("menu", "ask", "b2"), edge("menu", "team", "b3"), edge("ask", "end")],
   },
@@ -187,7 +187,7 @@ const TRIGGERS = [
 
 const PEOPLE = ["Asha Iyer", "Vikram Mehta", "Meera Nair", "Rohan Reddy", "Kavya Shah", "Farhan Khan"];
 const RUNS = PEOPLE.flatMap((_, i) => {
-  const flow = i % 3 === 2 ? F_ORDER : F_WELCOME;
+  const flow = i === 2 || i === 3 ? F_ORDER : F_WELCOME;
   return [{
     id: uuid(8300 + i), organization_id: ORG, flow_id: flow, version_id: flow === F_WELCOME ? uuid(8201) : uuid(8202), contact_id: uuid(8400 + i),
     status: ["done", "waiting", "done", "failed", "done", "running"][i], started_at: ago(i * 47 * MIN + 6 * MIN), ended_at: i % 2 === 0 ? ago(i * 47 * MIN) : null,
@@ -254,6 +254,14 @@ const COLLECTIONS = [
 const COLLECTION_ITEMS = [
   ["c1", 0], ["c1", 3], ["c1", 6], ["c2", 1], ["c2", 4], ["c3", 2], ["c3", 5], ["c3", 7],
 ].map(([collection_id, i]) => ({ organization_id: ORG, collection_id, product_id: PRODUCTS[i].id }));
+
+const OWNER_PERMISSIONS = [
+  "ai.configure", "ai.use", "analytics.view", "automations.manage", "billing.pay", "billing.request", "billing.view", "campaigns.create",
+  "campaigns.send", "campaigns.view", "cards.manage", "cards.view", "catalog.import", "catalog.manage", "catalog.view", "contacts.delete",
+  "contacts.edit", "contacts.export", "contacts.import", "contacts.view", "flows.manage", "flows.view", "flows_v2.edit", "inbox.reply",
+  "inbox.view", "inbox.assign", "inbox.close", "integrations.manage", "integrations.view", "public_api.manage", "revenue.view",
+  "segments.manage", "settings.manage", "settings.view", "settings.whatsapp", "team.manage", "templates.manage",
+];
 
 export function createB49Backend(options = {}) {
   const base = createBackend(options);
@@ -347,6 +355,10 @@ export function createB49Backend(options = {}) {
       return json({ run: playground(String(body.question ?? "")) });
     }
     if (url.pathname === "/api/onboarding/start") return json({});
+    if (url.pathname === "/api/permissions") {
+      // The shared fake's owner, plus the Flows v2 edit permission an owner has.
+      return json({ permissions: OWNER_PERMISSIONS, overrides: {} });
+    }
     if (url.pathname === "/api/flows/triggers" && body.action === "node_stats") {
       return json({ ok: true, stats: { menu: { entered: 214, exited: 209, dropped: 5 }, ask: { entered: 71, exited: 66, dropped: 5 }, shop: { entered: 98, exited: 98, dropped: 0 } } });
     }
