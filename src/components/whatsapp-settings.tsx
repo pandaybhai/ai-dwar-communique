@@ -53,6 +53,9 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { WhatsAppProfileCard } from "@/components/whatsapp-profile-card";
 import { NUMBER_COLUMNS, numberLabel, sortNumbers, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
 import { CatalogCard } from "@/components/whatsapp-catalog-card";
+import { CustomerPhone } from "@/components/templates/customer-phone";
+import { MessageBubble, type DeliveryStatus } from "@/components/developers/whatsapp-phone";
+import type { PreviewModel } from "@/components/templates/template-preview";
 
 type Account = WhatsAppNumber & { phone_number_id: string };
 
@@ -448,7 +451,7 @@ function ConnectCard({
               />
             </div>
             <div className="sm:col-span-2 flex items-center gap-3 pt-1">
-              <Button type="submit" className="rounded-full" disabled={saving}>
+              <Button type="submit" disabled={saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Connect number
               </Button>
@@ -624,7 +627,6 @@ function NumberCard({
             {!account.is_default ? (
               <Button
                 variant="ghost"
-                className="rounded-full"
                 disabled={makingDefault}
                 onClick={() => void makeDefault()}
               >
@@ -638,7 +640,6 @@ function NumberCard({
             ) : null}
             <Button
               variant="outline"
-              className="rounded-full"
               disabled={refreshing}
               onClick={() => void refreshQuality()}
             >
@@ -652,7 +653,7 @@ function NumberCard({
             {allowManual && account.waba_id ? (
               <Dialog open={replaceOpen} onOpenChange={setReplaceOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="ghost" className="rounded-full" disabled={replacing}>
+                  <Button variant="ghost" disabled={replacing}>
                     <ShieldCheck className="mr-2 h-4 w-4" />
                     Replace access token
                   </Button>
@@ -679,7 +680,7 @@ function NumberCard({
                       />
                     </div>
                     <DialogFooter>
-                      <Button type="submit" className="rounded-full" disabled={replacing}>
+                      <Button type="submit" disabled={replacing}>
                         {replacing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         Replace token
                       </Button>
@@ -690,7 +691,7 @@ function NumberCard({
             ) : null}
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" className="rounded-full" disabled={working}>
+                <Button variant="outline" disabled={working}>
                   {working ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
@@ -740,6 +741,23 @@ function NumberCard({
     </Card>
   );
 }
+
+/** Meta's own hello_world sample template (en_US), as the customer sees it. */
+const HELLO_WORLD: PreviewModel = {
+  header: { format: "TEXT", text: "Hello World", mediaUrl: null },
+  body: "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.",
+  footer: "WhatsApp Business Platform sample message",
+  buttons: [],
+  cards: [],
+  offer: null,
+};
+
+const PHONE_STATUS: Record<string, DeliveryStatus> = {
+  pending: "pending",
+  sent: "sent",
+  delivered: "delivered",
+  read: "read",
+};
 
 type SendResult = {
   message_id: string | null;
@@ -827,9 +845,11 @@ function TestConsole({ orgId, numbers }: { orgId: string; numbers: Account[] }) 
         </div>
       </div>
 
-      <form onSubmit={send} className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className="mt-6 grid gap-8 xl:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="min-w-0">
+      <form onSubmit={send} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
         {numbers.length > 1 ? (
-          <div className="space-y-2 sm:col-span-2">
+          <div className="space-y-2 sm:col-span-2 xl:col-span-1">
             <Label htmlFor="test_from">Send from</Label>
             <Select value={fromId} onValueChange={setFromId}>
               <SelectTrigger id="test_from">
@@ -882,7 +902,7 @@ function TestConsole({ orgId, numbers }: { orgId: string; numbers: Account[] }) 
           </div>
         ) : null}
         <div className="sm:col-span-2">
-          <Button type="submit" className="rounded-full" disabled={sending}>
+          <Button type="submit" disabled={sending}>
             {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Send test message
           </Button>
@@ -934,6 +954,22 @@ function TestConsole({ orgId, numbers }: { orgId: string; numbers: Account[] }) 
             No test sent yet. Results and live delivery status will appear here.
           </p>
         )}
+      </div>
+      </div>
+      {/* Batch 43: what lands on the recipient's phone, ticks following the live status. */}
+      <CustomerPhone
+        business={numbers.find((n) => n.id === fromId)?.verified_name || "Your business"}
+        className="hidden sm:block"
+      >
+        <MessageBubble
+          model={
+            mode === "template"
+              ? HELLO_WORLD
+              : { ...HELLO_WORLD, header: null, footer: "", body: body.trim() || "Hi! Just checking our WhatsApp connection." }
+          }
+          status={status ? (PHONE_STATUS[status] ?? null) : null}
+        />
+      </CustomerPhone>
       </div>
     </Card>
   );

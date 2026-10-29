@@ -79,9 +79,9 @@ export function DeleteWorkspaceCard() {
   }
 
   return (
-    <div className="rounded-2xl border border-destructive/30 bg-destructive/[0.03] p-6 shadow-sm sm:p-8">
+    <div className="rounded-2xl border border-danger-border bg-card p-6 shadow-xs sm:p-8">
       <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-danger-soft text-danger-soft-foreground">
           <AlertTriangle className="size-5" />
         </div>
         <div>
@@ -102,7 +102,7 @@ export function DeleteWorkspaceCard() {
           <p className="mt-1 text-muted-foreground">
             Requested on {new Date(request.created_at).toLocaleDateString()}. We acknowledge within 7
             days and complete deletion within 30 days, then confirm by email. To cancel, write to{" "}
-            <a href="mailto:privacy@aidwar.in" className="text-primary hover:underline">
+            <a href="mailto:privacy@aidwar.in" className="text-primary underline underline-offset-2">
               privacy@aidwar.in
             </a>
             .
@@ -133,7 +133,6 @@ export function DeleteWorkspaceCard() {
           </div>
           <Button
             variant="destructive"
-            className="rounded-full"
             disabled={confirm.trim() !== orgName}
             onClick={() => setOpen(true)}
           >
@@ -141,7 +140,7 @@ export function DeleteWorkspaceCard() {
           </Button>
           <p className="text-xs text-muted-foreground">
             See the{" "}
-            <Link to="/data-deletion" className="text-primary hover:underline">
+            <Link to="/data-deletion" className="text-primary underline underline-offset-2">
               data deletion policy
             </Link>{" "}
             for what we delete and what we&apos;re required to keep.

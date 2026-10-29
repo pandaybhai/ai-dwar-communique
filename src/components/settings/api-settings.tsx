@@ -168,7 +168,6 @@ export function ApiKeysCard() {
         </div>
         <Button
           type="submit"
-          className="rounded-full"
           disabled={busy === "create" || name.trim().length < 2}
         >
           {busy === "create" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -186,9 +185,9 @@ export function ApiKeysCard() {
               className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
             >
               <div className="min-w-0">
-                <p className="font-medium text-foreground">
+                <div className="flex items-center gap-2 font-medium text-foreground">
                   {k.name} {k.revoked_at ? <Badge variant="outline">Revoked</Badge> : null}
-                </p>
+                </div>
                 <p className="font-mono text-xs text-muted-foreground">{k.masked}</p>
                 <p className="text-xs text-muted-foreground">
                   Created {when(k.created_at)} · Last used {when(k.last_used_at)}
@@ -388,7 +387,7 @@ export function WebhookCard() {
           <p className="mt-1 text-sm text-muted-foreground">
             We POST each event to your address as it happens, signed with that webhook's own secret
             (X-AiDwar-Signature). Failed deliveries are retried for 24 hours.{" "}
-            <a href={`${DOCS_PATH}/webhooks`} className="text-primary hover:underline">
+            <a href={`${DOCS_PATH}/webhooks`} className="text-primary underline underline-offset-2">
               Events and payloads
             </a>
           </p>
@@ -564,7 +563,6 @@ export function WebhookCard() {
           {multi ? <EventPicker value={events} onChange={setEvents} idPrefix="new" /> : null}
           <Button
             type="submit"
-            className="rounded-full"
             disabled={
               busy?.startsWith("create") ||
               busy?.startsWith("save") ||
@@ -666,12 +664,12 @@ export function ApiQuickstartCard() {
               href={DOCS_PATH}
               target="_blank"
               rel="noreferrer"
-              className="text-primary hover:underline"
+              className="text-primary underline underline-offset-2"
             >
               Read the API docs
             </a>{" "}
             (templates, replies, contacts, incoming messages, balance) or{" "}
-            <a href={POSTMAN_PATH} download className="text-primary hover:underline">
+            <a href={POSTMAN_PATH} download className="text-primary underline underline-offset-2">
               download the Postman collection
             </a>
             .

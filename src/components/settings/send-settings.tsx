@@ -323,7 +323,7 @@ export function SendSettingsTab() {
 
       <div className="flex flex-wrap items-center gap-3">
         {canManage ? (
-          <Button className="rounded-full" disabled={saving} onClick={() => void save()}>
+          <Button disabled={saving} onClick={() => void save()}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Save sending settings
           </Button>
@@ -332,7 +332,7 @@ export function SendSettingsTab() {
             Only owners and admins with the “Manage flows” permission can change these.
           </p>
         )}
-        <Button asChild variant="outline" size="sm" className="rounded-full">
+        <Button asChild variant="outline" size="sm">
           <Link to="/app/flows">Back to flows</Link>
         </Button>
       </div>

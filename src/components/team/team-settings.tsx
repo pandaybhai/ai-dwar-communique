@@ -70,10 +70,13 @@ function Hint({
   show,
   reason,
   children,
+  dim = true,
 }: {
   show: boolean;
   reason: string;
   children: React.ReactNode;
+  /** Batch 43: a role shown as information isn't greyed out like a locked control. */
+  dim?: boolean;
 }) {
   if (!show) return <>{children}</>;
   return (
@@ -81,7 +84,7 @@ function Hint({
       <Tooltip>
         <TooltipTrigger asChild>
           <span tabIndex={0} className="inline-flex">
-            <span className="pointer-events-none block opacity-50">{children}</span>
+            <span className={dim ? "pointer-events-none block opacity-50" : "pointer-events-none block"}>{children}</span>
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs text-xs leading-relaxed">{reason}</TooltipContent>
@@ -329,7 +332,7 @@ export function TeamSettings() {
               return (
                 <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 truncate text-sm font-medium text-foreground">
+                    <div className="flex flex-wrap items-center gap-2 truncate text-sm font-medium text-foreground">
                       {m.full_name || m.email || "Teammate"}
                       {isSelf ? <span className="text-xs text-muted-foreground">(you)</span> : null}
                       {m.override_count > 0 ? (
@@ -338,7 +341,7 @@ export function TeamSettings() {
                           {m.override_count} custom
                         </Badge>
                       ) : null}
-                    </p>
+                    </div>
                     <p className="truncate text-xs text-muted-foreground">
                       {m.email ?? "—"} · last active{" "}
                       {m.last_active
@@ -354,7 +357,7 @@ export function TeamSettings() {
                         onValueChange={(v) => void changeRole(m, v as OrgRole)}
                         disabled={busyMember === m.id}
                       >
-                        <SelectTrigger className="w-36 rounded-full">
+                        <SelectTrigger className="w-36" aria-label={`Role for ${m.full_name || m.email || "this teammate"}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -369,7 +372,7 @@ export function TeamSettings() {
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Hint show reason={reason}>
+                      <Hint show reason={reason} dim={false}>
                         <Badge variant="secondary">{ROLE_LABELS[m.role]}</Badge>
                       </Hint>
                     )}
@@ -378,7 +381,6 @@ export function TeamSettings() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="rounded-full"
                         onClick={() => setEditing(m)}
                         disabled={!canManageTeam}
                       >
@@ -391,7 +393,8 @@ export function TeamSettings() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="rounded-full text-muted-foreground"
+                        className="text-muted-foreground"
+                        aria-label={`Remove ${m.full_name || m.email || "this teammate"}`}
                         disabled={busyMember === m.id}
                         onClick={() => void removeMember(m)}
                       >
@@ -428,10 +431,11 @@ export function TeamSettings() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="teammate@company.com"
+                aria-label="Teammate's email"
                 className="sm:flex-1"
               />
               <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as OrgRole)}>
-                <SelectTrigger className="sm:w-40">
+                <SelectTrigger className="sm:w-40" aria-label="Role for the new teammate">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -442,7 +446,7 @@ export function TeamSettings() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button type="submit" className="rounded-full" disabled={inviting}>
+              <Button type="submit" disabled={inviting}>
                 {inviting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Invite
               </Button>
@@ -464,7 +468,6 @@ export function TeamSettings() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="rounded-full"
                         onClick={() => copyLink(i.token)}
                       >
                         {copied === i.token ? (
@@ -477,7 +480,6 @@ export function TeamSettings() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="rounded-full"
                         onClick={() => void revoke(i.id)}
                       >
                         Revoke

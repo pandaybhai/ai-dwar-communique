@@ -215,7 +215,6 @@ export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accou
         <Button
           size="sm"
           variant="outline"
-          className="rounded-full"
           onClick={() => setOpen((v) => !v)}
         >
           {open ? "Close" : "View and edit"}
@@ -259,7 +258,6 @@ export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accou
                   <Button
                     size="sm"
                     variant="outline"
-                    className="rounded-full"
                     disabled={busy !== null || newName.trim().length < 3}
                     onClick={() => void requestName()}
                   >
@@ -317,7 +315,6 @@ export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accou
                     <Button
                       size="sm"
                       variant="outline"
-                      className="rounded-full"
                       onClick={() => fileRef.current?.click()}
                     >
                       <ImagePlus className="mr-1.5 h-4 w-4" /> Choose picture
@@ -362,7 +359,6 @@ export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accou
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        className="rounded-full"
                         disabled={busy !== null}
                         onClick={() => void uploadPhoto()}
                       >
@@ -374,7 +370,6 @@ export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accou
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="rounded-full"
                         onClick={() => setPhoto(null)}
                       >
                         Cancel
@@ -468,7 +463,6 @@ export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accou
               {problems.length ? <p className="text-xs text-destructive">{problems[0]}</p> : null}
               <Button
                 size="sm"
-                className="rounded-full"
                 disabled={!dirty || problems.length > 0 || busy !== null}
                 onClick={() => void save()}
               >
