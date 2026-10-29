@@ -25,7 +25,7 @@ const buttonVariants = cva(
         gold: "bg-gold text-gold-ink font-bold hover:bg-gold/85",
       },
       size: {
-        default: "h-9 px-3.5 py-2",
+        default: "h-9 px-3.5 py-2 nd:h-[39px]",
         xs: "h-7 rounded-md px-2.5 text-xs [&_svg]:size-3.5",
         sm: "h-8 rounded-md px-3 text-[0.8125rem]",
         lg: "h-10 px-6",

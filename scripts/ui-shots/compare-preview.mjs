@@ -57,10 +57,14 @@ async function previewPage(browser, viewport, hash) {
   return page;
 }
 
-const shot = async (page, target) =>
-  typeof target === "string"
-    ? page.locator(target).first().screenshot()
-    : page.screenshot({ clip: target });
+/** A selector's box (taken once: the preview's live feed replaces its items), or a clip. */
+const shot = async (page, target) => {
+  if (typeof target !== "string") return page.screenshot({ clip: target });
+  const el = page.locator(target).first();
+  await el.scrollIntoViewIfNeeded().catch(() => {});
+  const box = await el.boundingBox();
+  return box ? page.screenshot({ clip: box }) : el.screenshot();
+};
 
 async function pair(browser, name, left, right) {
   const html = `<!doctype html><meta charset="utf-8"><style>
