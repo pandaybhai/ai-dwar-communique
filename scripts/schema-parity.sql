@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 93, column 1111, view 2, function 114, index 169, trigger 70, cron_job 14.
+-- Expected objects: table 94, column 1117, view 2, function 114, index 170, trigger 70, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -51,6 +51,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('table', 'public', 'chat_media_purge', NULL, NULL, NULL, '20261110_batch32_media.sql'),
     ('table', 'public', 'cod_confirmations', NULL, NULL, NULL, '20260829_cod_confirmation.sql'),
     ('table', 'public', 'contact_imports', NULL, NULL, NULL, '20260814_contacts_tags_imports.sql'),
+    ('table', 'public', 'contact_notes', NULL, NULL, NULL, '20261250_batch51_gaps.sql'),
     ('table', 'public', 'contact_tags', NULL, NULL, NULL, '20260814_contacts_tags_imports.sql'),
     ('table', 'public', 'contacts', NULL, NULL, NULL, '20260813_phase2_whatsapp_data_plane.sql'),
     ('table', 'public', 'conversations', NULL, NULL, NULL, '20260813_phase2_whatsapp_data_plane.sql'),
@@ -471,6 +472,12 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'contact_imports', 'status', NULL, 'text', '20260814_contacts_tags_imports.sql'),
     ('column', 'public', 'contact_imports', 'total_rows', NULL, 'integer', '20260814_contacts_tags_imports.sql'),
     ('column', 'public', 'contact_imports', 'updated_count', NULL, 'integer', '20260814_contacts_tags_imports.sql'),
+    ('column', 'public', 'contact_notes', 'author_id', NULL, 'uuid', '20261250_batch51_gaps.sql'),
+    ('column', 'public', 'contact_notes', 'body', NULL, 'text', '20261250_batch51_gaps.sql'),
+    ('column', 'public', 'contact_notes', 'contact_id', NULL, 'uuid', '20261250_batch51_gaps.sql'),
+    ('column', 'public', 'contact_notes', 'created_at', NULL, 'timestamp with time zone', '20261250_batch51_gaps.sql'),
+    ('column', 'public', 'contact_notes', 'id', NULL, 'uuid', '20261250_batch51_gaps.sql'),
+    ('column', 'public', 'contact_notes', 'organization_id', NULL, 'uuid', '20261250_batch51_gaps.sql'),
     ('column', 'public', 'contact_tags', 'contact_id', NULL, 'uuid', '20260814_contacts_tags_imports.sql'),
     ('column', 'public', 'contact_tags', 'created_at', NULL, 'timestamp with time zone', '20260814_contacts_tags_imports.sql'),
     ('column', 'public', 'contact_tags', 'organization_id', NULL, 'uuid', '20260814_contacts_tags_imports.sql'),
@@ -1393,6 +1400,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'cod_confirmations_contact_idx', NULL, NULL, 'on public.cod_confirmations', '20260829_cod_confirmation.sql'),
     ('index', 'public', 'cod_confirmations_org_status_idx', NULL, NULL, 'on public.cod_confirmations', '20260829_cod_confirmation.sql'),
     ('index', 'public', 'contact_imports_org_created_idx', NULL, NULL, 'on public.contact_imports', '20260814_contacts_tags_imports.sql'),
+    ('index', 'public', 'contact_notes_contact_idx', NULL, NULL, 'on public.contact_notes', '20261250_batch51_gaps.sql'),
     ('index', 'public', 'contact_tags_org_idx', NULL, NULL, 'on public.contact_tags', '20260814_contacts_tags_imports.sql'),
     ('index', 'public', 'contact_tags_tag_idx', NULL, NULL, 'on public.contact_tags', '20260814_contacts_tags_imports.sql'),
     ('index', 'public', 'contacts_org_idx', NULL, NULL, 'on public.contacts', '20260813_phase2_whatsapp_data_plane.sql'),

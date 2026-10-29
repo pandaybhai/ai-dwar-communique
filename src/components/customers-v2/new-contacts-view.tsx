@@ -46,6 +46,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CustomerSummary } from "./customer-summary";
+import { CustomerNotes, canWriteNotes } from "./customer-notes";
 import { GuidedImportDialog } from "./import-guided";
 import {
   BOUGHT_DAYS,
@@ -935,11 +936,18 @@ export function NewContactsView({
         }}
         extra={
           selected ? (
-            <CustomerSummary
-              organizationId={organizationId}
-              contact={selected}
-              canSeeOrders={canSeeOrders}
-            />
+            <>
+              <CustomerSummary
+                organizationId={organizationId}
+                contact={selected}
+                canSeeOrders={canSeeOrders}
+              />
+              <CustomerNotes
+                organizationId={organizationId}
+                contactId={selected.id}
+                canWrite={canWriteNotes(can)}
+              />
+            </>
           ) : null
         }
         {...(isPhone ? { side: "bottom" as const } : {})}
