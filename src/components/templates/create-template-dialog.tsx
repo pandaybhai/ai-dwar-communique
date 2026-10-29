@@ -222,9 +222,9 @@ export function CreateTemplateDialog({
                     ) : null}
                   </div>
                   <div>
-                    <Label>Category</Label>
+                    <Label htmlFor="tpl-category">Category</Label>
                     <Select value={draft.category} onValueChange={(v) => set({ category: v })}>
-                      <SelectTrigger className="mt-1.5">
+                      <SelectTrigger id="tpl-category" className="mt-1.5">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -237,9 +237,9 @@ export function CreateTemplateDialog({
                     </Select>
                   </div>
                   <div>
-                    <Label>Language</Label>
+                    <Label htmlFor="tpl-language">Language</Label>
                     <Select value={draft.language} onValueChange={(v) => set({ language: v })}>
-                      <SelectTrigger className="mt-1.5">
+                      <SelectTrigger id="tpl-language" className="mt-1.5">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

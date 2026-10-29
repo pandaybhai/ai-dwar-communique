@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button";
 import { employeeApi } from "@/lib/employee-client";
 
 /** One-time note on /app home when Aiden's behaviour is a website suggestion. */
-export function PersonaReviewBanner({ organizationId }: { organizationId: string | null | undefined }) {
+export function PersonaReviewBanner({
+  organizationId,
+}: {
+  organizationId: string | null | undefined;
+}) {
   const [versionId, setVersionId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,8 +40,8 @@ export function PersonaReviewBanner({ organizationId }: { organizationId: string
         <Sparkles className="h-4 w-4" aria-hidden="true" />
       </span>
       <p className="flex-1 text-sm text-foreground">
-        <span className="font-medium">I've drafted how I'll talk to your customers</span> from your website. Have a
-        quick look and fix anything that's off.
+        <span className="font-medium">I've drafted how I'll talk to your customers</span> from your
+        website. Have a quick look and fix anything that's off.
       </p>
       <div className="flex gap-2">
         <Button asChild size="sm" onClick={dismiss}>

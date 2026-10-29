@@ -127,6 +127,9 @@ const TEMPLATE_FOR: Record<string, string> = {
   // Sent messages whose debit still failed after a retry (billing-sweep
   // retryFailedDebits, Batch 26a): same approved template.
   "admin:billing_debit_alert": "admin_ai_provider_alert",
+  // Batch 40: "Need help? We'll call you" on the first-run journey
+  // (onboarding-journey-api.server.ts): same approved template.
+  "admin:onboarding_callback": "admin_ai_provider_alert",
 };
 
 /**
@@ -487,6 +490,7 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
     case "ai_provider_alert":
     case "card_usage_alert":
     case "site_change_alert":
+    case "onboarding_callback":
     case "billing_debit_alert":
       return [
         String(payload["headline"] ?? "the AI provider is failing"),

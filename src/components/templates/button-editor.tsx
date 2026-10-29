@@ -35,9 +35,10 @@ export function ButtonEditor({
   const publishedForms = usePublishedForms();
   const limit = context === "card" ? MAX_CARD_BUTTONS : MAX_BUTTONS;
   const problems = validateButtons(buttons, context);
-  const options = context === "card"
-    ? BUTTON_OPTIONS.filter((o) => o.value === "QUICK_REPLY" || o.value === "URL")
-    : BUTTON_OPTIONS;
+  const options =
+    context === "card"
+      ? BUTTON_OPTIONS.filter((o) => o.value === "QUICK_REPLY" || o.value === "URL")
+      : BUTTON_OPTIONS;
 
   const update = (index: number, patch: Partial<DraftButton>) =>
     onChange(buttons.map((b, i) => (i === index ? { ...b, ...patch } : b)));
@@ -106,7 +107,8 @@ export function ButtonEditor({
                         className="mt-1"
                       />
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Meta reviews a real example. The personalised part is filled in when you send.
+                        Meta reviews a real example. The personalised part is filled in when you
+                        send.
                       </p>
                     </div>
                   ) : null}

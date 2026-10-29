@@ -269,8 +269,11 @@ export async function playgroundAnswer(
   tier?: string | null,
   instructionsOverride?: string | null,
   comparisonId?: string | null,
-  /** Admin Test tab: prior turns, billing-exempt, never sent. */
-  preview?: { history?: Turn[] } | null,
+  /**
+   * Admin Test tab: prior turns, billing-exempt, never sent. Batch 40: the
+   * first-run Meet Aiden screen uses the same, with its own purpose.
+   */
+  preview?: { history?: Turn[]; purpose?: "admin_preview" | "onboarding_test" } | null,
 ): Promise<RunResult> {
   const agentId = await defaultAgentId(supabase, common.organizationId);
   const { assembleBrief } = await import("@/lib/ai-brief.server");
@@ -297,7 +300,7 @@ export async function playgroundAnswer(
           preview: true,
           billingExempt: true,
           history: (preview.history ?? []).slice(-10),
-          metadata: { purpose: "admin_preview" },
+          metadata: { purpose: preview.purpose ?? "admin_preview" },
         }
       : {}),
   });

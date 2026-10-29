@@ -27,6 +27,7 @@ import {
   YAxis,
 } from "recharts";
 import { AidenSetupCard } from "@/components/aiden-setup-card";
+import { JourneyResume } from "@/components/onboarding/journey-resume";
 import { PersonaReviewBanner } from "@/components/persona-review-banner";
 import { SendHealthBanner } from "@/components/send-health-banner";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
@@ -207,6 +208,7 @@ function AppHome() {
         description={`What's happening in ${name} today.`}
         actions={active ? <TodayChip timezone={timezone} /> : undefined}
       />
+      <JourneyResume organizationId={orgId} isOwner={active?.role === "owner"} />
       <SendHealthBanner organizationId={orgId} showLink className="mb-6" />
       <AidenSetupCard organizationId={orgId} showFinished />
       <PersonaReviewBanner organizationId={orgId} />

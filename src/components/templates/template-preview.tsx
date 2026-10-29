@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { formatCountdown } from "@/lib/offers";
 import {
-
   Copy,
   ExternalLink,
   FileText,
@@ -50,7 +49,6 @@ export type PreviewModel = {
   /** The code a copy-code button hands the customer, when it's known. */
   couponCode?: string | null;
 };
-
 
 /** Fills {{1}}-style placeholders with the merchant's example values. */
 function fill(text: string, examples: Record<number | string, string>): string {
@@ -139,18 +137,11 @@ const BUTTON_ICON: Record<string, typeof Reply> = {
   OTP: Copy,
 };
 
-function ButtonRow({
-  button,
-  couponCode,
-}: {
-  button: PreviewButton;
-  couponCode?: string | null;
-}) {
+function ButtonRow({ button, couponCode }: { button: PreviewButton; couponCode?: string | null }) {
   const type = String(button["type"] ?? "QUICK_REPLY").toUpperCase();
   const Icon = BUTTON_ICON[type] ?? Reply;
   const label = String(button["text"] ?? "Button");
-  const code =
-    (type === "COPY_CODE" || type === "OTP") && couponCode ? couponCode : null;
+  const code = (type === "COPY_CODE" || type === "OTP") && couponCode ? couponCode : null;
   return (
     <div className="mt-0.5 flex items-center justify-center gap-1.5 rounded-lg bg-wa-in px-3 py-2 text-[0.8125rem] font-medium text-wa-link shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]">
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -162,7 +153,6 @@ function ButtonRow({
       ) : null}
     </div>
   );
-
 }
 
 function MediaBlock({
@@ -201,7 +191,7 @@ function MediaBlock({
   }
   return (
     <div
-      className={`flex items-center justify-center gap-2 rounded-md bg-black/[0.06] text-xs text-wa-meta dark:bg-white/[0.06] ${
+      className={`flex items-center justify-center gap-2 rounded-md bg-black/[0.06] text-xs text-wa-text/80 dark:bg-white/[0.06] ${
         compact ? "h-20" : "h-32"
       }`}
     >
@@ -236,7 +226,6 @@ export function TemplatePreview({
   const { header, body, footer, buttons, cards, offer } = model;
   const couponCode = model.couponCode ?? null;
 
-
   return (
     <div className={`max-w-sm ${className}`}>
       {/* Batch 41: the message as it lands on the customer's phone (WhatsApp's own colours). */}
@@ -245,8 +234,15 @@ export function TemplatePreview({
           {header?.format === "TEXT" && header.text ? (
             <p className="text-sm font-semibold leading-snug">{header.text}</p>
           ) : null}
-          {header && (header.format === "IMAGE" || header.format === "VIDEO" || header.format === "DOCUMENT") ? (
-            <MediaBlock format={header.format} mediaUrl={header.mediaUrl} fileName={header.fileName} />
+          {header &&
+          (header.format === "IMAGE" ||
+            header.format === "VIDEO" ||
+            header.format === "DOCUMENT") ? (
+            <MediaBlock
+              format={header.format}
+              mediaUrl={header.mediaUrl}
+              fileName={header.fileName}
+            />
           ) : null}
           {header?.format === "LOCATION" ? (
             <div className="flex h-24 items-center justify-center gap-2 rounded-md bg-black/[0.06] text-xs text-wa-meta dark:bg-white/[0.06]">
@@ -266,7 +262,6 @@ export function TemplatePreview({
               ) : null}
             </div>
           ) : null}
-
 
           <p className="whitespace-pre-wrap break-words text-sm leading-[1.35rem]">
             {body ? <WhatsAppText text={body} /> : "Your message preview appears here."}
@@ -300,11 +295,7 @@ export function TemplatePreview({
               {card.buttons.length > 0 ? (
                 <div className="px-2 pb-1">
                   {card.buttons.map((button, i) => (
-                    <ButtonRow
-                      key={i}
-                      button={button}
-                      couponCode={card.couponCode ?? couponCode}
-                    />
+                    <ButtonRow key={i} button={button} couponCode={card.couponCode ?? couponCode} />
                   ))}
                 </div>
               ) : null}

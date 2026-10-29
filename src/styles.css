@@ -842,3 +842,130 @@ html[data-app].dark .avatar-tone {
   background: oklch(0.32 0.06 var(--av-h, 162));
   color: oklch(0.9 0.06 var(--av-h, 162));
 }
+
+/*
+ * The first-run journey (Batch 40, /app/start) — built on the tokens above,
+ * no colours of its own. The one outside value is the business's colour,
+ * read from its website and set inline as --ob-business (falls back to the
+ * primary); it only tints the light behind the page and the brand card.
+ * Reduced motion turns all of this off (global rule above).
+ */
+.ob-stage {
+  background:
+    radial-gradient(
+      70% 55% at 50% -10%,
+      color-mix(in oklab, var(--ob-business, var(--primary)) 14%, transparent),
+      transparent 70%
+    ),
+    var(--color-background);
+}
+.ob-rise {
+  animation: ob-rise 0.5s var(--ease-out) both;
+  animation-delay: var(--ob-delay, 0ms);
+}
+@keyframes ob-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ob-pop {
+  animation: ob-pop 0.45s var(--ease-spring) both;
+}
+@keyframes ob-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ob-rail-fill {
+  transform-origin: left center;
+  transition: transform 0.6s var(--ease-out);
+}
+.ob-ring {
+  animation: ob-ring 1.4s var(--ease-out) 0.1s both;
+}
+@keyframes ob-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 26px transparent;
+  }
+}
+.ob-check-path {
+  stroke-dasharray: 32;
+  stroke-dashoffset: 32;
+  animation: ob-draw 0.5s var(--ease-out) 0.2s forwards;
+}
+@keyframes ob-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.ob-choice {
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+.ob-choice:hover {
+  transform: translateY(-1px);
+}
+/* "Aiden is typing" in the phone mock: three dots on the business's bubble. */
+.wa-typing span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--wa-meta);
+  animation: typing-dot 1.2s infinite;
+}
+.wa-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.wa-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+/* The phone mock inside the app follows the app's theme (Batch 39's wa-* values). */
+html[data-app] .wa-phone {
+  --wa-in: #ffffff;
+  --wa-out: #d9fdd3;
+  --wa-meta-out: #4d6155;
+}
+html[data-app].dark .wa-phone {
+  --wa-wall: #0b141a;
+  --wa-bubble: #202c33;
+  --wa-in: #202c33;
+  --wa-out: #005c4b;
+  --wa-text: #e9edef;
+  --wa-meta: #8696a0;
+  --wa-meta-out: #c3d5cf;
+  --wa-link: #53bdeb;
+  --wa-head: #1f2c34;
+  --wa-doc: rgb(255 255 255 / 0.06);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-rise,
+  .ob-pop,
+  .ob-ring,
+  .ob-check-path {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .ob-check-path {
+    stroke-dashoffset: 0;
+  }
+  .ob-choice:hover {
+    transform: none;
+  }
+}

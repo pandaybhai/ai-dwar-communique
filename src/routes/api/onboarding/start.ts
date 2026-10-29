@@ -147,6 +147,12 @@ export const Route = createFileRoute("/api/onboarding/start")({
         }
         const hasAttribution = Object.keys(attribution).length > 0;
 
+        // Batch 40: an unused code lives as long as a quiet session (30 days)
+        // and every visit to the setup screens renews it — it used to lapse
+        // while the owner was still setting up.
+        const { EXPIRE_AFTER_MS } = await import("@/lib/onboarding-nudges.server");
+        const codeExpiresAt = new Date(Date.now() + EXPIRE_AFTER_MS).toISOString();
+
         let code = (existing as unknown as { code?: string } | null)?.code ?? null;
         if (!code) {
           // A collision on the unique code is possible but rare; try a few.
@@ -159,6 +165,7 @@ export const Route = createFileRoute("/api/onboarding/start")({
               code: candidate,
               status: "pending",
               attribution,
+              expires_at: codeExpiresAt,
             });
             if (!error) code = candidate;
           }
@@ -168,6 +175,9 @@ export const Route = createFileRoute("/api/onboarding/start")({
             .update({
               phone,
               updated_at: new Date().toISOString(),
+              ...((existing as unknown as { status?: string }).status === "pending"
+                ? { expires_at: codeExpiresAt }
+                : {}),
               ...(hasAttribution ? { attribution } : {}),
             })
             .eq("id", (existing as unknown as { id: string }).id);

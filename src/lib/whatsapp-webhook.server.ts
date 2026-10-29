@@ -28,6 +28,7 @@ import {
 import type { AutomationRow } from "@/lib/automations";
 import { emitEvent } from "@/lib/events.server";
 import { parseCampaignCallbackData } from "@/lib/campaign-callback";
+import { CODE_RE as ONBOARDING_CODE_RE } from "@/lib/teach-guard";
 
 /** Service-role client for the AiDwar (Mumbai) backend. Server-only. */
 export function getServiceClient(): SupabaseClient {
@@ -2138,13 +2139,17 @@ export async function processWebhookPayload(
             // Flows v2 on the onboarding number: that number never runs opt-out,
             // COD or automations, so a waiting run / keyword trigger pinned to
             // this number is checked here, before the owner channel. Opt-out
-            // words (defaults + workspace list) never reach a flow.
+            // words (defaults + workspace list) never reach a flow. Batch 40:
+            // nor does an owner's onboarding code ("Hi Aiden, my code is
+            // AD-…") — a "hi" keyword flow used to take it, and the setup
+            // never started.
             if (
               onboardingAccountId &&
               accountId === onboardingAccountId &&
               !isSystemEcho &&
               inserted &&
               inserted.length > 0 &&
+              !ONBOARDING_CODE_RE.test(body ?? "") &&
               !matchKeyword(body, (await keywordsRead).optOut)
             ) {
               // Same as on a customer number: the reads made while the

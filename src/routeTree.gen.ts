@@ -36,6 +36,7 @@ import { Route as AdminBillingRouteImport } from './routes/admin/billing'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminFlagsRouteImport } from './routes/admin/flags'
 import { Route as AdminLeadsRouteImport } from './routes/admin/leads'
+import { Route as AdminOnboardingRouteImport } from './routes/admin/onboarding'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminSendingRouteImport } from './routes/admin/sending'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
@@ -54,6 +55,7 @@ import { Route as AppEmployeeRouteImport } from './routes/app/employee'
 import { Route as AppInboxRouteImport } from './routes/app/inbox'
 import { Route as AppReceiptsRouteImport } from './routes/app/receipts'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
+import { Route as AppStartRouteImport } from './routes/app/start'
 import { Route as AppTemplatesRouteImport } from './routes/app/templates'
 import { Route as DevelopersIndexRouteImport } from './routes/developers.index'
 import { Route as Developers24HourWindowRouteImport } from './routes/developers.24-hour-window'
@@ -75,6 +77,7 @@ import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAdminCustomersRouteImport } from './routes/api/admin/customers'
 import { Route as ApiAdminLeadsRouteImport } from './routes/api/admin/leads'
+import { Route as ApiAdminOnboardingRouteImport } from './routes/api/admin/onboarding'
 import { Route as ApiAdminSendingRouteImport } from './routes/api/admin/sending'
 import { Route as ApiAdminSuperAdminsRouteImport } from './routes/api/admin/super-admins'
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
@@ -124,6 +127,7 @@ import { Route as ApiInternalReconcileEventsRouteImport } from './routes/api/int
 import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/internal/reprocess-events'
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
+import { Route as ApiOnboardingJourneyRouteImport } from './routes/api/onboarding/journey'
 import { Route as ApiOnboardingStartRouteImport } from './routes/api/onboarding/start'
 import { Route as ApiPublicCashfreePayRouteImport } from './routes/api/public/cashfree-pay'
 import { Route as ApiPublicCashfreeWebhookRouteImport } from './routes/api/public/cashfree-webhook'
@@ -329,6 +333,11 @@ const AdminLeadsRoute = AdminLeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminOnboardingRoute = AdminOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminOrganizationsRoute = AdminOrganizationsRouteImport.update({
   id: '/organizations',
   path: '/organizations',
@@ -417,6 +426,11 @@ const AppReceiptsRoute = AppReceiptsRouteImport.update({
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppStartRoute = AppStartRouteImport.update({
+  id: '/start',
+  path: '/start',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppTemplatesRoute = AppTemplatesRouteImport.update({
@@ -525,6 +539,11 @@ const ApiAdminCustomersRoute = ApiAdminCustomersRouteImport.update({
 const ApiAdminLeadsRoute = ApiAdminLeadsRouteImport.update({
   id: '/api/admin/leads',
   path: '/api/admin/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminOnboardingRoute = ApiAdminOnboardingRouteImport.update({
+  id: '/api/admin/onboarding',
+  path: '/api/admin/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminSendingRoute = ApiAdminSendingRouteImport.update({
@@ -781,6 +800,11 @@ const ApiInternalShopifySyncWorkerRoute =
 const ApiInternalVersionRoute = ApiInternalVersionRouteImport.update({
   id: '/api/internal/version',
   path: '/api/internal/version',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOnboardingJourneyRoute = ApiOnboardingJourneyRouteImport.update({
+  id: '/api/onboarding/journey',
+  path: '/api/onboarding/journey',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiOnboardingStartRoute = ApiOnboardingStartRouteImport.update({
@@ -1184,6 +1208,7 @@ export interface FileRoutesByFullPath {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/leads': typeof AdminLeadsRoute
+  '/admin/onboarding': typeof AdminOnboardingRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
@@ -1201,6 +1226,7 @@ export interface FileRoutesByFullPath {
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/start': typeof AppStartRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
@@ -1224,6 +1250,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
+  '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
   '/api/admin/super-admins': typeof ApiAdminSuperAdminsRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
@@ -1273,6 +1300,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/onboarding/journey': typeof ApiOnboardingJourneyRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
@@ -1367,6 +1395,7 @@ export interface FileRoutesByTo {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/leads': typeof AdminLeadsRoute
+  '/admin/onboarding': typeof AdminOnboardingRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
@@ -1384,6 +1413,7 @@ export interface FileRoutesByTo {
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/start': typeof AppStartRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
@@ -1407,6 +1437,7 @@ export interface FileRoutesByTo {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
+  '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
   '/api/admin/super-admins': typeof ApiAdminSuperAdminsRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
@@ -1456,6 +1487,7 @@ export interface FileRoutesByTo {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/onboarding/journey': typeof ApiOnboardingJourneyRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
@@ -1554,6 +1586,7 @@ export interface FileRoutesById {
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/flags': typeof AdminFlagsRoute
   '/admin/leads': typeof AdminLeadsRoute
+  '/admin/onboarding': typeof AdminOnboardingRoute
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
@@ -1571,6 +1604,7 @@ export interface FileRoutesById {
   '/app/inbox': typeof AppInboxRoute
   '/app/receipts': typeof AppReceiptsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/start': typeof AppStartRoute
   '/app/templates': typeof AppTemplatesRoute
   '/developers/24-hour-window': typeof Developers24HourWindowRoute
   '/developers/api': typeof DevelopersApiRoute
@@ -1594,6 +1628,7 @@ export interface FileRoutesById {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
+  '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
   '/api/admin/super-admins': typeof ApiAdminSuperAdminsRoute
   '/api/ai/employee': typeof ApiAiEmployeeRoute
@@ -1643,6 +1678,7 @@ export interface FileRoutesById {
   '/api/internal/reprocess-events': typeof ApiInternalReprocessEventsRoute
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
+  '/api/onboarding/journey': typeof ApiOnboardingJourneyRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
@@ -1742,6 +1778,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/flags'
     | '/admin/leads'
+    | '/admin/onboarding'
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
@@ -1759,6 +1796,7 @@ export interface FileRouteTypes {
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
+    | '/app/start'
     | '/app/templates'
     | '/developers/24-hour-window'
     | '/developers/api'
@@ -1782,6 +1820,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/leads'
+    | '/api/admin/onboarding'
     | '/api/admin/sending'
     | '/api/admin/super-admins'
     | '/api/ai/employee'
@@ -1831,6 +1870,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/onboarding/journey'
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
@@ -1925,6 +1965,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/flags'
     | '/admin/leads'
+    | '/admin/onboarding'
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
@@ -1942,6 +1983,7 @@ export interface FileRouteTypes {
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
+    | '/app/start'
     | '/app/templates'
     | '/developers/24-hour-window'
     | '/developers/api'
@@ -1965,6 +2007,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/leads'
+    | '/api/admin/onboarding'
     | '/api/admin/sending'
     | '/api/admin/super-admins'
     | '/api/ai/employee'
@@ -2014,6 +2057,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/onboarding/journey'
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
@@ -2111,6 +2155,7 @@ export interface FileRouteTypes {
     | '/admin/customers'
     | '/admin/flags'
     | '/admin/leads'
+    | '/admin/onboarding'
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
@@ -2128,6 +2173,7 @@ export interface FileRouteTypes {
     | '/app/inbox'
     | '/app/receipts'
     | '/app/settings'
+    | '/app/start'
     | '/app/templates'
     | '/developers/24-hour-window'
     | '/developers/api'
@@ -2151,6 +2197,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/leads'
+    | '/api/admin/onboarding'
     | '/api/admin/sending'
     | '/api/admin/super-admins'
     | '/api/ai/employee'
@@ -2200,6 +2247,7 @@ export interface FileRouteTypes {
     | '/api/internal/reprocess-events'
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
+    | '/api/onboarding/journey'
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
@@ -2302,6 +2350,7 @@ export interface RootRouteChildren {
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
   ApiAdminLeadsRoute: typeof ApiAdminLeadsRoute
+  ApiAdminOnboardingRoute: typeof ApiAdminOnboardingRoute
   ApiAdminSendingRoute: typeof ApiAdminSendingRoute
   ApiAdminSuperAdminsRoute: typeof ApiAdminSuperAdminsRoute
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
@@ -2351,6 +2400,7 @@ export interface RootRouteChildren {
   ApiInternalReprocessEventsRoute: typeof ApiInternalReprocessEventsRoute
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
+  ApiOnboardingJourneyRoute: typeof ApiOnboardingJourneyRoute
   ApiOnboardingStartRoute: typeof ApiOnboardingStartRoute
   ApiPublicCashfreePayRoute: typeof ApiPublicCashfreePayRoute
   ApiPublicCashfreeWebhookRoute: typeof ApiPublicCashfreeWebhookRoute
@@ -2597,6 +2647,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLeadsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/onboarding': {
+      id: '/admin/onboarding'
+      path: '/onboarding'
+      fullPath: '/admin/onboarding'
+      preLoaderRoute: typeof AdminOnboardingRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/organizations': {
       id: '/admin/organizations'
       path: '/organizations'
@@ -2721,6 +2778,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/app/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/start': {
+      id: '/app/start'
+      path: '/start'
+      fullPath: '/app/start'
+      preLoaderRoute: typeof AppStartRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/templates': {
@@ -2868,6 +2932,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/leads'
       fullPath: '/api/admin/leads'
       preLoaderRoute: typeof ApiAdminLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/onboarding': {
+      id: '/api/admin/onboarding'
+      path: '/api/admin/onboarding'
+      fullPath: '/api/admin/onboarding'
+      preLoaderRoute: typeof ApiAdminOnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/sending': {
@@ -3211,6 +3282,13 @@ declare module '@tanstack/react-router' {
       path: '/api/internal/version'
       fullPath: '/api/internal/version'
       preLoaderRoute: typeof ApiInternalVersionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/onboarding/journey': {
+      id: '/api/onboarding/journey'
+      path: '/api/onboarding/journey'
+      fullPath: '/api/onboarding/journey'
+      preLoaderRoute: typeof ApiOnboardingJourneyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/onboarding/start': {
@@ -3707,6 +3785,7 @@ interface AdminRouteRouteChildren {
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminFlagsRoute: typeof AdminFlagsRoute
   AdminLeadsRoute: typeof AdminLeadsRoute
+  AdminOnboardingRoute: typeof AdminOnboardingRoute
   AdminOrganizationsRoute: typeof AdminOrganizationsRoute
   AdminSendingRoute: typeof AdminSendingRoute
   AdminUsersRoute: typeof AdminUsersRoute
@@ -3721,6 +3800,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminCustomersRoute: AdminCustomersRoute,
   AdminFlagsRoute: AdminFlagsRoute,
   AdminLeadsRoute: AdminLeadsRoute,
+  AdminOnboardingRoute: AdminOnboardingRoute,
   AdminOrganizationsRoute: AdminOrganizationsRoute,
   AdminSendingRoute: AdminSendingRoute,
   AdminUsersRoute: AdminUsersRoute,
@@ -3742,6 +3822,7 @@ interface AppRouteRouteChildren {
   AppInboxRoute: typeof AppInboxRoute
   AppReceiptsRoute: typeof AppReceiptsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppStartRoute: typeof AppStartRoute
   AppTemplatesRoute: typeof AppTemplatesRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCampaignsIdRoute: typeof AppCampaignsIdRoute
@@ -3764,6 +3845,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppInboxRoute: AppInboxRoute,
   AppReceiptsRoute: AppReceiptsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppStartRoute: AppStartRoute,
   AppTemplatesRoute: AppTemplatesRoute,
   AppIndexRoute: AppIndexRoute,
   AppCampaignsIdRoute: AppCampaignsIdRoute,
@@ -3906,6 +3988,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAdminCustomersRoute: ApiAdminCustomersRoute,
   ApiAdminLeadsRoute: ApiAdminLeadsRoute,
+  ApiAdminOnboardingRoute: ApiAdminOnboardingRoute,
   ApiAdminSendingRoute: ApiAdminSendingRoute,
   ApiAdminSuperAdminsRoute: ApiAdminSuperAdminsRoute,
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
@@ -3955,6 +4038,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalReprocessEventsRoute: ApiInternalReprocessEventsRoute,
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
+  ApiOnboardingJourneyRoute: ApiOnboardingJourneyRoute,
   ApiOnboardingStartRoute: ApiOnboardingStartRoute,
   ApiPublicCashfreePayRoute: ApiPublicCashfreePayRoute,
   ApiPublicCashfreeWebhookRoute: ApiPublicCashfreeWebhookRoute,

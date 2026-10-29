@@ -8,12 +8,40 @@ import {
   type ConnectStepKey,
   type StepStates,
 } from "@/components/whatsapp-connect-progress";
+import {
+  classifyEmbeddedSignup,
+  type EsOutcome,
+  type EsSignal,
+} from "@/lib/embedded-signup-outcome";
 
 type EsConfig = { app_id: string; config_id: string; graph_version: string; available: boolean };
 
 type SessionInfo = { waba_id?: string; phone_number_id?: string };
 
+/** What the connect flow ended with, for a caller that tells its own story. */
+export type ConnectedAccount = { display_phone_number?: string | null; verified_name?: string | null };
+
+/**
+ * Batch 40: Meta sends the code (FB.login callback) and the account ids (a
+ * window message) separately, in either order. Wait a little for the ids
+ * instead of failing the moment the code arrives first.
+ */
+export async function waitForSessionInfo(
+  read: () => SessionInfo,
+  timeoutMs = 5000,
+  stepMs = 100,
+): Promise<SessionInfo> {
+  const deadline = Date.now() + timeoutMs;
+  let info = read();
+  while ((!info.waba_id || !info.phone_number_id) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, stepMs));
+    info = read();
+  }
+  return info;
+}
+
 type ExchangeResult = {
+  account?: ConnectedAccount | null;
   warnings?: string[];
   subscribe_error?: string | null;
   register_error?: string | null;
@@ -72,17 +100,33 @@ function loadSdk(appId: string, version: string): Promise<void> {
 export function EmbeddedSignupButton({
   orgId,
   onConnected,
+  onOutcome,
+  onOpened,
+  label,
+  quiet = false,
+  buttonClassName,
 }: {
   orgId: string;
-  onConnected: () => Promise<void>;
+  onConnected: (account: ConnectedAccount | null) => Promise<void>;
+  /** Batch 40: the named outcome of a failed attempt (null when a new one starts). */
+  onOutcome?: (outcome: EsOutcome | null) => void;
+  /** The Facebook window opened (the funnel's connect_opened). */
+  onOpened?: () => void;
+  label?: string;
+  /** The caller draws the outcome and the reassurance itself. */
+  quiet?: boolean;
+  /** Batch 40: the caller's own button look (the journey's primary action). */
+  buttonClassName?: string;
 }) {
   const [config, setConfig] = useState<EsConfig | null>(null);
   const [working, setWorking] = useState(false);
   const [started, setStarted] = useState(false);
   const [steps, setSteps] = useState<StepStates>({});
   const [notes, setNotes] = useState<Partial<Record<ConnectStepKey, string>>>({});
-  const [banner, setBanner] = useState<string | null>(null);
+  const [banner, setBanner] = useState<EsOutcome | null>(null);
   const sessionRef = useRef<SessionInfo>({});
+  /** The last CANCEL / ERROR Meta posted, read when the callback has no code. */
+  const signalRef = useRef<EsSignal | null>(null);
 
   const mark = useCallback((key: ConnectStepKey, state: StepStates[ConnectStepKey], note?: string) => {
     setSteps((prev) => ({ ...prev, [key]: state }));
@@ -119,6 +163,14 @@ export function EmbeddedSignupButton({
         }
         if (data.event === "CANCEL") {
           sessionRef.current = {};
+          signalRef.current = { event: "CANCEL", currentStep: data.data?.current_step ?? null };
+        }
+        if (data.event === "ERROR") {
+          signalRef.current = {
+            event: "ERROR",
+            message: data.data?.error_message ?? null,
+            code: data.data?.error_code ?? null,
+          };
         }
       } catch {
         // Meta also posts unrelated messages — ignore anything we can't read.
@@ -129,20 +181,22 @@ export function EmbeddedSignupButton({
   }, []);
 
   const fail = useCallback(
-    (key: ConnectStepKey, message: string) => {
+    (key: ConnectStepKey, signal: EsSignal) => {
+      const outcome = classifyEmbeddedSignup(signal);
       setWorking(false);
-      mark(key, "error", message);
-      setBanner(message);
-      toast.error(message);
+      mark(key, "error", outcome.title);
+      setBanner(outcome);
+      onOutcome?.(outcome);
+      if (!quiet) toast.error(outcome.title);
     },
-    [mark],
+    [mark, onOutcome, quiet],
   );
 
   const finish = useCallback(
     async (code: string) => {
-      const { waba_id, phone_number_id } = sessionRef.current;
+      const { waba_id, phone_number_id } = await waitForSessionInfo(() => sessionRef.current);
       if (!waba_id || !phone_number_id) {
-        fail("code_received", "Meta didn't send the account details. Please run the flow again.");
+        fail("code_received", signalRef.current ?? { message: "Meta didn't send the account details." });
         return;
       }
       mark("code_received", "done", "Account details received from Meta.");
@@ -154,10 +208,10 @@ export function EmbeddedSignupButton({
       sessionRef.current = {};
 
       if (error) {
-        const step =
-          ((raw as Record<string, unknown> | null)?.["step"] as ConnectStepKey | undefined) ??
-          "token_exchanged";
-        fail(step, error);
+        const body = (raw as Record<string, unknown> | null) ?? {};
+        const step = (body["step"] as ConnectStepKey | undefined) ?? "token_exchanged";
+        const status = Number(body["http_status"]);
+        fail(step, { message: error, httpStatus: Number.isFinite(status) ? status : null });
         return;
       }
 
@@ -180,14 +234,19 @@ export function EmbeddedSignupButton({
       );
 
       if (data?.subscribe_error || data?.register_error) {
-        setBanner(
-          "Your number is connected, but Meta didn't finish every step. You can retry the connection or contact support.",
-        );
+        setBanner({
+          kind: "unknown",
+          title: "Connected — Meta didn't finish every step",
+          body: "Your number is connected. You can retry the connection or let us call you.",
+          steps: [],
+          retryLabel: "Try connecting again",
+          detail: data?.subscribe_error ?? data?.register_error ?? null,
+        });
       }
-      toast.success("WhatsApp connected");
-      await onConnected();
+      if (!quiet) toast.success("WhatsApp connected");
+      await onConnected(data?.account ?? null);
     },
-    [orgId, onConnected, fail, mark],
+    [orgId, onConnected, fail, mark, quiet],
   );
 
   async function start() {
@@ -195,19 +254,19 @@ export function EmbeddedSignupButton({
     setWorking(true);
     setStarted(true);
     setBanner(null);
+    onOutcome?.(null);
     setNotes({});
     setSteps({ popup_opened: "active" });
     sessionRef.current = {};
+    signalRef.current = null;
     try {
       await loadSdk(config.app_id, config.graph_version);
     } catch {
-      fail(
-        "popup_opened",
-        "We couldn't load the Facebook sign-up window. Check your connection and retry.",
-      );
+      fail("popup_opened", { sdkFailed: true });
       return;
     }
 
+    onOpened?.();
     mark("popup_opened", "done", "Complete the steps in the Facebook window.");
     mark("code_received", "active");
 
@@ -215,7 +274,7 @@ export function EmbeddedSignupButton({
       (response) => {
         const code = response?.authResponse?.code;
         if (!code) {
-          fail("code_received", "Sign-up was cancelled before it finished. You can start again anytime.");
+          fail("code_received", signalRef.current ?? { event: "CANCEL" });
           return;
         }
         void finish(code);
@@ -242,7 +301,10 @@ export function EmbeddedSignupButton({
     <div className="space-y-4">
       <Button
         size="lg"
-        className="h-14 w-full rounded-2xl bg-gradient-to-r from-primary to-teal-500 text-base font-semibold shadow-lg shadow-primary/20 transition-all duration-200 hover:shadow-xl hover:shadow-primary/25 active:scale-[0.99] sm:w-auto sm:px-8"
+        className={
+          buttonClassName ??
+          "h-14 w-full rounded-2xl bg-gradient-to-r from-primary to-teal-500 text-base font-semibold shadow-lg shadow-primary/20 transition-all duration-200 hover:shadow-xl hover:shadow-primary/25 active:scale-[0.99] sm:w-auto sm:px-8"
+        }
         onClick={() => void start()}
         disabled={!config || working}
       >
@@ -258,23 +320,35 @@ export function EmbeddedSignupButton({
         {working
           ? "Waiting for Facebook…"
           : started
-            ? "Try connecting again"
-            : "Connect WhatsApp with Facebook"}
+            ? (banner?.retryLabel ?? "Try connecting again")
+            : (label ?? "Connect WhatsApp with Facebook")}
       </Button>
 
-      <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-        Official Meta sign-up. We never see your Facebook password.
-      </p>
+      {quiet ? null : (
+        <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+          Official Meta sign-up. We never see your Facebook password.
+        </p>
+      )}
 
-      {banner ? (
-        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+      {banner && !quiet ? (
+        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4" role="alert">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-          <p className="text-sm text-destructive">{banner}</p>
+          <div className="text-sm text-destructive">
+            <p className="font-medium">{banner.title}</p>
+            <p className="mt-1">{banner.body}</p>
+            {banner.steps.length ? (
+              <ul className="mt-2 list-disc space-y-1 pl-4">
+                {banner.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
-      {started ? (
+      {started && !quiet ? (
         <div className="rounded-xl border border-border/70 bg-muted/20 p-5">
           <p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Connection progress
