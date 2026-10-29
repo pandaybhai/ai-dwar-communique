@@ -3,7 +3,7 @@
  *
  *   VITE_AIDWAR_SUPABASE_URL=http://fake-backend.test VITE_AIDWAR_SUPABASE_ANON_KEY=fake \
  *     npx vite dev --port 5199 --host 127.0.0.1
- *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b44|b45] [--design classic|new]
+ *   node scripts/ui-shots/shoot.mjs --out docs/screenshots/batch39/before [--themes light,dark] [--only inbox-chat] [--set b39|b41|b44|b45|b46|b47] [--design classic|new]
  *
  * Uses the Chromium + Playwright installed on the machine (not a project
  * dependency). The dev server must point the app at the fake backend host:
@@ -59,13 +59,13 @@ const SCENARIOS = {
 const firstCampaign = "00000000-0000-4000-8000-000000007000";
 
 /** The campaign wizard, walked to a step (Batch 41: audience → … → review). */
-function wizardTo(target) {
+function wizardTo(target, open = /create campaign/i) {
   return {
     path: "/app/campaigns",
     conversations: 40,
     wait: "text=Diwali preview",
     act: async (page) => {
-      await page.getByRole("button", { name: /create campaign/i }).first().click();
+      await page.getByRole("button", { name: open }).first().click();
       await page.waitForTimeout(700);
       await page.getByLabel("Campaign name").fill("Diwali preview — VIP list");
       await page.waitForTimeout(900);
@@ -197,6 +197,40 @@ const SCENARIOS_B46 = {
   },
 };
 
+/** Batch 47: Campaigns, Templates and Cards in the new design (run with --design new). */
+const dhanteras = "00000000-0000-4000-8000-000000007005";
+const SCENARIOS_B47 = {
+  campaigns: { path: "/app/campaigns", conversations: 40, wait: "text=Diwali preview", settle: 4000 },
+  "campaign-results": { path: `/app/campaigns/${dhanteras}`, conversations: 40, wait: "text=Sales from this campaign", settle: 4000 },
+  "campaign-results-full": { path: `/app/campaigns/${dhanteras}`, conversations: 40, wait: "text=Sales from this campaign", settle: 2500, fullPage: true },
+  "campaign-sending": { path: `/app/campaigns/${firstCampaign}`, conversations: 40, wait: "text=Took code", settle: 2500 },
+  "campaign-wizard": { ...wizardTo(0, /new campaign/i), settle: 1200 },
+  "campaign-wizard-message": { ...wizardTo(1, /new campaign/i), settle: 1200 },
+  "campaign-wizard-personalise": { ...wizardTo(2, /new campaign/i), settle: 1200 },
+  "campaign-wizard-review": { ...wizardTo(4, /new campaign/i), settle: 1200 },
+  templates: { path: "/app/templates", conversations: 40, wait: "text=order_shipped", settle: 1200 },
+  "template-editor": {
+    path: "/app/templates",
+    conversations: 40,
+    wait: "text=order_shipped",
+    act: async (page) => {
+      await page.getByRole("button", { name: /new template/i }).first().click();
+      await page.waitForTimeout(900);
+    },
+  },
+  "template-editor-invoice": {
+    path: "/app/templates",
+    conversations: 40,
+    wait: "text=order_shipped",
+    act: async (page) => {
+      await page.getByRole("button", { name: /new template/i }).first().click();
+      await page.waitForTimeout(700);
+      await page.getByRole("dialog").getByText("Invoice or receipt with a PDF").click();
+      await page.waitForTimeout(700);
+    },
+  },
+  cards: { path: "/app/cards", conversations: 40, wait: "h1", settle: 1200, fullPage: true },
+};
 
 /** Batch 50: Settings (each section), Billing in each plan state (run with --design new and classic). */
 const settingsAt = (tab, wait = "h1") => ({ path: `/app/settings${tab ? `?tab=${tab}` : ""}`, conversations: 10, wait, settle: 1200 });
@@ -226,7 +260,7 @@ const SCENARIOS_B50 = {
   start: { path: "/app/start?step=connect", conversations: 10, journeyFull: true, wait: "h1", settle: 1500 },
 };
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b50: SCENARIOS_B50 };
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b50: SCENARIOS_B50 };
 
 const consoleErrors = [];
 

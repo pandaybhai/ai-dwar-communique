@@ -73,6 +73,10 @@ import {
 import { cn } from "@/lib/utils";
 import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
 import { numberLabel, numberSubtitle } from "@/lib/whatsapp-numbers";
+import { useNewDesign } from "@/lib/new-design";
+import { TemplatePhone } from "@/components/templates-v2/template-phone";
+import { NdCostPanel, NdSteps } from "@/components/campaigns-v2/wizard-parts";
+import { ndCostLine } from "@/components/campaigns-v2/data";
 
 type AudienceSummary = {
   matched: number;
@@ -175,6 +179,10 @@ export function CampaignWizard({
 }) {
   const { can } = usePermissions();
   const navigate = useNavigate();
+  // Batch 47: the new design draws its own stepper, phone and cost; the steps,
+  // checks and requests below are the same for both looks.
+  const nd = useNewDesign();
+  const sep = nd ? ", " : " · ";
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [segmentId, setSegmentId] = useState<string>("all");
@@ -569,17 +577,23 @@ export function CampaignWizard({
           }
         }}
       >
-        <header className="shrink-0 border-b border-border bg-card px-4 py-3 pr-14 sm:px-6">
+        <header className="shrink-0 border-b border-border bg-card px-4 py-3 pr-14 sm:px-6 nd:border-line nd:bg-ground nd:py-4">
           <div className="mx-auto flex max-w-6xl flex-col gap-3 md:flex-row md:items-center md:gap-8">
             <div className="min-w-0 shrink-0">
-              <DialogTitle className="text-base">Create campaign</DialogTitle>
+              <DialogTitle className="text-base nd:font-display nd:text-xl nd:font-extrabold">
+                {nd ? "New campaign" : "Create campaign"}
+              </DialogTitle>
               <DialogDescription className="sr-only">
                 Five quick steps — we&apos;ll show you exactly who receives what before anything
                 sends.
               </DialogDescription>
             </div>
             <div className="min-w-0 flex-1">
-              <StepDots step={step} onBack={setStep} />
+              {nd ? (
+                <NdSteps step={step} onBack={setStep} />
+              ) : (
+                <StepDots step={step} onBack={setStep} />
+              )}
             </div>
           </div>
         </header>
@@ -628,7 +642,7 @@ export function CampaignWizard({
                               {numbers.map((n) => (
                                 <SelectItem key={n.id} value={n.id}>
                                   {numberLabel(n)}
-                                  {numberSubtitle(n) ? ` · ${numberSubtitle(n)}` : ""}
+                                  {numberSubtitle(n) ? `${sep}${numberSubtitle(n)}` : ""}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -692,7 +706,7 @@ export function CampaignWizard({
                               <span className="text-sm text-muted-foreground">will receive it</span>
                             </div>
                             <p className="mt-2 text-xs text-muted-foreground">
-                              {count.format(audience.matched)} matched ·{" "}
+                              {count.format(audience.matched)} matched{sep.trimEnd()}{" "}
                               {count.format(audience.excluded)} excluded (not opted in)
                             </p>
                           </>
@@ -746,7 +760,7 @@ export function CampaignWizard({
                                 checked={templateName === t.name}
                                 onSelect={() => setTemplateName(t.name)}
                                 title={<span className="font-mono text-[0.8125rem]">{t.name}</span>}
-                                meta={`${(t.category ?? "").toLowerCase()} · ${t.language}`}
+                                meta={`${(t.category ?? "").toLowerCase()}${sep}${t.language}`}
                                 detail={templateBodyText(t.components)}
                               />
                             ))}
@@ -792,7 +806,7 @@ export function CampaignWizard({
                             <div key={i} className="space-y-1.5">
                               <p className="text-xs font-medium">
                                 Card {i + 1}
-                                {card.body ? ` · ${card.body.slice(0, 40)}` : ""}
+                                {card.body ? `${sep}${card.body.slice(0, 40)}` : ""}
                               </p>
                               <MediaUploader
                                 organizationId={organizationId}
@@ -946,7 +960,7 @@ export function CampaignWizard({
                                     <Label className="text-[11px] text-muted-foreground">
                                       Card {card.index + 1}
                                       {cards[card.index]?.body
-                                        ? ` · ${cards[card.index]!.body.slice(0, 40)}`
+                                        ? `${sep}${cards[card.index]!.body.slice(0, 40)}`
                                         : ""}
                                     </Label>
                                     <Input
@@ -1101,7 +1115,7 @@ export function CampaignWizard({
                             [
                               "Audience",
                               `${count.format(audience?.eligible ?? 0)} opted-in contacts${
-                                segmentId === "all" ? "" : ` · ${segmentName}`
+                                segmentId === "all" ? "" : `${sep}${segmentName}`
                               }`,
                             ],
                             ["Template", templateName],
@@ -1161,7 +1175,7 @@ export function CampaignWizard({
                                     {effectiveCardCoupon(c.index)}
                                   </span>
                                   {offerExpiresAt
-                                    ? ` · ends ${formatInZone(offerExpiresAt, timezone)}`
+                                    ? `${sep}ends ${formatInZone(offerExpiresAt, timezone)}`
                                     : ""}
                                 </p>
                               </div>
@@ -1176,40 +1190,84 @@ export function CampaignWizard({
             </div>
 
             {/* The customer's phone and what it costs, beside every step. */}
-            <aside
-              className="space-y-4 self-start lg:sticky lg:top-0"
-              aria-label="Preview and cost"
-            >
-              <div>
-                <CustomerPhone business={business}>
-                  {template ? (
-                    <div className="space-y-2">
-                      <TemplatePreview model={previewModel} />
-                      {card ? (
+            {nd ? (
+              <aside
+                className="flex flex-col items-center gap-3 self-start lg:sticky lg:top-0"
+                aria-label="Preview and cost"
+              >
+                {template ? (
+                  <TemplatePhone
+                    model={previewModel}
+                    label="The message on the customer's WhatsApp"
+                    after={
+                      card ? (
                         <CardPreview kind={card.kind} vars={card.vars} className="max-w-[220px]" />
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="wa-bubble-in wa-tail max-w-[85%] text-[0.8125rem] text-wa-meta">
-                      Pick a template and your message appears here, as your customer sees it.
-                    </div>
-                  )}
-                </CustomerPhone>
-                <p className="mt-3 text-center text-xs text-muted-foreground">
+                      ) : null
+                    }
+                  />
+                ) : (
+                  <TemplatePhone
+                    model={{
+                      header: null,
+                      body: "Pick a template and your message appears here, as your customer sees it.",
+                      footer: "",
+                      buttons: [],
+                      cards: [],
+                      offer: null,
+                    }}
+                    label="The message on the customer's WhatsApp"
+                  />
+                )}
+                <p className="m-0 text-center text-sm text-muted-foreground">
                   {template ? `Preview for ${sample.name || sample.phone}` : "Live preview"}
-                  {offer?.hasExpiration ? " · the countdown is live" : ""}
+                  {offer?.hasExpiration ? ", the countdown is live" : ""}
                 </p>
-              </div>
-              <CostPanel
-                audience={audience}
-                audienceLoading={audienceLoading}
-                estimate={estimate}
-              />
-            </aside>
+                <NdCostPanel
+                  audience={audience}
+                  audienceLoading={audienceLoading}
+                  estimate={estimate}
+                />
+              </aside>
+            ) : (
+              <aside
+                className="space-y-4 self-start lg:sticky lg:top-0"
+                aria-label="Preview and cost"
+              >
+                <div>
+                  <CustomerPhone business={business}>
+                    {template ? (
+                      <div className="space-y-2">
+                        <TemplatePreview model={previewModel} />
+                        {card ? (
+                          <CardPreview
+                            kind={card.kind}
+                            vars={card.vars}
+                            className="max-w-[220px]"
+                          />
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="wa-bubble-in wa-tail max-w-[85%] text-[0.8125rem] text-wa-meta">
+                        Pick a template and your message appears here, as your customer sees it.
+                      </div>
+                    )}
+                  </CustomerPhone>
+                  <p className="mt-3 text-center text-xs text-muted-foreground">
+                    {template ? `Preview for ${sample.name || sample.phone}` : "Live preview"}
+                    {offer?.hasExpiration ? " · the countdown is live" : ""}
+                  </p>
+                </div>
+                <CostPanel
+                  audience={audience}
+                  audienceLoading={audienceLoading}
+                  estimate={estimate}
+                />
+              </aside>
+            )}
           </div>
         </div>
 
-        <footer className="shrink-0 border-t border-border bg-card px-4 py-3 sm:px-6">
+        <footer className="shrink-0 border-t border-border bg-card px-4 py-3 sm:px-6 nd:border-line nd:bg-surface">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
             <Button
               variant="ghost"
@@ -1219,12 +1277,21 @@ export function CampaignWizard({
               <ArrowLeft className="h-4 w-4" />
               {step === 0 ? "Cancel" : "Back"}
             </Button>
-            <CostLine
-              audience={audience}
-              audienceLoading={audienceLoading}
-              estimate={estimate}
-              className="hidden min-w-0 flex-1 justify-center sm:flex"
-            />
+            {nd ? (
+              <p
+                className="m-0 hidden min-w-0 flex-1 justify-center truncate text-sm font-semibold tabular-nums text-foreground sm:flex"
+                aria-live="polite"
+              >
+                {ndCostLine(audience, audienceLoading, estimate)}
+              </p>
+            ) : (
+              <CostLine
+                audience={audience}
+                audienceLoading={audienceLoading}
+                estimate={estimate}
+                className="hidden min-w-0 flex-1 justify-center sm:flex"
+              />
+            )}
             {step < STEPS.length - 1 ? (
               <Button
                 disabled={!canNext()}
@@ -1244,12 +1311,18 @@ export function CampaignWizard({
               </Button>
             )}
           </div>
-          <CostLine
-            audience={audience}
-            audienceLoading={audienceLoading}
-            estimate={estimate}
-            className="mt-2 flex justify-center sm:hidden"
-          />
+          {nd ? (
+            <p className="m-0 mt-2 text-center text-sm font-semibold tabular-nums text-foreground sm:hidden">
+              {ndCostLine(audience, audienceLoading, estimate)}
+            </p>
+          ) : (
+            <CostLine
+              audience={audience}
+              audienceLoading={audienceLoading}
+              estimate={estimate}
+              className="mt-2 flex justify-center sm:hidden"
+            />
+          )}
         </footer>
       </DialogContent>
     </Dialog>
