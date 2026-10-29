@@ -6,7 +6,6 @@ import {
   Check,
   Loader2,
   MessageSquareText,
-  PanelRight,
   Plus,
   Sparkles,
   Tags,
@@ -37,8 +36,8 @@ import { WhatsAppBubble } from "@/components/design-v2";
 import { TemplatePickerDialog, type TemplateSendPayload } from "@/components/templates/template-picker-dialog";
 import { CorrectionDialog } from "../correction-dialog";
 import { FlowRunBanner } from "../flow-run-banner";
-import { FlowRunHistory } from "../flow-run-history";
 import { AidenRulesBadge } from "../aiden-rules-badge";
+import { FlowRunHistory } from "../flow-run-history";
 import { SendCardButton } from "../send-card-button";
 import { SendFormButton } from "../send-form-button";
 import { useAiRuns, useAutoHeight, useHandoffAlertText } from "../chat-thread";
@@ -79,9 +78,13 @@ function Tool({
       className="h-8 gap-1.5 rounded-full px-2.5 text-muted-foreground hover:text-foreground"
       disabled={disabled}
       onClick={onClick}
+      aria-label={label}
+      title={label}
     >
-      {busy ? <Loader2 className="animate-spin" /> : icon}
-      {label}
+      {busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : icon}
+      <span className="hidden @lg:inline" aria-hidden="true">
+        {label}
+      </span>
     </Button>
   );
 }
@@ -124,8 +127,8 @@ export function ChatPane({
   onTakeover,
   assignOpen,
   onAssignOpenChange,
-  detailsOpen,
   onToggleDetails,
+  compact = false,
 }: {
   conversation: ConversationRow;
   messages: MessageRow[];
@@ -146,8 +149,9 @@ export function ChatPane({
   onTakeover: () => Promise<void>;
   assignOpen: boolean;
   onAssignOpenChange: (open: boolean) => void;
-  detailsOpen: boolean;
   onToggleDetails: () => void;
+  /** A phone: the shorter placeholder and tool labels. */
+  compact?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -193,7 +197,8 @@ export function ChatPane({
     if (loading) return;
     const frame = requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
     return () => cancelAnimationFrame(frame);
-  }, [messages.length, lastMessageId, conversation.id, loading]);
+    // The composer growing (a suggestion, a summary) shrinks the wall: stay on the newest.
+  }, [messages.length, lastMessageId, conversation.id, loading, conversation.needs_human, conversation.assigned_to, alertText, suggestion, summary, proposedTags, teachOffer]);
 
   // Messages already there when the chat loaded don't animate; new ones slide in.
   const seenRef = useRef<{ id: string; ids: Set<string> } | null>(null);
@@ -380,112 +385,104 @@ export function ChatPane({
     </>
   ) : null;
 
+  // Take over / hand back (a full-width button on a phone), or where Aiden's
+  // workspace switch is when Aiden doesn't reply in this workspace at all.
+  const takeoverButton = (className: string) =>
+    plan && aidenReplies ? (
+      <Button className={cn("rounded-[12px]", className)} onClick={() => void takeover()} disabled={taking} data-takeover={plan.action}>
+        {taking ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
+        {plan.label}
+      </Button>
+    ) : !aidenReplies ? (
+      <Link
+        to="/app/employee"
+        className={cn("rounded-full px-2 py-1.5 text-center text-sm font-semibold text-aiden-deep underline-offset-4 hover:underline", className)}
+      >
+        {aidenMode === "draft" ? "Aiden drafts only: change" : "Aiden is off: switch on"}
+      </Link>
+    ) : null;
+
   return (
     <div className="@container flex h-full min-h-0 flex-col bg-surface">
       {/* Header: who, the 24-hour window, take over / hand back. */}
-      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-2.5 wide:flex-nowrap wide:px-[18px] wide:py-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="-ml-1.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-foreground transition-colors duration-200 hover:bg-ground active:bg-accent wide:hidden"
-          aria-label="Back to chats"
-        >
-          <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          onClick={onToggleDetails}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-[14px] py-0.5 pr-2 text-left transition-colors duration-200 hover:bg-ground active:bg-accent wide:flex-initial"
-          aria-label={`${label}, contact details`}
-        >
-          <ToneAvatar seed={conversation.contact?.id ?? conversation.id} label={label} />
-          <span className="flex min-w-0 flex-col">
-            <b className="truncate font-bold">{label}</b>
-            <span className="truncate text-sm text-muted-foreground">
-              {conversation.contact?.phone ?? ""}
-              {fromNumber ? ` via ${fromNumber}` : ""}
+      <header className="flex shrink-0 flex-col gap-2 border-b border-line px-3 py-2.5 wide:px-[18px] wide:py-3">
+        <div className="flex items-center gap-2 wide:gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="-ml-1.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-foreground transition-colors duration-200 hover:bg-ground active:bg-accent wide:hidden"
+            aria-label="Back to chats"
+          >
+            <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={onToggleDetails}
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-[14px] py-0.5 pr-2 text-left transition-colors duration-200 hover:bg-ground active:bg-accent"
+            aria-label={`${label}, contact details`}
+          >
+            <ToneAvatar seed={conversation.contact?.id ?? conversation.id} label={label} />
+            <span className="flex min-w-0 flex-col">
+              <b className="truncate font-bold">{label}</b>
+              <span className="truncate text-sm text-muted-foreground">
+                {conversation.contact?.name?.trim() ? (conversation.contact.phone ?? "") : "No name saved"}
+                {fromNumber ? ` via ${fromNumber}` : ""}
+              </span>
             </span>
+          </button>
+          <span className="flex shrink-0 items-center gap-1">
+            <Select
+              value={conversation.assigned_to ?? "unassigned"}
+              onValueChange={(v) => onAssign(v === "unassigned" ? null : v)}
+              open={assignOpen}
+              onOpenChange={onAssignOpenChange}
+            >
+              <SelectTrigger
+                className="h-9 w-9 justify-center rounded-full border-transparent bg-transparent p-0 shadow-none hover:bg-ground [&>svg:last-child]:hidden"
+                aria-label={`Assigned to ${assigneeName ?? "nobody"} (press A)`}
+              >
+                {assignee ? (
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-aiden-soft text-[0.625rem] font-bold text-aiden-deep">
+                    {initials(assigneeName ?? "?")}
+                  </span>
+                ) : (
+                  <UserRound className="h-4 w-4 text-muted-foreground" />
+                )}
+                <span className="sr-only">
+                  <SelectValue placeholder="Assign" />
+                </span>
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {members.map((m) => (
+                  <SelectItem key={m.user_id} value={m.user_id}>
+                    {m.full_name || m.email || "Team member"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {conversation.contact && organizationId ? (
+              <FlowRunHistory organizationId={organizationId} contactId={conversation.contact.id} conversationId={conversation.id} />
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-full"
+              onClick={onToggleStatus}
+              title={conversation.status === "closed" ? undefined : "Close (E)"}
+            >
+              {conversation.status === "closed" ? "Reopen" : "Close"}
+            </Button>
+            {takeoverButton("hidden wide:inline-flex")}
           </span>
-        </button>
-        <span className="order-4 flex min-w-0 basis-full items-center gap-2 wide:order-none wide:basis-auto">
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2 wide:pl-[52px]">
           <WindowChip lastCustomerMessageAt={conversation.last_customer_message_at} now={now} />
-          <span className="hidden min-w-0 @3xl:inline-flex">
+          <span className="hidden min-w-0 @2xl:inline-flex">
             <AidenRulesBadge conversationId={conversation.id} />
           </span>
-        </span>
-        <span className="hidden flex-1 wide:block" aria-hidden="true" />
-        <span className="flex shrink-0 items-center gap-1">
-          <Select
-            value={conversation.assigned_to ?? "unassigned"}
-            onValueChange={(v) => onAssign(v === "unassigned" ? null : v)}
-            open={assignOpen}
-            onOpenChange={onAssignOpenChange}
-          >
-            <SelectTrigger
-              className="h-9 w-9 justify-center rounded-full border-transparent bg-transparent p-0 shadow-none hover:bg-ground [&>svg:last-child]:hidden"
-              aria-label={`Assigned to ${assigneeName ?? "nobody"} (press A)`}
-            >
-              {assignee ? (
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-aiden-soft text-[0.625rem] font-bold text-aiden-deep">
-                  {initials(assigneeName ?? "?")}
-                </span>
-              ) : (
-                <UserRound className="h-4 w-4 text-muted-foreground" />
-              )}
-              <span className="sr-only">
-                <SelectValue placeholder="Assign" />
-              </span>
-            </SelectTrigger>
-            <SelectContent align="end">
-              <SelectItem value="unassigned">Unassigned</SelectItem>
-              {members.map((m) => (
-                <SelectItem key={m.user_id} value={m.user_id}>
-                  {m.full_name || m.email || "Team member"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {conversation.contact && organizationId ? (
-            <FlowRunHistory organizationId={organizationId} contactId={conversation.contact.id} conversationId={conversation.id} />
-          ) : null}
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 rounded-full"
-            onClick={onToggleStatus}
-            title={conversation.status === "closed" ? undefined : "Close (E)"}
-          >
-            {conversation.status === "closed" ? "Reopen" : "Close"}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onToggleDetails}
-            aria-label={detailsOpen ? "Hide contact details" : "Show contact details"}
-            aria-pressed={detailsOpen}
-            className={cn("h-9 w-9 rounded-full text-muted-foreground", detailsOpen && "bg-ground text-foreground")}
-          >
-            <PanelRight />
-          </Button>
-        </span>
-        {plan && aidenReplies ? (
-          <Button
-            className="order-5 w-full rounded-[12px] wide:order-none wide:w-auto"
-            onClick={() => void takeover()}
-            disabled={taking}
-            data-takeover={plan.action}
-          >
-            {taking ? <Loader2 className="animate-spin" /> : null}
-            {plan.label}
-          </Button>
-        ) : !aidenReplies ? (
-          <Link
-            to="/app/employee"
-            className="order-5 w-full rounded-full px-2 py-1 text-center text-sm font-semibold text-aiden-deep underline-offset-4 hover:underline wide:order-none wide:w-auto"
-          >
-            {aidenMode === "draft" ? "Aiden drafts only" : "Aiden is off"}
-          </Link>
-        ) : null}
+        </div>
+        {takeoverButton("w-full wide:hidden")}
       </header>
 
       {conversation.contact && organizationId ? (
@@ -601,7 +598,7 @@ export function ChatPane({
             ))}
             <span className="ml-auto flex gap-2">
               <Button size="sm" className="rounded-full" disabled={applyingTags} onClick={() => void applyTags()}>
-                {applyingTags ? <Loader2 className="animate-spin" /> : null}
+                {applyingTags ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
                 Add them
               </Button>
               <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setProposedTags(null)}>
@@ -710,13 +707,13 @@ export function ChatPane({
                 }
                 if (e.key === "Escape") e.currentTarget.blur();
               }}
-              placeholder="Type a message, or / for templates"
+              placeholder={compact ? "Message, or / for more" : "Type a message, or / for templates"}
               aria-label={`Message ${label}`}
               rows={1}
               className="max-h-44 min-h-[46px] flex-1 resize-none rounded-[12px] border-line bg-surface px-3.5 py-[11px] text-[0.9375rem] shadow-none md:text-[0.9375rem]"
             />
             <Button className="h-[46px] shrink-0 rounded-[12px] px-4" disabled={!draft.trim() || sending} onClick={() => void submit()}>
-              {sending ? <Loader2 className="animate-spin" /> : null}
+              {sending ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
               Send
             </Button>
           </div>

@@ -451,6 +451,15 @@ export function createBackend(options = {}) {
     flow_triggers: () => [],
     flow_runs: () => [],
     wa_forms: () => [],
+    // Batch 46: Aiden replying (the new Inbox's "Aiden on it"), and a shop order for the first chat.
+    ai_agents: () => [{ id: "agent1", organization_id: ORG, is_default: true, mode: options.aidenMode ?? "replying" }],
+    orders: (q) =>
+      q.filters.contact_id?.value === conversations[0]?.contact.id
+        ? [
+            { id: "o1", contact_id: conversations[0].contact.id, order_number: "#KC-2041", total: 36500, currency: "INR", placed_at: ago(5 * HOUR) },
+            { id: "o2", contact_id: conversations[0].contact.id, order_number: "#KC-1876", total: 12300, currency: "INR", placed_at: ago(40 * DAY) },
+          ]
+        : [],
   };
 
   async function rest(route, request) {
@@ -624,6 +633,10 @@ export function createBackend(options = {}) {
     }
     if (url.pathname === "/api/campaigns/estimate") {
       return json({ enabled: true, recipients: 1186, category: "marketing", rate: 0.86, currency: "INR", estimate: 1019.96, available: 2840.5, shortfall: 0, can_send: true, needs_approval: false, approval_threshold: null, daily_limit: 10000, over_daily_limit: false, days_needed: 1 });
+    }
+    if (url.pathname === "/api/internal/ai-run") {
+      // Batch 46: "Draft a reply" in the new Inbox shows Aiden's suggestion.
+      return json({ run: { output: "Yes, Asha! If you order by Wednesday 6 pm we can deliver the Meenakari set on Friday.", status: "ok" } });
     }
     if (url.pathname === "/api/whatsapp/send-message") {
       await new Promise((r) => setTimeout(r, 600));

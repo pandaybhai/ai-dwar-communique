@@ -89,6 +89,7 @@ export function NewInboxView() {
   const searchRef = useRef<HTMLInputElement | null>(null);
   const isPhone = useMedia(PHONE);
   const panelInline = useMedia(PANEL_INLINE);
+  const roomy = useMedia("(min-width: 1001px)");
 
   // The first view: the waiting chats if any, else all (decided once, when the list arrives).
   useEffect(() => {
@@ -199,6 +200,12 @@ export function NewInboxView() {
       return next;
     });
   const showInline = Boolean(activeConversation) && detailsOpen && panelInline;
+  // The preview's columns: 300 | chat | 260 (panel from 1280px), 280 | chat to 1000px, one pane on a phone.
+  const columns = isPhone
+    ? "minmax(0,1fr)"
+    : showInline
+      ? "minmax(0,300px) minmax(0,1fr) minmax(0,260px)"
+      : `minmax(0,${roomy ? 300 : 280}px) minmax(0,1fr)`;
 
   return (
     <div
@@ -211,11 +218,10 @@ export function NewInboxView() {
       <h1 className="sr-only">Inbox</h1>
       <div
         className={cn(
-          "mx-auto grid min-h-0 w-full max-w-[1200px] flex-1 grid-cols-1 overflow-hidden rounded-[18px] border border-line bg-surface shadow-xl",
-          "wide:grid-cols-[minmax(0,280px)_minmax(0,1fr)] wide:rounded-[22px] min-[1001px]:grid-cols-[minmax(0,300px)_minmax(0,1fr)]",
-          showInline && "xl:grid-cols-[minmax(0,300px)_minmax(0,1fr)_minmax(0,260px)]",
+          "mx-auto grid min-h-0 w-full max-w-[1200px] flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden rounded-[18px] border border-line bg-surface shadow-xl wide:rounded-[22px]",
           pane === "chat" && "phone:rounded-none phone:border-0 phone:shadow-none",
         )}
+        style={{ gridTemplateColumns: columns }}
       >
         {/* Chat list */}
         <section
@@ -393,8 +399,8 @@ export function NewInboxView() {
               onTakeover={inbox.handleTakeover}
               assignOpen={assignOpen}
               onAssignOpenChange={setAssignOpen}
-              detailsOpen={panelInline ? detailsOpen : detailsSheet}
               onToggleDetails={toggleDetails}
+              compact={isPhone}
             />
           ) : (
             <div className="grid h-full place-items-center bg-ground bg-[radial-gradient(var(--line)_1px,transparent_1.2px)] bg-[length:20px_20px] p-8">
@@ -420,7 +426,7 @@ export function NewInboxView() {
 
         {/* Customer panel: inline from 1280px. */}
         {showInline && activeConversation ? (
-          <aside aria-label="Contact details" className="hidden min-h-0 min-w-0 border-l border-line xl:block">
+          <aside aria-label="Contact details" className="min-h-0 min-w-0 border-l border-line">
             <CustomerPanel
               conversation={activeConversation}
               members={members}
