@@ -257,6 +257,30 @@ set only at 700px and under).
 
 "Aiden is typing" is left out: nothing the Inbox reads says Aiden is mid-reply.
 
+## Customers (Batch 48)
+
+`/app/contacts`, `/app/contacts?tab=segments` and `/app/receipts` with the flag
+on render `NewContactsView`, `NewSegmentsView` and `NewReceiptsView`
+(`src/components/customers-v2/`); with it off, the classic views exactly as
+before (`batch48-customers.test.tsx` pins their files).
+
+| Piece | Where it comes from |
+| --- | --- |
+| List, search, opt-in / tag / segment filters, export | The classic ContactsView's queries, unchanged |
+| Filter chips and "+ Filter" | Opt-in, Tag, Saved segment (segments are the saved views), "Bought in the last 30/90/180 days" (the shop's `orders` since then; shown only with `integrations.view` and at least one order) |
+| Messages (opt-in chip) | `contacts.opt_in_status`: Opted in / Not yet / Opted out |
+| Last chat | The newest `conversations.last_message_at` of the customer's chats |
+| Spent | The shop's synced `orders` (not cancelled), per currency; the column shows only with `integrations.view` and when the workspace has orders |
+| Bulk bar: Mark as opted in | Batch 36's `/api/contacts/opt-in` `bulk`, the classic request |
+| Bulk bar: Add tag | The drawer's own `contact_tags` upsert, sent only for ticked customers without the tag (the table has no update policy) |
+| Drawer | The classic ContactDrawer (every edit, delete, tag and opt-in path), with a read-only summary on top: the newest chat (and a link straight to it), consent record, what Aiden knows (language, open question), orders, Flows v2 runs. A bottom sheet at 700px and under |
+| Import | Three steps (upload, match columns with a preview, confirm with the consent box ticked by default) running the classic import, moved unchanged into `src/lib/contact-import.ts` and shared by both dialogs |
+| Segments | The classic reads, counts (`/api/contacts/evaluate-segment`), builder and delete |
+| Sales from chats | The Receipts page's attribution functions, GST rate and CSV; the KPI tiles are its "Everything together" row |
+
+"Send campaign" is not in the bulk bar: a campaign's audience is every
+opted-in contact or a segment, never a hand-picked list.
+
 ## Automate and Shop (Batch 49)
 
 The preview draws only these sections' headings and tabs, so the screens are
