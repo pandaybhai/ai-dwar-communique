@@ -28,8 +28,9 @@ import {
 /**
  * Batch 44: /app/design for a workspace with the new design on — the tokens
  * and every shared component Batches 45 to 50 build with
- * (docs/design/spec.md). The names and numbers here are the preview's sample
- * shop, shown as samples.
+ * (docs/design/spec.md). Names and numbers are samples in the preview's
+ * words, kept to no particular kind of shop (Batch 20: shared code knows no
+ * kind of product).
  */
 
 const SWATCHES: Array<[string, string, string]> = [
@@ -55,8 +56,8 @@ const FEED = [
     initials: "RK",
     tone: "bg-av2 text-av2-ink",
     name: "Rahul Kapoor",
-    asked: "Bridal sets around ₹1.5 lakh?",
-    reply: "We have 6 bridal sets in your budget. Shall I send photos?",
+    asked: "Gift boxes around ₹1.5 lakh for my office?",
+    reply: "We have 6 gift boxes in your budget. Shall I send photos?",
   },
   {
     id: "av",
@@ -130,7 +131,13 @@ function Demo({
   className?: string;
 }) {
   return (
-    <div className="min-w-0" data-demo={title.toLowerCase().replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "")}>
+    <div
+      className="min-w-0"
+      data-demo={title
+        .toLowerCase()
+        .replace(/[^a-z]+/g, "-")
+        .replace(/^-|-$/g, "")}
+    >
       <h3 className="mb-3 text-sm font-semibold text-muted-foreground">{title}</h3>
       <div className={className}>{children}</div>
     </div>
@@ -206,13 +213,13 @@ export function NewDesignSystemPage() {
       >
         <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-5">
           {[
-            ["rounded-lg", "11px · buttons, inputs"],
-            ["rounded-xl", "15px · menus, rows"],
-            ["rounded-2xl", "19px · cards"],
-            ["rounded-3xl", "23px · panels"],
+            ["rounded-lg", "11px, buttons, inputs"],
+            ["rounded-xl", "15px, menus, rows"],
+            ["rounded-2xl", "19px, cards"],
+            ["rounded-3xl", "23px, panels"],
           ].map(([r, label]) => (
             <div key={r} className={`flex h-24 items-end bg-surface p-3 shadow-md ${r}`}>
-              <span className="text-xs text-muted-foreground">{label!.replace(" · ", ", ")}</span>
+              <span className="text-xs text-muted-foreground">{label}</span>
             </div>
           ))}
           {["shadow-xs", "shadow-md", "shadow-lg", "shadow-2xl"].map((sh) => (
@@ -357,7 +364,7 @@ export function NewDesignSystemPage() {
                 }
               >
                 <p>
-                  <b>Priya Reddy</b> wants ₹2,000 off the Kundan jhumkas if she buys both today.
+                  <b>Priya Reddy</b> wants ₹2,000 off the Diwali gift boxes if she buys both today.
                 </p>
               </NeedsYouCard>
             </Demo>
@@ -393,7 +400,7 @@ export function NewDesignSystemPage() {
           <p className="m-0 max-w-xl rounded-[14px] rounded-bl-[4px] bg-bubble-out px-3 py-2 text-[0.9375rem]">
             <span className="block text-[0.8125rem] font-bold text-aiden-deep">Aiden</span>
             <TypingText key={typingKey}>
-              The temple gold set at ₹1,28,000 is our most loved. Shall I send photos?
+              The large Diwali box at ₹12,800 is our most loved. Shall I send photos?
             </TypingText>
           </p>
           <Button
@@ -432,12 +439,12 @@ export function NewDesignSystemPage() {
           <Demo title="Bubbles">
             <div className="nd-wall flex flex-col gap-2.5 rounded-[22px] border border-line p-4 wide:p-7">
               <WhatsAppBubble from="in" time="8:44">
-                Hi, do you have the Kundan jhumkas from your Diwali post?
+                Hi, do you have the gift boxes from your Diwali post?
               </WhatsAppBubble>
               <WhatsAppBubble from="out" sender="Aiden" time="8:44" ticks="read">
                 Yes Priya, 2 pairs left. Here they are:
               </WhatsAppBubble>
-              <ProductBubble title="Kundan jhumkas, 22K" detail="₹24,500, 2 in stock" />
+              <ProductBubble title="Diwali gift box, large" detail="₹12,800, 2 in stock" />
               <WhatsAppBubble from="in" time="8:51">
                 Can you do ₹2,000 less? I&rsquo;ll take both today.
               </WhatsAppBubble>
@@ -455,7 +462,7 @@ export function NewDesignSystemPage() {
                     className="block h-[150px] bg-gradient-to-br from-av5-ink to-av1-ink"
                   />
                 }
-                text="Hi {{name}}, our Diwali collection is here. 22K temple jewellery, made in Hyderabad."
+                text="Hi {{name}}, our Diwali collection is here, made in Hyderabad."
                 buttons={["View collection", "Talk to us"]}
               />
             </PhoneFrame>
