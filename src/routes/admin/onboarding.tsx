@@ -138,7 +138,7 @@ function AdminOnboarding() {
                     aria-hidden="true"
                   >
                     <span
-                      className="absolute inset-y-0 left-0 rounded-lg bg-primary-strong"
+                      className="absolute inset-y-0 left-0 rounded-lg bg-primary"
                       style={{ width: `${(s.reached / max) * 100}%` }}
                     />
                   </span>

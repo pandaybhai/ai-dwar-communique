@@ -17,7 +17,7 @@ export function AuthShell({
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <Link to="/" className="text-2xl font-bold tracking-tight text-foreground">
-            Ai<span className="text-primary-strong">Dwar</span>
+            Ai<span className="text-primary">Dwar</span>
           </Link>
         </div>
         <div className="rounded-2xl border border-border/70 bg-card p-7 shadow-lg shadow-primary/5 sm:p-8">

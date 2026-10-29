@@ -4,6 +4,7 @@ import { OrgProvider, useOrg } from "@/lib/org-context";
 import { AppShell } from "@/components/app-shell";
 import { OnboardingJourney } from "@/components/onboarding/onboarding-journey";
 import { ErrorState, PageSkeleton } from "@/components/empty-state";
+import { useAppSurface } from "@/lib/theme";
 
 /** /login's ?redirect= for a page under /app; Home needs none. */
 export function loginSearch(href: string): { redirect?: string } {
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/app")({
 });
 
 function AppGate() {
+  useAppSurface();
   const { loading, error, active, reload } = useOrg();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 

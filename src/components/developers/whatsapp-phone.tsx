@@ -188,16 +188,17 @@ export function MessageBubble({
   );
 }
 
-/** A message the customer typed: right-hand, WhatsApp's own green (Batch 40). */
+/** A message the customer typed (Batch 40): right-hand, WhatsApp's own green. */
 export function CustomerBubble({ text, time = "10:00" }: { text: string; time?: string }) {
   return (
     <div className="ml-auto max-w-[82%]">
-      <div className="wa-bubble-out px-2.5 pb-1 pt-1.5">
-        <p className="whitespace-pre-wrap break-words text-[14.2px] leading-[1.36]">{text}</p>
-        <div className="flex items-center justify-end gap-1 text-[11px] text-[var(--wa-meta)]">
-          <span>{time}</span>
+      {/* Batch 39's Inbox bubble (.wa-bubble-out, .wa-tail, .wa-meta). */}
+      <div className="wa-bubble-out wa-tail">
+        <span className="whitespace-pre-wrap">{text}</span>
+        <span className="wa-meta">
+          {time}
           <Ticks status="read" />
-        </div>
+        </span>
       </div>
     </div>
   );

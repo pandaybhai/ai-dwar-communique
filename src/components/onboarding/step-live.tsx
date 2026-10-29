@@ -104,7 +104,7 @@ export function StepLive({
           <button
             type="button"
             onClick={onConnect}
-            className="font-semibold text-primary-strong underline-offset-4 hover:underline"
+            className="font-semibold text-primary underline-offset-4 hover:underline"
           >
             Connect it now
           </button>
@@ -128,12 +128,12 @@ export function StepLive({
               onClick={() => void choose(choice.mode)}
               className={cn(
                 "ob-choice ob-rise group flex flex-col items-start rounded-3xl border-2 bg-card p-6 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait sm:p-7",
-                selected ? "border-primary-strong" : "border-border hover:border-primary-strong/60",
+                selected ? "border-primary" : "border-border hover:border-primary/60",
               )}
               style={{ "--ob-delay": `${100 + i * 80}ms` } as React.CSSProperties}
             >
               <span className="flex w-full items-center justify-between gap-3">
-                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-accent text-accent-foreground">
+                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-primary/10 text-primary">
                   {busy === choice.mode ? (
                     <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
                   ) : (
@@ -141,14 +141,14 @@ export function StepLive({
                   )}
                 </span>
                 {choice.badge ? (
-                  <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-accent-foreground">
+                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
                     {choice.badge}
                   </span>
                 ) : null}
               </span>
               <span className="mt-5 text-2xl font-bold tracking-tight">{choice.title}</span>
               <span className="mt-2 text-sm text-muted-foreground">{choice.body}</span>
-              <span className="mt-6 text-sm font-semibold text-primary-strong">
+              <span className="mt-6 text-sm font-semibold text-primary">
                 {busy === choice.mode ? "Switching on…" : `Start in ${choice.title}`}
               </span>
             </button>
@@ -159,14 +159,14 @@ export function StepLive({
       {problem ? (
         <div
           role="alert"
-          className="ob-pop mt-6 max-w-2xl rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+          className="ob-pop mt-6 max-w-2xl rounded-2xl border border-warning-border bg-warning-soft p-4 text-sm"
         >
           <p>{problem.text}</p>
           {problem.needsTest ? (
             <button
               type="button"
               onClick={onNeedsTest}
-              className="mt-2 font-semibold text-primary-strong underline-offset-4 hover:underline"
+              className="mt-2 font-semibold text-primary underline-offset-4 hover:underline"
             >
               Try Aiden now
             </button>
@@ -174,7 +174,7 @@ export function StepLive({
           {problem.billing ? (
             <Link
               to="/app/billing"
-              className="mt-2 inline-block font-semibold text-primary-strong underline-offset-4 hover:underline"
+              className="mt-2 inline-block font-semibold text-primary underline-offset-4 hover:underline"
             >
               Add credits or pick a plan
             </Link>

@@ -56,7 +56,7 @@ export function JourneyResume({
       <Link
         to="/app/start"
         search={{ step }}
-        className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-primary-strong px-5 text-sm font-semibold text-primary-strong-foreground"
+        className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground"
       >
         Continue setup <ArrowRight className="h-4 w-4" aria-hidden="true" />
       </Link>

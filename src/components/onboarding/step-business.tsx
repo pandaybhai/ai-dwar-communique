@@ -196,7 +196,7 @@ export function StepBusiness({
           {error ? (
             <p
               role="alert"
-              className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-soft-foreground"
             >
               {error}
             </p>
@@ -280,9 +280,9 @@ function BrandCard({
   const initial = shown.charAt(0).toUpperCase() || "A";
   return (
     <div
-      className={`ob-pop overflow-hidden rounded-3xl border border-border bg-card shadow-[var(--shadow-card)] ${compact ? "" : "max-w-md"}`}
+      className={`ob-pop overflow-hidden rounded-3xl border border-border bg-card shadow-lg ${compact ? "" : "max-w-md"}`}
     >
-      <div className="h-2" style={{ background: "var(--brand)" }} />
+      <div className="h-2" style={{ background: "var(--ob-business, var(--primary))" }} />
       <div className={compact ? "flex items-center gap-4 p-5" : "p-8"}>
         <div
           className={`grid shrink-0 place-items-center overflow-hidden rounded-2xl border border-border bg-background ${compact ? "h-14 w-14" : "h-20 w-20"}`}
@@ -295,7 +295,10 @@ function BrandCard({
               onError={onLogoError}
             />
           ) : (
-            <span className="text-2xl font-bold" style={{ color: "var(--brand)" }}>
+            <span
+              className="text-2xl font-bold"
+              style={{ color: "var(--ob-business, var(--primary))" }}
+            >
               {initial}
             </span>
           )}
@@ -311,10 +314,10 @@ function BrandCard({
             <p className="mt-4 line-clamp-3 text-sm text-muted-foreground">{brand.description}</p>
           ) : null}
           {!compact ? (
-            <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground">
+            <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
               <span
                 className="h-2 w-2 rounded-full"
-                style={{ background: "var(--brand)" }}
+                style={{ background: "var(--ob-business, var(--primary))" }}
                 aria-hidden="true"
               />
               Aiden will start reading this the moment you continue

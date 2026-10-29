@@ -6,6 +6,7 @@ import { PrimaryAction } from "@/components/onboarding/journey-shell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { aidwar } from "@/integrations/aidwar/client";
+import { useAppSurface } from "@/lib/theme";
 import { logActivity } from "@/lib/activity";
 
 const TITLE = "Log in — AiDwar";
@@ -29,6 +30,9 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
+  // Batch 40: sign-up and log-in are the journey's first screens, so they
+  // wear the app's look (Batch 39's tokens, light/dark), not the marketing site's.
+  useAppSurface();
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
   const goNext = () =>
@@ -67,7 +71,7 @@ function LoginPage() {
       footer={
         <>
           New to AiDwar?{" "}
-          <Link to="/signup" className="font-medium text-primary-strong hover:underline">
+          <Link to="/signup" className="font-medium text-primary hover:underline">
             Create an account
           </Link>
         </>
@@ -83,9 +87,9 @@ function LoginPage() {
           <Input id="password" name="password" type="password" autoComplete="current-password" required className="h-12 rounded-xl text-base" />
         </div>
         {error ? (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-soft-foreground">{error}</p>
         ) : null}
-        <PrimaryAction type="submit" className="!w-full" disabled={pending}>
+        <PrimaryAction type="submit" className="sm:w-full" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
           Log in
         </PrimaryAction>

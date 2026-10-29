@@ -26,11 +26,17 @@ export const Route = createFileRoute("/app/inbox")({
 function InboxPage() {
   const { enabled, loading } = useFeatureFlag("inbox");
 
-  if (loading) return <PageSkeleton />;
+  if (loading) {
+    return (
+      <div className="px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        <PageSkeleton />
+      </div>
+    );
+  }
 
   if (!enabled) {
     return (
-      <>
+      <div className="px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
         <PageHeader
           title="Inbox"
           description="One shared place for your whole team to reply to customer conversations."
@@ -40,20 +46,17 @@ function InboxPage() {
           title="Inbox is turned off"
           description="This feature isn't enabled for your workspace yet. Reach out to your administrator to switch it on."
         />
-      </>
+      </div>
     );
   }
 
+  // Batch 39: the Inbox fills the work area (the shell gives it the full
+  // height); its title sits on top of the conversation list. Batch 40: the
+  // first-day tips float above it, out of the layout.
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Inbox</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          One shared place for your whole team to reply, assign and close conversations.
-        </p>
-      </div>
-      <InboxTour />
+    <>
       <InboxView />
-    </div>
+      <InboxTour />
+    </>
   );
 }

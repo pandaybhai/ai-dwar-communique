@@ -62,7 +62,7 @@ export function InboxTour() {
   return (
     <section
       aria-label="Getting started with the Inbox"
-      className="ob-pop relative rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-6"
+      className="ob-pop fixed inset-x-4 bottom-20 z-40 rounded-2xl border border-border bg-card p-5 shadow-xl sm:left-auto sm:w-[24rem] sm:p-6 lg:bottom-6 lg:right-6"
     >
       <button
         type="button"
@@ -73,11 +73,11 @@ export function InboxTour() {
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
       <div className="flex items-start gap-4 pr-8">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent text-accent-foreground">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
           <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
         <div aria-live="polite">
-          <p className="text-xs font-semibold text-primary-strong">
+          <p className="text-xs font-semibold text-primary">
             Tip {index + 1} of {tips.length}
           </p>
           <h2 className="mt-1 text-lg font-bold tracking-tight">{tip.title}</h2>
@@ -89,7 +89,7 @@ export function InboxTour() {
           {tips.map((_, i) => (
             <span
               key={i}
-              className={`h-1.5 rounded-full transition-all ${i === index ? "w-6 bg-primary-strong" : "w-1.5 bg-border"}`}
+              className={`h-1.5 rounded-full transition-all ${i === index ? "w-6 bg-primary" : "w-1.5 bg-border"}`}
             />
           ))}
         </div>
@@ -104,7 +104,7 @@ export function InboxTour() {
           <button
             type="button"
             onClick={() => (index + 1 < tips.length ? setIndex(index + 1) : close())}
-            className="rounded-full bg-primary-strong px-4 py-2 text-sm font-semibold text-primary-strong-foreground"
+            className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
           >
             {index + 1 < tips.length ? "Next" : "Got it"}
           </button>

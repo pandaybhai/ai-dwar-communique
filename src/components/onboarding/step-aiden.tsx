@@ -207,7 +207,7 @@ export function StepAiden({
               {reading ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
               ) : (
-                <Sparkles className="h-3.5 w-3.5 text-primary-strong" aria-hidden="true" />
+                <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
               )}
               {items.length} {items.length === 1 ? "thing" : "things"}
               {reading ? " so far" : ""}
@@ -322,7 +322,7 @@ export function StepAiden({
                 ) : (
                   <p
                     key={t.id}
-                    className="mx-auto max-w-[90%] rounded-md bg-[#fff5c4] px-3 py-1.5 text-center text-[12.5px] text-[#54471a]"
+                    className="mx-auto max-w-[90%] rounded-md bg-warning-soft px-3 py-1.5 text-center text-[12.5px] text-warning-soft-foreground"
                   >
                     {t.text}
                   </p>
@@ -342,7 +342,7 @@ export function StepAiden({
                 type="button"
                 onClick={() => void ask(q)}
                 disabled={asking}
-                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium transition-colors hover:border-primary-strong hover:text-primary-strong disabled:opacity-50"
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
               >
                 {q}
               </button>

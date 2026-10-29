@@ -29,9 +29,14 @@ export function AidenRulesBadge({ conversationId }: { conversationId: string }) 
     .filter(Boolean)
     .join("\n");
   return (
-    <Badge variant="outline" className="hidden max-w-56 rounded-full font-normal sm:inline-flex" title={detail}>
-      <Sparkles className="mr-1 h-3 w-3 shrink-0" />
-      <span className="truncate">{followingLabel(rules)}</span>
+    <Badge
+      variant="outline"
+      className="hidden min-w-0 max-w-56 shrink rounded-full border-primary/25 bg-primary/5 font-normal text-primary sm:inline-flex"
+      title={`${followingLabel(rules)}\n${detail}`}
+    >
+      <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
+      {/* Batch 39: a narrow chat shows the sparkle only; the words are in the tooltip and for screen readers. */}
+      <span className="sr-only @3xl:not-sr-only @3xl:truncate">{followingLabel(rules)}</span>
     </Badge>
   );
 }

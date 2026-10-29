@@ -13,6 +13,7 @@ import type { ErrorComponentProps } from "@tanstack/router-core";
 import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
+import { APP_THEME_SCRIPT } from "../lib/theme";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -118,6 +119,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
     ],
     scripts: [
+      // The app's tokens and light/dark choice before first paint (/app only).
+      { children: APP_THEME_SCRIPT },
       {
         type: "application/ld+json",
         children: JSON.stringify({

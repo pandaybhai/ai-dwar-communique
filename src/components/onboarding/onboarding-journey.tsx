@@ -140,7 +140,10 @@ export function OnboardingJourney({
     <JourneyShell step={current} reached={reached} brandColor={color} onStep={goTo} exit={exit}>
       {organizationId && (!state || !step) ? (
         loadError ? (
-          <p role="alert" className="rounded-2xl bg-destructive/10 p-4 text-sm text-destructive">
+          <p
+            role="alert"
+            className="rounded-2xl bg-danger-soft p-4 text-sm text-danger-soft-foreground"
+          >
             {loadError}
           </p>
         ) : (

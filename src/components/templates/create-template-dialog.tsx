@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Info, Loader2, Plus, Trash2 } from "lucide-react";
+import { useAppCommand } from "@/lib/app-commands";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,6 +75,8 @@ export function CreateTemplateDialog({
   onCreated: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Batch 39: "New template" in the command palette opens this dialog.
+  useAppCommand("new-template", () => setOpen(true));
   const [draft, setDraft] = useState<TemplateDraft>(emptyDraft());
   const [submitting, setSubmitting] = useState(false);
 

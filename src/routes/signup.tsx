@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PrimaryAction } from "@/components/onboarding/journey-shell";
 import { aidwar } from "@/integrations/aidwar/client";
+import { useAppSurface } from "@/lib/theme";
 import { keepAttribution } from "@/lib/onboarding-client";
 
 const TITLE = "Create your account — AiDwar";
@@ -65,6 +66,9 @@ export function signupPhone(raw: string): string | null {
 }
 
 function SignupPage() {
+  // Batch 40: sign-up and log-in are the journey's first screens, so they
+  // wear the app's look (Batch 39's tokens, light/dark), not the marketing site's.
+  useAppSurface();
   const navigate = useNavigate();
   const search = Route.useSearch();
   const { redirect } = search;
@@ -147,13 +151,13 @@ function SignupPage() {
         title="Check your email"
         subtitle="One tap and you're in."
         footer={
-          <Link to="/login" className="font-medium text-primary-strong hover:underline">
+          <Link to="/login" className="font-medium text-primary hover:underline">
             Back to log in
           </Link>
         }
       >
         <div className="ob-pop text-center">
-          <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-accent text-accent-foreground">
+          <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-primary/10 text-primary">
             <MailCheck className="h-8 w-8" aria-hidden="true" />
           </span>
           <p className="mt-5 text-sm text-muted-foreground">
@@ -166,7 +170,7 @@ function SignupPage() {
               href="https://mail.google.com/mail/u/0/#search/from%3Aaidwar"
               target="_blank"
               rel="noreferrer"
-              className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-full bg-primary-strong px-6 text-sm font-semibold text-primary-strong-foreground"
+              className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground"
             >
               Open Gmail
             </a>
@@ -184,7 +188,7 @@ function SignupPage() {
             {resent ? "Sent again — check spam too" : "Didn't get it? Send again"}
           </button>
           {error ? (
-            <p role="alert" className="mt-3 text-sm text-destructive">
+            <p role="alert" className="mt-3 text-sm text-danger-soft-foreground">
               {error}
             </p>
           ) : null}
@@ -200,7 +204,7 @@ function SignupPage() {
       footer={
         <>
           Already have an account?{" "}
-          <Link to="/login" className="font-medium text-primary-strong hover:underline">
+          <Link to="/login" className="font-medium text-primary hover:underline">
             Log in
           </Link>
         </>
@@ -301,12 +305,12 @@ function SignupPage() {
         {error ? (
           <p
             role="alert"
-            className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-soft-foreground"
           >
             {error}
           </p>
         ) : null}
-        <PrimaryAction type="submit" className="!w-full" disabled={pending}>
+        <PrimaryAction type="submit" className="sm:w-full" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
           Create my account
         </PrimaryAction>

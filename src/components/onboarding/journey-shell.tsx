@@ -7,12 +7,13 @@ import {
   type JourneyPosition,
   type JourneyStep,
 } from "@/lib/onboarding-journey";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
  * Batch 40: the full-screen frame every first-run step sits in — the
  * wordmark, a slim four-step rail and one calm column. The business's own
- * colour (from its website) tints the light behind it via --brand.
+ * colour (from its website) tints the light behind it via --ob-business.
  */
 export function JourneyShell({
   step,
@@ -30,12 +31,12 @@ export function JourneyShell({
   exit?: ReactNode;
   children: ReactNode;
 }) {
-  const style = brandColor ? ({ "--brand": brandColor } as CSSProperties) : undefined;
+  const style = brandColor ? ({ "--ob-business": brandColor } as CSSProperties) : undefined;
   return (
     <div className="ob-stage min-h-[100dvh] text-foreground" style={style}>
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 pt-5 sm:px-8 sm:pt-7">
         <span className="text-lg font-bold tracking-tight">
-          Ai<span className="text-primary-strong">Dwar</span>
+          Ai<span className="text-primary">Dwar</span>
         </span>
         {exit}
       </header>
@@ -72,7 +73,7 @@ export function ProgressRail({
             <>
               <span className="relative block h-1 overflow-hidden rounded-full bg-border">
                 <span
-                  className="ob-rail-fill absolute inset-0 rounded-full bg-primary-strong"
+                  className="ob-rail-fill absolute inset-0 rounded-full bg-primary"
                   style={{ transform: `scaleX(${i < current || done ? 1 : isCurrent ? 0.5 : 0})` }}
                 />
               </span>
@@ -82,9 +83,7 @@ export function ProgressRail({
                   isCurrent ? "text-foreground" : "text-muted-foreground",
                 )}
               >
-                {done ? (
-                  <Check className="h-3.5 w-3.5 text-primary-strong" aria-hidden="true" />
-                ) : null}
+                {done ? <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> : null}
                 {STEP_LABELS[key]}
                 {done ? <span className="sr-only"> (done)</span> : null}
               </span>
@@ -131,7 +130,7 @@ export function StepHeading({
 }) {
   return (
     <div className={cn("ob-rise max-w-2xl", className)}>
-      {eyebrow ? <p className="text-sm font-semibold text-primary-strong">{eyebrow}</p> : null}
+      {eyebrow ? <p className="text-sm font-semibold text-primary">{eyebrow}</p> : null}
       <h1 className="mt-2 text-balance text-3xl font-bold tracking-tight sm:text-5xl sm:leading-[1.08]">
         {title}
       </h1>
@@ -142,21 +141,14 @@ export function StepHeading({
   );
 }
 
-/** The one primary action of a step: big, round, full-width on a phone. */
-export function PrimaryAction({
-  children,
-  className,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      {...props}
-      className={cn(
-        "inline-flex h-14 w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-primary-strong px-8 text-base font-semibold text-primary-strong-foreground shadow-lg shadow-primary/20 transition-[transform,box-shadow,opacity] duration-200 hover:shadow-xl hover:shadow-primary/25 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto [&_svg]:size-5",
-        className,
-      )}
-    >
-      {children}
-    </button>
-  );
+/**
+ * The journey's size for Batch 39's primary Button: one per step — tall,
+ * round, full width on a phone. Also handed to the Facebook connect button.
+ */
+export const PRIMARY_ACTION_CLASS =
+  "h-14 w-full rounded-full px-8 text-base font-semibold shadow-md sm:w-auto [&_svg]:size-5";
+
+/** The one primary action of a step (Batch 39's Button, default variant). */
+export function PrimaryAction({ className, ...props }: ButtonProps) {
+  return <Button size="lg" {...props} className={cn(PRIMARY_ACTION_CLASS, className)} />;
 }

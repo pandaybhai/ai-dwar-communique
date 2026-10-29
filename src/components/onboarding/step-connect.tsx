@@ -9,7 +9,12 @@ import {
   Smartphone,
 } from "lucide-react";
 import { EmbeddedSignupButton, type ConnectedAccount } from "@/components/whatsapp-embedded-signup";
-import { PrimaryAction, StepHeading } from "@/components/onboarding/journey-shell";
+import {
+  PRIMARY_ACTION_CLASS,
+  PrimaryAction,
+  StepHeading,
+} from "@/components/onboarding/journey-shell";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { journeyApi } from "@/lib/onboarding-client";
@@ -65,7 +70,7 @@ export function StepConnect({
               orgId={organizationId}
               quiet
               label="Continue with Facebook"
-              buttonClassName="h-14 w-full rounded-full bg-primary-strong px-8 text-base font-semibold text-primary-strong-foreground shadow-lg shadow-primary/20 hover:bg-primary-strong/90 sm:w-auto"
+              buttonClassName={PRIMARY_ACTION_CLASS}
               onOpened={() => {
                 void journeyApi({
                   action: "mark",
@@ -81,7 +86,7 @@ export function StepConnect({
             />
           </div>
           <p className="mt-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-            <ShieldCheck className="h-4 w-4 text-primary-strong" aria-hidden="true" />
+            <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
             Official Meta sign-up. We never see your Facebook password.
           </p>
 
@@ -126,7 +131,7 @@ export function StepConnect({
               ["You're live on WhatsApp", "We switch on incoming messages for you."],
             ].map(([title, hint], i) => (
               <li key={title} className="flex gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                   {i + 1}
                 </span>
                 <span>
@@ -141,10 +146,7 @@ export function StepConnect({
           <h2 className="text-base font-semibold">What you'll need</h2>
           <ul className="mt-4 space-y-3 text-sm">
             <li className="flex gap-3">
-              <Smartphone
-                className="mt-0.5 h-4 w-4 shrink-0 text-primary-strong"
-                aria-hidden="true"
-              />
+              <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
               <span>
                 <span className="font-medium">A number that isn't on the WhatsApp app.</span>{" "}
                 <span className="text-muted-foreground">
@@ -154,17 +156,14 @@ export function StepConnect({
               </span>
             </li>
             <li className="flex gap-3">
-              <PhoneCall
-                className="mt-0.5 h-4 w-4 shrink-0 text-primary-strong"
-                aria-hidden="true"
-              />
+              <PhoneCall className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
               <span>
                 <span className="font-medium">That phone nearby</span>{" "}
                 <span className="text-muted-foreground">for Meta's 6-digit code.</span>
               </span>
             </li>
             <li className="flex gap-3">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary-strong" aria-hidden="true" />
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
               <span>
                 <span className="font-medium">A Facebook login.</span>{" "}
                 <span className="text-muted-foreground">Nothing is posted to your profile.</span>
@@ -182,7 +181,7 @@ export function Recovery({ outcome }: { outcome: EsOutcome }) {
   return (
     <div
       role="alert"
-      className="ob-pop rounded-3xl border border-amber-500/40 bg-amber-500/10 p-5 sm:p-6"
+      className="ob-pop rounded-3xl border border-warning-border bg-warning-soft p-5 sm:p-6"
       data-outcome={outcome.kind}
     >
       <p className="text-base font-semibold text-foreground">{outcome.title}</p>
@@ -224,7 +223,7 @@ export function CallbackRequest({
     return (
       <p
         role="status"
-        className="ob-pop mt-6 flex items-start gap-3 rounded-2xl bg-accent p-4 text-sm text-accent-foreground"
+        className="ob-pop mt-6 flex items-start gap-3 rounded-2xl bg-success-soft p-4 text-sm text-success-soft-foreground"
       >
         <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         Done — someone from AiDwar will call you shortly (10am–7pm IST). Your progress is saved.
@@ -238,7 +237,7 @@ export function CallbackRequest({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-2 text-sm font-semibold text-primary-strong underline-offset-4 hover:underline"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-primary underline-offset-4 hover:underline"
         >
           <LifeBuoy className="h-4 w-4" aria-hidden="true" />
           Need help? We'll call you
@@ -275,19 +274,20 @@ export function CallbackRequest({
               placeholder="98765 43210"
               className="h-11 rounded-xl"
             />
-            <button
+            <Button
               type="submit"
+              variant="outline"
               disabled={state === "sending" || phone.replace(/\D/g, "").length < 10}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-foreground px-5 text-sm font-semibold text-background disabled:opacity-50"
+              className="h-11 rounded-xl px-5"
             >
               {state === "sending" ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : null}
               Call me
-            </button>
+            </Button>
           </div>
           {error ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-danger-soft-foreground">
               {error}
             </p>
           ) : null}
@@ -309,7 +309,7 @@ function Connected({
 }) {
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center pt-6 text-center sm:pt-12">
-      <span className="ob-pop ob-ring grid h-24 w-24 place-items-center rounded-full bg-primary-strong text-primary-strong-foreground">
+      <span className="ob-pop ob-ring grid h-24 w-24 place-items-center rounded-full bg-primary text-primary-foreground">
         <svg viewBox="0 0 24 24" className="h-12 w-12" fill="none" aria-hidden="true">
           <path
             className="ob-check-path"

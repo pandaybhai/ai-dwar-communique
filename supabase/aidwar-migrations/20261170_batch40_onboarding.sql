@@ -18,6 +18,14 @@
 --     its activity action (as scripts/sync-feature-registry.ts writes them
 --     for the manifest).
 
+-- Applying it: run the duplicate check (scripts/batch40-checks.sql, query 1)
+-- first — it must return no rows, or the unique index can't be built (only
+-- possible if two tabs recorded the same step in the same instant before
+-- this file; keep the earliest row of each pair). The index build reads
+-- analytics_events once and holds its writes meanwhile (the partial index
+-- itself is tiny): apply in a quiet hour. lock_timeout stops it waiting
+-- behind a long write instead of queueing everyone behind it.
+
 SET lock_timeout = '5s';
 
 -- (1) ------------------------------------------------------- once per step
