@@ -31,6 +31,8 @@ import { FlowConnections } from "@/components/integrations/flow-connections";
 import { SendSettingsTab } from "@/components/settings/send-settings";
 import { ApiSettingsTab } from "@/components/settings/api-settings";
 import { ApiConsoleCard } from "@/components/settings/api-console";
+import { NewSettingsPage } from "@/components/settings-v2/new-settings";
+import { useNewDesign } from "@/lib/new-design";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
@@ -47,8 +49,17 @@ export const Route = createFileRoute("/app/settings")({
       },
     ],
   }),
-  component: SettingsPage,
+  component: SettingsRoute,
 });
+
+/**
+ * Batch 50: with new_design on, the new Settings (left sub-nav, section
+ * cards); off, the classic tabs below exactly as before. Both use the same
+ * cards, and the Workspace form is the classic GeneralTab itself.
+ */
+function SettingsRoute() {
+  return useNewDesign() ? <NewSettingsPage workspace={<GeneralTab />} /> : <SettingsPage />;
+}
 
 function SettingsPage() {
   const { active, loading, error } = useOrg();

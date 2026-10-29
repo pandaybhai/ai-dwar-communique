@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ExternalLink, ImagePlus, Loader2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,27 @@ async function cropToSquare(src: string, zoom: number, x: number, y: number): Pr
  * see it in WhatsApp. Read from Meta when opened; owners and admins
  * (settings.manage) can change it.
  */
-export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accountId: string }) {
+/**
+ * Batch 50: the new Settings shows the profile as its own card at the top of
+ * the WhatsApp section, so inside it the per-number copy steps aside. Off this
+ * provider (the classic look) nothing changes.
+ */
+export const WhatsAppProfileHoisted = createContext(false);
+
+export function WhatsAppProfileCard({
+  orgId,
+  accountId,
+  placement = "number",
+  numberSwitch,
+}: {
+  orgId: string;
+  accountId: string;
+  /** "top": the new Settings' own card (a section card with a heading). */
+  placement?: "number" | "top";
+  /** Batch 50: the number picker, under the heading, when there are several. */
+  numberSwitch?: React.ReactNode;
+}) {
+  const hoisted = useContext(WhatsAppProfileHoisted);
   const { can } = usePermissions();
   const canEdit = can("settings.manage");
   const [open, setOpen] = useState(false);
@@ -106,6 +126,8 @@ export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accou
   }, [photo]);
 
   if (!canEdit) return null;
+  if (hoisted && placement === "number") return null;
+  const top = placement === "top";
 
   const patch: ProfilePatch = {};
   if (form && loaded) {
@@ -198,14 +220,22 @@ export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accou
 
   return (
     <div
-      className="mt-6 rounded-xl border border-border/70 p-4"
+      className={
+        top
+          ? "rounded-2xl border border-border bg-card p-6 shadow-sm"
+          : "mt-6 rounded-xl border border-border/70 p-4"
+      }
       data-testid="whatsapp-profile-card"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-start gap-2">
           <UserRound className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
           <div>
-            <p className="text-sm font-medium">WhatsApp profile</p>
+            {top ? (
+              <h3 className="font-display text-lg font-semibold">WhatsApp profile</h3>
+            ) : (
+              <p className="text-sm font-medium">WhatsApp profile</p>
+            )}
             <p className="text-xs text-muted-foreground">
               What customers see when they tap your name in WhatsApp: photo, about, address, email,
               websites and category.
@@ -222,6 +252,7 @@ export function WhatsAppProfileCard({ orgId, accountId }: { orgId: string; accou
         </Button>
       </div>
 
+      {top && numberSwitch ? <div className="mt-4">{numberSwitch}</div> : null}
       {open ? (
         <div className="mt-4 space-y-5">
           {failure ? <p className="text-sm text-destructive">{failure}</p> : null}
