@@ -47,7 +47,7 @@ export function SendHealthBanner({
     <div
       role="alert"
       className={[
-        "flex items-start gap-3 rounded-xl border border-danger-border bg-danger-soft p-4 text-danger-soft-foreground shadow-xs",
+        "flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-destructive shadow-sm",
         className ?? "",
       ].join(" ")}
     >

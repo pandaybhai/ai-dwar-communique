@@ -58,7 +58,8 @@ const firstCampaign = "00000000-0000-4000-8000-000000007000";
 
 /** Batch 41: Home, Campaigns, Templates. */
 const SCENARIOS_B41 = {
-  home: { path: "/app", conversations: 40, wait: "text=Waiting on you" },
+  home: { path: "/app", conversations: 40, wait: "text=Waiting on you", fullPage: true },
+  "home-low-credits": { path: "/app", conversations: 40, lowCredits: true, wait: "text=Waiting on you", fullPage: true },
   campaigns: { path: "/app/campaigns", conversations: 40, wait: "text=Diwali preview" },
   "campaigns-empty": { path: "/app/campaigns", conversations: 40, campaigns: 0, wait: "h1" },
   "campaign-detail": { path: `/app/campaigns/${firstCampaign}`, conversations: 40, wait: "text=Offer performance" },
@@ -102,6 +103,7 @@ async function shoot(browser, name, scenario, viewportName, theme) {
     conversations: scenario.conversations,
     campaigns: scenario.campaigns,
     templates: scenario.templates,
+    lowCredits: scenario.lowCredits,
   });
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewportName],
@@ -137,6 +139,18 @@ async function shoot(browser, name, scenario, viewportName, theme) {
   if (scenario.wait) await page.waitForSelector(scenario.wait, { timeout: 15000 }).catch(() => {});
   if (scenario.act) await scenario.act(page);
   await page.waitForTimeout(800);
+  if (scenario.fullPage) {
+    // The app's work area scrolls, not the window: grow the window to fit it.
+    const extra = await page.evaluate(() => {
+      const main = document.querySelector("main");
+      return main ? Math.max(0, main.scrollHeight - main.clientHeight) : 0;
+    });
+    if (extra > 0) {
+      const vp = VIEWPORTS[viewportName];
+      await page.setViewportSize({ width: vp.width, height: vp.height + extra });
+      await page.waitForTimeout(400);
+    }
+  }
   const file = join(OUT, `${name}-${viewportName}${theme === "dark" ? "-dark" : ""}.png`);
   if (scenario.crop) {
     const el = await page.$(scenario.crop);

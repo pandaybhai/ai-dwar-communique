@@ -488,6 +488,65 @@ export function createBackend(options = {}) {
     return route.fulfill({ status: 200, headers, body: JSON.stringify(rows) });
   }
 
+  /** Batch 41: the analytics reads Home and the campaign results page make. */
+  async function rpc(route, fn, request) {
+    let args = {};
+    try {
+      args = JSON.parse(request.postData() || "{}");
+    } catch {
+      args = {};
+    }
+    const reply = (body) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body), headers: { "access-control-allow-origin": "*" } });
+    if (fn === "analytics_timeseries") {
+      const days = 7;
+      const day = (offset) =>
+        new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(
+          new Date(Date.now() - offset * DAY),
+        );
+      const sent = [820, 1240, 960, 3180, 2410, 1780, 2630];
+      const replies = [64, 92, 71, 188, 143, 120, 96];
+      const opened = [31, 42, 38, 61, 57, 44, 48];
+      return reply(
+        Array.from({ length: days }, (_, i) => ({
+          day: day(days - 1 - i),
+          sent: sent[i],
+          delivered: Math.round(sent[i] * 0.95),
+          read: Math.round(sent[i] * 0.68),
+          failed: Math.round(sent[i] * 0.012),
+          replies: replies[i],
+          new_contacts: 12 + i,
+          opt_outs: i % 3,
+          conversations_opened: opened[i],
+          conversations_closed: opened[i] - 6,
+        })),
+      );
+    }
+    if (fn === "analytics_campaign_recipients") {
+      const status = args.p_status ?? null;
+      const rows = makeRecipients(String(args.p_campaign_id ?? "00000000-0000-4000-8000-000000007000"))
+        .filter((r) => !status || r.status === status || (status === "replied" && r.status === "read"))
+        .map((r, i) => ({
+          recipient_id: r.id,
+          phone: r.phone,
+          contact_name: ["Asha Iyer", "Rohan Mehta", "Priya Nair", "Farhan Khan", "Kavya Rao"][i % 5],
+          status: r.status,
+          error: r.error,
+          replied_at: i % 4 === 0 && r.status === "read" ? r.updated_at : null,
+          updated_at: r.updated_at,
+          total_count: 4210,
+        }));
+      return reply(rows.slice(Number(args.p_offset ?? 0), Number(args.p_offset ?? 0) + Number(args.p_limit ?? 50)));
+    }
+    if (fn === "analytics_campaign_failures") {
+      return reply([
+        { reason: "131026: Message undeliverable — the number isn't on WhatsApp.", recipients: 19 },
+        { reason: "131049: Meta chose not to deliver this marketing message.", recipients: 12 },
+      ]);
+    }
+    return reply(null);
+  }
+
   async function backend(route) {
     const request = route.request();
     const url = new URL(request.url());
@@ -502,6 +561,7 @@ export function createBackend(options = {}) {
         },
       });
     }
+    if (url.pathname.startsWith("/rest/v1/rpc/")) return rpc(route, url.pathname.slice("/rest/v1/rpc/".length), request);
     if (url.pathname.startsWith("/rest/v1/")) return rest(route, request);
     if (url.pathname.startsWith("/auth/v1/user")) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session().user), headers: { "access-control-allow-origin": "*" } });
@@ -535,6 +595,22 @@ export function createBackend(options = {}) {
           { source_id: "s2", source_name: "Return policy.pdf", source_type: "document", items: 14, latest_at: ago(3 * DAY) },
         ],
         generated_at: new Date().toISOString(),
+      });
+    }
+    if (url.pathname === "/api/billing/summary") {
+      return json({
+        organization_id: ORG,
+        enabled: true,
+        wallet: { balance: 2840.5, held: 0, available: options.lowCredits ? 180 : 2840.5, currency: "INR", lifetime_purchased: 12000, lifetime_consumed: 9159.5 },
+        plan: { key: "growth", name: "Growth" },
+        ai_answers: { included: 1000, used: 812 },
+        usage: [],
+        usage_total: 0,
+        rates: [],
+        packs: [],
+        settings: { low_credit_threshold: 500, auto_topup_enabled: false, monthly_budget_cap: null, campaign_approval_threshold: null, overdraft_limit: 0, credits_expire_months: 12 },
+        billing_account: { id: null, name: null, gstin: null, billing_email: null, state_code: null },
+        period: { start: ago(20 * DAY), end: ago(-10 * DAY) },
       });
     }
     if (url.pathname === "/api/campaigns/audience") {

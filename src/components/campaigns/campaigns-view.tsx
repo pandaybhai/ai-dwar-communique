@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Megaphone, Plus } from "lucide-react";
 import { aidwar } from "@/integrations/aidwar/client";
+import { CAMPAIGN_STATUS_LABELS, CAMPAIGN_STATUS_ORDER, type CampaignRow } from "@/lib/campaigns";
 import {
-  CAMPAIGN_STATUS_CLASSES,
-  CAMPAIGN_STATUS_LABELS,
-  CAMPAIGN_STATUS_ORDER,
-  percent,
-  type CampaignRow,
-} from "@/lib/campaigns";
+  CampaignStatusBadge,
+  ProgressCell,
+  RateBar,
+  RateBars,
+} from "@/components/campaigns/campaign-rates";
 import { formatDate } from "@/lib/contacts";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
@@ -16,55 +16,13 @@ import { CampaignWizard } from "@/components/campaigns/campaign-wizard";
 import { useAppCommand } from "@/lib/app-commands";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
+import { usePageShortcut } from "@/hooks/use-page-shortcut";
 
-const count = new Intl.NumberFormat("en-IN");
-
-/** Batch 41: a status chip; a live campaign's dot pulses. */
-export function CampaignStatusBadge({ status }: { status: CampaignRow["status"] }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium",
-        CAMPAIGN_STATUS_CLASSES[status],
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn("h-1.5 w-1.5 rounded-full bg-current", status === "sending" && "animate-pulse")}
-      />
-      {CAMPAIGN_STATUS_LABELS[status]}
-    </span>
-  );
-}
-
-/**
- * "2,630/4,210" with a bar — sent out of everyone in the audience; sends that
- * failed show as a red end of the bar.
- */
-export function ProgressCell({ sent, failed, total, wide }: { sent: number; failed: number; total: number; wide?: boolean }) {
-  const ok = total > 0 ? Math.min(100, (sent / total) * 100) : 0;
-  const bad = total > 0 ? Math.min(100 - ok, (failed / total) * 100) : 0;
-  return (
-    <div className={cn("flex items-center gap-3", wide && "w-full")}>
-      <div
-        className={cn("flex h-1.5 overflow-hidden rounded-full bg-muted", wide ? "flex-1" : "w-24 shrink-0")}
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent(sent + failed, total)}
-        aria-label="Sent so far"
-      >
-        <div className="h-full bg-primary transition-[width] duration-500 ease-out" style={{ width: `${ok}%` }} />
-        <div className="h-full bg-danger transition-[width] duration-500 ease-out" style={{ width: `${bad}%` }} />
-      </div>
-      <span className="tabular whitespace-nowrap text-xs text-muted-foreground">
-        {count.format(sent)}/{count.format(total)}
-      </span>
-    </div>
-  );
-}
+/** Batch 41: the shared pieces live in campaign-rates (Home draws them too). */
+export { CampaignStatusBadge, ProgressCell } from "@/components/campaigns/campaign-rates";
 
 export function CampaignsView({
   organizationId,
@@ -87,6 +45,8 @@ export function CampaignsView({
     if (isAdmin) setWizardOpen(true);
   });
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Batch 41: N opens the wizard, for whoever may create a campaign.
+  usePageShortcut("n", () => setWizardOpen(true), isAdmin && !wizardOpen);
 
   const load = useCallback(async () => {
     setError(null);
@@ -106,8 +66,7 @@ export function CampaignsView({
     return () => clearInterval(t);
   }, [load]);
 
-  const visible =
-    statusFilter === "all" ? rows : rows.filter((r) => r.status === statusFilter);
+  const visible = statusFilter === "all" ? rows : rows.filter((r) => r.status === statusFilter);
 
   if (loading) return <TableSkeleton />;
   if (error) return <ErrorState message={error} />;
@@ -123,8 +82,7 @@ export function CampaignsView({
         >
           {(["all", ...CAMPAIGN_STATUS_ORDER] as const).map((key) => {
             const label = key === "all" ? "All" : CAMPAIGN_STATUS_LABELS[key];
-            const count =
-              key === "all" ? rows.length : rows.filter((r) => r.status === key).length;
+            const count = key === "all" ? rows.length : rows.filter((r) => r.status === key).length;
             if (key !== "all" && count === 0 && statusFilter !== key) return null;
             const on = statusFilter === key;
             return (
@@ -141,14 +99,19 @@ export function CampaignsView({
                 )}
               >
                 {label}
-                <span className={cn("tabular text-xs", on ? "opacity-70" : "text-faint")}>{count}</span>
+                <span className={cn("tabular text-xs", on ? "opacity-70" : "text-faint")}>
+                  {count}
+                </span>
               </button>
             );
           })}
         </div>
         {isAdmin && (
-          <Button className="shrink-0" onClick={() => setWizardOpen(true)}>
+          <Button className="shrink-0" onClick={() => setWizardOpen(true)} aria-keyshortcuts="N">
             <Plus className="h-4 w-4" /> Create campaign
+            <Kbd className="ml-1 hidden border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground shadow-none sm:inline-flex">
+              N
+            </Kbd>
           </Button>
         )}
       </div>
@@ -178,18 +141,35 @@ export function CampaignsView({
               <table className="w-full text-sm">
                 <thead className="border-b border-border bg-subtle text-left text-xs text-muted-foreground">
                   <tr>
-                    <th scope="col" className="px-4 py-2.5 font-medium">Campaign</th>
-                    <th scope="col" className="px-4 py-2.5 font-medium">Status</th>
-                    <th scope="col" className="px-4 py-2.5 font-medium">Progress</th>
-                    <th scope="col" className="px-4 py-2.5 text-right font-medium">Delivered</th>
-                    <th scope="col" className="px-4 py-2.5 text-right font-medium">Read</th>
-                    <th scope="col" className="px-4 py-2.5 text-right font-medium">Replied</th>
-                    <th scope="col" className="px-4 py-2.5 text-right font-medium">Created</th>
+                    <th scope="col" className="px-4 py-2.5 font-medium">
+                      Campaign
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 font-medium">
+                      Status
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 font-medium">
+                      Progress
+                    </th>
+                    <th scope="col" className="w-24 px-4 py-2.5 font-medium">
+                      Delivered
+                    </th>
+                    <th scope="col" className="w-24 px-4 py-2.5 font-medium">
+                      Read
+                    </th>
+                    <th scope="col" className="w-24 px-4 py-2.5 font-medium">
+                      Replied
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                      Created
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {visible.map((c) => (
-                    <tr key={c.id} className="group relative transition-colors duration-100 hover:bg-subtle">
+                    <tr
+                      key={c.id}
+                      className="group relative transition-colors duration-100 hover:bg-subtle"
+                    >
                       <td className="max-w-[18rem] px-4 py-3">
                         <Link
                           to="/app/campaigns/$id"
@@ -198,18 +178,47 @@ export function CampaignsView({
                         >
                           {c.name}
                         </Link>
-                        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{c.template_name}</p>
+                        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                          {c.template_name}
+                        </p>
                       </td>
                       <td className="px-4 py-3">
                         <CampaignStatusBadge status={c.status} />
                       </td>
                       <td className="px-4 py-3">
-                        <ProgressCell sent={c.sent_count} failed={c.failed_count} total={c.total_recipients} />
+                        <ProgressCell
+                          sent={c.sent_count}
+                          failed={c.failed_count}
+                          total={c.total_recipients}
+                        />
                       </td>
-                      <td className="tabular px-4 py-3 text-right">{percent(c.delivered_count, c.total_recipients)}%</td>
-                      <td className="tabular px-4 py-3 text-right">{percent(c.read_count, c.total_recipients)}%</td>
-                      <td className="tabular px-4 py-3 text-right">{c.replied_count}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-muted-foreground">{formatDate(c.created_at)}</td>
+                      <td className="px-4 py-3">
+                        <RateBar
+                          kind="delivered"
+                          label="Delivered"
+                          part={c.delivered_count}
+                          total={c.total_recipients}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <RateBar
+                          kind="read"
+                          label="Read"
+                          part={c.read_count}
+                          total={c.total_recipients}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <RateBar
+                          kind="replied"
+                          label="Replied"
+                          part={c.replied_count}
+                          total={c.total_recipients}
+                        />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-muted-foreground">
+                        {formatDate(c.created_at)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -229,27 +238,21 @@ export function CampaignsView({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-foreground">{c.name}</p>
-                      <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{c.template_name}</p>
+                      <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                        {c.template_name}
+                      </p>
                     </div>
                     <CampaignStatusBadge status={c.status} />
                   </div>
                   <div className="mt-3">
-                    <ProgressCell sent={c.sent_count} failed={c.failed_count} total={c.total_recipients} wide />
+                    <ProgressCell
+                      sent={c.sent_count}
+                      failed={c.failed_count}
+                      total={c.total_recipients}
+                      wide
+                    />
                   </div>
-                  <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <dt className="text-muted-foreground">Delivered</dt>
-                      <dd className="tabular mt-0.5 font-semibold text-foreground">{percent(c.delivered_count, c.total_recipients)}%</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Read</dt>
-                      <dd className="tabular mt-0.5 font-semibold text-foreground">{percent(c.read_count, c.total_recipients)}%</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Replied</dt>
-                      <dd className="tabular mt-0.5 font-semibold text-foreground">{c.replied_count}</dd>
-                    </div>
-                  </dl>
+                  <RateBars campaign={c} labelled className="mt-3" />
                 </Link>
               </li>
             ))}
