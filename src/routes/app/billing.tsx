@@ -7,6 +7,8 @@ import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useOrg } from "@/lib/org-context";
 import { creditPurchaseBlock } from "@/lib/billing";
+import { NewBillingPage } from "@/components/billing-v2/new-billing";
+import { useNewDesign } from "@/lib/new-design";
 
 const DESCRIPTION =
   "Your credits, what each message costs, payments and invoices — all in one place.";
@@ -22,8 +24,16 @@ export const Route = createFileRoute("/app/billing")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: BillingPage,
+  component: BillingRoute,
 });
+
+/**
+ * Batch 50: with new_design on, the new Billing and wallet page (the same
+ * payment pieces, restyled); off, the classic page below exactly as before.
+ */
+function BillingRoute() {
+  return useNewDesign() ? <NewBillingPage /> : <BillingPage />;
+}
 
 function BillingPage() {
   const { active, loading, reload } = useOrg();

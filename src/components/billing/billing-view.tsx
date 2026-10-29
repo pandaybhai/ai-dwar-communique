@@ -325,7 +325,7 @@ function StatCard({
 
 type DocRow = Record<string, unknown>;
 
-function HistoryTabs({
+export function HistoryTabs({
   organizationId,
   currency,
 }: {
@@ -419,7 +419,7 @@ function LedgerTable({ rows, currency }: { rows: LedgerEntry[]; currency: string
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[520px] text-sm">
-        <thead className="text-left text-xs uppercase text-muted-foreground">
+        <thead className="text-left text-xs uppercase text-muted-foreground nd:text-sm nd:font-semibold nd:normal-case">
           <tr>
             <th className="py-2">When</th>
             <th className="py-2">What happened</th>
@@ -438,7 +438,7 @@ function LedgerTable({ rows, currency }: { rows: LedgerEntry[]; currency: string
               </td>
               <td className="py-2">{row.description || ledgerLabel(row.entry_type)}</td>
               <td
-                className={`py-2 text-right font-medium ${Number(row.amount) < 0 ? "text-foreground" : "text-emerald-600"}`}
+                className={`py-2 text-right font-medium ${Number(row.amount) < 0 ? "text-foreground" : "text-emerald-600 nd:text-aiden-deep"}`}
               >
                 {money(Number(row.amount), row.currency || currency)}
               </td>
@@ -484,7 +484,7 @@ function SimpleTable({ rows, currency }: { rows: DocRow[]; currency: string }) {
   );
 }
 
-function BuyCreditsDialog({
+export function BuyCreditsDialog({
   open,
   onOpenChange,
   organizationId,
@@ -545,14 +545,14 @@ function BuyCreditsDialog({
                 onClick={() => setPackId(pack.id)}
                 className={`flex w-full items-center justify-between rounded-xl border p-4 text-left transition-all duration-200 ${
                   packId === pack.id
-                    ? "border-emerald-500 bg-emerald-50"
-                    : "hover:border-emerald-300"
+                    ? "border-emerald-500 bg-emerald-50 nd:border-aiden nd:bg-aiden-soft"
+                    : "hover:border-emerald-300 nd:hover:border-aiden-line"
                 }`}
               >
                 <span>
                   <span className="block font-medium">{pack.name}</span>
                   {pack.bonus_amount > 0 ? (
-                    <span className="text-xs text-emerald-600">
+                    <span className="text-xs text-emerald-600 nd:text-aiden-deep">
                       + {money(pack.bonus_amount, pack.currency)} bonus credits
                     </span>
                   ) : null}
@@ -587,7 +587,7 @@ function BuyCreditsDialog({
   );
 }
 
-function RequestTopupDialog({
+export function RequestTopupDialog({
   open,
   onOpenChange,
   organizationId,
