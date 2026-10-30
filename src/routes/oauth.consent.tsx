@@ -8,6 +8,7 @@ import { useDesignSurface } from "@/lib/new-design";
 import {
   CONSENT_CAN,
   CONSENT_CANNOT,
+  consentProcessingLine,
   decideConsent,
   loadConsent,
   validAuthorizationId,
@@ -190,6 +191,12 @@ function Details({
         ))}
       </ul>
       <p className="mt-4 rounded-xl bg-warning-soft px-4 py-3 text-sm text-warning-soft-foreground">{CONSENT_CANNOT}</p>
+      <p className="mt-4 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+        {consentProcessingLine(details.clientName)}{" "}
+        <Link to="/privacy" className="rounded font-semibold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden">
+          How AiDwar handles it
+        </Link>
+      </p>
       <p className="mt-4 text-sm text-muted-foreground [overflow-wrap:anywhere]">
         It acts as you, with your permissions in each workspace. After you allow it, you go back to{" "}
         <span className="font-semibold text-foreground">{details.redirectDomain}</span>.

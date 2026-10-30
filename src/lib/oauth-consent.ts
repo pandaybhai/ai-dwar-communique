@@ -130,3 +130,8 @@ export const CONSENT_CAN = [
 ];
 export const CONSENT_CANNOT =
   "It can't message a customer on its own, change Aiden, billing, your team or settings, or delete anything.";
+
+/** Batch 56: who processes what the app reads (shown under the promises). */
+export function consentProcessingLine(clientName: string): string {
+  return `Data this app reads is processed by ${clientName} under its own terms.`;
+}
