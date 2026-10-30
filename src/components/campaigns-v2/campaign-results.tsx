@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Loader2, Pause, Play, Search, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { NumberTicker } from "@/components/design-v2";
@@ -42,6 +42,7 @@ import {
   type OfferNumbers,
 } from "./data";
 import { StatusTag } from "./new-campaigns";
+import { orders, resultsCopy as rc } from "./copy";
 
 /**
  * Batch 47: one campaign's results (the preview's .cres) and the message it
@@ -144,21 +145,13 @@ export function CampaignResults({
     setBusy(false);
     if (err) toast.error(err);
     else {
-      toast.success(
-        action === "pause"
-          ? "Campaign paused."
-          : action === "resume"
-            ? "Campaign resumed."
-            : action === "approve"
-              ? "Approved, sending starts now."
-              : "Campaign cancelled.",
-      );
+      toast.success(rc.toast[action]);
       void load();
       onChanged();
     }
   };
 
-  if (error && !campaign) return <ErrorState message={error} />;
+  if (error && !campaign) return <ErrorState message={error} onRetry={() => void load()} />;
   if (!campaign) return <ResultsSkeleton />;
 
   const running = campaign.status === "sending" || campaign.status === "scheduled";
@@ -170,7 +163,10 @@ export function CampaignResults({
     // Wide: results and their lists on the left, the phone beside them. Phones
     // and tablets: results, then the phone, then the timeline and recipients.
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-7 [grid-template-areas:'top'_'phone'_'rest'] min-[1001px]:grid-cols-[minmax(0,1fr)_minmax(0,260px)] min-[1001px]:[grid-template-areas:'top_phone'_'rest_phone']">
-      <section aria-labelledby="cres-title" className="flex min-w-0 flex-col gap-5 [grid-area:top]">
+      <section
+        aria-labelledby="cres-title"
+        className="nd-rise flex min-w-0 flex-col gap-5 [grid-area:top]"
+      >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h2
             id="cres-title"
@@ -187,31 +183,39 @@ export function CampaignResults({
                 <Button
                   variant="gold"
                   size="sm"
+                  className="phone:h-11"
                   disabled={busy}
                   onClick={() => void control("approve")}
                 >
-                  <Play className="h-4 w-4" aria-hidden="true" /> Approve and send
+                  <Play className="h-4 w-4" aria-hidden="true" /> {rc.approve}
                 </Button>
               )}
               {running && (
                 <Button
                   variant="outline"
                   size="sm"
+                  className="phone:h-11"
                   disabled={busy}
                   onClick={() => void control("pause")}
                 >
-                  <Pause className="h-4 w-4" aria-hidden="true" /> Pause
+                  <Pause className="h-4 w-4" aria-hidden="true" /> {rc.pause}
                 </Button>
               )}
               {campaign.status === "paused" && (
-                <Button size="sm" disabled={busy} onClick={() => void control("resume")}>
-                  <Play className="h-4 w-4" aria-hidden="true" /> Resume
+                <Button
+                  size="sm"
+                  className="phone:h-11"
+                  disabled={busy}
+                  onClick={() => void control("resume")}
+                >
+                  <Play className="h-4 w-4" aria-hidden="true" /> {rc.resume}
                 </Button>
               )}
               {!["completed", "cancelled", "failed"].includes(campaign.status) && (
                 <Button
                   variant="outline"
                   size="sm"
+                  className="phone:h-11"
                   disabled={busy}
                   onClick={() => void control("cancel")}
                 >
@@ -220,7 +224,7 @@ export function CampaignResults({
                   ) : (
                     <XCircle className="h-4 w-4" aria-hidden="true" />
                   )}
-                  Cancel
+                  {rc.cancel}
                 </Button>
               )}
             </div>
@@ -229,38 +233,44 @@ export function CampaignResults({
 
         {campaign.status === "paused" && campaign.pause_reason === "insufficient_credits" ? (
           <p className="m-0 rounded-[14px] border border-gold-line bg-gold-bg px-4 py-3 text-sm font-semibold text-gold-ink">
-            Paused: not enough credits for the rest of this campaign. Add credits, then resume.
+            {rc.pausedNoCredits}
           </p>
         ) : null}
 
         <Funnel campaign={campaign} />
 
         <dl className="m-0 flex flex-wrap gap-x-10 gap-y-4">
-          {cost ? <Figure label={cost.label} value={wholeMoney(cost.amount)} /> : null}
+          {cost ? <Figure label={cost.label} value={<MoneyTicker amount={cost.amount} />} /> : null}
           {sales ? (
             <Figure
-              label="Sales from this campaign"
-              value={wholeMoney(sales.revenue, sales.currency)}
-              note={`${count.format(sales.orders)} order${sales.orders === 1 ? "" : "s"}`}
+              label={rc.sales}
+              value={<MoneyTicker amount={sales.revenue} currency={sales.currency} />}
+              note={orders(sales.orders)}
             />
           ) : null}
           {campaign.failed_count > 0 ? (
             <Figure
-              label="Failed"
-              value={count.format(campaign.failed_count)}
-              note={`${percent(campaign.failed_count, campaign.total_recipients)}% of the audience`}
+              label={rc.failed}
+              value={<NumberTicker value={campaign.failed_count} />}
+              note={rc.failedNote(percent(campaign.failed_count, campaign.total_recipients))}
             />
           ) : null}
           {couponCode && offer ? (
             <>
-              <Figure label={`Took code ${couponCode}`} value={count.format(offer.tapped)} />
-              <Figure label="Used it" value={count.format(offer.redeemed)} />
+              <Figure
+                label={rc.tookCode(couponCode)}
+                value={<NumberTicker value={offer.tapped} />}
+              />
+              <Figure label={rc.usedCode} value={<NumberTicker value={offer.redeemed} />} />
             </>
           ) : null}
         </dl>
       </section>
 
-      <div className="flex min-w-0 flex-col gap-7 [grid-area:rest]">
+      <div
+        className="nd-rise flex min-w-0 flex-col gap-7 [grid-area:rest]"
+        style={{ ["--d" as string]: 2 }}
+      >
         <Timeline campaign={campaign} timezone={timezone} />
 
         <Recipients
@@ -282,7 +292,25 @@ export function CampaignResults({
   );
 }
 
-function Figure({ label, value, note }: { label: string; value: string; note?: string }) {
+/**
+ * Batch 57: an amount that counts up once, ending on exactly the text
+ * wholeMoney gives (₹2,709 or ₹1,019.96); any amount the ticker can't end on
+ * exactly (another currency) is shown as plain text, never re-formatted.
+ */
+function MoneyTicker({ amount, currency = "INR" }: { amount: number; currency?: string }) {
+  const text = wholeMoney(amount, currency);
+  const decimals = Number.isInteger(Math.round(amount * 100) / 100) ? 0 : 2;
+  const ticked =
+    "₹" +
+    new Intl.NumberFormat("en-IN", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(Number(amount.toFixed(decimals)));
+  if (currency !== "INR" || amount < 0 || ticked !== text) return <>{text}</>;
+  return <NumberTicker value={amount} prefix="₹" decimalPlaces={decimals} />;
+}
+
+function Figure({ label, value, note }: { label: string; value: ReactNode; note?: string }) {
   return (
     <div className="flex flex-col">
       <dt className="text-muted-foreground">{label}</dt>
@@ -298,13 +326,13 @@ function Figure({ label, value, note }: { label: string; value: string; note?: s
 function Funnel({ campaign }: { campaign: CampaignRow }) {
   const steps = funnelSteps(campaign);
   return (
-    <ol className="m-0 flex list-none flex-col gap-4 p-0" aria-label="Results">
+    <ol className="m-0 flex list-none flex-col gap-4 p-0" aria-label={rc.resultsLabel}>
       {steps.map((s, i) => (
         <li key={s.key} className="grid grid-cols-[110px_auto] items-baseline gap-x-4 gap-y-1">
           <span className="text-muted-foreground">{s.label}</span>
           <b className="font-display text-[1.75rem] font-semibold leading-none text-foreground">
             <NumberTicker value={s.value} />
-            <span className="sr-only">, {s.share}% of the audience</span>
+            <span className="sr-only">{rc.shareOfAll(s.share)}</span>
           </b>
           <span
             aria-hidden="true"
@@ -329,7 +357,7 @@ function Timeline({ campaign, timezone }: { campaign: CampaignRow; timezone: str
   return (
     <section aria-labelledby="ctime" className="flex flex-col gap-3">
       <h3 id="ctime" className="m-0 font-display text-lg font-semibold text-foreground">
-        Timeline
+        {rc.timeline}
       </h3>
       <ol className="m-0 flex list-none flex-col gap-2 p-0">
         {events.map((e, i) => (
@@ -341,7 +369,7 @@ function Timeline({ campaign, timezone }: { campaign: CampaignRow; timezone: str
               {e.label}
             </span>
             <span className="text-sm tabular-nums text-muted-foreground">
-              {e.at ? formatDateTime(e.at, timezone) : (e.detail ?? "Now")}
+              {e.at ? formatDateTime(e.at, timezone) : (e.detail ?? rc.now)}
               {e.at && e.detail ? `, ${e.detail}` : ""}
             </span>
           </li>
@@ -381,7 +409,7 @@ function Recipients({
           id="crec"
           className="m-0 flex items-baseline gap-2 font-display text-lg font-semibold text-foreground"
         >
-          Recipients
+          {rc.recipients}
           <span className="font-sans text-sm font-medium tabular-nums text-muted-foreground">
             {count.format(total)}
           </span>
@@ -396,13 +424,13 @@ function Recipients({
             inputMode="tel"
             value={phoneQuery}
             onChange={(e) => onPhoneQuery(e.target.value)}
-            placeholder="Search by phone"
-            aria-label="Search recipients by phone"
-            className="pl-9"
+            placeholder={rc.searchPlaceholder}
+            aria-label={rc.searchLabel}
+            className="pl-9 phone:h-11"
           />
         </div>
       </div>
-      <div role="group" aria-label="Show recipients" className="flex flex-wrap gap-1.5">
+      <div role="group" aria-label={rc.filterLabel} className="flex flex-wrap gap-1.5">
         {RECIPIENT_FILTERS.map((key) => {
           const on = status === key;
           return (
@@ -412,13 +440,13 @@ function Recipients({
               aria-pressed={on}
               onClick={() => onStatus(key)}
               className={cn(
-                "rounded-full border px-3 py-1 text-sm font-semibold capitalize transition-colors duration-200",
+                "rounded-full border px-3 py-1 text-sm font-semibold capitalize transition-colors duration-200 phone:min-h-11",
                 on
                   ? "border-transparent bg-aiden-soft text-aiden-deep"
                   : "border-line bg-surface text-foreground hover:bg-bubble-in",
               )}
             >
-              {key === "all" ? "All" : key}
+              {key === "all" ? rc.filterAll : key}
             </button>
           );
         })}
@@ -427,7 +455,7 @@ function Recipients({
         <Skeleton className="h-40 rounded-[20px]" />
       ) : rows.length === 0 ? (
         <p className="m-0 rounded-[20px] border border-line bg-surface px-4 py-8 text-center text-muted-foreground">
-          {filtered ? "No recipients match. Try another status or number." : "No recipients yet."}
+          {filtered ? rc.noMatch : rc.noneYet}
         </p>
       ) : (
         <div className="overflow-hidden rounded-[20px] border border-line bg-surface phone:rounded-none phone:border-0 phone:bg-transparent">
@@ -435,16 +463,16 @@ function Recipients({
             <thead className="phone:hidden">
               <tr className="text-left text-sm text-muted-foreground">
                 <th scope="col" className="border-b border-line px-4 py-3 font-semibold">
-                  Phone
+                  {rc.col.phone}
                 </th>
                 <th scope="col" className="border-b border-line px-4 py-3 font-semibold">
-                  Status
+                  {rc.col.status}
                 </th>
                 <th scope="col" className="border-b border-line px-4 py-3 font-semibold">
-                  Detail
+                  {rc.col.detail}
                 </th>
                 <th scope="col" className="border-b border-line px-4 py-3 text-right font-semibold">
-                  Updated
+                  {rc.col.updated}
                 </th>
               </tr>
             </thead>
@@ -480,7 +508,7 @@ function Recipients({
                     {r.error ?? (
                       <>
                         <span aria-hidden="true">–</span>
-                        <span className="sr-only">Nothing to report</span>
+                        <span className="sr-only">{rc.nothingToReport}</span>
                       </>
                     )}
                   </td>
@@ -516,15 +544,16 @@ function CampaignPhone({
   );
   return (
     <aside
-      aria-label="The message this campaign sends"
-      className="flex flex-col items-center gap-3 [grid-area:phone] min-[1001px]:sticky min-[1001px]:top-4 min-[1001px]:row-span-2"
+      aria-label={rc.phoneLabel}
+      className="nd-rise flex flex-col items-center gap-3 [grid-area:phone] min-[1001px]:sticky min-[1001px]:top-4 min-[1001px]:row-span-2"
+      style={{ ["--d" as string]: 1 }}
     >
       {template === undefined ? (
         <Skeleton className="h-[450px] w-full max-w-[260px] rounded-[36px]" />
       ) : (
         <TemplatePhone
           model={model}
-          label={`${campaign.name}: the message`}
+          label={rc.phoneTitle(campaign.name)}
           after={
             card?.kind ? (
               <CardPreview kind={card.kind as CustomerCardKind} vars={card.vars ?? {}} />
@@ -534,10 +563,10 @@ function CampaignPhone({
       )}
       <p className="m-0 max-w-[260px] text-center text-sm text-muted-foreground">
         {template === null
-          ? `The template ${campaign.template_name ?? ""} isn’t in your library any more.`
+          ? rc.templateGone(campaign.template_name ?? "")
           : usesName
-            ? "{{name}} is each customer’s own name."
-            : "What every customer gets."}
+            ? rc.usesName
+            : rc.sameForAll}
       </p>
     </aside>
   );
@@ -545,7 +574,7 @@ function CampaignPhone({
 
 function ResultsSkeleton() {
   return (
-    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading results">
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label={rc.loading}>
       <Skeleton className="h-7 w-1/2 rounded-lg" />
       {[0, 1, 2, 3].map((i) => (
         <Skeleton key={i} className="h-14 rounded-xl" />

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Lock, Megaphone, Plus } from "lucide-react";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
+import { StickyAction } from "@/components/design-v2";
 import { QualityBanner } from "@/components/whatsapp-quality-banner";
 import { CampaignWizard } from "@/components/campaigns/campaign-wizard";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { useAppCommand } from "@/lib/app-commands";
 import type { CampaignRow } from "@/lib/campaigns";
 import { cn } from "@/lib/utils";
 import { CampaignResults } from "./campaign-results";
+import { campaignsCopy as cc } from "./copy";
 import { campaignSubtitle, campaignTag, loadCampaignList, miniBars } from "./data";
 
 /**
@@ -83,35 +85,39 @@ export function NewCampaigns({
 
   const newButton = canCreate ? (
     <Button onClick={() => setWizardOpen(true)} aria-keyshortcuts="N">
-      <Plus className="h-4 w-4" aria-hidden="true" /> New campaign
+      <Plus className="h-4 w-4" aria-hidden="true" /> {cc.newCampaign}
       <Kbd className="ml-1 hidden border-ink-foreground/25 bg-ink-foreground/15 text-ink-foreground shadow-none wide:inline-flex">
         N
       </Kbd>
     </Button>
   ) : null;
 
+  // Batch 57: on a phone "New campaign" sits by the thumb, above the bottom bar,
+  // once there is a list to scroll (an empty page shows it in the empty state).
+  const hasList = Boolean(rows && rows.length > 0);
+
   return (
     <>
       <PageHeader
-        title="Campaigns"
-        description="One message to many customers, and how far it got: sent, delivered, read and replied."
-        actions={newButton}
+        title={cc.page.title}
+        description={cc.page.description}
+        actions={newButton && hasList ? <StickyAction>{newButton}</StickyAction> : newButton}
       />
       <QualityBanner organizationId={organizationId} className="mb-5" />
 
       {error && !rows ? (
-        <ErrorState message={error} />
+        <ErrorState message={error} onRetry={() => void load()} />
       ) : !rows ? (
         <CampaignsSkeleton />
       ) : rows.length === 0 ? (
         <EmptyState
           icon={Megaphone}
-          title="No campaigns yet"
-          description="Pick who gets it, choose an approved template, and reach every opted-in customer in one go."
+          title={cc.empty.title}
+          description={cc.empty.description}
           action={
             canCreate ? (
-              <Button onClick={() => setWizardOpen(true)}>
-                <Plus className="h-4 w-4" aria-hidden="true" /> Create your first campaign
+              <Button onClick={() => setWizardOpen(true)} className="phone:h-11">
+                <Plus className="h-4 w-4" aria-hidden="true" /> {cc.empty.action}
               </Button>
             ) : undefined
           }
@@ -119,7 +125,7 @@ export function NewCampaigns({
       ) : (
         <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-7 min-[1001px]:grid-cols-[minmax(0,300px)_minmax(0,1fr)_minmax(0,260px)]">
           <nav
-            aria-label="Campaigns"
+            aria-label={cc.listLabel}
             className={cn("flex-col gap-1.5", opened ? "hidden min-[1001px]:flex" : "flex")}
           >
             {rows.map((c, i) => (
@@ -143,9 +149,9 @@ export function NewCampaigns({
             >
               <Link
                 to="/app/campaigns"
-                className="-mb-3 inline-flex w-fit items-center gap-1.5 rounded-lg py-1 text-sm font-semibold text-muted-foreground transition-colors duration-200 hover:text-foreground min-[1001px]:hidden"
+                className="-mb-3 inline-flex w-fit items-center gap-1.5 rounded-lg py-1 text-sm font-semibold text-muted-foreground transition-colors duration-200 hover:text-foreground phone:min-h-11 min-[1001px]:hidden"
               >
-                <ArrowLeft className="h-4 w-4" aria-hidden="true" /> All campaigns
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {cc.allCampaigns}
               </Link>
               <CampaignResults
                 key={currentId}
@@ -157,6 +163,8 @@ export function NewCampaigns({
               />
             </div>
           ) : null}
+          {/* Room under the list for the phone's sticky "New campaign". */}
+          {canCreate ? <div aria-hidden="true" className="hidden h-14 phone:block" /> : null}
         </div>
       )}
 
@@ -195,47 +203,50 @@ function CampaignRowLink({
 }) {
   const bars = miniBars(c);
   const tag = campaignTag(c);
+  // Batch 57: the wrapper rises in (staggered), the row itself lifts on hover
+  // and press; the two never share an element, so neither overrides the other.
   return (
-    <Link
-      to="/app/campaigns/$id"
-      params={{ id: c.id }}
-      aria-current={opened ? "page" : undefined}
-      style={{ ["--i" as string]: Math.min(index, 8) }}
-      className={cn(
-        "nd-slide-in flex items-center gap-3 rounded-[14px] border p-3 text-left text-foreground transition-[background-color,border-color] duration-200",
-        on && opened
-          ? "border-line bg-surface shadow-md"
-          : on
-            ? "border-transparent hover:border-line hover:bg-surface min-[1001px]:border-line min-[1001px]:bg-surface min-[1001px]:shadow-md"
-            : "border-transparent hover:border-line hover:bg-surface",
-      )}
-    >
-      <span className="flex min-w-0 flex-1 flex-col">
-        <b className="truncate font-bold">{c.name}</b>
-        <span className="truncate text-sm text-muted-foreground">
-          {campaignSubtitle(c, timezone)}
+    <div className="nd-rise" style={{ ["--d" as string]: Math.min(index, 8) }}>
+      <Link
+        to="/app/campaigns/$id"
+        params={{ id: c.id }}
+        aria-current={opened ? "page" : undefined}
+        className={cn(
+          "nd-lift flex items-center gap-3 rounded-[14px] border p-3 text-left text-foreground",
+          on && opened
+            ? "border-line bg-surface shadow-md"
+            : on
+              ? "border-transparent hover:border-line hover:bg-surface min-[1001px]:border-line min-[1001px]:bg-surface min-[1001px]:shadow-md"
+              : "border-transparent hover:border-line hover:bg-surface",
+        )}
+      >
+        <span className="flex min-w-0 flex-1 flex-col">
+          <b className="truncate font-bold">{c.name}</b>
+          <span className="truncate text-sm text-muted-foreground">
+            {campaignSubtitle(c, timezone)}
+          </span>
         </span>
-      </span>
-      {tag ? <StatusTag status={c.status} label={tag} /> : null}
-      {bars ? (
-        <span
-          role="img"
-          aria-label={`${bars.delivered}% delivered, ${bars.read}% read, ${bars.replied}% replied`}
-          className="flex h-7 shrink-0 items-end gap-[3px]"
-        >
-          {[bars.delivered, bars.read, bars.replied].map((v, i) => (
-            <i
-              key={i}
-              className={cn(
-                "block w-1.5 rounded-[3px]",
-                i === 0 ? "bg-aiden" : i === 1 ? "bg-aiden-deep" : "bg-gold",
-              )}
-              style={{ height: v > 0 ? `${Math.max(v, 8)}%` : "2px" }}
-            />
-          ))}
-        </span>
-      ) : null}
-    </Link>
+        {tag ? <StatusTag status={c.status} label={tag} /> : null}
+        {bars ? (
+          <span
+            role="img"
+            aria-label={cc.bars(bars.delivered, bars.read, bars.replied)}
+            className="flex h-7 shrink-0 items-end gap-[3px]"
+          >
+            {[bars.delivered, bars.read, bars.replied].map((v, i) => (
+              <i
+                key={i}
+                className={cn(
+                  "block w-1.5 rounded-[3px]",
+                  i === 0 ? "bg-aiden" : i === 1 ? "bg-aiden-deep" : "bg-gold",
+                )}
+                style={{ height: v > 0 ? `${Math.max(v, 8)}%` : "2px" }}
+              />
+            ))}
+          </span>
+        ) : null}
+      </Link>
+    </div>
   );
 }
 
@@ -264,7 +275,7 @@ function CampaignsSkeleton() {
     <div
       className="grid grid-cols-[minmax(0,1fr)] items-start gap-7 min-[1001px]:grid-cols-[minmax(0,300px)_minmax(0,1fr)_minmax(0,260px)]"
       aria-busy="true"
-      aria-label="Loading campaigns"
+      aria-label={cc.loadingList}
     >
       <div className="flex flex-col gap-2">
         {[0, 1, 2, 3].map((i) => (
@@ -282,16 +293,12 @@ function CampaignsSkeleton() {
   );
 }
 
-/** Campaigns switched off for the workspace: the same words as Batch 41's page. */
+/** Campaigns switched off for the workspace (Batch 57: in plain words). */
 export function CampaignsOff() {
   return (
     <>
-      <PageHeader title="Campaigns" description="Reach every opted-in customer with one message." />
-      <EmptyState
-        icon={Lock}
-        title="Campaigns are turned off"
-        description="This feature isn’t enabled for your workspace yet. Reach out to your administrator to switch it on."
-      />
+      <PageHeader title={cc.page.title} description={cc.off.description} />
+      <EmptyState icon={Lock} title={cc.off.title} description={cc.off.body} />
     </>
   );
 }

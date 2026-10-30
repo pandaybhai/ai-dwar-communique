@@ -451,8 +451,58 @@ describe("one path each: launch, submit, and no new writes", () => {
     for (const label of ["Audience", "Message", "Personalise", "Test send", "Review and cost"])
       expect(html).toContain(label);
     expect(html).toContain('aria-label="The message on the customer&#x27;s WhatsApp"');
-    expect(html).toContain("This send costs about");
+    // Batch 57: copy (the approved summary words; before an audience, the one next step)
+    expect(html).toContain("Pick who gets it to see the cost.");
     expect(html).not.toContain(" · ");
+  });
+
+  it("Batch 57: the cost panel says who gets it, who's skipped, the cost and the wallet after, from the wizard's own numbers", async () => {
+    const { NdCostPanel } = await import("@/components/campaigns-v2/wizard-parts");
+    const estimate = {
+      enabled: true,
+      recipients: 240,
+      category: "marketing",
+      rate: 0.88,
+      currency: "INR",
+      estimate: 211.2,
+      available: 2000,
+      shortfall: 0,
+      can_send: true,
+      needs_approval: false,
+      approval_threshold: null,
+      daily_limit: null,
+      over_daily_limit: false,
+      days_needed: 1,
+    } as const;
+    const html = renderToStaticMarkup(
+      <NdCostPanel
+        audience={{ eligible: 240, excluded: 18 }}
+        audienceLoading={false}
+        estimate={estimate}
+      />,
+    );
+    for (const s of [
+      "Who gets it",
+      "240 customers",
+      "Skipped (haven’t said yes to offers)",
+      ">18<",
+      "₹211.20",
+      "Your wallet after this",
+      "₹1,788.80",
+      "₹0.88 a message",
+    ])
+      expect(html).toContain(s);
+    // Short of credits: no wallet-after figure, the shortfall and its fix instead.
+    const short = renderToStaticMarkup(
+      <NdCostPanel
+        audience={{ eligible: 240, excluded: 0 }}
+        audienceLoading={false}
+        estimate={{ ...estimate, available: 100, shortfall: 111.2, can_send: false }}
+      />,
+    );
+    expect(short).not.toContain("Your wallet after this");
+    expect(short).not.toContain("Skipped");
+    expect(short).toContain("Your wallet is ₹111.20 short. Add credits, then send.");
   });
 
   it("the gallery opens the Batch 41 editor, which submits through its one create request", async () => {

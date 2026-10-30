@@ -1,6 +1,8 @@
+import type { ReactNode } from "react";
 import { Check } from "lucide-react";
 import { money, type CampaignCostEstimate } from "@/lib/billing";
 import { cn } from "@/lib/utils";
+import { costCopy, customers, stepsCopy } from "./copy";
 import { count } from "./data";
 
 /**
@@ -10,13 +12,7 @@ import { count } from "./data";
  */
 
 /** Audience, message, personalise, test send, review and cost; Launch is the last button. */
-export const ND_STEP_LABELS = [
-  "Audience",
-  "Message",
-  "Personalise",
-  "Test send",
-  "Review and cost",
-] as const;
+export const ND_STEP_LABELS = stepsCopy.labels;
 
 /** A calm numbered stepper: done steps can be revisited, the current one is the soft pill. */
 export function NdSteps({ step, onBack }: { step: number; onBack: (to: number) => void }) {
@@ -24,7 +20,7 @@ export function NdSteps({ step, onBack }: { step: number; onBack: (to: number) =
     <div>
       <ol
         className="m-0 hidden list-none flex-wrap items-center gap-1 p-0 wide:flex"
-        aria-label="Steps"
+        aria-label={stepsCopy.listLabel}
       >
         {ND_STEP_LABELS.map((label, i) => {
           const done = i < step;
@@ -54,7 +50,7 @@ export function NdSteps({ step, onBack }: { step: number; onBack: (to: number) =
                   type="button"
                   onClick={() => onBack(i)}
                   className="inline-flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3 text-sm font-semibold text-aiden-deep transition-colors duration-200 hover:bg-aiden-soft"
-                  aria-label={`Back to ${label}`}
+                  aria-label={stepsCopy.backTo(label)}
                 >
                   {inner}
                 </button>
@@ -73,16 +69,32 @@ export function NdSteps({ step, onBack }: { step: number; onBack: (to: number) =
         })}
       </ol>
       <p className="m-0 text-sm text-muted-foreground wide:hidden">
-        Step {step + 1} of {ND_STEP_LABELS.length}:{" "}
+        {stepsCopy.stepOf(step + 1, ND_STEP_LABELS.length)}
         <span className="font-semibold text-foreground">{ND_STEP_LABELS[step]}</span>
       </p>
     </div>
   );
 }
 
-type Audience = { eligible: number } | null;
+/** The wizard passes its whole audience summary; only these two counts are shown. */
+type Audience = { eligible: number; excluded?: number } | null;
 
-/** The cost beside the phone: the wizard's own estimate (/api/campaigns/estimate), nothing worked out here. */
+/** One line of the summary: the preview's "Who gets it", "Skipped", "Cost", "Your wallet after this". */
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-t border-line py-2.5 first:border-t-0 first:pt-0">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="m-0 text-right font-semibold tabular-nums text-foreground">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * The cost beside the phone: the wizard's own estimate (/api/campaigns/estimate),
+ * nothing priced here. Batch 57: the approved summary words. "Your wallet
+ * after this" is the estimate's own spendable credits less its own cost, shown
+ * only while billing is on and the wallet covers it.
+ */
 export function NdCostPanel({
   audience,
   audienceLoading,
@@ -92,51 +104,56 @@ export function NdCostPanel({
   audienceLoading: boolean;
   estimate: CampaignCostEstimate | null;
 }) {
+  const walletAfter =
+    estimate && estimate.enabled && estimate.can_send
+      ? Math.round((estimate.available - estimate.estimate) * 100) / 100
+      : null;
+  const skipped = audience?.excluded ?? 0;
   return (
     <section
-      aria-label="Cost"
+      aria-label={costCopy.label}
       aria-live="polite"
       className={cn(
         "w-full rounded-[18px] border bg-surface p-4 shadow-md",
         estimate && !estimate.can_send ? "border-danger-border" : "border-line",
       )}
     >
-      <p className="m-0 flex items-baseline justify-between gap-3">
-        <span className="text-muted-foreground">This send costs about</span>
-        <b className="font-display text-2xl font-semibold tabular-nums text-foreground">
-          {estimate ? money(estimate.estimate, estimate.currency) : "–"}
-        </b>
-      </p>
+      <dl className="m-0 flex flex-col">
+        {audience ? <Row label={costCopy.whoGetsIt}>{customers(audience.eligible)}</Row> : null}
+        {audience && skipped > 0 ? (
+          <Row label={costCopy.skipped}>{count.format(skipped)}</Row>
+        ) : null}
+        <Row label={costCopy.cost}>
+          <span className="font-display text-2xl font-semibold">
+            {estimate ? money(estimate.estimate, estimate.currency) : "–"}
+          </span>
+        </Row>
+        {walletAfter !== null && walletAfter >= 0 && estimate ? (
+          <Row label={costCopy.walletAfter}>{money(walletAfter, estimate.currency)}</Row>
+        ) : null}
+      </dl>
       <p className="m-0 mt-1 text-sm text-muted-foreground">
         {estimate
-          ? `${money(estimate.rate, estimate.currency)} a message, and you have ${money(estimate.available, estimate.currency)} in credits.`
+          ? costCopy.perMessage(money(estimate.rate, estimate.currency))
           : audienceLoading
-            ? "Counting who gets it."
+            ? costCopy.counting
             : audience
-              ? "Pick a template to see the cost."
-              : "Pick who gets it to see the cost."}
+              ? costCopy.pickTemplate
+              : costCopy.pickAudience}
       </p>
-      {audience ? (
-        <p className="m-0 mt-3 border-t border-line pt-3 text-sm text-muted-foreground">
-          <b className="tabular-nums text-foreground">{count.format(audience.eligible)}</b> will
-          receive it
-        </p>
-      ) : null}
       {estimate && !estimate.can_send ? (
         <p className="m-0 mt-3 text-sm font-semibold text-danger-soft-foreground">
-          You’re short {money(estimate.shortfall, estimate.currency)}. Add credits to send this
-          campaign.
+          {costCopy.short(money(estimate.shortfall, estimate.currency))}
         </p>
       ) : null}
       {estimate?.can_send && estimate.needs_approval ? (
         <p className="m-0 mt-3 rounded-xl bg-gold-bg px-3 py-2 text-sm font-semibold text-gold-ink">
-          Above your approval limit: it waits for an owner to approve it before anything sends.
+          {costCopy.needsApproval}
         </p>
       ) : null}
       {estimate?.over_daily_limit ? (
         <p className="m-0 mt-3 text-sm text-muted-foreground">
-          Your number can message {count.format(estimate.daily_limit ?? 0)} people a day right now,
-          so this spreads over about {estimate.days_needed} days.
+          {costCopy.dailyLimit(count.format(estimate.daily_limit ?? 0), estimate.days_needed)}
         </p>
       ) : null}
     </section>

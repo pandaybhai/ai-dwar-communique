@@ -16,6 +16,7 @@ import {
   productCardsInAnswers,
 } from "@/lib/customer-cards";
 import { callApi } from "@/lib/whatsapp-client";
+import { cardsCopy as cc } from "./copy";
 
 /**
  * Batch 47: Cards in the new design, the Campaigns section's third tab. The
@@ -102,7 +103,7 @@ export function NewCards({
     void logActivity("card_branding_updated", organizationId, {
       has_logo: Boolean(branding.brand_logo_url),
     });
-    toast.success("Card branding saved. Every new card uses it from here.");
+    toast.success(cc.brand.saved);
   }
 
   async function saveProductCards(next: boolean) {
@@ -118,11 +119,7 @@ export function NewCards({
       toast.error(error);
       return;
     }
-    toast.success(
-      next
-        ? "Aiden and Show products will send the first product as a card."
-        : "Aiden and Show products will send plain product photos.",
-    );
+    toast.success(next ? cc.uses.on : cc.uses.off);
   }
 
   async function preview(kind: string) {
@@ -132,7 +129,7 @@ export function NewCards({
     });
     setPreviewing(null);
     if (error || !data?.url) {
-      toast.error(error ?? "The card couldn’t be drawn just now. Try again in a moment.");
+      toast.error(error ?? cc.designs.drawFailed);
       return;
     }
     setPreviews((p) => ({ ...p, [kind]: data.url }));
@@ -143,13 +140,10 @@ export function NewCards({
 
   return (
     <>
-      <PageHeader
-        title="Cards"
-        description="Branded picture cards that go with your campaigns, flows and Aiden’s answers. Set your logo and colours once; every card wears them."
-      />
+      <PageHeader title={cc.page.title} description={cc.page.description} />
 
       {loading ? (
-        <div className="flex flex-col gap-6" aria-busy="true" aria-label="Loading cards">
+        <div className="flex flex-col gap-6" aria-busy="true" aria-label={cc.loading}>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-5">
             {[0, 1, 2, 3, 4].map((i) => (
               <Skeleton key={i} className="h-80 rounded-[23px]" />
@@ -162,12 +156,9 @@ export function NewCards({
           <section aria-labelledby="card-designs" className="flex flex-col gap-4">
             <div>
               <h2 id="card-designs" className="m-0 font-display text-xl font-semibold">
-                The five designs
+                {cc.designs.heading}
               </h2>
-              <p className="m-0 mt-1 text-muted-foreground">
-                Send any of them from the Inbox, a flow’s Send card step or a campaign. Aiden
-                can use the product card when it answers with a product.
-              </p>
+              <p className="m-0 mt-1 text-muted-foreground">{cc.designs.body}</p>
             </div>
             <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(210px,1fr))] items-start gap-5 p-0">
               {CUSTOMER_CARD_DESIGNS.map((d, i) => {
@@ -175,20 +166,20 @@ export function NewCards({
                 return (
                   <li
                     key={d.kind}
-                    className="nd-slide-in flex flex-col gap-3"
-                    style={{ ["--i" as string]: i }}
+                    className="nd-rise flex flex-col gap-3"
+                    style={{ ["--d" as string]: i }}
                   >
                     <div className="nd-wall grid aspect-[4/5] place-items-center overflow-hidden rounded-[23px] border border-line p-3">
                       {url ? (
                         <img
                           src={url}
-                          alt={`${d.title} card, as the renderer draws it`}
+                          alt={cc.designs.alt(d.title)}
                           className="max-h-full w-full rounded-[14px] object-contain shadow-md"
                         />
                       ) : (
                         <span className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
                           <ImageIcon className="h-7 w-7" aria-hidden="true" />
-                          Not drawn yet
+                          {cc.designs.notDrawn}
                         </span>
                       )}
                     </div>
@@ -196,13 +187,13 @@ export function NewCards({
                       <h3 className="m-0 text-base font-bold">{d.title}</h3>
                       <p className="m-0 text-sm text-muted-foreground">{d.blurb}</p>
                       <p className="m-0 text-sm text-muted-foreground">
-                        Fills in: {d.vars.map((v) => v.label.toLowerCase()).join(", ")}
+                        {cc.designs.fillsIn(d.vars.map((v) => v.label.toLowerCase()).join(", "))}
                       </p>
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-fit"
+                      className="w-fit phone:h-11"
                       onClick={() => void preview(d.kind)}
                       disabled={previewing === d.kind}
                     >
@@ -211,7 +202,7 @@ export function NewCards({
                       ) : (
                         <Eye className="h-4 w-4" aria-hidden="true" />
                       )}
-                      {url ? "Draw again" : "Preview"}
+                      {url ? cc.designs.drawAgain : cc.designs.preview}
                     </Button>
                   </li>
                 );
@@ -225,11 +216,11 @@ export function NewCards({
               className="flex flex-col gap-4 rounded-[20px] border border-line bg-surface p-5 shadow-md"
             >
               <h2 id="card-brand" className="m-0 font-display text-lg font-semibold">
-                Your brand on every card
+                {cc.brand.heading}
               </h2>
               <div className="grid gap-4 wide:grid-cols-2">
                 <div className="flex flex-col gap-2 wide:col-span-2">
-                  <Label htmlFor="nd-brand-logo">Logo picture link</Label>
+                  <Label htmlFor="nd-brand-logo">{cc.brand.logo}</Label>
                   <Input
                     id="nd-brand-logo"
                     placeholder="https://yourstore.in/logo.png"
@@ -239,21 +230,21 @@ export function NewCards({
                     aria-describedby="nd-brand-logo-hint"
                   />
                   <p id="nd-brand-logo-hint" className="m-0 text-sm text-muted-foreground">
-                    A public https picture. Leave it blank and the cards show your name instead.
+                    {cc.brand.logoHint}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 wide:col-span-2">
-                  <Label htmlFor="nd-brand-name">Name on the card</Label>
+                  <Label htmlFor="nd-brand-name">{cc.brand.name}</Label>
                   <Input
                     id="nd-brand-name"
-                    placeholder={orgName || "Your shop’s name"}
+                    placeholder={orgName || cc.brand.namePlaceholder}
                     value={branding.brand_name}
                     disabled={!canManage}
                     onChange={(e) => field("brand_name", e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="nd-brand-primary">Main colour</Label>
+                  <Label htmlFor="nd-brand-primary">{cc.brand.primary}</Label>
                   <Input
                     id="nd-brand-primary"
                     placeholder="#10B981"
@@ -263,7 +254,7 @@ export function NewCards({
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="nd-brand-accent">Second colour</Label>
+                  <Label htmlFor="nd-brand-accent">{cc.brand.accent}</Label>
                   <Input
                     id="nd-brand-accent"
                     placeholder="#0D9488"
@@ -274,28 +265,23 @@ export function NewCards({
                 </div>
               </div>
               {canManage ? (
-                <Button className="w-fit" onClick={() => void save()} disabled={saving}>
+                <Button className="w-fit phone:h-11" onClick={() => void save()} disabled={saving}>
                   {saving ? (
                     <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />
                   ) : null}
-                  Save branding
+                  {cc.brand.save}
                 </Button>
               ) : (
-                <p className="m-0 text-sm text-muted-foreground">
-                  Ask the shop owner for permission to change these.
-                </p>
+                <p className="m-0 text-sm text-muted-foreground">{cc.brand.noPermission}</p>
               )}
             </section>
 
             <section aria-labelledby="card-uses" className="flex flex-col gap-4">
               <div>
                 <h2 id="card-uses" className="m-0 font-display text-lg font-semibold">
-                  Where cards are used
+                  {cc.uses.heading}
                 </h2>
-                <p className="m-0 mt-1 text-muted-foreground">
-                  A card goes out only where you add one. If a card can’t be drawn, the plain
-                  photo or text goes instead, so your message always arrives.
-                </p>
+                <p className="m-0 mt-1 text-muted-foreground">{cc.uses.body}</p>
               </div>
               <ul className="m-0 flex list-none flex-col gap-2 p-0">
                 {CARD_USES.map((use) => (
@@ -311,12 +297,9 @@ export function NewCards({
                     htmlFor={`nd-switch-${PRODUCT_CARDS_SETTING}`}
                     className="font-semibold text-foreground"
                   >
-                    Product cards in Aiden’s answers and Show products
+                    {cc.uses.switchLabel}
                   </label>
-                  <p className="m-0 mt-1 text-sm text-muted-foreground">
-                    On: the first product goes as a branded Product card, the rest as photos. Off:
-                    every product goes as a plain photo with its name and price.
-                  </p>
+                  <p className="m-0 mt-1 text-sm text-muted-foreground">{cc.uses.switchHelp}</p>
                 </div>
                 <Switch
                   id={`nd-switch-${PRODUCT_CARDS_SETTING}`}

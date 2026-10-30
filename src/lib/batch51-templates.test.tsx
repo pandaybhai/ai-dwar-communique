@@ -291,10 +291,14 @@ describe("the gallery", () => {
 
   it("the menu and dialog are the new gallery's only; the classic page has no delete", () => {
     const gallery = readFileSync("src/components/templates-v2/new-templates.tsx", "utf8");
-    expect(gallery).toContain("Delete template");
+    // Batch 57: copy (the words live in templates-v2/copy.ts; "Message designs" is the visible name)
+    const copy = readFileSync("src/components/templates-v2/copy.ts", "utf8");
+    expect(gallery).toContain("{tc.deleteAction}");
+    expect(copy).toContain('deleteAction: "Delete message design"');
     expect(gallery).toContain("{...(canManage ? { onDelete: () => setDeleting(t) } : {})}");
     const dialog = readFileSync("src/components/templates-v2/delete-template.tsx", "utf8");
-    expect(dialog).toContain("Delete “{template?.name}”?");
+    expect(dialog).toContain("{deleteCopy.title(template?.name)}");
+    expect(copy).toContain("title: (name: string | undefined) => `Delete “${name ?? \"\"}”?`");
     expect(dialog).toContain("deleteTemplateRequest(organizationId, template.id)");
     const classic = readFileSync("src/components/templates/templates-view.tsx", "utf8");
     expect(classic).not.toMatch(/action:\s*"delete"/);
