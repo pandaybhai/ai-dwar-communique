@@ -143,7 +143,9 @@ describe("the tool list", () => {
     const by = Object.fromEntries(tools.map((t) => [t.name, t]));
     const readOnly = ["list_workspaces", "get_workspace_overview", "list_templates", "list_segments", "count_audience", "search_contacts", "list_campaigns", "get_campaign_report", "list_flows", "get_flow", "list_needs_attention"];
     const modify = ["create_segment", "create_campaign_draft", "send_campaign", "create_flow_draft", "activate_flow"];
-    expect(Object.keys(by).sort()).toEqual([...readOnly, ...modify].sort());
+    // Batch 54 adds round 2 (batch54-mcp2.test.ts checks those in detail).
+    const round2 = ["list_products", "get_campaign_sales", "list_aiden_questions", "create_template_draft", "preview_campaign_change", "submit_template", "update_scheduled_campaign", "cancel_scheduled_campaign", "tag_contacts", "answer_aiden_question"];
+    expect(Object.keys(by).sort()).toEqual([...readOnly, ...modify, ...round2].sort());
     for (const n of readOnly) expect(by[n]!.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
     for (const n of modify) expect(by[n]!.annotations["readOnlyHint"]).toBe(false);
     expect(by["send_campaign"]!.annotations["destructiveHint"]).toBe(true);
@@ -606,7 +608,7 @@ describe("end to end with the official MCP SDK client", () => {
     expect(client.getServerVersion()).toMatchObject({ name: "aidwar" });
     expect(client.getInstructions()).toContain("only after they clearly confirm");
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(16);
+    expect(tools).toHaveLength(26); // 16 from Batch 52 + 10 from Batch 54
     const draft = (await client.callTool({ name: "create_campaign_draft", arguments: draftArgs() })) as { structuredContent: Record<string, unknown> };
     expect(draft.structuredContent).toMatchObject({ status: "draft", recipients: 1 });
     const sent = (await client.callTool({

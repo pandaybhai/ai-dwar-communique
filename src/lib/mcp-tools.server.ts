@@ -59,15 +59,15 @@ export type ToolDef = {
   run: (ctx: ToolContext, args: Record<string, unknown>) => Promise<ToolOutcome>;
 };
 
-const fail = (error: string, data?: Record<string, unknown>): ToolOutcome => ({ ok: false, error, ...(data ? { data } : {}) });
-const done = (summary: string, data: Record<string, unknown>, audit?: Audit): ToolOutcome => ({
+export const fail = (error: string, data?: Record<string, unknown>): ToolOutcome => ({ ok: false, error, ...(data ? { data } : {}) });
+export const done = (summary: string, data: Record<string, unknown>, audit?: Audit): ToolOutcome => ({
   ok: true,
   summary,
   data,
   ...(audit ? { audit } : {}),
 });
 
-function denied(ctx: ToolContext, permission: string | string[], what: string): ToolOutcome | null {
+export function denied(ctx: ToolContext, permission: string | string[], what: string): ToolOutcome | null {
   const keys = Array.isArray(permission) ? permission : [permission];
   if (keys.some((k) => ctx.permissions.has(k))) return null;
   return fail(
@@ -75,9 +75,9 @@ function denied(ctx: ToolContext, permission: string | string[], what: string): 
   );
 }
 
-const link = (ctx: ToolContext, path: string) => `${ctx.origin}${path}`;
+export const link = (ctx: ToolContext, path: string) => `${ctx.origin}${path}`;
 
-function money(amount: number | null | undefined, currency = "INR"): string | null {
+export function money(amount: number | null | undefined, currency = "INR"): string | null {
   if (amount === null || amount === undefined || !Number.isFinite(Number(amount))) return null;
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: currency || "INR", maximumFractionDigits: 2 }).format(Number(amount));
 }
@@ -96,19 +96,19 @@ export function maskPhone(phone: string | null | undefined): string | null {
  * app (contacts.export); everyone else sees them masked. An AI app is
  * outside AiDwar, so the export rule is the one that applies.
  */
-const seesFullNumbers = (ctx: ToolContext) => ctx.permissions.has("contacts.export");
+export const seesFullNumbers = (ctx: ToolContext) => ctx.permissions.has("contacts.export");
 
-function page(args: Record<string, unknown>): { limit: number; offset: number } {
+export function page(args: Record<string, unknown>): { limit: number; offset: number } {
   const limit = Math.min(MAX_PAGE, Math.max(1, Number(args["limit"] ?? 20) || 20));
   const offset = Math.max(0, Number(args["cursor"] ?? 0) || 0);
   return { limit, offset };
 }
 
-function nextCursor(offset: number, limit: number, got: number): string | null {
+export function nextCursor(offset: number, limit: number, got: number): string | null {
   return got > limit ? String(offset + limit) : null;
 }
 
-const workspaceArg = {
+export const workspaceArg = {
   workspace_id: z
     .string()
     .min(1)
@@ -116,7 +116,7 @@ const workspaceArg = {
     .optional()
     .describe("The workspace to use (from list_workspaces). Leave out when the user has only one workspace."),
 };
-const pageArgs = {
+export const pageArgs = {
   limit: z.number().int().min(1).max(MAX_PAGE).optional().describe(`How many to return (1–${MAX_PAGE}, default 20).`),
   cursor: z.string().max(12).optional().describe("next_cursor from the previous page."),
 };
@@ -285,7 +285,7 @@ const listTemplates: ToolDef = {
   },
 };
 
-async function tagNames(db: SupabaseClient, org: string): Promise<Map<string, string>> {
+export async function tagNames(db: SupabaseClient, org: string): Promise<Map<string, string>> {
   const { data } = await db.from("tags").select("id, name").eq("organization_id", org);
   return new Map(((data ?? []) as Array<{ id: string; name: string }>).map((t) => [t.id, t.name]));
 }
@@ -339,7 +339,7 @@ const audienceInput = {
   all_opted_in: z.boolean().optional().describe("true = every opted-in customer."),
 };
 
-async function resolveTagIds(db: SupabaseClient, org: string, names: string[]): Promise<{ ids: string[]; missing: string[] }> {
+export async function resolveTagIds(db: SupabaseClient, org: string, names: string[]): Promise<{ ids: string[]; missing: string[] }> {
   const all = await tagNames(db, org);
   const ids: string[] = [];
   const missing: string[] = [];
@@ -837,7 +837,7 @@ const createSegment: ToolDef = {
   },
 };
 
-const variableInput = z.union([
+export const variableInput = z.union([
   z.string().max(1000),
   z.object({
     source: z.enum(["name", "phone", "attribute", "static"]),
