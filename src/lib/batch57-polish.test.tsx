@@ -120,7 +120,7 @@ describe("no new write, send or read path", () => {
   it("every Batch 57 animation stops under reduced motion", () => {
     const css = src("styles.css");
     const reduced = css.slice(css.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
-    for (const cls of [".nd-rise", ".nd-dots > i", ".nd-pop", ".nd-spark", ".nd-lift", '[data-slot="skeleton"]::after'])
+    for (const cls of [".nd-rise", ".nd-dots > i", ".nd-pop", ".nd-spark", ".nd-lift", '.animate-pulse::after'])
       expect(reduced, cls).toContain(cls);
     // Only transform and opacity move (no transition: all anywhere new).
     expect(css).not.toMatch(/transition:\s*all/);

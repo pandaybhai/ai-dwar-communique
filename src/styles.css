@@ -1361,16 +1361,21 @@ html[data-design="new"] ::selection {
 
 /*
  * Batch 57: loading shimmers instead of pulsing (a light band sweeps across
- * the shape; transform only), typing dots for Aiden at work, a one-time gold
+ * the shape; transform only; every loading block in the app is .animate-pulse,
+ * so Classic's markup stays byte for byte), typing dots for Aiden at work, a one-time gold
  * sparkle and pop for a sale, and hover lift / press feedback on cards.
  */
-html[data-design="new"] [data-slot="skeleton"] {
-  position: relative;
-  overflow: hidden;
-  animation: none;
-  background-color: var(--bubble-in);
+/* In the components layer, so a block's own utilities (its colour, absolute) still win. */
+@layer components {
+  html[data-design="new"] .animate-pulse {
+    position: relative;
+    overflow: hidden;
+  }
 }
-html[data-design="new"] [data-slot="skeleton"]::after {
+html[data-design="new"] .animate-pulse {
+  animation: none;
+}
+html[data-design="new"] .animate-pulse::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1498,7 +1503,7 @@ html[data-chat-open] .nd-bottom-bar {
   .nd-rise,
   .nd-dots > i,
   .nd-pop,
-  html[data-design="new"] [data-slot="skeleton"]::after {
+  html[data-design="new"] .animate-pulse::after {
     animation: none !important;
   }
   .nd-spark {
