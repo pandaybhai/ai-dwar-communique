@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ALL_EXAMPLE_PROMPTS, EXAMPLE_PROMPTS_ROUND2, MCP_TOOL_LIST } from "./mcp-connect";
+import { EXAMPLE_PROMPTS, MCP_TOOL_LIST } from "./mcp-connect";
+import { LIBRARY_PROMPTS } from "./mcp-prompts";
 import { CONSENT_CAN, CONSENT_CANNOT } from "./oauth-consent";
 
 vi.mock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => null }));
@@ -30,15 +31,24 @@ describe("/developers#mcp after round 2", () => {
     expect(html).toContain('id="mcp-tools"');
     for (const label of ["Read only", "Draft or preview (sends nothing)", "Acts after you confirm"]) expect(html).toContain(label);
     for (const t of MCP_TOOL_LIST) expect(html).toContain(`>${t.name}<`);
-    expect(EXAMPLE_PROMPTS_ROUND2).toEqual([
+    // Round 2's six prompts live in Batch 53's shared library, each naming round-2 tools.
+    const round2 = [
       "Draft a campaign for my newest products",
       "How much did my last campaign sell?",
       "Write a new template for our winter sale and submit it",
       "Move tomorrow's campaign to 7pm",
       "Tag everyone who replied YES as VIP",
       "What is Aiden waiting on me for?",
-    ]);
-    for (const p of ALL_EXAMPLE_PROMPTS) expect(html).toContain(p.replace(/'/g, "&#x27;"));
+    ];
+    const { ROUND2_TOOLS } = await import("./mcp-tools-r2.server");
+    const r2 = new Set(ROUND2_TOOLS.map((t) => t.name));
+    for (const text of round2) {
+      const p = LIBRARY_PROMPTS.find((x) => x.text === text);
+      expect(p, text).toBeTruthy();
+      expect(p!.tools.some((t) => r2.has(t)), text).toBe(true);
+      expect(EXAMPLE_PROMPTS).toContain(text);
+    }
+    for (const p of EXAMPLE_PROMPTS) expect(html).toContain(p.replace(/'/g, "&#x27;"));
     expect(html).toContain("An answer to Aiden is always your own words.");
   });
 

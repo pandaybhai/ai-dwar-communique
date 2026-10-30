@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useOrg } from "@/lib/org-context";
 import { readThemeChoice, resolveTheme } from "@/lib/theme";
+import { RELEASE_FLAG, resolveDesign, type DesignAnswer } from "@/lib/aiden-workspace";
 
 /**
  * Batch 44: the new design (docs/design/spec.md) is rolled out per workspace
@@ -31,18 +32,48 @@ function writeCached(organizationId: string, on: boolean) {
   }
 }
 
-/** True only when the active workspace has `new_design` switched on. */
-export function useNewDesign(): boolean {
+/**
+ * The design this member sees, with why and whether the avatar-menu switch
+ * shows (Batch 53, src/lib/aiden-workspace.ts). While the release flag
+ * `aiden_workspace` is off — its global default, a missing row = off — this
+ * is exactly the Batch 44 answer: `new_design` for the workspace.
+ */
+export function useDesignAnswer(): DesignAnswer {
   const org = useOrg() as Partial<ReturnType<typeof useOrg>> | undefined;
   const organizationId = org?.active?.organization.id ?? null;
   const loading = org?.flagsLoading !== false;
-  const on = !loading && org?.isFeatureEnabled?.(NEW_DESIGN_FLAG) === true;
+  const today = !loading && org?.isFeatureEnabled?.(NEW_DESIGN_FLAG) === true;
+  const releaseOn = !loading && org?.flagDefaults?.[RELEASE_FLAG] === true;
+  const prefs = org?.designPrefs ?? null;
+  const prefsPending = releaseOn && (org?.designPrefsLoading !== false || !prefs);
+
+  const answer: DesignAnswer = loading || prefsPending
+    ? {
+        design: readCached(organizationId) ? "aiden_workspace" : "classic",
+        source: "today",
+        switchVisible: false,
+      }
+    : resolveDesign({
+        releaseOn,
+        newDesignToday: today,
+        superAdminOverride: prefs?.superAdminOverride ?? null,
+        choice: prefs?.choice ?? null,
+        unlockedAt: prefs?.unlockedAt ?? null,
+        newDesignDefault: org?.flagDefaults?.[NEW_DESIGN_FLAG] === true,
+      });
+  const settled = !loading && !prefsPending;
+  const on = answer.design === "aiden_workspace";
 
   useEffect(() => {
-    if (!loading && organizationId) writeCached(organizationId, on);
-  }, [loading, organizationId, on]);
+    if (settled && organizationId) writeCached(organizationId, on);
+  }, [settled, organizationId, on]);
 
-  return loading ? readCached(organizationId) : on;
+  return answer;
+}
+
+/** True only when this member sees the new design (Aiden Workspace). */
+export function useNewDesign(): boolean {
+  return useDesignAnswer().design === "aiden_workspace";
 }
 
 /** Bricolage Grotesque (display) and Instrument Sans (body), from Google Fonts. */

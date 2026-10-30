@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 94, column 1117, view 2, function 116, index 170, trigger 70, cron_job 14.
+-- Expected objects: table 95, column 1123, view 2, function 118, index 170, trigger 70, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -105,6 +105,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('table', 'public', 'tags', NULL, NULL, NULL, '20260814_contacts_tags_imports.sql'),
     ('table', 'public', 'template_media_assets', NULL, NULL, NULL, '20260908_template_parity.sql'),
     ('table', 'public', 'usage_records', NULL, NULL, NULL, '20260819_event_spine_usage_ai.sql'),
+    ('table', 'public', 'user_design_preferences', NULL, NULL, NULL, '20261270_batch53_aiden_workspace.sql'),
     ('table', 'public', 'wa_form_responses', NULL, NULL, NULL, '20260930_wa_forms.sql'),
     ('table', 'public', 'wa_forms', NULL, NULL, NULL, '20260930_wa_forms.sql'),
     ('table', 'public', 'wallet_campaign_holds', NULL, NULL, NULL, '20261065_batch26a_wallet.sql'),
@@ -940,6 +941,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'organization_send_settings', 'reorder_after_days', NULL, 'integer', '20260901_timebased_flows.sql'),
     ('column', 'public', 'organization_send_settings', 'updated_at', NULL, 'timestamp with time zone', '20260825_flows.sql'),
     ('column', 'public', 'organization_send_settings', 'winback_after_days', NULL, 'integer', '20260901_timebased_flows.sql'),
+    ('column', 'public', 'organizations', 'aiden_workspace_unlocked_at', NULL, 'timestamp with time zone', '20261270_batch53_aiden_workspace.sql'),
     ('column', 'public', 'pending_owner_replies', 'notify', NULL, 'text', '20260918_silent_gaps.sql'),
     ('column', 'public', 'pending_owner_replies', 'reminded_at', NULL, 'timestamp with time zone', '20260908_teaching_guards.sql'),
     ('column', 'public', 'pending_owner_replies', 'selected_at', NULL, 'timestamp with time zone', '20260908_pending_owner_reply_selection.sql'),
@@ -1132,6 +1134,11 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'usage_records', 'occurred_at', NULL, 'timestamp with time zone', '20260819_event_spine_usage_ai.sql'),
     ('column', 'public', 'usage_records', 'organization_id', NULL, 'uuid', '20260819_event_spine_usage_ai.sql'),
     ('column', 'public', 'usage_records', 'quantity', NULL, 'numeric', '20260819_event_spine_usage_ai.sql'),
+    ('column', 'public', 'user_design_preferences', 'created_at', NULL, 'timestamp with time zone', '20261270_batch53_aiden_workspace.sql'),
+    ('column', 'public', 'user_design_preferences', 'design', NULL, 'text', '20261270_batch53_aiden_workspace.sql'),
+    ('column', 'public', 'user_design_preferences', 'intro_seen_at', NULL, 'timestamp with time zone', '20261270_batch53_aiden_workspace.sql'),
+    ('column', 'public', 'user_design_preferences', 'updated_at', NULL, 'timestamp with time zone', '20261270_batch53_aiden_workspace.sql'),
+    ('column', 'public', 'user_design_preferences', 'user_id', NULL, 'uuid', '20261270_batch53_aiden_workspace.sql'),
     ('column', 'public', 'wa_form_responses', 'answers', NULL, 'jsonb', '20260930_wa_forms.sql'),
     ('column', 'public', 'wa_form_responses', 'contact_id', NULL, 'uuid', '20260930_wa_forms.sql'),
     ('column', 'public', 'wa_form_responses', 'conversation_id', NULL, 'uuid', '20260930_wa_forms.sql'),
@@ -1240,6 +1247,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'ai_skills_guard', NULL, '{}'::text[], 'public.ai_skills_guard()', '20260914_ai_skills_teaching_languages.sql'),
     ('function', 'public', 'ai_task_models_validate', NULL, '{}'::text[], 'public.ai_task_models_validate()', '20260902_ai_core.sql'),
     ('function', 'public', 'ai_usage_add', NULL, ARRAY['uuid', 'date', 'text', 'integer', 'bigint', 'bigint', 'numeric', 'numeric', 'text'], 'public.ai_usage_add(uuid, date, text, integer, bigint, bigint, numeric, numeric, text)', '20261027_ai_usage_add.sql'),
+    ('function', 'public', 'aiden_workspace_stamp_unlock', NULL, ARRAY['uuid'], 'public.aiden_workspace_stamp_unlock(uuid)', '20261270_batch53_aiden_workspace.sql'),
     ('function', 'public', 'analytics_attribution_sources', NULL, ARRAY['uuid', 'date', 'date', 'uuid'], 'public.analytics_attribution_sources(uuid, date, date, uuid)', '20260831_message_cost_receipts.sql'),
     ('function', 'public', 'analytics_attribution_steps', NULL, ARRAY['uuid', 'date', 'date', 'uuid'], 'public.analytics_attribution_steps(uuid, date, date, uuid)', '20260831_message_cost_receipts.sql'),
     ('function', 'public', 'analytics_attribution_summary', NULL, ARRAY['uuid', 'date', 'date', 'uuid'], 'public.analytics_attribution_summary(uuid, date, date, uuid)', '20260828_revenue_attribution.sql'),
@@ -1302,6 +1310,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'match_knowledge_chunks', NULL, ARRAY['uuid', 'vector', 'text', 'uuid', 'integer', 'numeric'], 'public.match_knowledge_chunks(uuid, vector, text, uuid, integer, numeric)', '20260902_ai_knowledge.sql'),
     ('function', 'public', 'mcp_block_oauth_writes', NULL, '{}'::text[], 'public.mcp_block_oauth_writes()', '20261260_batch52_mcp.sql'),
     ('function', 'public', 'mcp_oauth_request_guard', NULL, '{}'::text[], 'public.mcp_oauth_request_guard()', '20261260_batch52_mcp.sql'),
+    ('function', 'public', 'mcp_workspace_apps', NULL, ARRAY['uuid', 'uuid'], 'public.mcp_workspace_apps(uuid, uuid)', '20261270_batch53_aiden_workspace.sql'),
     ('function', 'public', 'message_rate_for', NULL, ARRAY['text', 'text', 'timestamp with time zone'], 'public.message_rate_for(text, text, timestamp with time zone)', '20260831_message_cost_receipts.sql'),
     ('function', 'public', 'meta_balance_estimate', NULL, ARRAY['uuid'], 'public.meta_balance_estimate(uuid)', '20261054_live_only_functions.sql'),
     ('function', 'public', 'next_invoice_number', NULL, ARRAY['text', 'date'], 'public.next_invoice_number(text, date)', '20261054_live_only_functions.sql'),

@@ -1435,13 +1435,19 @@ export const FEATURES: readonly FeatureManifest[] = [
     // missing flag row as on (mcpAccessOn in src/lib/mcp-access.server.ts).
     key: "mcp",
     depends_on: [],
-    name: "AI assistants (MCP)",
+    name: "AI assistants",
     description:
       "Let the team connect Claude, ChatGPT, Codex or Cursor to this workspace at https://aidwar.in/mcp: read the workspace and draft campaigns and flows; sending or switching on always needs their confirmation.",
     icon: "sparkles",
+    // Batch 53: the AI assistants page. Its nav entry stays while the flag is
+    // off (the page says it's switched off and who can switch it on); see
+    // FLAGS_THAT_KEEP_THE_PAGE in src/components/shell/use-nav.ts.
+    nav_path: "/app/ai-assistants",
+    nav_order: 57,
+    nav_permission: "mcp.use",
     flag_key: "mcp_access",
     flag_default_enabled: true,
-    settings_path: "/app/settings",
+    settings_path: "/app/ai-assistants",
     permissions: [
       {
         key: "mcp.use",
@@ -1458,6 +1464,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "mcp_campaign_sent",
       "mcp_flow_drafted",
       "mcp_flow_activated",
+      "mcp_access_changed",
       // Batch 54 (round 2). Code only: nothing reads feature_registry's
       // database row, so no migration was needed for these.
       "mcp_template_submitted",
@@ -1467,6 +1474,35 @@ export const FEATURES: readonly FeatureManifest[] = [
       "mcp_question_answered",
     ],
     data_tables: [],
+  },
+  {
+    // Batch 53: the release switch for "Aiden Workspace" (the new design's
+    // name in the UI). Only the flag's GLOBAL default counts (Super Admin ->
+    // Flags), OFF until the release after Batch 55; a missing row is off. A
+    // plan change writes per-workspace rows for every flag, so they are never
+    // read for this. On: the rule in src/lib/aiden-workspace.ts (Super Admin
+    // new_design override > the person's choice > workspace unlocked by its
+    // first Aiden-on > Classic) and the avatar-menu switch. Rows are in
+    // 20261270_batch53_aiden_workspace.sql.
+    key: "aiden_workspace",
+    depends_on: [],
+    name: "Aiden Workspace release",
+    description:
+      "Release Aiden Workspace (the new design): workspaces whose Aiden was ever switched on open in it, and everyone can switch between Classic and Aiden Workspace from their avatar menu. Global default only.",
+    icon: "sparkles",
+    flag_key: "aiden_workspace",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "aiden_workspace.switch",
+        name: "Switch between Classic and Aiden Workspace",
+        description: "Choose Classic or Aiden Workspace for yourself, on every device.",
+        min_role: "agent",
+      },
+    ],
+    analytics: { event_types: ["design.switched"], metrics: [], dashboard_section: false },
+    activity_actions: [],
+    data_tables: ["user_design_preferences"],
   },
 ] as const;
 
