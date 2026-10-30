@@ -7,7 +7,12 @@ export type SegmentField =
   | "phone"
   | "created_at"
   | "source"
-  | "attribute";
+  | "attribute"
+  /** Batch 51: the customers picked by hand for this segment (segment_members). */
+  | "list";
+
+/** The rules a person can build in the segment builder (a hand-picked list is saved, never built). */
+export type BuilderField = Exclude<SegmentField, "list">;
 
 export type SegmentCondition = {
   field: SegmentField;
@@ -31,7 +36,9 @@ export type SegmentRow = {
   created_at: string;
 };
 
-export const FIELD_LABELS: Record<SegmentField, string> = {
+// Only the builder's fields have a label, so Object.keys(FIELD_LABELS) (the
+// builder's field picker) never offers the hand-picked "list" rule.
+export const FIELD_LABELS: Record<BuilderField, string> & { list?: never } = {
   tag: "Tag",
   opt_in_status: "Opt-in status",
   name: "Name",
@@ -71,7 +78,17 @@ export const FIELD_OPERATORS: Record<SegmentField, { value: string; label: strin
     { value: "is_empty", label: "is empty" },
     { value: "is_not_empty", label: "is not empty" },
   ],
+  list: [{ value: "in", label: "is one of" }],
 };
+
+/** Batch 51: a segment that is exactly the customers ticked in Customers. */
+export function handPickedFilters(segmentId: string): SegmentFilters {
+  return { match: "all", conditions: [{ field: "list", operator: "in", value: segmentId }] };
+}
+
+export function isHandPicked(filters: SegmentFilters): boolean {
+  return filters.conditions.some((c) => c.field === "list");
+}
 
 export const NO_VALUE_OPERATORS = new Set(["is_empty", "is_not_empty"]);
 
@@ -79,7 +96,7 @@ export function emptyFilters(): SegmentFilters {
   return { match: "all", conditions: [] };
 }
 
-export function newCondition(field: SegmentField = "tag"): SegmentCondition {
+export function newCondition(field: BuilderField = "tag"): SegmentCondition {
   return { field, operator: FIELD_OPERATORS[field][0]!.value, value: "" };
 }
 
@@ -93,6 +110,8 @@ export function normalizeFilters(raw: unknown): SegmentFilters {
 /** Only conditions that can actually be evaluated. */
 export function usableConditions(filters: SegmentFilters): SegmentCondition[] {
   return filters.conditions.filter((c) => {
+    // A hand-picked list always counts: without its id it matches nobody, never everyone.
+    if (c.field === "list") return true;
     if (c.field === "attribute" && !c.key) return false;
     if (NO_VALUE_OPERATORS.has(c.operator)) return true;
     if (c.operator === "between") return Boolean(c.value && c.value2);
@@ -101,6 +120,7 @@ export function usableConditions(filters: SegmentFilters): SegmentCondition[] {
 }
 
 export function describeCondition(c: SegmentCondition, tagName?: string): string {
+  if (c.field === "list") return "Picked by hand";
   const op =
     FIELD_OPERATORS[c.field].find((o) => o.value === c.operator)?.label ?? c.operator;
   const subject = c.field === "attribute" ? (c.key ?? "attribute") : FIELD_LABELS[c.field];

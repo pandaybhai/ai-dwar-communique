@@ -269,6 +269,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "lead_source_marker_deleted",
       "contacts_opted_in",
       "contacts_import_consent",
+      "contact_note_added",
+      "contact_note_deleted",
     ],
     settings_path: "/app/settings",
     usage_meters: [{ key: "contacts_stored", name: "Contacts stored", unit: "contacts" }],
@@ -323,6 +325,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "contact_imports",
       "segments",
       "lead_source_markers",
+      "segment_members",
+      "contact_notes",
     ],
   },
   {
@@ -411,7 +415,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       metrics: [],
       dashboard_section: false,
     },
-    activity_actions: ["template_created", "template_synced"],
+    activity_actions: ["template_created", "template_synced", "template_deleted"],
     ai_tools: [
       {
         name: "list_approved_templates",

@@ -157,6 +157,30 @@ export const Route = createFileRoute("/api/whatsapp/templates")({
           return Response.json({ synced, total, synced_at: nowIso });
         }
 
+        // ---------------- delete (Batch 51) ----------------
+        if (action === "delete") {
+          const templateId = String(payload["template_id"] ?? "");
+          if (!templateId) return jsonError("Which template?");
+          const { deleteMessageTemplate } = await import("@/lib/template-delete.server");
+          const result = await deleteMessageTemplate(supabase, {
+            organizationId,
+            templateId,
+            graphFetch,
+          });
+          if (!result.ok) {
+            return Response.json(
+              { error: result.error, ...(result.usedBy ? { used_by: result.usedBy } : {}) },
+              { status: result.status },
+            );
+          }
+          await logServerActivity(supabase, organizationId, userId, "template_deleted", {
+            template_id: templateId,
+            template_name: result.name,
+            language: result.language,
+          });
+          return Response.json({ deleted: true });
+        }
+
         // ---------------- create ----------------
         if (action === "create") {
           // The builder sends the whole draft. Older callers send just a body

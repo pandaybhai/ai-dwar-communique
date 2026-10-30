@@ -7,7 +7,17 @@ import { CampaignsView } from "@/components/campaigns/campaigns-view";
 import { useNewDesign } from "@/lib/new-design";
 import { CampaignsOff, NewCampaigns } from "@/components/campaigns-v2/new-campaigns";
 
+type CampaignsSearch = { segment?: string };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const Route = createFileRoute("/app/campaigns/")({
+  // Batch 51: ?segment=<id> (Customers → Send campaign) opens the new design's
+  // wizard with that segment chosen. The classic page ignores it.
+  validateSearch: (search: Record<string, unknown>): CampaignsSearch =>
+    typeof search["segment"] === "string" && UUID_RE.test(search["segment"])
+      ? { segment: search["segment"] }
+      : {},
   head: () => ({
     meta: [
       { title: "Campaigns — AiDwar" },
@@ -36,10 +46,15 @@ function CampaignsRoute() {
 function NewCampaignsPage() {
   const { enabled, loading } = useFeatureFlag("campaigns");
   const { active, loading: orgLoading } = useOrg();
+  const { segment } = Route.useSearch();
   if (loading || orgLoading || !active) return <PageSkeleton />;
   if (!enabled) return <CampaignsOff />;
   return (
-    <NewCampaigns organizationId={active.organization.id} timezone={active.organization.timezone} />
+    <NewCampaigns
+      organizationId={active.organization.id}
+      timezone={active.organization.timezone}
+      initialSegmentId={segment}
+    />
   );
 }
 

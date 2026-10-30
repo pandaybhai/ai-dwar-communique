@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "@/components/marketing/reveal";
-import { ProductProof, type ProofAudience } from "@/components/marketing/product-proof";
+import type { ProofAudience } from "@/components/marketing/product-proof";
 import { DemoForm } from "@/components/marketing/demo-form";
 import { AUDIENCE_BENEFITS, CAPABILITIES, FAQS, STEPS } from "@/components/marketing/landing-copy";
 import { trackMarketing } from "@/lib/marketing-analytics";
@@ -12,6 +12,7 @@ import type { PublicPlan } from "@/lib/public-plans.functions";
 import { cn } from "@/lib/utils";
 import { AidenChatDemo, CampaignDemo, CampaignPhone, InboxDemo } from "./demos";
 import { NewSiteShell } from "./site-shell";
+import { ProductProofNew } from "./proof-v2";
 
 function scrollToId(id: string) {
   const el = document.getElementById(id);
@@ -169,10 +170,11 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
       </section>
 
       {/* The written walkthrough, per kind of business. */}
-      <section id="proof" className="scroll-mt-20 border-t border-border bg-surface">
+      <section id="proof" className="scroll-mt-20 border-t border-border bg-ground">
         <div className={cn(WRAP, "py-20 sm:py-24")}>
           <Reveal>
-            <ProductProof audience={audience} onAudienceChange={setAudience} />
+            {/* Batch 51: the same walkthrough (ProductProof's state and words) in the new look. */}
+            <ProductProofNew audience={audience} onAudienceChange={setAudience} />
           </Reveal>
         </div>
       </section>

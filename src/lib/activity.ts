@@ -17,6 +17,8 @@ export type ActivityAction =
   | "optin_changed"
   | "segment_created"
   | "segment_deleted"
+  | "contact_note_added"
+  | "contact_note_deleted"
   | "lead_source_marker_created"
   | "lead_source_marker_deleted"
   | "opt_out_keyword_created"

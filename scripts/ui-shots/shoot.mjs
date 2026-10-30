@@ -13,7 +13,7 @@
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { BACKEND, STORAGE_KEY, createBackend, session } from "./fake-backend.mjs";
+import { BACKEND, HAND_PICKED, STORAGE_KEY, createBackend, session } from "./fake-backend.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
@@ -310,7 +310,91 @@ async function importTo(page, step) {
   }
 }
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b48: SCENARIOS_B48, b50: SCENARIOS_B50 };
+/** Batch 51: the gaps closed (run with --design new; landing scenarios use ?site=new). */
+const SCENARIOS_B51 = {
+  "home-needs-you": { path: "/app", conversations: 40, aidenMode: "replying", wait: "text=Aiden is replying", settle: 4500 },
+  "home-approve": {
+    path: "/app",
+    conversations: 40,
+    aidenMode: "replying",
+    wait: "text=Aiden is replying",
+    settle: 1200,
+    act: async (page) => {
+      await page.waitForTimeout(3500);
+      await page.getByRole("button", { name: "Approve" }).first().click();
+      await page.waitForTimeout(500);
+      await page.keyboard.type("Yes Asha, ₹2,000 off on both sets today. I've noted it on your order.", { delay: 8 });
+    },
+  },
+  "inbox-decision": { path: `/app/inbox?c=${firstId}`, conversations: 40, wait: "text=Meenakari", settle: 1500 },
+  "inbox-decline": {
+    path: `/app/inbox?c=${firstId}`,
+    conversations: 40,
+    wait: "text=Meenakari",
+    act: async (page) => {
+      await page.waitForTimeout(1200);
+      await page.getByRole("button", { name: "Decline" }).filter({ visible: true }).first().click();
+      await page.waitForTimeout(500);
+      await page.keyboard.type("Sorry Asha, we can't take ₹2,000 off this week, but delivery by Friday is free.", { delay: 8 });
+    },
+  },
+  "template-menu": {
+    path: "/app/templates",
+    conversations: 40,
+    wait: "text=order_shipped",
+    settle: 600,
+    act: async (page) => {
+      await page.waitForTimeout(1200);
+      await page.getByRole("button", { name: "More for diwali_preview" }).first().click();
+      await page.waitForTimeout(400);
+    },
+  },
+  "template-delete": {
+    path: "/app/templates",
+    conversations: 40,
+    wait: "text=order_shipped",
+    act: async (page) => {
+      await page.waitForTimeout(1200);
+      await page.getByRole("button", { name: "More for diwali_preview" }).first().click();
+      await page.getByRole("menuitem", { name: "Delete template" }).click();
+      await page.waitForTimeout(500);
+    },
+  },
+  "template-delete-blocked": {
+    path: "/app/templates",
+    conversations: 40,
+    wait: "text=order_shipped",
+    act: async (page) => {
+      await page.waitForTimeout(1200);
+      await page.getByRole("button", { name: "More for order_shipped" }).first().click();
+      await page.getByRole("menuitem", { name: "Delete template" }).click();
+      await page.waitForTimeout(400);
+      await page.getByRole("button", { name: "Delete template" }).click();
+      await page.waitForTimeout(700);
+    },
+  },
+  "contacts-send-campaign": { ...SCENARIOS_B48["contacts-selected"] },
+  "campaign-hand-picked": { path: `/app/campaigns?segment=${HAND_PICKED}`, conversations: 40, wait: "text=Diwali preview", settle: 1800 },
+  "contact-notes": {
+    path: "/app/contacts",
+    conversations: 40,
+    customers: true,
+    wait: "text=Asha Iyer",
+    act: async (page) => {
+      await firstContactRow(page);
+      await page.waitForSelector('h3:text-is("Notes")', { timeout: 5000 }).catch(() => {});
+      await page.evaluate(() => {
+        const h = [...document.querySelectorAll("h3")].find((el) => el.textContent === "Notes");
+        h?.closest("section")?.scrollIntoView({ block: "start" });
+      });
+      await page.waitForTimeout(500);
+    },
+  },
+  "landing-proof": { path: "/?site=new#proof", conversations: 0, wait: "#proof", settle: 2500, crop: "#proof" },
+  "landing-proof-classic": { path: "/#proof", conversations: 0, wait: "#proof", settle: 2500, crop: "#proof" },
+};
+
+const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b48: SCENARIOS_B48, b50: SCENARIOS_B50, b51: SCENARIOS_B51 };
 
 const consoleErrors = [];
 

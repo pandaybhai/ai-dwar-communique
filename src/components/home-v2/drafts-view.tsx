@@ -45,6 +45,7 @@ export function DraftsView({
   data,
   organizationId,
   canReply,
+  canDecide = false,
   stats,
   headlineFor,
   onSent,
@@ -52,6 +53,8 @@ export function DraftsView({
   data: NewHomeData;
   organizationId: string;
   canReply: boolean;
+  /** Batch 51: Approve / Decline on the first "Needs you" item. */
+  canDecide?: boolean;
   stats: StatRow[];
   headlineFor: (n: number) => string;
   onSent: () => void;
@@ -98,7 +101,13 @@ export function DraftsView({
       side={
         <>
           {needs && needs.items.length > 0 ? (
-            <NeedsYou items={needs.items} total={needs.total} />
+            <NeedsYou
+              items={needs.items}
+              total={needs.total}
+              organizationId={organizationId}
+              canDecide={canDecide}
+              onDecided={onSent}
+            />
           ) : null}
           <TodayStats rows={stats} />
           {data.campaign ? <LatestCampaign campaign={data.campaign} /> : null}

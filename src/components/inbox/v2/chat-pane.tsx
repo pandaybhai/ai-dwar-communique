@@ -61,6 +61,13 @@ import {
 import { ToneAvatar } from "./chat-list";
 import { MessageItem } from "./message-item";
 import { takeoverPlan, windowChip, type AidenMode } from "./inbox-v2";
+import {
+  DecisionButtons,
+  DecisionForm,
+  canDecide,
+  useOpenGap,
+  type Decision,
+} from "./owner-decision";
 
 /** The time, once a minute, so the window chip counts down while a chat is open. */
 function useMinute(): number {
@@ -197,6 +204,14 @@ export function ChatPane({
   const { can } = usePermissions();
   const canUseAi = can("ai.use");
   const canTeach = can("ai.configure");
+  // Batch 51: Approve / Decline when Aiden filed this chat's question under Unanswered.
+  const mayDecide = canDecide(can);
+  const { gap } = useOpenGap(
+    mayDecide && conversation.needs_human ? organizationId : null,
+    conversation.id,
+  );
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const deciding = Boolean(mayDecide && conversation.needs_human && gap && organizationId);
   const aiRuns = useAiRuns(organizationId, conversation.id);
   const alertText = useHandoffAlertText(
     conversation.id,
@@ -216,6 +231,7 @@ export function ChatPane({
     setProposedTags(null);
     setSuggestion(null);
     setTeachOffer(null);
+    setDecision(null);
   }, [conversation.id]);
 
   const lastMessageId = messages[messages.length - 1]?.id ?? null;
@@ -236,6 +252,7 @@ export function ChatPane({
     summary,
     proposedTags,
     teachOffer,
+    decision,
   ]);
 
   // Messages already there when the chat loaded don't animate; new ones slide in.
@@ -360,6 +377,13 @@ export function ChatPane({
     setDraft(suggestion);
     setSuggestion(null);
     requestAnimationFrame(() => composerRef.current?.focus());
+  };
+
+  // "Reply myself": the message box (or, with the window closed, the template picker).
+  const replyMyself = () => {
+    setDecision(null);
+    if (open) requestAnimationFrame(() => composerRef.current?.focus());
+    else setPickerOpen(true);
   };
 
   const takeover = async () => {
@@ -545,6 +569,9 @@ export function ChatPane({
           <span className="hidden min-w-0 @2xl:inline-flex">
             <AidenRulesBadge conversationId={conversation.id} />
           </span>
+          {deciding ? (
+            <DecisionButtons size="sm" className="ml-auto" picked={decision} onPick={setDecision} />
+          ) : null}
         </div>
         {takeoverButton("w-full wide:hidden")}
       </header>
@@ -638,6 +665,14 @@ export function ChatPane({
                   </span>
                 ) : null}
                 {alertText ? <span className="block font-medium">{alertText}</span> : null}
+                {deciding ? (
+                  <span className="mt-1 flex flex-wrap justify-center gap-2">
+                    <DecisionButtons size="sm" picked={decision} onPick={setDecision} />
+                    <Button type="button" size="sm" variant="ghost" onClick={replyMyself}>
+                      Reply myself
+                    </Button>
+                  </span>
+                ) : null}
                 <button
                   type="button"
                   onClick={onResolveNeedsHuman}
@@ -740,6 +775,16 @@ export function ChatPane({
               Not now
             </Button>
           </div>
+        ) : null}
+        {deciding && decision && gap && organizationId ? (
+          <DecisionForm
+            organizationId={organizationId}
+            gap={gap}
+            decision={decision}
+            who={label}
+            onCancel={() => setDecision(null)}
+            onDone={() => setDecision(null)}
+          />
         ) : null}
         {suggestion ? (
           <div

@@ -1,4 +1,11 @@
+import { useState } from "react";
 import { AnimatedList, NeedsYouCard, TypingText } from "@/components/design-v2";
+import {
+  DecisionButtons,
+  DecisionForm,
+  useOpenGap,
+  type Decision,
+} from "@/components/inbox/v2/owner-decision";
 import { Button } from "@/components/ui/button";
 import { agoLabel } from "@/lib/new-home";
 import type { FeedItem, NeedsYouItem } from "@/lib/new-home-data";
@@ -20,10 +27,17 @@ export function ReplyingView({
   data,
   headline,
   stats,
+  organizationId,
+  canDecide = false,
+  onDecided,
 }: {
   data: NewHomeData;
   headline: string;
   stats: StatRow[];
+  /** Batch 51: with canDecide, Approve / Decline on the first item. */
+  organizationId?: string | null | undefined;
+  canDecide?: boolean;
+  onDecided?: (() => void) | undefined;
 }) {
   const needs = data.needsYou;
   const answered = data.summary?.today.ai_answers ?? null;
@@ -35,7 +49,13 @@ export function ReplyingView({
       side={
         <>
           {needs && needs.items.length > 0 ? (
-            <NeedsYou items={needs.items} total={needs.total} />
+            <NeedsYou
+              items={needs.items}
+              total={needs.total}
+              organizationId={organizationId}
+              canDecide={canDecide}
+              onDecided={onDecided}
+            />
           ) : null}
           <TodayStats rows={stats} />
           {data.campaign ? <LatestCampaign campaign={data.campaign} /> : null}
@@ -115,25 +135,55 @@ function AidenFeed({ items }: { items: FeedItem[] }) {
   );
 }
 
-/** What only you can answer: chats handed to a person and questions Aiden is holding for you. */
-export function NeedsYou({ items, total }: { items: NeedsYouItem[]; total: number }) {
+/**
+ * What only you can answer: chats handed to a person and questions Aiden is
+ * holding for you. Batch 51: when the first chat's question is filed under
+ * Unanswered and you may decide, Approve / Decline open a box for your own
+ * words (owner-decision.tsx, the Unanswered list's answer_gap), and "Reply
+ * myself" opens the chat; otherwise the Batch 45 buttons, unchanged.
+ */
+export function NeedsYou({
+  items,
+  total,
+  organizationId,
+  canDecide = false,
+  onDecided,
+}: {
+  items: NeedsYouItem[];
+  total: number;
+  organizationId?: string | null | undefined;
+  canDecide?: boolean;
+  onDecided?: (() => void) | undefined;
+}) {
   const first = items[0]!;
+  const { gap } = useOpenGap(canDecide ? organizationId : null, first.conversationId);
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const deciding = Boolean(canDecide && organizationId && gap && first.conversationId);
   return (
     <NeedsYouCard
       title="Needs you"
       actions={
-        <>
-          {first.conversationId ? (
-            <Button asChild variant="gold">
-              <a href={`/app/inbox?c=${first.conversationId}`}>Reply to {firstName(first.who)}</a>
-            </Button>
-          ) : null}
-          {total > 1 || !first.conversationId ? (
+        deciding ? (
+          <>
+            <DecisionButtons picked={decision} onPick={setDecision} />
             <Button asChild variant="outline">
-              <a href="/app/inbox">Open the inbox</a>
+              <a href={`/app/inbox?c=${first.conversationId}`}>Reply myself</a>
             </Button>
-          ) : null}
-        </>
+          </>
+        ) : (
+          <>
+            {first.conversationId ? (
+              <Button asChild variant="gold">
+                <a href={`/app/inbox?c=${first.conversationId}`}>Reply to {firstName(first.who)}</a>
+              </Button>
+            ) : null}
+            {total > 1 || !first.conversationId ? (
+              <Button asChild variant="outline">
+                <a href="/app/inbox">Open the inbox</a>
+              </Button>
+            ) : null}
+          </>
+        )
       }
     >
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -147,6 +197,20 @@ export function NeedsYou({ items, total }: { items: NeedsYouItem[]; total: numbe
         <p className="mt-2 text-sm text-gold-ink">
           {count.format(total - items.length)} more in the inbox.
         </p>
+      ) : null}
+      {deciding && decision && gap ? (
+        <DecisionForm
+          className="mt-3 bg-surface"
+          organizationId={organizationId!}
+          gap={gap}
+          decision={decision}
+          who={firstName(first.who)}
+          onCancel={() => setDecision(null)}
+          onDone={() => {
+            setDecision(null);
+            onDecided?.();
+          }}
+        />
       ) : null}
     </NeedsYouCard>
   );
