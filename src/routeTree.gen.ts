@@ -73,6 +73,7 @@ import { Route as DevelopersPlansRouteImport } from './routes/developers.plans'
 import { Route as DevelopersQuickstartRouteImport } from './routes/developers.quickstart'
 import { Route as DevelopersRateLimitsRouteImport } from './routes/developers.rate-limits'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as OauthConsentRouteImport } from './routes/oauth.consent'
 import { Route as PayPaymentIdRouteImport } from './routes/pay.$paymentId'
 import { Route as RTokenRouteImport } from './routes/r.$token'
 import { Route as DotwellKnownOauthProtectedResourceMcpRouteImport } from './routes/[.]well-known.oauth-protected-resource.mcp'
@@ -523,6 +524,11 @@ const DevelopersRateLimitsRoute = DevelopersRateLimitsRouteImport.update({
 const JoinTokenRoute = JoinTokenRouteImport.update({
   id: '/join/$token',
   path: '/join/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthConsentRoute = OauthConsentRouteImport.update({
+  id: '/oauth/consent',
+  path: '/oauth/consent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PayPaymentIdRoute = PayPaymentIdRouteImport.update({
@@ -1263,6 +1269,7 @@ export interface FileRoutesByFullPath {
   '/developers/quickstart': typeof DevelopersQuickstartRoute
   '/developers/rate-limits': typeof DevelopersRateLimitsRoute
   '/join/$token': typeof JoinTokenRoute
+  '/oauth/consent': typeof OauthConsentRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
@@ -1453,6 +1460,7 @@ export interface FileRoutesByTo {
   '/developers/quickstart': typeof DevelopersQuickstartRoute
   '/developers/rate-limits': typeof DevelopersRateLimitsRoute
   '/join/$token': typeof JoinTokenRoute
+  '/oauth/consent': typeof OauthConsentRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin': typeof AdminIndexRoute
@@ -1647,6 +1655,7 @@ export interface FileRoutesById {
   '/developers/quickstart': typeof DevelopersQuickstartRoute
   '/developers/rate-limits': typeof DevelopersRateLimitsRoute
   '/join/$token': typeof JoinTokenRoute
+  '/oauth/consent': typeof OauthConsentRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
   '/admin/': typeof AdminIndexRoute
@@ -1842,6 +1851,7 @@ export interface FileRouteTypes {
     | '/developers/quickstart'
     | '/developers/rate-limits'
     | '/join/$token'
+    | '/oauth/consent'
     | '/pay/$paymentId'
     | '/r/$token'
     | '/admin/'
@@ -2032,6 +2042,7 @@ export interface FileRouteTypes {
     | '/developers/quickstart'
     | '/developers/rate-limits'
     | '/join/$token'
+    | '/oauth/consent'
     | '/pay/$paymentId'
     | '/r/$token'
     | '/admin'
@@ -2225,6 +2236,7 @@ export interface FileRouteTypes {
     | '/developers/quickstart'
     | '/developers/rate-limits'
     | '/join/$token'
+    | '/oauth/consent'
     | '/pay/$paymentId'
     | '/r/$token'
     | '/admin/'
@@ -2384,6 +2396,7 @@ export interface RootRouteChildren {
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  OauthConsentRoute: typeof OauthConsentRoute
   PayPaymentIdRoute: typeof PayPaymentIdRoute
   RTokenRoute: typeof RTokenRoute
   ApiAdminAiRoute: typeof ApiAdminAiRoute
@@ -2944,6 +2957,13 @@ declare module '@tanstack/react-router' {
       path: '/join/$token'
       fullPath: '/join/$token'
       preLoaderRoute: typeof JoinTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/consent': {
+      id: '/oauth/consent'
+      path: '/oauth/consent'
+      fullPath: '/oauth/consent'
+      preLoaderRoute: typeof OauthConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pay/$paymentId': {
@@ -4061,6 +4081,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
   JoinTokenRoute: JoinTokenRoute,
+  OauthConsentRoute: OauthConsentRoute,
   PayPaymentIdRoute: PayPaymentIdRoute,
   RTokenRoute: RTokenRoute,
   ApiAdminAiRoute: ApiAdminAiRoute,
