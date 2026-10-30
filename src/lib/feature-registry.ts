@@ -1461,6 +1461,35 @@ export const FEATURES: readonly FeatureManifest[] = [
     ],
     data_tables: [],
   },
+  {
+    // Batch 53: the release switch for "Aiden Workspace" (the new design's
+    // name in the UI). Only the flag's GLOBAL default counts (Super Admin ->
+    // Flags), OFF until the release after Batch 55; a missing row is off. A
+    // plan change writes per-workspace rows for every flag, so they are never
+    // read for this. On: the rule in src/lib/aiden-workspace.ts (Super Admin
+    // new_design override > the person's choice > workspace unlocked by its
+    // first Aiden-on > Classic) and the avatar-menu switch. Rows are in
+    // 20261270_batch53_aiden_workspace.sql.
+    key: "aiden_workspace",
+    depends_on: [],
+    name: "Aiden Workspace release",
+    description:
+      "Release Aiden Workspace (the new design): workspaces whose Aiden was ever switched on open in it, and everyone can switch between Classic and Aiden Workspace from their avatar menu. Global default only.",
+    icon: "sparkles",
+    flag_key: "aiden_workspace",
+    flag_default_enabled: false,
+    permissions: [
+      {
+        key: "aiden_workspace.switch",
+        name: "Switch between Classic and Aiden Workspace",
+        description: "Choose Classic or Aiden Workspace for yourself, on every device.",
+        min_role: "agent",
+      },
+    ],
+    analytics: { event_types: ["design.switched"], metrics: [], dashboard_section: false },
+    activity_actions: [],
+    data_tables: ["user_design_preferences"],
+  },
 ] as const;
 
 export const ROLE_RANK: Record<OrgRole, number> = { owner: 4, admin: 3, marketer: 2, agent: 1 };

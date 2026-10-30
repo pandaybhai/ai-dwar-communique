@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
+import { DesignCountsCard } from "@/components/admin/design-counts";
 
 export const Route = createFileRoute("/admin/flags")({
   head: () => ({
@@ -175,6 +176,8 @@ function AdminFlags() {
           <ErrorState message={error} />
         </div>
       ) : null}
+
+      <DesignCountsCard releaseOn={flags ? flags.some((f) => f.key === "aiden_workspace" && f.default_enabled) : null} />
 
       <form
         onSubmit={createFlag}

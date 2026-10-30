@@ -43,6 +43,7 @@ import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizat
 import { Route as AdminSendingRouteImport } from './routes/admin/sending'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as ApiCardsRouteImport } from './routes/api/cards'
+import { Route as ApiDesignRouteImport } from './routes/api/design'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
 import { Route as ApiFormsRouteImport } from './routes/api/forms'
 import { Route as ApiPermissionsRouteImport } from './routes/api/permissions'
@@ -80,6 +81,7 @@ import { Route as DotwellKnownOauthProtectedResourceMcpRouteImport } from './rou
 import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAdminCustomersRouteImport } from './routes/api/admin/customers'
+import { Route as ApiAdminDesignRouteImport } from './routes/api/admin/design'
 import { Route as ApiAdminLeadsRouteImport } from './routes/api/admin/leads'
 import { Route as ApiAdminOnboardingRouteImport } from './routes/api/admin/onboarding'
 import { Route as ApiAdminSendingRouteImport } from './routes/api/admin/sending'
@@ -373,6 +375,11 @@ const ApiCardsRoute = ApiCardsRouteImport.update({
   path: '/api/cards',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDesignRoute = ApiDesignRouteImport.update({
+  id: '/api/design',
+  path: '/api/design',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiEventsRoute = ApiEventsRouteImport.update({
   id: '/api/events',
   path: '/api/events',
@@ -560,6 +567,11 @@ const ApiAdminBillingRoute = ApiAdminBillingRouteImport.update({
 const ApiAdminCustomersRoute = ApiAdminCustomersRouteImport.update({
   id: '/api/admin/customers',
   path: '/api/admin/customers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminDesignRoute = ApiAdminDesignRouteImport.update({
+  id: '/api/admin/design',
+  path: '/api/admin/design',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminLeadsRoute = ApiAdminLeadsRouteImport.update({
@@ -1241,6 +1253,7 @@ export interface FileRoutesByFullPath {
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
+  '/api/design': typeof ApiDesignRoute
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
@@ -1279,6 +1292,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
+  '/api/admin/design': typeof ApiAdminDesignRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
   '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
@@ -1432,6 +1446,7 @@ export interface FileRoutesByTo {
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
+  '/api/design': typeof ApiDesignRoute
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
@@ -1470,6 +1485,7 @@ export interface FileRoutesByTo {
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
+  '/api/admin/design': typeof ApiAdminDesignRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
   '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
@@ -1627,6 +1643,7 @@ export interface FileRoutesById {
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/cards': typeof ApiCardsRoute
+  '/api/design': typeof ApiDesignRoute
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
@@ -1665,6 +1682,7 @@ export interface FileRoutesById {
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
+  '/api/admin/design': typeof ApiAdminDesignRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
   '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
@@ -1823,6 +1841,7 @@ export interface FileRouteTypes {
     | '/admin/sending'
     | '/admin/users'
     | '/api/cards'
+    | '/api/design'
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
@@ -1861,6 +1880,7 @@ export interface FileRouteTypes {
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
+    | '/api/admin/design'
     | '/api/admin/leads'
     | '/api/admin/onboarding'
     | '/api/admin/sending'
@@ -2014,6 +2034,7 @@ export interface FileRouteTypes {
     | '/admin/sending'
     | '/admin/users'
     | '/api/cards'
+    | '/api/design'
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
@@ -2052,6 +2073,7 @@ export interface FileRouteTypes {
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
+    | '/api/admin/design'
     | '/api/admin/leads'
     | '/api/admin/onboarding'
     | '/api/admin/sending'
@@ -2208,6 +2230,7 @@ export interface FileRouteTypes {
     | '/admin/sending'
     | '/admin/users'
     | '/api/cards'
+    | '/api/design'
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
@@ -2246,6 +2269,7 @@ export interface FileRouteTypes {
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
+    | '/api/admin/design'
     | '/api/admin/leads'
     | '/api/admin/onboarding'
     | '/api/admin/sending'
@@ -2392,6 +2416,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   ApiCardsRoute: typeof ApiCardsRoute
+  ApiDesignRoute: typeof ApiDesignRoute
   ApiEventsRoute: typeof ApiEventsRoute
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
@@ -2402,6 +2427,7 @@ export interface RootRouteChildren {
   ApiAdminAiRoute: typeof ApiAdminAiRoute
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
+  ApiAdminDesignRoute: typeof ApiAdminDesignRoute
   ApiAdminLeadsRoute: typeof ApiAdminLeadsRoute
   ApiAdminOnboardingRoute: typeof ApiAdminOnboardingRoute
   ApiAdminSendingRoute: typeof ApiAdminSendingRoute
@@ -2749,6 +2775,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCardsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/design': {
+      id: '/api/design'
+      path: '/api/design'
+      fullPath: '/api/design'
+      preLoaderRoute: typeof ApiDesignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/events': {
       id: '/api/events'
       path: '/api/events'
@@ -3006,6 +3039,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/customers'
       fullPath: '/api/admin/customers'
       preLoaderRoute: typeof ApiAdminCustomersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/design': {
+      id: '/api/admin/design'
+      path: '/api/admin/design'
+      fullPath: '/api/admin/design'
+      preLoaderRoute: typeof ApiAdminDesignRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/leads': {
@@ -4077,6 +4117,7 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownOauthProtectedResourceRoute:
     DotwellKnownOauthProtectedResourceRouteWithChildren,
   ApiCardsRoute: ApiCardsRoute,
+  ApiDesignRoute: ApiDesignRoute,
   ApiEventsRoute: ApiEventsRoute,
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
@@ -4087,6 +4128,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminAiRoute: ApiAdminAiRoute,
   ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAdminCustomersRoute: ApiAdminCustomersRoute,
+  ApiAdminDesignRoute: ApiAdminDesignRoute,
   ApiAdminLeadsRoute: ApiAdminLeadsRoute,
   ApiAdminOnboardingRoute: ApiAdminOnboardingRoute,
   ApiAdminSendingRoute: ApiAdminSendingRoute,

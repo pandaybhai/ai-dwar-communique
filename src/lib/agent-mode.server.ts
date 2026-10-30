@@ -76,5 +76,8 @@ export async function setAgentMode(
   await syncAiSwitch(supabase, org, mode);
   const { logServerActivity } = await import("@/lib/whatsapp-api.server");
   await logServerActivity(supabase, org, args.userId, "ai_mode_changed", { mode });
+  // Batch 53: the first Aiden-on unlocks Aiden Workspace (a stamp only; never throws).
+  const { stampAidenWorkspaceUnlock } = await import("@/lib/aiden-workspace.server");
+  await stampAidenWorkspaceUnlock(supabase, org, mode);
   return { ok: true, mode };
 }
