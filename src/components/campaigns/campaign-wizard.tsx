@@ -566,7 +566,8 @@ export function CampaignWizard({
       toast.error(error ?? "We couldn't launch this campaign.");
       return;
     }
-    toast.success(sendNow ? "Campaign launched — sending now." : "Campaign scheduled.");
+    // Batch 57: in Aiden Workspace the footer says it in place (role="status"), so no toast over it.
+    if (!nd) toast.success(sendNow ? "Campaign launched — sending now." : "Campaign scheduled.");
     if (nd) {
       // Batch 57: the ring completes, one burst of confetti for a send, then
       // the same close and onLaunched as before.
