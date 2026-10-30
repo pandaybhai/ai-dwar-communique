@@ -10,13 +10,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *   MCP never broadens access) holding mcp.use. A database that doesn't know
  *   mcp.use yet allows it, so the code works before 20261260.
  * - Rate limits on Batch 34's api_rate_take: 60 tool calls a minute per
- *   person, 5 campaign sends an hour per workspace. A limiter that can't
- *   answer refuses (never an unlimited path).
+ *   person, 5 campaign sends an hour per workspace; Batch 54 adds 10
+ *   template submissions a day and 20 tag operations an hour per workspace.
+ *   A limiter that can't answer refuses (never an unlimited path).
  */
 
 export const MCP_FLAG = "mcp_access";
 export const CALLS_PER_MINUTE = 60;
 export const SENDS_PER_HOUR = 5;
+/** Batch 54: per-workspace write limits on the same table. */
+export const TEMPLATE_SUBMITS_PER_DAY = 10;
+export const TAG_OPERATIONS_PER_HOUR = 20;
 
 export type Workspace = { id: string; name: string; role: string };
 
@@ -100,4 +104,12 @@ export function takeCallRate(db: SupabaseClient, userId: string): Promise<RateAn
 
 export function takeSendRate(db: SupabaseClient, organizationId: string): Promise<RateAnswer> {
   return take(db, `mcp:send:${organizationId}`, SENDS_PER_HOUR, 3600);
+}
+
+export function takeTemplateRate(db: SupabaseClient, organizationId: string): Promise<RateAnswer> {
+  return take(db, `mcp:template:${organizationId}`, TEMPLATE_SUBMITS_PER_DAY, 86400);
+}
+
+export function takeTagRate(db: SupabaseClient, organizationId: string): Promise<RateAnswer> {
+  return take(db, `mcp:tag:${organizationId}`, TAG_OPERATIONS_PER_HOUR, 3600);
 }

@@ -50,9 +50,10 @@ async function renderPage(data: AssistantsOverview) {
 describe("the prompt library: one source, only prompts today's tools can do", () => {
   it("every prompt names real MCP tools, and the seeds that need a future tool are left out", async () => {
     const { PROMPT_GROUPS, LIBRARY_PROMPTS, STARTER_PROMPTS } = await import("./mcp-prompts");
-    const { MCP_TOOLS } = await import("./mcp-tools.server");
-    const names = new Set(MCP_TOOLS.map((t) => t.name));
-    expect(names.size).toBe(16);
+    // Batch 54: the server's tools are Batch 52's 16 plus round 2's 10.
+    const { ALL_MCP_TOOLS } = await import("./mcp-server.server");
+    const names = new Set(ALL_MCP_TOOLS.map((t) => t.name));
+    expect(names.size).toBe(26);
     expect(PROMPT_GROUPS.map((g) => g.title)).toEqual(["Grow sales", "Know your numbers", "Automate", "Daily check"]);
     for (const p of LIBRARY_PROMPTS) {
       expect(p.tools.length).toBeGreaterThan(0);

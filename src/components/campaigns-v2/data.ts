@@ -1,4 +1,5 @@
 import { aidwar } from "@/integrations/aidwar/client";
+import { readCampaignSales, type CampaignSales } from "@/lib/campaign-sales";
 import { callApi } from "@/lib/whatsapp-client";
 import {
   CAMPAIGN_STATUS_LABELS,
@@ -117,45 +118,19 @@ export async function loadOfferNumbers(campaign: CampaignRow): Promise<OfferNumb
   };
 }
 
-export type CampaignSales = { orders: number; revenue: number; currency: string };
-
-const SALES_ROW_CAP = 1000;
+export type { CampaignSales } from "@/lib/campaign-sales";
 
 /**
- * Sales linked to a campaign: the orders revenue attribution (last touch,
- * revenue_attributions) put on it, the same rows Receipts and Analytics
- * count. Summed here from one read; a campaign with more rows than PostgREST
- * returns at once, or with orders in more than one currency, shows nothing
- * rather than a short or mixed total. Null means there is nothing true to show.
+ * Sales linked to a campaign (readCampaignSales, shared with AiDwar MCP's
+ * get_campaign_sales): null means there is nothing true to show — no rows,
+ * more rows than one read returns, or orders in more than one currency.
  */
 export async function loadCampaignSales(
   organizationId: string,
   campaignId: string,
 ): Promise<CampaignSales | null> {
-  const {
-    data,
-    count: total,
-    error,
-  } = await aidwar
-    .from("revenue_attributions")
-    .select("order_total, currency", { count: "exact" })
-    .eq("organization_id", organizationId)
-    .eq("source_type", "campaign")
-    .eq("source_id", campaignId)
-    .range(0, SALES_ROW_CAP - 1);
-  if (error) return null;
-  const rows = (data ?? []) as Array<{
-    order_total: number | string | null;
-    currency: string | null;
-  }>;
-  if (rows.length === 0 || (total ?? rows.length) > rows.length) return null;
-  const currencies = new Set(rows.map((r) => r.currency || "INR"));
-  if (currencies.size > 1) return null;
-  return {
-    orders: rows.length,
-    revenue: rows.reduce((s, r) => s + Number(r.order_total ?? 0), 0),
-    currency: [...currencies][0] ?? "INR",
-  };
+  const read = await readCampaignSales(aidwar, organizationId, campaignId);
+  return read.kind === "sales" ? read.sales : null;
 }
 
 /** The approved-or-not template a campaign sends, from the workspace's library. */

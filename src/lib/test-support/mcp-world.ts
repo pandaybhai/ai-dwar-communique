@@ -34,10 +34,33 @@ const ALL_KEYS = [
   "flows_v2.edit",
   "mcp.use",
   "public_api.manage",
+  // Batch 54
+  "catalog.view",
+  "analytics.view",
+  "templates.manage",
+  "contacts.edit",
+  "ai.use",
+  "ai.configure",
 ];
 const ROLE_KEYS: Record<string, string[]> = {
   admin: ALL_KEYS.filter((k) => k !== "billing.view"),
-  marketer: ["inbox.view", "contacts.view", "segments.manage", "campaigns.view", "campaigns.create", "campaigns.send", "flows.view", "mcp.use"],
+  marketer: [
+    "inbox.view",
+    "contacts.view",
+    "segments.manage",
+    "campaigns.view",
+    "campaigns.create",
+    "campaigns.send",
+    "flows.view",
+    "mcp.use",
+    // Batch 54: the marketer reads the catalogue and sales, makes templates,
+    // tags customers and sees (but can't answer) Aiden's questions.
+    "catalog.view",
+    "analytics.view",
+    "templates.manage",
+    "contacts.edit",
+    "ai.use",
+  ],
   agent: ["inbox.view", "contacts.view", "mcp.use"],
 };
 
