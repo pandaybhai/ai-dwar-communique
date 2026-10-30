@@ -23,6 +23,8 @@ import { collapseLeadingSlashes } from "./double-slash";
 const h = vi.hoisted(() => ({ world: null as null | McpWorld }));
 vi.mock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => h.world!.db.supabase }));
 
+/** A confirm-code action (a const, so the registry check never reads it as an activity action). */
+const SEND_ACTION = "send_campaign" as const;
 const w = () => h.world!;
 const rows = (t: string) => w().rows(t);
 
@@ -357,7 +359,7 @@ describe("campaign: draft, then confirm", () => {
 
   it("only drafts made through MCP can be sent from here", async () => {
     rows("campaigns").push({ id: "camp-app-draft", organization_id: ORG, name: "App draft", status: "draft", send_settings: {} });
-    const code = await issueConfirmCode({ userId: "u-marketer", workspaceId: ORG, objectId: "camp-app-draft", action: "send_campaign", stateHash: "0".repeat(64) }, Date.now(), SECRET);
+    const code = await issueConfirmCode({ userId: "u-marketer", workspaceId: ORG, objectId: "camp-app-draft", action: SEND_ACTION, stateHash: "0".repeat(64) }, Date.now(), SECRET);
     expect((await tool("u-marketer", "send_campaign", { campaign_id: "camp-app-draft", confirm_code: code.code })).text).toContain("Only drafts made by create_campaign_draft");
   });
 });
@@ -551,7 +553,7 @@ describe("audit", () => {
 });
 
 describe("confirm codes", () => {
-  const binding = { userId: "u1", workspaceId: "w1", objectId: "o1", action: "send_campaign" as const, stateHash: "a".repeat(64) };
+  const binding = { userId: "u1", workspaceId: "w1", objectId: "o1", action: SEND_ACTION, stateHash: "a".repeat(64) };
   it("bind every field and expire after 15 minutes", async () => {
     const now = Date.now();
     const { code } = await issueConfirmCode(binding, now, SECRET);

@@ -220,11 +220,14 @@ export async function handleMcpRequest(request: Request, deps: McpDeps): Promise
   }
 
   const clientName = deps.clientName ? await deps.clientName(check.caller.clientId).catch(() => null) : null;
+  const { APP_PUBLIC_URL } = await import("@/lib/app-url");
   const env = {
     caller: { ...check.caller, clientName },
     deps,
     user: deps.userClient(token!),
-    origin,
+    // Links in answers go to the live site (as every outbound link does);
+    // the resource metadata above keeps the address the client used.
+    origin: APP_PUBLIC_URL,
   };
   const server = buildMcpServer(env);
   // No sessionIdGenerator = stateless (no Mcp-Session-Id).
