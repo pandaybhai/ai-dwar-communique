@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { ConnectAssistantCard } from "@/components/ai-assistants/connect-card";
 import { AidenSetupCard } from "@/components/aiden-setup-card";
 import { JourneyResume } from "@/components/onboarding/journey-resume";
 import { PersonaReviewBanner } from "@/components/persona-review-banner";
@@ -93,6 +94,7 @@ export function NewHome() {
       <SendHealthBanner organizationId={organizationId} showLink />
       <AidenSetupCard organizationId={organizationId} showFinished />
       <PersonaReviewBanner organizationId={organizationId} />
+      <ConnectAssistantCard className="" />
 
       {mode && canSeeAiden ? (
         <ModeSwitch

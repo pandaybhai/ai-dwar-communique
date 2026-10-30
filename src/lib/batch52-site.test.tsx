@@ -29,10 +29,11 @@ describe("/developers#mcp", () => {
     const text = html.replace(/<[^>]+>/g, "");
     expect(text).toContain("codex mcp add aidwar --url https://aidwar.in/mcp");
     expect(text).toContain("&quot;url&quot;: &quot;https://aidwar.in/mcp&quot;");
-    expect(EXAMPLE_PROMPTS).toHaveLength(5);
+    // Batch 53: the prompts are the shared library (src/lib/mcp-prompts.ts).
+    expect(EXAMPLE_PROMPTS.length).toBeGreaterThanOrEqual(5);
     expect(EXAMPLE_PROMPTS).toContain("Draft a Diwali campaign to customers tagged VIP");
     expect(EXAMPLE_PROMPTS).toContain("How did my last campaign do?");
-    expect(EXAMPLE_PROMPTS).toContain("Build a welcome flow for new customers");
+    expect(EXAMPLE_PROMPTS).toContain("Build a welcome flow that asks new customers their size and city");
     for (const p of EXAMPLE_PROMPTS) expect(html).toContain(p.replace(/,/g, ","));
     expect(html).not.toContain("<img");
     expect(src("components/developers/overview-page.tsx")).toContain("<McpSection />");

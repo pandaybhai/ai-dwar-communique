@@ -25,6 +25,7 @@ import { usePendingGapCount } from "@/hooks/use-pending-gaps";
 import { isPlainKey, isTypingTarget, MOD_KEY } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "./command-palette";
+import { AidenWorkspaceIntro, DesignSwitchItem } from "./design-switch";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { isActivePath, useNavItems } from "./use-nav";
 import {
@@ -223,6 +224,7 @@ function AccountMenu({ model }: { model: ShellModel }) {
             <Link to="/admin/organizations">Super Admin</Link>
           </DropdownMenuItem>
         ) : null}
+        <DesignSwitchItem current="aiden_workspace" icon={false} className="rounded-lg px-2.5 py-2 text-[0.9375rem]" />
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={signOut}
@@ -385,6 +387,7 @@ function MoreSheet({
   const rest = model.sections.filter((s) => !BOTTOM.includes(s.key));
   const close = () => onOpenChange(false);
   const links: ShellLink[] = [
+    ...(model.assistants ? [model.assistants] : []),
     ...(model.analytics ? [model.analytics] : []),
     ...model.account,
     ...model.overflow,
@@ -543,6 +546,7 @@ export function NewAppShell({ children }: { children: ReactNode }) {
             }
           />
           <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+          <AidenWorkspaceIntro />
         </div>
       </ShellSectionContext.Provider>
     </TooltipProvider>

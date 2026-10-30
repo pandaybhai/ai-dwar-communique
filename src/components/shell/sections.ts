@@ -49,6 +49,8 @@ export type ShellModel = {
   analytics: ShellLink | null;
   /** Registry pages the map doesn't place yet. */
   overflow: ShellLink[];
+  /** Batch 53: AI assistants (an Automate sub-tab) also gets its own row in the phone's More sheet. */
+  assistants?: ShellLink | null;
 };
 
 export type ShellExtras = {
@@ -108,6 +110,7 @@ const SECTION_DEFS: Array<{
       { to: "/app/employee", label: "Aiden" },
       { to: "/app/flows", label: "Flows" },
       { to: "/app/automations", label: "Automations" },
+      { to: "/app/ai-assistants", label: "AI assistants" },
     ],
   },
   {
@@ -202,7 +205,11 @@ export function buildShellModel(
     .filter((i) => !placed.has(i.to))
     .map((i) => ({ key: i.to, to: i.to, label: i.label }));
 
-  return { sections, account, analytics, overflow };
+  const assistants: ShellLink | null = visible.has("/app/ai-assistants")
+    ? { key: "/app/ai-assistants", to: "/app/ai-assistants", label: "AI assistants" }
+    : null;
+
+  return { sections, account, analytics, overflow, assistants };
 }
 
 /** Every address the new shell offers (menu, sub-tab, avatar menu, More sheet). */

@@ -1359,6 +1359,9 @@ async function switchAgentOn(
     // One switch: ai_enabled follows (it used to stay off, so Aiden stayed silent).
     const { syncAiSwitch } = await import("@/lib/ai-agent.server");
     await syncAiSwitch(supabase, organizationId, "replying");
+    // Batch 53: the first Aiden-on unlocks Aiden Workspace (a stamp only; never throws).
+    const { stampAidenWorkspaceUnlock } = await import("@/lib/aiden-workspace.server");
+    await stampAidenWorkspaceUnlock(supabase, organizationId, "replying");
     return { ok: true, guard: null };
   }
   const guard = error.message.includes("AI_GUARD:")

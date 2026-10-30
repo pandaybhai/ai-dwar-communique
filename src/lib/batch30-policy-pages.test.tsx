@@ -220,6 +220,7 @@ describe("the footer", () => {
   it("lists the seven policy and pricing pages in order", () => {
     expect(FOOTER_LINKS.map((l) => l.to)).toEqual([
       "/pricing",
+      "/ai-assistants", // Batch 53
       "/contact",
       "/terms",
       "/refunds",

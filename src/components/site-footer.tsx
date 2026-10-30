@@ -4,6 +4,7 @@ import { COMPANY } from "@/lib/company";
 /** Every public page's footer links, in this order. */
 export const FOOTER_LINKS = [
   { to: "/pricing", label: "Pricing" },
+  { to: "/ai-assistants", label: "AI assistants" },
   { to: "/contact", label: "Contact Us" },
   { to: "/terms", label: "Terms of Service" },
   { to: "/refunds", label: "Refunds & Cancellations" },

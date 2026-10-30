@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils";
 import { isPlainKey, isTypingTarget, MOD_KEY } from "@/lib/keyboard";
 import { useThemeChoice, type ThemeChoice } from "@/lib/theme";
 import { CommandPalette } from "@/components/shell/command-palette";
+import { DesignSwitchItem } from "@/components/shell/design-switch";
 import { ShortcutsDialog } from "@/components/shell/shortcuts-dialog";
 import { groupNav, HOME_ITEM, isActivePath, useNavItems, type NavGroup, type NavItem } from "@/components/shell/use-nav";
 
@@ -397,6 +398,7 @@ function UserMenu({ onShortcuts }: { onShortcuts: () => void }) {
             </DropdownMenuRadioGroup>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        <DesignSwitchItem current="classic" />
         <DropdownMenuItem onSelect={onShortcuts}>
           <Keyboard className="h-4 w-4" /> Keyboard shortcuts
           <Kbd className="ml-auto">?</Kbd>
