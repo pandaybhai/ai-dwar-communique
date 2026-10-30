@@ -149,7 +149,7 @@ export function AiAssistantsView({
   }, [data.timeline, data.apps]);
 
   return (
-    <div className="flex flex-col gap-6 pb-10">
+    <div className="flex flex-col gap-8 pb-10">
       {!data.mcpOn ? (
         <div role="status" className="flex gap-3 rounded-2xl border border-warning-border bg-warning-soft px-5 py-4 text-warning-soft-foreground">
           <Lock className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
@@ -241,7 +241,7 @@ export function AiAssistantsView({
         <SafetyList />
         <UsageMeters usage={data.usage} />
         {data.canManage ? (
-          <div className="flex flex-col gap-3 rounded-xl border border-border bg-background px-4 py-4 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
               <Label htmlFor="mcp-access" className="text-base font-semibold text-foreground">
                 AI assistants in this workspace

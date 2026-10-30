@@ -74,7 +74,9 @@ export function SectionCard({
     <section
       aria-labelledby={`${id}-title`}
       id={id}
-      className={cn("scroll-mt-24 space-y-4 rounded-2xl border border-border bg-card p-5 sm:p-6", className)}
+      // Hallmark floor: no card inside a card — a section is a divider and a
+      // heading; its rows are the cards.
+      className={cn("scroll-mt-24 space-y-4 border-t border-border pt-6 first:border-t-0 first:pt-0", className)}
     >
       <div className="space-y-1">
         <h2 id={`${id}-title`} className="text-lg font-semibold text-foreground">
@@ -89,7 +91,7 @@ export function SectionCard({
 
 export function ServerUrl() {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-background px-4 py-3">
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
       <span className="text-sm font-medium text-muted-foreground">Server URL</span>
       <code className="min-w-0 flex-1 font-mono text-[0.9375rem] font-semibold text-foreground [overflow-wrap:anywhere]">
         {MCP_URL}
@@ -172,7 +174,7 @@ export function PromptLibrary({ headingLevel = 3 }: { headingLevel?: 3 | 2 }) {
             {g.prompts.map((p) => (
               <li
                 key={p.text}
-                className="flex items-start gap-3 rounded-xl border border-border bg-background px-4 py-3"
+                className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3"
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-[0.9375rem] font-medium text-foreground">“{p.text}”</p>
@@ -253,7 +255,7 @@ export function TeamApps({ apps }: { apps: AssistantApp[] }) {
         {others.map((a) => (
           <li
             key={`${a.userId}-${a.clientId}`}
-            className="flex flex-col gap-1 rounded-xl border border-border bg-background px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
+            className="flex flex-col gap-1 rounded-xl border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
           >
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-foreground [overflow-wrap:anywhere]">
@@ -285,7 +287,7 @@ export function Timeline({
 }) {
   if (!events.length) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-background px-5 py-6">
+      <div className="rounded-xl border border-dashed border-border bg-card px-5 py-6">
         <p className="font-semibold text-foreground">Nothing yet.</p>
         <p className="mt-1 text-body text-muted-foreground">
           When your assistant creates a segment, drafts a campaign or a flow, or sends or switches one on after you
@@ -298,7 +300,7 @@ export function Timeline({
   return (
     <ol className="m-0 grid list-none gap-2 p-0">
       {events.map((e) => (
-        <li key={e.id} className="flex flex-col gap-1 rounded-xl border border-border bg-background px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
+        <li key={e.id} className="flex flex-col gap-1 rounded-xl border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-foreground [overflow-wrap:anywhere]">
               <span className="font-semibold">{e.app}</span> {ACTION_WORDS[e.action] ?? "made a change"}

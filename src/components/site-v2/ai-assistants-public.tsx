@@ -100,7 +100,7 @@ export function AiAssistantsPublic() {
               </li>
             ))}
           </ol>
-          <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+          <div>
             <h3 className="m-0 mb-4 text-lg font-semibold">The exact steps for your app</h3>
             <ConnectSteps />
           </div>

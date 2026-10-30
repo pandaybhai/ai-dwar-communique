@@ -224,7 +224,7 @@ function AccountMenu({ model }: { model: ShellModel }) {
             <Link to="/admin/organizations">Super Admin</Link>
           </DropdownMenuItem>
         ) : null}
-        <DesignSwitchItem current="aiden_workspace" className="rounded-lg px-2.5 py-2 text-[0.9375rem]" />
+        <DesignSwitchItem current="aiden_workspace" icon={false} className="rounded-lg px-2.5 py-2 text-[0.9375rem]" />
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={signOut}

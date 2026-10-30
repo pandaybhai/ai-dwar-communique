@@ -41,12 +41,21 @@ export function useDesignSwitch(current: DesignName) {
   return { visible: answer.switchVisible && typeof org.chooseDesign === "function", label, run };
 }
 
-export function DesignSwitchItem({ current, className }: { current: DesignName; className?: string }) {
+export function DesignSwitchItem({
+  current,
+  className,
+  icon = true,
+}: {
+  current: DesignName;
+  className?: string;
+  /** Aiden Workspace's account menu has no icons. */
+  icon?: boolean;
+}) {
   const sw = useDesignSwitch(current);
   if (!sw.visible) return null;
   return (
     <DropdownMenuItem onSelect={() => void sw.run()} className={className}>
-      <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />
+      {icon ? <ArrowLeftRight className="h-4 w-4" aria-hidden="true" /> : null}
       {sw.label}
     </DropdownMenuItem>
   );
