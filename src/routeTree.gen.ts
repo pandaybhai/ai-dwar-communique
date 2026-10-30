@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
+import { Route as AiAssistantsRouteImport } from './routes/ai-assistants'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as CancellationPolicyRouteImport } from './routes/cancellation-policy'
 import { Route as ContactRouteImport } from './routes/contact'
@@ -42,11 +43,14 @@ import { Route as AdminOnboardingRouteImport } from './routes/admin/onboarding'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminSendingRouteImport } from './routes/admin/sending'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as ApiAiAssistantsRouteImport } from './routes/api/ai-assistants'
 import { Route as ApiCardsRouteImport } from './routes/api/cards'
+import { Route as ApiDesignRouteImport } from './routes/api/design'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
 import { Route as ApiFormsRouteImport } from './routes/api/forms'
 import { Route as ApiPermissionsRouteImport } from './routes/api/permissions'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppAiAssistantsRouteImport } from './routes/app/ai-assistants'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAutomationsRouteImport } from './routes/app/automations'
 import { Route as AppBillingRouteImport } from './routes/app/billing'
@@ -80,6 +84,7 @@ import { Route as DotwellKnownOauthProtectedResourceMcpRouteImport } from './rou
 import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAdminCustomersRouteImport } from './routes/api/admin/customers'
+import { Route as ApiAdminDesignRouteImport } from './routes/api/admin/design'
 import { Route as ApiAdminLeadsRouteImport } from './routes/api/admin/leads'
 import { Route as ApiAdminOnboardingRouteImport } from './routes/api/admin/onboarding'
 import { Route as ApiAdminSendingRouteImport } from './routes/api/admin/sending'
@@ -210,6 +215,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRouteRoute = AdminRouteRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AiAssistantsRoute = AiAssistantsRouteImport.update({
+  id: '/ai-assistants',
+  path: '/ai-assistants',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRouteRoute = AppRouteRouteImport.update({
@@ -368,9 +378,19 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const ApiAiAssistantsRoute = ApiAiAssistantsRouteImport.update({
+  id: '/api/ai-assistants',
+  path: '/api/ai-assistants',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCardsRoute = ApiCardsRouteImport.update({
   id: '/api/cards',
   path: '/api/cards',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDesignRoute = ApiDesignRouteImport.update({
+  id: '/api/design',
+  path: '/api/design',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiEventsRoute = ApiEventsRouteImport.update({
@@ -391,6 +411,11 @@ const ApiPermissionsRoute = ApiPermissionsRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAiAssistantsRoute = AppAiAssistantsRouteImport.update({
+  id: '/ai-assistants',
+  path: '/ai-assistants',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
@@ -560,6 +585,11 @@ const ApiAdminBillingRoute = ApiAdminBillingRouteImport.update({
 const ApiAdminCustomersRoute = ApiAdminCustomersRouteImport.update({
   id: '/api/admin/customers',
   path: '/api/admin/customers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminDesignRoute = ApiAdminDesignRouteImport.update({
+  id: '/api/admin/design',
+  path: '/api/admin/design',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminLeadsRoute = ApiAdminLeadsRouteImport.update({
@@ -1211,6 +1241,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
@@ -1240,10 +1271,13 @@ export interface FileRoutesByFullPath {
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/ai-assistants': typeof ApiAiAssistantsRoute
   '/api/cards': typeof ApiCardsRoute
+  '/api/design': typeof ApiDesignRoute
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
+  '/app/ai-assistants': typeof AppAiAssistantsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/billing': typeof AppBillingRoute
@@ -1279,6 +1313,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
+  '/api/admin/design': typeof ApiAdminDesignRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
   '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
@@ -1403,6 +1438,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
@@ -1431,10 +1467,13 @@ export interface FileRoutesByTo {
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/ai-assistants': typeof ApiAiAssistantsRoute
   '/api/cards': typeof ApiCardsRoute
+  '/api/design': typeof ApiDesignRoute
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
+  '/app/ai-assistants': typeof AppAiAssistantsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/billing': typeof AppBillingRoute
@@ -1470,6 +1509,7 @@ export interface FileRoutesByTo {
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
+  '/api/admin/design': typeof ApiAdminDesignRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
   '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
@@ -1597,6 +1637,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
@@ -1626,10 +1667,13 @@ export interface FileRoutesById {
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/ai-assistants': typeof ApiAiAssistantsRoute
   '/api/cards': typeof ApiCardsRoute
+  '/api/design': typeof ApiDesignRoute
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
+  '/app/ai-assistants': typeof AppAiAssistantsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/billing': typeof AppBillingRoute
@@ -1665,6 +1709,7 @@ export interface FileRoutesById {
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
+  '/api/admin/design': typeof ApiAdminDesignRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
   '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
@@ -1793,6 +1838,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/ai-assistants'
     | '/cancellation-policy'
     | '/contact'
     | '/data-deletion'
@@ -1822,10 +1868,13 @@ export interface FileRouteTypes {
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
+    | '/api/ai-assistants'
     | '/api/cards'
+    | '/api/design'
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
+    | '/app/ai-assistants'
     | '/app/analytics'
     | '/app/automations'
     | '/app/billing'
@@ -1861,6 +1910,7 @@ export interface FileRouteTypes {
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
+    | '/api/admin/design'
     | '/api/admin/leads'
     | '/api/admin/onboarding'
     | '/api/admin/sending'
@@ -1985,6 +2035,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ai-assistants'
     | '/cancellation-policy'
     | '/contact'
     | '/data-deletion'
@@ -2013,10 +2064,13 @@ export interface FileRouteTypes {
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
+    | '/api/ai-assistants'
     | '/api/cards'
+    | '/api/design'
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
+    | '/app/ai-assistants'
     | '/app/analytics'
     | '/app/automations'
     | '/app/billing'
@@ -2052,6 +2106,7 @@ export interface FileRouteTypes {
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
+    | '/api/admin/design'
     | '/api/admin/leads'
     | '/api/admin/onboarding'
     | '/api/admin/sending'
@@ -2178,6 +2233,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/ai-assistants'
     | '/cancellation-policy'
     | '/contact'
     | '/data-deletion'
@@ -2207,10 +2263,13 @@ export interface FileRouteTypes {
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
+    | '/api/ai-assistants'
     | '/api/cards'
+    | '/api/design'
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
+    | '/app/ai-assistants'
     | '/app/analytics'
     | '/app/automations'
     | '/app/billing'
@@ -2246,6 +2305,7 @@ export interface FileRouteTypes {
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
+    | '/api/admin/design'
     | '/api/admin/leads'
     | '/api/admin/onboarding'
     | '/api/admin/sending'
@@ -2373,6 +2433,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AppRouteRoute: typeof AppRouteRouteWithChildren
+  AiAssistantsRoute: typeof AiAssistantsRoute
   CancellationPolicyRoute: typeof CancellationPolicyRoute
   ContactRoute: typeof ContactRoute
   DataDeletionRoute: typeof DataDeletionRoute
@@ -2391,7 +2452,9 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRouteWithChildren
+  ApiAiAssistantsRoute: typeof ApiAiAssistantsRoute
   ApiCardsRoute: typeof ApiCardsRoute
+  ApiDesignRoute: typeof ApiDesignRoute
   ApiEventsRoute: typeof ApiEventsRoute
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
@@ -2402,6 +2465,7 @@ export interface RootRouteChildren {
   ApiAdminAiRoute: typeof ApiAdminAiRoute
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
+  ApiAdminDesignRoute: typeof ApiAdminDesignRoute
   ApiAdminLeadsRoute: typeof ApiAdminLeadsRoute
   ApiAdminOnboardingRoute: typeof ApiAdminOnboardingRoute
   ApiAdminSendingRoute: typeof ApiAdminSendingRoute
@@ -2523,6 +2587,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ai-assistants': {
+      id: '/ai-assistants'
+      path: '/ai-assistants'
+      fullPath: '/ai-assistants'
+      preLoaderRoute: typeof AiAssistantsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -2742,11 +2813,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/api/ai-assistants': {
+      id: '/api/ai-assistants'
+      path: '/api/ai-assistants'
+      fullPath: '/api/ai-assistants'
+      preLoaderRoute: typeof ApiAiAssistantsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cards': {
       id: '/api/cards'
       path: '/api/cards'
       fullPath: '/api/cards'
       preLoaderRoute: typeof ApiCardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/design': {
+      id: '/api/design'
+      path: '/api/design'
+      fullPath: '/api/design'
+      preLoaderRoute: typeof ApiDesignRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/events': {
@@ -2775,6 +2860,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/ai-assistants': {
+      id: '/app/ai-assistants'
+      path: '/ai-assistants'
+      fullPath: '/app/ai-assistants'
+      preLoaderRoute: typeof AppAiAssistantsRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/analytics': {
@@ -3006,6 +3098,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/customers'
       fullPath: '/api/admin/customers'
       preLoaderRoute: typeof ApiAdminCustomersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/design': {
+      id: '/api/admin/design'
+      path: '/api/admin/design'
+      fullPath: '/api/admin/design'
+      preLoaderRoute: typeof ApiAdminDesignRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/leads': {
@@ -3893,6 +3992,7 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
 )
 
 interface AppRouteRouteChildren {
+  AppAiAssistantsRoute: typeof AppAiAssistantsRoute
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomationsRoute: typeof AppAutomationsRoute
   AppBillingRoute: typeof AppBillingRoute
@@ -3916,6 +4016,7 @@ interface AppRouteRouteChildren {
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAiAssistantsRoute: AppAiAssistantsRoute,
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAutomationsRoute: AppAutomationsRoute,
   AppBillingRoute: AppBillingRoute,
@@ -4057,6 +4158,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
   AppRouteRoute: AppRouteRouteWithChildren,
+  AiAssistantsRoute: AiAssistantsRoute,
   CancellationPolicyRoute: CancellationPolicyRoute,
   ContactRoute: ContactRoute,
   DataDeletionRoute: DataDeletionRoute,
@@ -4076,7 +4178,9 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   DotwellKnownOauthProtectedResourceRoute:
     DotwellKnownOauthProtectedResourceRouteWithChildren,
+  ApiAiAssistantsRoute: ApiAiAssistantsRoute,
   ApiCardsRoute: ApiCardsRoute,
+  ApiDesignRoute: ApiDesignRoute,
   ApiEventsRoute: ApiEventsRoute,
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
@@ -4087,6 +4191,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminAiRoute: ApiAdminAiRoute,
   ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAdminCustomersRoute: ApiAdminCustomersRoute,
+  ApiAdminDesignRoute: ApiAdminDesignRoute,
   ApiAdminLeadsRoute: ApiAdminLeadsRoute,
   ApiAdminOnboardingRoute: ApiAdminOnboardingRoute,
   ApiAdminSendingRoute: ApiAdminSendingRoute,

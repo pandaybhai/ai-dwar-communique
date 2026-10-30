@@ -4,6 +4,8 @@
  * steps follow each client's own docs as of 30 Oct 2026 (`source`).
  */
 
+import { LIBRARY_PROMPTS } from "@/lib/mcp-prompts";
+
 export const MCP_URL = "https://aidwar.in/mcp";
 
 export type ConnectClient = {
@@ -76,13 +78,23 @@ export const CONNECT_CLIENTS: ConnectClient[] = [
   },
 ];
 
-export const EXAMPLE_PROMPTS = [
-  "Draft a Diwali campaign to customers tagged VIP",
-  "How did my last campaign do?",
-  "Build a welcome flow for new customers",
-  "Which chats need me right now?",
-  "How many opted-in customers do I have, and how much is left in my wallet?",
-];
+/**
+ * Prompts to try: the Batch 53 library (src/lib/mcp-prompts.ts), the one
+ * list the AI assistants page, /developers and /ai-assistants share.
+ */
+export const EXAMPLE_PROMPTS: string[] = LIBRARY_PROMPTS.map((p) => p.text);
+
+/** Batch 53: any other app that speaks MCP over HTTP with OAuth. */
+export const OTHER_CLIENT = {
+  key: "other" as const,
+  name: "Other MCP apps",
+  availability: "Any app that connects to remote MCP servers over HTTP and signs in with OAuth.",
+  steps: [
+    `Add a remote (Streamable HTTP) MCP server with the URL ${MCP_URL}.`,
+    "Choose OAuth sign-in if the app asks; it registers itself with AiDwar automatically.",
+    "Sign in to AiDwar in the window that opens and choose Allow.",
+  ],
+};
 
 /** The promise, in the same words everywhere (consent page, docs, landing). */
 export const MCP_PROMISE = [
@@ -93,3 +105,18 @@ export const MCP_PROMISE = [
 
 export const MCP_LIMITS =
   "It acts as you, with your permissions. It can't message a customer on its own, change Aiden, billing, your team or settings, or delete anything.";
+
+/**
+ * Batch 53: the limits as people read them. The enforced numbers are
+ * CALLS_PER_MINUTE / SENDS_PER_HOUR in mcp-access.server.ts (a test keeps
+ * these equal).
+ */
+export const MCP_CALLS_PER_MINUTE = 60;
+export const MCP_SENDS_PER_HOUR = 5;
+
+/** Batch 53: the safety box (AI assistants page and /ai-assistants). */
+export const MCP_SAFETY = [
+  "Drafts only until you confirm. Your assistant shows you the draft; sending a campaign or switching on a flow needs your yes.",
+  "Each confirm code works for 15 minutes, for you, for that draft exactly as it was.",
+  MCP_LIMITS,
+];

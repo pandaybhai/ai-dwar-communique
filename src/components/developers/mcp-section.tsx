@@ -1,4 +1,5 @@
-import { CONNECT_CLIENTS, EXAMPLE_PROMPTS, MCP_LIMITS, MCP_PROMISE, MCP_URL } from "@/lib/mcp-connect";
+import { CONNECT_CLIENTS, MCP_LIMITS, MCP_PROMISE, MCP_URL, OTHER_CLIENT } from "@/lib/mcp-connect";
+import { PROMPT_GROUPS } from "@/lib/mcp-prompts";
 import { CodePanel, CopyButton } from "./code-panel";
 import { Heading } from "./docs-ui";
 
@@ -62,17 +63,44 @@ export function McpSection() {
         ))}
       </div>
 
+      <article id="mcp-other" className="docs-card scroll-mt-24 space-y-3 p-5" aria-labelledby="mcp-other-title">
+        <h3 id="mcp-other-title" className="text-[18px] font-semibold text-[var(--d-fg)]">
+          {OTHER_CLIENT.name}
+        </h3>
+        <p className="text-[14px] text-[var(--d-muted)]">{OTHER_CLIENT.availability}</p>
+        <ol className="m-0 list-decimal space-y-1.5 pl-5 text-[15px] text-[var(--d-fg)]">
+          {OTHER_CLIENT.steps.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ol>
+      </article>
+
+      <p className="text-[15px] text-[var(--d-muted)]">
+        For merchants: what it does, what to ask and how it keeps you safe, on{" "}
+        <a href="/ai-assistants" className="font-medium text-[var(--d-accent-strong)] hover:underline">
+          AI assistants for your shop
+        </a>
+        .
+      </p>
+
       <div className="space-y-3">
         <h3 id="mcp-prompts" className="text-[18px] font-semibold text-[var(--d-fg)]">
           Try asking
         </h3>
-        <ul className="m-0 grid list-none gap-2 p-0 sm:grid-cols-2">
-          {EXAMPLE_PROMPTS.map((p) => (
-            <li key={p} className="rounded-xl border border-[var(--d-border)] bg-[var(--d-surface)] px-4 py-3 text-[15px] text-[var(--d-fg)]">
-              “{p}”
-            </li>
+        <div className="grid gap-5 sm:grid-cols-2">
+          {PROMPT_GROUPS.map((g) => (
+            <div key={g.key} className="space-y-2">
+              <h4 className="text-[15px] font-semibold text-[var(--d-fg)]">{g.title}</h4>
+              <ul className="m-0 grid list-none gap-2 p-0">
+                {g.prompts.map((p) => (
+                  <li key={p.text} className="rounded-xl border border-[var(--d-border)] bg-[var(--d-surface)] px-4 py-3 text-[15px] text-[var(--d-fg)]">
+                    “{p.text}”
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
         <p className="text-[14.5px] text-[var(--d-muted)]">
           When your assistant drafts a campaign, AiDwar answers with who it reaches (opted-in customers only), what it
           costs and your wallet balance, and a confirm code. It sends only after you say yes.

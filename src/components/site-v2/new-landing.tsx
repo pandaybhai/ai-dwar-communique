@@ -190,6 +190,12 @@ export function NewLanding({
             >
               How to connect your assistant
             </a>
+            <a
+              href="/ai-assistants"
+              className="w-fit rounded font-semibold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+            >
+              What it can do for your shop
+            </a>
           </Reveal>
           <Reveal delay={100}>
             <AssistantDemo />

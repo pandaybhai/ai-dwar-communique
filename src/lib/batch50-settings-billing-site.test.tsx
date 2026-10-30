@@ -475,14 +475,15 @@ describe("the public site: new_site switch, default off", () => {
         "6f2f9ea19b612c58b8f55aebc032dde6e4d76fc1062bea826ccd6329345d403f",
       "routes/contact.tsx": "abbb9abb202f0859103d8fae3b8beeb62d3caf3d5bf477366766bcbaac410dd2",
       "routes/demo.tsx": "afe9afbb19d09234dfaedc8ad89d772a53945d8c4da4e2bf89f450a208bf33b4",
-      "routes/sitemap[.]xml.ts": "ec3be00bdbdcf9e555c7f7c8ece0a6c9e7395c61d8f41e71ebb68dc433bb6675",
+      // Batch 53: + /ai-assistants (sitemap) and its footer link; nothing else moved.
+      "routes/sitemap[.]xml.ts": "db222f4e00056edf4feeb43e3aac46f5b9ae0061794e54fffe7454b3f0ebe85f",
       "routes/llms[.]txt.ts": "2d5a5402596064070a3ac3beaef4f5090fcc5f4b88f8a999287504a65f1a0ef3",
       "routes/llms-full[.]txt.ts":
         "b9df56c53b009a18831ea1b757718ba2721e4f6ab3345ca28fce6d6a5a6a96b7",
       "components/legal-page.tsx":
         "45bc8ac3f0f1dbd52fb0a422139db9873cdc7168ac451927b993dc5db0ad08c3",
       "components/site-footer.tsx":
-        "a085135cbbf9d041226ba6b6af9b59e709409837f506b842857e0cb35e63747d",
+        "d7226cdcefeb8ee8d67bd4a31c97eb3c13951acb82b6e3003ab4449663c8cd28",
       "lib/company.ts": "7b0ac09c4b2100a50dc4aa688d9c610184ebf227f8c6c8ba892491cdd6f79208",
       "components/marketing/message-rates.tsx":
         "bbf1e85fe19704c587108e63cc80f4330d7680e50c2c951699d1e395ffff85ba",

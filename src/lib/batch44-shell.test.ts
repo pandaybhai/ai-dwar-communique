@@ -116,7 +116,7 @@ describe("route safety: the new shell reaches every page the sidebar shows", () 
       inbox: ["Inbox"],
       campaigns: ["Campaigns", "Templates", "Cards"],
       customers: ["Contacts", "Segments", "Sales from chats"],
-      automate: ["Aiden", "Flows", "Automations"],
+      automate: ["Aiden", "Flows", "Automations", "AI assistants"],
       shop: ["Catalogue", "Collections", "Shopify"],
     });
     expect(model.account.map((a) => a.label)).toEqual(["Settings", "Billing and wallet", "Team"]);
