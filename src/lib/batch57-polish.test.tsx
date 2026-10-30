@@ -177,7 +177,8 @@ describe("Classic pieces inside Aiden Workspace (Mark all unknown, the drawer, p
     const D = await import("@/components/contacts/contact-drawer");
     const P = await import("@/components/data-pagination");
     const C = await import("@/components/analytics/chart-card");
-    const consent = { opt_in_source: "import", opted_in_at: "2026-10-01T10:00:00Z" };
+    // No consent date: a formatted date would depend on the machine's timezone.
+    const consent = null;
     const out: string[] = [];
     out.push(
       renderToStaticMarkup(<B.MarkAllUnknownOptedIn organizationId="o" onDone={() => {}} />),
@@ -227,7 +228,7 @@ describe("Classic pieces inside Aiden Workspace (Mark all unknown, the drawer, p
       out.push(renderToStaticMarkup(<C.MetricCard label="Delivered" value={12345} {...props} />));
     // Recorded from main (8e9ad6a) with the same props: Classic is unchanged.
     expect(createHash("sha256").update(out.join("\n")).digest("hex")).toBe(
-      "640ecc0b5927fc2c6504ad5aebeba2bf5b5e7179860680303d9f6d8574f14a44",
+      "909fff416938b26383c1b47876f0c08be7a8b208a8ffb771ca4ebb9afd57cac9",
     );
     vi.doUnmock("@/lib/whatsapp-client");
     vi.doUnmock("@/integrations/aidwar/client");
