@@ -7,9 +7,12 @@
  * Supabase Auth: tokens are JWT-shaped strings whose payload is the claims.
  * Nothing reaches the live database, WhatsApp or Meta. Never used by the app.
  */
+import { createHash, createHmac, hkdfSync } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { batch38World, ORG, OTHER_ORG } from "./batch38-world";
 import type { McpDeps } from "../mcp-server.server";
 import type { McpTokenClaims } from "../mcp-auth.server";
+import { MCP_DB_PROOF_HEADER, MCP_DB_PROOF_LABEL, MCP_DB_PROOF_REFUSAL_HINT, mcpUserClient } from "../mcp-db-proof.server";
 
 export { ORG, OTHER_ORG };
 
@@ -17,6 +20,39 @@ export const ISSUER = "https://hcsacmqzspnfqoftoifu.supabase.co/auth/v1";
 export const ORIGIN = "https://aidwar.in";
 export const CLIENT_ID = "9a8b7c6d-0000-4000-8000-000000000052";
 export const SECRET = "test-service-role-key-for-hkdf";
+/**
+ * Batch 56: the MCP server's database proof for SECRET, computed here on its
+ * own with node:crypto (HKDF-SHA256, zero salt, the label as info; then
+ * HMAC-SHA256 of "v1|<label>", base64url). batch56-mcp-proof.test.ts checks
+ * the server's WebCrypto version gives the same value.
+ */
+export function nodeDbProof(secret: string): string {
+  const key = Buffer.from(hkdfSync("sha256", secret, Buffer.alloc(32), MCP_DB_PROOF_LABEL, 32));
+  return createHmac("sha256", key).update(`v1|${MCP_DB_PROOF_LABEL}`).digest("base64url");
+}
+export const sha256Hex = (s: string) => createHash("sha256").update(s).digest("hex");
+
+/** A client every query of which the database refuses, as the Batch 56 guard does. */
+export function refusingClient(): SupabaseClient {
+  const refusal = {
+    data: null,
+    count: null,
+    error: {
+      code: "42501",
+      message: "AI apps connected to AiDwar work only through the AiDwar MCP tools at https://aidwar.in/mcp.",
+      hint: MCP_DB_PROOF_REFUSAL_HINT,
+      details: null,
+    },
+    status: 403,
+  };
+  const chain: unknown = new Proxy(function () {}, {
+    get: (_t, prop) =>
+      prop === "then" ? (res: (v: unknown) => unknown) => Promise.resolve(refusal).then(res) : () => chain,
+    apply: () => chain,
+  });
+  return { from: () => chain, rpc: () => chain, schema: () => ({ from: () => chain, rpc: () => chain }) } as unknown as SupabaseClient;
+}
+
 /** Tag ids are uuids (segments only read uuid tag rules). */
 export const TAG_VIP = "00000000-0000-4000-8000-0000000052a1";
 export const TAG_B = "00000000-0000-4000-8000-0000000052b1";
@@ -189,6 +225,12 @@ export function mcpWorld() {
       return null;
     }
   };
+  // The proof the server sends, and the hash the database keeps.
+  const db = {
+    serverProof: nodeDbProof(SECRET),
+    dbProofHash: sha256Hex(nodeDbProof(SECRET)) as string | null,
+    userClients: [] as Array<{ authorization: string | null; proof: string | null }>,
+  };
   const deps: McpDeps = {
     verifier: {
       issuer: ISSUER,
@@ -199,11 +241,26 @@ export function mcpWorld() {
       sessionAlive: async (t) => !revoked.has(t),
     },
     service: w.db.supabase,
-    userClient: () => w.db.supabase,
+    // Batch 56: every tool reads through the real mcpUserClient; the fake
+    // database answers only a client built with the Bearer token and the
+    // proof whose sha256 it stores (dbProofHash), as 20261300 does.
+    userClient: (t) =>
+      mcpUserClient(t, {
+        url: "https://hcsacmqzspnfqoftoifu.supabase.co",
+        anonKey: "anon-key",
+        proof: db.serverProof,
+        createClient: (_url, _key, options) => {
+          const headers = ((options["global"] ?? {}) as { headers?: Record<string, string> }).headers ?? {};
+          const sent = headers[MCP_DB_PROOF_HEADER];
+          db.userClients.push({ authorization: headers["Authorization"] ?? null, proof: sent ?? null });
+          const ok = headers["Authorization"] === `Bearer ${t}` && typeof sent === "string" && sha256Hex(sent) === db.dbProofHash;
+          return ok ? w.db.supabase : refusingClient();
+        },
+      }),
     clientName: async (id) => (id === CLIENT_ID ? "Claude" : null),
     confirmSecret: SECRET,
   };
-  return { ...w, rows, deps, revoked, publishCalls };
+  return { ...w, rows, deps, revoked, publishCalls, proofDb: db };
 }
 
 export type McpWorld = ReturnType<typeof mcpWorld>;

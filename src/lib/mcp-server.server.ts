@@ -51,7 +51,7 @@ export type McpDeps = {
   verifier: TokenVerifier;
   /** Service-role client (permission checks and the app's write paths). */
   service: SupabaseClient;
-  /** A client acting with this access token (reads under RLS). */
+  /** A client acting with this access token (reads under RLS), carrying the MCP proof (Batch 56). */
   userClient: (token: string) => SupabaseClient;
   /** The OAuth client's display name, when known. */
   clientName?: (clientId: string) => Promise<string | null>;
@@ -261,16 +261,16 @@ export async function liveMcpDeps(): Promise<McpDeps> {
     process.env["AIDWAR_SUPABASE_ANON_KEY"] ??
     (import.meta.env?.["VITE_AIDWAR_SUPABASE_ANON_KEY"] as string | undefined) ??
     "";
+  const { ensureDbProof, mcpDbProof, mcpUserClient } = await import("@/lib/mcp-db-proof.server");
   const service = getServiceClient();
   const names = new Map<string, string | null>();
+  // Batch 56: the database answers an OAuth token only with this proof.
+  const proof = await mcpDbProof();
+  await ensureDbProof(service, proof);
   return {
     verifier: await supabaseTokenVerifier(),
     service,
-    userClient: (token) =>
-      createClient(url, anon, {
-        global: { headers: { Authorization: `Bearer ${token}` } },
-        auth: { persistSession: false, autoRefreshToken: false },
-      }),
+    userClient: (token) => mcpUserClient(token, { url, anonKey: anon, proof, createClient }),
     clientName: async (clientId) => {
       if (names.has(clientId)) return names.get(clientId) ?? null;
       const { data } = await service.auth.admin.oauth.getClient(clientId);

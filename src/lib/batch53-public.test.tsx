@@ -48,6 +48,7 @@ describe("/ai-assistants", () => {
       "Which AI apps work with AiDwar?",
       "Which plans do I need?",
       "Is it safe?",
+      "What happens to my data?", // Batch 56
       "How do I disconnect it?",
     ]);
     for (const f of FAQ) expect(t).toContain(f.q);

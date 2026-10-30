@@ -49,6 +49,11 @@ export const FAQ: Array<{ q: string; a: string }> = [
     q: "Is it safe?",
     a: "Your assistant signs in as you and can only do what you can do in AiDwar. It reads and drafts; sending a campaign or switching on a flow needs your yes with a confirm code that lasts 15 minutes. It can't message a single customer, change Aiden, billing, your team or settings, or delete anything. Owners can switch AI assistants off for the whole workspace at any time.",
   },
+  // Batch 56: the short version of the Privacy Policy's "AI assistants you connect".
+  {
+    q: "What happens to my data?",
+    a: "Your assistant reads only what you can see in AiDwar, and only what you ask about. What it reads is processed by the company behind your assistant (for example Anthropic, OpenAI or Cursor) under that company's own terms. Nothing is sent or switched on without your yes. You can disconnect it any time on the AI assistants page, and an owner or admin can switch AI assistants off for the whole workspace. The details are in section 5 of our Privacy Policy.",
+  },
   {
     q: "How do I disconnect it?",
     a: "In AiDwar, open AI assistants and choose Remove next to the app. Its access ends at once. You can also remove AiDwar from the connector list in your AI app.",
