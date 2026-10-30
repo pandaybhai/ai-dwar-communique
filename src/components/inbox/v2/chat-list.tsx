@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { MessagesSquare } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { INBOX_COPY } from "./copy";
 import {
   contactLabel,
   initials,
@@ -227,17 +228,15 @@ export function ChatList({
 
   if (rows.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-8 py-16 text-center">
+      <div className="nd-rise flex flex-1 flex-col items-center justify-center px-8 py-16 text-center">
         <span className="grid h-12 w-12 place-items-center rounded-[14px] bg-aiden-soft text-aiden-deep">
           <MessagesSquare className="h-5 w-5" aria-hidden="true" />
         </span>
         <p className="mt-4 font-semibold text-foreground">
-          {totalLoaded === 0 ? "No conversations yet" : "Nothing here"}
+          {totalLoaded === 0 ? INBOX_COPY.listEmpty.none : INBOX_COPY.listEmpty.filtered}
         </p>
         <p className="mt-1 max-w-[17rem] text-sm text-muted-foreground">
-          {totalLoaded === 0
-            ? "New customer messages will appear here the moment they arrive."
-            : "Try another tab, a different search or filter."}
+          {totalLoaded === 0 ? INBOX_COPY.listEmpty.noneBody : INBOX_COPY.listEmpty.filteredBody}
         </p>
       </div>
     );

@@ -6,6 +6,8 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { OPT_IN_LABELS, type OptInStatus } from "@/lib/contacts";
 import { languageLabel } from "@/lib/languages";
 import { cn } from "@/lib/utils";
+import { SparkleChip } from "@/components/design-v2";
+import { INBOX_COPY } from "./copy";
 import { mediaKind, mediaLabel } from "../chat-thread";
 import {
   contactLabel,
@@ -91,6 +93,34 @@ function useContactOrders(
     };
   }, [organizationId, contactId, allowed]);
   return orders;
+}
+
+/** Batch 57: the order was placed in the last 24 hours. */
+function placedToday(placedAt: string | null | undefined, now: number = Date.now()): boolean {
+  if (!placedAt) return false;
+  const t = new Date(placedAt).getTime();
+  return Number.isFinite(t) && now - t >= 0 && now - t < 24 * 60 * 60_000;
+}
+
+/** Orders whose chip has sparkled in this tab already: the sparkle plays once per order. */
+const SPARKLED = new Set<string>();
+
+/**
+ * Batch 57 (approved preview): a sale from a chat gets a small gold sparkle,
+ * once. The chip stays; the sparkle never plays again for the same order.
+ */
+function NewOrderChip({ id, text }: { id: string; text: string }) {
+  const [first] = useState(() => !SPARKLED.has(id));
+  useEffect(() => {
+    SPARKLED.add(id);
+  }, [id]);
+  return first ? (
+    <SparkleChip className="mt-2 self-start">{text}</SparkleChip>
+  ) : (
+    <span className="mt-2 inline-flex self-start rounded-full bg-aiden-soft px-3.5 py-1.5 text-sm font-bold text-aiden-deep">
+      {text}
+    </span>
+  );
 }
 
 /** An order's total in its own currency (Batch 20: prices follow each product's currency). */
@@ -302,13 +332,21 @@ export function CustomerPanel({
           {orders === null ? (
             <Skeleton className="h-5 w-40" />
           ) : orders.length ? (
-            <dl className="m-0 flex w-full flex-col gap-1">
-              {orders.map((o) => (
-                <Line key={o.id} label={o.order_number ? `Order ${o.order_number}` : "Order"}>
-                  <span className="tabular">{money(o.total, o.currency)}</span>
-                </Line>
-              ))}
-            </dl>
+            <>
+              <dl className="m-0 flex w-full flex-col gap-1">
+                {orders.map((o) => (
+                  <Line key={o.id} label={o.order_number ? `Order ${o.order_number}` : "Order"}>
+                    <span className="tabular">{money(o.total, o.currency)}</span>
+                  </Line>
+                ))}
+              </dl>
+              {orders[0] && placedToday(orders[0].placed_at) ? (
+                <NewOrderChip
+                  id={orders[0].id}
+                  text={INBOX_COPY.orders.newToday(money(orders[0].total, orders[0].currency))}
+                />
+              ) : null}
+            </>
           ) : (
             <p className="m-0 text-[0.9375rem] text-muted-foreground">
               No orders from your shop yet.
