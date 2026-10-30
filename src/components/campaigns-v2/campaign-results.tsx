@@ -507,7 +507,6 @@ function Recipients({
                   >
                     {r.error ?? (
                       <>
-                        <span aria-hidden="true">–</span>
                         <span className="sr-only">{rc.nothingToReport}</span>
                       </>
                     )}

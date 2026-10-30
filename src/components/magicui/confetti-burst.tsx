@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
  * `fire` turns true, then nothing. It never repeats for the same mount and
  * draws nothing under reduced motion. Decorative: hidden from screen readers.
  */
-const COLOURS = ["--gold", "--aiden", "--text", "--av1", "--av2"];
+const COLOURS = ["--gold", "--aiden", "--foreground", "--av1", "--av2"];
 
 export function ConfettiBurst({ fire, className }: { fire: boolean; className?: string }) {
   const ref = useRef<HTMLCanvasElement | null>(null);

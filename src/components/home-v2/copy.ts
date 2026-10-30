@@ -36,7 +36,11 @@ export const HOME_COPY = {
     sales: "Sales from chats",
     credits: "Credits",
   },
-  campaign: { read: "Read", replied: "Replied", people: (k: number) => plural(k, "person", "people") },
+  campaign: {
+    read: "Read",
+    replied: "Replied",
+    people: (k: number) => plural(k, "person", "people"),
+  },
   orb: {
     replying: "Aiden is replying",
     draft: "Aiden writes drafts for you",

@@ -714,7 +714,7 @@ export function ChatPane({
             ) : conversation.assigned_to && aidenReplies ? (
               <WhatsAppBubble from="system">
                 {conversation.assigned_to === userId ? "You" : (assigneeName ?? "A teammate")} took
-                over. Aiden won't reply here until the chat is handed back.
+                over. Aiden won’t reply here until the chat is handed back.
               </WhatsAppBubble>
             ) : null}
             {typing ? (

@@ -161,7 +161,9 @@ function WaitingRow({
         </div>
         <p className="m-0 mt-0.5 line-clamp-2 text-[15px] text-foreground">{item.said}</p>
         {assignee ? (
-          <p className="m-0 mt-1 text-sm text-muted-foreground">{HOME_COPY.off.with(assignee.name)}</p>
+          <p className="m-0 mt-1 text-sm text-muted-foreground">
+            {HOME_COPY.off.with(assignee.name)}
+          </p>
         ) : null}
         <div className="mt-2.5 flex flex-wrap gap-2">
           {canReply ? (

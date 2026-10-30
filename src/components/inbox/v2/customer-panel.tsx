@@ -285,7 +285,7 @@ export function CustomerPanel({
         </div>
         {tags !== null && tags.length === 0 ? (
           <p className="m-0 text-sm text-muted-foreground">
-            No labels yet. "Suggest labels" under the chat adds some.
+            No labels yet. “Suggest labels” under the chat adds some.
           </p>
         ) : null}
       </div>
@@ -300,7 +300,7 @@ export function CustomerPanel({
           </>
         ) : (
           <p className="m-0 text-[0.9375rem] text-muted-foreground">
-            Nothing saved about this customer yet. "Catch me up" under the chat sums up this
+            Nothing saved about this customer yet. “Catch me up” under the chat sums up this
             conversation.
           </p>
         )}
