@@ -6,7 +6,6 @@ import {
   money,
   round2,
   round4,
-  withGst,
   type BillingSummary,
   type CampaignCostEstimate,
   type ClientRate,
@@ -289,6 +288,8 @@ async function summaryUnchecked(
 
   const balance = Number(wallet["balance"] ?? 0);
   const held = Number(wallet["held"] ?? 0);
+  const { loadGstRegistered } = await import("@/lib/gst-mode.server");
+  const gstRegistered = (await loadGstRegistered(supabase)) === true;
   const accountRow = (account ?? null) as Record<string, unknown> | null;
 
   return {
@@ -344,6 +345,7 @@ async function summaryUnchecked(
       state_code: (accountRow?.["state_code"] as string) ?? null,
     },
     period: { start, end },
+    gst_registered: gstRegistered,
   };
 }
 
@@ -459,8 +461,13 @@ export async function createCreditPurchase(
     );
   }
 
+  // Batch 55: GST only while the platform is GST-registered; otherwise the
+  // pack price exactly.
+  const { priceNow } = await import("@/lib/gst-mode.server");
+  const priced = await priceNow(supabase, Number(pack.amount));
+  if ("error" in priced) return priced;
   const base = Number(pack.amount);
-  const { gst, total } = withGst(base);
+  const { gst, total } = priced;
 
   const { data: org } = await supabase
     .from("organizations")
@@ -1067,7 +1074,8 @@ export async function settlePayment(
       const issued = await issueInvoice(supabase, built.invoice_id, { deliver: true });
       if (!("error" in issued)) {
         // The invoice is paid in full by the gross the customer actually paid.
-        const gross = Number(priorRaw["gross"] ?? 0) || withGst(credits).total;
+        // (grossAmount is what the gateway captured, already checked against it.)
+        const gross = Number(priorRaw["gross"] ?? 0) || grossAmount;
         await markPaid(supabase, built.invoice_id, payment.id as string, gross);
       }
     }

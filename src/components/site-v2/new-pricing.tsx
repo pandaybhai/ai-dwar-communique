@@ -27,10 +27,13 @@ export function NewPricing({
   plans,
   failed,
   rates,
+  gstRegistered = false,
 }: {
   plans: Plan[] | null;
   failed: boolean;
   rates: ClientRate[];
+  /** Batch 55: "Plus 18% GST" only while AiDwar is GST-registered. */
+  gstRegistered?: boolean;
 }) {
   const [annual, setAnnual] = useState(false);
   const preview = useSitePreviewSearch();
@@ -140,7 +143,11 @@ export function NewPricing({
                           </>
                         )}
                         <p className="m-0 mt-1 text-xs text-muted-foreground">
-                          {custom ? "Custom terms and white-label" : "Plus 18% GST, plus credits"}
+                          {custom
+                            ? "Custom terms and white-label"
+                            : gstRegistered
+                              ? "Plus 18% GST, plus credits"
+                              : "Plus credits"}
                         </p>
                       </div>
                       <ul className="m-0 mt-6 flex flex-1 list-none flex-col gap-2.5 p-0 text-sm">
@@ -209,7 +216,7 @@ export function NewPricing({
             How message credits work
           </h2>
           <div className="mt-6 space-y-5 text-body leading-relaxed text-muted-foreground">
-            <CreditsExplained />
+            <CreditsExplained gstRegistered={gstRegistered} />
           </div>
           <MessageRatesTable rates={rates} />
           <p className="m-0 mt-6 text-sm text-muted-foreground">

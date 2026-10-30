@@ -1,5 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { round2, withGst } from "@/lib/billing";
+import { round2 } from "@/lib/billing";
+import { loadGstRegistered, priceNow } from "@/lib/gst-mode.server";
+
+/** What the provider shows on the mandate. */
+function planFeeDescription(planName: string, registered: boolean): string {
+  return registered
+    ? `AiDwar ${planName} plan fee, inclusive of 18% GST`
+    : `AiDwar ${planName} plan fee`;
+}
 
 /**
  * Auto-pay for the monthly plan fee.
@@ -177,13 +185,16 @@ export async function setupAutoPay(
     return { error: "This plan doesn't have a price for that billing cycle." };
   }
   const planName = (version["plans"] as unknown as Record<string, unknown>)?.["name"] as string;
-  const gross = withGst(Number(base)).total;
+  // Batch 55: GST only while the platform is GST-registered.
+  const priced = await priceNow(supabase, Number(base));
+  if ("error" in priced) return priced;
+  const gross = priced.total;
 
   const plan = await createPlan(keys, {
     period: input.cycle === "annual" ? "yearly" : "monthly",
     amount: gross,
     name: `AiDwar ${planName} (${input.cycle})`,
-    description: `AiDwar ${planName} plan fee, inclusive of 18% GST`,
+    description: planFeeDescription(planName, priced.registered),
   });
   if (!plan.ok) return { error: plan.error ?? "We couldn't set up auto-pay." };
 
@@ -404,13 +415,15 @@ export async function alignSubscriptionToPlan(
   if (base === null || base === undefined) {
     return fail(`The ${planName} plan has no ${cycle} price.`);
   }
-  const gross = withGst(Number(base)).total;
+  const priced = await priceNow(supabase, Number(base));
+  if ("error" in priced) return fail(priced.error);
+  const gross = priced.total;
 
   const plan = await createPlan(keys, {
     period: cycle === "annual" ? "yearly" : "monthly",
     amount: gross,
     name: `AiDwar ${planName} (${cycle})`,
-    description: `AiDwar ${planName} plan fee, inclusive of 18% GST`,
+    description: planFeeDescription(planName, priced.registered),
   });
   if (!plan.ok) return fail(plan.error ?? "The payment provider couldn't create the new plan.");
 
@@ -587,8 +600,14 @@ async function recordPlanCharge(
     cycle === "annual"
       ? (version?.["price_annual"] as number | null)
       : (version?.["price_monthly"] as number | null);
-  // The mandate charges GST-inclusive; the invoice states the base.
-  const base = listed === null || listed === undefined ? round2(gross / 1.18) : round2(Number(listed));
+  // The mandate charges GST-inclusive while the platform is GST-registered;
+  // the invoice states the base. Not registered (Batch 55), what it collected
+  // is the base.
+  const registered = (await loadGstRegistered(supabase)) !== false;
+  const base =
+    listed === null || listed === undefined
+      ? round2(registered ? gross / 1.18 : gross)
+      : round2(Number(listed));
 
   const { data: paymentRow, error: paymentError } = await supabase
     .from("payments")
@@ -688,7 +707,9 @@ async function setupCashfreeAutoPay(
   }
   const planName =
     ((version["plans"] as unknown as Record<string, unknown>)?.["name"] as string) ?? "plan";
-  const gross = round2(withGst(Number(base)).total);
+  const priced = await priceNow(supabase, Number(base));
+  if ("error" in priced) return priced;
+  const gross = round2(priced.total);
 
   const { orderCustomer } = await import("@/lib/cashfree-billing.server");
   const { data: account } = org?.["billing_account_id"]

@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 95, column 1123, view 2, function 118, index 170, trigger 70, cron_job 14.
+-- Expected objects: table 95, column 1124, view 2, function 118, index 171, trigger 70, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -969,6 +969,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'platform_settings', 'billing_admin_whatsapp', NULL, 'text', '20260925_platform_billing_admin_whatsapp.sql'),
     ('column', 'public', 'platform_settings', 'crawl_engine', NULL, 'text', '20260924080000_reading_settings.sql'),
     ('column', 'public', 'platform_settings', 'full_crawl_trigger', NULL, 'text', '20260924080000_reading_settings.sql'),
+    ('column', 'public', 'platform_settings', 'gst_registered', NULL, 'boolean', '20261290_batch55_no_gst.sql'),
     ('column', 'public', 'platform_settings', 'id', NULL, 'boolean', '20260903_ai_resale.sql'),
     ('column', 'public', 'platform_settings', 'knowledge_auto_refresh', NULL, 'boolean', '20261022_knowledge_auto_refresh.sql'),
     ('column', 'public', 'platform_settings', 'link_reread_days', NULL, 'integer', '20260924100000_reading_link_limits.sql'),
@@ -1486,6 +1487,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'payments_cashfree_payment_once', NULL, NULL, 'unique on public.payments', '20261100_batch31_cashfree.sql'),
     ('index', 'public', 'payments_cashfree_pending_idx', NULL, NULL, 'on public.payments', '20261100_batch31_cashfree.sql'),
     ('index', 'public', 'plan_fee_invoice_period_uidx', NULL, NULL, 'unique on public.invoices', '20261026_plan_fee_invoice_unique.sql'),
+    ('index', 'public', 'plan_fee_nogst_invoice_period_uidx', NULL, NULL, 'unique on public.invoices', '20261290_batch55_no_gst.sql'),
     ('index', 'public', 'product_collection_items_product_idx', NULL, NULL, 'on public.product_collection_items', '20260910_catalog.sql'),
     ('index', 'public', 'product_collections_org_slug_unique_idx', NULL, NULL, 'unique on public.product_collections', '20260910_catalog.sql'),
     ('index', 'public', 'products_integration_external_unique_idx', NULL, NULL, 'unique on public.products', '20260821_shopify_integration.sql'),

@@ -152,6 +152,8 @@ function world(
       ],
       wallet_balances: [{ organization_id: ORG, balance: 0 }],
       wallet_ledger: [],
+      // Batch 55: these tests pin today's GST-registered figures.
+      platform_settings: [{ id: true, gst_registered: true }],
       ...extra,
     },
     {
@@ -1258,5 +1260,94 @@ describe("provider switch: the cashfree_billing flag decides new payments", () =
       enabled: true,
       pay_per_period: false,
     });
+  });
+});
+
+describe("Batch 55: not GST-registered, every gateway charges the base price exactly", () => {
+  const pack = {
+    id: "pack-1",
+    name: "Starter",
+    amount: 2000,
+    bonus_amount: 0,
+    currency: "INR",
+    is_active: true,
+  };
+  const noGst = { platform_settings: [{ id: true, gst_registered: false }] };
+
+  it("Cashfree: a ₹2,000 pack is a ₹2,000 order, with nothing added", async () => {
+    const db = world({ credit_packs: [pack], ...noGst });
+    const cf = fakeCashfree();
+    const out = (await createCreditPurchase(db.supabase, {
+      organizationId: ORG,
+      userId: OWNER,
+      packId: "pack-1",
+      origin: "https://x",
+    })) as Row;
+    const create = cf.calls.find((c) => c.method === "POST" && c.path === "/pg/orders")!;
+    expect(create.body).toMatchObject({ order_id: out["payment_id"], order_amount: 2000 });
+    expect(db.rows("payments")[0]).toMatchObject({ amount: 2000, provider: "cashfree" });
+    expect(db.rows("payments")[0]!["raw"]).toMatchObject({
+      pack_amount: 2000,
+      gst: 0,
+      gross: 2000,
+    });
+  });
+
+  it("Razorpay: the link asks for ₹2,000 too", async () => {
+    const db = world({ credit_packs: [pack], ...noGst }, { flag: false });
+    await createCreditPurchase(db.supabase, {
+      organizationId: ORG,
+      userId: OWNER,
+      packId: "pack-1",
+      origin: "https://x",
+    });
+    expect(h.createPaymentLink.mock.calls[0]![1]).toMatchObject({ amount: 2000 });
+  });
+
+  it("a paid ₹2,000 order credits ₹2,000 to the wallet (credits = what was paid), GST 0 on the payment", async () => {
+    const db = world({
+      ...noGst,
+      payments: [
+        creditPayment({
+          raw: {
+            pack_amount: 2000,
+            gst: 0,
+            gross: 2000,
+            bonus: 0,
+            pack_name: "Starter",
+            cashfree: { env: "sandbox", order_id: PAY, payment_session_id: `session_${PAY}` },
+          },
+        }),
+      ],
+    });
+    expect((await deliver(successWebhook(PAY, 2000))).status).toBe(200);
+    expect(credits(db).map((l) => [l["entry_type"], l["amount"]])).toEqual([
+      ["credit_purchase", 2000],
+    ]);
+    expect(paymentRow(db)).toMatchObject({ status: "paid" });
+    expect(paymentRow(db)["raw"]).toMatchObject({ gst_amount: 0, gross_amount: 2000 });
+  });
+
+  it("a settings read that fails refuses to start the payment rather than guess", async () => {
+    const db = world({ credit_packs: [pack] });
+    const real = db.supabase.from.bind(db.supabase);
+    (db.supabase as unknown as { from: (t: string) => unknown }).from = (t: string) =>
+      t === "platform_settings"
+        ? {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: null, error: { message: "boom" } }) }),
+            }),
+          }
+        : real(t);
+    const cf = fakeCashfree();
+    const out = await createCreditPurchase(db.supabase, {
+      organizationId: ORG,
+      userId: OWNER,
+      packId: "pack-1",
+      origin: "https://x",
+    });
+    expect(out).toEqual({ error: expect.stringContaining("couldn't start this payment") });
+    expect(cf.calls).toHaveLength(0);
+    expect(db.rows("payments")).toHaveLength(0);
   });
 });

@@ -244,12 +244,15 @@ export function InvoicesTab() {
             <tbody>
               {rows.map((inv) => {
                 const gst = Number(inv.cgst) + Number(inv.sgst) + Number(inv.igst);
-                const canCredit = inv.kind === "tax_invoice" && inv.invoice_number && inv.status !== "void" && inv.status !== "draft";
+                const canCredit = (inv.kind === "tax_invoice" || inv.kind === "invoice") && inv.invoice_number && inv.status !== "void" && inv.status !== "draft";
                 return (
                   <tr key={inv.id} className="border-t border-border/60 align-top">
                     <td className="px-3 py-2 text-muted-foreground">{day(inv.issue_date)}</td>
                     <td className="px-3 py-2">
                       <div className="font-medium">{inv.invoice_number ?? "Draft"}</div>
+                      {inv.kind === "invoice" ? (
+                        <div className="text-xs text-muted-foreground">No GST</div>
+                      ) : null}
                       {inv.pdf_error ? (
                         <div className="text-xs text-destructive">PDF: {inv.pdf_error}</div>
                       ) : !inv.pdf_path ? (
@@ -461,13 +464,16 @@ function CreditNoteDialog({
         <DialogHeader>
           <DialogTitle>Issue credit note</DialogTitle>
           <DialogDescription>
-            Against {invoice?.invoice_number} for {invoice?.organization_name ?? "this workspace"}. GST is split
-            the same way as the invoice; the refund goes to the wallet ledger, never a card.
+            Against {invoice?.invoice_number} for {invoice?.organization_name ?? "this workspace"}.{" "}
+            {invoice?.kind === "invoice"
+              ? "This invoice carried no GST, so neither does the note"
+              : "GST is split the same way as the invoice"}
+            ; the refund goes to the wallet ledger, never a card.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <Label htmlFor="cn-amount">Amount (incl. GST)</Label>
+            <Label htmlFor="cn-amount">{invoice?.kind === "invoice" ? "Amount" : "Amount (incl. GST)"}</Label>
             <Input id="cn-amount" type="number" min="1" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
             <p className="mt-1 text-xs text-muted-foreground">
               Up to {invoice ? money(Number(invoice.total), invoice.currency) : "—"}.

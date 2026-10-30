@@ -56,7 +56,8 @@ export function planCreditNote(
 
   const isExport = invoice["is_export"] === true;
   const isInterstate = invoice["is_interstate"] === true;
-  const rate = isExport ? 0 : TAX_RATE;
+  // Batch 55: a plain invoice carried no GST, so its credit note carries none.
+  const rate = isExport || invoice["kind"] === "invoice" ? 0 : TAX_RATE;
 
   if (amountP === remainingP) {
     const left = {
@@ -107,10 +108,14 @@ export async function issueCreditNote(
   if (!invoice["invoice_number"] || invoice["status"] === "void" || invoice["status"] === "draft") {
     return { error: "You can only credit an issued invoice." };
   }
-  if (invoice["kind"] !== "tax_invoice") return { error: "Only a tax invoice can be credited." };
+  if (invoice["kind"] !== "tax_invoice" && invoice["kind"] !== "invoice") {
+    return { error: "Only a tax invoice or an invoice can be credited." };
+  }
 
   const supplier = await loadSupplier(supabase);
-  if (!supplier.gstin?.trim()) {
+  // A GSTIN is needed only while GST is charged (Batch 55): not registered,
+  // a credit note (even one reversing an old GST invoice) shows none.
+  if (supplier.gst_registered && !supplier.gstin?.trim()) {
     return { error: "Supplier GSTIN is missing — add it under platform billing settings first." };
   }
 
@@ -191,6 +196,7 @@ export async function issueCreditNote(
         ...(invoice as Record<string, unknown>),
         id: creditNoteId,
         kind: "credit_note",
+        credited_kind: invoice["kind"],
         invoice_number: number,
         issue_date: today,
         due_date: null,

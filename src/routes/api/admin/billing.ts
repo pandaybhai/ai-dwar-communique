@@ -463,7 +463,7 @@ export const Route = createFileRoute("/api/admin/billing")({
                 supabase
                   .from("invoices")
                   .select("id, organization_id, invoice_number, purpose, status, total, amount_paid, issue_date, due_date, payment_id, organizations(name)")
-                  .eq("kind", "tax_invoice")
+                  .in("kind", ["tax_invoice", "invoice"])
                   .neq("status", "void")
                   .order("issue_date", { ascending: false })
                   .limit(1000),
@@ -484,6 +484,68 @@ export const Route = createFileRoute("/api/admin/billing")({
                 payments_without_invoice: paymentsWithoutInvoice,
                 invoices_without_payment: invoicesWithoutPayment,
               });
+            }
+
+            // Batch 55: the GST switch and the supplier GSTIN/PAN.
+            case "gst_settings": {
+              const { loadGstSettings } = await import("@/lib/gst-mode.server");
+              const settings = await loadGstSettings(supabase);
+              if ("error" in settings) return jsonError(settings.error, 500);
+              return Response.json(settings);
+            }
+
+            case "save_gst_settings": {
+              const { saveGstSettings } = await import("@/lib/gst-mode.server");
+              const result = await saveGstSettings(supabase, {
+                gstRegistered: payload["gst_registered"] === true,
+                supplierGstin: (payload["supplier_gstin"] as string | null) ?? null,
+                supplierPan: (payload["supplier_pan"] as string | null) ?? null,
+              });
+              if ("error" in result) {
+                await logPlatformAction("gst_settings_refused", {
+                  asked: {
+                    gst_registered: payload["gst_registered"] === true,
+                    supplier_gstin: (payload["supplier_gstin"] as string | null) ?? null,
+                  },
+                  error: result.error,
+                });
+                return jsonError(result.error);
+              }
+              await logPlatformAction("gst_settings_changed", {
+                before: {
+                  gst_registered: result.before.gst_registered,
+                  supplier_gstin: result.before.supplier_gstin,
+                  supplier_pan: result.before.supplier_pan,
+                },
+                after: {
+                  gst_registered: result.after.gst_registered,
+                  supplier_gstin: result.after.supplier_gstin,
+                  supplier_pan: result.after.supplier_pan,
+                },
+              });
+              return Response.json(result.after);
+            }
+
+            // Batch 55: past GST invoices and "Re-issue without GST" (one at a time, confirmed).
+            case "gst_invoices": {
+              const { listGstInvoices } = await import("@/lib/gst-reissue.server");
+              return Response.json({ invoices: await listGstInvoices(supabase) });
+            }
+
+            case "reissue_without_gst": {
+              const { reissueWithoutGst } = await import("@/lib/gst-reissue.server");
+              const result = await reissueWithoutGst(supabase, {
+                invoiceId: String(payload["invoice_id"] ?? ""),
+                actorId,
+                confirmed: payload["confirmed"] === true,
+              });
+              await logPlatformAction("invoice_reissue_without_gst", {
+                original_invoice_id: String(payload["invoice_id"] ?? ""),
+                ok: !("error" in result),
+                ...("error" in result ? { error: result.error } : result),
+              });
+              if ("error" in result) return jsonError(result.error);
+              return Response.json(result);
             }
 
             case "billing_templates": {
