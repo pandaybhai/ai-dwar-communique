@@ -298,7 +298,7 @@ describe("the gallery", () => {
     expect(gallery).toContain("{...(canManage ? { onDelete: () => setDeleting(t) } : {})}");
     const dialog = readFileSync("src/components/templates-v2/delete-template.tsx", "utf8");
     expect(dialog).toContain("{deleteCopy.title(template?.name)}");
-    expect(copy).toContain("title: (name: string | undefined) => `Delete “${name ?? \"\"}”?`");
+    expect(copy).toContain('title: (name: string | undefined) => `Delete “${name ?? ""}”?`');
     expect(dialog).toContain("deleteTemplateRequest(organizationId, template.id)");
     const classic = readFileSync("src/components/templates/templates-view.tsx", "utf8");
     expect(classic).not.toMatch(/action:\s*"delete"/);

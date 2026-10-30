@@ -52,7 +52,9 @@ export function AiAssistantsPage() {
     const q = new URLSearchParams({ organization_id: orgId });
     if (app) q.set("app", app);
     if (member) q.set("member", member);
-    const res = await callApi<AssistantsOverview>(`/api/ai-assistants?${q.toString()}`, { method: "GET" });
+    const res = await callApi<AssistantsOverview>(`/api/ai-assistants?${q.toString()}`, {
+      method: "GET",
+    });
     if (res.data) setData(res.data);
     else setError(res.error ?? copy.loadFailed);
   }, [orgId, app, member, copy.loadFailed]);
@@ -95,7 +97,10 @@ export function AiAssistantsPage() {
             <ErrorState message={copy.loadFailed} onRetry={() => void load()} />
           </div>
         ) : (
-          <p role="alert" className="mb-6 rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-soft-foreground">
+          <p
+            role="alert"
+            className="mb-6 rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-soft-foreground"
+          >
             {error}
           </p>
         )
@@ -142,7 +147,10 @@ export function AiAssistantsView({
   // Aiden Workspace: each section arrives in turn (nd-rise); Classic draws them at once.
   const rise = (d: number) => (nd ? d : undefined);
   const lastUsed = useMemo(
-    () => Object.fromEntries((data.apps ?? []).filter((a) => a.mine).map((a) => [a.clientId, a.lastUsedAt])),
+    () =>
+      Object.fromEntries(
+        (data.apps ?? []).filter((a) => a.mine).map((a) => [a.clientId, a.lastUsedAt]),
+      ),
     [data.apps],
   );
   const appOptions = useMemo(() => {
@@ -161,18 +169,30 @@ export function AiAssistantsView({
   return (
     <div className="flex flex-col gap-8 pb-10">
       {!data.mcpOn ? (
-        <div role="status" className="flex gap-3 rounded-2xl border border-warning-border bg-warning-soft px-5 py-4 text-warning-soft-foreground">
+        <div
+          role="status"
+          className="flex gap-3 rounded-2xl border border-warning-border bg-warning-soft px-5 py-4 text-warning-soft-foreground"
+        >
           <Lock className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
           <div className="space-y-1">
             <p className="font-semibold">{copy.off.title}</p>
             <p className="text-sm">
-              {data.supportLocked ? copy.off.support : data.canManage ? copy.off.manager : copy.off.member}
+              {data.supportLocked
+                ? copy.off.support
+                : data.canManage
+                  ? copy.off.manager
+                  : copy.off.member}
             </p>
           </div>
         </div>
       ) : null}
 
-      <SectionCard id="connect" title={copy.connect.title} blurb={copy.connect.blurb} rise={rise(0)}>
+      <SectionCard
+        id="connect"
+        title={copy.connect.title}
+        blurb={copy.connect.blurb}
+        rise={rise(0)}
+      >
         <ConnectSteps />
       </SectionCard>
 
@@ -192,7 +212,10 @@ export function AiAssistantsView({
         blurb={data.seesEveryone ? copy.activity.blurbEveryone : copy.activity.blurbOwn}
         rise={rise(2)}
       >
-        {(appOptions.length > 1 || (data.seesEveryone && memberOptions.length > 1) || app || member) ? (
+        {appOptions.length > 1 ||
+        (data.seesEveryone && memberOptions.length > 1) ||
+        app ||
+        member ? (
           <div className="flex flex-wrap gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="ai-filter-app">{copy.activity.app}</Label>
@@ -233,7 +256,12 @@ export function AiAssistantsView({
         <Timeline events={data.timeline} seesEveryone={data.seesEveryone} copy={copy.activity} />
       </SectionCard>
 
-      <SectionCard id="prompts" title={copy.prompts.title} blurb={copy.prompts.blurb} rise={rise(3)}>
+      <SectionCard
+        id="prompts"
+        title={copy.prompts.title}
+        blurb={copy.prompts.blurb}
+        rise={rise(3)}
+      >
         <PromptLibrary />
       </SectionCard>
 
@@ -264,4 +292,3 @@ export function AiAssistantsView({
     </div>
   );
 }
-

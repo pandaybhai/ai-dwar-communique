@@ -113,8 +113,7 @@ export const CONNECTED_APPS_COPY = {
     loadFailed: "Couldn't load your connected AI apps. Check your internet and tap Try again.",
     removeFailed: "Couldn't remove that app. Check your internet and tap Remove again.",
     emptyTitle: "No AI apps are connected yet",
-    emptyBody:
-      "Add AiDwar to Claude, ChatGPT, Codex or Cursor once, and it shows up here.",
+    emptyBody: "Add AiDwar to Claude, ChatGPT, Codex or Cursor once, and it shows up here.",
     emptyAction: "See how to connect",
   },
 } as const;

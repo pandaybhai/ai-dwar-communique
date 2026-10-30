@@ -101,7 +101,8 @@ export const ASSISTANTS_COPY: { classic: AssistantsCopy; workspace: AssistantsCo
     },
     prompts: {
       title: "Things to ask",
-      blurb: "Copy one, paste it into your assistant and send. Each one works with what AiDwar can do today.",
+      blurb:
+        "Copy one, paste it into your assistant and send. Each one works with what AiDwar can do today.",
     },
   },
 };

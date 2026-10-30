@@ -227,8 +227,7 @@ function useBillingSummary(organizationId: string) {
         if (!done) {
           const status = await confirmCashfreeReturn(paymentId);
           if (status === "paid" || status === "failed") done = true;
-          if (status === "failed" && tries === 1)
-            toast.error(C.paymentFailed);
+          if (status === "failed" && tries === 1) toast.error(C.paymentFailed);
         }
         await load();
       })();

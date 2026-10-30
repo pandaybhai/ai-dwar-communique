@@ -237,7 +237,11 @@ function AccountMenu({ model }: { model: ShellModel }) {
             <Link to="/admin/organizations">Super Admin</Link>
           </DropdownMenuItem>
         ) : null}
-        <DesignSwitchItem current="aiden_workspace" icon={false} className="rounded-lg px-2.5 py-2 text-[0.9375rem]" />
+        <DesignSwitchItem
+          current="aiden_workspace"
+          icon={false}
+          className="rounded-lg px-2.5 py-2 text-[0.9375rem]"
+        />
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={signOut}
@@ -517,68 +521,68 @@ export function NewAppShell({ children }: { children: ReactNode }) {
     <TooltipProvider delayDuration={250} skipDelayDuration={100}>
       {/* Batch 57: every motion component follows the person's reduced-motion setting. */}
       <MotionConfig reducedMotion="user">
-      <ShellSectionContext.Provider value={sectionState}>
-        <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-          <a
-            href="#main"
-            className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:shadow-lg"
-          >
-            Skip to content
-          </a>
-          <TopBar
-            model={model}
-            current={current}
-            inbox={inbox}
-            onSearch={() => setPaletteOpen(true)}
-          />
-          <PlanBanner />
-          <main
-            id="main"
-            ref={mainRef}
-            tabIndex={-1}
-            className={cn(
-              "relative min-h-0 flex-1 overflow-y-auto overscroll-contain focus:outline-none",
-              fullBleed
-                ? "flex flex-col pb-[calc(env(safe-area-inset-bottom)+4.5rem)] wide:pb-0"
-                : "pb-[calc(env(safe-area-inset-bottom)+6rem)] wide:pb-12",
-            )}
-          >
-            <div
-              key={pathname}
+        <ShellSectionContext.Provider value={sectionState}>
+          <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+            <a
+              href="#main"
+              className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:shadow-lg"
+            >
+              Skip to content
+            </a>
+            <TopBar
+              model={model}
+              current={current}
+              inbox={inbox}
+              onSearch={() => setPaletteOpen(true)}
+            />
+            <PlanBanner />
+            <main
+              id="main"
+              ref={mainRef}
+              tabIndex={-1}
               className={cn(
-                "nd-view-enter",
+                "relative min-h-0 flex-1 overflow-y-auto overscroll-contain focus:outline-none",
                 fullBleed
-                  ? "flex min-h-0 flex-1 flex-col"
-                  : "mx-auto w-full max-w-[1232px] px-[max(16px,env(safe-area-inset-left))] pt-2 wide:pt-3",
+                  ? "flex flex-col pb-[calc(env(safe-area-inset-bottom)+4.5rem)] wide:pb-0"
+                  : "pb-[calc(env(safe-area-inset-bottom)+6rem)] wide:pb-12",
               )}
             >
-              {children}
-            </div>
-          </main>
-          <BottomBar
-            model={model}
-            current={current}
-            inbox={inbox}
-            moreOpen={moreOpen}
-            onMore={() => setMoreOpen(true)}
-          />
-          <MoreSheet model={model} open={moreOpen} onOpenChange={setMoreOpen} />
-          <CommandPalette
-            open={paletteOpen}
-            onOpenChange={setPaletteOpen}
-            items={items}
-            restricted={restricted}
-            onToggleSidebar={() => undefined}
-            onShowShortcuts={() => setShortcutsOpen(true)}
-            design="new"
-            sectionLabel={(to) =>
-              model.sections.find((s) => s.tabs.some((t) => t.to === to))?.label ?? null
-            }
-          />
-          <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
-          <AidenWorkspaceIntro />
-        </div>
-      </ShellSectionContext.Provider>
+              <div
+                key={pathname}
+                className={cn(
+                  "nd-view-enter",
+                  fullBleed
+                    ? "flex min-h-0 flex-1 flex-col"
+                    : "mx-auto w-full max-w-[1232px] px-[max(16px,env(safe-area-inset-left))] pt-2 wide:pt-3",
+                )}
+              >
+                {children}
+              </div>
+            </main>
+            <BottomBar
+              model={model}
+              current={current}
+              inbox={inbox}
+              moreOpen={moreOpen}
+              onMore={() => setMoreOpen(true)}
+            />
+            <MoreSheet model={model} open={moreOpen} onOpenChange={setMoreOpen} />
+            <CommandPalette
+              open={paletteOpen}
+              onOpenChange={setPaletteOpen}
+              items={items}
+              restricted={restricted}
+              onToggleSidebar={() => undefined}
+              onShowShortcuts={() => setShortcutsOpen(true)}
+              design="new"
+              sectionLabel={(to) =>
+                model.sections.find((s) => s.tabs.some((t) => t.to === to))?.label ?? null
+              }
+            />
+            <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+            <AidenWorkspaceIntro />
+          </div>
+        </ShellSectionContext.Provider>
       </MotionConfig>
     </TooltipProvider>
   );

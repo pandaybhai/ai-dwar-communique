@@ -773,7 +773,9 @@ describe("flag off: today's Home, unchanged", () => {
     const homeRoute = lazy({}).type;
     h.newDesign = false;
     // Batch 53: Classic Home = the "Connect your AI assistant" card, then the Batch 41 Home as it was.
-    const off = homeRoute() as unknown as { props: { children: Array<{ type: { name: string } }> } };
+    const off = homeRoute() as unknown as {
+      props: { children: Array<{ type: { name: string } }> };
+    };
     expect(off.props.children.map((c) => c.type.name)).toEqual(["ConnectAssistantCard", "AppHome"]);
     h.newDesign = true;
     expect(homeRoute().type.name).toBe("NewHome");

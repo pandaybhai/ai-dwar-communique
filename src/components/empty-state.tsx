@@ -84,7 +84,11 @@ export function EmptyState({
             {["bg-av1", "bg-av2", "bg-av3"].map((bg, i) => (
               <span
                 key={bg}
-                className={cn("h-[34px] w-[34px] rounded-full border-2 border-surface", bg, i > 0 && "-ml-2")}
+                className={cn(
+                  "h-[34px] w-[34px] rounded-full border-2 border-surface",
+                  bg,
+                  i > 0 && "-ml-2",
+                )}
               />
             ))}
           </span>

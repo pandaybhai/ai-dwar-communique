@@ -41,7 +41,9 @@ export function SectionTabs({ className }: { className?: string }) {
             aria-current={on ? "page" : undefined}
             className={cn(
               "relative inline-flex items-center gap-1.5 rounded-full px-3.5 py-[7px] text-sm font-semibold transition-colors duration-200",
-              on ? "text-aiden-deep" : "text-muted-foreground hover:bg-surface hover:text-foreground",
+              on
+                ? "text-aiden-deep"
+                : "text-muted-foreground hover:bg-surface hover:text-foreground",
             )}
           >
             {on ? (

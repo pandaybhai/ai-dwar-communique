@@ -20,16 +20,18 @@ describe("Aiden is typing (Inbox)", () => {
     const { aidenTyping, AIDEN_TYPING_MS } = await import("@/components/inbox/v2/inbox-v2");
     const inbound = [{ direction: "inbound", created_at: at(5_000) }];
     expect(aidenTyping(chat, inbound, "replying", NOW).typing).toBe(true);
-    expect(aidenTyping(chat, inbound, "replying", NOW).until).toBe(
-      NOW - 5_000 + AIDEN_TYPING_MS,
-    );
+    expect(aidenTyping(chat, inbound, "replying", NOW).until).toBe(NOW - 5_000 + AIDEN_TYPING_MS);
     // Draft or Off: Aiden doesn't send, so it never "types".
     expect(aidenTyping(chat, inbound, "draft", NOW).typing).toBe(false);
     expect(aidenTyping(chat, inbound, "off", NOW).typing).toBe(false);
     expect(aidenTyping(chat, inbound, null, NOW).typing).toBe(false);
     // A person holds the chat, or it waits for a person, or it is closed.
-    expect(aidenTyping({ ...chat, assigned_to: "u1" }, inbound, "replying", NOW).typing).toBe(false);
-    expect(aidenTyping({ ...chat, needs_human: true }, inbound, "replying", NOW).typing).toBe(false);
+    expect(aidenTyping({ ...chat, assigned_to: "u1" }, inbound, "replying", NOW).typing).toBe(
+      false,
+    );
+    expect(aidenTyping({ ...chat, needs_human: true }, inbound, "replying", NOW).typing).toBe(
+      false,
+    );
     expect(aidenTyping({ ...chat, status: "closed" }, inbound, "replying", NOW).typing).toBe(false);
     // The reply has gone out: the newest message is ours.
     expect(
@@ -42,8 +44,12 @@ describe("Aiden is typing (Inbox)", () => {
     ).toBe(false);
     // Too long ago: never left typing for ever.
     expect(
-      aidenTyping(chat, [{ direction: "inbound", created_at: at(AIDEN_TYPING_MS) }], "replying", NOW)
-        .typing,
+      aidenTyping(
+        chat,
+        [{ direction: "inbound", created_at: at(AIDEN_TYPING_MS) }],
+        "replying",
+        NOW,
+      ).typing,
     ).toBe(false);
     expect(aidenTyping(chat, [], "replying", NOW).typing).toBe(false);
   });
@@ -81,7 +87,11 @@ describe("Home's live typing dots", () => {
     }));
     const { liveHomeReload } = await import("@/components/home-v2/use-new-home");
     const seen: Array<{ conversationId: string; direction: string }> = [];
-    const stop = liveHomeReload("org-1", () => undefined, (m) => seen.push(m));
+    const stop = liveHomeReload(
+      "org-1",
+      () => undefined,
+      (m) => seen.push(m),
+    );
     channels[0]!.onMessage({ new: { direction: "inbound", conversation_id: "c1" } });
     channels[0]!.onMessage({ new: { direction: "outbound", conversation_id: "c1" } });
     expect(seen).toEqual([
@@ -120,7 +130,14 @@ describe("no new write, send or read path", () => {
   it("every Batch 57 animation stops under reduced motion", () => {
     const css = src("styles.css");
     const reduced = css.slice(css.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
-    for (const cls of [".nd-rise", ".nd-dots > i", ".nd-pop", ".nd-spark", ".nd-lift", '.animate-pulse::after'])
+    for (const cls of [
+      ".nd-rise",
+      ".nd-dots > i",
+      ".nd-pop",
+      ".nd-spark",
+      ".nd-lift",
+      ".animate-pulse::after",
+    ])
       expect(reduced, cls).toContain(cls);
     // Only transform and opacity move (no transition: all anywhere new).
     expect(css).not.toMatch(/transition:\s*all/);

@@ -81,7 +81,10 @@ function SettingsSkeleton() {
     >
       <div className="flex gap-2 overflow-hidden wide:flex-col">
         {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-10 w-28 shrink-0 rounded-full wide:w-full wide:rounded-xl" />
+          <Skeleton
+            key={i}
+            className="h-10 w-28 shrink-0 rounded-full wide:w-full wide:rounded-xl"
+          />
         ))}
       </div>
       <div className="flex flex-col gap-4">

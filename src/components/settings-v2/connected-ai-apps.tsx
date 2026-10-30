@@ -63,7 +63,9 @@ function connectedOn(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? ""
-    : connectedOnText(d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }));
+    : connectedOnText(
+        d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+      );
 }
 
 function lastUsedText(iso: string | null | undefined): string {
@@ -71,7 +73,9 @@ function lastUsedText(iso: string | null | undefined): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? ""
-    : lastUsedOnText(d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }));
+    : lastUsedOnText(
+        d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+      );
 }
 
 /**

@@ -342,7 +342,8 @@ describe("Batch 57: words in one place, every amount and charge line unchanged",
   });
 
   it("billing, GST, plan and payment words are Batch 50/55's, byte for byte", async () => {
-    const { BILLING_COPY, CATEGORY_COPY, STATE_COPY } = await import("@/components/billing-v2/copy");
+    const { BILLING_COPY, CATEGORY_COPY, STATE_COPY } =
+      await import("@/components/billing-v2/copy");
     expect(BILLING_COPY.ratesGst).toBe("Prices are per message, before 18% GST.");
     expect(BILLING_COPY.ratesNoGst).toBe("Prices are per message.");
     expect(BILLING_COPY.ratesFree).toBe("Replies inside the 24-hour window are free.");

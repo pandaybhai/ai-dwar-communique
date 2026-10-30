@@ -10,7 +10,8 @@
 
 export const BILLING_COPY = {
   title: "Billing and wallet",
-  description: "Your credits, what each message costs, and every payment and invoice, in one place.",
+  description:
+    "Your credits, what each message costs, and every payment and invoice, in one place.",
   loadingLabel: "Loading your billing",
   noWorkspace: {
     title: "Pick a workspace first",

@@ -45,7 +45,8 @@ export function ConnectAssistantCard({ className = "mb-6" }: { className?: strin
   const userId = org.profile?.id ?? null;
   const [dismissed, setDismissed] = useState(() => readDismissed(userId));
   const [connected, setConnected] = useState<boolean | null>(null);
-  const eligible = !loading && can("mcp.use") && !org.flagsLoading && org.isFeatureEnabled("mcp_access");
+  const eligible =
+    !loading && can("mcp.use") && !org.flagsLoading && org.isFeatureEnabled("mcp_access");
 
   useEffect(() => {
     setDismissed(readDismissed(userId));
@@ -84,7 +85,13 @@ export function ConnectAssistantCard({ className = "mb-6" }: { className?: strin
   );
 }
 
-export function ConnectAssistantCardView({ onDismiss, className = "mb-6" }: { onDismiss?: () => void; className?: string }) {
+export function ConnectAssistantCardView({
+  onDismiss,
+  className = "mb-6",
+}: {
+  onDismiss?: () => void;
+  className?: string;
+}) {
   return (
     <section
       aria-labelledby="connect-ai-title"

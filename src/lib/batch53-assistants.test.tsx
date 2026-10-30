@@ -30,7 +30,11 @@ vi.mock("@tanstack/react-router", async (orig) => ({
 }));
 
 const src = (p: string) => readFileSync(join(import.meta.dirname, "..", p), "utf8");
-const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&quot;/g, '"').replace(/&#x27;/g, "'");
+const text = (html: string) =>
+  html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'");
 
 const overview = (over: Partial<AssistantsOverview> = {}): AssistantsOverview => ({
   mcpOn: true,
@@ -38,11 +42,39 @@ const overview = (over: Partial<AssistantsOverview> = {}): AssistantsOverview =>
   canManage: true,
   seesEveryone: true,
   apps: [
-    { userId: "u1", member: "You", mine: true, clientId: "c-claude", name: "Claude", site: "claude.ai", grantedAt: "2026-10-20T10:00:00Z", lastUsedAt: "2026-10-29T10:00:00Z" },
-    { userId: "u2", member: "Asha", mine: false, clientId: "c-cursor", name: "Cursor", site: null, grantedAt: "2026-10-21T10:00:00Z", lastUsedAt: null },
+    {
+      userId: "u1",
+      member: "You",
+      mine: true,
+      clientId: "c-claude",
+      name: "Claude",
+      site: "claude.ai",
+      grantedAt: "2026-10-20T10:00:00Z",
+      lastUsedAt: "2026-10-29T10:00:00Z",
+    },
+    {
+      userId: "u2",
+      member: "Asha",
+      mine: false,
+      clientId: "c-cursor",
+      name: "Cursor",
+      site: null,
+      grantedAt: "2026-10-21T10:00:00Z",
+      lastUsedAt: null,
+    },
   ],
   timeline: [
-    { id: "e1", action: "mcp_campaign_drafted", at: "2026-10-29T09:00:00Z", userId: "u1", member: "You", app: "Claude", appId: "c-claude", name: "Diwali VIP", link: "/app/campaigns/k1" },
+    {
+      id: "e1",
+      action: "mcp_campaign_drafted",
+      at: "2026-10-29T09:00:00Z",
+      userId: "u1",
+      member: "You",
+      app: "Claude",
+      appId: "c-claude",
+      name: "Diwali VIP",
+      link: "/app/campaigns/k1",
+    },
   ],
   usage: { callsThisMinute: 3, callsPerMinute: 60, sendsThisHour: 1, sendsPerHour: 5 },
   ...over,
@@ -60,7 +92,12 @@ describe("the prompt library: one source, only prompts today's tools can do", ()
     const { ALL_MCP_TOOLS } = await import("./mcp-server.server");
     const names = new Set(ALL_MCP_TOOLS.map((t) => t.name));
     expect(names.size).toBe(26);
-    expect(PROMPT_GROUPS.map((g) => g.title)).toEqual(["Grow sales", "Know your numbers", "Automate", "Daily check"]);
+    expect(PROMPT_GROUPS.map((g) => g.title)).toEqual([
+      "Grow sales",
+      "Know your numbers",
+      "Automate",
+      "Daily check",
+    ]);
     for (const p of LIBRARY_PROMPTS) {
       expect(p.tools.length).toBeGreaterThan(0);
       for (const t of p.tools) expect(names.has(t), `${p.text}: ${t}`).toBe(true);
@@ -112,20 +149,26 @@ describe("the AI assistants page", () => {
   it("has the five sections: connect (five tabs, plan notes), apps, activity, prompts, safety with usage", async () => {
     const html = await renderPage(overview());
     const t = text(html);
-    for (const id of ["connect", "apps", "activity", "prompts", "safety"]) expect(html).toContain(`id="${id}"`);
+    for (const id of ["connect", "apps", "activity", "prompts", "safety"])
+      expect(html).toContain(`id="${id}"`);
     expect(t).toContain("https://aidwar.in/mcp");
-    for (const tab of ["Claude", "ChatGPT", "Codex", "Cursor", "Other MCP apps"]) expect(t).toContain(tab);
+    for (const tab of ["Claude", "ChatGPT", "Codex", "Cursor", "Other MCP apps"])
+      expect(t).toContain(tab);
     // The default tab's steps and the plan note; the other tabs' come from the same file.
     expect(t).toContain("Free (one custom connector)");
     const { CONNECT_CLIENTS } = await import("./mcp-connect");
-    expect(CONNECT_CLIENTS.find((c) => c.key === "chatgpt")!.availability).toMatch(/Business and Enterprise\/Edu/);
+    expect(CONNECT_CLIENTS.find((c) => c.key === "chatgpt")!.availability).toMatch(
+      /Business and Enterprise\/Edu/,
+    );
     expect(t).toMatch(/Claude\s+drafted a campaign/);
     expect(t).toContain("Diwali VIP");
     expect(html).toContain('href="/app/campaigns/k1"');
     expect(t).toContain("3 of 60");
     expect(t).toContain("1 of 5");
     expect(t).toContain("15 minutes");
-    expect(t).toMatch(/can't message a customer on its own, change Aiden, billing, your team or settings, or delete anything/);
+    expect(t).toMatch(
+      /can't message a customer on its own, change Aiden, billing, your team or settings, or delete anything/,
+    );
     expect(html).not.toContain("<img");
   });
 
@@ -139,7 +182,11 @@ describe("the AI assistants page", () => {
 
   it("a member without settings.manage: own apps only, no switch, no team list, no person filter", async () => {
     const html = await renderPage(
-      overview({ canManage: false, seesEveryone: false, apps: overview().apps!.filter((a) => a.mine) }),
+      overview({
+        canManage: false,
+        seesEveryone: false,
+        apps: overview().apps!.filter((a) => a.mine),
+      }),
     );
     const t = text(html);
     expect(t).not.toContain("Your team's apps");
@@ -152,7 +199,9 @@ describe("the AI assistants page", () => {
     const forOwner = text(await renderPage(overview({ mcpOn: false })));
     expect(forOwner).toContain("AI assistants are switched off for this workspace.");
     expect(forOwner).toContain("switch them on under Safety and limits");
-    const forAgent = text(await renderPage(overview({ mcpOn: false, canManage: false, seesEveryone: false })));
+    const forAgent = text(
+      await renderPage(overview({ mcpOn: false, canManage: false, seesEveryone: false })),
+    );
     expect(forAgent).toContain("An owner or admin can switch them on from this page.");
     const locked = text(await renderPage(overview({ mcpOn: false, supportLocked: true })));
     expect(locked).toContain("AiDwar support switched them off");
@@ -179,13 +228,16 @@ describe("the AI assistants page", () => {
       expect(t).toContain("Try asking it: “Draft a Diwali campaign to customers tagged VIP”.");
       expect(html).toContain('href="#prompts"');
       // The five sections, the switch and Batch 56's access wording are all still there, word for word.
-      for (const id of ["connect", "apps", "activity", "prompts", "safety"]) expect(html).toContain(`id="${id}"`);
+      for (const id of ["connect", "apps", "activity", "prompts", "safety"])
+        expect(html).toContain(`id="${id}"`);
       expect(t).toContain("Removing one ends its access at once.");
       expect(t).toContain("AI assistants in this workspace");
       expect(t).toContain(
         "Off stops every connected app from reading or drafting here, for everyone. Apps stay connected and work again when you switch it back on.",
       );
-      expect(t).toMatch(/can't message a customer on its own, change Aiden, billing, your team or settings, or delete anything/);
+      expect(t).toMatch(
+        /can't message a customer on its own, change Aiden, billing, your team or settings, or delete anything/,
+      );
       // Off: the notice is Classic's own words.
       const off = text(await renderPage(overview({ mcpOn: false })));
       expect(off).toContain("AI assistants are switched off for this workspace.");
@@ -222,9 +274,16 @@ describe("the AI assistants page", () => {
     const empty = renderToStaticMarkup(<ConnectedAiAppsView grants={[]} intro={false} newDesign />);
     expect(text(empty)).toContain("No AI apps are connected yet");
     expect(empty).toContain('href="#connect"');
-    expect(renderToStaticMarkup(<ConnectedAiAppsView grants={[]} newDesign />)).toContain('href="/developers#mcp"');
+    expect(renderToStaticMarkup(<ConnectedAiAppsView grants={[]} newDesign />)).toContain(
+      'href="/developers#mcp"',
+    );
     const failed = renderToStaticMarkup(
-      <ConnectedAiAppsView grants={[]} newDesign error="Couldn't load your connected AI apps." onRetry={() => undefined} />,
+      <ConnectedAiAppsView
+        grants={[]}
+        newDesign
+        error="Couldn't load your connected AI apps."
+        onRetry={() => undefined}
+      />,
     );
     expect(text(failed)).toContain("Try again");
     expect(text(failed)).not.toContain("No AI apps are connected");
@@ -256,11 +315,15 @@ describe("the menu: Classic sidebar, Aiden Workspace Automate tab + More sheet, 
     const withMcp = run(false, ["mcp.use", "ai.use", "flows.view", "automations.view"]);
     const item = withMcp.items.find((i) => i.to === "/app/ai-assistants");
     expect(item?.label).toBe("AI assistants");
-    expect(groupNav(withMcp.items, false).find((g) => g.label === "Automation")?.items.map((i) => i.to)).toContain(
-      "/app/ai-assistants",
-    );
+    expect(
+      groupNav(withMcp.items, false)
+        .find((g) => g.label === "Automation")
+        ?.items.map((i) => i.to),
+    ).toContain("/app/ai-assistants");
     const model = buildShellModel(withMcp.items, false);
-    expect(model.sections.find((s) => s.key === "automate")?.tabs.map((t) => t.label)).toContain("AI assistants");
+    expect(model.sections.find((s) => s.key === "automate")?.tabs.map((t) => t.label)).toContain(
+      "AI assistants",
+    );
     expect(model.assistants?.to).toBe("/app/ai-assistants");
     expect(src("components/shell/new-shell.tsx")).toContain("model.assistants");
     // Without mcp.use: nowhere.
@@ -269,13 +332,18 @@ describe("the menu: Classic sidebar, Aiden Workspace Automate tab + More sheet, 
 });
 
 describe("permissions on the server", () => {
-  function fakeService(rows: Record<string, unknown[]>, calls: Array<{ table: string; op: string; args: unknown[] }>) {
+  function fakeService(
+    rows: Record<string, unknown[]>,
+    calls: Array<{ table: string; op: string; args: unknown[] }>,
+  ) {
     const builder = (table: string) => {
       const q: Record<string, unknown> = {};
-      const log = (op: string) => (...args: unknown[]) => {
-        calls.push({ table, op, args });
-        return q;
-      };
+      const log =
+        (op: string) =>
+        (...args: unknown[]) => {
+          calls.push({ table, op, args });
+          return q;
+        };
       for (const op of ["select", "eq", "in", "order", "limit", "not", "is"]) q[op] = log(op);
       q["maybeSingle"] = async () => ({ data: (rows[table] ?? [])[0] ?? null, error: null });
       q["upsert"] = async (row: unknown) => {
@@ -302,10 +370,23 @@ describe("permissions on the server", () => {
     const { assistantsOverview } = await import("./mcp-workspace.server");
     const calls: Array<{ table: string; op: string; args: unknown[] }> = [];
     const svc = fakeService({ activity_log: [], mcp_workspace_apps: [] }, calls);
-    await assistantsOverview(svc as never, { organizationId: "org-1", userId: "u-agent", role: "agent", permissions: new Set(["mcp.use"]) });
+    await assistantsOverview(svc as never, {
+      organizationId: "org-1",
+      userId: "u-agent",
+      role: "agent",
+      permissions: new Set(["mcp.use"]),
+    });
     const log = calls.filter((c) => c.table === "activity_log");
-    expect(log).toContainEqual({ table: "activity_log", op: "eq", args: ["organization_id", "org-1"] });
-    expect(log).toContainEqual({ table: "activity_log", op: "eq", args: ["details->>source", "mcp"] });
+    expect(log).toContainEqual({
+      table: "activity_log",
+      op: "eq",
+      args: ["organization_id", "org-1"],
+    });
+    expect(log).toContainEqual({
+      table: "activity_log",
+      op: "eq",
+      args: ["details->>source", "mcp"],
+    });
     expect(log).toContainEqual({ table: "activity_log", op: "eq", args: ["user_id", "u-agent"] });
     const inCall = log.find((c) => c.op === "in");
     expect(inCall?.args[1]).toEqual([
@@ -315,7 +396,10 @@ describe("permissions on the server", () => {
       "mcp_flow_drafted",
       "mcp_flow_activated",
     ]);
-    expect(calls.find((c) => c.op === "rpc" && c.table === "mcp_workspace_apps")?.args[0]).toEqual({ p_org: "org-1", p_user: "u-agent" });
+    expect(calls.find((c) => c.op === "rpc" && c.table === "mcp_workspace_apps")?.args[0]).toEqual({
+      p_org: "org-1",
+      p_user: "u-agent",
+    });
 
     const adminCalls: typeof calls = [];
     await assistantsOverview(fakeService({}, adminCalls) as never, {
@@ -324,21 +408,39 @@ describe("permissions on the server", () => {
       role: "owner",
       permissions: new Set(["mcp.use", "settings.manage"]),
     });
-    expect(adminCalls.find((c) => c.op === "rpc" && c.table === "mcp_workspace_apps")?.args[0]).toEqual({ p_org: "org-1", p_user: null });
-    expect(adminCalls.some((c) => c.table === "activity_log" && c.op === "eq" && c.args[0] === "user_id")).toBe(false);
+    expect(
+      adminCalls.find((c) => c.op === "rpc" && c.table === "mcp_workspace_apps")?.args[0],
+    ).toEqual({ p_org: "org-1", p_user: null });
+    expect(
+      adminCalls.some(
+        (c) => c.table === "activity_log" && c.op === "eq" && c.args[0] === "user_id",
+      ),
+    ).toBe(false);
   });
 
   it("the On/Off route checks settings.manage before writing; the write is the mcp_access override, audit-logged", async () => {
     const route = src("routes/api/ai-assistants.ts");
     const post = route.slice(route.indexOf("POST:"));
     expect(post.indexOf('requirePermission(auth, "settings.manage"')).toBeGreaterThan(-1);
-    expect(post.indexOf('requirePermission(auth, "settings.manage"')).toBeLessThan(post.indexOf("setMcpAccess("));
+    expect(post.indexOf('requirePermission(auth, "settings.manage"')).toBeLessThan(
+      post.indexOf("setMcpAccess("),
+    );
     const { setMcpAccess } = await import("./mcp-workspace.server");
     const calls: Array<{ table: string; op: string; args: unknown[] }> = [];
-    const r = await setMcpAccess(fakeService({}, calls) as never, { organizationId: "org-1", userId: "u1", enabled: false });
+    const r = await setMcpAccess(fakeService({}, calls) as never, {
+      organizationId: "org-1",
+      userId: "u1",
+      enabled: false,
+    });
     expect(r).toEqual({ ok: true, enabled: false });
-    expect(calls.find((c) => c.op === "upsert")?.args[0]).toEqual({ organization_id: "org-1", flag_key: "mcp_access", enabled: false });
-    expect(calls.find((c) => c.table === "activity_log" && c.op === "insert")?.args[0]).toMatchObject({
+    expect(calls.find((c) => c.op === "upsert")?.args[0]).toEqual({
+      organization_id: "org-1",
+      flag_key: "mcp_access",
+      enabled: false,
+    });
+    expect(
+      calls.find((c) => c.table === "activity_log" && c.op === "insert")?.args[0],
+    ).toMatchObject({
       organization_id: "org-1",
       action: "mcp_access_changed",
       details: { enabled: false },
@@ -348,8 +450,15 @@ describe("permissions on the server", () => {
   it("can't switch back on what AiDwar support switched off", async () => {
     const { setMcpAccess } = await import("./mcp-workspace.server");
     const calls: Array<{ table: string; op: string; args: unknown[] }> = [];
-    const svc = fakeService({ organization_billing_settings: [{ limits_override: { _manual_flags: { mcp: false } } }] }, calls);
-    const r = await setMcpAccess(svc as never, { organizationId: "org-1", userId: "u1", enabled: true });
+    const svc = fakeService(
+      { organization_billing_settings: [{ limits_override: { _manual_flags: { mcp: false } } }] },
+      calls,
+    );
+    const r = await setMcpAccess(svc as never, {
+      organizationId: "org-1",
+      userId: "u1",
+      enabled: true,
+    });
     expect(r.ok).toBe(false);
     expect(calls.some((c) => c.op === "upsert")).toBe(false);
   });
@@ -357,15 +466,23 @@ describe("permissions on the server", () => {
 
 describe("Home card: Connect your AI assistant", () => {
   it("shows the URL, two starter prompts and the link; dismiss is remembered per person", async () => {
-    const { ConnectAssistantCardView, readDismissed } = await import("@/components/ai-assistants/connect-card");
+    const { ConnectAssistantCardView, readDismissed } =
+      await import("@/components/ai-assistants/connect-card");
     const t = text(renderToStaticMarkup(<ConnectAssistantCardView />));
     expect(t).toContain("Connect your AI assistant");
     expect(t).toContain("https://aidwar.in/mcp");
     expect(t).toContain("Which chats need me right now, oldest first?");
     expect(t).toContain("Draft a Diwali campaign to customers tagged VIP");
-    expect(renderToStaticMarkup(<ConnectAssistantCardView />)).toContain('href="/app/ai-assistants"');
+    expect(renderToStaticMarkup(<ConnectAssistantCardView />)).toContain(
+      'href="/app/ai-assistants"',
+    );
     const store = new Map<string, string>();
-    vi.stubGlobal("window", { localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) } });
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => store.set(k, v),
+      },
+    });
     expect(readDismissed("u1")).toBe(false);
     store.set("aidwar.ai_assistants_card.u1", "1");
     expect(readDismissed("u1")).toBe(true);
@@ -375,7 +492,14 @@ describe("Home card: Connect your AI assistant", () => {
 
   it("hidden without mcp.use, while mcp_access is off, and once dismissed", async () => {
     const { ConnectAssistantCard } = await import("@/components/ai-assistants/connect-card");
-    const base = { profile: { id: "u1" }, flagsLoading: false, permissions: [], permissionOverrides: {}, permissionsLoading: false, reloadPermissions: async () => undefined };
+    const base = {
+      profile: { id: "u1" },
+      flagsLoading: false,
+      permissions: [],
+      permissionOverrides: {},
+      permissionsLoading: false,
+      reloadPermissions: async () => undefined,
+    };
     h.org = { ...base, isFeatureEnabled: () => true, can: () => false };
     expect(renderToStaticMarkup(<ConnectAssistantCard />)).toBe("");
     h.org = { ...base, isFeatureEnabled: (k: string) => k !== "mcp_access", can: () => true };
@@ -396,8 +520,12 @@ describe("Hallmark floor on the new screens", () => {
       "components/ai-assistants/connect-card.tsx",
     ]) {
       const s = src(f);
-      expect(s).not.toMatch(/transition-all|uppercase|tracking-\[0\.|tracking-wide|#[0-9a-fA-F]{6}\b| · /);
-      expect(s.match(/animate-spin/g)?.length ?? 0).toBe(s.match(/motion-safe:animate-spin/g)?.length ?? 0);
+      expect(s).not.toMatch(
+        /transition-all|uppercase|tracking-\[0\.|tracking-wide|#[0-9a-fA-F]{6}\b| · /,
+      );
+      expect(s.match(/animate-spin/g)?.length ?? 0).toBe(
+        s.match(/motion-safe:animate-spin/g)?.length ?? 0,
+      );
     }
     expect(src("components/ai-assistants/parts.tsx")).toContain("focus-visible:");
   });
