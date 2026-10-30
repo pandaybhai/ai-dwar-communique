@@ -42,7 +42,7 @@ const VIEWPORTS = {
 const WELCOME = "00000000-0000-4000-8000-000000008001";
 
 const SCENARIOS = {
-  aiden: { path: "/app/employee", wait: "text=Needs your answer", fullPage: true, settle: 1800 },
+  aiden: { path: "/app/employee", wait: "h1", fullPage: true, settle: 1800 },
   "aiden-test": {
     path: "/app/employee",
     wait: "text=Test Aiden",
@@ -51,14 +51,14 @@ const SCENARIOS = {
       await page
         .getByLabel("A question a customer might ask")
         .fill("Is the Meenakari set available in red?");
-      await page.getByRole("button", { name: "Ask", exact: true }).click();
+      await page.getByRole("button", { name: "Ask Aiden", exact: true }).click();
       await page.waitForTimeout(1400);
       await page.locator("#test-aiden-heading").scrollIntoViewIfNeeded();
     },
   },
   "aiden-teach": {
     path: "/app/employee",
-    wait: "text=Needs your answer",
+    wait: "h1",
     settle: 800,
     act: async (page) => {
       await page.getByRole("button", { name: "Teach Aiden" }).first().click();
@@ -69,20 +69,20 @@ const SCENARIOS = {
   "aiden-draft": {
     path: "/app/employee",
     aidenMode: "draft",
-    wait: "text=Needs your answer",
+    wait: "h1",
     settle: 1500,
   },
   "aiden-switched-off": {
     path: "/app/employee",
     aidenMode: "off",
     aiEnabled: false,
-    wait: "text=Needs your answer",
+    wait: "h1",
     settle: 1500,
   },
   "aiden-empty": {
     path: "/app/employee",
     empty: true,
-    wait: "text=Nothing waits on you",
+    wait: "text=Nothing is waiting on you",
     settle: 1500,
   },
   flows: { path: "/app/flows", wait: "text=Welcome menu", fullPage: true, settle: 1500 },
@@ -94,7 +94,7 @@ const SCENARIOS = {
       await page.waitForTimeout(500);
     },
   },
-  "flows-empty": { path: "/app/flows", empty: true, wait: "text=No chat flows yet", settle: 1200 },
+  "flows-empty": { path: "/app/flows", empty: true, wait: "text=Your chat flows will show up here", settle: 1200 },
   "flow-builder": { path: `/app/flows/v2/${WELCOME}`, wait: ".react-flow__node", settle: 1800 },
   automations: { path: "/app/automations", wait: "text=Price list", fullPage: true, settle: 1200 },
   "automations-empty": { path: "/app/automations", empty: true, wait: "h1", settle: 1200 },
