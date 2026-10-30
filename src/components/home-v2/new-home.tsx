@@ -73,7 +73,11 @@ export function NewHome() {
     ],
   );
   const { data, loading, reload, typing } = useNewHome(organizationId, timezone, access);
-  const greeting = greetingFor(profile?.full_name, timezone);
+  // Once per name and zone, not on every live update.
+  const greeting = useMemo(
+    () => greetingFor(profile?.full_name, timezone),
+    [profile?.full_name, timezone],
+  );
   const onChanged = useCallback(() => void reload(), [reload]);
   const modeSwitch = useAidenModeSwitch(organizationId, onChanged);
 

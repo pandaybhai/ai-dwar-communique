@@ -442,6 +442,17 @@ const SCENARIOS_B57 = {
   "avatar-menu": SCENARIOS_B44["avatar-menu"],
   "more-sheet": SCENARIOS_B44["more-sheet"],
   palette: SCENARIOS.palette,
+  // The send moment: the review step's last button, then the ring and confetti.
+  "campaign-send": {
+    ...wizardTo(4, /new campaign/i),
+    settle: 200,
+    act: async (page) => {
+      await wizardTo(4, /new campaign/i).act(page);
+      await page.waitForTimeout(600);
+      await page.getByRole("button", { name: /^(Send to|Schedule for|Send for approval)/ }).click();
+      await page.waitForTimeout(1250);
+    },
+  },
 };
 
 const SETS = { b57: SCENARIOS_B57, b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b48: SCENARIOS_B48, b50: SCENARIOS_B50, b51: SCENARIOS_B51 };
