@@ -11,8 +11,14 @@ import type { AssistantsOverview } from "./mcp-workspace";
  * database: the server reads run on a fake query builder.
  */
 
-const h = vi.hoisted(() => ({ org: {} as Record<string, unknown> }));
+const h = vi.hoisted(() => ({ org: {} as Record<string, unknown>, newDesign: false }));
 vi.mock("@/lib/org-context", () => ({ useOrg: () => h.org }));
+// Batch 57: the page is one page in both designs, with Aiden Workspace's own
+// words; each test says which design it renders (Classic unless it sets this).
+vi.mock("@/lib/new-design", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/new-design")>()),
+  useNewDesign: () => h.newDesign,
+}));
 vi.mock("@/integrations/aidwar/client", () => ({ aidwar: { auth: {} } }));
 vi.mock("@tanstack/react-router", async (orig) => ({
   ...(await orig<typeof import("@tanstack/react-router")>()),
@@ -156,6 +162,72 @@ describe("the AI assistants page", () => {
     const t = text(await renderPage(overview({ timeline: [] })));
     expect(t).toContain("Nothing yet.");
     expect(t).toContain("Try asking it");
+  });
+
+  it("Batch 57, Aiden Workspace: plainer headings, MCP explained once, an illustrated empty timeline", async () => {
+    // Batch 57: copy
+    h.newDesign = true;
+    try {
+      const html = await renderPage(overview({ timeline: [] }));
+      const t = text(html);
+      expect(t).toContain("Connect your assistant");
+      expect(t).toContain("It signs in as you.");
+      expect(t).toContain("MCP is the common way AI apps connect to other tools.");
+      expect(t).toContain("What your assistant did");
+      expect(t).toContain("Things to ask");
+      expect(t).toContain("Nothing here yet");
+      expect(t).toContain("Try asking it: “Draft a Diwali campaign to customers tagged VIP”.");
+      expect(html).toContain('href="#prompts"');
+      // The five sections, the switch and Batch 56's access wording are all still there, word for word.
+      for (const id of ["connect", "apps", "activity", "prompts", "safety"]) expect(html).toContain(`id="${id}"`);
+      expect(t).toContain("Removing one ends its access at once.");
+      expect(t).toContain("AI assistants in this workspace");
+      expect(t).toContain(
+        "Off stops every connected app from reading or drafting here, for everyone. Apps stay connected and work again when you switch it back on.",
+      );
+      expect(t).toMatch(/can't message a customer on its own, change Aiden, billing, your team or settings, or delete anything/);
+      // Off: the notice is Classic's own words.
+      const off = text(await renderPage(overview({ mcpOn: false })));
+      expect(off).toContain("AI assistants are switched off for this workspace.");
+      expect(off).toContain("switch them on under Safety and limits");
+    } finally {
+      h.newDesign = false;
+    }
+  });
+
+  it("Batch 57: Classic keeps every word; the meta description is unchanged", async () => {
+    const { PAGE_DESCRIPTION } = await import("@/components/ai-assistants/ai-assistants-page");
+    expect(PAGE_DESCRIPTION).toBe(
+      "Use AiDwar from Claude, ChatGPT, Codex or Cursor: ask about your numbers, draft campaigns and flows. Nothing is sent until you confirm.",
+    );
+    const t = text(await renderPage(overview({ timeline: [] })));
+    for (const line of [
+      "Add AiDwar to your AI assistant once; it signs in as you.",
+      "What your AI did",
+      "Prompt library",
+      "Copy one into your assistant. Each works with today's AiDwar tools.",
+      "When your assistant creates a segment, drafts a campaign or a flow, or sends or switches one on after you confirm, it shows here with who asked, from which app and a link to it. Try asking it: “Draft a Diwali campaign to customers tagged VIP”.",
+    ])
+      expect(t).toContain(line);
+    expect(t).not.toContain("Things to ask");
+  });
+
+  it("Batch 57: Connected AI apps, empty and failed, in each design", async () => {
+    const { ConnectedAiAppsView } = await import("@/components/settings-v2/connected-ai-apps");
+    // Classic: the plain line, as before.
+    expect(renderToStaticMarkup(<ConnectedAiAppsView grants={[]} intro={false} />)).toContain(
+      "No AI apps are connected to your AiDwar account.",
+    );
+    // Batch 57: copy (Aiden Workspace: one next step, and a failed load says how to fix it)
+    const empty = renderToStaticMarkup(<ConnectedAiAppsView grants={[]} intro={false} newDesign />);
+    expect(text(empty)).toContain("No AI apps are connected yet");
+    expect(empty).toContain('href="#connect"');
+    expect(renderToStaticMarkup(<ConnectedAiAppsView grants={[]} newDesign />)).toContain('href="/developers#mcp"');
+    const failed = renderToStaticMarkup(
+      <ConnectedAiAppsView grants={[]} newDesign error="Couldn't load your connected AI apps." onRetry={() => undefined} />,
+    );
+    expect(text(failed)).toContain("Try again");
+    expect(text(failed)).not.toContain("No AI apps are connected");
   });
 
   it("renders the same in both designs (one page; PageHeader gives each its head)", () => {

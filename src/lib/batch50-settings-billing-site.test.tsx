@@ -325,6 +325,62 @@ describe("Billing and wallet: same payments, same amounts", () => {
   });
 });
 
+describe("Batch 57: words in one place, every amount and charge line unchanged", () => {
+  it("the wallet's ticker lands on exactly money()'s text, or isn't used", async () => {
+    const { amountParts } = await import("@/components/billing-v2/billing-v2");
+    const { money } = await import("@/lib/billing");
+    const inr = new Intl.NumberFormat("en-IN");
+    for (const v of [0, 0.5, 12, 12.345, 999.99, 1000, 123456.5, 10000000.01, 98765432.1]) {
+      const p = amountParts(v, "INR");
+      expect(p, String(v)).not.toBeNull();
+      expect("₹" + inr.format(p!.whole) + p!.rest).toBe(money(v, "INR"));
+      expect(p!.text).toBe(money(v, "INR"));
+    }
+    // Below zero and other currencies show money()'s text as it was, no ticker.
+    expect(amountParts(-5, "INR")).toBeNull();
+    expect(amountParts(10, "USD")).toBeNull();
+  });
+
+  it("billing, GST, plan and payment words are Batch 50/55's, byte for byte", async () => {
+    const { BILLING_COPY, CATEGORY_COPY, STATE_COPY } = await import("@/components/billing-v2/copy");
+    expect(BILLING_COPY.ratesGst).toBe("Prices are per message, before 18% GST.");
+    expect(BILLING_COPY.ratesNoGst).toBe("Prices are per message.");
+    expect(BILLING_COPY.ratesFree).toBe("Replies inside the 24-hour window are free.");
+    expect(BILLING_COPY.plusGst).toBe("+ 18% GST");
+    expect(BILLING_COPY.held("₹10.00")).toBe("₹10.00 held for campaigns");
+    expect(BILLING_COPY.aiPayAsYouGo).toBe("Charged as you go");
+    expect(BILLING_COPY.aiIncluded).toBe("Included in your plan this month");
+    expect(BILLING_COPY.planFirst).toBe(
+      "Pick a plan first — a locked or cancelled workspace can't buy credits.",
+    );
+    expect(BILLING_COPY.paymentFailed).toBe("That payment didn't go through. You can try again.");
+    expect(CATEGORY_COPY).toEqual({
+      marketing: "Promotions and offers",
+      utility: "Order and account updates",
+      authentication: "One-time passcodes",
+      service: "Replies inside the 24-hour window",
+    });
+    expect(STATE_COPY.pastDue.body).toBe("Pay the open invoice and everything stays switched on.");
+    // The page reads them from copy.ts; no amount or charge line is typed in the page.
+    const page = code(src("components/billing-v2/new-billing.tsx"));
+    expect(page).not.toMatch(/"Prices are per message|18% GST"|held for campaigns"/);
+    expect(page).toContain("C.ratesGst");
+  });
+
+  it("Settings: the billing note under Notifications is unchanged; the section names too", async () => {
+    const { SETTINGS_COPY, SECTION_COPY } = await import("@/components/settings-v2/copy");
+    expect(SETTINGS_COPY.billingNote).toBe(
+      "Receipts and low-credit notes go to the billing WhatsApp number you give when you choose a plan.",
+    );
+    // Batch 56 owns this line (what an AI app may do as you).
+    expect(SECTION_COPY.ai_apps.blurb).toBe(
+      "AI assistants you allowed to use AiDwar as you, and where to remove them.",
+    );
+    // A technical word gets a plain line the first time.
+    expect(SECTION_COPY.api.blurb).toMatch(/a webhook is the address we call/);
+  });
+});
+
 describe("flag off: today's Settings, Billing and journey", () => {
   it("the routes draw the classic page with new_design off and the new one with it on", async () => {
     for (const [path, classic, fresh] of [

@@ -8,6 +8,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { MCP_URL } from "@/lib/mcp-connect";
 import { STARTER_PROMPTS } from "@/lib/mcp-prompts";
 import { CopyText, focusRing } from "./parts";
+import { CONNECT_CARD_COPY as C } from "./copy";
 
 /**
  * Batch 53: "Connect your AI assistant" on Home, in Classic and Aiden
@@ -94,25 +95,22 @@ export function ConnectAssistantCardView({ onDismiss, className = "mb-6" }: { on
         variant="ghost"
         size="icon"
         onClick={onDismiss}
-        aria-label="Dismiss: Connect your AI assistant"
+        aria-label={C.dismiss}
         className={`absolute right-2 top-2 ${focusRing}`}
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </Button>
       <div className="space-y-1">
         <h2 id="connect-ai-title" className="text-lg font-semibold text-foreground">
-          Connect your AI assistant
+          {C.title}
         </h2>
-        <p className="text-body text-muted-foreground">
-          Add AiDwar to Claude, ChatGPT, Codex or Cursor and ask about your numbers or have it draft a campaign. Nothing
-          is sent until you confirm.
-        </p>
+        <p className="text-body text-muted-foreground">{C.body}</p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <code className="min-w-0 font-mono text-[0.9375rem] font-semibold text-foreground [overflow-wrap:anywhere]">
           {MCP_URL}
         </code>
-        <CopyText value={MCP_URL} label="Copy the server URL" className={focusRing} />
+        <CopyText value={MCP_URL} label={C.copyUrl} className={focusRing} />
       </div>
       <ul className="m-0 grid list-none gap-1.5 p-0 text-body text-foreground sm:grid-cols-2">
         {STARTER_PROMPTS.map((p) => (
@@ -125,7 +123,7 @@ export function ConnectAssistantCardView({ onDismiss, className = "mb-6" }: { on
         to="/app/ai-assistants"
         className={`inline-flex rounded font-semibold text-primary underline-offset-4 hover:underline ${focusRing}`}
       >
-        How to connect, and more to ask
+        {C.more}
       </Link>
     </section>
   );

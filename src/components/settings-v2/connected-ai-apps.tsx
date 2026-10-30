@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { Bot, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, ErrorState } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
+import { useNewDesign } from "@/lib/new-design";
+import { cn } from "@/lib/utils";
+import { connectedAppsCopy, connectedOnText, lastUsedOnText } from "./copy";
 
 /**
  * Batch 52: Settings > Connected AI apps. The AI assistants (Claude, ChatGPT,
@@ -59,7 +63,7 @@ function connectedOn(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? ""
-    : `Connected ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+    : connectedOnText(d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }));
 }
 
 function lastUsedText(iso: string | null | undefined): string {
@@ -67,7 +71,7 @@ function lastUsedText(iso: string | null | undefined): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? ""
-    : `last used ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+    : lastUsedOnText(d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }));
 }
 
 /**
@@ -80,16 +84,21 @@ export function ConnectedAiApps({
   lastUsed,
   intro = true,
 }: { lastUsed?: Record<string, string | null> | undefined; intro?: boolean } = {}) {
+  const nd = useNewDesign();
+  const copy = connectedAppsCopy(nd);
   const [grants, setGrants] = useState<GrantView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
 
   async function load() {
     setError(null);
+    setLoadFailed(false);
     const { data, error: e } = await oauthApi().listGrants();
     if (e) {
-      setError("We couldn't load your connected apps. Please try again.");
+      setError(copy.loadFailed);
+      setLoadFailed(true);
       setGrants([]);
       return;
     }
@@ -105,7 +114,7 @@ export function ConnectedAiApps({
     setRemoving(null);
     setConfirming(null);
     if (e) {
-      setError("We couldn't remove that app. Please try again.");
+      setError(copy.removeFailed);
       return;
     }
     setGrants((g) => (g ?? []).filter((x) => x.clientId !== clientId));
@@ -119,8 +128,10 @@ export function ConnectedAiApps({
       removing={removing}
       onAsk={setConfirming}
       onRemove={remove}
+      onRetry={loadFailed ? () => void load() : undefined}
       lastUsed={lastUsed}
       intro={intro}
+      newDesign={nd}
     />
   );
 }
@@ -132,10 +143,16 @@ export function ConnectedAiAppsView({
   removing = null,
   onAsk,
   onRemove,
+  onRetry,
   lastUsed,
   intro = true,
+  newDesign = false,
 }: {
   grants: GrantView[] | null;
+  /** Batch 57: Aiden Workspace's words and look (the page passes useNewDesign()); Classic by default. */
+  newDesign?: boolean;
+  /** Batch 57, Aiden Workspace: "Try again" after a failed load (the same read). */
+  onRetry?: (() => void) | undefined;
   lastUsed?: Record<string, string | null> | undefined;
   intro?: boolean;
   error?: string | null;
@@ -144,6 +161,10 @@ export function ConnectedAiAppsView({
   onAsk?: (clientId: string | null) => void;
   onRemove?: (clientId: string) => void;
 }) {
+  const nd = newDesign;
+  const copy = connectedAppsCopy(nd);
+  // Aiden Workspace: 44px targets on a phone (Classic is unchanged).
+  const tap = nd ? "phone:min-h-11" : undefined;
   return (
     <div className="space-y-4">
       {intro ? (
@@ -160,25 +181,48 @@ export function ConnectedAiAppsView({
         </p>
       ) : null}
       {error ? (
-        <p className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-soft-foreground">
-          {error}
-        </p>
+        nd ? (
+          <ErrorState message={error} onRetry={onRetry} />
+        ) : (
+          <p className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-soft-foreground">
+            {error}
+          </p>
+        )
       ) : null}
       {grants === null ? (
-        <div className="space-y-3" aria-label="Loading connected apps">
+        <div className="space-y-3" aria-label={copy.loadingLabel}>
           <Skeleton className="h-16 w-full rounded-2xl" />
           <Skeleton className="h-16 w-full rounded-2xl" />
         </div>
       ) : grants.length === 0 ? (
-        <p className="rounded-2xl border border-border bg-card px-5 py-4 text-body text-muted-foreground">
-          No AI apps are connected to your AiDwar account.
-        </p>
+        nd ? (
+          onRetry ? null : (
+            <EmptyState
+              icon={Bot}
+              title={copy.emptyTitle}
+              description={copy.emptyBody}
+              action={
+                <Button asChild variant="outline" className="phone:min-h-11">
+                  <a href={intro ? "/developers#mcp" : "#connect"}>{copy.emptyAction}</a>
+                </Button>
+              }
+            />
+          )
+        ) : (
+          <p className="rounded-2xl border border-border bg-card px-5 py-4 text-body text-muted-foreground">
+            {copy.emptyTitle}
+          </p>
+        )
       ) : (
         <ul className="m-0 grid list-none gap-3 p-0">
-          {grants.map((g) => (
+          {grants.map((g, i) => (
             <li
               key={g.clientId}
-              className="flex flex-col gap-3 rounded-2xl border border-border bg-card px-5 py-4 sm:flex-row sm:items-center"
+              className={cn(
+                "flex flex-col gap-3 rounded-2xl border border-border bg-card px-5 py-4 sm:flex-row sm:items-center",
+                nd && "nd-rise",
+              )}
+              style={nd ? ({ "--d": i } as CSSProperties) : undefined}
             >
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-foreground [overflow-wrap:anywhere]">{g.name}</p>
@@ -190,27 +234,29 @@ export function ConnectedAiAppsView({
               </div>
               {confirming === g.clientId ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-foreground">Remove its access?</span>
+                  <span className="text-sm text-foreground">{copy.confirm}</span>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
+                    className={tap}
                     disabled={removing !== null}
                     onClick={() => onAsk?.(null)}
                   >
-                    Keep
+                    {copy.keep}
                   </Button>
                   <Button
                     type="button"
                     variant="destructive"
                     size="sm"
+                    className={tap}
                     disabled={removing !== null}
                     onClick={() => onRemove?.(g.clientId)}
                   >
                     {removing === g.clientId ? (
                       <Loader2 className="motion-safe:animate-spin" aria-hidden="true" />
                     ) : null}
-                    Remove
+                    {copy.remove}
                   </Button>
                 </div>
               ) : (
@@ -218,9 +264,10 @@ export function ConnectedAiAppsView({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className={tap}
                   onClick={() => onAsk?.(g.clientId)}
                 >
-                  Remove access
+                  {copy.ask}
                 </Button>
               )}
             </li>

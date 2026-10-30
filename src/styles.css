@@ -1303,8 +1303,10 @@ html[data-design="new"] ::selection {
 /* A page arriving; the phone's bottom sheet rising. Batch 57: the page
    blur-fades in (desktop only: a blur over a whole phone screen costs frames
    on a mid phone, so the phone gets the plain fade). */
+/* "backwards", never "both": an animation still filling its transform would
+   make this wrapper the anchor of every position: fixed child (StickyAction). */
 .nd-view-enter {
-  animation: nd-fade 0.35s var(--ease-out) both;
+  animation: nd-fade 0.35s var(--ease-out) backwards;
 }
 @media (min-width: 701px) {
   .nd-view-enter {
@@ -1335,7 +1337,7 @@ html[data-design="new"] ::selection {
 }
 /* Batch 57: blocks inside a page arrive one after another (--d = 0, 1, 2 …). */
 .nd-rise {
-  animation: nd-fade 0.4s var(--ease-out) both;
+  animation: nd-fade 0.4s var(--ease-out) backwards;
   animation-delay: calc(var(--d, 0) * 70ms);
 }
 /* Batch 57 (approved preview): the sheet rises with a soft spring. */

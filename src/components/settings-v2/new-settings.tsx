@@ -39,8 +39,7 @@ import {
   type SettingsSection,
   type SettingsSectionKey,
 } from "./settings-sections";
-
-const DESCRIPTION = "Workspace details, your team, and the connections that power your messaging.";
+import { SETTINGS_COPY } from "./copy";
 
 /**
  * Batch 50: Settings in the new design (flag new_design on). A left sub-nav
@@ -50,27 +49,46 @@ const DESCRIPTION = "Workspace details, your team, and the connections that powe
  * General tab's form, handed in by the route so its one write path stays put.
  */
 export function NewSettingsPage({ workspace }: { workspace: ReactNode }) {
-  const { active, loading, error } = useOrg();
+  const { active, loading, error, reload } = useOrg();
   return (
     <div className="pb-6">
-      <header className="mb-7 flex flex-col gap-2">
+      <header className="nd-rise mb-7 flex flex-col gap-2">
         <h1 className="min-w-0 font-display text-[clamp(1.75rem,3.4vw,2.5rem)] font-extrabold leading-[1.05] tracking-[-0.03em] text-foreground">
-          Settings
+          {SETTINGS_COPY.title}
         </h1>
-        <p className="max-w-2xl text-body text-muted-foreground">{DESCRIPTION}</p>
+        <p className="max-w-2xl text-body text-muted-foreground">{SETTINGS_COPY.description}</p>
       </header>
       {loading ? (
-        <div className="grid gap-7 wide:grid-cols-[13.5rem_minmax(0,1fr)]">
-          <Skeleton className="h-64 w-full rounded-2xl" />
-          <Skeleton className="h-80 w-full rounded-2xl" />
-        </div>
+        <SettingsSkeleton />
       ) : error ? (
-        <ErrorState message={error} />
+        <ErrorState message={SETTINGS_COPY.loadFailed} onRetry={() => void reload()} />
       ) : !active ? (
-        <ErrorState message="We couldn't find your workspace. Please refresh the page." />
+        <ErrorState message={SETTINGS_COPY.noWorkspace} />
       ) : (
         <SettingsLayout workspace={workspace} />
       )}
+    </div>
+  );
+}
+
+/** The page's own shape while the workspace loads: the sub-nav, then a section. */
+function SettingsSkeleton() {
+  return (
+    <div
+      className="grid gap-6 wide:grid-cols-[13.5rem_minmax(0,1fr)] wide:gap-10"
+      aria-busy="true"
+      aria-label={SETTINGS_COPY.loadingLabel}
+    >
+      <div className="flex gap-2 overflow-hidden wide:flex-col">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-10 w-28 shrink-0 rounded-full wide:w-full wide:rounded-xl" />
+        ))}
+      </div>
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-7 w-48 rounded-lg" />
+        <Skeleton className="h-4 w-full max-w-md rounded-lg" />
+        <Skeleton className="h-64 w-full rounded-[18px]" />
+      </div>
     </div>
   );
 }
@@ -159,7 +177,7 @@ function SubNav({
   current: SettingsSectionKey;
 }) {
   return (
-    <nav aria-label="Settings sections" className="min-w-0 wide:sticky wide:top-3">
+    <nav aria-label={SETTINGS_COPY.navLabel} className="min-w-0 wide:sticky wide:top-3">
       <ul className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 [scrollbar-width:none] wide:mx-0 wide:flex-col wide:overflow-visible wide:px-0 wide:pb-0">
         {sections.map((s) => {
           const on = s.key === current;
@@ -178,7 +196,8 @@ function SubNav({
                 aria-current={on ? "page" : undefined}
                 className={cn(
                   "flex items-center whitespace-nowrap rounded-full px-3.5 py-2 text-[0.9375rem] font-semibold transition-colors duration-200",
-                  "wide:rounded-xl",
+                  "phone:min-h-11 wide:rounded-xl",
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
                   on
                     ? danger
                       ? "bg-danger-soft text-danger-soft-foreground"
@@ -233,10 +252,7 @@ function SectionBody({
       return (
         <>
           <HandoffAlertsCard organizationId={orgId} canConfigure={can("ai.configure")} />
-          <p className="text-sm text-muted-foreground">
-            Receipts and low-credit notes go to the billing WhatsApp number you give when you choose
-            a plan.
-          </p>
+          <p className="text-sm text-muted-foreground">{SETTINGS_COPY.billingNote}</p>
         </>
       );
     case "optout":
@@ -281,13 +297,13 @@ function WhatsAppProfileTop({ orgId }: { orgId: string }) {
     };
   }, [orgId]);
 
-  if (numbers === null) return <Skeleton className="h-28 w-full rounded-2xl" />;
+  if (numbers === null) return <Skeleton className="h-28 w-full rounded-[18px]" />;
   if (!chosen) return null;
 
   const picker =
     numbers.length > 1 ? (
       <Select value={chosen} onValueChange={setChosen}>
-        <SelectTrigger className="w-full max-w-xs" aria-label="Which number's profile">
+        <SelectTrigger className="w-full max-w-xs" aria-label={SETTINGS_COPY.profilePicker}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

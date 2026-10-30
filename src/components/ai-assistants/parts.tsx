@@ -1,11 +1,13 @@
-import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { useState, type CSSProperties } from "react";
+import { Check, Copy, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CONNECT_CLIENTS, MCP_SAFETY, MCP_URL, OTHER_CLIENT } from "@/lib/mcp-connect";
 import { PROMPT_GROUPS } from "@/lib/mcp-prompts";
 import { ACTION_WORDS, type AssistantApp, type AssistantEvent, type AssistantsOverview } from "@/lib/mcp-workspace";
 import { cn } from "@/lib/utils";
+import { ASSISTANTS_COPY, type AssistantsCopy } from "./copy";
 
 /**
  * Batch 53: the AI assistants page's sections, as plain views (no data
@@ -63,12 +65,15 @@ export function SectionCard({
   blurb,
   children,
   className,
+  rise,
 }: {
   id: string;
   title: string;
   blurb?: string;
   children: React.ReactNode;
   className?: string;
+  /** Batch 57, Aiden Workspace only: arrive in turn (nd-rise, n × 70ms). */
+  rise?: number | undefined;
 }) {
   return (
     <section
@@ -76,7 +81,12 @@ export function SectionCard({
       id={id}
       // Hallmark floor: no card inside a card — a section is a divider and a
       // heading; its rows are the cards.
-      className={cn("scroll-mt-24 space-y-4 border-t border-border pt-6 first:border-t-0 first:pt-0", className)}
+      className={cn(
+        "scroll-mt-24 space-y-4 border-t border-border pt-6 first:border-t-0 first:pt-0",
+        rise !== undefined && "nd-rise",
+        className,
+      )}
+      style={rise !== undefined ? ({ "--d": rise } as CSSProperties) : undefined}
     >
       <div className="space-y-1">
         <h2 id={`${id}-title`} className="text-lg font-semibold text-foreground">
@@ -281,19 +291,33 @@ export function TeamApps({ apps }: { apps: AssistantApp[] }) {
 export function Timeline({
   events,
   seesEveryone,
+  copy = ASSISTANTS_COPY.classic.activity,
 }: {
   events: AssistantEvent[];
   seesEveryone: boolean;
+  /** The page's words for this design (copy.ts); Classic's by default. */
+  copy?: AssistantsCopy["activity"];
 }) {
   if (!events.length) {
+    // Aiden Workspace: the illustrated empty state with its one next step.
+    if (copy.emptyAction) {
+      return (
+        <EmptyState
+          icon={History}
+          title={copy.emptyTitle}
+          description={copy.emptyBody}
+          action={
+            <Button asChild variant="outline" className="phone:min-h-11">
+              <a href="#prompts">{copy.emptyAction}</a>
+            </Button>
+          }
+        />
+      );
+    }
     return (
       <div className="rounded-xl border border-dashed border-border bg-card px-5 py-6">
-        <p className="font-semibold text-foreground">Nothing yet.</p>
-        <p className="mt-1 text-body text-muted-foreground">
-          When your assistant creates a segment, drafts a campaign or a flow, or sends or switches one on after you
-          confirm, it shows here with who asked, from which app and a link to it. Try asking it: “Draft a Diwali
-          campaign to customers tagged VIP”.
-        </p>
+        <p className="font-semibold text-foreground">{copy.emptyTitle}</p>
+        <p className="mt-1 text-body text-muted-foreground">{copy.emptyBody}</p>
       </div>
     );
   }
@@ -316,7 +340,7 @@ export function Timeline({
               href={e.link}
               className={cn("rounded text-sm font-semibold text-primary underline-offset-4 hover:underline", focusRing)}
             >
-              Open
+              {copy.open}
             </a>
           ) : null}
         </li>
