@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
+import { Route as AiAssistantsRouteImport } from './routes/ai-assistants'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as CancellationPolicyRouteImport } from './routes/cancellation-policy'
 import { Route as ContactRouteImport } from './routes/contact'
@@ -214,6 +215,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRouteRoute = AdminRouteRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AiAssistantsRoute = AiAssistantsRouteImport.update({
+  id: '/ai-assistants',
+  path: '/ai-assistants',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRouteRoute = AppRouteRouteImport.update({
@@ -1235,6 +1241,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
@@ -1431,6 +1438,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
@@ -1629,6 +1637,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
   '/contact': typeof ContactRoute
   '/data-deletion': typeof DataDeletionRoute
@@ -1829,6 +1838,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/ai-assistants'
     | '/cancellation-policy'
     | '/contact'
     | '/data-deletion'
@@ -2025,6 +2035,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ai-assistants'
     | '/cancellation-policy'
     | '/contact'
     | '/data-deletion'
@@ -2222,6 +2233,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/ai-assistants'
     | '/cancellation-policy'
     | '/contact'
     | '/data-deletion'
@@ -2421,6 +2433,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AppRouteRoute: typeof AppRouteRouteWithChildren
+  AiAssistantsRoute: typeof AiAssistantsRoute
   CancellationPolicyRoute: typeof CancellationPolicyRoute
   ContactRoute: typeof ContactRoute
   DataDeletionRoute: typeof DataDeletionRoute
@@ -2574,6 +2587,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ai-assistants': {
+      id: '/ai-assistants'
+      path: '/ai-assistants'
+      fullPath: '/ai-assistants'
+      preLoaderRoute: typeof AiAssistantsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -4138,6 +4158,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
   AppRouteRoute: AppRouteRouteWithChildren,
+  AiAssistantsRoute: AiAssistantsRoute,
   CancellationPolicyRoute: CancellationPolicyRoute,
   ContactRoute: ContactRoute,
   DataDeletionRoute: DataDeletionRoute,
