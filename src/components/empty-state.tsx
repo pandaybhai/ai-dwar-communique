@@ -140,7 +140,7 @@ export function ErrorState({
 }: {
   message: string;
   /** Batch 57: a "Try again" button after the message (Aiden Workspace screens pass it). */
-  onRetry?: () => void;
+  onRetry?: (() => void) | undefined;
 }) {
   return (
     <div

@@ -25,6 +25,8 @@ import { ReplyingView } from "./replying-view";
 import { DraftsView } from "./drafts-view";
 import { OffView } from "./off-view";
 import { useNewHome, type HomeAccess } from "./use-new-home";
+import { HOME_COPY } from "./copy";
+import { greetingFor } from "@/lib/greeting";
 import { canDecide } from "@/components/inbox/v2/owner-decision";
 
 /**
@@ -34,7 +36,7 @@ import { canDecide } from "@/components/inbox/v2/owner-decision";
  * you) or off (customers waiting on the team; also every plan without AI).
  */
 export function NewHome() {
-  const { active, loading: orgLoading } = useOrg();
+  const { active, loading: orgLoading, profile } = useOrg();
   const { can, loading: permsLoading } = usePermissions();
   const aiFlag = useFeatureFlag("ai_features");
   const campaignsFlag = useFeatureFlag("campaigns");
@@ -70,7 +72,8 @@ export function NewHome() {
       can,
     ],
   );
-  const { data, loading, reload } = useNewHome(organizationId, timezone, access);
+  const { data, loading, reload, typing } = useNewHome(organizationId, timezone, access);
+  const greeting = greetingFor(profile?.full_name, timezone);
   const onChanged = useCallback(() => void reload(), [reload]);
   const modeSwitch = useAidenModeSwitch(organizationId, onChanged);
 
@@ -78,8 +81,8 @@ export function NewHome() {
     return (
       <EmptyState
         icon={Inbox}
-        title="No workspace selected"
-        description="Pick a workspace from the switcher to see today's overview."
+        title={HOME_COPY.noWorkspace.title}
+        description={HOME_COPY.noWorkspace.body}
       />
     );
   }
@@ -89,7 +92,8 @@ export function NewHome() {
   const canChange = can("ai.configure");
 
   return (
-    <div className="flex flex-col gap-6 pb-10">
+    // Batch 57: room below for the phone's sticky main action.
+    <div className="flex flex-col gap-6 pb-10 phone:pb-20">
       <JourneyResume organizationId={organizationId} isOwner={active?.role === "owner"} />
       <SendHealthBanner organizationId={organizationId} showLink />
       <AidenSetupCard organizationId={organizationId} showFinished />
@@ -110,6 +114,8 @@ export function NewHome() {
       ) : mode === "replying" ? (
         <ReplyingView
           data={data}
+          greeting={greeting}
+          typing={typing}
           headline={replyingHeadline(data.active ?? 0)}
           stats={todayStats(data, "replying")}
           organizationId={organizationId}
@@ -118,6 +124,7 @@ export function NewHome() {
         />
       ) : mode === "draft" ? (
         <DraftsView
+          greeting={greeting}
           data={data}
           organizationId={organizationId!}
           canReply={can("inbox.reply")}
@@ -128,6 +135,7 @@ export function NewHome() {
         />
       ) : (
         <OffView
+          greeting={greeting}
           data={data}
           organizationId={organizationId!}
           queue={waitingQueue(data.openChats ?? [], Date.now())}
@@ -159,12 +167,12 @@ export function NewHome() {
 function todayStats(data: ReturnType<typeof useNewHome>["data"], mode: HomeMode): StatRow[] {
   const rows: StatRow[] = [];
   const s = data.summary;
-  if (s) rows.push({ label: "Chats", value: s.today.conversations });
-  if (mode === "replying" && s)
-    rows.push({ label: "Answered by Aiden", value: s.today.ai_answers });
+  const L = HOME_COPY.todayRows;
+  if (s) rows.push({ label: L.chats, value: s.today.conversations });
+  if (mode === "replying" && s) rows.push({ label: L.answered, value: s.today.ai_answers });
   if (mode === "draft" && data.draftsToday !== null)
-    rows.push({ label: "Drafts Aiden wrote", value: data.draftsToday });
-  if (mode === "off" && data.flows) rows.push({ label: "Flow runs", value: data.flows.total });
+    rows.push({ label: L.drafts, value: data.draftsToday });
+  if (mode === "off" && data.flows) rows.push({ label: L.flows, value: data.flows.total });
   if (data.sales)
     rows.push({ label: data.sales.label, value: data.sales.value, currency: data.sales.currency });
   return rows;
@@ -175,14 +183,18 @@ function HomeSkeleton() {
     <div
       className="grid items-start gap-10 min-[901px]:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]"
       aria-busy="true"
-      aria-label="Loading"
+      aria-label={HOME_COPY.loading}
     >
       <div className="flex flex-col gap-[22px]">
         <div className="flex items-center gap-5 phone:gap-3.5">
           <AidenOrb state="off" size={72} className="opacity-60 phone:hidden" />
-          <Skeleton className="h-12 w-3/4 rounded-xl" />
+          <div className="flex flex-1 flex-col gap-2.5">
+            <Skeleton className="h-12 w-3/4 rounded-xl" />
+            <Skeleton className="h-6 w-1/2 rounded-lg" />
+          </div>
         </div>
-        <Skeleton className="h-6 w-1/2 rounded-lg" />
+        <Skeleton className="h-5 w-2/3 rounded-lg" />
+        <Skeleton className="h-32 rounded-[20px]" />
         <Skeleton className="h-28 rounded-[18px]" />
         <Skeleton className="h-28 rounded-[18px]" />
       </div>

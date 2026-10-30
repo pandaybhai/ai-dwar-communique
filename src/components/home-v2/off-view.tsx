@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { CountdownRing, NeedsYouCard } from "@/components/design-v2";
+import { CountdownRing, NeedsYouCard, StickyAction } from "@/components/design-v2";
+import { HOME_COPY } from "./copy";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -45,7 +46,10 @@ export function OffView({
   canAssign,
   stats,
   tryDraft,
+  greeting,
 }: {
+  /** Batch 57: "Good morning, Riya", the page's title. */
+  greeting?: string | undefined;
   data: NewHomeData;
   organizationId: string;
   queue: WaitingChat[];
@@ -61,29 +65,30 @@ export function OffView({
   const byId = new Map((data.openChats ?? []).map((c) => [c.id, c]));
   return (
     <HomeGrid
-      orb={<HomeOrb state="off" label="Your team is answering" />}
-      headline={known ? headlineFor(queue.length) : "Your team is answering"}
+      orb={<HomeOrb state="off" label={HOME_COPY.orb.off} />}
+      greeting={greeting}
+      headline={known ? headlineFor(queue.length) : HOME_COPY.off.headlineUnknown}
       lede={
         !known
-          ? "Aiden is off. Your team replies to every customer."
+          ? HOME_COPY.off.ledeUnknown
           : queue.length > 0
-            ? "Oldest first. Reply, assign to your team, or send a template."
-            : "Everyone who wrote in has an answer."
+            ? HOME_COPY.off.ledeWaiting
+            : HOME_COPY.off.ledeNone
       }
+      focus={closing.length > 0 ? <ClosingSoon closing={closing} chats={byId} /> : null}
       side={
         <>
-          {closing.length > 0 ? <ClosingSoon closing={closing} chats={byId} /> : null}
           <TodayStats rows={stats} />
           {data.flows ? <FlowsToday flows={data.flows} /> : null}
           {tryDraft ? (
             <p className="m-0 text-[15px] text-muted-foreground">
-              Want help with the busy hours?{" "}
+              {HOME_COPY.off.tryDraftLead}{" "}
               <button
                 type="button"
                 onClick={tryDraft}
                 className="rounded-sm font-bold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden active:opacity-80"
               >
-                Try Aiden in draft mode
+                {HOME_COPY.off.tryDraft}
               </button>
             </p>
           ) : null}
@@ -92,7 +97,7 @@ export function OffView({
     >
       {queue.length > 0 ? (
         <ul
-          aria-label="Customers waiting, oldest first"
+          aria-label={HOME_COPY.off.queueLabel}
           className="m-0 flex list-none flex-col gap-2.5 p-0"
         >
           {queue.slice(0, QUEUE_ROWS).map((w, i) => (
@@ -109,7 +114,7 @@ export function OffView({
           {queue.length > QUEUE_ROWS ? (
             <li>
               <Button asChild variant="outline">
-                <a href="/app/inbox">See all {count.format(queue.length)} in the inbox</a>
+                <a href="/app/inbox">{HOME_COPY.off.seeAll(queue.length)}</a>
               </Button>
             </li>
           ) : null}
@@ -141,7 +146,7 @@ function WaitingRow({
   return (
     <li
       className={cn(
-        "flex items-start gap-3.5 rounded-[18px] border border-line bg-surface px-4 py-3.5 shadow-md phone:p-3",
+        "nd-lift flex items-start gap-3.5 rounded-[18px] border border-line bg-surface px-4 py-3.5 shadow-md phone:p-3",
         index === 0 ? "nd-oldest" : "nd-slide-in",
       )}
       style={{ ["--i" as string]: index }}
@@ -151,29 +156,29 @@ function WaitingRow({
         <div className="flex justify-between gap-2.5 font-bold">
           <span className="min-w-0 truncate">{who}</span>
           <span className="shrink-0 text-sm font-medium text-muted-foreground">
-            waiting {waitedFor(item.since, Date.now())}
+            {HOME_COPY.off.waiting(waitedFor(item.since, Date.now()))}
           </span>
         </div>
         <p className="m-0 mt-0.5 line-clamp-2 text-[15px] text-foreground">{item.said}</p>
         {assignee ? (
-          <p className="m-0 mt-1 text-sm text-muted-foreground">With {assignee.name}</p>
+          <p className="m-0 mt-1 text-sm text-muted-foreground">{HOME_COPY.off.with(assignee.name)}</p>
         ) : null}
         <div className="mt-2.5 flex flex-wrap gap-2">
           {canReply ? (
             <Button asChild>
-              <a href={`/app/inbox?c=${c.id}`}>Reply</a>
+              <a href={`/app/inbox?c=${c.id}`}>{HOME_COPY.off.reply}</a>
             </Button>
           ) : null}
           {canAssign && teammates.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" aria-label={`Assign ${who} to a teammate`}>
-                  Assign
+                <Button variant="outline" aria-label={HOME_COPY.off.assignLabel(who)}>
+                  {HOME_COPY.off.assign}
                   <ChevronDown aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                <DropdownMenuLabel>Assign to</DropdownMenuLabel>
+                <DropdownMenuLabel>{HOME_COPY.off.assignTo}</DropdownMenuLabel>
                 {teammates.map((t) => (
                   <DropdownMenuItem
                     key={t.user_id}
@@ -208,13 +213,15 @@ function ClosingSoon({
   const name = (id: string) => contactName(chats.get(id)?.contact);
   return (
     <NeedsYouCard
-      title="Free replies running out"
+      title={HOME_COPY.off.closingTitle}
       actions={
-        <Button asChild variant="gold">
-          <a href={`/app/inbox?c=${soonest.conversationId}`}>
-            Reply to {firstName(name(soonest.conversationId))}
-          </a>
-        </Button>
+        <StickyAction>
+          <Button asChild variant="gold">
+            <a href={`/app/inbox?c=${soonest.conversationId}`}>
+              {HOME_COPY.needsYou.reply(firstName(name(soonest.conversationId)))}
+            </a>
+          </Button>
+        </StickyAction>
       }
     >
       <div className="flex items-center gap-3.5">
@@ -223,10 +230,7 @@ function ClosingSoon({
           label={timeLeftLabel(soonest.minutesLeft)}
           className="shrink-0"
         />
-        <p>
-          {n === 1 ? "1 chat loses" : `${count.format(n)} chats lose`} the free 24-hour window
-          within 2 hours. After that, a paid template is needed.
-        </p>
+        <p>{HOME_COPY.off.closingBody(n)}</p>
       </div>
       <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0 text-sm">
         {closing.slice(0, 3).map((w) => (
@@ -249,11 +253,9 @@ function ClosingSoon({
 
 function FlowsToday({ flows }: { flows: NonNullable<NewHomeData["flows"]> }) {
   return (
-    <SideSection id="home-flows" title="Your flows today">
+    <SideSection id="home-flows" title={HOME_COPY.off.flowsTitle}>
       {flows.flows.length === 0 ? (
-        <p className="m-0 text-[15px] text-muted-foreground">
-          None of your flows has run yet today.
-        </p>
+        <p className="m-0 text-[15px] text-muted-foreground">{HOME_COPY.off.flowsNone}</p>
       ) : (
         flows.flows.slice(0, 4).map((f) => (
           <div key={f.flowId} className="flex flex-col gap-2.5">
