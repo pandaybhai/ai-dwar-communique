@@ -20,6 +20,11 @@ export async function requireSignedIn(request: Request): Promise<{ supabase: Sup
   const header = request.headers.get("authorization") ?? "";
   const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
   if (!token) return jsonError("Not authenticated.", 401);
+  // Batch 52: an AI app's OAuth token (client_id) works only through /mcp,
+  // never the app's own routes. Every app session passes untouched.
+  const { refuseOAuthClientToken } = await import("@/lib/mcp-auth.server");
+  const refusedClient = refuseOAuthClientToken(token);
+  if (refusedClient) return refusedClient;
 
   const supabase = getServiceClient();
   const { data: userData, error: userErr } = await supabase.auth.getUser(token);

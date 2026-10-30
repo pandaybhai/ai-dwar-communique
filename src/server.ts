@@ -2,6 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { collapseLeadingSlashes } from "./lib/double-slash";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -63,6 +64,9 @@ function exposeWaitUntil(request: Request, ctx: unknown) {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      // //oauth/consent (Supabase's link from a Site URL ending in "/") -> /oauth/consent.
+      const collapsed = collapseLeadingSlashes(request);
+      if (collapsed) return collapsed;
       exposeWaitUntil(request, ctx);
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
