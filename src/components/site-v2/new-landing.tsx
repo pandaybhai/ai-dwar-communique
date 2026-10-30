@@ -10,7 +10,8 @@ import { trackMarketing } from "@/lib/marketing-analytics";
 import { useSitePreviewSearch } from "@/lib/new-site";
 import type { PublicPlan } from "@/lib/public-plans.functions";
 import { cn } from "@/lib/utils";
-import { AidenChatDemo, CampaignDemo, CampaignPhone, InboxDemo } from "./demos";
+import { AidenChatDemo, AssistantDemo, CampaignDemo, CampaignPhone, InboxDemo } from "./demos";
+import { MCP_PROMISE } from "@/lib/mcp-connect";
 import { NewSiteShell } from "./site-shell";
 import { ProductProofNew } from "./proof-v2";
 
@@ -151,6 +152,44 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
           <p className="m-0 text-center text-sm text-muted-foreground">
             Examples with a sample shop.
           </p>
+        </div>
+      </section>
+
+      {/* Batch 52: AiDwar MCP — the AI assistant the merchant already uses. */}
+      <section id="ai-assistants" className="scroll-mt-20 border-t border-border">
+        <div
+          className={cn(
+            WRAP,
+            "grid items-center gap-10 py-20 sm:py-24 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]",
+          )}
+        >
+          <Reveal className="flex flex-col gap-4">
+            <h2 className={H2}>Works with Claude, ChatGPT, Codex and Cursor.</h2>
+            <p className="m-0 max-w-[46ch] text-[1.0625rem] text-muted-foreground">
+              Ask the AI assistant you already use to draft a campaign or build a flow. AiDwar does
+              the work and asks you before anything goes out. Included on every plan.
+            </p>
+            <ul className="m-0 grid list-none gap-2.5 p-0">
+              {MCP_PROMISE.map((line) => (
+                <li key={line} className="flex items-start gap-2">
+                  <Check className="mt-1 size-4 shrink-0 text-aiden-deep" aria-hidden="true" />
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+            <a
+              href="/developers#mcp"
+              className="w-fit rounded font-semibold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+            >
+              How to connect your assistant
+            </a>
+          </Reveal>
+          <Reveal delay={100}>
+            <AssistantDemo />
+            <p className="m-0 mt-2 text-center text-sm text-muted-foreground">
+              An example with a sample shop.
+            </p>
+          </Reveal>
         </div>
       </section>
 

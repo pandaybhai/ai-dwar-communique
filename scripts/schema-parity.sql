@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 94, column 1117, view 2, function 114, index 170, trigger 70, cron_job 14.
+-- Expected objects: table 94, column 1117, view 2, function 116, index 170, trigger 70, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'public', 'abandoned_checkouts', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -1300,6 +1300,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'is_auth_send_error', NULL, ARRAY['text'], 'public.is_auth_send_error(text)', '20260924_send_health_scope_diff.sql'),
     ('function', 'public', 'log_super_admin_write', NULL, '{}'::text[], 'public.log_super_admin_write()', '20260816_permissions.sql'),
     ('function', 'public', 'match_knowledge_chunks', NULL, ARRAY['uuid', 'vector', 'text', 'uuid', 'integer', 'numeric'], 'public.match_knowledge_chunks(uuid, vector, text, uuid, integer, numeric)', '20260902_ai_knowledge.sql'),
+    ('function', 'public', 'mcp_block_oauth_writes', NULL, '{}'::text[], 'public.mcp_block_oauth_writes()', '20261260_batch52_mcp.sql'),
+    ('function', 'public', 'mcp_oauth_request_guard', NULL, '{}'::text[], 'public.mcp_oauth_request_guard()', '20261260_batch52_mcp.sql'),
     ('function', 'public', 'message_rate_for', NULL, ARRAY['text', 'text', 'timestamp with time zone'], 'public.message_rate_for(text, text, timestamp with time zone)', '20260831_message_cost_receipts.sql'),
     ('function', 'public', 'meta_balance_estimate', NULL, ARRAY['uuid'], 'public.meta_balance_estimate(uuid)', '20261054_live_only_functions.sql'),
     ('function', 'public', 'next_invoice_number', NULL, ARRAY['text', 'date'], 'public.next_invoice_number(text, date)', '20261054_live_only_functions.sql'),

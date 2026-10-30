@@ -18,7 +18,8 @@ export const Route = createFileRoute("/login")({
   ssr: false,
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
     const r = search["redirect"];
-    return typeof r === "string" && r.startsWith("/") ? { redirect: r } : {};
+    // Same-site paths only: "//host" or "/\\host" would leave AiDwar (Batch 52).
+    return typeof r === "string" && r.startsWith("/") && !/^\/[/\\]/.test(r) ? { redirect: r } : {};
   },
   head: () => ({
     meta: [

@@ -25,6 +25,7 @@ import { SendSettingsTab } from "@/components/settings/send-settings";
 import { ApiSettingsTab } from "@/components/settings/api-settings";
 import { ApiConsoleCard } from "@/components/settings/api-console";
 import { HandoffAlertsCard } from "@/components/employee/handoff-alerts-card";
+import { ConnectedAiApps } from "@/components/settings-v2/connected-ai-apps";
 import {
   NUMBER_COLUMNS,
   numberLabel,
@@ -91,6 +92,8 @@ function useSettingsAccess() {
     compliance: compliance.enabled,
     notifications: ai.enabled && can("ai.use"),
     owner: active?.role === "owner",
+    // Batch 52: everyone's own grants, whatever the workspace's flags.
+    aiApps: true,
   };
 }
 
@@ -224,6 +227,8 @@ function SectionBody({
           <ApiConsoleCard />
         </>
       );
+    case "ai_apps":
+      return <ConnectedAiApps />;
     case "notifications":
       return (
         <>

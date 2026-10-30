@@ -12,6 +12,7 @@ export type SettingsSectionKey =
   | "team"
   | "whatsapp"
   | "api"
+  | "ai_apps"
   | "notifications"
   | "optout"
   | "integrations"
@@ -43,6 +44,11 @@ const ALL: SettingsSection[] = [
     key: "api",
     label: "API and webhooks",
     blurb: "Keys for your own systems, the webhook we call, and a console to try requests.",
+  },
+  {
+    key: "ai_apps",
+    label: "Connected AI apps",
+    blurb: "AI assistants you allowed to use AiDwar as you, and where to remove them.",
   },
   {
     key: "notifications",
@@ -84,6 +90,8 @@ export type SettingsAccess = {
   notifications: boolean;
   /** The workspace owner (the delete card shows only to them). */
   owner: boolean;
+  /** Batch 52: Connected AI apps — the person's own OAuth grants (never a workspace setting). */
+  aiApps?: boolean;
 };
 
 /** The sections this person sees, in sub-nav order (the danger zone last). */
@@ -98,6 +106,8 @@ export function visibleSections(a: SettingsAccess): SettingsSection[] {
         return a.sending;
       case "api":
         return a.api;
+      case "ai_apps":
+        return a.aiApps === true;
       case "optout":
         return a.compliance;
       case "notifications":

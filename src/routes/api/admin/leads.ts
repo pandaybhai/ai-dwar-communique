@@ -11,6 +11,9 @@ async function requireSuperAdmin(
   const header = request.headers.get("authorization") ?? "";
   const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
   if (!token) return jsonError("Not authenticated.", 401);
+  // Batch 52: an AI app's OAuth token works only through /mcp.
+  const refusedClient = (await import("@/lib/mcp-auth.server")).refuseOAuthClientToken(token);
+  if (refusedClient) return refusedClient;
 
   const supabase = getServiceClient();
   const { data } = await supabase.auth.getUser(token);
