@@ -419,3 +419,110 @@ export function CampaignPhone() {
     </figure>
   );
 }
+
+/* ------------------------------------------------- AI assistant (Batch 52) */
+
+const ASK = "Draft a Diwali campaign to my customers tagged VIP";
+
+/**
+ * Batch 52: an AI assistant (any of them: no product's look or logo) drafting
+ * a campaign through AiDwar MCP, and AiDwar asking to confirm before anything
+ * is sent. A written example with a sample shop.
+ */
+export function AssistantDemo() {
+  const { ref, seen } = useSeen<HTMLDivElement>(0.25);
+  const [step, setStep] = useState(0);
+  const [typed, setTyped] = useState(0);
+  const [run, setRun] = useState(0);
+
+  useEffect(() => {
+    if (!seen) return;
+    if (prefersReducedMotion()) {
+      setTyped(ASK.length);
+      setStep(4);
+      return;
+    }
+    setStep(0);
+    setTyped(0);
+    const timers: number[] = [];
+    const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
+    let i = 0;
+    at(400, () => {
+      const id = window.setInterval(() => {
+        i += 1;
+        setTyped(i);
+        if (i >= ASK.length) window.clearInterval(id);
+      }, 28);
+      timers.push(id);
+    });
+    const typedAt = 400 + ASK.length * 28;
+    at(typedAt + 300, () => setStep(1));
+    at(typedAt + 1300, () => setStep(2));
+    at(typedAt + 2400, () => setStep(3));
+    at(typedAt + 3600, () => setStep(4));
+    return () => timers.forEach((t) => (window.clearTimeout(t), window.clearInterval(t)));
+  }, [seen, run]);
+
+  const typing = typed < ASK.length;
+  return (
+    <div ref={ref} className="flex flex-col items-center gap-3">
+      <figure
+        aria-label="Example: an AI assistant drafting a WhatsApp campaign with AiDwar for a sample clothing shop, and AiDwar asking to confirm"
+        className="m-0 w-full max-w-[480px] overflow-hidden rounded-[22px] border border-border bg-card shadow-xl"
+      >
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <span className="text-sm font-semibold text-foreground">Your AI assistant</span>
+          <span className="ml-auto rounded-full bg-aiden-soft px-2.5 py-0.5 text-xs font-semibold text-aiden-deep">
+            AiDwar connected
+          </span>
+        </div>
+        <div className="flex min-h-[380px] flex-col gap-3 bg-ground p-4">
+          <p className="m-0 ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-[0.9375rem] text-ink-foreground">
+            {ASK.slice(0, typed)}
+            {typing && seen ? <span className="nd-caret" aria-hidden="true" /> : null}
+          </p>
+          {step >= 1 ? (
+            <p className="nd-slide-in m-0 text-sm text-muted-foreground">
+              Using AiDwar: count_audience, list_templates, create_campaign_draft
+            </p>
+          ) : null}
+          {step >= 2 ? (
+            <p className="nd-slide-in m-0 max-w-[92%] rounded-2xl rounded-bl-md bg-card px-4 py-2.5 text-[0.9375rem] text-foreground shadow-xs">
+              I drafted &ldquo;Diwali for VIPs&rdquo; with your festive_offer template. Nothing has been sent.
+            </p>
+          ) : null}
+          {step >= 3 ? (
+            <div className="nd-slide-in rounded-2xl border border-warning-border bg-warning-soft p-4">
+              <p className="m-0 font-display text-lg font-semibold text-foreground">AiDwar: confirm before sending</p>
+              <dl className="m-0 mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                <dt className="text-muted-foreground">Goes to</dt>
+                <dd className="m-0 font-semibold text-foreground">412 opted-in VIP customers</dd>
+                <dt className="text-muted-foreground">Costs about</dt>
+                <dd className="m-0 font-semibold text-foreground">₹354</dd>
+                <dt className="text-muted-foreground">Wallet</dt>
+                <dd className="m-0 font-semibold text-foreground">₹2,180 available</dd>
+              </dl>
+            </div>
+          ) : null}
+          {step >= 4 ? (
+            <p className="nd-slide-in m-0 max-w-[92%] rounded-2xl rounded-bl-md bg-card px-4 py-2.5 text-[0.9375rem] text-foreground shadow-xs">
+              Shall I send it? It goes out only when you say yes.
+            </p>
+          ) : null}
+        </div>
+      </figure>
+      <button
+        type="button"
+        onClick={() => setRun((r) => r + 1)}
+        className={cn(
+          "rounded-full px-3 py-1.5 text-sm font-semibold text-aiden-deep transition-opacity duration-200 hover:bg-aiden-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden",
+          step >= 4 ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+        tabIndex={step >= 4 ? 0 : -1}
+        aria-hidden={step >= 4 ? undefined : true}
+      >
+        Play it again
+      </button>
+    </div>
+  );
+}

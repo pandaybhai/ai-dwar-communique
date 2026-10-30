@@ -7,6 +7,7 @@ import { API_PLANS, PLAN_LABELS } from "@/lib/public-api-plans";
 import { BlockView } from "./blocks";
 import { DocLink, Heading } from "./docs-ui";
 import { HeroPlayground } from "./hero-playground";
+import { McpSection } from "./mcp-section";
 
 /** /developers (Batch 38 item 9): what the API does, in plain words first. */
 
@@ -111,6 +112,9 @@ export function OverviewPage({ rates }: { rates: ClientRate[] }) {
           }
         />
       </section>
+
+      {/* Batch 52: AiDwar MCP, right under the hero. */}
+      <McpSection />
 
       <section
         className="space-y-6 border-t border-[var(--d-border)] py-14"

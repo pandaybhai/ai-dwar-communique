@@ -661,7 +661,12 @@ describe("public words only", () => {
     const INTERNAL =
       /\bbatch\s*\d|supabase|lovable|\bvault\b|pg_net|service[ _-]role|phone_number_id|waba_id|\bapp[ _-]?id\b|graph\.facebook|internal_anthropic|claude/i;
     const texts: Array<[string, string]> = [
-      ...[...renderPortal()].map(([path, html]): [string, string] => [path, htmlText(html)]),
+      // Batch 52: /developers#mcp names the AI assistants AiDwar works with
+      // (Claude among them) by design; everywhere else the rule stands.
+      ...[...renderPortal()].map(([path, html]): [string, string] => [
+        path,
+        htmlText(html.replace(/<section id="mcp"[\s\S]*?<\/section>/, "")),
+      ]),
       ["llms.txt", llmsTxt()],
       ["llms-full.txt", llmsFullTxt()],
       ["openapi.json", JSON.stringify(openApiDocument())],

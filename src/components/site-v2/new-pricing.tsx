@@ -162,6 +162,24 @@ export function NewPricing({
                             <span className="text-muted-foreground">{line}</span>
                           </li>
                         ))}
+                        {/* Batch 52: AiDwar MCP is on every plan, trial included. */}
+                        <li className="flex items-start gap-2">
+                          <Check
+                            className="mt-0.5 h-4 w-4 shrink-0 text-aiden-deep"
+                            aria-hidden="true"
+                          />
+                          <span>
+                            <a
+                              href="/developers#mcp"
+                              className="rounded font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+                            >
+                              Connect your AI assistant
+                            </a>{" "}
+                            <span className="text-muted-foreground">
+                              (Claude, ChatGPT, Codex, Cursor)
+                            </span>
+                          </span>
+                        </li>
                       </ul>
                       {custom ? (
                         <Button asChild variant="outline" className="mt-6">
