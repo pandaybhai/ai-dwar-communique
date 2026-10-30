@@ -1465,6 +1465,13 @@ export const FEATURES: readonly FeatureManifest[] = [
       "mcp_flow_drafted",
       "mcp_flow_activated",
       "mcp_access_changed",
+      // Batch 54 (round 2). Code only: nothing reads feature_registry's
+      // database row, so no migration was needed for these.
+      "mcp_template_submitted",
+      "mcp_campaign_changed",
+      "mcp_campaign_cancelled",
+      "mcp_contacts_tagged",
+      "mcp_question_answered",
     ],
     data_tables: [],
   },

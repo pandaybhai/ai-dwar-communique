@@ -124,9 +124,9 @@ export async function decideConsent(
 
 /** What the page promises, word for word (the MCP tools keep these promises). */
 export const CONSENT_CAN = [
-  "Read your workspace: campaigns and their results, templates, segments, customers, chat flows and the chats that need you.",
-  "Draft campaigns and chat flows for you to review.",
-  "Sending a campaign or switching a flow on always needs your confirmation.",
+  "Read your workspace: campaigns, their results and sales, templates, products, segments, customers, chat flows, the chats that need you and Aiden's questions.",
+  "Draft campaigns, chat flows and templates, and prepare tags, changes to scheduled campaigns and your answers to Aiden, for you to review.",
+  "Sending, submitting, changing or switching anything on always needs your confirmation.",
 ];
 export const CONSENT_CANNOT =
   "It can't message a customer on its own, change Aiden, billing, your team or settings, or delete anything.";

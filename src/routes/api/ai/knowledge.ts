@@ -571,84 +571,31 @@ export const Route = createFileRoute("/api/ai/knowledge")({
           if (action === "answer_gap" || action === "dismiss_gap") {
             const replyId = String(payload["reply_id"] ?? "");
             if (!replyId) return jsonError("Which question?");
-            const { data: row } = await auth.supabase
-              .from("pending_owner_replies")
-              .select("id, organization_id, owner_phone, conversation_id, contact_id, question, source, status, selected_at, created_at, reminded_at")
-              .eq("id", replyId)
-              .eq("organization_id", auth.organizationId)
-              .maybeSingle();
-            if (!row) return jsonError("That question isn't in this workspace.", 403);
-            const pending = row as {
-              id: string;
-              organization_id: string;
-              owner_phone: string;
-              conversation_id: string | null;
-              contact_id: string | null;
-              question: string;
-              source: string;
-              status: string;
-              selected_at: string | null;
-              created_at: string;
-              reminded_at: string | null;
-            };
 
-            if (action === "dismiss_gap") {
-              await auth.supabase
-                .from("pending_owner_replies")
-                .update({ status: "expired" })
-                .eq("id", pending.id)
-                .eq("organization_id", auth.organizationId);
-              return Response.json({ ok: true });
+            if (action === "answer_gap") {
+              // Batch 54: one path for the app and AiDwar MCP (moved verbatim).
+              const { answerGap } = await import("@/lib/answer-gap.server");
+              const answered = await answerGap(auth.supabase, {
+                organizationId: auth.organizationId,
+                userId: auth.userId,
+                replyId,
+                answer: payload["answer"],
+                decision: payload["decision"],
+              });
+              if (!answered.ok) return jsonError(answered.error, answered.status);
+              return Response.json({ ok: true, delivered: answered.delivered });
             }
 
-            const answer = String(payload["answer"] ?? "").trim();
-            if (!answer) return jsonError("Write the answer first.");
-            // Answers typed on the dashboard always count as answers.
-
-            await knowledge.saveCorrection(auth.supabase, auth.organizationId, {
-              question: pending.question,
-              answer,
-              userId: auth.userId,
-            });
-
-            let delivered = false;
-            if (pending.status === "pending" && pending.conversation_id) {
-              try {
-                const { deliverToCustomer } = await import("@/lib/owner-replies.server");
-                delivered = await deliverToCustomer(auth.supabase, pending, answer);
-              } catch (sendError) {
-                console.error(
-                  "[ai-knowledge] gap delivery failed",
-                  sendError instanceof Error ? sendError.message : sendError,
-                );
-              }
-            }
+            const { readPendingOwnerReply } = await import("@/lib/answer-gap.server");
+            const pending = await readPendingOwnerReply(auth.supabase, auth.organizationId, replyId);
+            if (!pending) return jsonError("That question isn't in this workspace.", 403);
 
             await auth.supabase
               .from("pending_owner_replies")
-              .update({
-                status: "answered",
-                answer,
-                answered_at: new Date().toISOString(),
-                selected_at: new Date().toISOString(),
-              })
+              .update({ status: "expired" })
               .eq("id", pending.id)
               .eq("organization_id", auth.organizationId);
-
-            // Batch 51: an Approve / Decline from a "Needs you" item is the same
-            // answer (the owner's own words); the log says which they chose.
-            const decision = String(payload["decision"] ?? "");
-            await logServerActivity(
-              auth.supabase,
-              auth.organizationId,
-              auth.userId,
-              "ai_answer_corrected",
-              decision === "approve" || decision === "decline"
-                ? { from: "needs_you", decision, conversation_id: pending.conversation_id }
-                : { from: "unanswered" },
-            );
-
-            return Response.json({ ok: true, delivered });
+            return Response.json({ ok: true });
           }
 
           return jsonError("Unknown action.");

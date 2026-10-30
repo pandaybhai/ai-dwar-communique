@@ -1,4 +1,4 @@
-import { CONNECT_CLIENTS, MCP_LIMITS, MCP_PROMISE, MCP_URL, OTHER_CLIENT } from "@/lib/mcp-connect";
+import { CONNECT_CLIENTS, MCP_LIMITS, MCP_PROMISE, MCP_TOOL_LIST, MCP_URL, OTHER_CLIENT, type McpToolKind } from "@/lib/mcp-connect";
 import { PROMPT_GROUPS } from "@/lib/mcp-prompts";
 import { CodePanel, CopyButton } from "./code-panel";
 import { Heading } from "./docs-ui";
@@ -6,9 +6,15 @@ import { Heading } from "./docs-ui";
 /**
  * Batch 52: /developers#mcp — AiDwar MCP. The address, the connect steps for
  * Claude, ChatGPT, Codex and Cursor (from src/lib/mcp-connect.ts, each with
- * the client's own docs linked) and prompts to try. Product names as text
- * only, no third-party logos.
+ * the client's own docs linked), the tools (Batch 54) and prompts to try.
+ * Product names as text only, no third-party logos.
  */
+
+const KIND_LABEL: Record<McpToolKind, string> = {
+  read: "Read only",
+  draft: "Draft or preview (sends nothing)",
+  confirm: "Acts after you confirm",
+};
 export function McpSection() {
   return (
     <section id="mcp" className="scroll-mt-24 space-y-8 border-t border-[var(--d-border)] py-14" aria-labelledby="mcp-title">
@@ -84,6 +90,27 @@ export function McpSection() {
       </p>
 
       <div className="space-y-3">
+        <h3 id="mcp-tools" className="text-[18px] font-semibold text-[var(--d-fg)]">
+          Tools
+        </h3>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {(Object.keys(KIND_LABEL) as McpToolKind[]).map((kind) => (
+            <div key={kind} className="docs-card space-y-2 p-4">
+              <h4 className="text-[15px] font-semibold text-[var(--d-fg)]">{KIND_LABEL[kind]}</h4>
+              <ul className="m-0 list-none space-y-2 p-0">
+                {MCP_TOOL_LIST.filter((t) => t.kind === kind).map((t) => (
+                  <li key={t.name} className="text-[14px] text-[var(--d-muted)]">
+                    <code className="font-mono text-[13.5px] font-semibold text-[var(--d-fg)] [overflow-wrap:anywhere]">{t.name}</code>
+                    <span className="block">{t.does}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-3">
         <h3 id="mcp-prompts" className="text-[18px] font-semibold text-[var(--d-fg)]">
           Try asking
         </h3>
@@ -103,7 +130,9 @@ export function McpSection() {
         </div>
         <p className="text-[14.5px] text-[var(--d-muted)]">
           When your assistant drafts a campaign, AiDwar answers with who it reaches (opted-in customers only), what it
-          costs and your wallet balance, and a confirm code. It sends only after you say yes.
+          costs and your wallet balance, and a confirm code. It sends only after you say yes. Templates, tags, changes
+          to a scheduled campaign and answers to Aiden work the same way: a preview first, then your yes. An answer to
+          Aiden is always your own words.
         </p>
       </div>
     </section>

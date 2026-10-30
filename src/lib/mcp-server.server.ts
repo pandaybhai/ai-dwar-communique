@@ -19,6 +19,10 @@ import {
   type Workspace,
 } from "@/lib/mcp-access.server";
 import { MCP_TOOLS, type ToolContext, type ToolDef, type ToolOutcome } from "@/lib/mcp-tools.server";
+import { ROUND2_TOOLS } from "@/lib/mcp-tools-r2.server";
+
+/** Batch 52's tools and Batch 54's round 2, in the order clients list them. */
+export const ALL_MCP_TOOLS: ToolDef[] = [...MCP_TOOLS, ...ROUND2_TOOLS];
 
 /**
  * Batch 52: AiDwar MCP over Streamable HTTP, stateless — a new McpServer and
@@ -36,7 +40,11 @@ export const INSTRUCTIONS =
   "AiDwar is a WhatsApp business platform (campaigns, chat flows, an AI employee called Aiden, a shared inbox). " +
   "You act as the signed-in user, with exactly their permissions. Read freely. To send a campaign: create_campaign_draft, " +
   "show the user the recipients, cost and wallet, and call send_campaign only after they clearly confirm. To switch a flow on: " +
-  "create_flow_draft, show the steps, and call activate_flow only after they confirm. You cannot message individual customers, " +
+  "create_flow_draft, show the steps, and call activate_flow only after they confirm. The same for templates (create_template_draft, " +
+  "then submit_template), scheduled campaigns (preview_campaign_change, then update_scheduled_campaign or cancel_scheduled_campaign), " +
+  "tags (tag_contacts without, then with its confirm_code) and Aiden's questions (answer_aiden_question): a confirm_code is used only " +
+  "after the user clearly confirms what the preview showed. An answer to Aiden must be the user's own words, passed exactly. " +
+  "Never invent figures: if a tool says there is no data, say so. You cannot message individual customers yourself, " +
   "change Aiden's mode, billing, team, keys or settings, or delete anything — point the user to the AiDwar link instead.";
 
 export type McpDeps = {
@@ -173,7 +181,7 @@ export function buildMcpServer(env: {
   // Typed loosely on purpose: the SDK's zod generics make the checker run out
   // of memory; the schemas are still the tools' own zod shapes at runtime.
   const registrar = server as unknown as ToolRegistrar;
-  for (const tool of MCP_TOOLS) {
+  for (const tool of ALL_MCP_TOOLS) {
     registrar.registerTool(
       tool.name,
       {

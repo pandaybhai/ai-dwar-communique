@@ -34,7 +34,8 @@ describe("/developers#mcp", () => {
     expect(EXAMPLE_PROMPTS).toContain("Draft a Diwali campaign to customers tagged VIP");
     expect(EXAMPLE_PROMPTS).toContain("How did my last campaign do?");
     expect(EXAMPLE_PROMPTS).toContain("Build a welcome flow that asks new customers their size and city");
-    for (const p of EXAMPLE_PROMPTS) expect(html).toContain(p.replace(/,/g, ","));
+    // React escapes an apostrophe as &#x27; (Batch 54's "Move tomorrow's campaign to 7pm").
+    for (const p of EXAMPLE_PROMPTS) expect(html).toContain(p.replace(/'/g, "&#x27;"));
     expect(html).not.toContain("<img");
     expect(src("components/developers/overview-page.tsx")).toContain("<McpSection />");
   });

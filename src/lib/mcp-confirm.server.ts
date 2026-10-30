@@ -18,7 +18,15 @@
 export const CONFIRM_TTL_MS = 15 * 60 * 1000;
 export const CONFIRM_LABEL = "aidwar-mcp-confirm";
 
-export type ConfirmAction = "send_campaign" | "activate_flow";
+export type ConfirmAction =
+  | "send_campaign"
+  | "activate_flow"
+  // Batch 54
+  | "submit_template"
+  | "update_campaign"
+  | "cancel_campaign"
+  | "tag_contacts"
+  | "answer_question";
 
 export type ConfirmBinding = {
   userId: string;
@@ -151,4 +159,15 @@ export const CONFIRM_REFUSALS: Record<Exclude<ConfirmCheck, { ok: true }>["reaso
     "That confirm_code has expired (codes last 15 minutes). Create the draft again to get a new code, and ask the user to confirm again.",
   changed:
     "This draft changed after the confirm_code was issued. Show the user the new details and create a fresh draft before sending.",
+};
+
+/** Batch 54: the same refusals for a code that came from a preview (not a saved draft). */
+export const PREVIEW_REFUSALS: Record<Exclude<ConfirmCheck, { ok: true }>["reason"], string> = {
+  malformed: "That confirm_code isn't one AiDwar gave. Use the exact code from the preview.",
+  tampered:
+    "That confirm_code doesn't belong to this change, this workspace or this user. Use the code returned with this preview.",
+  expired:
+    "That confirm_code has expired (codes last 15 minutes). Run the preview again to get a new code, and ask the user to confirm again.",
+  changed:
+    "Something changed after the confirm_code was issued (the request or what it applies to). Run the preview again, show the user the new details and ask them to confirm.",
 };
