@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { round2, withGst } from "@/lib/billing";
+import { round2 } from "@/lib/billing";
+import { chargeFor } from "@/lib/gst-mode";
 
 /**
  * The monthly plan-fee run.
@@ -184,6 +185,7 @@ export async function invoicePlanFee(
   const built = await buildInvoice(supabase, organizationId, {
     kind: "tax_invoice",
     purpose: "plan_fee",
+    supplier,
     period,
     roi_snapshot: roi,
     lines: [
@@ -208,7 +210,8 @@ export async function invoicePlanFee(
   const issued = await issueInvoice(supabase, built.invoice_id, { deliver: false });
   if ("error" in issued) return { error: issued.error };
 
-  const gross = withGst(Number(base)).total;
+  // Batch 55: the same GST mode the invoice was built with (supplier above).
+  const gross = chargeFor(Number(base), supplier.gst_registered).total;
   const payUrl = await createPlanPaymentLink(supabase, {
     organizationId,
     invoiceId: built.invoice_id,

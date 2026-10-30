@@ -45,7 +45,8 @@ export function limitLine(limits: Record<string, number>): string[] {
 }
 
 /** "How message credits work": the three paragraphs, word for word. */
-export function CreditsExplained(): ReactNode {
+/** Batch 55: gstRegistered false = no GST is charged, so no tax invoice is promised. */
+export function CreditsExplained({ gstRegistered = true }: { gstRegistered?: boolean } = {}): ReactNode {
   return (
     <>
       <p>
@@ -59,10 +60,17 @@ export function CreditsExplained(): ReactNode {
         will cost before it goes out. If a campaign would take you below zero, we stop it
         and ask you first.
       </p>
-      <p>
-        Every payment gets a GST tax invoice with your GSTIN on it, downloadable from your
-        billing page. Turn on auto-pay and the plan fee takes care of itself.
-      </p>
+      {gstRegistered ? (
+        <p>
+          Every payment gets a GST tax invoice with your GSTIN on it, downloadable from your
+          billing page. Turn on auto-pay and the plan fee takes care of itself.
+        </p>
+      ) : (
+        <p>
+          Every payment gets an invoice, downloadable from your billing page. Turn on auto-pay
+          and the plan fee takes care of itself.
+        </p>
+      )}
     </>
   );
 }

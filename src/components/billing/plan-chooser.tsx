@@ -16,7 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
-import { money, withGst } from "@/lib/billing";
+import { money } from "@/lib/billing";
+import { chargeFor } from "@/lib/gst-mode";
 import { callApi } from "@/lib/whatsapp-client";
 import {
   confirmCashfreeReturn,
@@ -47,6 +48,8 @@ export type PlanState = {
   gstin: string | null;
   pending_payment: { id: string; url: string | null; plan_key: string | null } | null;
   plans: Plan[];
+  /** Batch 55: false = the plan price is what is charged, with no GST. */
+  gst_registered?: boolean;
 };
 
 const LIMIT_COPY: Record<string, string> = {
@@ -185,6 +188,7 @@ export function PlanChooser({
   }
 
   const canPay = can("billing.pay");
+  const gstOn = state.gst_registered === true;
   const daysLeft = state.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(state.trial_ends_at).getTime() - Date.now()) / 864e5))
     : null;
@@ -268,12 +272,14 @@ export function PlanChooser({
                         {money(plan.price_monthly, plan.currency)}
                         <span className="text-sm font-normal text-muted-foreground"> / month</span>
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        + 18% GST
-                        {plan.price_annual
-                          ? ` · ${money(plan.price_annual, plan.currency)} a year`
-                          : ""}
-                      </p>
+                      {gstOn || plan.price_annual ? (
+                        <p className="text-xs text-muted-foreground">
+                          {gstOn ? "+ 18% GST" : ""}
+                          {plan.price_annual
+                            ? `${gstOn ? " · " : ""}${money(plan.price_annual, plan.currency)} a year`
+                            : ""}
+                        </p>
+                      ) : null}
                     </>
                   )}
                 </div>
@@ -333,7 +339,9 @@ export function PlanChooser({
                     maxLength={15}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Goes on your tax invoice so you can claim the GST back.
+                    {gstOn
+                      ? "Goes on your tax invoice so you can claim the GST back."
+                      : "Printed on your invoice."}
                   </p>
                 </div>
                 <div className="space-y-1.5">
@@ -348,7 +356,11 @@ export function PlanChooser({
                     Where receipts and low-credit notes are sent.
                   </p>
                 </div>
-                <PriceBreakdown amount={selected.price_monthly ?? 0} currency={selected.currency} />
+                <PriceBreakdown
+                  amount={selected.price_monthly ?? 0}
+                  currency={selected.currency}
+                  gstOn={gstOn}
+                />
               </div>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setSelected(null)} disabled={busy}>
@@ -356,7 +368,7 @@ export function PlanChooser({
                 </Button>
                 <Button onClick={pay} disabled={busy} className="rounded-full">
                   {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Pay {money(withGst(selected.price_monthly ?? 0).total, selected.currency)}
+                  Pay {money(chargeFor(selected.price_monthly ?? 0, gstOn).total, selected.currency)}
                 </Button>
               </DialogFooter>
             </>
@@ -367,18 +379,28 @@ export function PlanChooser({
   );
 }
 
-function PriceBreakdown({ amount, currency }: { amount: number; currency: string }) {
-  const { base, gst, total } = withGst(amount);
+function PriceBreakdown({
+  amount,
+  currency,
+  gstOn,
+}: {
+  amount: number;
+  currency: string;
+  gstOn: boolean;
+}) {
+  const { base, gst, total } = chargeFor(amount, gstOn);
   return (
     <div className="rounded-xl bg-muted/60 p-3 text-sm">
       <div className="flex justify-between">
         <span>First month</span>
         <span>{money(base, currency)}</span>
       </div>
-      <div className="flex justify-between text-muted-foreground">
-        <span>GST 18%</span>
-        <span>{money(gst, currency)}</span>
-      </div>
+      {gstOn ? (
+        <div className="flex justify-between text-muted-foreground">
+          <span>GST 18%</span>
+          <span>{money(gst, currency)}</span>
+        </div>
+      ) : null}
       <div className="mt-2 flex justify-between border-t border-border pt-2 font-semibold">
         <span>Total today</span>
         <span>{money(total, currency)}</span>

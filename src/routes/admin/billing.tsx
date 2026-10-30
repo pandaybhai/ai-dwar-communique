@@ -23,6 +23,7 @@ import { TableSkeleton } from "@/components/data-pagination";
 import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
 import { AiRunsDialog } from "@/components/admin/ai-runs-dialog";
 import { InvoicesTab } from "@/components/admin/invoices-tab";
+import { GstTab } from "@/components/admin/gst-tab";
 import { callApi } from "@/lib/whatsapp-client";
 import { downloadCsv } from "@/lib/csv";
 import { fineMoney, money } from "@/lib/billing";
@@ -609,7 +610,12 @@ function AdminBilling() {
           <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="reconcile">Reconcile</TabsTrigger>
+          <TabsTrigger value="gst">GST</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="gst" className="mt-4">
+          <GstTab />
+        </TabsContent>
 
         <TabsContent value="invoices" className="mt-4">
           <InvoicesTab />

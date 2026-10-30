@@ -10,6 +10,7 @@ import {
   openCashfreeCheckout,
   type CashfreeCheckout,
 } from "@/lib/cashfree-checkout";
+import { getPublicGstMode } from "@/lib/public-plans.functions";
 
 const TITLE = "Pay — AiDwar";
 const DESCRIPTION = "Pay your AiDwar invoice securely with Cashfree.";
@@ -21,6 +22,8 @@ const DESCRIPTION = "Pay your AiDwar invoice securely with Cashfree.";
  */
 export const Route = createFileRoute("/pay/$paymentId")({
   ssr: false,
+  // Batch 55: "incl. 18% GST" only while AiDwar is GST-registered.
+  loader: () => getPublicGstMode(),
   head: () => ({
     meta: [
       { title: TITLE },
@@ -44,6 +47,7 @@ const POLL_TRIES = 20;
 
 function PayPage() {
   const { paymentId } = useParams({ from: "/pay/$paymentId" });
+  const gstRegistered = Route.useLoaderData()?.gst_registered === true;
   const [due, setDue] = useState<Due | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -113,7 +117,9 @@ function PayPage() {
       ) : (
         <div className="space-y-5">
           <div className="rounded-xl border border-border/70 bg-muted/40 p-4">
-            <p className="text-xs text-muted-foreground">Amount (incl. 18% GST)</p>
+            <p className="text-xs text-muted-foreground">
+              {gstRegistered ? "Amount (incl. 18% GST)" : "Amount"}
+            </p>
             <p className="font-heading text-2xl font-bold">{money(due.amount, due.currency)}</p>
           </div>
           {due.status === "paid" ? (

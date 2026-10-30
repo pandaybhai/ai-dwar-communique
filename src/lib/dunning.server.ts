@@ -205,7 +205,7 @@ export async function runDunning(
     .select("id, organization_id, invoice_number, total, amount_paid, due_date")
     .in("status", ["issued", "partially_paid"])
     .eq("purpose", "plan_fee")
-    .eq("kind", "tax_invoice")
+    .in("kind", ["tax_invoice", "invoice"])
     .not("due_date", "is", null)
     .lt("due_date", now.toISOString().slice(0, 10))
     .order("due_date", { ascending: true })

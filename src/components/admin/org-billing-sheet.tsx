@@ -1099,7 +1099,7 @@ export function OrgBillingSheet({
                             </td>
                             <td className="py-2">
                               {money(Number(p["amount"] ?? 0))}
-                              {gross !== null ? (
+                              {gross !== null && gross > Number(p["amount"] ?? 0) ? (
                                 <div className="text-xs text-muted-foreground">
                                   {money(gross)} incl. GST
                                 </div>
@@ -1149,7 +1149,7 @@ export function OrgBillingSheet({
           </AlertDialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="refund-amount">Amount to refund (incl. GST)</Label>
+              <Label htmlFor="refund-amount">Amount to refund (what the customer paid)</Label>
               <Input
                 id="refund-amount"
                 inputMode="decimal"

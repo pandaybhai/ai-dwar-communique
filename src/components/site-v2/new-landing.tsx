@@ -32,7 +32,14 @@ const H2 =
  * read; the product is shown with the design's own pieces: Aiden answering a
  * customer, the shared Inbox, a campaign's results.
  */
-export function NewLanding({ plans }: { plans: PublicPlan[] }) {
+export function NewLanding({
+  plans,
+  gstRegistered = false,
+}: {
+  plans: PublicPlan[];
+  /** Batch 55: "plus 18% GST" only while AiDwar is GST-registered. */
+  gstRegistered?: boolean;
+}) {
   const [audience, setAudience] = useState<ProofAudience>("retail");
   const [formVisible, setFormVisible] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -289,7 +296,7 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
         </div>
       </section>
 
-      <PlansStrip plans={plans} preview={preview} />
+      <PlansStrip plans={plans} preview={preview} gstRegistered={gstRegistered} />
 
       {/* FAQs */}
       <section className="border-t border-border bg-surface">
@@ -358,7 +365,15 @@ export function NewLanding({ plans }: { plans: PublicPlan[] }) {
   );
 }
 
-function PlansStrip({ plans, preview }: { plans: PublicPlan[]; preview: Record<string, string> }) {
+function PlansStrip({
+  plans,
+  preview,
+  gstRegistered,
+}: {
+  plans: PublicPlan[];
+  preview: Record<string, string>;
+  gstRegistered: boolean;
+}) {
   if (!plans.length) return null;
   const inr = (v: number) =>
     new Intl.NumberFormat("en-IN", {
@@ -371,7 +386,8 @@ function PlansStrip({ plans, preview }: { plans: PublicPlan[]; preview: Record<s
       <div className={cn(WRAP, "py-20 sm:py-24")}>
         <h2 className={H2}>Plans</h2>
         <p className="m-0 mt-3 text-muted-foreground">
-          One monthly plan for the platform, plus 18% GST. Message credits are topped up separately.
+          One monthly plan for the platform{gstRegistered ? ", plus 18% GST" : ""}. Message credits
+          are topped up separately.
         </p>
         <ul className="m-0 mt-10 grid list-none gap-4 p-0 sm:grid-cols-2 lg:grid-cols-4">
           {plans.map((plan) => (

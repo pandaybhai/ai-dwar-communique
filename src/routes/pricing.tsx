@@ -53,6 +53,7 @@ function Pricing() {
       plans={loaded.plans}
       failed={!loaded.ok || loaded.plans.length === 0}
       rates={loaded.rates}
+      gstRegistered={loaded.gst_registered}
     />
   );
 }
@@ -160,7 +161,11 @@ function PricingPage() {
                           </>
                         )}
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {custom ? "Custom terms and white-label" : "Plus 18% GST, plus credits"}
+                          {custom
+                            ? "Custom terms and white-label"
+                            : loaded.gst_registered
+                              ? "Plus 18% GST, plus credits"
+                              : "Plus credits"}
                         </p>
                       </div>
 
@@ -208,7 +213,7 @@ function PricingPage() {
           <div className="mx-auto max-w-4xl px-5 py-16 sm:px-8">
             <h2 className="font-heading text-2xl font-bold">How message credits work</h2>
             <div className="mt-6 space-y-5 text-sm leading-relaxed text-muted-foreground">
-              <CreditsExplained />
+              <CreditsExplained gstRegistered={loaded.gst_registered} />
             </div>
             <MessageRatesTable rates={loaded.rates} />
             <p className="mt-6 text-sm text-muted-foreground">

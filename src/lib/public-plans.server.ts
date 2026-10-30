@@ -13,6 +13,20 @@ export type PublicPlan = {
   highlights: string[];
 };
 
+/**
+ * Batch 55: whether the public pages say "+ 18% GST". Only an explicit
+ * platform_settings.gst_registered = true; any failure reads as not registered.
+ */
+export async function loadPublicGstRegistered(): Promise<boolean> {
+  try {
+    const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+    const { loadGstRegistered } = await import("@/lib/gst-mode.server");
+    return (await loadGstRegistered(getServiceClient())) === true;
+  } catch {
+    return false;
+  }
+}
+
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
 export async function loadPublicPlans(): Promise<PublicPlan[]> {

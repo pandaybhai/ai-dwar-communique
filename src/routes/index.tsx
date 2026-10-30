@@ -63,8 +63,8 @@ export const Route = createFileRoute("/")({
  */
 function Landing() {
   const on = useNewSite();
-  const { plans } = Route.useLoaderData();
-  return on ? <NewLanding plans={plans} /> : <Index />;
+  const { plans, gst_registered } = Route.useLoaderData();
+  return on ? <NewLanding plans={plans} gstRegistered={gst_registered} /> : <Index />;
 }
 
 function scrollToId(id: string) {
@@ -359,7 +359,7 @@ function Index() {
 }
 
 function PlansStrip() {
-  const { plans } = Route.useLoaderData();
+  const { plans, gst_registered } = Route.useLoaderData();
   if (!plans.length) return null;
   const inr = (v: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
@@ -368,7 +368,8 @@ function PlansStrip() {
       <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
         <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Plans</h2>
         <p className="mt-3 text-muted-foreground">
-          One monthly plan for the platform, plus 18% GST. Message credits are topped up separately.
+          One monthly plan for the platform{gst_registered ? ", plus 18% GST" : ""}. Message credits
+          are topped up separately.
         </p>
         <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {plans.map((plan) => (

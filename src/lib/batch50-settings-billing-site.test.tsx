@@ -341,6 +341,8 @@ describe("flag off: today's Settings, Billing and journey", () => {
   });
 
   it("the classic code is what main had (only `export` and `nd:` classes were added)", () => {
+    // Batch 55: billing-view, invoices-panel and plan-chooser were re-pinned after
+    // their "+ 18% GST" copy started following platform_settings.gst_registered.
     const from = (text: string, marker: string) => text.slice(text.indexOf(marker));
     expect(sha(from(src("routes/app/settings.tsx"), "function SettingsPage()"))).toBe(
       "df2551925c43daf5c72cdd73e731e50a33c748fcc2074d775532539f5d76d57f",
@@ -349,10 +351,10 @@ describe("flag off: today's Settings, Billing and journey", () => {
       "77898688546d747ed4244dafe45769bf4553bc6ccf0fdd6748ecfed9aa128609",
     );
     expect(sha(withoutNd(src("components/billing/billing-view.tsx")))).toBe(
-      "4f984ef1ce359803c8fa4efd9825bc731caea8fa10ed9fc409a73347f5ab4ba3",
+      "89aa2f5973575c215bba742c2646bcb4fbac4cd2a92aa1d1ecac79d5b830e038",
     );
     expect(sha(withoutNd(src("components/billing/invoices-panel.tsx")))).toBe(
-      "dd584231aa2056ae5002f653405259318e98500d4bf99507bf49c154b6deebdf",
+      "d9f4f77b1d8359e7a517439d9838170ecc7416a2960c1cce6d8917f781d03a62",
     );
     expect(sha(withoutNd(src("components/onboarding/journey-shell.tsx")))).toBe(
       "52d4f39fde47c7aae269757fcfeab40630d97dc81f95d595909079ee96aec933",
@@ -374,7 +376,7 @@ describe("flag off: today's Settings, Billing and journey", () => {
         /<h2 className="text-xl font-bold tracking-tight text-foreground">\n\s*\{heading\}\n\s*<\/h2>/,
         '<h2 className="text-xl font-bold tracking-tight text-foreground">{heading}</h2>',
       );
-    expect(sha(plan)).toBe("dc4d782c5477dbdf671fa103a41d6ef65944160d54ba3c1c771c544493a35b4c");
+    expect(sha(plan)).toBe("3f1bebc59b27f08f08be2f57734e889d806aa826de290a330d5669b91f7e8b1d");
   });
 
   it('nd: classes do nothing without the new design (the variant needs data-design="new")', () => {
@@ -423,9 +425,10 @@ describe("the public site: new_site switch, default off", () => {
   });
 
   it("today's landing and pricing code is unchanged; their words only moved, word for word", () => {
+    // Batch 55: routes/index.tsx re-pinned — "plus 18% GST" follows gst_registered.
     const from = (text: string, marker: string) => text.slice(text.indexOf(marker));
     expect(sha(from(src("routes/index.tsx"), "function scrollToId("))).toBe(
-      "0989f3fa71fb50c09af04af293cca08918705578fcfd2ce1e9d6ad78895b22ec",
+      "84e734fadf0359e5ead77b3ea6e9399b7ae3ce1470d876694c51f43b240e219d",
     );
     const copy = src("components/marketing/landing-copy.ts");
     expect(
@@ -518,7 +521,7 @@ describe("the public site: new_site switch, default off", () => {
     expect(landing).toContain('from "@/components/marketing/landing-copy"');
     const pricing = src("components/site-v2/new-pricing.tsx");
     expect(pricing).toContain("<MessageRatesTable rates={rates} />");
-    expect(pricing).toContain("<CreditsExplained />");
+    expect(pricing).toContain("<CreditsExplained gstRegistered={gstRegistered} />");
     expect(pricing).toContain('href="mailto:support@aidwar.in?subject=AiDwar%20Enterprise"');
     expect(pricing).toContain('to="/refunds"');
     const route = src("routes/pricing.tsx");

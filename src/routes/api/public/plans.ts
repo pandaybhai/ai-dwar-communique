@@ -8,9 +8,16 @@ export const Route = createFileRoute("/api/public/plans")({
   server: {
     handlers: {
       GET: async () => {
-        const { loadPublicPlans } = await import("@/lib/public-plans.server");
-        const plans = await loadPublicPlans();
-        return Response.json({ plans }, { headers: { "cache-control": "public, max-age=300" } });
+        const { loadPublicPlans, loadPublicGstRegistered } =
+          await import("@/lib/public-plans.server");
+        const [plans, gstRegistered] = await Promise.all([
+          loadPublicPlans(),
+          loadPublicGstRegistered(),
+        ]);
+        return Response.json(
+          { plans, gst_registered: gstRegistered },
+          { headers: { "cache-control": "public, max-age=300" } },
+        );
       },
     },
   },

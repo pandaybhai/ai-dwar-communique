@@ -56,6 +56,7 @@ const STATUS_COPY: Record<string, { label: string; tone: string }> = {
 
 const KIND_COPY: Record<string, string> = {
   tax_invoice: "Tax invoice",
+  invoice: "Invoice",
   proforma: "Proforma",
   credit_note: "Credit note",
 };
@@ -69,7 +70,14 @@ function day(value: string | null): string {
   });
 }
 
-export function InvoicesPanel({ organizationId }: { organizationId: string }) {
+export function InvoicesPanel({
+  organizationId,
+  gstRegistered = true,
+}: {
+  organizationId: string;
+  /** Batch 55: false = invoices carry no GST, so the copy doesn't promise one. */
+  gstRegistered?: boolean;
+}) {
   const { can } = usePermissions();
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [autopay, setAutopay] = useState<AutoPay | null>(null);
@@ -252,7 +260,11 @@ export function InvoicesPanel({ organizationId }: { organizationId: string }) {
             <EmptyState
               icon={FileText}
               title="No invoices yet"
-              description="Every payment and plan fee gets a GST invoice here, ready to download."
+              description={
+                gstRegistered
+                  ? "Every payment and plan fee gets a GST invoice here, ready to download."
+                  : "Every payment and plan fee gets an invoice here, ready to download."
+              }
             />
           ) : (
             <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Invoices">

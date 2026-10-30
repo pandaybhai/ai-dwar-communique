@@ -273,13 +273,16 @@ export function BillingView({
               </tbody>
             </table>
             <p className="mt-3 text-xs text-muted-foreground">
-              Prices are per message, before 18% GST. Replies inside the 24-hour window are free.
+              {summary.gst_registered === false
+                ? "Prices are per message."
+                : "Prices are per message, before 18% GST."}{" "}
+              Replies inside the 24-hour window are free.
             </p>
           </CardContent>
         </Card>
       </div>
 
-      <InvoicesPanel organizationId={organizationId} />
+      <InvoicesPanel organizationId={organizationId} gstRegistered={summary.gst_registered !== false} />
 
       <HistoryTabs organizationId={organizationId} currency={wallet.currency} />
 
