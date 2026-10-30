@@ -1,5 +1,6 @@
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import type { SupplierProfile } from "@/lib/invoices.server";
+import { NOT_REGISTERED_LINE, isRealGstin, isRealPan, stripDemoFooter } from "@/lib/gst-mode";
 
 /**
  * A4 tax invoice, drawn by hand with pdf-lib so it runs anywhere the server
@@ -129,8 +130,25 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
   const right = A4[0] - MARGIN;
 
   const kind = String(invoice["kind"] ?? "tax_invoice");
+  // Batch 55: a document with no GST on it — a plain invoice, a credit note
+  // against one, or a proforma drawn up with no tax — shows no GST, no GSTIN
+  // and no SAC table, and says why.
+  const anyTax =
+    Number(invoice["cgst"] ?? 0) !== 0 ||
+    Number(invoice["sgst"] ?? 0) !== 0 ||
+    Number(invoice["igst"] ?? 0) !== 0;
+  const noGst =
+    kind === "invoice" ||
+    (kind === "credit_note" && invoice["credited_kind"] === "invoice") ||
+    (kind === "proforma" && !anyTax && invoice["is_export"] !== true);
   const title =
-    kind === "proforma" ? "PROFORMA INVOICE" : kind === "credit_note" ? "CREDIT NOTE" : "TAX INVOICE";
+    kind === "proforma"
+      ? "PROFORMA INVOICE"
+      : kind === "credit_note"
+        ? "CREDIT NOTE"
+        : kind === "invoice"
+          ? "INVOICE"
+          : "TAX INVOICE";
 
   let y = A4[1] - MARGIN;
 
@@ -154,8 +172,8 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     y -= 10;
   }
   const supplierMeta = [
-    supplier.gstin ? `GSTIN: ${supplier.gstin}` : null,
-    supplier.pan ? `PAN: ${supplier.pan}` : null,
+    !noGst && supplier.gstin && isRealGstin(supplier.gstin) ? `GSTIN: ${supplier.gstin}` : null,
+    supplier.pan && isRealPan(supplier.pan) ? `PAN: ${supplier.pan}` : null,
     supplier.email,
     supplier.website,
   ].filter(Boolean) as string[];
@@ -221,7 +239,7 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     color: rgb(0.96, 0.98, 0.97),
   });
   text(ctx, "Description", cols.desc + 4, y + 2, { size: 8, bold: true, color: MUTED });
-  text(ctx, "SAC", cols.sac, y + 2, { size: 8, bold: true, color: MUTED });
+  if (!noGst) text(ctx, "SAC", cols.sac, y + 2, { size: 8, bold: true, color: MUTED });
   text(ctx, "Qty", cols.qty, y + 2, { size: 8, bold: true, color: MUTED });
   text(ctx, "Unit price", cols.price, y + 2, { size: 8, bold: true, color: MUTED });
   text(ctx, "Amount", cols.amount - 4, y + 2, { size: 8, bold: true, color: MUTED, align: "right" });
@@ -235,7 +253,9 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     for (const [index, part] of wrapped.entries()) {
       text(ctx, part, cols.desc + 4, y, { size: 8.5, color: informational ? MUTED : INK });
       if (index === 0) {
-        text(ctx, String(line["sac_code"] ?? "-"), cols.sac, y, { size: 8.5, color: MUTED });
+        if (!noGst) {
+          text(ctx, String(line["sac_code"] ?? "-"), cols.sac, y, { size: 8.5, color: MUTED });
+        }
         text(ctx, String(Number(line["quantity"] ?? 1)), cols.qty, y, { size: 8.5, color: MUTED });
         text(ctx, informational ? "-" : inr(Number(line["unit_price"] ?? 0)), cols.price, y, {
           size: 8.5,
@@ -258,8 +278,12 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
 
   // Totals
   const isExport = invoice["is_export"] === true;
-  const totals: [string, string][] = [["Taxable value", inr(Number(invoice["taxable_value"] ?? 0))]];
-  if (isExport) {
+  const totals: [string, string][] = [
+    [noGst ? "Subtotal" : "Taxable value", inr(Number(invoice["taxable_value"] ?? 0))],
+  ];
+  if (noGst) {
+    // No tax rows at all.
+  } else if (isExport) {
     totals.push(["Tax", "Zero rated (export)"]);
   } else if (invoice["is_interstate"] === true) {
     totals.push(["IGST 18%", inr(Number(invoice["igst"] ?? 0))]);
@@ -293,7 +317,10 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     );
     y -= 11;
   }
-  if (isExport) {
+  if (noGst) {
+    text(ctx, NOT_REGISTERED_LINE, MARGIN, y, { size: 8, color: MUTED });
+    y -= 11;
+  } else if (isExport) {
     text(ctx, "Export of services under LUT — no IGST charged.", MARGIN, y, {
       size: 8,
       color: MUTED,
@@ -360,8 +387,9 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     }
   }
 
-  if (supplier.invoice_footer) {
-    for (const part of wrap(supplier.invoice_footer, font, 8, A4[0] - MARGIN * 2)) {
+  const footer = stripDemoFooter(supplier.invoice_footer);
+  if (footer) {
+    for (const part of wrap(footer, font, 8, A4[0] - MARGIN * 2)) {
       text(ctx, part, MARGIN, MARGIN + 14, { size: 8, color: MUTED });
       break;
     }

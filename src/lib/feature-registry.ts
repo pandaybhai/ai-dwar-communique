@@ -1083,6 +1083,11 @@ export const FEATURES: readonly FeatureManifest[] = [
       "trial_extended",
       "plan_purchase_started",
       "plan_purchased",
+      // Batch 55: the GST switch (with before/after) and "Re-issue without GST".
+      "gst_settings_changed",
+      "gst_settings_refused",
+      "invoice_reissued_without_gst",
+      "invoice_reissue_without_gst",
     ],
 
     settings_path: "/app/settings",

@@ -110,7 +110,7 @@ describe("buildInvoice — tax heads by place of supply", () => {
     const inserted: Record<string, unknown>[] = [];
     const db = fakeDb((op: FakeOp) => {
       if (op.table === "platform_settings") {
-        return { data: { supplier_state_code: "27", supplier_gstin: "27ABCDE1234F1Z5" }, error: null };
+        return { data: { supplier_state_code: "27", supplier_gstin: "27ABCDE1234F1Z5", gst_registered: true }, error: null };
       }
       if (op.table === "organizations") return { data: { id: "org", name: "Org", billing_account_id: "acc" }, error: null };
       if (op.table === "billing_accounts") return { data: buyer, error: null };
@@ -211,7 +211,7 @@ describe("issueCreditNote — wired through planCreditNote", () => {
     const db = fakeDb(
       (op: FakeOp) => {
         if (op.table === "platform_settings") {
-          return { data: { supplier_state_code: "27", supplier_gstin: "27ABCDE1234F1Z5" }, error: null };
+          return { data: { supplier_state_code: "27", supplier_gstin: "27ABCDE1234F1Z5", gst_registered: true }, error: null };
         }
         if (op.table === "invoices") return { data: invoice, error: null };
         if (op.table === "credit_notes" && op.kind === "select") return { data: prior, error: null };

@@ -202,16 +202,18 @@ export async function refundPayment(
     refund.body["cf_refund_id"] !== undefined ? String(refund.body["cf_refund_id"]) : null;
   record.status = String(refund.body["refund_status"] ?? "PENDING").toLowerCase();
 
-  // The GST side: a credit note against the payment's tax invoice.
-  const { data: invoice } = await supabase
+  // The GST side: a credit note against the payment's tax invoice — or, once
+  // it was re-issued without GST (Batch 55), against its no-GST invoice.
+  const { data: saleInvoices } = await supabase
     .from("invoices")
-    .select("id")
+    .select("id, kind")
     .eq("payment_id", input.paymentId)
-    .eq("kind", "tax_invoice")
+    .in("kind", ["tax_invoice", "invoice"])
     .neq("status", "void")
     .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .limit(5);
+  const sales = (saleInvoices ?? []) as AnyRecord[];
+  const invoice = [...sales].reverse().find((r) => r["kind"] === "invoice") ?? sales[0] ?? null;
   if (invoice) {
     const { issueCreditNote } = await import("@/lib/credit-notes.server");
     const note = await issueCreditNote(supabase, {

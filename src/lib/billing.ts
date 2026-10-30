@@ -96,6 +96,8 @@ export type BillingSummary = {
     state_code: string | null;
   };
   period: { start: string; end: string };
+  /** Batch 55: false = no GST is added to anything and no "+ GST" copy is shown. */
+  gst_registered: boolean;
 };
 
 const INR = new Intl.NumberFormat("en-IN", {

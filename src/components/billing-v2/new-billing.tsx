@@ -378,13 +378,19 @@ function BillingBody({
             </tbody>
           </table>
           <p className="text-sm text-muted-foreground">
-            Prices are per message, before 18% GST. Replies inside the 24-hour window are free.
+            {summary.gst_registered === false
+              ? "Prices are per message."
+              : "Prices are per message, before 18% GST."}{" "}
+            Replies inside the 24-hour window are free.
           </p>
         </section>
       </div>
 
       <div id="invoices" className="scroll-mt-4">
-        <InvoicesPanel organizationId={organizationId} />
+        <InvoicesPanel
+          organizationId={organizationId}
+          gstRegistered={summary.gst_registered !== false}
+        />
       </div>
 
       <HistoryTabs organizationId={organizationId} currency={wallet.currency} />
@@ -543,7 +549,9 @@ function PlanCards({ organizationId }: { organizationId: string }) {
                         / month
                       </span>
                     </p>
-                    <p className="text-xs text-muted-foreground">+ 18% GST</p>
+                    {state.gst_registered === true ? (
+                      <p className="text-xs text-muted-foreground">+ 18% GST</p>
+                    ) : null}
                   </>
                 )}
               </div>

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { APP_PUBLIC_URL } from "@/lib/app-url";
-import { round2, withGst } from "@/lib/billing";
+import { round2 } from "@/lib/billing";
 
 /**
  * Self-serve plan purchase for trial and locked workspaces, paid through the
@@ -37,6 +37,8 @@ export type PlanPurchaseState = {
   gstin: string | null;
   pending_payment: { id: string; url: string | null; plan_key: string | null } | null;
   plans: PurchasablePlan[];
+  /** Batch 55: false = the plan price is charged as it is, with no GST. */
+  gst_registered: boolean;
 };
 
 export async function purchasablePlans(supabase: SupabaseClient): Promise<PurchasablePlan[]> {
@@ -104,6 +106,8 @@ export async function planPurchaseState(
         .maybeSingle(),
     ]);
 
+  const { loadGstRegistered } = await import("@/lib/gst-mode.server");
+  const gstRegistered = (await loadGstRegistered(supabase)) === true;
   const o = (org ?? {}) as Record<string, unknown>;
   const account = (o["billing_accounts"] ?? null) as Record<string, unknown> | null;
   const version = (o["plan_versions"] ?? null) as Record<string, unknown> | null;
@@ -141,6 +145,7 @@ export async function planPurchaseState(
           }
         : null,
     plans,
+    gst_registered: gstRegistered,
   };
 }
 
@@ -270,7 +275,12 @@ export async function startPlanPurchase(
   if ("error" in account) return account;
 
   const base = round2(plan.price_monthly);
-  const { gst, total } = withGst(base);
+  // Batch 55: GST only while the platform is GST-registered.
+  const { priceNow } = await import("@/lib/gst-mode.server");
+  const priced = await priceNow(supabase, base);
+  if ("error" in priced) return priced;
+  const { gst, total, registered } = priced;
+  const inclGst = registered ? " (incl. 18% GST)" : "";
 
   // One live plan link at a time: earlier unpaid attempts are closed off.
   const { data: stale } = await supabase
@@ -296,7 +306,7 @@ export async function startPlanPurchase(
     plan_name: plan.name,
     plan_version_id: plan.plan_version_id,
     cycle: "monthly",
-    gst_rate: 0.18,
+    gst_rate: registered ? 0.18 : 0,
     gst_amount: gst,
     gross_amount: total,
   };
@@ -336,7 +346,7 @@ export async function startPlanPurchase(
       gross: total,
       currency: "INR",
       customer,
-      note: `AiDwar ${plan.name} plan, first month (incl. 18% GST)`,
+      note: `AiDwar ${plan.name} plan, first month${inclGst}`,
       returnUrl: `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
       raw,
       tags: { organization_id: input.organizationId, purpose: "plan_fee", plan_key: plan.key },
@@ -356,7 +366,7 @@ export async function startPlanPurchase(
   const { link, error } = await createPaymentLink(keys, {
     amount: total,
     currency: "INR",
-    description: `AiDwar ${plan.name} plan — first month (incl. 18% GST)`,
+    description: `AiDwar ${plan.name} plan — first month${inclGst}`,
     reference: payment.id as string,
     customer: {
       name: String(o["name"] ?? ""),

@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { gstOnTaxable, round2, withGst } from "@/lib/billing";
+import {
+  gstRegisteredFrom,
+  isDemoGstin,
+  isRealPan,
+  stripDemoFooter,
+} from "@/lib/gst-mode";
 
 /**
  * The invoice engine.
@@ -14,7 +20,15 @@ import { gstOnTaxable, round2, withGst } from "@/lib/billing";
 
 export const TAX_RATE = 18;
 
-export type InvoiceKind = "tax_invoice" | "proforma" | "credit_note";
+/**
+ * "invoice" (Batch 55) is a plain invoice with no GST, raised while the
+ * platform is not GST-registered: callers still ask for "tax_invoice" and
+ * buildInvoice decides.
+ */
+export type InvoiceKind = "tax_invoice" | "invoice" | "proforma" | "credit_note";
+
+/** The kinds that bill a sale — what "this payment's invoice" means. */
+export const SALE_INVOICE_KINDS = ["tax_invoice", "invoice"] as const;
 export type InvoicePurpose = "credit_purchase" | "plan_fee" | "usage" | "adjustment";
 
 export type InvoiceLineInput = {
@@ -47,6 +61,8 @@ export type SupplierProfile = {
   bank_details: Record<string, unknown>;
   dunning_pause_campaigns_days: number;
   dunning_suspend_days: number;
+  /** Batch 55: platform_settings.gst_registered (only an explicit true). */
+  gst_registered: boolean;
 };
 
 export async function loadSupplier(supabase: SupabaseClient): Promise<SupplierProfile> {
@@ -55,8 +71,13 @@ export async function loadSupplier(supabase: SupabaseClient): Promise<SupplierPr
   return {
     legal_name: String(row["supplier_legal_name"] ?? "Meezoy Ventures Private Limited"),
     brand_name: String(row["supplier_brand_name"] ?? "AiDwar"),
-    gstin: (row["supplier_gstin"] as string | null) ?? null,
-    pan: (row["supplier_pan"] as string | null) ?? null,
+    // The pre-Batch-55 demo identity is never printed or relied on.
+    gstin: isDemoGstin(row["supplier_gstin"] as string | null)
+      ? null
+      : ((row["supplier_gstin"] as string | null) ?? null),
+    pan: isRealPan(row["supplier_pan"] as string | null)
+      ? ((row["supplier_pan"] as string | null) ?? null)
+      : null,
     state_code: (row["supplier_state_code"] as string | null) ?? null,
     address: (row["supplier_address"] ?? {}) as Record<string, unknown>,
     email: (row["supplier_email"] as string | null) ?? null,
@@ -66,10 +87,11 @@ export async function loadSupplier(supabase: SupabaseClient): Promise<SupplierPr
     invoice_due_days: Number(row["invoice_due_days"] ?? 7),
     sac_platform: String(row["sac_platform"] ?? "998315"),
     sac_messaging: String(row["sac_messaging"] ?? "998415"),
-    invoice_footer: (row["invoice_footer"] as string | null) ?? null,
+    invoice_footer: stripDemoFooter((row["invoice_footer"] as string | null) ?? null),
     bank_details: (row["bank_details"] ?? {}) as Record<string, unknown>,
     dunning_pause_campaigns_days: Number(row["dunning_pause_campaigns_days"] ?? 10),
     dunning_suspend_days: Number(row["dunning_suspend_days"] ?? 30),
+    gst_registered: gstRegisteredFrom(row),
   };
 }
 
@@ -86,7 +108,24 @@ type BuildInput = {
   created_by?: string | null;
   /** Credit notes carry negative money. */
   negate?: boolean;
+  /** The supplier already read by the caller, so its price and the invoice share one GST mode. */
+  supplier?: SupplierProfile;
 };
+
+/**
+ * Batch 55: a sale is a tax invoice only while the platform is GST-registered;
+ * otherwise it is a plain "invoice" with no GST.
+ */
+export function effectiveInvoiceKind(kind: InvoiceKind, gstRegistered: boolean): InvoiceKind {
+  return kind === "tax_invoice" && !gstRegistered ? "invoice" : kind;
+}
+
+/** Whether a document of this kind carries GST at all. */
+function kindChargesGst(kind: InvoiceKind, gstRegistered: boolean): boolean {
+  if (kind === "invoice") return false;
+  if (kind === "proforma") return gstRegistered;
+  return true;
+}
 
 /** Builds a DRAFT invoice: no number, no PDF, nothing sent. */
 export async function buildInvoice(
@@ -94,7 +133,8 @@ export async function buildInvoice(
   organizationId: string,
   input: BuildInput,
 ): Promise<{ invoice_id: string } | { error: string }> {
-  const supplier = await loadSupplier(supabase);
+  const supplier = input.supplier ?? (await loadSupplier(supabase));
+  const kind = effectiveInvoiceKind(input.kind, supplier.gst_registered);
 
   const { data: org } = await supabase
     .from("organizations")
@@ -137,7 +177,7 @@ export async function buildInvoice(
   };
 
   const sign = input.negate === true ? -1 : 1;
-  const taxRate = isExport ? 0 : TAX_RATE;
+  const taxRate = isExport || !kindChargesGst(kind, supplier.gst_registered) ? 0 : TAX_RATE;
 
   let taxable = 0;
   const prepared = input.lines.map((line, index) => {
@@ -184,7 +224,7 @@ export async function buildInvoice(
       organization_id: organizationId,
       billing_account_id: accountId,
       series: input.series ?? supplier.invoice_series,
-      kind: input.kind,
+      kind,
       purpose: input.purpose,
       status: "draft",
       related_invoice_id: input.related_invoice_id ?? null,
@@ -213,6 +253,11 @@ export async function buildInvoice(
     .select("id")
     .maybeSingle();
 
+  if (error?.code === "23514" && kind === "invoice") {
+    // The invoices kind check still lacks 'invoice' (20261290 not applied).
+    console.error("[invoices] no-GST invoice refused by the kind check — apply 20261290", error.message);
+    return { error: "No-GST invoices need migration 20261290 — apply it, then run the invoice backfill." };
+  }
   if (error || !invoice) return { error: "We couldn't prepare the invoice." };
 
   const { error: lineError } = await supabase
@@ -257,8 +302,15 @@ export function checkInvoiceIssuable(
   const igst = n(invoice["igst"]);
   const expected = gstOnTaxable(taxable, { isExport, isInterstate, ratePercent: TAX_RATE });
   const expectedTax = expected.tax;
+  // Batch 55: a plain invoice (and a proforma drawn up with no GST on its
+  // lines) carries no GST at all.
+  const noGst =
+    invoice["kind"] === "invoice" ||
+    (invoice["kind"] === "proforma" && money.every((l) => Number(l["tax_rate"] ?? 0) === 0));
 
-  if (isExport) {
+  if (noGst) {
+    if (cgst || sgst || igst) return "an invoice without GST must carry no CGST, SGST or IGST";
+  } else if (isExport) {
     if (cgst || sgst || igst) return "an export invoice must be zero-rated";
   } else if (isInterstate) {
     if (cgst || sgst) return "an inter-state invoice carries IGST only";
@@ -323,8 +375,15 @@ export async function issueInvoice(
 
   const supplier = await loadSupplier(supabase);
   // A tax document without the supplier's GSTIN is not a tax document. A
-  // proforma is a quote and may go out without one.
-  if (invoice["kind"] !== "proforma" && !supplier.gstin?.trim()) {
+  // proforma is a quote and may go out without one; a plain invoice (Batch 55,
+  // not GST-registered) never shows one.
+  if (invoice["kind"] === "tax_invoice" && !supplier.gst_registered) {
+    return {
+      error:
+        "This is a GST tax invoice, but the platform is not GST-registered — re-issue it without GST.",
+    };
+  }
+  if (invoice["kind"] !== "proforma" && invoice["kind"] !== "invoice" && !supplier.gstin?.trim()) {
     return {
       error:
         "Supplier GSTIN is missing — add it under platform billing settings before issuing invoices.",
@@ -637,7 +696,7 @@ export async function invoiceForPayment(
     .from("invoices")
     .select("id, invoice_number")
     .eq("payment_id", paymentId)
-    .eq("kind", "tax_invoice")
+    .in("kind", [...SALE_INVOICE_KINDS])
     .neq("status", "void")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -909,7 +968,7 @@ export async function issuePendingInvoices(
         .from("invoices")
         .select("payment_id")
         .in("payment_id", paymentIds)
-        .eq("kind", "tax_invoice")
+        .in("kind", [...SALE_INVOICE_KINDS])
         .neq("status", "void")
     : { data: [] as { payment_id: string }[] };
   const covered = new Set(((invoiced ?? []) as { payment_id: string }[]).map((r) => r.payment_id));
@@ -924,7 +983,7 @@ export async function issuePendingInvoices(
     .from("invoices")
     .select("id, payment_id, kind, status")
     .eq("status", "draft")
-    .eq("kind", "tax_invoice")
+    .in("kind", [...SALE_INVOICE_KINDS])
     .is("invoice_number", null)
     .order("created_at", { ascending: true })
     .limit(cap);
