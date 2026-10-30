@@ -435,18 +435,22 @@ describe("the list's chips, columns and bulk bar", () => {
   it("chips say what is filtered, in the preview's words, and each clears on its own", () => {
     const f = { optIn: "opted_in" as const, tagId: "t2", segmentId: "s1", boughtDays: 90 as const };
     const chips = filterChips(f, { tags: { t2: "bridal" }, segments: { s1: "VIP" } });
+    // Batch 57: copy (opt-in in plain words; a segment's visible name is "Group").
     expect(chips.map((c) => c.label)).toEqual([
-      "Opted in",
+      "Said yes to messages",
       "Tag: bridal",
-      "Bought in last 90 days",
-      "Segment: VIP",
+      "Bought in the last 90 days",
+      "Group: VIP",
     ]);
     expect(clearFilter(f, "tagId")).toEqual({ ...f, tagId: "all" });
     expect(clearFilter(f, "boughtDays")).toEqual({ ...f, boughtDays: null });
     expect(hasFilters(NO_FILTERS, "")).toBe(false);
     expect(hasFilters(NO_FILTERS, "asha")).toBe(true);
     expect(BOUGHT_DAYS).toEqual([30, 90, 180]);
-    expect(OPT_IN_CHIP.unknown.label).toBe("Not yet");
+    // Batch 57: copy
+    expect(OPT_IN_CHIP.unknown.label).toBe("No answer yet");
+    expect(OPT_IN_CHIP.opted_in.label).toBe("Said yes");
+    expect(OPT_IN_CHIP.opted_out.label).toBe("Said no");
   });
 
   it("bought in the last N days counts back from now", () => {
@@ -460,7 +464,8 @@ describe("the list's chips, columns and bulk bar", () => {
   it("Last chat is the newest of the customer's chats", () => {
     const now = Date.UTC(2026, 9, 29, 12);
     expect(lastChatLabel(null, now)).toBe("No chat yet");
-    expect(lastChatLabel(new Date(now - 20_000).toISOString(), now)).toBe("now");
+    // Batch 57: copy
+    expect(lastChatLabel(new Date(now - 20_000).toISOString(), now)).toBe("just now");
     expect(lastChatLabel(new Date(now - 26 * 60_000).toISOString(), now)).toBe("26 min ago");
     expect(lastChatLabel(new Date(now - 60 * 60_000).toISOString(), now)).toBe("1 hour ago");
     expect(lastChatLabel(new Date(now - 3 * 86_400_000).toISOString(), now)).toBe("3 days ago");
@@ -520,6 +525,9 @@ describe("Hallmark floor on the new files", () => {
     "components/customers-v2/import-guided.tsx",
     "components/customers-v2/new-segments-view.tsx",
     "components/customers-v2/new-receipts-view.tsx",
+    // Batch 57: the screens' words now live here, and the notes block is checked too.
+    "components/customers-v2/copy.ts",
+    "components/customers-v2/customer-notes.tsx",
   ];
   it("no transition-all, no tracked capitals, no middle dots, no raw colours", () => {
     for (const f of files) {

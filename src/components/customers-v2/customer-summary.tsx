@@ -15,6 +15,7 @@ import {
   spentByContact,
   spentLabel,
 } from "./customers-v2";
+import { summaryCopy as t } from "./copy";
 
 type Chat = {
   id: string;
@@ -185,7 +186,8 @@ export function CustomerSummary({
 
   if (!s) {
     return (
-      <div className="flex flex-col gap-3" aria-busy="true">
+      <div className="flex flex-col gap-3" aria-busy="true" aria-label={t.loading}>
+        <Skeleton className="h-16 w-full rounded-2xl" />
         <Skeleton className="h-16 w-full rounded-2xl" />
         <Skeleton className="h-16 w-full rounded-2xl" />
       </div>
@@ -198,29 +200,28 @@ export function CustomerSummary({
   const consent = consentLine(s.consent);
 
   return (
-    <div className="flex flex-col gap-4 rounded-[20px] border border-line bg-surface p-4">
-      <Block title="Chat history">
+    <div className="nd-rise flex flex-col gap-4 rounded-[20px] border border-line bg-surface p-4">
+      <Block title={t.chat}>
         {s.chat ? (
           <>
             <Quiet>
-              Last message {lastChatLabel(s.chat.last_message_at)}.{" "}
-              {s.chat.status === "closed" ? "Marked done." : "Still open."}
+              {t.lastMessage(lastChatLabel(s.chat.last_message_at), s.chat.status === "closed")}
             </Quiet>
             <Link
               to="/app/inbox"
               search={{ c: s.chat.id } as never}
-              className="mt-1 inline-flex w-fit items-center gap-2 rounded-[11px] border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-ground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+              className="mt-1 inline-flex w-fit items-center gap-2 rounded-[11px] border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-ground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden phone:min-h-11"
             >
               <MessageSquare className="h-4 w-4" aria-hidden="true" />
-              Open the chat
+              {t.openChat}
             </Link>
           </>
         ) : (
-          <Quiet>No chat with this customer yet.</Quiet>
+          <Quiet>{t.noChat}</Quiet>
         )}
       </Block>
 
-      <Block title="Consent">
+      <Block title={t.consent}>
         <span
           className={cn(
             "w-fit rounded-full px-2.5 py-1 text-[0.8125rem] font-semibold",
@@ -231,35 +232,35 @@ export function CustomerSummary({
         </span>
         <Quiet>
           {contact.opt_in_status === "opted_out"
-            ? "They opted out. Only they can opt back in, by replying START."
+            ? t.optedOut
             : contact.opt_in_status === "opted_in"
-              ? (consent ?? "Opted in. How and when wasn't recorded.")
-              : "Not asked yet. Campaigns reach them once they opt in."}
+              ? (consent ?? t.optedInUnrecorded)
+              : t.notAsked}
         </Quiet>
       </Block>
 
-      <Block title="Aiden knows">
+      <Block title={t.aiden}>
         {s.language || s.chat?.needs_human_question ? (
           <>
-            {s.language ? <Quiet>Writes in {s.language}.</Quiet> : null}
+            {s.language ? <Quiet>{t.writesIn(s.language)}</Quiet> : null}
             {s.chat?.needs_human_question ? (
-              <p className="m-0 text-[0.9375rem]">Asked: “{s.chat.needs_human_question}”</p>
+              <p className="m-0 text-[0.9375rem]">{t.asked(s.chat.needs_human_question)}</p>
             ) : null}
           </>
         ) : (
-          <Quiet>Nothing yet. Aiden learns the language they write in once they message you.</Quiet>
+          <Quiet>{t.aidenNothing}</Quiet>
         )}
       </Block>
 
       {s.orders !== null ? (
-        <Block title="Orders">
+        <Block title={t.orders}>
           {s.orders.length ? (
             <>
               <dl className="m-0 flex flex-col gap-1">
                 {s.orders.slice(0, 5).map((o) => (
                   <Line
                     key={o.id}
-                    label={`${o.order_number ? `Order ${o.order_number}` : "Order"}${o.placed_at ? `, ${day(o.placed_at)}` : ""}`}
+                    label={t.order(o.order_number, o.placed_at ? day(o.placed_at) : "")}
                   >
                     <span
                       className={cn(
@@ -272,27 +273,25 @@ export function CustomerSummary({
                   </Line>
                 ))}
               </dl>
-              <Quiet>
-                Spent {spent} over {s.orders.filter((o) => !o.cancelled_at).length} orders.
-              </Quiet>
+              <Quiet>{t.spentOver(spent, s.orders.filter((o) => !o.cancelled_at).length)}</Quiet>
             </>
           ) : (
-            <Quiet>No orders from your shop yet.</Quiet>
+            <Quiet>{t.noOrders}</Quiet>
           )}
         </Block>
       ) : null}
 
-      <Block title="Flows">
+      <Block title={t.flows}>
         {s.runs.length ? (
           <dl className="m-0 flex flex-col gap-1">
             {s.runs.map((r) => (
-              <Line key={r.id} label={`${r.flows?.name || "A flow"}, ${day(r.started_at)}`}>
+              <Line key={r.id} label={`${r.flows?.name || t.aFlow}, ${day(r.started_at)}`}>
                 {flowRunLabel(r.status)}
               </Line>
             ))}
           </dl>
         ) : (
-          <Quiet>No flow has run for this customer.</Quiet>
+          <Quiet>{t.noFlows}</Quiet>
         )}
       </Block>
     </div>

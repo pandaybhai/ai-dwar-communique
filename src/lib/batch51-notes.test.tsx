@@ -104,7 +104,8 @@ describe("audit: every add and delete is logged, never the words", () => {
         body: "x",
       }),
     ).toEqual({
-      error: "We couldn't save that note. Please try again.",
+      // Batch 57: copy
+      error: "Couldn't save that note. Check your internet and tap Add note again.",
     });
     const missing = fakeDb(() => ({
       data: null,
