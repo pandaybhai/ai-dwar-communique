@@ -80,3 +80,12 @@ unchanged); it sits on top of `spec.md`. The audit that drove the work is
 - **The wizard's last button** lives in the shared classic wizard; its new
   label, the ring and the confetti are behind `useNewDesign()` there. Classic
   still says "Launch campaign" and shows its toast.
+- **Classic pieces inside Aiden Workspace** (after the founder's go-ahead):
+  Mark all unknown, the contact drawer, the page numbers and Analytics take
+  Aiden Workspace's words and 44px phone sizes only there. The first three get
+  them as optional props from Aiden Workspace code (Batch 48's rule: Classic
+  Contacts files never import the design switch); Analytics reads the new
+  shell's section, which Classic never provides. Unset, each draws main's
+  markup byte for byte (pinned) and sends the same requests. The WhatsApp
+  consent sentence and the START rule keep their words. Founder approved
+  "Skipped (haven't said yes to offers)" and "No answer yet".

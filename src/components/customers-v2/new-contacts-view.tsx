@@ -50,7 +50,8 @@ import {
 import { CustomerSummary } from "./customer-summary";
 import { CustomerNotes, canWriteNotes } from "./customer-notes";
 import { GuidedImportDialog } from "./import-guided";
-import { contactsCopy as t } from "./copy";
+import { contactsCopy as t, drawerCopy, markAllCopy } from "./copy";
+import { PAGINATION_WORDS } from "@/components/design-v2/copy";
 import {
   BOUGHT_DAYS,
   NO_FILTERS,
@@ -699,7 +700,12 @@ export function NewContactsView({
                 </Button>
               ) : null}
               {canEdit ? (
-                <MarkAllUnknownOptedIn organizationId={organizationId} onDone={() => void load()} />
+                <MarkAllUnknownOptedIn
+                  organizationId={organizationId}
+                  onDone={() => void load()}
+                  words={markAllCopy}
+                  buttonClassName="rounded-full phone:h-11"
+                />
               ) : null}
             </div>
           </div>
@@ -902,7 +908,13 @@ export function NewContactsView({
                 </>
               )}
               <div className="phone:mt-3 phone:rounded-2xl phone:border phone:border-line phone:bg-surface">
-                <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+                <Pagination
+                  page={page}
+                  pageSize={PAGE_SIZE}
+                  total={total}
+                  onPageChange={setPage}
+                  words={PAGINATION_WORDS}
+                />
               </div>
             </div>
           )}
@@ -1013,6 +1025,8 @@ export function NewContactsView({
         allTags={allTags}
         canDelete={canDeleteContacts}
         onClose={() => setSelected(null)}
+        words={drawerCopy}
+        roomy
         onChanged={() => {
           void loadTags();
           void loadBreakdown();

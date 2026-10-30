@@ -2,15 +2,19 @@
  * Batch 57: every visible word of the Customers screens in Aiden Workspace
  * (Contacts, Groups, Sales from chats, the drawer's summary and notes, the
  * guided import) in one place, so a Hindi version can follow. Plain objects;
- * anything with a count is a function. Words drawn by the classic components
- * these screens reuse (ContactDrawer, SegmentBuilderDialog,
- * MarkAllUnknownOptedIn, DateRangePicker, Pagination) stay theirs.
+ * anything with a count is a function. The Classic pieces these screens reuse
+ * get their Aiden Workspace words as props (drawerCopy, markAllCopy below;
+ * Pagination's in design-v2/copy.ts); SegmentBuilderDialog and
+ * DateRangePicker keep their own.
  *
  * Words used here: "Group" is a segment (routes, ?tab=segments, tables and
  * code keep that name); "Said yes" / "No answer yet" / "Said no" are the
  * opt-in statuses opted_in / unknown / opted_out. Meta's and WhatsApp's own
  * words, the import's consent box and every number stay as they are.
  */
+
+import type { DrawerWords } from "@/components/contacts/contact-drawer";
+import type { MarkAllWords } from "@/components/contacts/bulk-opt-in";
 
 const num = (n: number) => n.toLocaleString("en-IN");
 /** "1 customer", "1,240 customers". */
@@ -294,3 +298,71 @@ export const importCopy = {
   errorReport: "Download the skipped rows",
   close: "Done",
 } as const;
+
+/**
+ * Batch 57: the words of the Classic pieces these screens render, handed to
+ * them as props in Aiden Workspace only (Classic keeps its own words). The
+ * WhatsApp consent sentence and the START rule keep their meaning exactly.
+ */
+export const markAllCopy: MarkAllWords = {
+  button: "Mark everyone with no answer as said yes",
+  counting: "Counting your customers…",
+  none: "Everyone has already answered",
+  confirmTitle: (k) => `Mark ${count(k, "customer", "customers")} as said yes?`,
+  body: "Only customers with no answer yet change. Anyone who said no stays that way. WhatsApp requires consent, so do this only if these people agreed to hear from you.",
+  cancel: "Cancel",
+  action: "Mark as said yes",
+  busy: "Updating…",
+  countError: "Couldn't count your customers. Check your internet and try again.",
+  updateError: "Couldn't update your customers. Check your internet and try again.",
+  summary: (r) =>
+    [
+      `${count(r.changed, "customer", "customers")} marked as said yes`,
+      r.skipped_opted_out ? `${num(r.skipped_opted_out)} who said no stayed that way` : "",
+      r.already_opted_in ? `${num(r.already_opted_in)} had already said yes` : "",
+    ]
+      .filter(Boolean)
+      .join(", "),
+};
+
+export const drawerCopy: DrawerWords = {
+  addedPrefix: "Added on ",
+  name: "Name",
+  phone: "Phone number",
+  tags: "Tags",
+  removeTag: (name) => `Remove the ${name} tag`,
+  addTag: "Add a tag",
+  noOtherTags: "No other tags yet.",
+  createTag: "Make a new tag",
+  tagPlaceholder: "For example: VIP customers",
+  colour: (c) => `Colour ${c}`,
+  createAndAdd: "Make it and add it",
+  attributes: "Extra details",
+  keyPlaceholder: "What (for example: city)",
+  valuePlaceholder: "Value (for example: Pune)",
+  removeAttribute: "Remove this detail",
+  addAttribute: "Add a detail",
+  conversation: "Chat",
+  viewConversation: "Open their chat",
+  noConversation: "No chat yet.",
+  save: "Save changes",
+  saving: "Saving…",
+  delete: "Delete customer",
+  tagAddError: "Couldn't add that tag. Try again.",
+  tagCreateError: "There may already be a tag with that name. Pick it from the list above.",
+  tagRemoveError: "Couldn't remove that tag. Try again.",
+  saveError: "Couldn't save your changes. Check your internet and try again.",
+  updated: "Saved.",
+  deleteDenied: "Only owners and admins can delete customers.",
+  deleted: "Customer deleted.",
+  optIn: {
+    label: "Messages from you",
+    labels: {
+      opted_in: optInCopy.opted_in.long,
+      unknown: optInCopy.unknown.long,
+      opted_out: optInCopy.opted_out.long,
+    },
+    optedOut: "This customer said no to messages. Only they can change that, by replying START.",
+    optOutWarning: "Once you save, only the customer can undo a no, by replying START.",
+  },
+};

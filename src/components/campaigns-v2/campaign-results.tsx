@@ -43,6 +43,7 @@ import {
 } from "./data";
 import { StatusTag } from "./new-campaigns";
 import { orders, resultsCopy as rc } from "./copy";
+import { PAGINATION_WORDS } from "@/components/design-v2/copy";
 
 /**
  * Batch 47: one campaign's results (the preview's .cres) and the message it
@@ -520,7 +521,13 @@ function Recipients({
           </table>
         </div>
       )}
-      <Pagination page={page} pageSize={RECIPIENT_PAGE_SIZE} total={total} onPageChange={onPage} />
+      <Pagination
+        page={page}
+        pageSize={RECIPIENT_PAGE_SIZE}
+        total={total}
+        onPageChange={onPage}
+        words={PAGINATION_WORDS}
+      />
     </section>
   );
 }

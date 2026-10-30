@@ -1472,6 +1472,11 @@ html[data-design="new"] .animate-pulse::after {
 .nd-lift:active {
   transform: scale(0.99);
 }
+/* Batch 57: a drawer or sheet that rises on the More sheet's soft spring. */
+.nd-sheet-spring[data-state="open"] {
+  animation-duration: 0.42s;
+  animation-timing-function: cubic-bezier(0.32, 1.25, 0.5, 1);
+}
 .nd-grab {
   display: block;
   width: 40px;
@@ -1510,6 +1515,9 @@ html[data-chat-open] .nd-bottom-bar {
   }
   .nd-spark {
     display: none;
+  }
+  .nd-sheet-spring[data-state="open"] {
+    animation: none;
   }
   .nd-lift,
   .nd-lift:hover,

@@ -12,20 +12,69 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   );
 }
 
+/** Batch 57: Aiden Workspace's words for Pagination (Classic passes none). */
+export type PaginationWords = {
+  showing: (start: number, end: number, total: number) => string;
+  previous: string;
+  next: string;
+  page: (page: number, pages: number) => string;
+};
+
 export function Pagination({
   page,
   pageSize,
   total,
   onPageChange,
+  words,
 }: {
   page: number;
   pageSize: number;
   total: number;
   onPageChange: (p: number) => void;
+  /**
+   * Batch 57, Aiden Workspace only: its words, Indian number grouping and
+   * 44px buttons on a phone. Unset: the Classic bar below, exactly as before.
+   */
+  words?: PaginationWords;
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : page * pageSize + 1;
   const end = Math.min(total, (page + 1) * pageSize);
+
+  if (words) {
+    return (
+      <div className="flex flex-col items-center justify-between gap-3 border-t border-line px-4 py-3 sm:flex-row">
+        <p className="m-0 text-sm text-muted-foreground tabular-nums">
+          {words.showing(start, end, total)}
+        </p>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full phone:h-11 phone:px-4"
+            disabled={page <= 0}
+            onClick={() => onPageChange(page - 1)}
+          >
+            <ChevronLeft className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+            {words.previous}
+          </Button>
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {words.page(page + 1, pages)}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full phone:h-11 phone:px-4"
+            disabled={page + 1 >= pages}
+            onClick={() => onPageChange(page + 1)}
+          >
+            {words.next}
+            <ChevronRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-between gap-3 border-t border-border/70 px-4 py-3 sm:flex-row">

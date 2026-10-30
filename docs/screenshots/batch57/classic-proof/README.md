@@ -14,8 +14,8 @@ caught at. Crops of each kind, main on the left, branch on the right:
 - `diff-campaign-results-timestamps.png`
 - `diff-home-live-dot.png`
 
-Not compared here: Classic's campaign wizard and contact drawer (their scripted
-clicks are Aiden Workspace names); `batch47-campaigns.test.tsx` pins the
+Not compared here: Classic's campaign wizard (its scripted clicks are Aiden
+Workspace names); `batch47-campaigns.test.tsx` pins the
 wizard's and the template editor's Classic markup to main's hash, and
 `batch48-customers.test.tsx` pins the classic Customers files. Both pass.
 
@@ -67,3 +67,31 @@ SAME templates-mobile.png
 
 29 identical, 15 different
 ```
+
+## Second round: the Classic pieces Aiden Workspace now re-words
+
+After Batch 56 was merged, Mark all unknown, the contact drawer, the page
+numbers and Analytics take Aiden Workspace's words and sizes as optional props
+(or, for Analytics, from the new shell's section, which Classic never has).
+Classic shot again on main (8e9ad6a) and this branch, same scenarios plus the
+drawer, the Mark all dialog and Analytics:
+
+```
+SAME analytics-desktop.png 
+SAME analytics-mobile.png 
+DIFF campaign-results-desktop.png 446 px (0.034%)
+SAME campaign-results-mobile.png 
+SAME contact-drawer-desktop.png 
+SAME contact-drawer-mobile.png 
+SAME contacts-desktop.png 
+SAME contacts-mark-all-desktop.png 
+SAME contacts-mark-all-mobile.png 
+SAME contacts-mobile.png 
+
+9 identical, 1 different
+```
+
+The one difference is the campaign timeline's clock-driven times, as above.
+`batch57-polish.test.tsx` also pins the Classic markup of Mark all unknown,
+every opt-in field state, the page numbers and the Analytics cards to a hash
+recorded from main.

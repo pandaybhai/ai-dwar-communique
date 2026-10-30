@@ -84,13 +84,51 @@ export function BulkOptInBar({
   );
 }
 
+/**
+ * Batch 57: the words of MarkAllUnknownOptedIn. Classic passes nothing and
+ * gets exactly these; Aiden Workspace passes its own.
+ */
+export type MarkAllWords = {
+  button: string;
+  counting: string;
+  none: string;
+  confirmTitle: (count: number) => string;
+  body: string;
+  cancel: string;
+  action: string;
+  busy: string;
+  countError: string;
+  updateError: string;
+  summary: (r: BulkOptInResult) => string;
+};
+
+export const MARK_ALL_WORDS: MarkAllWords = {
+  button: "Mark all unknown as opted in",
+  counting: "Counting contacts…",
+  none: "No contacts with Unknown status",
+  confirmTitle: (count) => `Mark ${plural(count, "contact", "contacts")} as opted in?`,
+  body: "Only contacts whose status is Unknown change. Anyone who opted out stays opted out. WhatsApp requires consent, so do this only if these people agreed to hear from you.",
+  cancel: "Cancel",
+  action: "Mark as opted in",
+  busy: "Updating…",
+  countError: "We couldn't count your contacts.",
+  updateError: "We couldn't update your contacts.",
+  summary: bulkOptInSummary,
+};
+
 /** Batch 36: one click for every "unknown" contact, after a confirm with the count. */
 export function MarkAllUnknownOptedIn({
   organizationId,
   onDone,
+  words = MARK_ALL_WORDS,
+  buttonClassName,
 }: {
   organizationId: string;
   onDone: () => void;
+  /** Batch 57: Aiden Workspace's words; unset, Classic's exactly. */
+  words?: MarkAllWords;
+  /** Batch 57: Aiden Workspace's button classes; unset, "rounded-full" as before. */
+  buttonClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState<number | null>(null);
@@ -104,7 +142,7 @@ export function MarkAllUnknownOptedIn({
     });
     if (res.error || !res.data) {
       setOpen(false);
-      toast.error(res.error ?? "We couldn't count your contacts.");
+      toast.error(res.error ?? words.countError);
       return;
     }
     setCount(res.data.count);
@@ -118,36 +156,37 @@ export function MarkAllUnknownOptedIn({
     setBusy(false);
     setOpen(false);
     if (res.error || !res.data) {
-      toast.error(res.error ?? "We couldn't update your contacts.");
+      toast.error(res.error ?? words.updateError);
       return;
     }
-    toast.success(bulkOptInSummary(res.data));
+    toast.success(words.summary(res.data));
     onDone();
   }
 
   return (
     <>
-      <Button variant="ghost" className="rounded-full" onClick={() => void openConfirm()}>
+      <Button
+        variant="ghost"
+        className={buttonClassName ?? "rounded-full"}
+        onClick={() => void openConfirm()}
+      >
         <CheckCheck className="mr-2 h-4 w-4" />
-        Mark all unknown as opted in
+        {words.button}
       </Button>
       <AlertDialog open={open} onOpenChange={(o) => (!busy ? setOpen(o) : undefined)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {count === null
-                ? "Counting contacts…"
+                ? words.counting
                 : count === 0
-                  ? "No contacts with Unknown status"
-                  : `Mark ${plural(count, "contact", "contacts")} as opted in?`}
+                  ? words.none
+                  : words.confirmTitle(count)}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              Only contacts whose status is Unknown change. Anyone who opted out stays opted out.
-              WhatsApp requires consent, so do this only if these people agreed to hear from you.
-            </AlertDialogDescription>
+            <AlertDialogDescription>{words.body}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>{words.cancel}</AlertDialogCancel>
             <AlertDialogAction
               disabled={busy || !count}
               onClick={(e) => {
@@ -155,7 +194,7 @@ export function MarkAllUnknownOptedIn({
                 void confirm();
               }}
             >
-              {busy ? "Updating…" : "Mark as opted in"}
+              {busy ? words.busy : words.action}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

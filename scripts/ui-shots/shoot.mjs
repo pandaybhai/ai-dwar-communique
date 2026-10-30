@@ -262,7 +262,10 @@ const SCENARIOS_B50 = {
 
 /** Batch 48: Customers (run with --design new; --design classic shows flag off is unchanged). */
 const firstContactRow = async (page) => {
-  await page.getByRole("button", { name: /Asha Iyer/ }).first().click();
+  const asButton = page.getByRole("button", { name: /Asha Iyer/ });
+  // Batch 57: the Classic list opens the drawer from the row's text.
+  if (await asButton.count()) await asButton.first().click();
+  else await page.getByText("Asha Iyer", { exact: true }).first().click();
   await page.waitForTimeout(1200);
 };
 const SCENARIOS_B48 = {
@@ -442,6 +445,17 @@ const SCENARIOS_B57 = {
   "avatar-menu": SCENARIOS_B44["avatar-menu"],
   "more-sheet": SCENARIOS_B44["more-sheet"],
   palette: SCENARIOS.palette,
+  analytics: { path: "/app/analytics", conversations: 40, wait: "h1", settle: 2500 },
+  "contacts-mark-all": {
+    path: "/app/contacts",
+    conversations: 40,
+    customers: true,
+    wait: "text=Asha Iyer",
+    act: async (page) => {
+      await page.getByRole("button", { name: /^Mark (all unknown|everyone with no answer)/ }).first().click();
+      await page.waitForTimeout(900);
+    },
+  },
   // The send moment: the review step's last button, then the ring and confetti.
   "campaign-send": {
     ...wizardTo(4, /new campaign/i),

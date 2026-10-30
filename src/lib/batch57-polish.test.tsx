@@ -158,3 +158,128 @@ describe("shared pieces render their final state under reduced motion", () => {
     vi.doUnmock("motion/react");
   });
 });
+
+describe("Classic pieces inside Aiden Workspace (Mark all unknown, the drawer, page numbers, Analytics)", () => {
+  it("without the new props, Classic draws main's markup byte for byte", async () => {
+    // Classic has no shell section (the new_design suite fakes one for every page).
+    vi.resetModules();
+    vi.doMock("@/components/shell/section-tabs", async (orig) => ({
+      ...(await orig<typeof import("@/components/shell/section-tabs")>()),
+      useShellSection: () => null,
+    }));
+    vi.doMock("@/lib/whatsapp-client", () => ({
+      callApi: async () => ({ data: null, error: null }),
+    }));
+    vi.doMock("@/integrations/aidwar/client", () => ({ aidwar: {} }));
+    const { createHash } = await import("node:crypto");
+    const { Inbox } = await import("lucide-react");
+    const B = await import("@/components/contacts/bulk-opt-in");
+    const D = await import("@/components/contacts/contact-drawer");
+    const P = await import("@/components/data-pagination");
+    const C = await import("@/components/analytics/chart-card");
+    const consent = { opt_in_source: "import", opted_in_at: "2026-10-01T10:00:00Z" };
+    const out: string[] = [];
+    out.push(
+      renderToStaticMarkup(<B.MarkAllUnknownOptedIn organizationId="o" onDone={() => {}} />),
+    );
+    for (const [current, value] of [
+      ["unknown", "unknown"],
+      ["unknown", "opted_out"],
+      ["opted_in", "opted_in"],
+      ["opted_out", "opted_out"],
+    ] as const)
+      out.push(
+        renderToStaticMarkup(
+          <D.OptInField current={current} value={value} consent={consent} onChange={() => {}} />,
+        ),
+      );
+    for (const [page, total] of [
+      [0, 0],
+      [0, 2410],
+      [3, 2410],
+      [96, 2410],
+    ])
+      out.push(
+        renderToStaticMarkup(
+          <P.Pagination page={page!} pageSize={25} total={total!} onPageChange={() => {}} />,
+        ),
+      );
+    for (const props of [{ loading: true }, { isEmpty: true }, {}])
+      out.push(
+        renderToStaticMarkup(
+          <C.ChartCard
+            title="Messages"
+            description="Sent and read"
+            emptyIcon={Inbox}
+            emptyTitle="Nothing yet"
+            emptyDescription="Send one"
+            {...props}
+          >
+            <i>chart</i>
+          </C.ChartCard>,
+        ),
+      );
+    for (const props of [
+      { loading: true },
+      { rateText: "41%", rateLabel: "read", deltaText: "+3%", direction: 1 as const },
+      {},
+    ])
+      out.push(renderToStaticMarkup(<C.MetricCard label="Delivered" value={12345} {...props} />));
+    // Recorded from main (8e9ad6a) with the same props: Classic is unchanged.
+    expect(createHash("sha256").update(out.join("\n")).digest("hex")).toBe(
+      "640ecc0b5927fc2c6504ad5aebeba2bf5b5e7179860680303d9f6d8574f14a44",
+    );
+    vi.doUnmock("@/lib/whatsapp-client");
+    vi.doUnmock("@/integrations/aidwar/client");
+    vi.doUnmock("@/components/shell/section-tabs");
+    vi.resetModules();
+  });
+
+  it("Aiden Workspace hands them its words; the requests stay the same", async () => {
+    const { markAllCopy, drawerCopy } = await import("@/components/customers-v2/copy");
+    const { PAGINATION_WORDS } = await import("@/components/design-v2/copy");
+    const { Pagination } = await import("@/components/data-pagination");
+    const { OptInField } = await import("@/components/contacts/contact-drawer");
+    const page = renderToStaticMarkup(
+      <Pagination
+        page={0}
+        pageSize={25}
+        total={2410}
+        onPageChange={() => {}}
+        words={PAGINATION_WORDS}
+      />,
+    );
+    expect(page).toContain("Showing 1 to 25 of 2,410");
+    expect(page).toContain("phone:h-11");
+    const field = renderToStaticMarkup(
+      <OptInField
+        current="opted_out"
+        value="opted_out"
+        consent={null}
+        onChange={() => {}}
+        words={drawerCopy.optIn}
+      />,
+    );
+    expect(field).toContain("Said no to messages");
+    expect(field).toContain("by replying START");
+    expect(markAllCopy.button).toBe("Mark everyone with no answer as said yes");
+    // The WhatsApp consent sentence is kept word for word.
+    expect(markAllCopy.body).toContain(
+      "WhatsApp requires consent, so do this only if these people agreed to hear from you.",
+    );
+    const bulk = src("components/contacts/bulk-opt-in.tsx");
+    expect(bulk).toContain('body: { action: "count_unknown", organization_id: organizationId },');
+    expect(bulk).toContain('body: { action: "all_unknown", organization_id: organizationId },');
+    const view = src("components/customers-v2/new-contacts-view.tsx");
+    expect(view).toContain("words={markAllCopy}");
+    expect(view).toContain("words={drawerCopy}");
+    expect(view).toContain("words={PAGINATION_WORDS}");
+    // Analytics reads the new shell's section (null in Classic), never the flag hook.
+    for (const f of [
+      "routes/app/analytics.tsx",
+      "components/analytics/analytics-view.tsx",
+      "components/analytics/chart-card.tsx",
+    ])
+      expect(src(f)).toContain("useShellSection() !== null");
+  });
+});

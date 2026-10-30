@@ -141,8 +141,11 @@ describe("flag off: today's Customers screens", () => {
     const pinned: Record<string, string> = {
       "components/contacts/contacts-view.tsx":
         "80c2428e20f6c4744bab7c6086908f99c546807175280fdc31ee7173a4700a45",
+      // Batch 57: MarkAllUnknownOptedIn gained optional Aiden Workspace words and
+      // button classes; unset it draws main's markup byte for byte and sends the
+      // same two requests (batch57-polish.test.tsx pins both).
       "components/contacts/bulk-opt-in.tsx":
-        "bdfdceb9f6924c62169bd8f596c91b037f174c6352fce3d9bde13ff092a518ab",
+        "8e58ccd8581da6c83693ad507769f20b625320fa5a6a60d4ba049456b08787a2",
       "components/segments/segments-view.tsx":
         "e6dbe1e68d105c09c655823878e596d2cf5fa2b4547ccb3f93437172460123cd",
       "components/segments/segment-builder-dialog.tsx":
