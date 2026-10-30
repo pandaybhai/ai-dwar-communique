@@ -1,21 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArchiveRestore, Plus, Table2, Trash2, Workflow } from "lucide-react";
 import { toast } from "sonner";
+import { NumberTicker } from "@/components/design-v2";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { DeleteFlowDialog } from "@/components/flows/v2/delete-flow-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
 import { aidwar } from "@/integrations/aidwar/client";
 import { relativeTime } from "@/lib/catalog";
 import { flowDeletedAt, restoreDaysLeft } from "@/lib/flow-delete";
 import type { FlowGraph } from "@/lib/flow-graph";
-import { responsesLine, type FlowResponseCount } from "@/lib/flow-responses";
+import { type FlowResponseCount } from "@/lib/flow-responses";
 import { STARTERS } from "@/lib/flow-starters";
 import { flowStatus } from "@/lib/flow-status";
 import { cn } from "@/lib/utils";
 import { callApi } from "@/lib/whatsapp-client";
+import { chatFlowsCopy as t, flowsPage } from "./copy";
 import { FlowThumbnail } from "./flow-thumbnail";
 import { graphForCard, triggersLine, type TriggerRow } from "./flows-v2";
 import { RunTimeline } from "./run-timeline";
@@ -174,7 +177,7 @@ export function ChatFlowsV2({
       toast.error(e);
       return;
     }
-    toast.success(`“${row.name}” is back. Publish it again if it was off.`);
+    toast.success(t.restored(row.name));
     void load();
   };
 
@@ -186,22 +189,27 @@ export function ChatFlowsV2({
     });
     setBusy(false);
     if (e || !data) {
-      toast.error(e ?? "Couldn't create the flow.");
+      toast.error(e ?? t.createFailed);
       return;
     }
     void navigate({ to: "/app/flows/v2/$id", params: { id: data.flow_id } });
   };
 
   if (error)
-    return <ErrorState message="We couldn't load your chat flows. Refresh to try again." />;
+    return (
+      <ErrorState
+        message={t.loadError}
+        onRetry={() => {
+          setError(false);
+          void load();
+        }}
+      />
+    );
   if (!rows) {
     return (
-      <div className="grid gap-4 wide:grid-cols-2">
+      <div className="grid gap-4 wide:grid-cols-2" aria-busy="true" aria-label={t.loading}>
         {[0, 1].map((i) => (
-          <div
-            key={i}
-            className="h-64 animate-pulse rounded-[20px] bg-bubble-in motion-reduce:animate-none"
-          />
+          <Skeleton key={i} className="h-72 rounded-[20px]" />
         ))}
       </div>
     );
@@ -213,8 +221,13 @@ export function ChatFlowsV2({
     <div className="flex flex-col gap-8">
       {deleted.length > 0 || showDeleted ? (
         <div className="flex justify-end">
-          <Button variant="ghost" size="sm" onClick={() => setShowDeleted((v) => !v)}>
-            {showDeleted ? "Back to your flows" : `Deleted flows (${deleted.length})`}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="phone:h-11"
+            onClick={() => setShowDeleted((v) => !v)}
+          >
+            {showDeleted ? t.backToFlows : t.deletedToggle(deleted.length)}
           </Button>
         </div>
       ) : null}
@@ -223,8 +236,8 @@ export function ChatFlowsV2({
         deleted.length === 0 ? (
           <EmptyState
             icon={Trash2}
-            title="No deleted flows"
-            description="Flows you delete stay here for 30 days, then they're gone."
+            title={t.deletedEmpty.title}
+            description={t.deletedEmpty.description}
           />
         ) : (
           <ul
@@ -239,18 +252,18 @@ export function ChatFlowsV2({
                 <span className="min-w-0">
                   <span className="block truncate font-semibold">{r.name}</span>
                   <span className="block text-sm text-muted-foreground">
-                    Deleted {relativeTime(flowDeletedAt(r)!)}, {restoreDaysLeft(r)} day
-                    {restoreDaysLeft(r) === 1 ? "" : "s"} left to restore
+                    {t.deletedRow(relativeTime(flowDeletedAt(r)!), restoreDaysLeft(r))}
                   </span>
                 </span>
                 {canEdit ? (
                   <Button
                     size="sm"
                     variant="outline"
+                    className="phone:h-11"
                     disabled={busy}
                     onClick={() => void restore(r)}
                   >
-                    <ArchiveRestore className="mr-1 h-4 w-4" /> Restore
+                    <ArchiveRestore className="mr-1 h-4 w-4" aria-hidden="true" /> {t.restore}
                   </Button>
                 ) : null}
               </li>
@@ -260,18 +273,20 @@ export function ChatFlowsV2({
       ) : rows.length === 0 ? (
         <EmptyState
           icon={Workflow}
-          title="No chat flows yet"
-          description="Build menus, questions and hand-offs that run on their own, no AI needed."
+          title={t.empty.title}
+          description={t.empty.description}
           action={
             canEdit ? (
-              <Button onClick={() => onCreateOpenChange(true)}>Create your first flow</Button>
+              <Button className="phone:h-11" onClick={() => onCreateOpenChange(true)}>
+                {t.empty.action}
+              </Button>
             ) : undefined
           }
         />
       ) : (
         <>
           <ul className="m-0 grid list-none gap-4 p-0 wide:grid-cols-2">
-            {rows.map((r) => {
+            {rows.map((r, i) => {
               const graph = graphForCard(versions, r.id);
               const status = flowStatus(r.is_enabled, published ? published.has(r.id) : null);
               const steps = (graph?.nodes ?? []).filter(
@@ -280,89 +295,92 @@ export function ChatFlowsV2({
               return (
                 <li
                   key={r.id}
-                  className="flex flex-col gap-3.5 rounded-[20px] border border-line bg-surface p-4 shadow-md"
+                  style={{ "--d": Math.min(i, 6) } as CSSProperties}
+                  className="nd-rise flex min-w-0"
                 >
-                  <Link
-                    to="/app/flows/v2/$id"
-                    params={{ id: r.id }}
-                    className="group flex flex-col gap-3.5 rounded-[14px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-aiden"
-                  >
-                    <FlowThumbnail
-                      graph={graph}
-                      className="transition-[border-color] duration-200 group-hover:border-aiden"
-                    />
-                    <span className="flex items-start justify-between gap-3">
-                      <span className="min-w-0">
-                        <span className="block truncate font-display text-[1.125rem] font-semibold text-foreground">
-                          {r.name}
-                        </span>
-                        <span className="block text-sm text-muted-foreground">
-                          {steps} step{steps === 1 ? "" : "s"}, changed {relativeTime(r.updated_at)}
-                        </span>
-                      </span>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-full px-2.5 py-0.5 text-[13px] font-semibold",
-                          STATUS_TONE[status],
-                        )}
-                      >
-                        {status}
-                      </span>
-                    </span>
-                  </Link>
-                  <dl className="m-0 grid gap-1 text-sm">
-                    <div className="flex gap-1.5">
-                      <dt className="sr-only">Trigger</dt>
-                      <dd className="m-0 min-w-0 truncate text-foreground">
-                        {triggersLine(triggers.filter((t) => t.flow_id === r.id))}
-                      </dd>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <dt className="sr-only">Runs</dt>
-                      <dd className="m-0 text-muted-foreground">
-                        {counts[r.id]
-                          ? responsesLine(counts[r.id]!, relativeTime).replace(" · ", ", ")
-                          : "Counting runs…"}
-                      </dd>
-                    </div>
-                  </dl>
-                  <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
-                    <Button asChild size="sm">
-                      <Link to="/app/flows/v2/$id" params={{ id: r.id }}>
-                        {canEdit ? "Open builder" : "Open"}
-                      </Link>
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={historyFor === r.id ? "soft" : "outline"}
-                      aria-pressed={historyFor === r.id}
-                      onClick={() => showHistory(r.id)}
+                  {/* The lift sits inside the rise: an entrance's fill would hold the hover's transform. */}
+                  <div className="nd-lift flex w-full min-w-0 flex-col gap-3.5 rounded-[20px] border border-line bg-surface p-4 shadow-md">
+                    <Link
+                      to="/app/flows/v2/$id"
+                      params={{ id: r.id }}
+                      className="group flex flex-col gap-3.5 rounded-[14px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-aiden"
                     >
-                      Run history
-                    </Button>
-                    {canViewResponses ? (
-                      <Button asChild size="sm" variant="ghost">
-                        <Link
-                          to="/app/flows/v2/$id"
-                          params={{ id: r.id }}
-                          search={{ view: "responses" }}
+                      <FlowThumbnail
+                        graph={graph}
+                        className="transition-[border-color] duration-200 group-hover:border-aiden"
+                      />
+                      <span className="flex items-start justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="block truncate font-display text-[1.125rem] font-semibold text-foreground">
+                            {r.name}
+                          </span>
+                          <span className="block text-sm text-muted-foreground">
+                            {t.steps(steps, relativeTime(r.updated_at))}
+                          </span>
+                        </span>
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-full px-2.5 py-0.5 text-[13px] font-semibold",
+                            STATUS_TONE[status],
+                          )}
                         >
-                          <Table2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Responses
+                          {status}
+                        </span>
+                      </span>
+                    </Link>
+                    <dl className="m-0 grid gap-1 text-sm">
+                      <div className="flex gap-1.5">
+                        <dt className="sr-only">{t.startsLabel}</dt>
+                        <dd className="m-0 min-w-0 truncate text-foreground">
+                          {triggersLine(triggers.filter((t) => t.flow_id === r.id))}
+                        </dd>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <dt className="sr-only">{t.usedLabel}</dt>
+                        <dd className="m-0 text-muted-foreground">
+                          <UsedLine count={counts[r.id]} />
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                      <Button asChild size="sm" className="phone:h-11">
+                        <Link to="/app/flows/v2/$id" params={{ id: r.id }}>
+                          {canEdit ? t.edit : t.open}
                         </Link>
                       </Button>
-                    ) : null}
-                    {canEdit ? (
                       <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="ml-auto"
-                        aria-label={`Delete ${r.name}`}
-                        title="Delete flow"
-                        onClick={() => setDeleting(r)}
+                        size="sm"
+                        variant={historyFor === r.id ? "soft" : "outline"}
+                        className="phone:h-11"
+                        aria-pressed={historyFor === r.id}
+                        onClick={() => showHistory(r.id)}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {t.history}
                       </Button>
-                    ) : null}
+                      {canViewResponses ? (
+                        <Button asChild size="sm" variant="ghost" className="phone:h-11">
+                          <Link
+                            to="/app/flows/v2/$id"
+                            params={{ id: r.id }}
+                            search={{ view: "responses" }}
+                          >
+                            <Table2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {t.responses}
+                          </Link>
+                        </Button>
+                      ) : null}
+                      {canEdit ? (
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="ml-auto phone:h-11 phone:w-11"
+                          aria-label={t.deleteLabel(r.name)}
+                          title={t.deleteTitle}
+                          onClick={() => setDeleting(r)}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 </li>
               );
@@ -380,12 +398,9 @@ export function ChatFlowsV2({
                   id="run-history-heading"
                   className="m-0 font-display text-[1.25rem] font-semibold"
                 >
-                  Run history: {history.name}
+                  {t.historyHeading(history.name)}
                 </h2>
-                <p className="m-0 mt-1 text-sm text-muted-foreground">
-                  The last 10 customers who went through this flow, step by step. Pick another
-                  flow&rsquo;s Run history to switch.
-                </p>
+                <p className="m-0 mt-1 text-sm text-muted-foreground">{t.historyLine}</p>
               </div>
               <RunTimeline
                 organizationId={organizationId}
@@ -412,7 +427,7 @@ export function ChatFlowsV2({
       <Dialog open={createOpen} onOpenChange={onCreateOpenChange}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Start from a template</DialogTitle>
+            <DialogTitle>{t.createTitle}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             {STARTERS.map((s) => (
@@ -421,7 +436,7 @@ export function ChatFlowsV2({
                 type="button"
                 disabled={busy}
                 onClick={() => void create(s.key)}
-                className="rounded-[14px] border border-line p-4 text-left transition-[border-color,box-shadow] duration-200 hover:border-aiden hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden disabled:opacity-60"
+                className="nd-lift rounded-[14px] border border-line p-4 text-left transition-[border-color,box-shadow,transform] duration-200 hover:border-aiden hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden disabled:opacity-60"
               >
                 <p className="m-0 font-semibold">{s.name}</p>
                 <p className="m-0 text-sm text-muted-foreground">{s.description}</p>
@@ -436,8 +451,30 @@ export function ChatFlowsV2({
 
 export function NewChatFlowButton({ onClick }: { onClick: () => void }) {
   return (
-    <Button onClick={onClick}>
-      <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> New chat flow
+    <Button className="phone:h-11" onClick={onClick}>
+      <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> {flowsPage.newFlow}
     </Button>
+  );
+}
+
+/**
+ * Batch 57: how often a flow ran, the number counting up once: "Used 12 times,
+ * last 3 hr ago" (the classic list's count and newest start, in plain words).
+ */
+function UsedLine({ count }: { count: FlowResponseCount | undefined }) {
+  if (!count) {
+    return (
+      <span className="inline-flex items-center">
+        <span className="sr-only">{t.counting}</span>
+        <Skeleton aria-hidden="true" className="h-4 w-36 rounded-full" />
+      </span>
+    );
+  }
+  if (!count.count) return <>{t.usedNone}</>;
+  return (
+    <>
+      {t.usedPrefix} <NumberTicker value={count.count} /> {t.usedTimes(count.count)}
+      {count.last ? t.usedLast(relativeTime(count.last)) : ""}
+    </>
   );
 }

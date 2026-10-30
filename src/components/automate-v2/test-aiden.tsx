@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { toast } from "sonner";
-import { PhoneFrame, ProductBubble, WhatsAppBubble } from "@/components/design-v2";
+import { PhoneFrame, ProductBubble, TypingDots, WhatsAppBubble } from "@/components/design-v2";
 import { Button } from "@/components/ui/button";
 import { outcomeOf } from "@/lib/ai-outcome";
 import { aiRunApi, employeeApi, moneyText, type PlaygroundRun } from "@/lib/employee-client";
+import { testCopy as t } from "./copy";
 
 type Turn = { id: number; question: string; run: PlaygroundRun | null; pending: boolean };
 
@@ -99,17 +100,12 @@ export function TestAiden({
     <section aria-labelledby="test-aiden-heading" className="flex flex-col items-center gap-4">
       <div className="flex w-full flex-col gap-1 self-stretch">
         <h2 id="test-aiden-heading" className="m-0 font-display text-[1.25rem] font-semibold">
-          Test {name}
+          {t.heading(name)}
         </h2>
-        <p className="m-0 text-sm text-muted-foreground">
-          Ask what a customer might. Nothing here reaches a customer.
-        </p>
+        <p className="m-0 text-sm text-muted-foreground">{t.line}</p>
       </div>
 
-      <PhoneFrame
-        label={`Test chat with ${name}`}
-        className="wide:max-w-[320px] phone:max-w-[320px]"
-      >
+      <PhoneFrame label={t.phoneLabel(name)} className="wide:max-w-[320px] phone:max-w-[320px]">
         <div
           ref={wall}
           aria-live="polite"
@@ -117,7 +113,7 @@ export function TestAiden({
         >
           {turns.length === 0 ? (
             <WhatsAppBubble from="system" className="mt-auto">
-              Your test chat with {name}. Each answer shows how long it took and what it cost.
+              {t.hello}
             </WhatsAppBubble>
           ) : null}
           {turns.map((turn) => (
@@ -139,21 +135,21 @@ export function TestAiden({
           }}
         >
           <label htmlFor={inputId} className="sr-only">
-            A question a customer might ask
+            {t.inputLabel}
           </label>
           <input
             id={inputId}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Where's my order?"
+            placeholder={t.placeholder}
             autoComplete="off"
             className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
           <button
             type="submit"
-            aria-label="Ask"
+            aria-label={t.ask(name)}
             disabled={running || !question.trim()}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-aiden text-ink-foreground transition-opacity duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden disabled:opacity-50"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-aiden text-ink-foreground transition-[opacity,transform] duration-200 active:scale-95 motion-reduce:active:scale-100 phone:h-11 phone:w-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden disabled:opacity-50"
           >
             <Send className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -162,7 +158,7 @@ export function TestAiden({
 
       {questions.length > 0 ? (
         <div className="flex w-full flex-col gap-2">
-          <p className="m-0 text-sm text-muted-foreground">Real questions customers asked</p>
+          <p className="m-0 text-sm text-muted-foreground">{t.suggestions}</p>
           <div className="flex flex-wrap gap-1.5">
             {questions.slice(0, 3).map((q) => (
               <button
@@ -170,7 +166,7 @@ export function TestAiden({
                 type="button"
                 disabled={running}
                 onClick={() => void ask(q)}
-                className="max-w-full truncate rounded-full border border-line bg-surface px-3 py-1.5 text-left text-[13px] font-medium text-foreground transition-colors duration-200 hover:border-aiden hover:text-aiden-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden disabled:opacity-60"
+                className="max-w-full truncate rounded-full border border-line bg-surface px-3 py-1.5 text-left text-[13px] font-medium text-foreground transition-[border-color,color] duration-200 phone:min-h-11 phone:py-2.5 hover:border-aiden hover:text-aiden-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden disabled:opacity-60"
               >
                 {q}
               </button>
@@ -178,8 +174,12 @@ export function TestAiden({
           </div>
         </div>
       ) : null}
-      <Button variant="outline" className="self-stretch" onClick={onCompare}>
-        Compare two setups on your last {questions.length || 20} questions
+      <Button
+        variant="outline"
+        className="h-auto min-h-[39px] self-stretch whitespace-normal phone:min-h-11"
+        onClick={onCompare}
+      >
+        {t.compare(questions.length || 20)}
       </Button>
     </section>
   );
@@ -204,7 +204,7 @@ function TurnView({
       <WhatsAppBubble from="in">{turn.question}</WhatsAppBubble>
       {turn.pending ? (
         <WhatsAppBubble from="out" sender={name}>
-          <span className="text-muted-foreground">Thinking…</span>
+          <TypingDots label={t.typing(name)} />
         </WhatsAppBubble>
       ) : run ? (
         <RunView
@@ -215,7 +215,7 @@ function TurnView({
           {...(onEnableAi ? { onEnableAi } : {})}
         />
       ) : (
-        <WhatsAppBubble from="system">{name} couldn&rsquo;t answer this one.</WhatsAppBubble>
+        <WhatsAppBubble from="system">{t.couldNot}</WhatsAppBubble>
       )}
     </>
   );
@@ -239,16 +239,14 @@ function RunView({
   const outcome = outcomeOf(run.status, run.escalationSignal);
   const cost =
     run.status === "error" && !run.output
-      ? "nothing charged"
+      ? t.nothingCharged
       : run.costKnown
         ? moneyText(run.billedAmount, currency)
-        : "cost unknown";
+        : t.costUnknown;
   return (
     <>
       {blocked ? (
-        <WhatsAppBubble from="system">
-          {run.error || `${name} couldn't answer this one.`}
-        </WhatsAppBubble>
+        <WhatsAppBubble from="system">{run.error || t.couldNot}</WhatsAppBubble>
       ) : (
         <WhatsAppBubble
           from="out"
@@ -262,9 +260,7 @@ function RunView({
         <ProductBubble
           key={m.imageUrl}
           title={m.title}
-          detail={
-            m.price === null ? "Price on request" : moneyText(m.price, m.currency || currency)
-          }
+          detail={m.price === null ? t.priceOnRequest : moneyText(m.price, m.currency || currency)}
           image={m.imageUrl}
           imageAlt={m.title}
           className="w-[200px]"
@@ -280,11 +276,11 @@ function RunView({
         <Button
           size="sm"
           variant="gold"
-          className="self-center"
+          className="self-center phone:h-11"
           disabled={enabling}
           onClick={onEnableAi}
         >
-          {enabling ? "Turning on…" : `Turn ${name} on and ask again`}
+          {enabling ? t.turningOn : t.turnOnAndAsk(name)}
         </Button>
       ) : null}
     </>
