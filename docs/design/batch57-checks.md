@@ -24,7 +24,16 @@ Home desktop TBT came out higher in both Lighthouse runs, so it was measured
 directly as well: long tasks (time over 50 ms) on Home at 1440 with the CPU
 slowed 4×, six loads each after a warm-up: main 2,303 to 2,540 ms (average
 2,430), this branch 2,195 to 2,889 ms (average 2,537). The ranges overlap;
-unthrottled, 200 to 347 ms against 198 to 361 ms. See the PR for the follow-up.
+unthrottled, 200 to 347 ms against 198 to 361 ms. A later 4× round of three
+loads each read 2,656 (main) against 3,105 (branch), then 2,983 for the branch
+with the blur turned off, so the spread between rounds is as large as the gap.
+
+To see what actually runs, a CPU profile of Home's first 5 seconds (three
+loads each side, 1×, sampled every 0.2 ms) by module: React DOM 244 → 250 ms,
+JSX runtime 192 → 177, NumberTicker 91 → 85, Supabase 26 → 26, the new shell
+23 → 9, dev "(program)" 1,116 → 1,064. The one real addition is `motion`,
+93 → 126 ms: the three sliding pills (top bar, sub-tabs, Home's mode switch)
+measure their layout once on load. Everything else is the same work.
 
 ## Hallmark (github.com/Nutlope/hallmark v2.0.0, dev-only)
 
