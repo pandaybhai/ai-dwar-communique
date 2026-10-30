@@ -2,6 +2,7 @@ import { NODE_META, type NodeMeta } from "@/components/flows/v2/node-meta";
 import { KIND_LABELS } from "@/components/flows/v2/triggers-panel";
 import type { FlowGraph, FlowNode, NodeType } from "@/lib/flow-graph";
 import { stepName } from "@/lib/flow-responses";
+import { runEventWords, triggerCopy } from "./copy";
 
 /**
  * Batch 49: what the new Flows screens draw, as plain functions. Wording and
@@ -55,7 +56,7 @@ export function triggerText(t: Pick<TriggerRow, "kind" | "config">): string {
         .slice(0, 2)
         .map((k) => `“${k}”`)
         .join(", ");
-      return `Keyword ${shown}${kws.length > 2 ? ` and ${kws.length - 2} more` : ""}`;
+      return triggerCopy.keyword(shown, Math.max(0, kws.length - 2));
     }
   }
   return KIND_LABELS[t.kind] ?? t.kind.replace(/_/g, " ");
@@ -64,9 +65,8 @@ export function triggerText(t: Pick<TriggerRow, "kind" | "config">): string {
 /** How a flow starts on the list: its switched-on triggers, or that it has none. */
 export function triggersLine(triggers: TriggerRow[]): string {
   const on = triggers.filter((t) => t.is_enabled);
-  if (!on.length) return triggers.length ? "Its triggers are switched off" : "No trigger yet";
-  const first = triggerText(on[0]!);
-  return on.length > 1 ? `Starts on: ${first} and ${on.length - 1} more` : `Starts on: ${first}`;
+  if (!on.length) return triggers.length ? triggerCopy.allOff : triggerCopy.none;
+  return triggerCopy.startsOn(triggerText(on[0]!), on.length - 1);
 }
 
 /** The graph a flow's card shows: the published version, else the newest draft. */
@@ -151,44 +151,8 @@ export function stepTitle(
   return name && name !== node.type && name !== kind ? `${kind} ${name}` : kind;
 }
 
-/** What happened at a step, in words. Unknown events keep their own name. */
-const EVENT_WORDS: Record<string, string> = {
-  started: "Started",
-  entered: "Reached",
-  exited: "Moved on from",
-  send: "Sent",
-  text: "Sent",
-  reply: "Customer answered",
-  ended: "Finished",
-  failed: "Failed at",
-  timeout: "No reply at",
-  window_closed: "24-hour window closed at",
-  quiet_hours: "Waited for quiet hours at",
-  products_shown: "Showed products at",
-  card_sent: "Sent a card at",
-  card_failed: "Card not sent, plain message instead at",
-  http_ok: "Web request answered at",
-  http_failed: "Web request failed at",
-  email_sent: "Emailed the team at",
-  email_failed: "Email failed at",
-  sheet_row_added: "Added a sheet row at",
-  sheet_failed: "Sheet row failed at",
-  paid: "Paid at",
-  not_paid: "Not paid at",
-  goto: "Went to another flow from",
-  note: "Note at",
-  nudge: "Nudged the customer at",
-  order_draft_created: "Created an order draft at",
-  reply_dropped: "Reply ignored at",
-  template_skipped: "Template skipped at",
-  tag_skipped: "Tag skipped at",
-  pause: "Paused",
-  resume: "Resumed",
-  stop: "Stopped",
-};
-
 export function eventText(event: string, step: string | null): string {
-  const words = EVENT_WORDS[event] ?? event.replace(/_/g, " ");
+  const words = runEventWords[event] ?? event.replace(/_/g, " ");
   if (!step) return words.replace(/ (at|from)$/, "");
   if (
     event === "started" ||

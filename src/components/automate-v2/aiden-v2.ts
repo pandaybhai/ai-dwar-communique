@@ -1,25 +1,20 @@
 import type { AidenOrbState } from "@/components/design-v2";
 import { outcomeOf } from "@/lib/ai-outcome";
 import type { EmployeeRun, KnowledgeSource } from "@/lib/employee-client";
+import { aidenModes, aidenStatusWords, knowsCopy } from "./copy";
 
 /**
  * Batch 49: what the new Automate > Aiden page says, as plain functions so the
- * words are tested. Nothing here reads or writes; the page passes in what the
+ * words are tested (Batch 57: the words themselves live in copy.ts). Nothing here reads or writes; the page passes in what the
  * Employee page's own reads returned (overview, work, gaps).
  */
 
 export type AidenMode = "off" | "draft" | "replying";
 
-/** The three modes, the Employee page's MODES with the new design's words. */
-export const AIDEN_MODES: Array<{ key: AidenMode; label: string; meaning: string }> = [
-  { key: "off", label: "Off", meaning: "Your team answers every message." },
-  { key: "draft", label: "Drafts", meaning: "Aiden writes replies, you read and send them." },
-  {
-    key: "replying",
-    label: "Replying",
-    meaning: "Aiden replies to customers and passes anything unsure to you.",
-  },
-];
+/** The three modes, the Employee page's MODES with the new design's words (copy.ts). */
+export const AIDEN_MODES: Array<{ key: AidenMode; label: string; meaning: string }> = (
+  ["off", "draft", "replying"] as const
+).map((key) => ({ key, ...aidenModes[key] }));
 
 export function asMode(mode: string | null | undefined): AidenMode {
   return mode === "draft" || mode === "replying" ? mode : "off";
@@ -35,37 +30,11 @@ export function aidenStatus(
   aiEnabled: boolean,
   name: string,
 ): { mode: AidenMode; orb: AidenOrbState; title: string; meaning: string } {
-  if (!aiEnabled) {
-    return {
-      mode: "off",
-      orb: "off",
-      title: `${name} is switched off`,
-      meaning: `${name} won't answer, draft or even test until AI is turned on for this workspace.`,
-    };
-  }
+  if (!aiEnabled) return { mode: "off", orb: "off", ...aidenStatusWords.switchedOff(name) };
   const m = asMode(mode);
-  if (m === "replying") {
-    return {
-      mode: m,
-      orb: "replying",
-      title: `${name} is replying to customers`,
-      meaning: `${name} answers customers on WhatsApp and passes anything unsure to you.`,
-    };
-  }
-  if (m === "draft") {
-    return {
-      mode: m,
-      orb: "draft",
-      title: `${name} writes, you send`,
-      meaning: `${name} drafts a reply for each customer. Nothing goes out until someone on your team sends it.`,
-    };
-  }
-  return {
-    mode: "off",
-    orb: "off",
-    title: `${name} is off`,
-    meaning: `Your team answers every message. ${name} sends nothing and drafts nothing.`,
-  };
+  if (m === "replying") return { mode: m, orb: "replying", ...aidenStatusWords.replying(name) };
+  if (m === "draft") return { mode: m, orb: "draft", ...aidenStatusWords.draft(name) };
+  return { mode: "off", orb: "off", ...aidenStatusWords.off(name) };
 }
 
 /** Days since an ISO time, for "read 3 days ago"; null when never. */
@@ -78,10 +47,10 @@ export function daysSince(iso: string | null | undefined, now: number = Date.now
 
 export function freshnessText(iso: string | null | undefined, now: number = Date.now()): string {
   const d = daysSince(iso, now);
-  if (d === null) return "not read yet";
-  if (d === 0) return "updated today";
-  if (d === 1) return "updated yesterday";
-  return `updated ${d} days ago`;
+  if (d === null) return knowsCopy.fresh.never;
+  if (d === 0) return knowsCopy.fresh.today;
+  if (d === 1) return knowsCopy.fresh.yesterday;
+  return knowsCopy.fresh.days(d);
 }
 
 export type KnowsRow = {
@@ -93,9 +62,6 @@ export type KnowsRow = {
 };
 
 const DOCUMENT_TYPES = new Set(["pdf", "spreadsheet", "upload", "docx", "image"]);
-const count = new Intl.NumberFormat("en-IN");
-const plural = (n: number, one: string, many: string) =>
-  `${count.format(n)} ${n === 1 ? one : many}`;
 
 /** The newest of the given times. */
 function newest(times: Array<string | null | undefined>): string | null {
@@ -121,7 +87,12 @@ export function knowsRows(
   const rows: KnowsRow[] = [];
 
   if (sites.length === 0) {
-    rows.push({ key: "website", label: "Website", detail: "Not added yet", state: "empty" });
+    rows.push({
+      key: "website",
+      label: knowsCopy.website,
+      detail: knowsCopy.websiteEmpty,
+      state: "empty",
+    });
   } else {
     const site = sites[0]!;
     const reading = sites.some((s) => s.status === "pending" || s.status === "syncing");
@@ -129,12 +100,12 @@ export function knowsRows(
     const pages = sites.reduce((n, s) => n + (s.item_count ?? 0), 0);
     rows.push({
       key: "website",
-      label: sites.length === 1 ? site.name : `${site.name} and ${sites.length - 1} more`,
+      label: sites.length === 1 ? site.name : knowsCopy.websiteMore(site.name, sites.length - 1),
       detail: reading
-        ? `Reading now, ${plural(pages, "page", "pages")} so far`
+        ? knowsCopy.websiteReading(pages)
         : broken
-          ? "The last read didn't finish"
-          : `${plural(pages, "page", "pages")}, ${freshnessText(newest(sites.map((s) => s.last_synced_at)), now)}`,
+          ? knowsCopy.websiteBroken
+          : `${knowsCopy.pages(pages)}, ${freshnessText(newest(sites.map((s) => s.last_synced_at)), now)}`,
       state: reading ? "reading" : broken ? "problem" : "ok",
     });
   }
@@ -142,11 +113,16 @@ export function knowsRows(
   const docItems = docs.reduce((n, s) => n + (s.item_count ?? 0), 0);
   rows.push(
     docs.length === 0
-      ? { key: "documents", label: "Documents", detail: "None uploaded", state: "empty" }
+      ? {
+          key: "documents",
+          label: knowsCopy.documents,
+          detail: knowsCopy.documentsEmpty,
+          state: "empty",
+        }
       : {
           key: "documents",
-          label: "Documents",
-          detail: `${plural(docs.length, "file", "files")}, ${freshnessText(newest(docs.map((s) => s.last_synced_at)), now)}`,
+          label: knowsCopy.documents,
+          detail: `${knowsCopy.files(docs.length)}, ${freshnessText(newest(docs.map((s) => s.last_synced_at)), now)}`,
           state: docs.some((s) => s.status === "error")
             ? "problem"
             : docs.some((s) => s.status === "pending" || s.status === "syncing")
@@ -160,19 +136,19 @@ export function knowsRows(
   const qa = answers.reduce((n, s) => n + (s.item_count ?? 0), 0);
   rows.push({
     key: "answers",
-    label: "Your answers",
-    detail: qa > 0 ? plural(qa, "answer you wrote", "answers you wrote") : "None written yet",
+    label: knowsCopy.answers,
+    detail: qa > 0 ? knowsCopy.answersCount(qa) : knowsCopy.answersEmpty,
     state: qa > 0 ? "ok" : "empty",
   });
 
   if (catalogue) {
     rows.push({
       key: "catalogue",
-      label: "Catalogue",
+      label: knowsCopy.catalogue,
       detail:
         catalogue.products > 0
-          ? `${plural(catalogue.products, "product", "products")}, ${freshnessText(catalogue.lastUpdated, now)}`
-          : "No products yet",
+          ? `${knowsCopy.products(catalogue.products)}, ${freshnessText(catalogue.lastUpdated, now)}`
+          : knowsCopy.catalogueEmpty,
       state: catalogue.products > 0 ? "ok" : "empty",
     });
   }

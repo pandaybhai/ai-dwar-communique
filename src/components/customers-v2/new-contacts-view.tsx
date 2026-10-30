@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   CheckCheck,
@@ -22,7 +22,7 @@ import { sourceLabel, type ContactRow, type OptInStatus, type TagRow } from "@/l
 import type { SegmentRow } from "@/lib/segments";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
-import { NoResults, Pagination, TableSkeleton } from "@/components/data-pagination";
+import { Pagination } from "@/components/data-pagination";
 import { PermissionGate } from "@/components/permission-gate";
 import { AddContactDialog } from "@/components/contacts/add-contact-dialog";
 import { ContactDrawer } from "@/components/contacts/contact-drawer";
@@ -35,6 +35,8 @@ import { ToneAvatar } from "@/components/inbox/v2/chat-list";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { NumberTicker } from "@/components/design-v2";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,8 +50,11 @@ import {
 import { CustomerSummary } from "./customer-summary";
 import { CustomerNotes, canWriteNotes } from "./customer-notes";
 import { GuidedImportDialog } from "./import-guided";
+import { contactsCopy as t, drawerCopy, markAllCopy } from "./copy";
+import { PAGINATION_WORDS } from "@/components/design-v2/copy";
 import {
   BOUGHT_DAYS,
+  NO_FILTERS,
   OPT_IN_CHIP,
   boughtSince,
   clearFilter,
@@ -82,7 +87,43 @@ function useMedia(query: string): boolean {
 }
 
 const chipClass =
-  "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-ground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden";
+  "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-ground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden phone:h-11";
+
+/** Batch 57: blocks arrive one after another (styles.css .nd-rise, off under reduced motion). */
+const rise = (d: number) => ({ className: "nd-rise", style: { "--d": d } as CSSProperties });
+
+/** A 16px tick box with a 44px tap area around it (the box itself doesn't grow). */
+const tickClass = "relative after:absolute after:-inset-3.5 after:content-['']";
+
+/** The bulk bar's buttons on ink, 44px tall on a phone. */
+const onInk =
+  "order-2 phone:h-11 phone:flex-1 border-muted-foreground bg-transparent text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground";
+
+/** Shimmer rows in the list's own shape while it loads. */
+function ListSkeleton() {
+  return (
+    <div
+      className="flex flex-col rounded-[20px] border border-line bg-surface phone:gap-2.5 phone:border-0 phone:bg-transparent"
+      aria-busy="true"
+      aria-label={t.loading}
+    >
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 border-b border-line px-5 py-3.5 last:border-b-0 phone:rounded-2xl phone:border phone:bg-surface phone:p-3 phone:last:border-b"
+        >
+          <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <Skeleton className="h-4 w-40 max-w-full" />
+            <Skeleton className="h-3 w-28 max-w-full" />
+          </div>
+          <Skeleton className="hidden h-6 w-20 rounded-full wide:block" />
+          <Skeleton className="hidden h-4 w-24 wide:block" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function OptInChip({ status }: { status: OptInStatus }) {
   const chip = OPT_IN_CHIP[status];
@@ -99,15 +140,15 @@ function OptInChip({ status }: { status: OptInStatus }) {
 }
 
 function TagChips({ tags }: { tags: TagRow[] }) {
-  if (!tags.length) return <span className="text-sm text-muted-foreground">No tags</span>;
+  if (!tags.length) return <span className="text-sm text-muted-foreground">{t.noTags}</span>;
   return (
     <span className="flex flex-wrap gap-1.5">
-      {tags.map((t) => (
+      {tags.map((tag) => (
         <span
-          key={t.id}
+          key={tag.id}
           className="rounded-full bg-aiden-soft px-2.5 py-1 text-[0.8125rem] font-semibold text-aiden-deep"
         >
-          {t.name}
+          {tag.name}
         </span>
       ))}
     </span>
@@ -286,7 +327,7 @@ export function NewContactsView({
 
     const { data, count, error: qErr } = await query;
     if (qErr) {
-      setError("We couldn't load your contacts. Please try again.");
+      setError(t.loadFailed);
       setLoading(false);
       return;
     }
@@ -393,7 +434,7 @@ export function NewContactsView({
     const { data, error: expErr } = await query;
     setExporting(false);
     if (expErr) {
-      toast.error("We couldn't export your contacts.");
+      toast.error(t.downloadFailed);
       return;
     }
     const rows = (data ?? []) as {
@@ -432,7 +473,7 @@ export function NewContactsView({
     });
     setBusy(false);
     if (res.error || !res.data) {
-      toast.error(res.error ?? "We couldn't update these contacts.");
+      toast.error(res.error ?? t.bulk.markFailed);
       return;
     }
     toast.success(bulkOptInSummary(res.data));
@@ -475,7 +516,7 @@ export function NewContactsView({
     const tagsOf = Object.fromEntries(contacts.map((c) => [c.id, c.tags.map((t) => t.id)]));
     const links = tagLinks(organizationId, tag.id, selectedIds, tagsOf);
     if (!links.length) {
-      toast.success(`Everyone selected already has “${tag.name}”.`);
+      toast.success(t.bulk.alreadyTagged(tag.name));
       return;
     }
     setBusy(true);
@@ -484,12 +525,10 @@ export function NewContactsView({
       .upsert(links, { onConflict: "contact_id,tag_id" });
     setBusy(false);
     if (tagErr) {
-      toast.error("We couldn't add that tag.");
+      toast.error(t.bulk.tagFailed);
       return;
     }
-    toast.success(
-      `Added “${tag.name}” to ${links.length.toLocaleString("en-IN")} ${links.length === 1 ? "customer" : "customers"}.`,
-    );
+    toast.success(t.bulk.tagged(tag.name, links.length));
     clearSelection();
     void load();
   }
@@ -519,19 +558,31 @@ export function NewContactsView({
         setPage(0);
         void load();
       }}
-      trigger={<Button>Add customer</Button>}
+      trigger={<Button className="phone:h-11">{t.add}</Button>}
     />
   );
+  const importButton = (
+    <GuidedImportDialog
+      organizationId={organizationId}
+      onImported={() => void load()}
+      label={t.importList}
+    />
+  );
+  const showEveryone = () => {
+    setSearch("");
+    setDebounced("");
+    setFilter(NO_FILTERS);
+  };
 
   return (
     <div className="nd-view-enter">
       <PageHeader
-        title="Contacts"
-        description="Everyone who has your number: tags, opt-in, their last chat and what they bought."
+        title={t.title}
+        description={t.description}
         actions={
           <>
             <PermissionGate allowed={canImport} reason={permissionDeniedReason("Import contacts")}>
-              <GuidedImportDialog organizationId={organizationId} onImported={() => void load()} />
+              {importButton}
             </PermissionGate>
             <PermissionGate allowed={canEdit} reason={permissionDeniedReason("Edit contacts")}>
               {addButton}
@@ -541,291 +592,342 @@ export function NewContactsView({
       />
 
       <div className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-full wide:w-64">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or phone"
-              className="h-9 rounded-full pl-9"
-              aria-label="Search contacts"
-            />
-          </div>
-          {chips.map((c) => (
-            <span key={c.key} className={cn(chipClass, "pr-1.5 hover:bg-surface")}>
-              {c.label}
-              <button
-                type="button"
-                onClick={() => setFilter(clearFilter(filters, c.key))}
-                aria-label={`Remove filter ${c.label}`}
-                className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-ground hover:text-foreground focus-visible:outline-2 focus-visible:outline-aiden"
-              >
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            </span>
-          ))}
-          <DropdownMenu>
-            <DropdownMenuTrigger className={chipClass}>+ Filter</DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-60">
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>Opt-in</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {(["opted_in", "unknown", "opted_out"] as OptInStatus[]).map((k) => (
-                    <DropdownMenuItem key={k} onSelect={() => setFilter({ ...filters, optIn: k })}>
-                      {OPT_IN_CHIP[k].label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>Tag</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
-                  {allTags.length ? (
-                    allTags.map((t) => (
-                      <DropdownMenuItem
-                        key={t.id}
-                        onSelect={() => setFilter({ ...filters, tagId: t.id })}
-                      >
-                        {t.name}
-                      </DropdownMenuItem>
-                    ))
-                  ) : (
-                    <DropdownMenuLabel className="font-normal text-muted-foreground">
-                      No tags yet
-                    </DropdownMenuLabel>
-                  )}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              {hasOrders ? (
+        <div {...rise(0)}>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full wide:w-64">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t.searchPlaceholder}
+                className="h-9 rounded-full pl-9 phone:h-11"
+                aria-label={t.searchLabel}
+              />
+            </div>
+            {chips.map((c) => (
+              <span key={c.key} className={cn(chipClass, "pr-1.5 hover:bg-surface")}>
+                {c.label}
+                <button
+                  type="button"
+                  onClick={() => setFilter(clearFilter(filters, c.key))}
+                  aria-label={t.removeFilter(c.label)}
+                  className="relative grid h-6 w-6 place-items-center rounded-full text-muted-foreground transition-colors duration-200 after:absolute after:-inset-2.5 after:content-[''] hover:bg-ground hover:text-foreground focus-visible:outline-2 focus-visible:outline-aiden"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+            <DropdownMenu>
+              <DropdownMenuTrigger className={chipClass}>{t.addFilter}</DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-60">
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>Bought in the last…</DropdownMenuSubTrigger>
+                  <DropdownMenuSubTrigger>{t.filterOptIn}</DropdownMenuSubTrigger>
                   <DropdownMenuSubContent>
-                    {BOUGHT_DAYS.map((d) => (
+                    {(["opted_in", "unknown", "opted_out"] as OptInStatus[]).map((k) => (
                       <DropdownMenuItem
-                        key={d}
-                        onSelect={() => setFilter({ ...filters, boughtDays: d })}
+                        key={k}
+                        onSelect={() => setFilter({ ...filters, optIn: k })}
                       >
-                        {d} days
+                        {OPT_IN_CHIP[k].label}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
-              ) : null}
-              {segments.length ? (
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>Saved segment</DropdownMenuSubTrigger>
+                  <DropdownMenuSubTrigger>{t.filterTag}</DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
-                    {segments.map((s) => (
-                      <DropdownMenuItem
-                        key={s.id}
-                        onSelect={() => setFilter({ ...filters, segmentId: s.id })}
-                      >
-                        {s.name}
-                      </DropdownMenuItem>
-                    ))}
+                    {allTags.length ? (
+                      allTags.map((tag) => (
+                        <DropdownMenuItem
+                          key={tag.id}
+                          onSelect={() => setFilter({ ...filters, tagId: tag.id })}
+                        >
+                          {tag.name}
+                        </DropdownMenuItem>
+                      ))
+                    ) : (
+                      <DropdownMenuLabel className="font-normal text-muted-foreground">
+                        {t.noTagsYet}
+                      </DropdownMenuLabel>
+                    )}
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
+                {hasOrders ? (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>{t.filterBought}</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      {BOUGHT_DAYS.map((d) => (
+                        <DropdownMenuItem
+                          key={d}
+                          onSelect={() => setFilter({ ...filters, boughtDays: d })}
+                        >
+                          {t.days(d)}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                ) : null}
+                {segments.length ? (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>{t.filterGroup}</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                      {segments.map((s) => (
+                        <DropdownMenuItem
+                          key={s.id}
+                          onSelect={() => setFilter({ ...filters, segmentId: s.id })}
+                        >
+                          {s.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className="flex flex-wrap items-center gap-1 wide:ml-auto">
+              {canExport ? (
+                <Button
+                  variant="ghost"
+                  className="phone:h-11"
+                  onClick={() => void exportCsv()}
+                  disabled={exporting}
+                >
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  {exporting ? t.downloading : t.download}
+                </Button>
               ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <div className="flex flex-wrap items-center gap-1 wide:ml-auto">
-            {canExport ? (
-              <Button variant="ghost" onClick={() => void exportCsv()} disabled={exporting}>
-                <Download className="h-4 w-4" aria-hidden="true" />
-                {exporting ? "Exporting…" : "Export CSV"}
-              </Button>
-            ) : null}
-            {canEdit ? (
-              <MarkAllUnknownOptedIn organizationId={organizationId} onDone={() => void load()} />
-            ) : null}
+              {canEdit ? (
+                <MarkAllUnknownOptedIn
+                  organizationId={organizationId}
+                  onDone={() => void load()}
+                  words={markAllCopy}
+                  buttonClassName="rounded-full phone:h-11"
+                />
+              ) : null}
+            </div>
           </div>
         </div>
 
-        {error ? (
-          <ErrorState message={error} />
-        ) : loading ? (
-          <TableSkeleton rows={8} />
-        ) : total === 0 && !filtered ? (
-          <EmptyState
-            icon={ContactIcon}
-            title="No customers yet"
-            description="Import your customers to start reaching them, or add your first one by hand."
-            action={canEdit ? addButton : undefined}
-          />
-        ) : (
-          <div className="overflow-hidden rounded-[20px] border border-line bg-surface phone:border-0 phone:bg-transparent">
-            {contacts.length === 0 ? (
-              <NoResults message="No customers match these filters." />
-            ) : (
-              <>
-                {/* Desktop: the preview's table. */}
-                <div className="overflow-x-auto phone:hidden">
-                  <table className="w-full min-w-[760px] border-collapse">
-                    <caption className="sr-only">Your customers</caption>
-                    <thead>
-                      <tr className="text-left text-sm font-semibold text-muted-foreground">
-                        {canEdit ? (
-                          <th scope="col" className="w-12 border-b border-line py-3.5 pl-5 pr-2">
-                            <Checkbox
-                              aria-label="Select all customers on this page"
-                              checked={allOnPage}
-                              onCheckedChange={(v) => toggleAll(v === true)}
-                            />
-                          </th>
-                        ) : null}
-                        <th scope="col" className="border-b border-line px-4 py-3.5 font-semibold">
-                          Customer
-                        </th>
-                        <th scope="col" className="border-b border-line px-4 py-3.5 font-semibold">
-                          Tags
-                        </th>
-                        <th scope="col" className="border-b border-line px-4 py-3.5 font-semibold">
-                          Messages
-                        </th>
-                        <th scope="col" className="border-b border-line px-4 py-3.5 font-semibold">
-                          Last chat
-                        </th>
-                        {showSpent ? (
+        <div {...rise(1)}>
+          {error ? (
+            <ErrorState message={error} onRetry={() => void load()} />
+          ) : loading ? (
+            <ListSkeleton />
+          ) : total === 0 && !filtered ? (
+            <EmptyState
+              icon={ContactIcon}
+              art="people"
+              title={t.empty.title}
+              description={t.empty.description}
+              action={canImport ? importButton : canEdit ? addButton : undefined}
+            />
+          ) : (
+            <div className="overflow-hidden rounded-[20px] border border-line bg-surface phone:border-0 phone:bg-transparent">
+              {contacts.length === 0 ? (
+                <EmptyState
+                  icon={ContactIcon}
+                  variant="plain"
+                  art="people"
+                  title={t.noMatch.title}
+                  description={t.noMatch.description}
+                  action={
+                    <Button variant="outline" className="phone:h-11" onClick={showEveryone}>
+                      {t.noMatch.action}
+                    </Button>
+                  }
+                />
+              ) : (
+                <>
+                  {/* Desktop: the preview's table. */}
+                  <div className="overflow-x-auto phone:hidden">
+                    <table className="w-full min-w-[760px] border-collapse">
+                      <caption className="sr-only">{t.tableCaption}</caption>
+                      <thead>
+                        <tr className="text-left text-sm font-semibold text-muted-foreground">
+                          {canEdit ? (
+                            <th scope="col" className="w-12 border-b border-line py-3.5 pl-5 pr-2">
+                              <Checkbox
+                                aria-label={t.selectAll}
+                                checked={allOnPage}
+                                onCheckedChange={(v) => toggleAll(v === true)}
+                              />
+                            </th>
+                          ) : null}
                           <th
                             scope="col"
                             className="border-b border-line px-4 py-3.5 font-semibold"
                           >
-                            Spent
+                            {t.col.customer}
                           </th>
-                        ) : null}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {contacts.map((c) => {
-                        const label = c.name || c.phone;
-                        return (
-                          <tr
-                            key={c.id}
-                            onClick={() => setSelected(c)}
-                            className={cn(
-                              "cursor-pointer border-b border-line transition-colors duration-200 last:border-b-0 hover:bg-ground",
-                              checked.has(c.id) && "bg-ground",
-                            )}
+                          <th
+                            scope="col"
+                            className="border-b border-line px-4 py-3.5 font-semibold"
                           >
-                            {canEdit ? (
-                              <td className="py-3 pl-5 pr-2" onClick={(e) => e.stopPropagation()}>
-                                <Checkbox
-                                  aria-label={`Select ${label}`}
-                                  checked={checked.has(c.id)}
-                                  onCheckedChange={(v) => toggle(c.id, v === true)}
-                                />
+                            {t.col.tags}
+                          </th>
+                          <th
+                            scope="col"
+                            className="border-b border-line px-4 py-3.5 font-semibold"
+                          >
+                            {t.col.messages}
+                          </th>
+                          <th
+                            scope="col"
+                            className="border-b border-line px-4 py-3.5 font-semibold"
+                          >
+                            {t.col.lastChat}
+                          </th>
+                          {showSpent ? (
+                            <th
+                              scope="col"
+                              className="border-b border-line px-4 py-3.5 font-semibold"
+                            >
+                              {t.col.spent}
+                            </th>
+                          ) : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {contacts.map((c) => {
+                          const label = c.name || c.phone;
+                          return (
+                            <tr
+                              key={c.id}
+                              onClick={() => setSelected(c)}
+                              className={cn(
+                                "cursor-pointer border-b border-line transition-colors duration-200 last:border-b-0 hover:bg-ground",
+                                checked.has(c.id) && "bg-ground",
+                              )}
+                            >
+                              {canEdit ? (
+                                <td className="py-3 pl-5 pr-2" onClick={(e) => e.stopPropagation()}>
+                                  <Checkbox
+                                    aria-label={t.select(label)}
+                                    checked={checked.has(c.id)}
+                                    onCheckedChange={(v) => toggle(c.id, v === true)}
+                                  />
+                                </td>
+                              ) : null}
+                              <td className="px-4 py-3">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelected(c);
+                                  }}
+                                  className="flex items-center gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+                                >
+                                  <ToneAvatar seed={c.id} label={label} />
+                                  <span className="flex min-w-0 flex-col">
+                                    <b className="truncate font-semibold text-foreground">
+                                      {c.name || t.noName}
+                                    </b>
+                                    <small className="text-[0.8125rem] text-muted-foreground">
+                                      {c.phone}
+                                    </small>
+                                  </span>
+                                </button>
                               </td>
-                            ) : null}
-                            <td className="px-4 py-3">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelected(c);
-                                }}
-                                className="flex items-center gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
-                              >
-                                <ToneAvatar seed={c.id} label={label} />
-                                <span className="flex min-w-0 flex-col">
-                                  <b className="truncate font-semibold text-foreground">
-                                    {c.name || "Unnamed customer"}
-                                  </b>
-                                  <small className="text-[0.8125rem] text-muted-foreground">
-                                    {c.phone}
-                                  </small>
-                                </span>
-                              </button>
-                            </td>
-                            <td className="px-4 py-3">
-                              <TagChips tags={c.tags} />
-                            </td>
-                            <td className="px-4 py-3">
-                              <OptInChip status={c.opt_in_status} />
-                            </td>
-                            <td className="px-4 py-3 text-[0.9375rem] text-muted-foreground">
-                              {lastChatLabel(lastChat[c.id])}
-                            </td>
-                            {showSpent ? (
-                              <td className="tabular px-4 py-3 text-[0.9375rem]">
-                                {spentLabel(spent[c.id])}
+                              <td className="px-4 py-3">
+                                <TagChips tags={c.tags} />
                               </td>
-                            ) : null}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              <td className="px-4 py-3">
+                                <OptInChip status={c.opt_in_status} />
+                              </td>
+                              <td className="px-4 py-3 text-[0.9375rem] text-muted-foreground">
+                                {lastChatLabel(lastChat[c.id])}
+                              </td>
+                              {showSpent ? (
+                                <td className="tabular px-4 py-3 text-[0.9375rem]">
+                                  {spentLabel(spent[c.id])}
+                                </td>
+                              ) : null}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
 
-                {/* Phone: each customer as a card. */}
-                <ul className="m-0 flex list-none flex-col gap-2.5 p-0 wide:hidden">
-                  {contacts.map((c) => {
-                    const label = c.name || c.phone;
-                    return (
-                      <li
-                        key={c.id}
-                        className={cn(
-                          "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 rounded-2xl border border-line bg-surface p-3",
-                          checked.has(c.id) && "border-aiden",
-                        )}
-                      >
-                        {canEdit ? (
-                          <Checkbox
-                            className="mt-3"
-                            aria-label={`Select ${label}`}
-                            checked={checked.has(c.id)}
-                            onCheckedChange={(v) => toggle(c.id, v === true)}
-                          />
-                        ) : (
-                          <span />
-                        )}
-                        <div className="flex min-w-0 flex-col gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelected(c)}
-                            className="flex min-w-0 items-center gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
-                          >
-                            <ToneAvatar seed={c.id} label={label} />
-                            <span className="flex min-w-0 flex-col">
-                              <b className="truncate font-semibold text-foreground">
-                                {c.name || "Unnamed customer"}
-                              </b>
-                              <small className="text-[0.8125rem] text-muted-foreground">
-                                {c.phone}
-                              </small>
-                            </span>
-                          </button>
-                          {c.tags.length ? <TagChips tags={c.tags} /> : null}
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                            <OptInChip status={c.opt_in_status} />
-                            <span>Last chat {lastChatLabel(lastChat[c.id])}</span>
-                            {showSpent ? (
-                              <span className="tabular text-foreground">
-                                {spentLabel(spent[c.id])}
+                  {/* Phone: each customer as a card. */}
+                  <ul className="m-0 flex list-none flex-col gap-2.5 p-0 wide:hidden">
+                    {contacts.map((c) => {
+                      const label = c.name || c.phone;
+                      return (
+                        <li
+                          key={c.id}
+                          className={cn(
+                            "nd-lift grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 rounded-2xl border border-line bg-surface p-3",
+                            checked.has(c.id) && "border-aiden",
+                          )}
+                        >
+                          {canEdit ? (
+                            <Checkbox
+                              className={cn("mt-3", tickClass)}
+                              aria-label={t.select(label)}
+                              checked={checked.has(c.id)}
+                              onCheckedChange={(v) => toggle(c.id, v === true)}
+                            />
+                          ) : (
+                            <span />
+                          )}
+                          <div className="flex min-w-0 flex-col gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSelected(c)}
+                              className="flex min-h-11 min-w-0 items-center gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+                            >
+                              <ToneAvatar seed={c.id} label={label} />
+                              <span className="flex min-w-0 flex-col">
+                                <b className="truncate font-semibold text-foreground">
+                                  {c.name || t.noName}
+                                </b>
+                                <small className="text-[0.8125rem] text-muted-foreground">
+                                  {c.phone}
+                                </small>
                               </span>
-                            ) : null}
+                            </button>
+                            {c.tags.length ? <TagChips tags={c.tags} /> : null}
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                              <OptInChip status={c.opt_in_status} />
+                              <span>{t.lastChat(lastChatLabel(lastChat[c.id]))}</span>
+                              {showSpent ? (
+                                <span className="tabular text-foreground">
+                                  {spentLabel(spent[c.id])}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            )}
-            <div className="phone:mt-3 phone:rounded-2xl phone:border phone:border-line phone:bg-surface">
-              <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+              <div className="phone:mt-3 phone:rounded-2xl phone:border phone:border-line phone:bg-surface">
+                <Pagination
+                  page={page}
+                  pageSize={PAGE_SIZE}
+                  total={total}
+                  onPageChange={setPage}
+                  words={PAGINATION_WORDS}
+                />
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {breakdown && breakdown.length ? (
-          <section aria-labelledby="nd-sources" className="flex flex-col gap-2">
+          <section
+            aria-labelledby="nd-sources"
+            className="nd-rise flex flex-col gap-2"
+            style={{ "--d": 2 } as CSSProperties}
+          >
             <h2 id="nd-sources" className="m-0 font-display text-lg font-semibold">
-              Where your customers come from
+              {t.sourcesTitle}
             </h2>
             <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
               {breakdown.map((r) => (
@@ -834,9 +936,10 @@ export function NewContactsView({
                   className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-sm"
                 >
                   <span className="font-semibold">{sourceLabel(r.source)}</span>
-                  <span className="tabular text-muted-foreground">
-                    {Number(r.contacts).toLocaleString("en-IN")}
-                  </span>
+                  <NumberTicker
+                    value={Number(r.contacts) || 0}
+                    className="tabular text-muted-foreground"
+                  />
                 </li>
               ))}
             </ul>
@@ -850,7 +953,7 @@ export function NewContactsView({
       {canEdit && selectedIds.length ? (
         <div
           role="region"
-          aria-label="Selected customers"
+          aria-label={t.bulk.region}
           className="sticky -bottom-8 z-20 mx-auto flex w-fit max-w-full flex-wrap items-center gap-2.5 rounded-2xl bg-ink py-2.5 pl-[18px] pr-3 text-ink-foreground shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none phone:-bottom-2 phone:w-full"
         >
           <span className="tabular font-semibold phone:flex-1 phone:basis-[60%]" aria-live="polite">
@@ -858,14 +961,9 @@ export function NewContactsView({
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                className="order-2 phone:flex-1 border-muted-foreground bg-transparent text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground"
-              >
+              <Button variant="outline" size="sm" disabled={busy} className={onInk}>
                 <Tag className="h-4 w-4" aria-hidden="true" />
-                Add tag
+                {t.bulk.addTag}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -874,14 +972,14 @@ export function NewContactsView({
               className="max-h-72 w-56 overflow-y-auto"
             >
               {allTags.length ? (
-                allTags.map((t) => (
-                  <DropdownMenuItem key={t.id} onSelect={() => void addTag(t)}>
-                    {t.name}
+                allTags.map((tag) => (
+                  <DropdownMenuItem key={tag.id} onSelect={() => void addTag(tag)}>
+                    {tag.name}
                   </DropdownMenuItem>
                 ))
               ) : (
                 <DropdownMenuLabel className="font-normal text-muted-foreground">
-                  No tags yet. Open a customer to create one.
+                  {t.bulk.noTagsYet}
                 </DropdownMenuLabel>
               )}
             </DropdownMenuContent>
@@ -891,10 +989,10 @@ export function NewContactsView({
             size="sm"
             disabled={busy}
             onClick={() => void markSelected()}
-            className="order-2 phone:flex-1 border-muted-foreground bg-transparent text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground"
+            className={onInk}
           >
             <CheckCheck className="h-4 w-4" aria-hidden="true" />
-            {busy ? "Updating…" : "Mark as opted in"}
+            {busy ? t.bulk.saving : t.bulk.markYes}
           </Button>
           {canSendCampaign ? (
             <Button
@@ -902,10 +1000,10 @@ export function NewContactsView({
               size="sm"
               disabled={busy}
               onClick={() => void sendCampaign()}
-              className="order-2 phone:flex-1 border-muted-foreground bg-transparent text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground"
+              className={onInk}
             >
               <Megaphone className="h-4 w-4" aria-hidden="true" />
-              Send campaign
+              {t.bulk.sendCampaign}
             </Button>
           ) : null}
           <Button
@@ -913,13 +1011,11 @@ export function NewContactsView({
             size="sm"
             disabled={busy}
             onClick={clearSelection}
-            className="order-1 text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground wide:order-3"
+            className="order-1 text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground phone:h-11 wide:order-3"
           >
-            Clear
+            {t.bulk.clear}
           </Button>
-          <span className="order-4 text-xs text-ink-foreground/80 phone:hidden">
-            Opted-out customers stay opted out.
-          </span>
+          <span className="order-4 text-xs text-ink-foreground/80 phone:hidden">{t.bulk.note}</span>
         </div>
       ) : null}
 
@@ -929,6 +1025,8 @@ export function NewContactsView({
         allTags={allTags}
         canDelete={canDeleteContacts}
         onClose={() => setSelected(null)}
+        words={drawerCopy}
+        roomy
         onChanged={() => {
           void loadTags();
           void loadBreakdown();

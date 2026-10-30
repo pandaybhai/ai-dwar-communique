@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Layers, Lock } from "lucide-react";
 import { CatalogView } from "@/components/catalog/catalog-view";
 import { CategoryWordsCard } from "@/components/catalog/category-words-card";
 import { CollectionsView } from "@/components/catalog/collections-view";
 import { WhatsAppShopCard } from "@/components/catalog/whatsapp-shop-card";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { usePermissions } from "@/hooks/use-permissions";
 import { aidwar } from "@/integrations/aidwar/client";
 import { type CollectionRow } from "@/lib/catalog";
 import { useOrg } from "@/lib/org-context";
+import { cataloguePage, collectionsPage } from "./copy";
 import { ShopOverview } from "./shop-overview";
 
-const CATALOGUE_DESCRIPTION =
-  "Everything you sell: names, prices, photos and details, read from your website or store, uploaded or added by hand. Aiden uses them to answer customers and show the right pieces.";
+const CATALOGUE_DESCRIPTION = cataloguePage.description;
 
 /**
  * Batch 49: Shop > Catalogue in the new design. The classic page's gates
@@ -33,11 +34,11 @@ export function NewCataloguePage() {
   if (!enabled) {
     return (
       <>
-        <PageHeader title="Catalogue" description={CATALOGUE_DESCRIPTION} />
+        <PageHeader title={cataloguePage.title} description={CATALOGUE_DESCRIPTION} />
         <EmptyState
           icon={Lock}
-          title="Products are turned off"
-          description="This feature isn't enabled for your workspace yet. Reach out to your administrator to switch it on."
+          title={cataloguePage.notOn.title}
+          description={cataloguePage.notOn.description}
         />
       </>
     );
@@ -45,18 +46,18 @@ export function NewCataloguePage() {
   if (!can("catalog.view")) {
     return (
       <>
-        <PageHeader title="Catalogue" description={CATALOGUE_DESCRIPTION} />
+        <PageHeader title={cataloguePage.title} description={CATALOGUE_DESCRIPTION} />
         <EmptyState
           icon={Lock}
-          title="You don't have access to Products"
-          description="Ask an owner or admin of this workspace to give you access to Products."
+          title={cataloguePage.noAccess.title}
+          description={cataloguePage.noAccess.description}
         />
       </>
     );
   }
   return (
     <>
-      <PageHeader title="Catalogue" description={CATALOGUE_DESCRIPTION} />
+      <PageHeader title={cataloguePage.title} description={CATALOGUE_DESCRIPTION} />
       <ShopOverview
         organizationId={organizationId}
         shopCard={<WhatsAppShopCard organizationId={organizationId} />}
@@ -160,11 +161,11 @@ export function NewCollectionsPage() {
   if (!enabled || !can("catalog.view")) {
     return (
       <>
-        <PageHeader title="Collections" description="Groups of products you can reuse." />
+        <PageHeader title={collectionsPage.title} description={collectionsPage.shortDescription} />
         <EmptyState
           icon={Lock}
-          title="Collections aren't available to you"
-          description="Either the catalogue is switched off for this workspace, or you don't have access to it yet."
+          title={collectionsPage.blocked.title}
+          description={collectionsPage.blocked.description}
         />
       </>
     );
@@ -172,16 +173,25 @@ export function NewCollectionsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Collections"
-        description="Group products the way you talk about them, then reuse those groups in campaigns and flows."
-      />
-      {cards && cards.length > 0 ? (
+      <PageHeader title={collectionsPage.title} description={collectionsPage.description} />
+      {cards === null ? (
+        <div
+          aria-busy="true"
+          aria-label={collectionsPage.loading}
+          className="mb-10 grid gap-4 wide:grid-cols-3"
+        >
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-60 rounded-[20px]" />
+          ))}
+        </div>
+      ) : cards.length === 0 ? null : (
+        /* No collections: the manager below shows the one empty state (illustrated, with New collection). */
         <ul className="m-0 mb-10 grid list-none gap-4 p-0 wide:grid-cols-3">
-          {cards.map((c) => (
+          {cards.map((c, i) => (
             <li
               key={c.id}
-              className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-3 shadow-md"
+              style={{ "--d": Math.min(i, 6) } as CSSProperties}
+              className="nd-rise flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-3 shadow-md"
             >
               <div
                 aria-hidden="true"
@@ -212,20 +222,20 @@ export function NewCollectionsPage() {
               <div className="px-1 pb-1">
                 <p className="m-0 font-display text-[1.125rem] font-semibold">{c.name}</p>
                 <p className="m-0 text-sm text-muted-foreground">
-                  {c.count} product{c.count === 1 ? "" : "s"}
+                  {collectionsPage.count(c.count)}
                   {c.description ? `, ${c.description}` : ""}
                 </p>
               </div>
             </li>
           ))}
         </ul>
-      ) : null}
+      )}
       <section aria-labelledby="manage-collections-heading" className="flex flex-col gap-2">
         <h2
           id="manage-collections-heading"
           className="m-0 font-display text-[1.25rem] font-semibold"
         >
-          Manage collections
+          {collectionsPage.manage}
         </h2>
         <div ref={manager}>
           <CollectionsView organizationId={organizationId} />

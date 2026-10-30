@@ -183,7 +183,8 @@ describe("flag off: today's Campaigns, Templates and Cards, unchanged", () => {
       "components/cards/card-preview.tsx":
         "7254400340a5ae5424285d18a5460d43dcf981f7330e4108b539d5f33228d96a",
     };
-    for (const [file, hash] of Object.entries(pinned)) expect([file, sha(src(file))]).toEqual([file, hash]);
+    for (const [file, hash] of Object.entries(pinned))
+      expect([file, sha(src(file))]).toEqual([file, hash]);
 
     // The routes' own Batch 41 page functions, from where they start to the end of the file.
     const routes: Array<[string, string, string]> = [
@@ -299,13 +300,18 @@ describe("Campaigns: the funnel is the campaign's own counters", () => {
     expect(relativeDay("2026-10-28T20:00:00Z", "Asia/Kolkata", NOW)).toBe("today");
     expect(campaignSubtitle(campaign(), "Asia/Kolkata", NOW)).toBe("Sent 6 days ago to 3,150");
     expect(
-      campaignSubtitle(campaign({ status: "sending", sent_count: 2630, total_recipients: 4210 }), "Asia/Kolkata", NOW),
+      campaignSubtitle(
+        campaign({ status: "sending", sent_count: 2630, total_recipients: 4210 }),
+        "Asia/Kolkata",
+        NOW,
+      ),
     ).toBe("Sending now, 2,630 of 4,210");
     expect(campaignSubtitle(campaign({ status: "draft" }), "Asia/Kolkata", NOW)).toBe("Draft");
   });
 
   it("reads exactly what the Batch 41 list and results page read, and writes nothing", async () => {
-    const { loadCampaignList, loadCampaignResults } = await import("@/components/campaigns-v2/data");
+    const { loadCampaignList, loadCampaignResults } =
+      await import("@/components/campaigns-v2/data");
     useDb(() => ({ data: [campaign()], error: null, count: 1 }));
     await loadCampaignList(ORG);
     await loadCampaignResults({
@@ -321,7 +327,9 @@ describe("Campaigns: the funnel is the campaign's own counters", () => {
     expect(list.table).toBe("campaigns");
     expect(h.db!.has(list, "eq", "organization_id", ORG)).toBe(true);
     const rec = ops.find((o) => o.table === "campaign_recipients")!;
-    expect(rec.select?.[0]).toBe("id, contact_id, phone, resolved_variables, status, error, updated_at");
+    expect(rec.select?.[0]).toBe(
+      "id, contact_id, phone, resolved_variables, status, error, updated_at",
+    );
     expect(src("components/campaigns/campaign-detail.tsx")).toContain(
       `"id, contact_id, phone, resolved_variables, status, error, updated_at"`,
     );
@@ -451,8 +459,58 @@ describe("one path each: launch, submit, and no new writes", () => {
     for (const label of ["Audience", "Message", "Personalise", "Test send", "Review and cost"])
       expect(html).toContain(label);
     expect(html).toContain('aria-label="The message on the customer&#x27;s WhatsApp"');
-    expect(html).toContain("This send costs about");
+    // Batch 57: copy (the approved summary words; before an audience, the one next step)
+    expect(html).toContain("Pick who gets it to see the cost.");
     expect(html).not.toContain(" · ");
+  });
+
+  it("Batch 57: the cost panel says who gets it, who's skipped, the cost and the wallet after, from the wizard's own numbers", async () => {
+    const { NdCostPanel } = await import("@/components/campaigns-v2/wizard-parts");
+    const estimate = {
+      enabled: true,
+      recipients: 240,
+      category: "marketing",
+      rate: 0.88,
+      currency: "INR",
+      estimate: 211.2,
+      available: 2000,
+      shortfall: 0,
+      can_send: true,
+      needs_approval: false,
+      approval_threshold: null,
+      daily_limit: null,
+      over_daily_limit: false,
+      days_needed: 1,
+    } as const;
+    const html = renderToStaticMarkup(
+      <NdCostPanel
+        audience={{ eligible: 240, excluded: 18 }}
+        audienceLoading={false}
+        estimate={estimate}
+      />,
+    );
+    for (const s of [
+      "Who gets it",
+      "240 customers",
+      "Skipped (haven’t said yes to offers)",
+      ">18<",
+      "₹211.20",
+      "Your wallet after this",
+      "₹1,788.80",
+      "₹0.88 a message",
+    ])
+      expect(html).toContain(s);
+    // Short of credits: no wallet-after figure, the shortfall and its fix instead.
+    const short = renderToStaticMarkup(
+      <NdCostPanel
+        audience={{ eligible: 240, excluded: 0 }}
+        audienceLoading={false}
+        estimate={{ ...estimate, available: 100, shortfall: 111.2, can_send: false }}
+      />,
+    );
+    expect(short).not.toContain("Your wallet after this");
+    expect(short).not.toContain("Skipped");
+    expect(short).toContain("Your wallet is ₹111.20 short. Add credits, then send.");
   });
 
   it("the gallery opens the Batch 41 editor, which submits through its one create request", async () => {
@@ -490,13 +548,14 @@ describe("one path each: launch, submit, and no new writes", () => {
     );
     // Templates: only the sync; Cards: only the Batch 41 page's four actions.
     expect(src("components/templates-v2/new-templates.tsx")).toMatch(/action: "sync"/);
-    const cardActions = [...src("components/cards-v2/new-cards.tsx").matchAll(/action: "(\w+)"/g)].map(
-      (m) => m[1],
-    );
+    const cardActions = [
+      ...src("components/cards-v2/new-cards.tsx").matchAll(/action: "(\w+)"/g),
+    ].map((m) => m[1]);
     expect(new Set(cardActions)).toEqual(
       new Set(["stored_previews", "save_branding", "save_usage", "preview"]),
     );
-    for (const a of cardActions) expect(src("components/cards/cards-view.tsx")).toContain(`action: "${a}"`);
+    for (const a of cardActions)
+      expect(src("components/cards/cards-view.tsx")).toContain(`action: "${a}"`);
   });
 
   it("the Hallmark floor on the new files: tokens, no tracked capitals, no middle dots, no transition-all", () => {
@@ -507,18 +566,18 @@ describe("one path each: launch, submit, and no new writes", () => {
         expect([f, code.includes("·")]).toEqual([f, false]);
         expect([f, /transition-all|transition: all/.test(code)]).toEqual([f, false]);
         expect([f, /\buppercase\b|tracking-wide|tracking-wider/.test(code)]).toEqual([f, false]);
-        expect([f, /#[0-9a-fA-F]{6}\b(?!\))/.test(code.replace(/placeholder="#[0-9A-F]{6}"/g, ""))]).toEqual(
-          [f, false],
-        );
+        expect([
+          f,
+          /#[0-9a-fA-F]{6}\b(?!\))/.test(code.replace(/placeholder="#[0-9A-F]{6}"/g, "")),
+        ]).toEqual([f, false]);
       }
   });
 });
 
 describe("Templates: review states", () => {
   it("pending covers both of Meta's review states; paused ones show under All only", async () => {
-    const { reviewStateOf, TEMPLATE_STATUS_FILTERS } = await import(
-      "@/components/templates-v2/templates-data"
-    );
+    const { reviewStateOf, TEMPLATE_STATUS_FILTERS } =
+      await import("@/components/templates-v2/templates-data");
     expect(reviewStateOf({ status: "APPROVED" })).toBe("APPROVED");
     expect(reviewStateOf({ status: "IN_APPEAL" })).toBe("PENDING");
     expect(reviewStateOf({ status: "pending" })).toBe("PENDING");

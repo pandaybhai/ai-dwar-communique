@@ -521,9 +521,11 @@ describe("Flows' words and shapes", () => {
       "Keyword “menu”, “hi” and 1 more",
     );
     expect(triggerText({ kind: "first_message", config: {} })).toBe("First message ever");
-    expect(triggersLine([])).toBe("No trigger yet");
+    // Batch 57: copy
+    expect(triggersLine([])).toBe("Nothing starts it yet");
+    // Batch 57: copy
     expect(triggersLine([{ flow_id: "f", kind: "manual", config: {}, is_enabled: false }])).toBe(
-      "Its triggers are switched off",
+      "What starts it is switched off",
     );
     expect(
       triggersLine([

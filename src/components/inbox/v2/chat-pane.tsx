@@ -38,7 +38,7 @@ import { aiRunApi } from "@/lib/employee-client";
 import { handoverReasonText } from "@/lib/ai-outcome";
 import { aiRunFor, questionBefore, type AiRunNote } from "@/lib/inbox-ai-runs";
 import { cn } from "@/lib/utils";
-import { WhatsAppBubble } from "@/components/design-v2";
+import { TypingDots, WhatsAppBubble } from "@/components/design-v2";
 import {
   TemplatePickerDialog,
   type TemplateSendPayload,
@@ -60,7 +60,8 @@ import {
 } from "../inbox-utils";
 import { ToneAvatar } from "./chat-list";
 import { MessageItem } from "./message-item";
-import { takeoverPlan, windowChip, type AidenMode } from "./inbox-v2";
+import { aidenTyping, takeoverPlan, windowChip, type AidenMode } from "./inbox-v2";
+import { INBOX_COPY } from "./copy";
 import {
   DecisionButtons,
   DecisionForm,
@@ -70,6 +71,26 @@ import {
 } from "./owner-decision";
 
 /** The time, once a minute, so the window chip counts down while a chat is open. */
+/**
+ * Batch 57: aidenTyping, re-checked when its time runs out (a reply arriving
+ * live ends it sooner, through `messages`).
+ */
+function useAidenTyping(
+  conversation: ConversationRow,
+  messages: MessageRow[],
+  mode: AidenMode,
+): boolean {
+  const [tick, setTick] = useState(0);
+  const state = aidenTyping(conversation, messages, mode);
+  useEffect(() => {
+    if (!state.typing) return;
+    const t = setTimeout(() => setTick((n) => n + 1), Math.max(0, state.until - Date.now()) + 50);
+    return () => clearTimeout(t);
+  }, [state.typing, state.until]);
+  void tick;
+  return state.typing;
+}
+
 function useMinute(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -433,6 +454,8 @@ export function ChatPane({
   }, [messages]);
 
   const aidenReplies = aidenMode !== "off" && aidenMode !== "draft";
+  // Batch 57: "Aiden is typing…" while a customer's message waits for Aiden's reply.
+  const typing = useAidenTyping(conversation, messages, aidenMode);
   const toolRow = aiTools ? (
     <>
       <Tool
@@ -505,11 +528,17 @@ export function ChatPane({
             <ToneAvatar seed={conversation.contact?.id ?? conversation.id} label={label} />
             <span className="flex min-w-0 flex-col">
               <b className="truncate font-bold">{label}</b>
-              <span className="truncate text-sm text-muted-foreground">
-                {conversation.contact?.name?.trim()
-                  ? (conversation.contact.phone ?? "")
-                  : "No name saved"}
-                {fromNumber ? ` via ${fromNumber}` : ""}
+              <span className="truncate text-sm text-muted-foreground" aria-live="polite">
+                {typing ? (
+                  <span className="font-bold text-aiden-deep">{INBOX_COPY.typing}</span>
+                ) : (
+                  <>
+                    {conversation.contact?.name?.trim()
+                      ? (conversation.contact.phone ?? "")
+                      : INBOX_COPY.noName}
+                    {fromNumber ? ` via ${fromNumber}` : ""}
+                  </>
+                )}
               </span>
             </span>
             <span className="sr-only">, contact details</span>
@@ -603,8 +632,8 @@ export function ChatPane({
         ) : noMessages ? (
           <div className="grid h-full place-items-center text-center">
             <p className="m-0 rounded-[14px] bg-surface px-5 py-4 text-sm text-muted-foreground shadow-xs">
-              <b className="block text-foreground">No messages yet</b>
-              Start the conversation with a message below.
+              <b className="block text-foreground">{INBOX_COPY.noMessages}</b>
+              {INBOX_COPY.noMessagesBody}
             </p>
           </div>
         ) : (
@@ -685,8 +714,15 @@ export function ChatPane({
             ) : conversation.assigned_to && aidenReplies ? (
               <WhatsAppBubble from="system">
                 {conversation.assigned_to === userId ? "You" : (assigneeName ?? "A teammate")} took
-                over. Aiden won't reply here until the chat is handed back.
+                over. Aiden won’t reply here until the chat is handed back.
               </WhatsAppBubble>
+            ) : null}
+            {typing ? (
+              // Batch 57: Aiden at work, as a bubble on Aiden's side of the chat.
+              <div className="nd-pop flex max-w-[78%] flex-col self-end rounded-[14px_14px_4px_14px] bg-bubble-out px-3 py-2">
+                <small className="text-[0.8125rem] font-bold text-aiden-deep">Aiden</small>
+                <TypingDots label={INBOX_COPY.typingLabel} />
+              </div>
             ) : null}
             <div ref={bottomRef} className="h-px" />
           </div>
@@ -866,7 +902,7 @@ export function ChatPane({
                 if (e.key === "Escape") e.currentTarget.blur();
               }}
               placeholder={
-                compact ? "Message, or / for more" : "Type a message, or / for templates"
+                compact ? INBOX_COPY.composer.placeholderCompact : INBOX_COPY.composer.placeholder
               }
               aria-label={`Message ${label}`}
               rows={1}

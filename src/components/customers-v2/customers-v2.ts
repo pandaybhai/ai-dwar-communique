@@ -1,5 +1,6 @@
 import type { AttributionSourceRow } from "@/lib/analytics";
 import type { OptInStatus } from "@/lib/contacts";
+import { importCopy, listCopy, optInCopy } from "./copy";
 
 /**
  * Batch 48: the new Customers screens (docs/design/preview.html #customers),
@@ -7,11 +8,14 @@ import type { OptInStatus } from "@/lib/contacts";
  * Every read and write goes where the classic Contacts page sends it.
  */
 
-/** The preview's opt-in chip: "Opted in" / "Not yet" / "Opted out". */
+/** The opt-in chip in plain words (Batch 57): "Said yes" / "No answer yet" / "Said no". */
 export const OPT_IN_CHIP: Record<OptInStatus, { label: string; className: string }> = {
-  opted_in: { label: "Opted in", className: "bg-aiden-soft text-aiden-deep" },
-  unknown: { label: "Not yet", className: "bg-gold-bg text-gold-ink" },
-  opted_out: { label: "Opted out", className: "bg-danger-soft text-danger-soft-foreground" },
+  opted_in: { label: optInCopy.opted_in.chip, className: "bg-aiden-soft text-aiden-deep" },
+  unknown: { label: optInCopy.unknown.chip, className: "bg-gold-bg text-gold-ink" },
+  opted_out: {
+    label: optInCopy.opted_out.chip,
+    className: "bg-danger-soft text-danger-soft-foreground",
+  },
 };
 
 /** "Bought in the last N days": what the + Filter menu offers (shop orders only). */
@@ -48,11 +52,12 @@ export function filterChips(
   names: { tags: Record<string, string>; segments: Record<string, string> },
 ): FilterChip[] {
   const chips: FilterChip[] = [];
-  if (f.optIn !== "all") chips.push({ key: "optIn", label: OPT_IN_CHIP[f.optIn].label });
-  if (f.tagId !== "all") chips.push({ key: "tagId", label: `Tag: ${names.tags[f.tagId] ?? "…"}` });
-  if (f.boughtDays) chips.push({ key: "boughtDays", label: `Bought in last ${f.boughtDays} days` });
+  if (f.optIn !== "all") chips.push({ key: "optIn", label: optInCopy[f.optIn].long });
+  if (f.tagId !== "all")
+    chips.push({ key: "tagId", label: listCopy.tagChip(names.tags[f.tagId] ?? "…") });
+  if (f.boughtDays) chips.push({ key: "boughtDays", label: listCopy.boughtChip(f.boughtDays) });
   if (f.segmentId !== "all")
-    chips.push({ key: "segmentId", label: `Segment: ${names.segments[f.segmentId] ?? "…"}` });
+    chips.push({ key: "segmentId", label: listCopy.groupChip(names.segments[f.segmentId] ?? "…") });
   return chips;
 }
 
@@ -84,18 +89,18 @@ export function intersectIds(...lists: Array<string[] | null>): string[] | null 
   return Array.from(new Set(first)).filter((id) => sets.every((s) => s.has(id)));
 }
 
-/** "26 min ago", "now", "3 hours ago", "2 days ago", else the date. */
+/** "26 min ago", "just now", "3 hours ago", "2 days ago", else the date. */
 export function lastChatLabel(iso: string | null | undefined, now = Date.now()): string {
-  if (!iso) return "No chat yet";
+  if (!iso) return listCopy.noChat;
   const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return "No chat yet";
+  if (!Number.isFinite(t)) return listCopy.noChat;
   const min = Math.round((now - t) / 60000);
-  if (min < 1) return "now";
-  if (min < 60) return `${min} min ago`;
+  if (min < 1) return listCopy.justNow;
+  if (min < 60) return listCopy.minAgo(min);
   const hrs = Math.round(min / 60);
-  if (hrs < 24) return `${hrs} ${hrs === 1 ? "hour" : "hours"} ago`;
+  if (hrs < 24) return listCopy.hoursAgo(hrs);
   const days = Math.round(hrs / 24);
-  if (days < 7) return `${days} ${days === 1 ? "day" : "days"} ago`;
+  if (days < 7) return listCopy.daysAgo(days);
   return new Date(iso).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
@@ -156,13 +161,13 @@ export function money(amount: number, currency: string): string {
 /** "₹41,200" (or "₹41,200 + $120"); "—" when nothing was bought. */
 export function spentLabel(spent: Record<string, number> | undefined): string {
   const parts = Object.entries(spent ?? {}).filter(([, n]) => n > 0);
-  if (!parts.length) return "—";
+  if (!parts.length) return listCopy.nothingSpent;
   return parts.map(([cur, n]) => money(n, cur)).join(" + ");
 }
 
 /** "3 selected" in the bulk bar. */
 export function selectedLabel(n: number): string {
-  return `${n.toLocaleString("en-IN")} selected`;
+  return listCopy.selected(n);
 }
 
 /**
@@ -182,13 +187,9 @@ export function tagLinks(
 }
 
 /** The guided import's three steps (Batch 48), over the classic five. */
-export const IMPORT_STEPS = ["Upload", "Columns", "Confirm"] as const;
+export const IMPORT_STEPS = importCopy.steps;
 /** What each step asks, for the dialog's description. */
-export const IMPORT_STEP_HINTS = [
-  "upload your file",
-  "match the columns",
-  "confirm and import",
-] as const;
+export const IMPORT_STEP_HINTS = importCopy.hints;
 
 /** Classic step (1 upload, 2 map, 3 consent, 4 running, 5 done) → the guided step shown. */
 export function guidedStep(classicStep: number): 1 | 2 | 3 {
@@ -199,22 +200,23 @@ export function guidedStep(classicStep: number): 1 | 2 | 3 {
 
 /** A flow run's state in plain words (Flows v2 statuses). */
 export function flowRunLabel(status: string): string {
+  const words = listCopy.flowRun;
   switch (status) {
     case "running":
-      return "Running";
+      return words.running;
     case "waiting":
-      return "Waiting for a reply";
+      return words.waiting;
     case "paused":
-      return "Paused";
+      return words.paused;
     case "done":
-      return "Finished";
+      return words.done;
     case "failed":
-      return "Stopped with an error";
+      return words.failed;
     case "expired":
-      return "Timed out";
+      return words.expired;
     case "cancelled":
     case "ended":
-      return "Ended";
+      return words.ended;
     default:
       return status;
   }
@@ -265,5 +267,5 @@ export function sumReceiptRows(rows: AttributionSourceRow[]): ReceiptTotals {
 export function ratioText(revenue: number, spent: number): string | null {
   if (spent <= 0) return null;
   const value = revenue / spent;
-  return `₹${value.toFixed(value >= 10 ? 0 : 1)} back per ₹1`;
+  return listCopy.backPerRupee(value.toFixed(value >= 10 ? 0 : 1));
 }

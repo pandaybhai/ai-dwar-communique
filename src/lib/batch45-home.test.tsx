@@ -616,9 +616,11 @@ describe("the three Homes, drawn", () => {
       />,
     );
     expect(html).toContain("Aiden is replying to 3 customers");
-    expect(html).toContain("Aiden has sent 41 replies today. One thing needs you.");
+    // Batch 57: copy (Aiden speaks in the first person; the gold card names who waits).
+    expect(html).toContain("I&#x27;ve sent 41 replies today. One customer needs you.");
     expect(html).toContain("Open 11 to 8.");
-    expect(html).toContain("Needs you");
+    expect(html).toContain("1 customer is waiting for you");
+    expect(html).toContain("Rohan Das asked");
     expect(html).toContain('href="/app/inbox?c=c1"');
     expect(html).toContain("Reply to Rohan");
     expect(html).toContain("Today");
@@ -630,7 +632,7 @@ describe("the three Homes, drawn", () => {
         stats={[]}
       />,
     );
-    expect(calm).not.toContain("Needs you");
+    expect(calm).not.toContain("waiting for you");
     expect(calm).toContain("Nothing needs you right now.");
   });
 
@@ -661,11 +663,12 @@ describe("the three Homes, drawn", () => {
     );
     expect(html).toContain("2 replies are ready for you");
     expect(html).toContain("Draft 1");
-    expect(html).toContain(">Send<");
+    // Batch 57: copy ("Send" names who it goes to).
+    expect(html).toContain(">Send to Asha<");
     expect(html).toContain(">Edit<");
     expect(html).toContain(">Write my own<");
     // Only the top card is reachable; the one behind it is drawn but inert.
-    expect(html.match(/>Send</g)).toHaveLength(1);
+    expect(html.match(/>Send to /g)).toHaveLength(1);
     expect(html).toMatch(/data-pos="1"[^>]*aria-hidden="true"/);
     const empty = renderToStaticMarkup(
       <DraftsView
@@ -689,7 +692,7 @@ describe("the three Homes, drawn", () => {
         onSent={() => {}}
       />,
     );
-    expect(viewer).not.toContain(">Send<");
+    expect(viewer).not.toContain(">Send to ");
     expect(viewer).toContain('href="/app/inbox?c=c-1"');
   });
 
@@ -748,10 +751,11 @@ describe("the three Homes, drawn", () => {
     expect(html).toContain("1 hour left");
     expect(html).toContain("Your flows today");
     expect(html).toContain("Welcome message");
-    expect(html).toContain("Try Aiden in draft mode");
+    // Batch 57: copy.
+    expect(html).toContain("Let Aiden draft replies for you");
     // A plan without AI, or a role that can't change Aiden: no nudge.
     expect(renderToStaticMarkup(<OffView {...props} tryDraft={null} />)).not.toContain(
-      "Try Aiden in draft mode",
+      "Let Aiden draft replies for you",
     );
     expect(waitingHeadline(1)).toBe("1 customer is waiting");
   });
@@ -769,7 +773,9 @@ describe("flag off: today's Home, unchanged", () => {
     const homeRoute = lazy({}).type;
     h.newDesign = false;
     // Batch 53: Classic Home = the "Connect your AI assistant" card, then the Batch 41 Home as it was.
-    const off = homeRoute() as unknown as { props: { children: Array<{ type: { name: string } }> } };
+    const off = homeRoute() as unknown as {
+      props: { children: Array<{ type: { name: string } }> };
+    };
     expect(off.props.children.map((c) => c.type.name)).toEqual(["ConnectAssistantCard", "AppHome"]);
     h.newDesign = true;
     expect(homeRoute().type.name).toBe("NewHome");

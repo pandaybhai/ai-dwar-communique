@@ -4,6 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { SectionTabs, useShellSection } from "@/components/shell/section-tabs";
+import { AidenOrb } from "@/components/design-v2/aiden-orb";
 
 export function PageHeader({
   title,
@@ -54,6 +55,7 @@ export function EmptyState({
   description,
   action,
   variant = "card",
+  art = "orb",
 }: {
   icon: LucideIcon;
   title: string;
@@ -61,7 +63,44 @@ export function EmptyState({
   action?: ReactNode;
   /** Batch 39: "plain" drops the card frame, for an empty pane inside a layout. */
   variant?: "card" | "plain";
+  /** Batch 57, Aiden Workspace only: "people" adds three customer avatars under the orb. */
+  art?: "orb" | "people";
 }) {
+  const shell = useShellSection();
+  if (shell) {
+    // Batch 57, Aiden Workspace (only the new shell provides the section
+    // state): drawn with our own orb, not an icon tile; the words say what
+    // will show here and the one step that fills it.
+    return (
+      <div
+        className={cn(
+          "nd-rise flex flex-col items-center gap-3 px-5 py-10 text-center",
+          variant === "card" && "rounded-[18px] border-[1.5px] border-dashed border-line",
+        )}
+      >
+        <AidenOrb state="draft" size={72} />
+        {art === "people" ? (
+          <span aria-hidden="true" className="flex">
+            {["bg-av1", "bg-av2", "bg-av3"].map((bg, i) => (
+              <span
+                key={bg}
+                className={cn(
+                  "h-[34px] w-[34px] rounded-full border-2 border-surface",
+                  bg,
+                  i > 0 && "-ml-2",
+                )}
+              />
+            ))}
+          </span>
+        ) : null}
+        <h2 className="m-0 font-display text-[1.375rem] font-extrabold leading-tight tracking-[-0.02em] text-foreground text-balance">
+          {title}
+        </h2>
+        <p className="m-0 max-w-[44ch] text-body text-muted-foreground">{description}</p>
+        {action ? <div className="mt-2 flex flex-wrap justify-center gap-2.5">{action}</div> : null}
+      </div>
+    );
+  }
   return (
     <div
       className={cn(
@@ -99,14 +138,30 @@ export function PageSkeleton() {
   );
 }
 
-export function ErrorState({ message }: { message: string }) {
+export function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  /** Batch 57: a "Try again" button after the message (Aiden Workspace screens pass it). */
+  onRetry?: (() => void) | undefined;
+}) {
   return (
     <div
       role="alert"
       className="flex items-start gap-3 rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger-soft-foreground"
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-      <p>{message}</p>
+      {onRetry ? <p className="min-w-0 flex-1">{message}</p> : <p>{message}</p>}
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="shrink-0 rounded-md font-semibold underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          Try again
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -1,8 +1,25 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Download, Megaphone, RefreshCw, Workflow } from "lucide-react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Megaphone,
+  Receipt,
+  RefreshCw,
+  Workflow,
+} from "lucide-react";
 import { AnalyticsRevenue } from "@/components/analytics/analytics-revenue";
 import { DateRangePicker } from "@/components/receipts/date-range-picker";
-import { ErrorState } from "@/components/empty-state";
+import { EmptyState, ErrorState } from "@/components/empty-state";
+import { NumberTicker } from "@/components/design-v2";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -29,6 +46,7 @@ import {
 } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { ratioText, sumReceiptRows, withTax } from "./customers-v2";
+import { salesCopy as t } from "./copy";
 
 /**
  * Batch 48: Customers → Sales from chats in the new design. The Receipts
@@ -49,6 +67,19 @@ function money(amount: number, currency: string | null): string {
   }
 }
 
+/**
+ * Batch 57: a rupee amount counts up once (NumberTicker); its final text is
+ * exactly money()'s. Paise amounts and other currencies show as they are.
+ */
+function MoneyTick({ amount, currency }: { amount: number; currency: string | null }) {
+  const value = Number(amount) || 0;
+  if ((currency || "INR") !== "INR" || (value !== 0 && Math.abs(value) < 100) || value < 0)
+    return <>{money(value, currency)}</>;
+  return <NumberTicker value={Math.round(value)} prefix="₹" />;
+}
+
+const rise = (d: number) => ({ className: "nd-rise", style: { "--d": d } as CSSProperties });
+
 function dayLabel(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -66,12 +97,12 @@ function Ratio({
   complete: boolean;
 }) {
   const text = ratioText(revenue, spent);
-  if (!text) return <span className="text-muted-foreground">Nothing billable yet</span>;
+  if (!text) return <span className="text-muted-foreground">{t.nothingBillable}</span>;
   if (!complete) {
     return (
       <span className="text-muted-foreground">
         <span className="line-through">{text}</span>
-        <span className="mt-0.5 block text-xs">Cost data incomplete</span>
+        <span className="mt-0.5 block text-xs">{t.costsMissing}</span>
       </span>
     );
   }
@@ -98,6 +129,8 @@ export function NewReceiptsView({
   const [summary, setSummary] = useState<AttributionSummary | null>(null);
   const [gst, setGst] = useState(18);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  /** The KPI tiles shimmer only on the first load; a refresh keeps (and dims) the numbers. */
+  const [loadedOnce, setLoadedOnce] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,6 +150,7 @@ export function NewReceiptsView({
     setSummary(summaryRes.data ?? null);
     setGst(Number(settingsRes.data?.gst_percent ?? 18));
     setLoading(false);
+    setLoadedOnce(true);
   }, [organizationId, period, accountId]);
 
   useEffect(() => {
@@ -146,7 +180,8 @@ export function NewReceiptsView({
     downloadCsv(`aidwar-receipts-${period.from}-to-${period.to}.csv`, csv);
   };
 
-  if (error) return <ErrorState message={error} />;
+  // The fetchers' own message is technical; the owner gets what happened and the fix.
+  if (error) return <ErrorState message={t.loadFailed} onRetry={() => void load()} />;
 
   const th =
     "border-b border-line px-4 py-3.5 text-right text-sm font-semibold text-muted-foreground";
@@ -154,15 +189,18 @@ export function NewReceiptsView({
 
   return (
     <div className="nd-view-enter flex flex-col gap-6">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="nd-rise flex flex-wrap items-center gap-2">
         <DateRangePicker timezone={timezone} period={period} onChange={setPeriod} />
         {multiple ? (
           <Select value={accountId} onValueChange={setAccountId}>
-            <SelectTrigger className="w-56 rounded-full" aria-label="WhatsApp number">
+            <SelectTrigger
+              className="w-56 max-w-full rounded-full phone:h-11"
+              aria-label={t.numberLabel}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All numbers</SelectItem>
+              <SelectItem value="all">{t.allNumbers}</SelectItem>
               {numbers.map((x) => (
                 <SelectItem key={x.id} value={x.id}>
                   {numberLabel(x)}
@@ -172,39 +210,64 @@ export function NewReceiptsView({
           </Select>
         ) : null}
         <div className="flex items-center gap-1 wide:ml-auto">
-          <Button variant="ghost" onClick={() => void load()} disabled={loading}>
+          <Button
+            variant="ghost"
+            className="phone:h-11"
+            onClick={() => void load()}
+            disabled={loading}
+          >
             <RefreshCw
               className={cn("h-4 w-4", loading && "animate-spin motion-reduce:animate-none")}
               aria-hidden="true"
             />
-            Refresh
+            {t.refresh}
           </Button>
-          <Button variant="ghost" onClick={exportCsv} disabled={loading || active.length === 0}>
+          <Button
+            variant="ghost"
+            className="phone:h-11"
+            onClick={exportCsv}
+            disabled={loading || active.length === 0}
+          >
             <Download className="h-4 w-4" aria-hidden="true" />
-            Export CSV
+            {t.download}
           </Button>
         </div>
       </div>
 
       <dl className="m-0 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: "Sales from your messages", value: money(totals.revenue, currency) },
-          { label: "Orders", value: n(totals.orders) },
-          {
-            label: "Message charges incl. tax",
-            value: money(withTax(totals.spent, gst), currency),
-          },
-          {
-            label: "Back for every ₹1",
-            value:
-              ratioText(totals.revenue, totals.spent)?.replace(" back per ₹1", "") ?? "None yet",
-            note: totals.spent > 0 && !totals.cost_complete ? "Cost data incomplete" : null,
-          },
-        ].map((k) => (
-          <div key={k.label} className="rounded-[20px] border border-line bg-surface p-4">
+        {(
+          [
+            {
+              label: t.kpi.sales,
+              value: <MoneyTick amount={totals.revenue} currency={currency} />,
+            },
+            { label: t.kpi.orders, value: <NumberTicker value={Number(totals.orders) || 0} /> },
+            {
+              label: t.kpi.cost,
+              value: <MoneyTick amount={withTax(totals.spent, gst)} currency={currency} />,
+            },
+            {
+              label: t.kpi.back,
+              value:
+                ratioText(totals.revenue, totals.spent)?.replace(" back per ₹1", "") ??
+                t.kpi.noneYet,
+              note: totals.spent > 0 && !totals.cost_complete ? t.costsMissing : null,
+            },
+          ] as Array<{ label: string; value: ReactNode; note?: string | null }>
+        ).map((k, i) => (
+          <div
+            key={k.label}
+            style={{ "--d": i + 1 } as CSSProperties}
+            className="nd-rise min-w-0 rounded-[20px] border border-line bg-surface p-4"
+          >
             <dt className="text-sm text-muted-foreground">{k.label}</dt>
-            <dd className="tabular m-0 mt-1 font-display text-2xl font-semibold">
-              {loading ? <Skeleton className="h-7 w-24" /> : k.value}
+            <dd
+              className={cn(
+                "tabular m-0 mt-1 font-display text-2xl font-semibold transition-opacity duration-200",
+                loading && loadedOnce && "opacity-60",
+              )}
+            >
+              {loading && !loadedOnce ? <Skeleton className="h-7 w-24" /> : k.value}
               {"note" in k && k.note ? (
                 <span className="mt-1 block font-sans text-xs font-normal text-muted-foreground">
                   {k.note}
@@ -217,16 +280,14 @@ export function NewReceiptsView({
 
       <section
         aria-labelledby="nd-receipts-heading"
-        className="rounded-[20px] border border-line bg-surface"
+        style={{ "--d": 5 } as CSSProperties}
+        className="nd-rise rounded-[20px] border border-line bg-surface"
       >
         <div className="border-b border-line p-5">
           <h2 id="nd-receipts-heading" className="m-0 font-display text-lg font-semibold">
-            Every campaign and flow, side by side
+            {t.tableTitle}
           </h2>
-          <p className="m-0 mt-1 text-[0.9375rem] text-muted-foreground">
-            What you sent, what people did with it, and what Meta charged you. Tax is added at {gst}
-            %; change that in Settings. Open a row to see each message inside it.
-          </p>
+          <p className="m-0 mt-1 text-[0.9375rem] text-muted-foreground">{t.tableHelp(gst)}</p>
         </div>
 
         {loading ? (
@@ -236,50 +297,48 @@ export function NewReceiptsView({
             ))}
           </div>
         ) : active.length === 0 ? (
-          <div className="p-10 text-center">
-            <p className="m-0 font-semibold text-foreground">Nothing sent in this period</p>
-            <p className="m-0 mt-1 text-[0.9375rem] text-muted-foreground">
-              Send a campaign or switch on a flow, and its earnings and costs will appear here.
-            </p>
-          </div>
+          <EmptyState
+            icon={Receipt}
+            variant="plain"
+            title={t.empty.title}
+            description={t.empty.description}
+          />
         ) : (
           <>
             <div className="hidden overflow-x-auto lg:block">
               <table className="w-full border-collapse text-[0.9375rem]">
-                <caption className="sr-only">
-                  Sales and message costs for each campaign and flow in the selected period
-                </caption>
+                <caption className="sr-only">{t.tableCaption}</caption>
                 <thead>
                   <tr>
                     <th scope="col" className={cn(th, "text-left")}>
-                      Name
+                      {t.col.name}
                     </th>
                     <th scope="col" className={th}>
-                      Sent
+                      {t.col.sent}
                     </th>
                     <th scope="col" className={th}>
-                      Delivered
+                      {t.col.delivered}
                     </th>
                     <th scope="col" className={th}>
-                      Read
+                      {t.col.read}
                     </th>
                     <th scope="col" className={th}>
-                      Clicked
+                      {t.col.clicked}
                     </th>
                     <th scope="col" className={th}>
-                      Orders
+                      {t.col.orders}
                     </th>
                     <th scope="col" className={th}>
-                      Revenue
+                      {t.col.sales}
                     </th>
                     <th scope="col" className={th}>
-                      Spent
+                      {t.col.cost}
                     </th>
                     <th scope="col" className={th}>
-                      Incl. tax
+                      {t.col.withTax}
                     </th>
                     <th scope="col" className={th}>
-                      Per ₹1 spent
+                      {t.col.perRupee}
                     </th>
                   </tr>
                 </thead>
@@ -312,7 +371,7 @@ export function NewReceiptsView({
                                 <span className="font-semibold text-foreground">{row.name}</span>
                                 <span className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
                                   <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                                  {row.source_type === "flow" ? "Automatic message" : "Campaign"}
+                                  {row.source_type === "flow" ? t.flow : t.campaign}
                                   {row.created_at ? `, ${dayLabel(row.created_at)}` : ""}
                                 </span>
                               </span>
@@ -343,7 +402,7 @@ export function NewReceiptsView({
                                 className="border-b border-line bg-ground text-sm"
                               >
                                 <th scope="row" className="px-4 py-2 pl-11 text-left font-normal">
-                                  {s.step_order ? `Message ${s.step_order}: ` : ""}
+                                  {s.step_order ? t.messageN(s.step_order) : ""}
                                   {s.name}
                                 </th>
                                 <td className={td}>{n(s.messages_sent)}</td>
@@ -377,7 +436,7 @@ export function NewReceiptsView({
                 <tfoot>
                   <tr className="font-semibold">
                     <th scope="row" className="px-4 py-3.5 text-left">
-                      Everything together
+                      {t.total}
                     </th>
                     <td className={td}>{n(totals.messages_sent)}</td>
                     <td className={td}>{n(totals.delivered)}</td>
@@ -412,8 +471,8 @@ export function NewReceiptsView({
                       <div className="min-w-0">
                         <p className="m-0 font-semibold text-foreground">{row.name}</p>
                         <p className="m-0 mt-0.5 text-sm text-muted-foreground">
-                          {row.source_type === "flow" ? "Automatic message" : "Campaign"}
-                          {row.created_at ? `, made ${dayLabel(row.created_at)}` : ""}
+                          {row.source_type === "flow" ? t.flow : t.campaign}
+                          {row.created_at ? t.made(dayLabel(row.created_at)) : ""}
                         </p>
                       </div>
                       <span className="tabular shrink-0 rounded-full bg-aiden-soft px-2.5 py-1 text-sm font-semibold text-aiden-deep">
@@ -422,13 +481,13 @@ export function NewReceiptsView({
                     </div>
                     <dl className="m-0 mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                       {[
-                        ["Sent", n(row.messages_sent)],
-                        ["Delivered", n(row.delivered)],
-                        ["Read", n(row.read_count)],
-                        ["Clicked", n(row.clicked)],
-                        ["Orders", n(row.orders)],
-                        ["Spent", money(Number(row.spent), cur)],
-                        ["Incl. tax", money(withTax(Number(row.spent), gst), cur)],
+                        [t.col.sent, n(row.messages_sent)],
+                        [t.col.delivered, n(row.delivered)],
+                        [t.col.read, n(row.read_count)],
+                        [t.col.clicked, n(row.clicked)],
+                        [t.col.orders, n(row.orders)],
+                        [t.col.cost, money(Number(row.spent), cur)],
+                        [t.col.withTax, money(withTax(Number(row.spent), gst), cur)],
                       ].map(([label, value]) => (
                         <div key={label} className="flex justify-between gap-2">
                           <dt className="text-muted-foreground">{label}</dt>
@@ -436,7 +495,7 @@ export function NewReceiptsView({
                         </div>
                       ))}
                       <div className="col-span-2 flex justify-between gap-2 border-t border-line pt-2">
-                        <dt className="text-muted-foreground">Per ₹1 spent</dt>
+                        <dt className="text-muted-foreground">{t.col.perRupee}</dt>
                         <dd className="m-0 text-right">
                           <Ratio
                             revenue={Number(row.revenue)}
@@ -451,7 +510,7 @@ export function NewReceiptsView({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="mt-2 px-2"
+                          className="mt-2 px-2 phone:h-11"
                           aria-expanded={isOpen}
                           onClick={() => setOpen((o) => ({ ...o, [key]: !isOpen }))}
                         >
@@ -460,7 +519,7 @@ export function NewReceiptsView({
                           ) : (
                             <ChevronRight className="h-4 w-4" aria-hidden="true" />
                           )}
-                          {isOpen ? "Hide" : "Show"} each message ({children.length})
+                          {t.showMessages(isOpen, children.length)}
                         </Button>
                         {isOpen ? (
                           <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0">
@@ -470,14 +529,17 @@ export function NewReceiptsView({
                                 className="rounded-xl bg-ground p-3 text-sm"
                               >
                                 <p className="m-0 font-semibold text-foreground">
-                                  {s.step_order ? `Message ${s.step_order}: ` : ""}
+                                  {s.step_order ? t.messageN(s.step_order) : ""}
                                   {s.name}
                                 </p>
                                 <p className="m-0 mt-1 text-muted-foreground">
-                                  {n(s.messages_sent)} sent, {n(s.read_count)} read, {n(s.orders)}{" "}
-                                  orders. {money(Number(s.revenue), s.currency ?? currency)} in,{" "}
-                                  {money(withTax(Number(s.spent), gst), s.currency ?? currency)}{" "}
-                                  out.
+                                  {t.stepLine(
+                                    n(s.messages_sent),
+                                    n(s.read_count),
+                                    n(s.orders),
+                                    money(Number(s.revenue), s.currency ?? currency),
+                                    money(withTax(Number(s.spent), gst), s.currency ?? currency),
+                                  )}
                                 </p>
                               </li>
                             ))}
@@ -489,18 +551,18 @@ export function NewReceiptsView({
                 );
               })}
               <li className="bg-ground p-4">
-                <p className="m-0 font-semibold text-foreground">Everything together</p>
+                <p className="m-0 font-semibold text-foreground">{t.total}</p>
                 <dl className="m-0 mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                   <div className="flex justify-between gap-2">
-                    <dt className="text-muted-foreground">Revenue</dt>
+                    <dt className="text-muted-foreground">{t.col.sales}</dt>
                     <dd className="tabular m-0">{money(totals.revenue, currency)}</dd>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <dt className="text-muted-foreground">Incl. tax</dt>
+                    <dt className="text-muted-foreground">{t.col.withTax}</dt>
                     <dd className="tabular m-0">{money(withTax(totals.spent, gst), currency)}</dd>
                   </div>
                   <div className="col-span-2 flex justify-between gap-2 border-t border-line pt-2">
-                    <dt className="text-muted-foreground">Per ₹1 spent</dt>
+                    <dt className="text-muted-foreground">{t.col.perRupee}</dt>
                     <dd className="m-0 text-right">
                       <Ratio
                         revenue={totals.revenue}
@@ -517,7 +579,9 @@ export function NewReceiptsView({
       </section>
 
       {/* Linked vs unlinked revenue, from the same functions the Analytics tab uses. */}
-      <AnalyticsRevenue summary={summary} sources={active} loading={loading} />
+      <div {...rise(6)}>
+        <AnalyticsRevenue summary={summary} sources={active} loading={loading} />
+      </div>
     </div>
   );
 }

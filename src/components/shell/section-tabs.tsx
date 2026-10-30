@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import { Link } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { Section, SectionTab } from "./sections";
 
@@ -39,15 +40,24 @@ export function SectionTabs({ className }: { className?: string }) {
             search={(t.search ?? {}) as never}
             aria-current={on ? "page" : undefined}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3.5 py-[7px] text-sm font-semibold transition-colors duration-200",
+              "relative inline-flex items-center gap-1.5 rounded-full px-3.5 py-[7px] text-sm font-semibold transition-colors duration-200",
               on
-                ? "bg-aiden-soft text-aiden-deep"
+                ? "text-aiden-deep"
                 : "text-muted-foreground hover:bg-surface hover:text-foreground",
             )}
           >
-            {t.label}
+            {on ? (
+              // Batch 57: the selected pill slides between sub-tabs.
+              <motion.span
+                layoutId="nd-tab-pill"
+                aria-hidden="true"
+                className="absolute inset-0 rounded-full bg-aiden-soft"
+                transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+              />
+            ) : null}
+            <span className="relative">{t.label}</span>
             {count > 0 ? (
-              <span className="tabular inline-grid h-5 min-w-5 place-items-center rounded-full bg-gold px-1.5 text-xs font-bold text-gold-ink">
+              <span className="tabular relative inline-grid h-5 min-w-5 place-items-center rounded-full bg-gold px-1.5 text-xs font-bold text-gold-ink">
                 <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
                 <span className="sr-only">({count} waiting)</span>
               </span>

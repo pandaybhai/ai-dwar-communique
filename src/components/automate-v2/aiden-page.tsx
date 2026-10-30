@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Bot, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { AidenSetupCard } from "@/components/aiden-setup-card";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { BehaviourEditor } from "@/components/employee/behaviour-editor";
 import { BrainPicker } from "@/components/employee/brain-picker";
 import { CorrectionsList } from "@/components/employee/corrections-list";
@@ -38,7 +39,11 @@ import { useOrg } from "@/lib/org-context";
 import { AidenKnows } from "./aiden-knows";
 import { AidenReview } from "./aiden-review";
 import { AidenStatusCard } from "./aiden-status-card";
+import { aidenPage as t } from "./copy";
 import { TestAiden } from "./test-aiden";
+
+/** Batch 57: blocks arrive one after another (styles.css .nd-rise; still under reduced motion). */
+const rise = (d: number) => ({ "--d": d }) as CSSProperties;
 
 export type EmployeeTab =
   "job" | "knows" | "gaps" | "behaviour" | "brains" | "forms" | "try" | "work";
@@ -104,20 +109,12 @@ export function NewAidenPage() {
   if (orgLoading || permsLoading) return <PageSkeleton />;
   if (!active) {
     return (
-      <EmptyState
-        icon={Bot}
-        title="No workspace selected"
-        description="Pick a workspace from the switcher to see Aiden's work there."
-      />
+      <EmptyState icon={Bot} title={t.noWorkspace.title} description={t.noWorkspace.description} />
     );
   }
   if (!can("ai.use")) {
     return (
-      <EmptyState
-        icon={Lock}
-        title="The AI employee is restricted"
-        description='You need the "Use AI" permission for this workspace. Ask an owner or admin to grant it.'
-      />
+      <EmptyState icon={Lock} title={t.restricted.title} description={t.restricted.description} />
     );
   }
 
@@ -138,7 +135,7 @@ export function NewAidenPage() {
       toast.error(error);
       return false;
     }
-    toast.success(value ? "AI is on." : "AI is off.");
+    toast.success(value ? t.aiOnToast : t.aiOffToast);
     await load();
     return true;
   };
@@ -151,18 +148,16 @@ export function NewAidenPage() {
 
   return (
     <>
-      <PageHeader
-        title={name}
-        description={`${name} is your teammate on WhatsApp: what ${name} is doing, what ${name} knows, and a test chat to try ${name} first.`}
-      />
+      <PageHeader title={name} description={t.description(name)} />
       <AidenSetupCard organizationId={organizationId} />
 
       {loading ? (
-        <PageSkeleton />
+        <AidenSkeleton />
       ) : (
-        <div className="flex flex-col gap-10">
-          <div className="grid items-start gap-10 wide:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
-            <div className="flex min-w-0 flex-col gap-10">
+        <div className="flex flex-col gap-10 phone:gap-8">
+          {/* Batch 57: the status card, then what needs the owner, lead; the test chat and what Aiden knows sit beside them. */}
+          <div className="grid items-start gap-x-10 gap-y-8 wide:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
+            <div className="flex min-w-0 flex-col gap-8">
               <AidenStatusCard
                 name={name}
                 mode={overview?.agent?.mode}
@@ -180,69 +175,74 @@ export function NewAidenPage() {
                 currency={currency}
                 testedRecently={Boolean(overview?.tested_recently)}
               />
-              <AidenReview
-                organizationId={active.organization.id}
-                name={name}
-                canConfigure={canConfigure}
-                onChanged={() => void load()}
-                onSeeAll={openTab}
-              />
+              <div className="nd-rise" style={rise(1)}>
+                <AidenReview
+                  organizationId={active.organization.id}
+                  name={name}
+                  canConfigure={canConfigure}
+                  onChanged={() => void load()}
+                  onSeeAll={openTab}
+                />
+              </div>
             </div>
-            <div className="flex min-w-0 flex-col gap-10">
-              <TestAiden
-                organizationId={active.organization.id}
-                name={name}
-                currency={currency}
-                onRan={load}
-                {...(canConfigure ? { onEnableAi: enableAi } : {})}
-                onCompare={() => {
-                  openTab("try");
-                  setCompareRequest((n) => n + 1);
-                }}
-              />
-              <AidenKnows
-                organizationId={active.organization.id}
-                name={name}
-                sources={overview?.sources ?? []}
-                catalogueOn={catalogsOn && can("catalog.view")}
-                onManage={() => openTab("knows")}
-              />
+            <div className="flex min-w-0 flex-col gap-8">
+              <div className="nd-rise" style={rise(2)}>
+                <TestAiden
+                  organizationId={active.organization.id}
+                  name={name}
+                  currency={currency}
+                  onRan={load}
+                  {...(canConfigure ? { onEnableAi: enableAi } : {})}
+                  onCompare={() => {
+                    openTab("try");
+                    setCompareRequest((n) => n + 1);
+                  }}
+                />
+              </div>
+              <div className="nd-rise" style={rise(3)}>
+                <AidenKnows
+                  organizationId={active.organization.id}
+                  name={name}
+                  sources={overview?.sources ?? []}
+                  catalogueOn={catalogsOn && can("catalog.view")}
+                  onManage={() => openTab("knows")}
+                />
+              </div>
             </div>
           </div>
 
-          <WeeklyReport
-            organizationId={active.organization.id}
-            currency={currency}
-            canConfigure={canConfigure}
-          />
+          <div className="nd-rise" style={rise(4)}>
+            <WeeklyReport
+              organizationId={active.organization.id}
+              currency={currency}
+              canConfigure={canConfigure}
+            />
+          </div>
 
           <div ref={tabsRef} className="scroll-mt-24 flex flex-col gap-4">
             <div>
               <h2 className="m-0 font-display text-[1.375rem] font-semibold">
-                Everything {name} does
+                {t.everythingHeading(name)}
               </h2>
-              <p className="m-0 mt-1 text-sm text-muted-foreground">
-                The job, the knowledge, the rules for handing over, the brain and tools, and every
-                answer given.
-              </p>
+              <p className="m-0 mt-1 text-sm text-muted-foreground">{t.everythingLine}</p>
             </div>
             <Tabs value={tab} onValueChange={(v) => setTab(v as EmployeeTab)} className="space-y-6">
               <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
-                <TabsTrigger value="job">My job</TabsTrigger>
-                <TabsTrigger value="knows">What I know</TabsTrigger>
+                <TabsTrigger value="job">{t.tabs.job}</TabsTrigger>
+                <TabsTrigger value="knows">{t.tabs.knows}</TabsTrigger>
                 <TabsTrigger value="gaps">
-                  Questions for you
+                  {t.tabs.gaps}
                   {gapCount > 0 ? (
                     <Badge variant="secondary" className="ml-2">
                       {gapCount}
                     </Badge>
                   ) : null}
                 </TabsTrigger>
-                <TabsTrigger value="behaviour">How I behave</TabsTrigger>
-                <TabsTrigger value="brains">My brain &amp; tools</TabsTrigger>
-                {formsOn ? <TabsTrigger value="forms">Forms</TabsTrigger> : null}
-                <TabsTrigger value="try">Try me</TabsTrigger>
-                <TabsTrigger value="work">My work</TabsTrigger>
+                <TabsTrigger value="behaviour">{t.tabs.behaviour}</TabsTrigger>
+                <TabsTrigger value="brains">{t.tabs.brains}</TabsTrigger>
+                {formsOn ? <TabsTrigger value="forms">{t.tabs.forms}</TabsTrigger> : null}
+                <TabsTrigger value="try">{t.tabs.try}</TabsTrigger>
+                <TabsTrigger value="work">{t.tabs.work}</TabsTrigger>
               </TabsList>
 
               <TabsContent value="job">
@@ -347,8 +347,8 @@ export function NewAidenPage() {
 
           {canConfigure ? (
             <div>
-              <Button variant="outline" onClick={() => void load()}>
-                Refresh
+              <Button variant="outline" className="phone:h-11" onClick={() => void load()}>
+                {t.refresh}
               </Button>
             </div>
           ) : null}
@@ -359,14 +359,11 @@ export function NewAidenPage() {
       <AlertDialog open={gate !== null} onOpenChange={(open) => !open && closeGate()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Let me show you my work first</AlertDialogTitle>
-            <AlertDialogDescription>
-              {gate?.message ??
-                "You haven't tested me yet. Want to see how I'd have answered your last 20 customer questions first?"}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t.gate.title}</AlertDialogTitle>
+            <AlertDialogDescription>{gate?.message ?? t.gate.body}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Not now</AlertDialogCancel>
+            <AlertDialogCancel>{t.gate.notNow}</AlertDialogCancel>
             <Button
               variant="outline"
               onClick={() => {
@@ -375,7 +372,7 @@ export function NewAidenPage() {
                 if (mode) void setMode(mode, true);
               }}
             >
-              Switch anyway
+              {t.gate.anyway}
             </Button>
             <AlertDialogAction
               onClick={() => {
@@ -384,11 +381,31 @@ export function NewAidenPage() {
                 setCompareRequest((n) => n + 1);
               }}
             >
-              Run the test on my last 20 questions
+              {t.gate.run}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/** Batch 57: loading in the page's own shape (it shimmers in Aiden Workspace). */
+function AidenSkeleton() {
+  return (
+    <div
+      aria-busy="true"
+      aria-label="Loading"
+      className="grid items-start gap-x-10 gap-y-8 wide:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]"
+    >
+      <div className="flex min-w-0 flex-col gap-8">
+        <Skeleton className="h-80 rounded-[20px]" />
+        <Skeleton className="h-40 rounded-[20px]" />
+      </div>
+      <div className="flex min-w-0 flex-col gap-8">
+        <Skeleton className="h-[440px] rounded-[20px]" />
+        <Skeleton className="h-48 rounded-[20px]" />
+      </div>
+    </div>
   );
 }

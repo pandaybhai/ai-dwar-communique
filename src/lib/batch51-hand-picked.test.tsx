@@ -211,6 +211,9 @@ describe("segment screens", () => {
       isHandPicked({ match: "all", conditions: [{ field: "tag", operator: "has", value: "t" }] }),
     ).toBe(false);
     const segs = readFileSync("src/components/customers-v2/new-segments-view.tsx", "utf8");
-    expect(segs).toContain('"Picked by hand"');
+    // Batch 57: copy (the screen's words moved to copy.ts; the card still says it for a list).
+    const copy = readFileSync("src/components/customers-v2/copy.ts", "utf8");
+    expect(copy).toContain('pickedByHand: "Picked by hand"');
+    expect(segs).toContain("isHandPicked(s.filters)\n                    ? t.pickedByHand");
   });
 });

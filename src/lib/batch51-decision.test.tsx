@@ -304,7 +304,7 @@ describe("Home's Needs you card", () => {
     ];
     const html = renderToStaticMarkup(<NeedsYou items={items} total={2} />);
     expect(html).toContain("Reply to Rohan");
-    expect(html).toContain("Open the inbox");
+    expect(html).toContain("Open the Inbox"); // Batch 57: copy
     expect(html).not.toContain(">Approve<");
     // canDecide alone isn't enough: the decision needs the open Unanswered item (read on mount).
     const still = renderToStaticMarkup(

@@ -33,6 +33,7 @@ export function BottomSheet({
             className,
           )}
         >
+          <span aria-hidden="true" className="nd-grab" />
           <DialogPrimitive.Title className="px-2 pb-2.5 pt-1 font-display text-xl font-extrabold">
             {title}
           </DialogPrimitive.Title>

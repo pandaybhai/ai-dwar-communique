@@ -7,6 +7,8 @@
  * permissions the classic tab used; nothing new is gated or ungated here.
  */
 
+import { SECTION_COPY } from "./copy";
+
 export type SettingsSectionKey =
   | "general"
   | "team"
@@ -28,52 +30,23 @@ export type SettingsSection = {
   blurb: string;
 };
 
-const ALL: SettingsSection[] = [
-  { key: "general", label: "Workspace", blurb: "How your workspace is named across AiDwar." },
-  {
-    key: "team",
-    label: "Team and roles",
-    blurb: "Who works in this workspace and what each person may do.",
-  },
-  {
-    key: "whatsapp",
-    label: "WhatsApp",
-    blurb: "Your WhatsApp profile, the numbers you send from and their health.",
-  },
-  {
-    key: "api",
-    label: "API and webhooks",
-    blurb: "Keys for your own systems, the webhook we call, and a console to try requests.",
-  },
-  {
-    key: "ai_apps",
-    label: "Connected AI apps",
-    blurb: "AI assistants you allowed to use AiDwar as you, and where to remove them.",
-  },
-  {
-    key: "notifications",
-    label: "Notifications",
-    blurb: "Who on your team is told when a chat needs a person.",
-  },
-  {
-    key: "optout",
-    label: "Opt-out keywords",
-    blurb: "Words that stop marketing messages to a customer.",
-  },
-  { key: "integrations", label: "Integrations", blurb: "Your Shopify store." },
-  {
-    key: "connections",
-    label: "Flow connections",
-    blurb: "Accounts your flows use: Google Sheets and Razorpay payment links.",
-  },
-  {
-    key: "sending",
-    label: "Send settings",
-    blurb: "Quiet hours, marketing caps, win-back timing, linking sales to messages and tax.",
-  },
-  { key: "sources", label: "Lead sources", blurb: "Where new contacts come from." },
-  { key: "danger", label: "Danger zone", blurb: "Actions that can't be undone." },
+/** Sub-nav order (the danger zone last); the words live in copy.ts. */
+const ORDER: SettingsSectionKey[] = [
+  "general",
+  "team",
+  "whatsapp",
+  "api",
+  "ai_apps",
+  "notifications",
+  "optout",
+  "integrations",
+  "connections",
+  "sending",
+  "sources",
+  "danger",
 ];
+
+const ALL: SettingsSection[] = ORDER.map((key) => ({ key, ...SECTION_COPY[key] }));
 
 export type SettingsAccess = {
   /** shopify flag and integrations.view (the classic Integrations tab's Shopify half). */

@@ -114,6 +114,14 @@ async function loadSales(
   return null;
 }
 
+/** Batch 57: how long typing dots may show without a reply landing. */
+export const TYPING_MS = 60_000;
+
+function without(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  if (!set.has(id)) return set;
+  return new Set([...set].filter((x) => x !== id));
+}
+
 /** After a customer writes, Aiden's draft or reply lands a few seconds later: read again then. */
 export const SETTLE_MS = 8_000;
 
@@ -183,7 +191,12 @@ export async function loadNewHome(
  * customer's message reads again SETTLE_MS later, when Aiden's reply or draft
  * has landed. Returns the unsubscribe.
  */
-export function liveHomeReload(organizationId: string, reload: () => void): () => void {
+export function liveHomeReload(
+  organizationId: string,
+  reload: () => void,
+  /** Batch 57: each new message as it arrives (Home's typing dots); nothing is read for it. */
+  onMessage?: (m: { conversationId: string; direction: string }) => void,
+): () => void {
   let soon: ReturnType<typeof setTimeout> | null = null;
   let settle: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
@@ -197,8 +210,12 @@ export function liveHomeReload(organizationId: string, reload: () => void): () =
     }
   };
   const stop = subscribeInboxChanges(`home:${organizationId}`, organizationId, {
-    onMessage: (payload) =>
-      changed((payload.new as { direction?: string } | null)?.direction === "inbound"),
+    onMessage: (payload) => {
+      const row = payload.new as { direction?: string; conversation_id?: string } | null;
+      if (!stopped && onMessage && row?.conversation_id && row.direction)
+        onMessage({ conversationId: row.conversation_id, direction: row.direction });
+      changed(row?.direction === "inbound");
+    },
     onConversation: () => changed(false),
   });
   return () => {
@@ -236,10 +253,36 @@ export function useNewHome(
     void load();
   }, [load]);
 
+  // Batch 57: a customer who writes again in a chat shows typing dots until
+  // a reply goes out in that chat (live) or TYPING_MS passes.
+  const [typing, setTyping] = useState<ReadonlySet<string>>(() => new Set());
+  // A plain record of timers (batch45-home.test.tsx scans this file for any write call).
+  const typingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const onMessage = useCallback((m: { conversationId: string; direction: string }) => {
+    const timers = typingTimers.current;
+    const old = timers[m.conversationId];
+    if (old) clearTimeout(old);
+    if (m.direction === "inbound") {
+      timers[m.conversationId] = setTimeout(
+        () => setTyping((t) => without(t, m.conversationId)),
+        TYPING_MS,
+      );
+      setTyping((t) => new Set(t).add(m.conversationId));
+    } else {
+      setTyping((t) => without(t, m.conversationId));
+    }
+  }, []);
+  useEffect(() => {
+    const timers = typingTimers.current;
+    return () => {
+      for (const t of Object.values(timers)) clearTimeout(t);
+    };
+  }, []);
+
   useEffect(() => {
     if (!organizationId || !accessKey) return;
-    return liveHomeReload(organizationId, () => void load());
-  }, [organizationId, accessKey, load]);
+    return liveHomeReload(organizationId, () => void load(), onMessage);
+  }, [organizationId, accessKey, load, onMessage]);
 
-  return { data, loading, reload: load };
+  return { data, loading, reload: load, typing };
 }

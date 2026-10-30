@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { Check, Lock, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState, PageSkeleton } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { NumberTicker } from "@/components/magicui/number-ticker";
+import { NumberTicker } from "@/components/design-v2";
 import { InvoicesPanel } from "@/components/billing/invoices-panel";
 import { PlanChooser, limitLines, type PlanState } from "@/components/billing/plan-chooser";
 import {
@@ -19,17 +19,49 @@ import { callApi } from "@/lib/whatsapp-client";
 import { confirmCashfreeReturn } from "@/lib/cashfree-checkout";
 import { creditPurchaseBlock, money, rateMoney, type BillingSummary } from "@/lib/billing";
 import { cn } from "@/lib/utils";
-import { billingStateNote, usageBars, type BillingStateNote } from "./billing-v2";
+import { amountParts, billingStateNote, usageBars, type BillingStateNote } from "./billing-v2";
+import { BILLING_COPY as C, CATEGORY_COPY } from "./copy";
 
-const DESCRIPTION =
-  "Your credits, what each message costs, payments and invoices — all in one place.";
+/** Staggered entrance (with the nd-rise class): block n arrives n × 70ms after the first. */
+const rise = (d: number) => ({ style: { "--d": d } as CSSProperties });
 
-const CATEGORY_COPY: Record<string, string> = {
-  marketing: "Promotions and offers",
-  utility: "Order and account updates",
-  authentication: "One-time passcodes",
-  service: "Replies inside the 24-hour window",
-};
+/**
+ * An amount that counts up once (Batch 57). It lands on money()'s own text
+ * (amountParts: whole rupees tick with ₹ and Indian grouping, the paise sit
+ * beside them exact from the start); below zero or another currency it is
+ * money()'s text as it was. Screen readers get money().
+ */
+function Amount({ value, currency }: { value: number; currency: string }) {
+  const parts = amountParts(value, currency);
+  const text = parts?.text ?? money(value, currency);
+  return (
+    <>
+      <span className="sr-only">{text}</span>
+      <span aria-hidden="true">
+        {parts ? (
+          <>
+            <NumberTicker value={parts.whole} prefix="₹" />
+            {parts.rest}
+          </>
+        ) : (
+          text
+        )}
+      </span>
+    </>
+  );
+}
+
+/** A plain count that ticks while its text is the same either way (no grouping under 1,000). */
+function Count({ n }: { n: number }) {
+  return Number.isInteger(n) && n >= 0 && n < 1000 ? (
+    <>
+      <span className="sr-only">{String(n)}</span>
+      <NumberTicker value={n} aria-hidden="true" />
+    </>
+  ) : (
+    <>{String(n)}</>
+  );
+}
 
 /**
  * Batch 50: Billing and wallet in the new design (flag new_design on). The
@@ -61,21 +93,17 @@ export function NewBillingPage() {
 
   return (
     <div className="pb-6">
-      <header className="mb-7 flex flex-col gap-2">
+      <header className="nd-rise mb-7 flex flex-col gap-2">
         <h1 className="min-w-0 font-display text-[clamp(1.75rem,3.4vw,2.5rem)] font-extrabold leading-[1.05] tracking-[-0.03em] text-foreground">
-          Billing and wallet
+          {C.title}
         </h1>
-        <p className="max-w-2xl text-body text-muted-foreground">{DESCRIPTION}</p>
+        <p className="max-w-2xl text-body text-muted-foreground">{C.description}</p>
       </header>
 
       {loading || permsLoading || flagLoading ? (
         <PageSkeleton />
       ) : !active || !org ? (
-        <EmptyState
-          icon={Wallet}
-          title="No workspace selected"
-          description="Pick a workspace from the switcher to see its billing."
-        />
+        <EmptyState icon={Wallet} title={C.noWorkspace.title} description={C.noWorkspace.body} />
       ) : noPlan || locked ? (
         <div className="flex flex-col gap-10">
           {note ? <StateNote note={note} /> : null}
@@ -93,15 +121,16 @@ export function NewBillingPage() {
       ) : !enabled ? (
         <EmptyState
           icon={Wallet}
-          title="Billing isn't switched on"
-          description="This workspace doesn't manage credits here yet. Talk to us if you'd like it turned on."
+          title={C.notOn.title}
+          description={C.notOn.body}
+          action={
+            <Button asChild variant="outline" className="phone:min-h-11">
+              <a href={C.notOn.href}>{C.notOn.action}</a>
+            </Button>
+          }
         />
       ) : !can("billing.view") ? (
-        <EmptyState
-          icon={Lock}
-          title="Billing is restricted"
-          description='You need the "View billing" permission for this workspace. Ask an owner or admin to grant it.'
-        />
+        <EmptyState icon={Lock} title={C.restricted.title} description={C.restricted.body} />
       ) : (
         <div className="flex flex-col gap-10">
           {note ? <StateNote note={note} /> : null}
@@ -119,9 +148,9 @@ function StateNote({ note }: { note: BillingStateNote }) {
     document.getElementById(note.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
   return (
     <section
-      aria-label="Plan status"
+      aria-label={C.stateLabel}
       className={cn(
-        "flex flex-wrap items-center gap-x-6 gap-y-3 rounded-[18px] border px-5 py-4",
+        "nd-rise flex flex-wrap items-center gap-x-6 gap-y-3 rounded-[18px] border px-5 py-4",
         note.tone === "danger"
           ? "border-danger-border bg-danger-soft"
           : note.tone === "gold"
@@ -136,11 +165,19 @@ function StateNote({ note }: { note: BillingStateNote }) {
       </div>
       {note.action ? (
         note.href ? (
-          <Button asChild variant={note.tone === "gold" ? "gold" : "default"}>
+          <Button
+            asChild
+            variant={note.tone === "gold" ? "gold" : "default"}
+            className="phone:min-h-11"
+          >
             <a href={note.href}>{note.action}</a>
           </Button>
         ) : (
-          <Button variant={note.tone === "gold" ? "gold" : "default"} onClick={go}>
+          <Button
+            variant={note.tone === "gold" ? "gold" : "default"}
+            className="phone:min-h-11"
+            onClick={go}
+          >
             {note.action}
           </Button>
         )
@@ -166,7 +203,7 @@ function useBillingSummary(organizationId: string) {
     );
     setLoading(false);
     if (error || !data) {
-      setFailed(error ?? "We couldn't load your billing just now.");
+      setFailed(error ?? C.loadFailed.body);
       return;
     }
     setFailed(null);
@@ -190,8 +227,7 @@ function useBillingSummary(organizationId: string) {
         if (!done) {
           const status = await confirmCashfreeReturn(paymentId);
           if (status === "paid" || status === "failed") done = true;
-          if (status === "failed" && tries === 1)
-            toast.error("That payment didn't go through. You can try again.");
+          if (status === "failed" && tries === 1) toast.error(C.paymentFailed);
         }
         await load();
       })();
@@ -218,10 +254,25 @@ function BillingBody({
   const [askOpen, setAskOpen] = useState(false);
 
   if (loading) {
+    // The page's own shape: the wallet card, then this month's lines.
     return (
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
-        <Skeleton className="h-56 rounded-[20px]" />
-        <Skeleton className="h-56 rounded-[20px]" />
+      <div
+        className="grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,4fr)] lg:gap-10"
+        aria-busy="true"
+        aria-label={C.loadingLabel}
+      >
+        <div className="flex flex-col gap-4 rounded-[20px] border border-border bg-card p-6 sm:p-8">
+          <Skeleton className="h-5 w-36 rounded-lg" />
+          <Skeleton className="h-14 w-56 rounded-xl" />
+          <Skeleton className="h-4 w-32 rounded-lg" />
+          <Skeleton className="mt-2 h-11 w-32 rounded-xl" />
+        </div>
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-6 w-32 rounded-lg" />
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-12 w-full rounded-xl" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -230,9 +281,13 @@ function BillingBody({
     return (
       <EmptyState
         icon={Wallet}
-        title="We couldn't load your billing"
-        description={failed ?? "Please try again in a moment."}
-        action={<Button onClick={retry}>Try again</Button>}
+        title={C.loadFailed.title}
+        description={failed ?? C.loadFailed.body}
+        action={
+          <Button onClick={retry} className="phone:min-h-11">
+            {C.loadFailed.retry}
+          </Button>
+        }
       />
     );
   }
@@ -245,89 +300,79 @@ function BillingBody({
     day: "numeric",
     month: "short",
   });
-  // The ticker counts whole rupees; the paise sit beside it, exact from the start.
-  const rupees = (n: number) => {
-    const p = Math.round(n * 100);
-    const whole = Math.trunc(p / 100);
-    const rest = p % 100;
-    return { whole, paise: `.${String(rest).padStart(2, "0")}` };
-  };
+  const payButton = can("billing.pay");
+  const askButton = can("billing.request") && !can("billing.pay");
 
   return (
     <div className="flex flex-col gap-10">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,4fr)] lg:gap-10">
         <section
           aria-labelledby="wallet-title"
-          className="flex flex-col gap-5 rounded-[20px] border border-border bg-card p-6 shadow-md sm:p-8"
+          {...rise(0)}
+          className="nd-rise flex flex-col gap-5 rounded-[20px] border border-border bg-card p-6 shadow-md sm:p-8"
         >
           <div className="flex flex-col gap-1">
             <h2 id="wallet-title" className="text-body font-semibold text-muted-foreground">
-              Credits available
+              {C.walletTitle}
             </h2>
             <p className="font-display text-[clamp(2.5rem,6vw,3.75rem)] font-extrabold leading-none tracking-[-0.03em] text-foreground">
-              <span className="sr-only">{money(wallet.available, wallet.currency)}</span>
-              {wallet.available < 0 || wallet.currency !== "INR" ? (
-                <span aria-hidden="true">{money(wallet.available, wallet.currency)}</span>
-              ) : (
-                <span aria-hidden="true">
-                  <NumberTicker value={rupees(wallet.available).whole} prefix="₹" />
-                  {rupees(wallet.available).paise}
-                </span>
-              )}
+              <Amount value={wallet.available} currency={wallet.currency} />
             </p>
             <p className="text-body text-muted-foreground">
-              {wallet.held > 0
-                ? `${money(wallet.held, wallet.currency)} held for campaigns`
-                : "Ready to spend"}
+              {wallet.held > 0 ? C.held(money(wallet.held, wallet.currency)) : C.ready}
             </p>
           </div>
           {low ? (
             <p className="rounded-xl bg-gold-bg px-4 py-3 text-body text-gold-ink">
-              <span className="font-semibold">Credits are running low.</span> Top up so your
-              campaigns and replies keep going out.
+              <span className="font-semibold">{C.lowTitle}</span> {C.lowBody}
             </p>
           ) : null}
-          <div className="flex flex-wrap items-center gap-3">
-            {can("billing.pay") ? (
-              <Button size="lg" onClick={() => setBuyOpen(true)} disabled={!planActive}>
-                Top up
-              </Button>
-            ) : null}
-            {can("billing.request") && !can("billing.pay") ? (
-              <Button
-                size="lg"
-                variant="outline"
-                disabled={!planActive}
-                onClick={() => setAskOpen(true)}
-              >
-                Request a top-up
-              </Button>
-            ) : null}
-          </div>
-          {!planActive ? (
-            <p className="text-sm text-muted-foreground">
-              Pick a plan first — a locked or cancelled workspace can't buy credits.
-            </p>
+          {payButton || askButton ? (
+            // The page's main action sits in the first screen on a phone too (390px).
+            <div className="flex flex-wrap items-center gap-3">
+              {payButton ? (
+                <Button
+                  size="lg"
+                  className="phone:min-h-11"
+                  onClick={() => setBuyOpen(true)}
+                  disabled={!planActive}
+                >
+                  {C.topUp}
+                </Button>
+              ) : null}
+              {askButton ? (
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="phone:min-h-11"
+                  disabled={!planActive}
+                  onClick={() => setAskOpen(true)}
+                >
+                  {C.requestTopUp}
+                </Button>
+              ) : null}
+            </div>
           ) : null}
+          {!planActive ? <p className="text-sm text-muted-foreground">{C.planFirst}</p> : null}
         </section>
 
-        <section aria-labelledby="month-title" className="flex flex-col gap-1">
+        <section aria-labelledby="month-title" {...rise(1)} className="nd-rise flex flex-col gap-1">
           <h2 id="month-title" className="font-display text-lg font-semibold text-foreground">
-            This month
+            {C.monthTitle}
           </h2>
           <dl className="flex flex-col">
-            <Stat label={`Spent since ${since}`}>
-              {money(summary.usage_total, wallet.currency)}
+            <Stat label={C.spentSince(since)}>
+              <Amount value={summary.usage_total} currency={wallet.currency} />
             </Stat>
             <Stat
-              label="AI answers"
-              note={aiIncluded > 0 ? "Included in your plan this month" : "Charged as you go"}
+              label={C.aiAnswers}
+              note={aiIncluded > 0 ? C.aiIncluded : C.aiPayAsYouGo}
               bar={
                 aiIncluded > 0 ? (
                   <div
                     className="h-2 overflow-hidden rounded-full bg-line"
                     role="img"
-                    aria-label={`${aiUsed} of ${aiIncluded} included AI answers used`}
+                    aria-label={C.aiBar(aiUsed, aiIncluded)}
                   >
                     <i
                       className="nd-bar-grow block h-full rounded-full bg-aiden"
@@ -339,29 +384,35 @@ function BillingBody({
                 ) : null
               }
             >
-              {aiIncluded > 0 ? `${aiUsed} of ${aiIncluded}` : String(aiUsed)}
+              {aiIncluded > 0 ? (
+                <>
+                  <Count n={aiUsed} /> of {aiIncluded}
+                </>
+              ) : (
+                <Count n={aiUsed} />
+              )}
             </Stat>
             <Stat
-              label="Your plan"
+              label={C.yourPlan}
               note={
                 onTrial
-                  ? "Pick a plan above to start"
+                  ? C.planPickAbove
                   : summary.plan.price_monthly
-                    ? `${money(summary.plan.price_monthly, wallet.currency)} a month`
-                    : "Talk to us about a plan"
+                    ? C.planPerMonth(money(summary.plan.price_monthly, wallet.currency))
+                    : C.planTalk
               }
             >
-              {onTrial ? "Trial — no plan yet" : (summary.plan.name ?? "No plan yet")}
+              {onTrial ? C.planTrial : (summary.plan.name ?? C.planNone)}
             </Stat>
           </dl>
         </section>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
+      <div {...rise(2)} className="nd-rise grid gap-6 lg:grid-cols-2 lg:gap-10">
         <UsageChart summary={summary} />
         <section aria-labelledby="rates-title" className="flex flex-col gap-3">
           <h2 id="rates-title" className="font-display text-lg font-semibold text-foreground">
-            What a message costs you
+            {C.ratesTitle}
           </h2>
           <table className="w-full text-body">
             <tbody>
@@ -378,22 +429,21 @@ function BillingBody({
             </tbody>
           </table>
           <p className="text-sm text-muted-foreground">
-            {summary.gst_registered === false
-              ? "Prices are per message."
-              : "Prices are per message, before 18% GST."}{" "}
-            Replies inside the 24-hour window are free.
+            {summary.gst_registered === false ? C.ratesNoGst : C.ratesGst} {C.ratesFree}
           </p>
         </section>
       </div>
 
-      <div id="invoices" className="scroll-mt-4">
+      <div id="invoices" {...rise(3)} className="nd-rise scroll-mt-4">
         <InvoicesPanel
           organizationId={organizationId}
           gstRegistered={summary.gst_registered !== false}
         />
       </div>
 
-      <HistoryTabs organizationId={organizationId} currency={wallet.currency} />
+      <div {...rise(4)} className="nd-rise">
+        <HistoryTabs organizationId={organizationId} currency={wallet.currency} />
+      </div>
 
       <BuyCreditsDialog
         open={buyOpen}
@@ -444,12 +494,10 @@ function UsageChart({ summary }: { summary: BillingSummary }) {
   return (
     <section aria-labelledby="usage-title" className="flex flex-col gap-3">
       <h2 id="usage-title" className="font-display text-lg font-semibold text-foreground">
-        Where your credits went
+        {C.usageTitle}
       </h2>
       {bars.length === 0 ? (
-        <p className="text-body text-muted-foreground">
-          Nothing spent yet this month — your first campaign will show up here.
-        </p>
+        <p className="text-body text-muted-foreground">{C.usageEmpty}</p>
       ) : (
         <ul className="flex flex-col gap-4">
           {bars.map((b) => (
@@ -497,13 +545,13 @@ function PlanCards({ organizationId }: { organizationId: string }) {
   const currentKey = state.current_plan?.key ?? null;
 
   return (
-    <section aria-labelledby="plans-title" className="flex flex-col gap-4">
+    <section aria-labelledby="plans-title" {...rise(5)} className="nd-rise flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h2 id="plans-title" className="font-display text-[1.375rem] font-semibold text-foreground">
-          Plans
+          {C.plansTitle}
         </h2>
         <p className="text-body text-muted-foreground">
-          To change your plan, write to{" "}
+          {C.plansChange}{" "}
           <a
             className="font-semibold text-aiden-deep underline-offset-4 hover:underline"
             href="mailto:hello@aidwar.in?subject=Change%20plan"
@@ -530,7 +578,7 @@ function PlanCards({ organizationId }: { organizationId: string }) {
                 <h3 className="font-display text-lg font-semibold text-foreground">{plan.name}</h3>
                 {current ? (
                   <span className="rounded-full bg-ink px-2.5 py-0.5 text-xs font-bold text-ink-foreground">
-                    Current plan
+                    {C.currentPlan}
                   </span>
                 ) : null}
               </div>
@@ -539,18 +587,18 @@ function PlanCards({ organizationId }: { organizationId: string }) {
               ) : null}
               <div>
                 {custom ? (
-                  <p className="font-display text-[1.75rem] font-semibold">Custom</p>
+                  <p className="font-display text-[1.75rem] font-semibold">{C.custom}</p>
                 ) : (
                   <>
                     <p className="font-display text-[1.75rem] font-semibold tabular-nums">
                       {money(plan.price_monthly, plan.currency)}
                       <span className="font-sans text-sm font-normal text-muted-foreground">
                         {" "}
-                        / month
+                        {C.perMonth}
                       </span>
                     </p>
                     {state.gst_registered === true ? (
-                      <p className="text-xs text-muted-foreground">+ 18% GST</p>
+                      <p className="text-xs text-muted-foreground">{C.plusGst}</p>
                     ) : null}
                   </>
                 )}
