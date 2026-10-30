@@ -14,3 +14,9 @@ export { TypingAnimation as TypingText } from "@/components/magicui/typing-anima
 export { AvatarCircles, type AvatarCircle } from "@/components/magicui/avatar-circles";
 export { BlurFade } from "@/components/magicui/blur-fade";
 export { SectionTabs } from "@/components/shell/section-tabs";
+/* Batch 57: the polish pass's shared pieces. */
+export { TypingDots } from "./typing-dots";
+export { SparkleChip } from "./sparkle";
+export { StickyAction } from "./sticky-action";
+export { ConfettiBurst } from "@/components/magicui/confetti-burst";
+export { AnimatedCircularProgressBar as ProgressRing } from "@/components/magicui/animated-circular-progress-bar";

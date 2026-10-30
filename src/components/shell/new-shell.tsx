@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Check, Loader2 } from "lucide-react";
+import { MotionConfig, motion } from "motion/react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +26,7 @@ import { usePendingGapCount } from "@/hooks/use-pending-gaps";
 import { isPlainKey, isTypingTarget, MOD_KEY } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "./command-palette";
-import { AidenWorkspaceIntro, DesignSwitchItem } from "./design-switch";
+import { AidenWorkspaceIntro, DesignSwitchItem, useDesignSwitch } from "./design-switch";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { isActivePath, useNavItems } from "./use-nav";
 import {
@@ -121,6 +122,9 @@ function InboxCount({
 
 /* ----------------------------------------------------------- desktop bar */
 
+/** Batch 57: the one easing family (spec.md), 350ms, for every sliding highlight. */
+export const PILL_MOTION = { duration: 0.35, ease: [0.2, 0.8, 0.2, 1] } as const;
+
 function SectionNav({
   model,
   current,
@@ -140,16 +144,25 @@ function SectionNav({
             {...linkProps(s)}
             aria-current={on ? "page" : undefined}
             className={cn(
-              "inline-flex items-center rounded-full px-3.5 py-2 text-[0.9375rem] font-semibold transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.97]",
-              on
-                ? "bg-surface text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground",
+              "relative inline-flex items-center rounded-full px-3.5 py-2 text-[0.9375rem] font-semibold transition-[color,transform] duration-200 active:scale-[0.97]",
+              on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {s.label}
-            {s.key === "inbox" ? (
-              <InboxCount waiting={inbox.waiting} unread={inbox.unread} />
+            {on ? (
+              // Batch 57: the white pill slides from the last section to this one.
+              <motion.span
+                layoutId="nd-nav-pill"
+                aria-hidden="true"
+                className="absolute inset-0 rounded-full bg-surface shadow-xs"
+                transition={PILL_MOTION}
+              />
             ) : null}
+            <span className="relative inline-flex items-center">
+              {s.label}
+              {s.key === "inbox" ? (
+                <InboxCount waiting={inbox.waiting} unread={inbox.unread} />
+              ) : null}
+            </span>
           </Link>
         );
       })}
@@ -392,6 +405,7 @@ function MoreSheet({
     ...model.account,
     ...model.overflow,
   ];
+  const sw = useDesignSwitch("aiden_workspace");
   return (
     <BottomSheet
       open={open}
@@ -414,6 +428,20 @@ function MoreSheet({
           {l.label}
         </Link>
       ))}
+      {sw.visible ? (
+        // Batch 57 (approved preview): Classic is one tap away on a phone too —
+        // the avatar menu's own switch (same run, same remembered choice).
+        <button
+          type="button"
+          onClick={() => {
+            close();
+            void sw.run();
+          }}
+          className={cn(sheetRowClass, "mt-1 border-t border-line pt-4 text-muted-foreground")}
+        >
+          {sw.label}
+        </button>
+      ) : null}
     </BottomSheet>
   );
 }
@@ -487,6 +515,8 @@ export function NewAppShell({ children }: { children: ReactNode }) {
 
   return (
     <TooltipProvider delayDuration={250} skipDelayDuration={100}>
+      {/* Batch 57: every motion component follows the person's reduced-motion setting. */}
+      <MotionConfig reducedMotion="user">
       <ShellSectionContext.Provider value={sectionState}>
         <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
           <a
@@ -549,6 +579,7 @@ export function NewAppShell({ children }: { children: ReactNode }) {
           <AidenWorkspaceIntro />
         </div>
       </ShellSectionContext.Provider>
+      </MotionConfig>
     </TooltipProvider>
   );
 }
