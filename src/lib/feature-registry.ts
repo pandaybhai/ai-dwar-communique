@@ -1428,6 +1428,39 @@ export const FEATURES: readonly FeatureManifest[] = [
     activity_actions: [],
     data_tables: [],
   },
+  {
+    // Batch 52: AiDwar MCP at https://aidwar.in/mcp. On by default for every
+    // plan (incl. trial); a workspace override switches it off (the kill
+    // switch). Rows are in 20261260_batch52_mcp.sql; the code treats a
+    // missing flag row as on (mcpAccessOn in src/lib/mcp-access.server.ts).
+    key: "mcp",
+    depends_on: [],
+    name: "AI assistants (MCP)",
+    description:
+      "Let the team connect Claude, ChatGPT, Codex or Cursor to this workspace at https://aidwar.in/mcp: read the workspace and draft campaigns and flows; sending or switching on always needs their confirmation.",
+    icon: "sparkles",
+    flag_key: "mcp_access",
+    flag_default_enabled: true,
+    settings_path: "/app/settings",
+    permissions: [
+      {
+        key: "mcp.use",
+        name: "Use AiDwar from an AI assistant",
+        description:
+          "Connect Claude, ChatGPT, Codex or Cursor and use AiDwar through it, with the same permissions as in the app.",
+        min_role: "agent",
+      },
+    ],
+    analytics: none,
+    activity_actions: [
+      "mcp_segment_created",
+      "mcp_campaign_drafted",
+      "mcp_campaign_sent",
+      "mcp_flow_drafted",
+      "mcp_flow_activated",
+    ],
+    data_tables: [],
+  },
 ] as const;
 
 export const ROLE_RANK: Record<OrgRole, number> = { owner: 4, admin: 3, marketer: 2, agent: 1 };
