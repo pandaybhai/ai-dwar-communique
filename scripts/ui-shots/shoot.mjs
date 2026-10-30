@@ -394,7 +394,57 @@ const SCENARIOS_B51 = {
   "landing-proof-classic": { path: "/#proof", conversations: 0, wait: "#proof", settle: 2500, crop: "#proof" },
 };
 
-const SETS = { b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b48: SCENARIOS_B48, b50: SCENARIOS_B50, b51: SCENARIOS_B51 };
+/**
+ * Batch 57: every Aiden Workspace screen in one set (run with --design new for
+ * the polish pass, --design classic to prove Classic did not move).
+ */
+const AI_ASSISTANTS = {
+  mcpOn: true,
+  supportLocked: false,
+  canManage: true,
+  seesEveryone: true,
+  apps: [
+    { userId: "00000000-0000-4000-8000-0000000000b1", member: "You", mine: true, clientId: "c-claude", name: "Claude", site: "claude.ai", grantedAt: "2026-10-28T09:12:00Z", lastUsedAt: "2026-10-30T05:40:00Z" },
+  ],
+  timeline: [
+    { id: "e1", action: "mcp_campaign_drafted", at: "2026-10-30T05:38:00Z", userId: "00000000-0000-4000-8000-0000000000b1", member: "You", app: "Claude", appId: "c-claude", name: "Diwali for VIPs", link: "/app/campaigns/k1" },
+  ],
+  usage: { callsThisMinute: 4, callsPerMinute: 60, sendsThisHour: 1, sendsPerHour: 5 },
+};
+const SCENARIOS_B57 = {
+  "home-replying": SCENARIOS_B45["home-replying"],
+  "home-draft": SCENARIOS_B45["home-draft"],
+  "home-off": SCENARIOS_B45["home-off"],
+  "home-empty": { path: "/app", conversations: 0, aidenMode: "replying", wait: "h1", settle: 3000 },
+  "home-new": { path: "/app", conversations: 0, journey: true, aidenMode: "off", wait: "h1", settle: 3000 },
+  "inbox-list": SCENARIOS_B46["inbox-list"],
+  "inbox-chat": { ...SCENARIOS_B46["inbox-chat"], settle: 1500 },
+  "inbox-empty": SCENARIOS_B46["inbox-empty"],
+  campaigns: SCENARIOS_B47.campaigns,
+  "campaigns-empty": { path: "/app/campaigns", conversations: 40, campaigns: 0, wait: "h1", settle: 1500 },
+  "campaign-results": SCENARIOS_B47["campaign-results"],
+  "campaign-wizard-review": SCENARIOS_B47["campaign-wizard-review"],
+  templates: SCENARIOS_B47.templates,
+  cards: { ...SCENARIOS_B47.cards, fullPage: false },
+  contacts: SCENARIOS_B48.contacts,
+  "contacts-empty": SCENARIOS_B48["contacts-empty"],
+  "contact-drawer": SCENARIOS_B48["contact-drawer"],
+  segments: SCENARIOS_B48.segments,
+  receipts: { ...SCENARIOS_B48.receipts, fullPage: false },
+  employee: { path: "/app/employee", conversations: 40, wait: "h1", settle: 2000 },
+  flows: { path: "/app/flows", conversations: 40, wait: "h1", settle: 1500 },
+  automations: { path: "/app/automations", conversations: 40, wait: "h1", settle: 1500 },
+  catalog: { path: "/app/catalog", conversations: 40, wait: "h1", settle: 1500 },
+  collections: { path: "/app/catalog/collections", conversations: 40, wait: "h1", settle: 1500 },
+  settings: SCENARIOS_B50.settings,
+  billing: { ...SCENARIOS_B50.billing, fullPage: false },
+  "ai-assistants": { path: "/app/ai-assistants", conversations: 10, wait: "h1", settle: 1500, aiAssistants: true },
+  "avatar-menu": SCENARIOS_B44["avatar-menu"],
+  "more-sheet": SCENARIOS_B44["more-sheet"],
+  palette: SCENARIOS.palette,
+};
+
+const SETS = { b57: SCENARIOS_B57, b39: SCENARIOS, b41: SCENARIOS_B41, b44: SCENARIOS_B44, b45: SCENARIOS_B45, b46: SCENARIOS_B46, b47: SCENARIOS_B47, b48: SCENARIOS_B48, b50: SCENARIOS_B50, b51: SCENARIOS_B51 };
 
 const consoleErrors = [];
 
@@ -431,6 +481,8 @@ async function shoot(browser, name, scenario, viewportName, theme) {
   await context.route("**/*", (route) => {
     const url = route.request().url();
     if (url.startsWith(BACKEND)) return fake.backend(route);
+    if (scenario.aiAssistants && url.startsWith(`${BASE}/api/ai-assistants`))
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(AI_ASSISTANTS) });
     if (url.startsWith(`${BASE}/api/`)) return fake.api(route);
     if (url.startsWith(BASE) || url.startsWith("data:") || url.startsWith("blob:")) return route.continue();
     if (url.startsWith("https://fonts.googleapis.com") || url.startsWith("https://fonts.gstatic.com")) return route.continue();
