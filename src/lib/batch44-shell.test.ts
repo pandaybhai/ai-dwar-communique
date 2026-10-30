@@ -114,8 +114,10 @@ describe("route safety: the new shell reaches every page the sidebar shows", () 
     expect(tabs).toEqual({
       home: [],
       inbox: ["Inbox"],
-      campaigns: ["Campaigns", "Templates", "Cards"],
-      customers: ["Contacts", "Segments", "Sales from chats"],
+      // Batch 57: "Message designs" and "Groups" are the visible names of
+      // Templates and Segments (routes and keys unchanged).
+      campaigns: ["Campaigns", "Message designs", "Cards"],
+      customers: ["Contacts", "Groups", "Sales from chats"],
       automate: ["Aiden", "Flows", "Automations", "AI assistants"],
       shop: ["Catalogue", "Collections", "Shopify"],
     });
@@ -161,9 +163,9 @@ describe("active section and sub-tab", () => {
     expect(at("/app/analytics")).toEqual(["home", null]);
     expect(at("/app/inbox")).toEqual(["inbox", "Inbox"]);
     expect(at("/app/campaigns/123")).toEqual(["campaigns", "Campaigns"]);
-    expect(at("/app/templates")).toEqual(["campaigns", "Templates"]);
+    expect(at("/app/templates")).toEqual(["campaigns", "Message designs"]);
     expect(at("/app/contacts")).toEqual(["customers", "Contacts"]);
-    expect(at("/app/contacts", { tab: "segments" })).toEqual(["customers", "Segments"]);
+    expect(at("/app/contacts", { tab: "segments" })).toEqual(["customers", "Groups"]);
     expect(at("/app/receipts")).toEqual(["customers", "Sales from chats"]);
     expect(at("/app/flows/v2/abc")).toEqual(["automate", "Flows"]);
     expect(at("/app/catalog")).toEqual(["shop", "Catalogue"]);
