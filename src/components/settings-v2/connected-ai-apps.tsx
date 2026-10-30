@@ -13,9 +13,19 @@ import { aidwar } from "@/integrations/aidwar/client";
  * setting: nothing in AiDwar's tables is read or written.
  */
 
-export type GrantView = { clientId: string; name: string; site: string | null; grantedAt: string; scopes: string[] };
+export type GrantView = {
+  clientId: string;
+  name: string;
+  site: string | null;
+  grantedAt: string;
+  scopes: string[];
+};
 
-type RawGrant = { client?: { id?: string; name?: string; uri?: string }; scopes?: string[]; granted_at?: string };
+type RawGrant = {
+  client?: { id?: string; name?: string; uri?: string };
+  scopes?: string[];
+  granted_at?: string;
+};
 
 export function grantViews(raw: unknown): GrantView[] {
   if (!Array.isArray(raw)) return [];
@@ -52,7 +62,24 @@ function connectedOn(iso: string): string {
     : `Connected ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
 }
 
-export function ConnectedAiApps() {
+function lastUsedText(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : `last used ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+}
+
+/**
+ * Batch 53: the same list on the AI assistants page, in Classic and Aiden
+ * Workspace. `lastUsed` (client id -> time) comes from the page's server
+ * read when 20261270 is applied; `intro` false leaves out the how-to line
+ * (the page has its own Connect section).
+ */
+export function ConnectedAiApps({
+  lastUsed,
+  intro = true,
+}: { lastUsed?: Record<string, string | null> | undefined; intro?: boolean } = {}) {
   const [grants, setGrants] = useState<GrantView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -84,7 +111,18 @@ export function ConnectedAiApps() {
     setGrants((g) => (g ?? []).filter((x) => x.clientId !== clientId));
   }
 
-  return <ConnectedAiAppsView grants={grants} error={error} confirming={confirming} removing={removing} onAsk={setConfirming} onRemove={remove} />;
+  return (
+    <ConnectedAiAppsView
+      grants={grants}
+      error={error}
+      confirming={confirming}
+      removing={removing}
+      onAsk={setConfirming}
+      onRemove={remove}
+      lastUsed={lastUsed}
+      intro={intro}
+    />
+  );
 }
 
 export function ConnectedAiAppsView({
@@ -94,8 +132,12 @@ export function ConnectedAiAppsView({
   removing = null,
   onAsk,
   onRemove,
+  lastUsed,
+  intro = true,
 }: {
   grants: GrantView[] | null;
+  lastUsed?: Record<string, string | null> | undefined;
+  intro?: boolean;
   error?: string | null;
   confirming?: string | null;
   removing?: string | null;
@@ -104,18 +146,24 @@ export function ConnectedAiAppsView({
 }) {
   return (
     <div className="space-y-4">
-      <p className="text-body text-muted-foreground">
-        Add <span className="font-semibold text-foreground">https://aidwar.in/mcp</span> to Claude, ChatGPT, Codex or Cursor
-        and sign in to let it read your workspace and draft campaigns and flows. Sending or switching on always asks you
-        first.{" "}
-        <a
-          href="/developers#mcp"
-          className="rounded font-semibold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
-        >
-          How to connect
-        </a>
-      </p>
-      {error ? <p className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-soft-foreground">{error}</p> : null}
+      {intro ? (
+        <p className="text-body text-muted-foreground">
+          Add <span className="font-semibold text-foreground">https://aidwar.in/mcp</span> to
+          Claude, ChatGPT, Codex or Cursor and sign in to let it read your workspace and draft
+          campaigns and flows. Sending or switching on always asks you first.{" "}
+          <a
+            href="/developers#mcp"
+            className="rounded font-semibold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+          >
+            How to connect
+          </a>
+        </p>
+      ) : null}
+      {error ? (
+        <p className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger-soft-foreground">
+          {error}
+        </p>
+      ) : null}
       {grants === null ? (
         <div className="space-y-3" aria-label="Loading connected apps">
           <Skeleton className="h-16 w-full rounded-2xl" />
@@ -135,22 +183,43 @@ export function ConnectedAiAppsView({
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-foreground [overflow-wrap:anywhere]">{g.name}</p>
                 <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
-                  {[g.site, connectedOn(g.grantedAt)].filter(Boolean).join(", ")}
+                  {[g.site, connectedOn(g.grantedAt), lastUsedText(lastUsed?.[g.clientId])]
+                    .filter(Boolean)
+                    .join(", ")}
                 </p>
               </div>
               {confirming === g.clientId ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm text-foreground">Remove its access?</span>
-                  <Button type="button" variant="outline" size="sm" disabled={removing !== null} onClick={() => onAsk?.(null)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={removing !== null}
+                    onClick={() => onAsk?.(null)}
+                  >
                     Keep
                   </Button>
-                  <Button type="button" variant="destructive" size="sm" disabled={removing !== null} onClick={() => onRemove?.(g.clientId)}>
-                    {removing === g.clientId ? <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> : null}
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={removing !== null}
+                    onClick={() => onRemove?.(g.clientId)}
+                  >
+                    {removing === g.clientId ? (
+                      <Loader2 className="motion-safe:animate-spin" aria-hidden="true" />
+                    ) : null}
                     Remove
                   </Button>
                 </div>
               ) : (
-                <Button type="button" variant="outline" size="sm" onClick={() => onAsk?.(g.clientId)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onAsk?.(g.clientId)}
+                >
                   Remove access
                 </Button>
               )}

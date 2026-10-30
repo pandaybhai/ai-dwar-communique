@@ -387,6 +387,7 @@ function MoreSheet({
   const rest = model.sections.filter((s) => !BOTTOM.includes(s.key));
   const close = () => onOpenChange(false);
   const links: ShellLink[] = [
+    ...(model.assistants ? [model.assistants] : []),
     ...(model.analytics ? [model.analytics] : []),
     ...model.account,
     ...model.overflow,

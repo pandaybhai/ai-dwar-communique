@@ -1435,13 +1435,19 @@ export const FEATURES: readonly FeatureManifest[] = [
     // missing flag row as on (mcpAccessOn in src/lib/mcp-access.server.ts).
     key: "mcp",
     depends_on: [],
-    name: "AI assistants (MCP)",
+    name: "AI assistants",
     description:
       "Let the team connect Claude, ChatGPT, Codex or Cursor to this workspace at https://aidwar.in/mcp: read the workspace and draft campaigns and flows; sending or switching on always needs their confirmation.",
     icon: "sparkles",
+    // Batch 53: the AI assistants page. Its nav entry stays while the flag is
+    // off (the page says it's switched off and who can switch it on); see
+    // FLAGS_THAT_KEEP_THE_PAGE in src/components/shell/use-nav.ts.
+    nav_path: "/app/ai-assistants",
+    nav_order: 57,
+    nav_permission: "mcp.use",
     flag_key: "mcp_access",
     flag_default_enabled: true,
-    settings_path: "/app/settings",
+    settings_path: "/app/ai-assistants",
     permissions: [
       {
         key: "mcp.use",
@@ -1458,6 +1464,7 @@ export const FEATURES: readonly FeatureManifest[] = [
       "mcp_campaign_sent",
       "mcp_flow_drafted",
       "mcp_flow_activated",
+      "mcp_access_changed",
     ],
     data_tables: [],
   },

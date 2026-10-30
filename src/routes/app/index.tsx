@@ -54,6 +54,7 @@ import {
 import type { CampaignRow } from "@/lib/campaigns";
 import type { HomeSummary } from "@/lib/home.server";
 import { useNewDesign } from "@/lib/new-design";
+import { ConnectAssistantCard } from "@/components/ai-assistants/connect-card";
 import { NewHome } from "@/components/home-v2/new-home";
 
 const DESCRIPTION = "Today at a glance: conversations, what Aiden answered, who is waiting on you.";
@@ -77,7 +78,16 @@ export const Route = createFileRoute("/app/")({
  * workspace has new_design on; otherwise the Batch 41 Home below, unchanged.
  */
 function HomeRoute() {
-  return useNewDesign() ? <NewHome /> : <AppHome />;
+  // Batch 53: "Connect your AI assistant" on the Batch 41 Home too, above it
+  // (the Home itself is unchanged: batch45-home.test.tsx pins its code).
+  return useNewDesign() ? (
+    <NewHome />
+  ) : (
+    <>
+      <ConnectAssistantCard />
+      <AppHome />
+    </>
+  );
 }
 
 const SOURCE_LABEL: Record<string, string> = {

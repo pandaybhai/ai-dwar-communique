@@ -38,12 +38,19 @@ export const HOME_ITEM: NavItem = { to: "/app", label: "Home", icon: Home, flag:
 const GROUPS: Array<{ label: string; paths: string[] }> = [
   { label: "Conversations", paths: ["/app/inbox", "/app/contacts"] },
   { label: "Marketing", paths: ["/app/campaigns", "/app/templates", "/app/catalog", "/app/cards"] },
-  { label: "Automation", paths: ["/app/flows", "/app/automations", "/app/employee"] },
+  { label: "Automation", paths: ["/app/flows", "/app/automations", "/app/employee", "/app/ai-assistants"] },
   { label: "Insights", paths: ["/app/analytics", "/app/receipts"] },
   { label: "Workspace", paths: ["/app/settings", "/app/billing"] },
 ];
 
 export type NavGroup = { label: string | null; items: NavItem[] };
+
+/**
+ * Batch 53: flags whose page stays in the menu while switched off, because
+ * the page itself explains it's off and who can switch it on (AI assistants:
+ * an owner switches mcp_access back on there).
+ */
+const FLAGS_THAT_KEEP_THE_PAGE = new Set(["mcp_access"]);
 
 export type NavFilterInput = {
   isFeatureEnabled: (key: string) => boolean;
@@ -77,7 +84,10 @@ export function filterNavItems(input: NavFilterInput): { items: NavItem[]; restr
       ]
     : NAV.filter(
         (item) =>
-          (!item.flag || flagsLoading || isFeatureEnabled(item.flag)) &&
+          (!item.flag ||
+            flagsLoading ||
+            isFeatureEnabled(item.flag) ||
+            FLAGS_THAT_KEEP_THE_PAGE.has(item.flag)) &&
           (!item.perm || permsLoading || can(item.perm)) &&
           // No automations at all: new replies are made in Flows (templates there).
           !(item.to === "/app/automations" && automationsNavHidden(automationsCount)),

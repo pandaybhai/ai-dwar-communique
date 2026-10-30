@@ -42,12 +42,14 @@ import { Route as AdminOnboardingRouteImport } from './routes/admin/onboarding'
 import { Route as AdminOrganizationsRouteImport } from './routes/admin/organizations'
 import { Route as AdminSendingRouteImport } from './routes/admin/sending'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as ApiAiAssistantsRouteImport } from './routes/api/ai-assistants'
 import { Route as ApiCardsRouteImport } from './routes/api/cards'
 import { Route as ApiDesignRouteImport } from './routes/api/design'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
 import { Route as ApiFormsRouteImport } from './routes/api/forms'
 import { Route as ApiPermissionsRouteImport } from './routes/api/permissions'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppAiAssistantsRouteImport } from './routes/app/ai-assistants'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
 import { Route as AppAutomationsRouteImport } from './routes/app/automations'
 import { Route as AppBillingRouteImport } from './routes/app/billing'
@@ -370,6 +372,11 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const ApiAiAssistantsRoute = ApiAiAssistantsRouteImport.update({
+  id: '/api/ai-assistants',
+  path: '/api/ai-assistants',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCardsRoute = ApiCardsRouteImport.update({
   id: '/api/cards',
   path: '/api/cards',
@@ -398,6 +405,11 @@ const ApiPermissionsRoute = ApiPermissionsRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAiAssistantsRoute = AppAiAssistantsRouteImport.update({
+  id: '/ai-assistants',
+  path: '/ai-assistants',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
@@ -1252,11 +1264,13 @@ export interface FileRoutesByFullPath {
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/ai-assistants': typeof ApiAiAssistantsRoute
   '/api/cards': typeof ApiCardsRoute
   '/api/design': typeof ApiDesignRoute
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
+  '/app/ai-assistants': typeof AppAiAssistantsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/billing': typeof AppBillingRoute
@@ -1445,11 +1459,13 @@ export interface FileRoutesByTo {
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/ai-assistants': typeof ApiAiAssistantsRoute
   '/api/cards': typeof ApiCardsRoute
   '/api/design': typeof ApiDesignRoute
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
+  '/app/ai-assistants': typeof AppAiAssistantsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/billing': typeof AppBillingRoute
@@ -1642,11 +1658,13 @@ export interface FileRoutesById {
   '/admin/organizations': typeof AdminOrganizationsRoute
   '/admin/sending': typeof AdminSendingRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/ai-assistants': typeof ApiAiAssistantsRoute
   '/api/cards': typeof ApiCardsRoute
   '/api/design': typeof ApiDesignRoute
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
+  '/app/ai-assistants': typeof AppAiAssistantsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
   '/app/billing': typeof AppBillingRoute
@@ -1840,11 +1858,13 @@ export interface FileRouteTypes {
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
+    | '/api/ai-assistants'
     | '/api/cards'
     | '/api/design'
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
+    | '/app/ai-assistants'
     | '/app/analytics'
     | '/app/automations'
     | '/app/billing'
@@ -2033,11 +2053,13 @@ export interface FileRouteTypes {
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
+    | '/api/ai-assistants'
     | '/api/cards'
     | '/api/design'
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
+    | '/app/ai-assistants'
     | '/app/analytics'
     | '/app/automations'
     | '/app/billing'
@@ -2229,11 +2251,13 @@ export interface FileRouteTypes {
     | '/admin/organizations'
     | '/admin/sending'
     | '/admin/users'
+    | '/api/ai-assistants'
     | '/api/cards'
     | '/api/design'
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
+    | '/app/ai-assistants'
     | '/app/analytics'
     | '/app/automations'
     | '/app/billing'
@@ -2415,6 +2439,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRouteWithChildren
+  ApiAiAssistantsRoute: typeof ApiAiAssistantsRoute
   ApiCardsRoute: typeof ApiCardsRoute
   ApiDesignRoute: typeof ApiDesignRoute
   ApiEventsRoute: typeof ApiEventsRoute
@@ -2768,6 +2793,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/api/ai-assistants': {
+      id: '/api/ai-assistants'
+      path: '/api/ai-assistants'
+      fullPath: '/api/ai-assistants'
+      preLoaderRoute: typeof ApiAiAssistantsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cards': {
       id: '/api/cards'
       path: '/api/cards'
@@ -2808,6 +2840,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/ai-assistants': {
+      id: '/app/ai-assistants'
+      path: '/ai-assistants'
+      fullPath: '/app/ai-assistants'
+      preLoaderRoute: typeof AppAiAssistantsRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/analytics': {
@@ -3933,6 +3972,7 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
 )
 
 interface AppRouteRouteChildren {
+  AppAiAssistantsRoute: typeof AppAiAssistantsRoute
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomationsRoute: typeof AppAutomationsRoute
   AppBillingRoute: typeof AppBillingRoute
@@ -3956,6 +3996,7 @@ interface AppRouteRouteChildren {
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAiAssistantsRoute: AppAiAssistantsRoute,
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAutomationsRoute: AppAutomationsRoute,
   AppBillingRoute: AppBillingRoute,
@@ -4116,6 +4157,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   DotwellKnownOauthProtectedResourceRoute:
     DotwellKnownOauthProtectedResourceRouteWithChildren,
+  ApiAiAssistantsRoute: ApiAiAssistantsRoute,
   ApiCardsRoute: ApiCardsRoute,
   ApiDesignRoute: ApiDesignRoute,
   ApiEventsRoute: ApiEventsRoute,
