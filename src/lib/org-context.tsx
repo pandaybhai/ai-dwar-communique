@@ -150,17 +150,25 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       setFlagsLoading(true);
-      const { data: defs } = await aidwar.from("feature_flags").select("key, default_enabled");
+      // Batch 58: the defaults and this workspace's overrides are read at
+      // the same time (they were one after the other); applied in the same
+      // order, so the answer is the same.
+      const [{ data: defs }, overridesRead] = await Promise.all([
+        aidwar.from("feature_flags").select("key, default_enabled"),
+        activeId
+          ? aidwar
+              .from("organization_feature_overrides")
+              .select("flag_key, enabled")
+              .eq("organization_id", activeId)
+          : Promise.resolve(null),
+      ]);
       const resolved: Record<string, boolean> = {};
       for (const f of (defs ?? []) as { key: string; default_enabled: boolean }[]) {
         resolved[f.key] = f.default_enabled;
       }
       const defaults = { ...resolved };
       if (activeId) {
-        const { data: overrides } = await aidwar
-          .from("organization_feature_overrides")
-          .select("flag_key, enabled")
-          .eq("organization_id", activeId);
+        const overrides = overridesRead?.data;
         for (const o of (overrides ?? []) as { flag_key: string; enabled: boolean }[]) {
           resolved[o.flag_key] = o.enabled;
         }

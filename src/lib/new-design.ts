@@ -95,10 +95,17 @@ function ensureFonts() {
  * Light only until Batch 50 decides dark: the dark class is lifted while the
  * new design shows and put back from the theme choice when it goes.
  */
-export function useDesignSurface(on: boolean) {
+export function useDesignSurface(on: boolean, settled = true) {
   useEffect(() => {
-    if (!on) return;
     const root = document.documentElement;
+    if (!on) {
+      // Batch 58: the pre-paint script guessed Aiden Workspace from this
+      // browser's cache, and the answer settled on Classic: put Classic's
+      // surface back exactly as the script would have left it.
+      if (settled) undoBootDesignGuess(root, resolveTheme(readThemeChoice()) === "dark");
+      return;
+    }
+    root.removeAttribute("data-design-boot");
     ensureFonts();
     root.setAttribute("data-design", "new");
     root.classList.remove("dark");
@@ -108,5 +115,40 @@ export function useDesignSurface(on: boolean) {
         root.classList.toggle("dark", resolveTheme(readThemeChoice()) === "dark");
       }
     };
-  }, [on]);
+  }, [on, settled]);
+}
+
+type SurfaceRoot = {
+  hasAttribute: (name: string) => boolean;
+  removeAttribute: (name: string) => void;
+  classList: { toggle: (name: string, force?: boolean) => unknown };
+};
+
+/**
+ * Batch 58: the pre-paint script (APP_THEME_SCRIPT) put Aiden Workspace's
+ * surface on from this browser's cache, and the settled answer is Classic:
+ * Classic's surface back, exactly as that script draws it without the cache
+ * (no data-design, the theme's dark class). Nothing when it guessed nothing.
+ */
+export function undoBootDesignGuess(root: SurfaceRoot, dark: boolean): boolean {
+  if (!root.hasAttribute("data-design-boot")) return false;
+  root.removeAttribute("data-design-boot");
+  root.removeAttribute("data-design");
+  if (root.hasAttribute("data-app")) root.classList.toggle("dark", dark);
+  return true;
+}
+
+/**
+ * Batch 58: true once the design answer no longer comes from this browser's
+ * cache — the workspaces, the flags (and, with the release flag on, the
+ * member's design prefs) are read. useDesignSurface undoes the pre-paint
+ * guess only then.
+ */
+export function useDesignSettled(): boolean {
+  const org = useOrg() as Partial<ReturnType<typeof useOrg>> | undefined;
+  if (org?.loading !== false) return false;
+  if (!org?.active) return true;
+  if (org.flagsLoading !== false) return false;
+  const releaseOn = org.flagDefaults?.[RELEASE_FLAG] === true;
+  return !releaseOn || (org.designPrefsLoading === false && Boolean(org.designPrefs));
 }
