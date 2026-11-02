@@ -179,6 +179,12 @@ const ALLOWED: Array<{ id: string; from: string; to: string; why: string }> = [
     to: "3.05 gm.",
     why: "the model is given the shop's labelled details as written (Gross weight: 3.05 gm) instead of a jewellery-only weight field re-written as 'g'",
   },
+  ...["emi-milega", "price-not-in-data"].map((id) => ({
+    id,
+    from: "Let me confirm that for you.",
+    to: "You can see our full range with the latest details here: https://myzoori.com 😊 Happy to help with anything else!",
+    why: "Batch 60: when the guards take out every sentence, code sends one warm line with the shop's own link (from its instructions) instead of the promise line — no AI call; the question is still filed for the owner",
+  })),
 ];
 
 describe("the baseline (main) shows the live faults the checks look for", () => {
@@ -288,7 +294,11 @@ describe("this branch: every reply is the model's, cleanly", () => {
           expect(r().status).toBe("ok");
           expect(r().gapFiled).toBe(true);
           expect(r().handedOff ?? false).toBe(false);
-          expect(textsOf(r())).toEqual(["Let me confirm that for you."]);
+          // Batch 60: not "Let me confirm that for you." — one warm line with
+          // the shop's own link (no AI call, no promise line).
+          expect(textsOf(r())).toHaveLength(1);
+          expect(textsOf(r())[0]).toContain("https://myzoori.com 😊");
+          expect(textsOf(r())[0]).not.toMatch(/let me confirm|don.t have that detail/i);
         });
       }
       if (checks.has("reply_to_known")) {

@@ -695,7 +695,13 @@ describe("(4) retrieval and the cheap checks run alongside what they don't depen
 
   it("the run's price is read alongside the checks, not before them", async () => {
     process.env["LOVABLE_API_KEY"] = "test-key";
-    const world = zooriWorld(CASES.find((c) => c.id === "return-policy-hinglish")!);
+    // Batch 60: the return-policy reply is now settled in code (its values are
+    // in the material), so a claim only the model check can decide is used.
+    const world = zooriWorld({
+      id: "b29-check-alongside",
+      ask: "how do you send orders?",
+      model: () => ({ text: 'We ship every order within 20 days.\n{"needs_owner": false}' }),
+    });
     const held = holdTable(
       world.supabase as unknown as { from: (t: string) => unknown },
       "ai_rates",
