@@ -190,6 +190,13 @@ export type RunOptions = {
   contextNotes?: string[];
   /** Like contextNotes, and also material the guards accept as support (the reply-to product's facts). */
   supportNotes?: string[];
+  /**
+   * Batch 60: the shop's own instructions (ai_instructions.instructions, or
+   * the Playground's unsaved wording) on their own. They are already inside
+   * `system`; this copy makes them the policy check's first material (true
+   * by definition, never cut) and gives the warm fallback the shop's link.
+   */
+  shopInstructions?: string;
 };
 
 
@@ -227,23 +234,27 @@ export type ReplyPart = { kind: "text"; text: string } | { kind: "products"; ite
 const PRODUCTS_MARK = "\u2063\u2063\u2063";
 
 /**
- * The one answering rule, on every conversation reply — with material or
- * without it. Helpfulness is never the thing we withhold; only hard facts
- * about this particular business are.
+ * Batch 60: the platform core — the one short block of platform rules on
+ * every conversation reply, safety only. The shop's own instructions are in
+ * charge of everything else (tone, language, length, links, what to say when
+ * something isn't known); no forced phrase, no link ban.
  *
  * The last line is the model's own report of whether it was missing business
  * information. It is stripped from the reply before anything is sent and is
  * only ever used to file a silent row under Unanswered.
  */
-export const ANSWER_POLICY =
-  "Answer as this business. Use the business material when it exists. For anything else — " +
-  "general knowledge, product advice, how-to, small talk, comparisons — answer helpfully from " +
-  "your own knowledge in the same tone. NEVER state a price, quantity, stock level, delivery " +
-  "date, address or policy detail unless it appears in the material; for those say " +
-  "\"Let me confirm that for you\" and continue helping with everything else in the message.\n\n" +
-  'End every reply with a final line exactly of the form {"needs_owner": true} or ' +
-  '{"needs_owner": false} — true when you were missing business information you needed, false ' +
-  "otherwise. Write nothing after that line.";
+export const ANSWER_POLICY = [
+  "This business's own instructions are in charge: they decide your tone, language, length, links and what to say when you don't know something. These platform rules only add safety:",
+  "- Only state a price, quantity, stock level, date, address or policy that appears in the business's instructions or the material provided.",
+  "- Only use a URL that appears in the business's instructions or the material, copied exactly; never invent or edit one.",
+  "- If the customer is upset or asks for a person, say a teammate will help.",
+  "- Never mention item numbers, sources or brackets.",
+  "- When you don't have something and the instructions don't say what to do, warmly point to the most relevant link from the instructions or material, or offer the team's help.",
+  'End every reply with a final line exactly of the form {"needs_owner": true} or {"needs_owner": false} — true when you were missing business information you needed, false otherwise. Write nothing after that line.',
+].join("\n");
+
+/** The owner's own chat keeps its plain-words source line, so "sources" is not banned there. */
+const OWNER_ANSWER_POLICY = ANSWER_POLICY.replace("- Never mention item numbers, sources or brackets.", "- Never mention item numbers or brackets.");
 
 /** The model's self-report line, and the reply with it taken off. */
 export function splitNeedsOwner(text: string): { output: string; needsOwner: boolean } {
@@ -255,19 +266,46 @@ export function splitNeedsOwner(text: string): { output: string; needsOwner: boo
   };
 }
 
-/** What we say in place of a fact we can't stand behind. */
-const CONFIRM_LINE = "Let me confirm that for you.";
-
 /**
- * Take out the sentences carrying a number the material never mentions, keep
- * everything else the model said, and promise to come back on the rest.
+ * Take out the sentences carrying a number the material never mentions and
+ * keep everything else the model said. Batch 60: nothing is added in their
+ * place — no "let me confirm" line; an empty result gets warmFallbackLine.
  */
 export function stripUnsupported(answer: string, tokens: string[]): string {
   let text = dropSentences(answer, (s) => tokens.some((t) => s.includes(t)));
   for (const token of tokens) text = text.split(token).join("").trim();
-  text = text.replace(/[ \t]{2,}/g, " ").trim();
-  if (!text) return CONFIRM_LINE;
-  return `${text}\n\n${CONFIRM_LINE}`;
+  return text.replace(/[ \t]{2,}/g, " ").trim();
+}
+
+/**
+ * The shop's main link from its own instructions: the first full address as
+ * written, else the first bare domain ("myzoori.com/size-guide" → its site,
+ * https://myzoori.com). Null when the instructions carry none.
+ */
+export function mainShopLink(instructions: string): string | null {
+  const full = instructions.match(/\bhttps?:\/\/[^\s)>\]"']+/i)?.[0];
+  if (full) return full.replace(/[.,;:!?]+$/, "");
+  const bare = instructions.match(/\b(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|in|co\.in|shop|store|net|org|co)\b/i)?.[0];
+  return bare ? `https://${bare.toLowerCase()}` : null;
+}
+
+/**
+ * Batch 60: what goes out when the guards took out every sentence of a reply
+ * — one warm line, written by code (no AI call): the shop's main link from
+ * its own instructions, else the team's help. The question is still filed
+ * for the owner by the caller.
+ */
+export function warmFallbackLine(instructions: string, customerLanguage: string | null = null): string {
+  const link = mainShopLink(instructions);
+  const hinglish = customerLanguage === "hi-Latn";
+  if (link) {
+    return hinglish
+      ? `Hamara poora collection aur latest details yahan dekh sakte hain: ${link} 😊 Aur kuch madad chahiye toh batayiye!`
+      : `You can see our full range with the latest details here: ${link} 😊 Happy to help with anything else!`;
+  }
+  return hinglish
+    ? "Is baare mein hamari team aapki madad karegi 😊 Tab tak aur kuch madad chahiye toh batayiye!"
+    : "Our team will help you with this 😊 Meanwhile, happy to help with anything else!";
 }
 
 /** Words that make a sentence a claim about this business's commercial terms. */
@@ -281,7 +319,7 @@ const POLICY_TOPIC =
  */
 const POLICY_QUALIFIERS: Array<{ key: string; re: RegExp }> = [
   { key: "no questions asked", re: /\bno[- ]questions?[- ]asked\b/i },
-  { key: "free", re: /(?<!feel )\bfree\b|\bno (extra )?(charge|cost|fee)s?\b|\bat no cost\b/i },
+  { key: "free", re: /(?<!feel )\bfree\b|\bno[- ](extra[- ])?(charge|cost|fee)s?\b|\bat no cost\b/i },
   { key: "lifelong", re: /\blife-?long\b|\blifetime\b|\bforever\b|\bno time limit\b/i },
   { key: "unlimited", re: /\bunlimited\b/i },
   { key: "guaranteed", re: /\bguarantee[sd]?\b|\b100 ?%/i },
@@ -373,6 +411,92 @@ export function checkPolicyWording(sentences: string[], sources: string): Policy
     });
   }
   return out;
+}
+
+/** Every figure in a text, commas dropped ("₹45,000" → "45000"), links left out. */
+function figuresIn(text: string): string[] {
+  return (text.replace(LINK, " ").match(/\d[\d,]*(?:\.\d+)?/g) ?? []).map((n) => n.replace(/,/g, "").replace(/\.0+$/, ""));
+}
+
+/** "no questions", "no extra", "no hidden": a promise, not a denial of the policy after it. */
+const PROMISE_AFTER_NO = new Set(["questions", "question", "extra", "hidden", "additional", "charge", "cost", "fee"]);
+
+const POLICY_NEGATION = new Set(["no", "not", "never", "non", "without", "nahi", "nahin", "cannot", "cant", "dont", "doesnt", "isnt", "arent"]);
+
+/**
+ * Batch 60: the deterministic half that makes the model check rare. A claim
+ * is supported without asking a model when every value it states is in one
+ * passage of the material (the shop's own instructions first) about the same
+ * policy: each figure, and each promise word ("free", "lifelong"…) attached
+ * to that policy. A passage that negates the policy ("no returns on sale
+ * items") never supports it; a sentence naming no policy only needs its
+ * figures (a product's price from the catalogue). Anything else is left to
+ * the model check exactly as before.
+ */
+export function groundedClaims(sentences: string[], sources: string): string[] {
+  // Links out, and "45,000" / "4,50,000" read as one figure.
+  const passages = sourcePassages(sources).map((p) => p.replace(LINK, " ").replace(/(\d),(?=\d)/g, "$1"));
+  /** Where each word of a passage starts, with its stem and whether a negation precedes it. */
+  const wordsOf = (text: string) => {
+    const out: Array<{ at: number; stem: string; negated: boolean }> = [];
+    const plain: string[] = [];
+    for (const m of text.matchAll(/[\p{L}\p{N}']+/gu)) {
+      const lower = m[0].toLowerCase().replace(/[^a-z]/g, "");
+      // "no returns", "not refundable", "no exchange or returns" — but "no-questions returns" is a promise.
+      const [two, one] = [plain.at(-2) ?? "", plain.at(-1) ?? ""];
+      const negated = POLICY_NEGATION.has(one) || (POLICY_NEGATION.has(two) && !PROMISE_AFTER_NO.has(one));
+      out.push({ at: m.index ?? 0, stem: stemOf(m[0]), negated });
+      plain.push(lower);
+    }
+    return out;
+  };
+  const indexed = passages.map((text) => ({ text, words: wordsOf(text) }));
+  /** A value is attached to a policy when it sits this close (characters) to the policy's word. */
+  const NEAR = 48;
+  const clauseGrounded = (clause: string): boolean | null => {
+    const figures = figuresIn(clause);
+    const qualifiers = POLICY_QUALIFIERS.filter((q) => q.re.test(clause));
+    // States nothing: neither for nor against the sentence.
+    if (figures.length === 0 && qualifiers.length === 0) return null;
+    const qualifierWords = new Set(
+      qualifiers.flatMap((q) => (clause.match(new RegExp(q.re.source, "gi")) ?? []).flatMap((m) => m.toLowerCase().split(/\W+/))),
+    );
+    const topics = Array.from(
+      new Set(
+        (clause.replace(LINK, " ").match(new RegExp(POLICY_TOPIC.source, "gi")) ?? [])
+          .filter((w) => !qualifierWords.has(w.toLowerCase()))
+          .map(stemOf),
+      ),
+    );
+    // A promise word with nothing (or more than one policy) it could be
+    // attached to: the model decides.
+    if (qualifiers.length > 0 && topics.length !== 1) return false;
+    /** Some passage has `re` within NEAR of a (non-negated) mention of this clause's policy. */
+    const attached = (re: RegExp): boolean =>
+      indexed.some(({ text, words }) => {
+        const anchors = topics.length
+          ? words.filter((w) => topics.includes(w.stem) && !w.negated).map((w) => w.at)
+          : null;
+        if (anchors && anchors.length === 0) return false;
+        for (const m of text.matchAll(new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`))) {
+          const at = m.index ?? 0;
+          if (!anchors || anchors.some((t) => Math.abs(t - at) <= NEAR)) return true;
+        }
+        return false;
+      });
+    const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // The same figure, never part of a longer number ("20" is not in "2026").
+    const figureRe = (f: string) => new RegExp(`(?<![\\d.])${escape(f)}(?:\\.0+)?(?![\\d]|\\.\\d)`);
+    return figures.every((f) => attached(figureRe(f))) && qualifiers.every((q) => attached(q.re));
+  };
+  return sentences.filter((sentence) => {
+    // "lifelong free maintenance and 20-day returns": each policy on its own.
+    const verdicts = sentence
+      .split(/,\s+|;\s*|\s+(?:and|plus|aur|or|&)\s+/i)
+      .map((c) => clauseGrounded(c))
+      .filter((v): v is boolean => v !== null);
+    return verdicts.length > 0 && verdicts.every(Boolean);
+  });
 }
 
 /** Numbered citation markers ([2], [1, 3], 【2】, [2†source]) are for us, never for a customer. */
@@ -480,11 +604,42 @@ export function dropSentences(text: string, drop: (sentence: string) => boolean)
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-/** Sentences that talk about pricing, fees, refunds, delivery, warranty or payment. */
+/** Web addresses, taken out before a sentence is read for values (a link's digits are not a figure). */
+const LINK = /\bhttps?:\/\/\S+|\bwww\.\S+|\b[a-z0-9-]+\.(?:com|in|co|net|org|shop|store)\/\S*/gi;
+
+/** "3 days", "two weeks", "24 hours", "3-5 din": a stated duration. */
+const DURATION =
+  /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|a few)(?:\s*(?:-|–|to)\s*\d+)?[- ]?(?:working |business )?(minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?|din|ghante?)\b/i;
+
+/** Promise words that are a value on their own: "free", "lifelong", "no questions asked", "guaranteed". */
+const PROMISE =
+  /(?<!feel )\bfree\b|\bno[- ](?:extra[- ])?(?:cost|charge|fee)s?\b|\bzero[- ](?:cost|interest|fee)s?\b|\blife-?long\b|\blifetime\b|\bno[- ]questions?\b|\bguarantee[sd]?\b/i;
+
+/**
+ * Batch 60: whether a sentence states a concrete value — a figure with a
+ * policy topic, a currency amount, a percentage, a duration or a promise
+ * word. A sentence that only points to a link, or only mentions a topic
+ * ("see every design with its latest price here: <link>"), states nothing
+ * the check could find wrong.
+ */
+export function statesConcreteValue(sentence: string): boolean {
+  const s = sentence.replace(LINK, " ");
+  if (/₹|\bRs\.?(?=\s*\d)|\bINR\b/i.test(s)) return true;
+  if (/\d\s*%|\bper ?cent\b/i.test(s)) return true;
+  if (DURATION.test(s)) return true;
+  if (PROMISE.test(s)) return true;
+  return /\d/.test(s) && POLICY_TOPIC.test(s);
+}
+
+/**
+ * Sentences that state a concrete value about pricing, fees, refunds,
+ * delivery, warranty or payment (Batch 60: a figure, an amount, a %, a
+ * duration or a promise word — never a link or a topic word alone).
+ */
 export function policyClaimSentences(answer: string): string[] {
   return sentencesOf(answer).filter(
     (s) =>
-      POLICY_TOPIC.test(s) &&
+      statesConcreteValue(s) &&
       !/let me confirm/i.test(s) &&
       !s.trim().endsWith("?") &&
       // Saying the detail is missing is the honest answer, not a claim.
@@ -509,21 +664,22 @@ export function withoutConfirmLine(answer: string): string {
     .trim();
 }
 
-/** Remove exact sentences, keep the rest, promise to come back once. */
+/**
+ * Remove exact sentences and keep the rest. Batch 60: nothing is added in
+ * their place (no "let me confirm" line); empty when nothing else was said.
+ */
 export function stripSentences(answer: string, drop: string[]): string {
   const set = new Set(drop.map((d) => d.trim()));
-  const text = dropSentences(answer, (s) => set.has(s)).replace(/[ \t]{2,}/g, " ").trim();
-  if (!text) return CONFIRM_LINE;
-  if (text.includes(CONFIRM_LINE)) return text;
-  return `${text}\n\n${CONFIRM_LINE}`;
+  return dropSentences(answer, (s) => set.has(s)).replace(/[ \t]{2,}/g, " ").trim();
 }
 
 /**
  * One small model call judging every candidate sentence against this run's
  * material. Batch 27 (M11): a sentence the check couldn't decide — the check
  * failed, or gave no answer for it — counts as unsupported (the caller
- * rewrites or strips it, and the question is filed for the merchant); it
- * used to pass as supported. The check never blocks the reply itself.
+ * strips it — Batch 60: no rewrite call — and the question is filed for the
+ * merchant); it used to pass as supported. The check never blocks the reply
+ * itself, and it only runs for claims groundedClaims couldn't settle.
  */
 type PolicyCheckWho = {
   organizationId: string;
@@ -557,14 +713,23 @@ async function unsupportedPolicyClaims(
   args: PolicyCheckWho & {
     sentences: string[];
     sources: string;
+    /**
+     * Batch 60: the shop's own instructions (ai_instructions), always part of
+     * the check's material, first and never cut, and true by definition.
+     */
+    instructions?: string;
     /** The check's reads, started while the answer was being written (speed). */
     prelude?: Promise<RunPrelude>;
     deferUsage?: RunOptions["deferUsage"];
   },
 ): Promise<string[]> {
-  if (!args.sources.trim()) return args.sentences;
+  const instructions = (args.instructions ?? "").trim();
+  if (!args.sources.trim() && !instructions) return args.sentences;
   if (!args.sentences.length) return [];
   const numbered = args.sentences.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  const material =
+    (instructions ? `SHOP'S OWN INSTRUCTIONS (always true):\n${instructions.slice(0, 8000)}\n\n` : "") +
+    `SOURCES:\n${args.sources.slice(0, 24000 - Math.min(instructions.length, 8000))}`;
   try {
     const run = await executeRun(supabase, {
       ...policyCheckRun(args),
@@ -573,9 +738,10 @@ async function unsupportedPolicyClaims(
       system: [
         "You check whether sentences are directly supported by the sources.",
         "A sentence is supported only if the sources state the same thing. Paraphrase is fine; a stronger, different or invented claim (e.g. 'zero markup' when sources say 'a small margin') is NOT supported.",
-        'Answer with JSON only: {"answers": ["yes"|"no", ...]} — one entry per numbered sentence, in order.',
+        "Anything the shop's own instructions state is true and supports a sentence.",
+        'Answer with JSON only, no other words: {"answers": ["yes"|"no", ...]} — one entry per numbered sentence, in order.',
       ].join("\n"),
-      input: `SOURCES:\n${args.sources.slice(0, 24000)}\n\nSENTENCES:\n${numbered}\n\nIs each sentence directly supported by these sources? yes/no`,
+      input: `${material}\n\nSENTENCES:\n${numbered}\n\nIs each sentence directly supported by these sources? yes/no`,
     });
     if (run.status !== "ok" || !run.output.trim()) throw new Error(`check run ${run.status}: ${run.error ?? "empty"}`);
     const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
@@ -586,56 +752,6 @@ async function unsupportedPolicyClaims(
   } catch (error) {
     console.log("[policy-grounding] check undecided", error instanceof Error ? error.message : "unknown");
     return args.sentences;
-  }
-}
-
-/**
- * Batch 16: when the policy check finds a claim the material doesn't support,
- * the model is asked once to say the reply again without it — instead of
- * code cutting the sentence out ("20-day no-questions returns hai" went and
- * the reply began "Lekin…"). The reply's text parts (split at the product
- * markers) are rewritten together, in one call, and come back in the same
- * number. Null on any failure: the caller falls back to stripping.
- */
-async function rewriteWithoutClaims(
-  supabase: SupabaseClient,
-  args: PolicyCheckWho & {
-    parts: string[];
-    claims: string[];
-    sources: string;
-    question: string;
-    prelude?: Promise<RunPrelude>;
-    deferUsage?: RunOptions["deferUsage"];
-  },
-): Promise<string[] | null> {
-  try {
-    const run = await executeRun(supabase, {
-      ...policyCheckRun(args),
-      metadata: { purpose: "policy_rewrite" },
-      ...(args.prelude ? { prelude: args.prelude } : {}),
-      ...(args.deferUsage ? { deferUsage: args.deferUsage } : {}),
-      system: [
-        "You edit a shop assistant's WhatsApp reply to a customer before it is sent.",
-        "Some claims in it are not supported by the shop's material. Rewrite the reply so it no longer makes those claims — not even in other words.",
-        "Where a removed claim answered the customer's question, say plainly that you don't have that detail right now. Keep everything else: the same language and script, tone, products, links and length. Never add a new fact, number, price, date or policy.",
-        'The reply is given as numbered parts. Answer with JSON only: {"parts": ["...", ...]} — the same number of parts, in order.',
-      ].join("\n"),
-      input:
-        `SHOP MATERIAL:\n${args.sources.slice(0, 16000)}\n\nCUSTOMER ASKED:\n${args.question.slice(0, 500)}\n\n` +
-        `UNSUPPORTED CLAIMS:\n${args.claims.map((c) => `- ${c}`).join("\n")}\n\n` +
-        `REPLY PARTS:\n${JSON.stringify(args.parts)}`,
-    });
-    if (run.status !== "ok" || !run.output.trim()) return null;
-    const raw = run.output.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { parts?: unknown[] };
-    const parts = Array.isArray(parsed.parts) ? parsed.parts.map((p) => (typeof p === "string" ? p.trim() : null)) : [];
-    if (parts.length !== args.parts.length || parts.some((p) => p === null)) return null;
-    // A part that had words must still have words.
-    if (parts.some((p, i) => !p && args.parts[i]!.trim())) return null;
-    return parts as string[];
-  } catch (error) {
-    console.log("[policy-grounding] rewrite skipped", error instanceof Error ? error.message : "unknown");
-    return null;
   }
 }
 
@@ -1119,6 +1235,43 @@ export function gatewayErrorMessage(status: number, body: string): string {
   return body.slice(0, 200) || "The AI couldn't complete that.";
 }
 
+/**
+ * Batch 60: the lowest reasoning ("thinking") setting a model takes, or null
+ * when it takes none (the field is then not sent). Customer replies and the
+ * policy check are 3-line answers; hidden thinking cost 300–900 output tokens
+ * and 8–30 s on gemini-3.6-flash. The Lovable AI gateway speaks the vendors'
+ * own OpenAI-compatible shapes (its docs send model details to each vendor):
+ *  - Google, chat-completions `reasoning_effort` (ai.google.dev/gemini-api/docs/openai):
+ *    Gemini 3 Flash / Flash-Lite take "minimal" (thinking_level minimal — it
+ *    can't be switched off on Gemini 3); Pro / Argon go no lower than "low";
+ *    Gemini 2.5 Flash / Flash-Lite take "none" (off); 2.5 Pro "minimal".
+ *  - OpenAI, Responses `reasoning.effort` (developers.openai.com/api/docs/models):
+ *    GPT-5.1 and later (gpt-5.4, gpt-5.4-mini, gpt-5.6-*) take "none"; the
+ *    original gpt-5 / -mini / -nano take "minimal"; o-series "low".
+ *  - Anthropic and anything else: nothing is sent (no thinking unless asked).
+ */
+export function lowestReasoningEffort(provider: string, modelId: string): string | null {
+  const id = modelId.toLowerCase();
+  const model = id.includes("/") ? id.slice(id.indexOf("/") + 1) : id;
+  const vendor = id.includes("/") ? id.slice(0, id.indexOf("/")) : provider.toLowerCase();
+  if (vendor === "google" || model.startsWith("gemini-")) {
+    if (/^gemini-2\.5-flash/.test(model)) return "none";
+    if (/^gemini-2\.5-pro/.test(model)) return "minimal";
+    if (/^gemini-[3-9]/.test(model)) return /pro|argon|ultra/.test(model) ? "low" : "minimal";
+    return null;
+  }
+  if (vendor === "openai" || /^(gpt-|o\d)/.test(model)) {
+    if (/^gpt-5(?:-mini|-nano)?$/.test(model)) return "minimal";
+    if (/^gpt-(?:5\.\d|[6-9])/.test(model)) return /pro\b|-pro$/.test(model) ? null : "none";
+    if (/^o\d/.test(model)) return "low";
+    return null;
+  }
+  return null;
+}
+
+/** A 400 that is about the reasoning field itself (any other refusal keeps its own path). */
+const REASONING_REFUSED = /reasoning|thinking|effort/i;
+
 /** Chat-completions path — every vendor, gateway or direct. */
 async function callChatCompletions(
   base: string,
@@ -1129,10 +1282,13 @@ async function callChatCompletions(
   direct = false,
   /** Overrides OUTSIDE_CALL_TIMEOUT_MS.ai for this call (RunOptions.firstCallTimeoutMs). */
   timeoutMs?: number,
+  /** Batch 60: `reasoning_effort` to send (lowestReasoningEffort), or none. */
+  reasoningEffort?: string | null,
 ): Promise<GatewayCall> {
   const body: Record<string, unknown> = { model, messages };
   // Anthropic's compatible endpoint insists on an explicit output cap.
   if (direct && base.includes("anthropic")) body["max_tokens"] = 4096;
+  if (reasoningEffort) body["reasoning_effort"] = reasoningEffort;
   if (tools.length > 0) {
     body["tools"] = tools.map((t) => ({
       type: "function",
@@ -1152,6 +1308,11 @@ async function callChatCompletions(
 
   if (!res.ok) {
     const text = await res.text();
+    // A reasoning setting must never cost a reply: refused once, asked again without it.
+    if (reasoningEffort && res.status === 400 && REASONING_REFUSED.test(text)) {
+      console.log("[ai-run] reasoning_effort refused, retrying without", model, text.slice(0, 160));
+      return callChatCompletions(base, key, model, messages, tools, direct, timeoutMs, null);
+    }
     throw new ProviderHttpError(gatewayErrorMessage(res.status, text), res.status, text);
   }
   const json = (await res.json()) as {
@@ -1191,8 +1352,11 @@ async function callResponses(
   direct = false,
   /** The whole exchange gives up after this long, instead of ai_stream's idle limit. */
   timeoutMs?: number,
+  /** Batch 60: `reasoning.effort` to send (lowestReasoningEffort), or none. */
+  reasoningEffort?: string | null,
 ): Promise<GatewayCall & { items: unknown[] }> {
   const body: Record<string, unknown> = { model, input, stream: true, store: false };
+  if (reasoningEffort) body["reasoning"] = { effort: reasoningEffort };
   if (tools.length > 0) {
     body["tools"] = tools.map((t) => ({
       type: "function",
@@ -1211,6 +1375,11 @@ async function callResponses(
   );
   if (!res.ok || !res.body) {
     const text = res.ok ? "" : await res.text();
+    // A reasoning setting must never cost a reply: refused once, asked again without it.
+    if (reasoningEffort && res.status === 400 && REASONING_REFUSED.test(text)) {
+      console.log("[ai-run] reasoning.effort refused, retrying without", model, text.slice(0, 160));
+      return callResponses(base, key, model, input, tools, direct, timeoutMs, null);
+    }
     throw new ProviderHttpError(gatewayErrorMessage(res.status, text), res.status, text);
   }
 
@@ -2215,10 +2384,16 @@ export async function executeRun(
   // What the guards accept as support: the brief and the reply-to product's
   // facts (supportNotes) — wherever they sit in the prompt; never the chat summary.
   const supportText = [options.system ?? "", ...(options.supportNotes ?? [])].filter(Boolean).join("\n\n");
-  const systemParts = [options.system ?? ""];
-  // The house rule: always be useful, never invent a hard fact. Applies with
-  // or without material, so a question with no match still gets an answer.
+  // Batch 60: the shop's own instructions, on their own — always the policy
+  // check's material (first, never cut) and the warm fallback's link.
+  const shopInstructions = (options.shopInstructions ?? "").trim();
+  // Batch 60: one chain of command, cache-friendly. The stable start first —
+  // the platform core, the catalogue's tool mechanics, then the brief (the
+  // shop's instructions) — then this message's material, then its notes;
+  // the chat and the question follow as messages.
+  const systemParts: string[] = [];
   if (task === "agent_reply") {
+    systemParts.push(options.channel === "onboarding" ? OWNER_ANSWER_POLICY : ANSWER_POLICY);
     // A shop with a real shelf must be browsed, not guessed at.
     if (prelude.productCount > 0) {
       systemParts.push(
@@ -2232,25 +2407,19 @@ export async function executeRun(
           "Text you write in the same turn as send_products goes before the pictures; your final reply goes after them. Quote prices exactly as the search gives them (whole units, in the product's own currency).",
       );
     }
-    systemParts.push(ANSWER_POLICY);
   }
+  systemParts.push(options.system ?? "");
   if (knowledgeBlock) {
-    // The owner's own chat reads better with a plain-words source line. A
-    // customer never sees where an answer came from: no numbers, no sources.
+    // The owner's own chat reads better with a plain-words source line (a
+    // customer's reply never names a source: the platform core says so).
     const citation =
       options.channel === "onboarding"
-        ? "After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
-        : "The items are numbered for you only: never mention an item number, a source, a page title as a source, or brackets in your reply.";
-    // A shopper wants the product page; a policy or blog page linked in every
-    // reply is just noise.
+        ? " After the answer, add one short line in plain words saying which page it came from, using the page title (e.g. 'From your Features page'). Never output [n] markers."
+        : "";
+    // A permission, not a ban (Batch 60): the shop's instructions decide links.
     const linkRule =
-      "Some items show a URL on the line under their title. If the item you used is a product page " +
-      "(its URL contains /products/), end your answer with that URL on its own last line, copied " +
-      "character for character, and nothing after it. For any other kind of page, do not output a URL at all.";
-    systemParts.push(
-      `Material from this business follows. Prefer it over anything else you know. ${citation} ${linkRule}\n\n` +
-        knowledgeBlock,
-    );
+      " If an item you used is a product page (its URL, on the line under its title, contains /products/), you may end your answer with that URL on its own line, copied character for character.";
+    systemParts.push(`Material from this business follows.${citation}${linkRule}\n\n${knowledgeBlock}`);
   }
   systemParts.push(...(options.contextNotes ?? []), ...(options.supportNotes ?? []));
   const system = systemParts.filter(Boolean).join("\n\n");
@@ -2419,6 +2588,11 @@ export async function executeRun(
   let modelError: unknown = null;
   // M1: only the primary's first call is cut short; every later step keeps the 120 s.
   const firstCallMs = (step: number): number | undefined => (step === 0 ? options.firstCallTimeoutMs : undefined);
+  // Batch 60: a customer reply (live, Playground, MCP — task agent_reply) and
+  // the policy check think as little as their model allows.
+  const reasoningEffort =
+    task === "agent_reply" || purpose === "policy_claim_check" ? lowestReasoningEffort(brain.provider, brain.model_id) : null;
+  if (reasoningEffort) runMeta["reasoning_effort"] = reasoningEffort;
   if (key) {
     try {
       if (isOpenAiModel(brain.model_id) || (direct && brain.provider === "openai")) {
@@ -2435,7 +2609,7 @@ export async function executeRun(
           let call: Awaited<ReturnType<typeof callResponses>>;
           try {
             modelCalls += 1;
-            call = await callResponses(apiBase, key, wire, items, tools, direct, firstCallMs(step));
+            call = await callResponses(apiBase, key, wire, items, tools, direct, firstCallMs(step), reasoningEffort);
           } catch (error) {
             // The provider refused the conversation with the early search in
             // it: the same question again without it, exactly as before.
@@ -2443,7 +2617,7 @@ export async function executeRun(
             earlyRefused = true;
             items.splice(earlyAt, 2);
             modelCalls += 1;
-            call = await callResponses(apiBase, key, wire, items, tools, direct, firstCallMs(step));
+            call = await callResponses(apiBase, key, wire, items, tools, direct, firstCallMs(step), reasoningEffort);
           }
           giveEarly();
           inputTokens += call.inputTokens ?? 0;
@@ -2510,13 +2684,13 @@ export async function executeRun(
           let call: GatewayCall;
           try {
             modelCalls += 1;
-            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct, firstCallMs(step));
+            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct, firstCallMs(step), reasoningEffort);
           } catch (error) {
             if (step !== 0 || !earlyCall || earlyGiven || !refusedRequest(error)) throw error;
             earlyRefused = true;
             messages.splice(earlyAt, 2);
             modelCalls += 1;
-            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct, firstCallMs(step));
+            call = await callChatCompletions(apiBase, key, wire, messages, tools, direct, firstCallMs(step), reasoningEffort);
           }
           giveEarly();
           inputTokens += call.inputTokens ?? 0;
@@ -2763,9 +2937,10 @@ export async function executeRun(
   if (task === "agent_reply" && result.output && !isVisionRead) {
     // Times, days and durations: the same rule, but the customer's own
     // question is not support for them.
-    const material = [knowledgeBlock, supportText, ...toolResultTexts, ...chosenFacts];
+    // Batch 60: the shop's own instructions are material here too, always.
+    const material = [shopInstructions, knowledgeBlock, supportText, ...toolResultTexts, ...chosenFacts];
     const unsupported = [
-      ...unsupportedNumbers(result.output, [knowledgeBlock, supportText, input, ...toolResultTexts]),
+      ...unsupportedNumbers(result.output, [shopInstructions, knowledgeBlock, supportText, input, ...toolResultTexts]),
       ...unsupportedTimeFacts(result.output, material),
     ];
     if (unsupported.length > 0) {
@@ -2786,7 +2961,7 @@ export async function executeRun(
     // line: the number's sentence just goes.
     for (const item of chosenMedia) {
       const guessed = [
-        ...unsupportedNumbers(item.caption, [knowledgeBlock, supportText, input, ...toolResultTexts, ...chosenFacts]),
+        ...unsupportedNumbers(item.caption, [shopInstructions, knowledgeBlock, supportText, input, ...toolResultTexts, ...chosenFacts]),
         ...unsupportedTimeFacts(item.caption, material),
       ];
       if (guessed.length === 0) continue;
@@ -2801,8 +2976,12 @@ export async function executeRun(
 
   // ------------------------------------------------- policy-claim grounding
   // A claim about this business's pricing, fees, refunds, delivery, warranty
-  // or payment terms must come from the material. The cheap check only runs
-  // when such a sentence is present; the numeric guard above is untouched.
+  // or payment terms must come from the material. Batch 60: only a sentence
+  // stating a concrete value is a claim (policyClaimSentences); the shop's own
+  // instructions are always material and true; a claim whose values are in
+  // the material next to the same policy is settled in code (groundedClaims)
+  // and only the rest go to the one small model check. An unsupported
+  // sentence is simply taken out — no rewrite call, no "let me confirm" line.
   // Replies only (owner chat + customer) — never reading, chunking or page summaries.
   let policyStripped = false;
   if (task === "agent_reply" && result.output && !isVisionRead && !purpose.startsWith("knowledge_")) {
@@ -2811,84 +2990,67 @@ export async function executeRun(
     const captionClaims = chosenMedia.flatMap((item) => policyClaimSentences(item.caption));
     const candidates = Array.from(new Set([...replyClaims, ...captionClaims]));
     if (candidates.length > 0) {
-      const sourceText = [knowledgeBlock, supportText, ...toolResultTexts, ...chosenFacts].join("\n\n");
+      // The instructions first, so no cut of the material can ever drop them.
+      const sourceText = [shopInstructions, knowledgeBlock, supportText, ...toolResultTexts, ...chosenFacts]
+        .filter(Boolean)
+        .join("\n\n");
       // Wording first, deterministically: stated as written → supported; a
       // promise word the sources never attach to that policy → not
       // supported, and it goes (the source's own line is kept on the run
-      // for review; code never writes it into the reply). Only the rest
-      // needs the model check.
+      // for review; code never writes it into the reply). Then every value
+      // found next to its policy → supported. Only the rest needs the model.
       const wording = sourceText.trim()
         ? checkPolicyWording(candidates, sourceText)
         : { verbatim: [], unsupported: [], undecided: candidates };
       if (wording.unsupported.length > 0) runMeta["policy_wording_unsupported"] = wording.unsupported;
+      const grounded = sourceText.trim() ? groundedClaims(wording.undecided, sourceText) : [];
+      const toCheck = wording.undecided.filter((sentence) => !grounded.includes(sentence));
+      runMeta["policy_check"] = {
+        claims: candidates.length,
+        verbatim: wording.verbatim.length,
+        grounded: grounded.length,
+        model_checked: toCheck.length,
+      };
       const unsupported = [
         ...wording.unsupported.map((u) => u.sentence),
-        ...(await unsupportedPolicyClaims(supabase, {
-          ...policyCheckWho,
-          sentences: wording.undecided,
-          sources: sourceText,
-          ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
-          ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
-        })),
+        ...(toCheck.length
+          ? await unsupportedPolicyClaims(supabase, {
+              ...policyCheckWho,
+              sentences: toCheck,
+              sources: [knowledgeBlock, supportText, ...toolResultTexts, ...chosenFacts].filter(Boolean).join("\n\n"),
+              instructions: shopInstructions,
+              ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
+              ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
+            })
+          : []),
       ];
       if (unsupported.length > 0) {
         result.needsOwner = true;
-        // Batch 16: the reply's own unsupported claims — ask the model once
-        // to say it again without them; the rewrite passes the same checks
-        // (numbers, times, policy) or today's stripping applies.
-        const replyUnsupported = unsupported.filter((u) => replyClaims.includes(u));
-        let rewritten = false;
-        if (replyUnsupported.length > 0) {
-          const textParts = result.output.split(PRODUCTS_MARK);
-          const attempt = await rewriteWithoutClaims(supabase, {
-            ...policyCheckWho,
-            parts: textParts,
-            claims: replyUnsupported,
-            sources: sourceText,
-            question: input,
-            ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
-            ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
-          });
-          let outcome = "failed";
-          if (attempt) {
-            const candidate = attempt.join(PRODUCTS_MARK);
-            const support = [knowledgeBlock, supportText, ...toolResultTexts, ...chosenFacts];
-            const guessed = [
-              ...unsupportedNumbers(candidate, [knowledgeBlock, supportText, input, ...toolResultTexts]),
-              ...unsupportedTimeFacts(candidate, support),
-            ];
-            const again = policyClaimSentences(candidate);
-            const wordingAgain = again.length ? checkPolicyWording(again, sourceText) : { verbatim: [], unsupported: [], undecided: [] };
-            const stillUnsupported = [
-              ...wordingAgain.unsupported.map((u) => u.sentence),
-              ...(wordingAgain.undecided.length
-                ? await unsupportedPolicyClaims(supabase, {
-                    ...policyCheckWho,
-                    sentences: wordingAgain.undecided,
-                    sources: sourceText,
-                    ...(policyCheckPrelude ? { prelude: policyCheckPrelude } : {}),
-                    ...(options.deferUsage ? { deferUsage: options.deferUsage } : {}),
-                  })
-                : []),
-            ];
-            if (guessed.length === 0 && stillUnsupported.length === 0 && candidate.replace(PRODUCTS_MARK, "").trim()) {
-              result.output = candidate;
-              rewritten = true;
-              outcome = "rewritten";
-            } else {
-              outcome = "still_unsupported";
-            }
-          }
-          runMeta["policy_rewrite"] = { outcome, claims: replyUnsupported };
-          console.log("[policy-grounding] rewrite", organizationId, outcome);
-        }
         console.log("[policy-grounding] stripped", organizationId, unsupported.length);
         runMeta["policy_claims_stripped"] = unsupported;
-        if (!rewritten && replyUnsupported.length > 0) result.output = stripSentences(result.output, unsupported);
+        const replyUnsupported = unsupported.filter((u) => replyClaims.includes(u));
+        if (replyUnsupported.length > 0) result.output = stripSentences(result.output, unsupported);
         for (const item of chosenMedia) item.caption = dropSentences(item.caption, (sentence) => unsupported.includes(sentence));
-        policyStripped = !rewritten || unsupported.length > replyUnsupported.length;
+        policyStripped = true;
       }
     }
+  }
+
+  // ------------------------------------------------------ nothing left
+  // Batch 60: the guards took out every sentence the reply had (and it sends
+  // no products): one warm line, written here — the shop's main link from its
+  // own instructions, else the team's help. Never a "let me confirm" line or
+  // a second AI call; the question is filed for the owner (needsOwner).
+  if (
+    task === "agent_reply" &&
+    (numbersStripped || policyStripped) &&
+    !result.output.split(PRODUCTS_MARK).join("").trim() &&
+    !chosenMedia.length
+  ) {
+    result.output = warmFallbackLine(shopInstructions, options.customerLanguage ?? null);
+    result.needsOwner = true;
+    runMeta["warm_fallback"] = true;
+    runMeta["kept_talking"] = numbersStripped ? "unsupported_number" : "no_source";
   }
 
   // ------------------------------------------- only offer what search found
@@ -2950,20 +3112,22 @@ export async function executeRun(
   }
 
   // ------------------------------------------------- "let me confirm"
-  // "Let me confirm that for you" promises that someone will come back. It
-  // is added by the guards above (a stripped number or policy line) and by
-  // the model itself. Next to anything else it goes; the question is still
-  // filed for the merchant (needsOwner, set above). A reply that was nothing
-  // but the promise goes as it is: the question is filed, and the merchant's
-  // answer to it reaches this customer — the thread is never handed over
-  // (and Aiden never silenced) for not knowing.
+  // "Let me confirm that for you" promises that someone will come back. Code
+  // never adds it (Batch 60); a model may still write it. Next to anything
+  // else it goes; the question is still filed for the merchant (needsOwner,
+  // set above). Batch 60: a reply that was nothing but the promise becomes
+  // the warm line (the shop's link, else the team's help) — the question is
+  // filed, the merchant's answer reaches this customer, and the thread is
+  // never handed over (and Aiden never silenced) for not knowing.
   if (task === "agent_reply" && result.status === "ok" && /let me confirm/i.test(result.output)) {
     const rest = withoutConfirmLine(result.output);
-    if (rest) {
+    if (rest.split(PRODUCTS_MARK).join("").trim() || chosenMedia.length) {
       runMeta["confirm_line_removed"] = true;
       result.output = rest;
     } else {
+      result.output = warmFallbackLine(shopInstructions, options.customerLanguage ?? null);
       result.needsOwner = true;
+      runMeta["warm_fallback"] = true;
       runMeta["kept_talking"] = numbersStripped ? "unsupported_number" : "no_source";
     }
   }

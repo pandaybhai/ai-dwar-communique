@@ -75,7 +75,9 @@ async function replay(c: Case, gate?: Record<string, unknown>): Promise<{ r: Rep
 }
 
 describe("Batch 16 item 1: not knowing never silences Aiden", () => {
-  it("no source: the only words left are the promise — sent, filed for the merchant, no hand-off", async () => {
+  // Batch 60: a reply that is nothing but the promise becomes the warm line
+  // (the shop's link from its instructions); still filed, still no hand-off.
+  it("no source: the only words left were the promise — the warm line goes, filed for the merchant, no hand-off", async () => {
     const { r } = await replay({
       id: "b16-no-source",
       ask: "do you do custom engraving on rings?",
@@ -84,7 +86,9 @@ describe("Batch 16 item 1: not knowing never silences Aiden", () => {
     expect(r.status).toBe("ok");
     expect(r.gapFiled).toBe(true);
     expect(r.handedOff ?? false).toBe(false);
-    expect(r.sent.map((s) => s.text)).toEqual(["Let me confirm that for you."]);
+    expect(r.sent.map((s) => s.text)).toEqual([
+      "You can see our full range with the latest details here: https://myzoori.com 😊 Happy to help with anything else!",
+    ]);
   });
 
   it("the v4 rule's answer (no detail, closest thing, keep going) goes out as written, no hand-off", async () => {

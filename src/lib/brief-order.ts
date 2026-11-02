@@ -14,3 +14,14 @@ export function promptSections<T extends { key: string }>(sections: T[]): T[] {
     ...LAST.flatMap((k) => sections.filter((s) => s.key === k)),
   ];
 }
+
+/**
+ * Batch 60: the shop's own instructions exactly as a brief carries them (the
+ * Playground's unsaved wording when it gave one) — the policy check's first
+ * material and the warm fallback's link (RunOptions.shopInstructions).
+ */
+export function shopInstructionsOf(brief: {
+  sections: Array<{ key: string; text: string }>;
+}): string {
+  return (brief.sections.find((s) => s.key === "instructions")?.text ?? "").trim();
+}

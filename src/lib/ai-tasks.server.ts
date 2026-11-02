@@ -12,6 +12,7 @@ import {
   type RunOptions,
   type RunResult,
 } from "@/lib/ai-run.server";
+import { shopInstructionsOf } from "@/lib/brief-order";
 import { activeFlowRules, briefTextWithFlowRules, flowRulesBlock, type AidenFlowRules } from "@/lib/aiden-flow-rules";
 
 export type Turn = { role: "user" | "assistant"; content: string };
@@ -289,6 +290,7 @@ export async function playgroundAnswer(
     actingRole: common.actingRole ?? null,
     input: question,
     system: brief.text,
+    shopInstructions: shopInstructionsOf(brief),
     handoverRules: brief.instructions.escalationRules,
     promptRulesVersion: brief.rulesVersion,
     tier: tier ?? null,
@@ -477,6 +479,7 @@ export async function agentAnswer(
     // About this message only: after the stable brief, rules and material (Batch 29).
     ...(summary ? { contextNotes: [summary] } : {}),
     ...(replyTo ? { supportNotes: [replyTo] } : {}),
+    shopInstructions: shopInstructionsOf(brief),
     handoverRules: brief.instructions.escalationRules,
     promptRulesVersion: brief.rulesVersion,
     customerLanguage,
