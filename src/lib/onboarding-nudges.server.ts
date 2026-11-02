@@ -10,12 +10,17 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { JourneyStep } from "@/lib/onboarding-journey";
+import {
+  CODE_TEMPLATE_NAME,
+  RESUME_LINK_TEMPLATE_NAME,
+  RESUME_TEMPLATE_NAME,
+} from "@/lib/platform-notice-templates";
+// Batch 58: the names live in platform-notice-templates.ts, re-exported here.
+export { CODE_TEMPLATE_NAME, RESUME_LINK_TEMPLATE_NAME, RESUME_TEMPLATE_NAME };
 
-export const CODE_TEMPLATE_NAME = "aidwar_onboarding_start";
 export const CODE_TEMPLATE_BODY =
   "Hi {{1}}, Aiden here from AiDwar. Your workspace {{2}} is ready and waiting for you. Reply to this message with {{3}} and I'll start reading your website.";
 
-export const RESUME_TEMPLATE_NAME = "aidwar_onboarding_resume";
 export const RESUME_TEMPLATE_BODY =
   "Hi {{1}}, Aiden here from AiDwar. We stopped at {{2}}. Reply here to continue, or say 'help'.";
 
@@ -25,7 +30,6 @@ export const RESUME_TEMPLATE_BODY =
  * has approved it; until then the two templates above go out exactly as
  * before.
  */
-export const RESUME_LINK_TEMPLATE_NAME = "aidwar_onboarding_resume_link";
 export const RESUME_LINK_TEMPLATE_BODY =
   "Hi {{1}}, Aiden here from AiDwar. Your setup for {{2}} is saved, right where you left it: {{3}}. Tap below to carry on.";
 export const RESUME_LINK_BUTTON_URL = "https://aidwar.in/app/start?step={{1}}";

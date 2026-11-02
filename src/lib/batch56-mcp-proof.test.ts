@@ -216,12 +216,14 @@ const EVERY_TOOL: Array<[string, Record<string, unknown>]> = [
   ["tag_contacts", { workspace_id: ORG, tag: "VIP", segment_id: "seg-vip" }],
   ["list_aiden_questions", { workspace_id: ORG }],
   ["answer_aiden_question", { workspace_id: ORG, question_id: "q-none", answer: "Yes" }],
+  // Batch 58.
+  ["refresh_confirm_code", { workspace_id: ORG, campaign_id: "camp-none" }],
 ];
 
-describe("all 26 MCP tools through a database that answers only with the proof", () => {
+describe("all 27 MCP tools through a database that answers only with the proof", () => {
   it("covers every tool the server has", async () => {
     const { ALL_MCP_TOOLS } = await import("./mcp-server.server");
-    expect(ALL_MCP_TOOLS).toHaveLength(26);
+    expect(ALL_MCP_TOOLS).toHaveLength(27);
     expect(EVERY_TOOL.map(([n]) => n).sort()).toEqual(ALL_MCP_TOOLS.map((t) => t.name).sort());
   });
 

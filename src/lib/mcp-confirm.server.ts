@@ -156,9 +156,9 @@ export const CONFIRM_REFUSALS: Record<Exclude<ConfirmCheck, { ok: true }>["reaso
   tampered:
     "That confirm_code doesn't belong to this draft, this workspace or this user. Use the code returned with this draft.",
   expired:
-    "That confirm_code has expired (codes last 15 minutes). Create the draft again to get a new code, and ask the user to confirm again.",
+    "That confirm_code has expired (codes last 15 minutes). Call refresh_confirm_code with this draft's campaign_id or flow_id for a new code (don't draft it again), and ask the user to confirm again.",
   changed:
-    "This draft changed after the confirm_code was issued. Show the user the new details and create a fresh draft before sending.",
+    "This draft changed after the confirm_code was issued. Call refresh_confirm_code with this draft's campaign_id or flow_id, show the user the new details, and only then confirm.",
 };
 
 /** Batch 54: the same refusals for a code that came from a preview (not a saved draft). */

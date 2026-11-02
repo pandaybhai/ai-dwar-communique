@@ -78,6 +78,7 @@ import { TemplatePhone } from "@/components/templates-v2/template-phone";
 import { NdCostPanel, NdSteps } from "@/components/campaigns-v2/wizard-parts";
 import { ndCostLine } from "@/components/campaigns-v2/data";
 import { sendCopy } from "@/components/campaigns-v2/copy";
+import { withoutPlatformNoticeTemplates } from "@/lib/platform-notice-templates";
 import { ConfettiBurst, ProgressRing } from "@/components/design-v2";
 
 type AudienceSummary = {
@@ -309,7 +310,9 @@ export function CampaignWizard({
       ]);
       if (cancelled) return;
       setSegments((seg.data ?? []) as SegmentRow[]);
-      const rows = (tpl.data ?? []) as TemplateRow[];
+      // Batch 58: AiDwar's own notice templates (platform workspace only)
+      // are never offered for a campaign.
+      const rows = withoutPlatformNoticeTemplates((tpl.data ?? []) as TemplateRow[]);
       setTemplates(rows);
       // Switching numbers can strand a template that doesn't exist on the new
       // WABA — clear it now instead of failing at send time.

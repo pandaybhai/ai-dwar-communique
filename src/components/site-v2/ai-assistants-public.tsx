@@ -47,7 +47,7 @@ export const FAQ: Array<{ q: string; a: string }> = [
   },
   {
     q: "Is it safe?",
-    a: "Your assistant signs in as you and can only do what you can do in AiDwar. It reads and drafts; sending a campaign or switching on a flow needs your yes with a confirm code that lasts 15 minutes. It can't message a single customer, change Aiden, billing, your team or settings, or delete anything. Owners can switch AI assistants off for the whole workspace at any time.",
+    a: "Your assistant signs in as you and can only do what you can do in AiDwar. It reads and drafts; sending a campaign or switching on a flow needs your yes with a confirm code that lasts 15 minutes. Answer later and your assistant gets a fresh code for the same draft, so no duplicate drafts pile up. It can't message a single customer, change Aiden, billing, your team or settings, or delete anything. Owners can switch AI assistants off for the whole workspace at any time.",
   },
   // Batch 56: the short version of the Privacy Policy's "AI assistants you connect".
   {

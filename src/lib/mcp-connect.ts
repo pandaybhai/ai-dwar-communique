@@ -123,6 +123,7 @@ export const MCP_TOOL_LIST: Array<{ name: string; kind: McpToolKind; does: strin
   { name: "create_campaign_draft", kind: "draft", does: "A campaign draft with recipients, cost and a confirm code." },
   { name: "create_flow_draft", kind: "draft", does: "A chat flow, saved switched off." },
   { name: "create_template_draft", kind: "draft", does: "A template checked against Meta's rules; nothing saved." },
+  { name: "refresh_confirm_code", kind: "draft", does: "A fresh confirm code for a campaign or flow draft you already made; creates nothing." },
   { name: "preview_campaign_change", kind: "draft", does: "What moving, re-targeting or cancelling a scheduled campaign would do." },
   { name: "send_campaign", kind: "confirm", does: "Sends or schedules a drafted campaign." },
   { name: "activate_flow", kind: "confirm", does: "Switches a drafted flow on." },

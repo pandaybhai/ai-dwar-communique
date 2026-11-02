@@ -240,11 +240,15 @@ const listTemplates: ToolDef = {
     if (d) return d;
     const { limit, offset } = page(args);
     const { templateVariableSpec, templateBodyText, templateButtons } = await import("@/lib/templates");
+    // Batch 58: AiDwar's own notice templates (platform-notice-templates.ts)
+    // are never offered for a campaign.
+    const { PLATFORM_NOTICE_TEMPLATE_NAMES } = await import("@/lib/platform-notice-templates");
     let q = ctx.user
       .from("message_templates")
       .select("name, language, category, waba_id, components, updated_at")
       .eq("organization_id", ctx.workspace.id)
-      .eq("status", "APPROVED");
+      .eq("status", "APPROVED")
+      .not("name", "in", `(${[...PLATFORM_NOTICE_TEMPLATE_NAMES].join(",")})`);
     const search = String(args["search"] ?? "").trim();
     if (search) q = q.ilike("name", `%${search.replace(/[%_]/g, "")}%`);
     const [{ data, error }, { data: numbers }] = await Promise.all([
@@ -924,6 +928,9 @@ const createCampaignDraft: ToolDef = {
     const { connection, error: connectionError } = await getWhatsAppConnection(db, org, (args["whatsapp_number_id"] as string | undefined) ?? null);
     if (!connection) return fail(connectionError ?? "Connect a WhatsApp number in AiDwar before drafting a campaign.");
 
+    const { isPlatformNoticeTemplate } = await import("@/lib/platform-notice-templates");
+    if (isPlatformNoticeTemplate(String(args["template_name"]).trim()))
+      return fail("That is one of AiDwar's own notice templates, not one for campaigns. Use list_templates to pick one of yours.");
     let tq = ctx.user
       .from("message_templates")
       .select("name, language, category, components, status")
@@ -1315,6 +1322,173 @@ const activateFlow: ToolDef = {
   },
 };
 
+/**
+ * Batch 58: a fresh confirm_code for a draft that already exists — never a
+ * second draft. A code lasts 15 minutes; a user who answers later used to
+ * leave the AI no way but to call create_*_draft again (duplicate drafts in
+ * testing). This re-checks and re-previews the SAME draft exactly as its
+ * draft tool and its confirm tool do (same permission, same state hash, same
+ * HMAC binding through issueConfirmCode) and creates nothing. An earlier code
+ * keeps its own 15 minutes; every code still works once, because the confirm
+ * tools claim the draft (send_campaign deletes it, activate_flow refuses a
+ * flow that is on).
+ */
+const refreshConfirmCode: ToolDef = {
+  name: "refresh_confirm_code",
+  title: "Get a fresh confirm code for an existing draft",
+  description:
+    "When a confirm_code from create_campaign_draft or create_flow_draft has expired (15 minutes) or was lost, call this with the SAME draft's campaign_id or flow_id instead of drafting again. It re-checks the draft, shows its current recipients/cost (campaign) or steps (flow) and returns a new confirm_code. It creates nothing and sends nothing; show the user the preview again and use the code only after they clearly confirm.",
+  input: {
+    ...workspaceArg,
+    campaign_id: z.string().min(1).max(64).optional(),
+    flow_id: z.string().min(1).max(64).optional(),
+  },
+  readOnly: false,
+  destructive: false,
+  run: async (ctx, args) => {
+    const campaignId = (args["campaign_id"] as string | undefined) ?? null;
+    const flowId = (args["flow_id"] as string | undefined) ?? null;
+    if (Boolean(campaignId) === Boolean(flowId)) return fail("Give either campaign_id or flow_id (the draft you already made).");
+    return campaignId ? refreshCampaignCode(ctx, campaignId) : refreshFlowCode(ctx, flowId!);
+  },
+};
+
+async function refreshCampaignCode(ctx: ToolContext, campaignId: string): Promise<ToolOutcome> {
+  const d = denied(ctx, "campaigns.create", "create campaigns");
+  if (d) return d;
+  const org = ctx.workspace.id;
+  const db = ctx.service;
+  const { data } = await db.from("campaigns").select("*").eq("organization_id", org).eq("id", campaignId).maybeSingle();
+  const draft = data as DraftRow | null;
+  if (!draft) return fail(`No campaign draft with that id in ${ctx.workspace.name}.`);
+  if (draft.status !== "draft") return fail(`This campaign is already ${draft.status.replace(/_/g, " ")} — there is nothing left to confirm.`);
+  if (!(draft.send_settings as { mcp?: unknown } | null)?.mcp)
+    return fail("Only drafts made by create_campaign_draft can be confirmed from here. Open it in AiDwar to send it.");
+  if (draft.scheduled_at && Date.parse(draft.scheduled_at) <= ctx.now())
+    return fail("This draft's scheduled time has passed. Change the time in AiDwar, or draft it again with a new time (or none).");
+
+  const { workspaceLocked, campaignCategory } = await import("@/lib/campaign-launch.server");
+  if (await workspaceLocked(db, org)) return fail("This workspace is locked — choose a plan in AiDwar to continue.");
+  const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
+  const { connection, error: connectionError } = await getWhatsAppConnection(db, org, draft.whatsapp_account_id ?? null);
+  if (!connection) return fail(connectionError ?? "This draft's WhatsApp number isn't connected any more.");
+
+  let tq = ctx.user
+    .from("message_templates")
+    .select("name, language, category")
+    .eq("organization_id", org)
+    .eq("waba_id", connection.wabaId)
+    .eq("name", String(draft.template_name ?? ""))
+    .eq("status", "APPROVED");
+  if (draft.template_language) tq = tq.eq("language", draft.template_language);
+  const { data: template } = await tq.limit(1).maybeSingle();
+  const t = template as { name: string; language: string; category: string | null } | null;
+  if (!t) return fail("This draft's template isn't approved on its WhatsApp number any more. Draft it again with an approved template.");
+
+  const { audienceSummary, isSegmentNotFound } = await import("@/lib/campaigns.server");
+  let recipients: number;
+  let excluded: number;
+  try {
+    const s = await audienceSummary(ctx.user, org, draft.segment_id ?? null);
+    recipients = s.eligible;
+    excluded = s.excluded;
+  } catch (error) {
+    if (isSegmentNotFound(error)) return fail(error.message);
+    return fail("We couldn't work out this audience. Please try again.");
+  }
+  if (recipients === 0) return fail("No opted-in customers match this draft's audience now, so there's nobody to send to.");
+
+  const { campaignCostEstimate } = await import("@/lib/billing.server");
+  const estimate = await campaignCostEstimate(db, {
+    organizationId: org,
+    recipients,
+    category: campaignCategory(t.category),
+    whatsappAccountId: connection.accountId,
+  });
+
+  const hash = await stateHash(await campaignDraftState(db, draft));
+  const code = await issueConfirmCode(
+    { userId: ctx.caller.userId, workspaceId: org, objectId: draft.id, action: "send_campaign", stateHash: hash },
+    ctx.now(),
+    ...(ctx.confirmSecret ? [ctx.confirmSecret] : []),
+  );
+  const cost = estimate.enabled ? money(estimate.estimate, estimate.currency) : null;
+  const wallet = estimate.enabled ? money(estimate.available, estimate.currency) : null;
+  const lines = [
+    `Same draft "${draft.name}" — nothing new was created and nothing was sent.`,
+    `${recipients} opted-in customer(s) will get "${t.name}"${excluded ? ` (${excluded} not opted in are left out)` : ""}${draft.scheduled_at ? `, scheduled for ${new Date(draft.scheduled_at).toISOString()}` : " as soon as it's confirmed"}.`,
+    cost ? `Estimated cost ${cost}; wallet available ${wallet}.` : null,
+    estimate.enabled && !estimate.can_send ? "The wallet doesn't cover this yet: add credits in AiDwar before sending." : null,
+    "Show the user this again; only if they clearly confirm, call send_campaign with campaign_id and this new confirm_code (valid 15 minutes).",
+  ].filter(Boolean);
+  return done(
+    lines.join(" "),
+    {
+      campaign_id: draft.id,
+      status: "draft",
+      name: draft.name,
+      template: { name: t.name, language: t.language, category: String(t.category ?? "").toLowerCase() || null },
+      recipients,
+      not_opted_in_left_out: excluded,
+      scheduled_at: draft.scheduled_at ? new Date(draft.scheduled_at).toISOString() : null,
+      estimated_cost: estimate.enabled ? { amount: estimate.estimate, currency: estimate.currency, text: cost } : null,
+      wallet_available: estimate.enabled ? { amount: estimate.available, currency: estimate.currency, text: wallet } : null,
+      wallet_covers_it: estimate.enabled ? estimate.can_send : null,
+      needs_owner_approval: estimate.enabled ? estimate.needs_approval : false,
+      confirm_code: code.code,
+      confirm_code_expires_at: code.expiresAt,
+      link: link(ctx, `/app/campaigns/${draft.id}`),
+    },
+    { action: "mcp_confirm_code_refreshed", objectId: draft.id, details: { kind: "campaign", recipients } },
+  );
+}
+
+async function refreshFlowCode(ctx: ToolContext, flowId: string): Promise<ToolOutcome> {
+  const gate = await flowsV2Gate(ctx);
+  if (gate) return gate;
+  const org = ctx.workspace.id;
+  const { ownFlowV2, draftOfFlowV2, flowV2PublishProblems } = await import("@/lib/flow-v2-actions.server");
+  const flow = await ownFlowV2(ctx.service, org, flowId);
+  if (!flow) return fail(`No chat flow with that id in ${ctx.workspace.name}.`);
+  const { data: state } = await ctx.service.from("flows").select("is_enabled").eq("id", flowId).eq("organization_id", org).maybeSingle();
+  if ((state as { is_enabled?: boolean } | null)?.is_enabled) return fail("This flow is already switched on — there is nothing left to confirm.");
+  const draft = await draftOfFlowV2(ctx.service, org, flowId);
+  if (!draft) return fail("This flow has no draft to switch on.");
+  const problems = (await flowV2PublishProblems(ctx.service, org, draft.graph as never)).map((p) => p.message);
+  const steps = await stepSummary(draft.graph);
+  const code = problems.length
+    ? null
+    : await issueConfirmCode(
+        {
+          userId: ctx.caller.userId,
+          workspaceId: org,
+          objectId: flowId,
+          action: "activate_flow",
+          stateHash: await stateHash(flowState(flowId, draft.id, draft.graph)),
+        },
+        ctx.now(),
+        ...(ctx.confirmSecret ? [ctx.confirmSecret] : []),
+      );
+  return done(
+    `Same flow "${flow.name}" — nothing new was created; it is still a draft, switched off, with ${steps.length} step(s). ${
+      problems.length
+        ? `Before it can go live: ${problems.join(" ")} Fix it in the builder.`
+        : "Show the user the steps again; only if they confirm, call activate_flow with flow_id and this new confirm_code (valid 15 minutes)."
+    }`,
+    {
+      flow_id: flowId,
+      status: "Draft",
+      switched_on: false,
+      steps,
+      problems,
+      confirm_code: code?.code ?? null,
+      confirm_code_expires_at: code?.expiresAt ?? null,
+      link: link(ctx, `/app/flows/v2/${flowId}`),
+    },
+    { action: "mcp_confirm_code_refreshed", objectId: flowId, details: { kind: "flow", steps: steps.length, ready: !problems.length } },
+  );
+}
+
 export const MCP_TOOLS: ToolDef[] = [
   listWorkspaces,
   getWorkspaceOverview,
@@ -1332,4 +1506,5 @@ export const MCP_TOOLS: ToolDef[] = [
   sendCampaign,
   createFlowDraft,
   activateFlow,
+  refreshConfirmCode,
 ];
