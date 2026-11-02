@@ -461,11 +461,11 @@ describe("addendum: one short platform core first, the shop's instructions in ch
 
   it("the core is short and safety-only: no forced phrase, no link ban", () => {
     expect(ANSWER_POLICY.split("\n").length).toBeLessThanOrEqual(7);
-    expect(ANSWER_POLICY).toMatch(/instructions are in charge/);
+    expect(ANSWER_POLICY).toMatch(/own instructions decide tone, language, length, links/);
+    // Shorter than the block it replaces (648 characters on main).
+    expect(ANSWER_POLICY.length).toBeLessThan(648);
     expect(ANSWER_POLICY).not.toMatch(/let me confirm/i);
-    expect(ANSWER_POLICY).toMatch(
-      /Only use a URL that appears in the business's instructions or the material/,
-    );
+    expect(ANSWER_POLICY).toMatch(/URLs only from the instructions or material, copied exactly/);
   });
 
   it("the system prompt is [core] + [brief with the instructions], then the material; no URL ban", async () => {

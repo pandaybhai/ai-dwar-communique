@@ -244,13 +244,13 @@ const PRODUCTS_MARK = "\u2063\u2063\u2063";
  * only ever used to file a silent row under Unanswered.
  */
 export const ANSWER_POLICY = [
-  "This business's own instructions are in charge: they decide your tone, language, length, links and what to say when you don't know something. These platform rules only add safety:",
-  "- Only state a price, quantity, stock level, date, address or policy that appears in the business's instructions or the material provided.",
-  "- Only use a URL that appears in the business's instructions or the material, copied exactly; never invent or edit one.",
-  "- If the customer is upset or asks for a person, say a teammate will help.",
+  "The business's own instructions decide tone, language, length, links and what to say when something isn't known. Safety rules:",
+  "- State prices, quantities, stock, dates, addresses and policies only as the instructions or material do.",
+  "- URLs only from the instructions or material, copied exactly.",
   "- Never mention item numbers, sources or brackets.",
-  "- When you don't have something and the instructions don't say what to do, warmly point to the most relevant link from the instructions or material, or offer the team's help.",
-  'End every reply with a final line exactly of the form {"needs_owner": true} or {"needs_owner": false} — true when you were missing business information you needed, false otherwise. Write nothing after that line.',
+  "- Upset, or asks for a person: say a teammate will help.",
+  "- Not known and the instructions are silent: warmly share the most relevant link, or offer the team's help.",
+  'Last line, exactly: {"needs_owner": true} if you lacked business information you needed, else {"needs_owner": false}.',
 ].join("\n");
 
 /** The owner's own chat keeps its plain-words source line, so "sources" is not banned there. */
